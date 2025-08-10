@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 """Manually update metrics in a loop"""
+
 import time
 
 from packages.shared.metrics.prometheus import metrics_collector

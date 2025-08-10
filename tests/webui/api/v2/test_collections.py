@@ -20,7 +20,11 @@ from packages.shared.database.exceptions import (
     InvalidStateError,
 )
 from packages.shared.database.models import Collection, CollectionStatus
+from packages.webui.auth import get_current_user
+from packages.webui.dependencies import get_collection_for_user
+from packages.webui.main import app
 from packages.webui.services.collection_service import CollectionService
+from packages.webui.services.factory import get_collection_service
 
 
 @pytest.fixture()
@@ -62,9 +66,6 @@ def mock_collection_service() -> AsyncMock:
 @pytest.fixture()
 def client(mock_user: dict[str, Any], mock_collection_service: AsyncMock) -> TestClient:
     """Create a test client with mocked dependencies."""
-    from packages.webui.auth import get_current_user
-    from packages.webui.main import app
-    from packages.webui.services.factory import get_collection_service
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
@@ -206,7 +207,6 @@ class TestCreateCollection:
         }
 
         # Minimal service return payload
-        from datetime import UTC, datetime
 
         collection_data = {
             "id": str(uuid.uuid4()),
@@ -310,8 +310,6 @@ class TestGetCollection:
 
     def test_get_collection_success(self, client: TestClient, mock_collection: MagicMock) -> None:
         """Test successful collection retrieval."""
-        from packages.webui.dependencies import get_collection_for_user
-        from packages.webui.main import app
 
         app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
 

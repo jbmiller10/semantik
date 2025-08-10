@@ -125,7 +125,7 @@ class PartitionManager:
         """
         query = text(
             """
-            SELECT 
+            SELECT
                 partition_id,
                 partition_name,
                 row_count,
@@ -175,7 +175,7 @@ class PartitionManager:
         # Get basic distribution metrics
         query = text(
             """
-            SELECT 
+            SELECT
                 partitions_used,
                 empty_partitions,
                 avg_chunks_per_partition,
@@ -220,13 +220,11 @@ class PartitionManager:
             recommendations.append("Consider reviewing collection distribution patterns.")
         elif row.max_skew_ratio > self.SKEW_WARNING_THRESHOLD:
             recommendations.append(
-                f"Moderate skew detected ({row.max_skew_ratio:.2f}x). " "Monitor partition growth closely."
+                f"Moderate skew detected ({row.max_skew_ratio:.2f}x). Monitor partition growth closely."
             )
 
         if row.empty_partitions > self.PARTITION_COUNT * 0.5:
-            recommendations.append(
-                f"{row.empty_partitions} partitions are empty. " "This is normal for small datasets."
-            )
+            recommendations.append(f"{row.empty_partitions} partitions are empty. This is normal for small datasets.")
 
         if not recommendations:
             recommendations.append("Distribution is healthy and balanced.")
@@ -278,7 +276,7 @@ class PartitionManager:
             "recommendation": row.recommendation,
         }
 
-    async def get_hot_partitions(self, db: AsyncSession, threshold: float = None) -> list[PartitionHealth]:
+    async def get_hot_partitions(self, db: AsyncSession, threshold: float | None = None) -> list[PartitionHealth]:
         """
         Get list of hot partitions (those with above-average load).
 
@@ -324,9 +322,9 @@ class PartitionManager:
         # Get PostgreSQL-calculated partition
         query = text(
             """
-            SELECT 
-                mod(hashtext(:collection_id::text), 100) as db_partition_id,
-                get_partition_for_collection(:collection_id::uuid) as db_partition_name
+            SELECT
+                mod(hashtext(:collection_id), 100) as db_partition_id,
+                get_partition_for_collection(:collection_id) as db_partition_name
         """
         )
 
@@ -336,12 +334,12 @@ class PartitionManager:
         # Check if there's actual data for this collection
         data_query = text(
             """
-            SELECT 
+            SELECT
                 COUNT(*) as chunk_count,
                 MIN(created_at) as first_chunk,
                 MAX(created_at) as last_chunk
             FROM chunks
-            WHERE collection_id = :collection_id::uuid
+            WHERE collection_id = :collection_id
         """
         )
 

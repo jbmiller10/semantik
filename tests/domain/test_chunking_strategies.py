@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+
 """Tests for all chunking strategies."""
 
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -18,16 +21,16 @@ class TestCharacterChunkingStrategy:
     """Test suite for CharacterChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> None:
         """Create a character chunking strategy instance."""
         return CharacterChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create a basic config for character chunking."""
         return ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=20, overlap_tokens=5)
 
-    def test_simple_chunking(self, strategy, config):
+    def test_simple_chunking(self, strategy, config) -> None:
         """Test basic character-based chunking."""
         # Arrange
         text = "This is a simple test document with multiple words that should be chunked properly."
@@ -42,7 +45,7 @@ class TestCharacterChunkingStrategy:
         # assert all(chunk.start_position >= 0 for chunk in chunks)
         # assert all(chunk.end_position <= len(text) for chunk in chunks)
 
-    def test_empty_text(self, strategy, config):
+    def test_empty_text(self, strategy, config) -> None:
         """Test chunking empty text."""
         # Act
         chunks = strategy.chunk("", config)
@@ -50,7 +53,7 @@ class TestCharacterChunkingStrategy:
         # Assert
         assert len(chunks) == 0
 
-    def test_text_smaller_than_min_tokens(self, strategy, config):
+    def test_text_smaller_than_min_tokens(self, strategy, config) -> None:
         """Test chunking text smaller than minimum tokens."""
         # Arrange
         text = "Short text"
@@ -62,7 +65,7 @@ class TestCharacterChunkingStrategy:
         assert len(chunks) == 1
         assert chunks[0].content == text
 
-    def test_overlap_preservation(self, strategy, config):
+    def test_overlap_preservation(self, strategy, config) -> None:
         """Test that overlap is preserved between chunks."""
         # Arrange
         text = " ".join(["word" + str(i) for i in range(100)])  # Long text
@@ -80,13 +83,13 @@ class TestCharacterChunkingStrategy:
                 # There should be some common words if overlap is working
                 assert len(set(chunk1_end) & set(chunk2_start)) > 0
 
-    def test_progress_callback(self, strategy, config):
+    def test_progress_callback(self, strategy, config) -> None:
         """Test that progress callback is called."""
         # Arrange
         text = "This is a test document with enough content to trigger multiple chunks."
         progress_values = []
 
-        def progress_callback(value):
+        def progress_callback(value) -> None:
             progress_values.append(value)
 
         # Act
@@ -96,7 +99,7 @@ class TestCharacterChunkingStrategy:
         assert len(progress_values) > 0
         assert progress_values[-1] == 100.0  # Should end at 100%
 
-    def test_preserves_word_boundaries(self, strategy, config):
+    def test_preserves_word_boundaries(self, strategy, config) -> None:
         """Test that character chunking tries to preserve word boundaries."""
         # Arrange
         text = "The quick brown fox jumps over the lazy dog. " * 10
@@ -122,7 +125,7 @@ class TestCharacterChunkingStrategy:
                 # Should end with punctuation or be at a word boundary
                 assert True  # Relaxed check
 
-    def test_metadata_generation(self, strategy, config):
+    def test_metadata_generation(self, strategy, config) -> None:
         """Test that metadata is properly generated for chunks."""
         # Arrange
         text = "Test document for metadata validation."
@@ -142,16 +145,16 @@ class TestRecursiveChunkingStrategy:
     """Test suite for RecursiveChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> None:
         """Create a recursive chunking strategy instance."""
         return RecursiveChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create config for recursive chunking."""
         return ChunkConfig(strategy_name="recursive", min_tokens=15, max_tokens=30, overlap_tokens=5)
 
-    def test_hierarchical_splitting(self, strategy, config):
+    def test_hierarchical_splitting(self, strategy, config) -> None:
         """Test that recursive strategy splits hierarchically."""
         # Arrange
         text = """First paragraph here.
@@ -173,7 +176,7 @@ Third paragraph that is even longer with multiple sentences. It contains various
                     chunk.content.rstrip().endswith((".", "!", "?")) or len(chunk.content.split()) >= config.min_tokens
                 )
 
-    def test_nested_structure_handling(self, strategy, config):
+    def test_nested_structure_handling(self, strategy, config) -> None:
         """Test handling of nested text structures."""
         # Arrange
         text = """Chapter 1: Introduction
@@ -196,7 +199,7 @@ The main objectives are listed here."""
         assert "Chapter 1" in full_text
         assert "Section 1.1" in full_text
 
-    def test_separator_priority(self, strategy, config):
+    def test_separator_priority(self, strategy, config) -> None:
         """Test that separators are used in priority order."""
         # Arrange
         # Text with various separators
@@ -210,7 +213,7 @@ The main objectives are listed here."""
         # Verify content is preserved
         assert all(chunk.content for chunk in chunks)
 
-    def test_handles_no_separators(self, strategy, config):
+    def test_handles_no_separators(self, strategy, config) -> None:
         """Test handling of text without clear separators."""
         # Arrange
         text = "continuoustextwithoutanyspacesorseparatorsjustletters" * 5
@@ -223,13 +226,13 @@ The main objectives are listed here."""
         # Should fall back to character-based splitting
         assert all(len(chunk.content) > 0 for chunk in chunks)
 
-    def test_preserves_code_blocks(self, strategy, config):
+    def test_preserves_code_blocks(self, strategy, config) -> None:
         """Test that code blocks are preserved when possible."""
         # Arrange
         text = """Here is some text.
 
 ```python
-def example():
+def example() -> None:
     return "This is code"
 ```
 
@@ -249,7 +252,7 @@ class TestSemanticChunkingStrategy:
     """Test suite for SemanticChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> Generator[Any, None, None]:
         """Create a semantic chunking strategy instance with mocked embeddings."""
         with patch(
             "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
@@ -259,13 +262,13 @@ class TestSemanticChunkingStrategy:
             yield SemanticChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create config for semantic chunking."""
         return ChunkConfig(
             strategy_name="semantic", min_tokens=20, max_tokens=50, overlap_tokens=10, similarity_threshold=0.6
         )
 
-    def test_semantic_boundary_detection(self, strategy, config):
+    def test_semantic_boundary_detection(self, strategy, config) -> None:
         """Test that semantic boundaries are detected."""
         # Arrange
         text = """The weather today is sunny and warm. Birds are singing in the trees.
@@ -285,7 +288,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         assert len(chunks) >= 2  # Should split at some topic boundaries
         assert all(chunk.content for chunk in chunks)
 
-    def test_high_similarity_preservation(self, strategy, config):
+    def test_high_similarity_preservation(self, strategy, config) -> None:
         """Test that high similarity sentences stay together."""
         # Arrange
         text = """Machine learning is a subset of artificial intelligence.
@@ -303,7 +306,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         # Related content should stay together
         assert len(chunks) <= 2
 
-    def test_handles_embedding_failures(self, strategy, config):
+    def test_handles_embedding_failures(self, strategy, config) -> None:
         """Test graceful handling of embedding failures."""
         # Arrange
         text = "Test document for embedding failure scenario."
@@ -318,7 +321,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
         assert len(chunks) > 0
         assert chunks[0].content == text
 
-    def test_semantic_density_calculation(self, strategy, config):
+    def test_semantic_density_calculation(self, strategy, config) -> None:
         """Test that semantic density is calculated in metadata."""
         # Arrange
         text = """First topic sentence. Related to first topic.
@@ -335,7 +338,7 @@ A new restaurant opened downtown. The menu features Italian cuisine."""
             assert chunk.metadata.semantic_density > 0
             assert chunk.metadata.semantic_density <= 1
 
-    def test_custom_similarity_threshold(self, strategy):
+    def test_custom_similarity_threshold(self, strategy) -> None:
         """Test using custom similarity threshold."""
         # Arrange
         config = ChunkConfig(
@@ -361,16 +364,16 @@ class TestMarkdownChunkingStrategy:
     """Test suite for MarkdownChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> None:
         """Create a markdown chunking strategy instance."""
         return MarkdownChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create config for markdown chunking."""
         return ChunkConfig(strategy_name="markdown", min_tokens=20, max_tokens=100, overlap_tokens=10)
 
-    def test_heading_preservation(self, strategy, config):
+    def test_heading_preservation(self, strategy, config) -> None:
         """Test that markdown headings are preserved."""
         # Arrange
         text = """# Main Heading
@@ -395,7 +398,7 @@ Even more detailed content here."""
         assert "# Main Heading" in full_text
         assert "## Subheading" in full_text
 
-    def test_code_block_handling(self, strategy, config):
+    def test_code_block_handling(self, strategy, config) -> None:
         """Test that code blocks are handled properly."""
         # Arrange
         text = """# Code Examples
@@ -403,7 +406,7 @@ Even more detailed content here."""
 Here's a Python example:
 
 ```python
-def hello_world():
+def hello_world() -> None:
     print("Hello, World!")
     return True
 ```
@@ -426,7 +429,7 @@ function helloWorld() {
         assert "def hello_world():" in full_text
         assert "function helloWorld()" in full_text
 
-    def test_list_handling(self, strategy, config):
+    def test_list_handling(self, strategy, config) -> None:
         """Test that lists are handled properly."""
         # Arrange
         text = """# Shopping List
@@ -454,7 +457,7 @@ function helloWorld() {
         assert "- Apples" in full_text
         assert "1. First item" in full_text
 
-    def test_table_handling(self, strategy, config):
+    def test_table_handling(self, strategy, config) -> None:
         """Test that tables are handled as units."""
         # Arrange
         text = """# Data Table
@@ -479,7 +482,7 @@ More content after table."""
                 break
         assert table_chunk_found
 
-    def test_link_and_image_handling(self, strategy, config):
+    def test_link_and_image_handling(self, strategy, config) -> None:
         """Test that links and images are preserved."""
         # Arrange
         text = """# Document with Links
@@ -501,7 +504,7 @@ Check out [this link](https://example.com) for more info.
         assert "[this link](https://example.com)" in full_text
         assert "![Alt text](image.png)" in full_text
 
-    def test_blockquote_handling(self, strategy, config):
+    def test_blockquote_handling(self, strategy, config) -> None:
         """Test that blockquotes are handled properly."""
         # Arrange
         text = """# Quotes
@@ -527,18 +530,18 @@ class TestHierarchicalChunkingStrategy:
     """Test suite for HierarchicalChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> None:
         """Create a hierarchical chunking strategy instance."""
         return HierarchicalChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create config for hierarchical chunking."""
         return ChunkConfig(
             strategy_name="hierarchical", min_tokens=30, max_tokens=100, overlap_tokens=15, hierarchy_level=2
         )
 
-    def test_multi_level_chunking(self, strategy, config):
+    def test_multi_level_chunking(self, strategy, config) -> None:
         """Test that multiple levels of chunks are created."""
         # Arrange
         text = """Chapter 1: Introduction
@@ -566,7 +569,7 @@ This chapter covers the methodology used."""
         assert any("parent_id" in chunk.metadata.custom_attributes for chunk in chunks)
         assert any("hierarchy_level" in chunk.metadata.custom_attributes for chunk in chunks)
 
-    def test_parent_child_relationships(self, strategy, config):
+    def test_parent_child_relationships(self, strategy, config) -> None:
         """Test that parent-child relationships are properly established."""
         # Arrange
         text = """# Main Topic
@@ -593,7 +596,7 @@ Content for subtopic 2."""
                 parent_id = child.metadata.custom_attributes["parent_id"]
                 assert any(p.metadata.custom_attributes.get("chunk_id") == parent_id for p in parent_chunks)
 
-    def test_summary_generation(self, strategy, config):
+    def test_summary_generation(self, strategy, config) -> None:
         """Test that summaries are generated for parent chunks."""
         # Arrange
         text = """# Document Section
@@ -614,7 +617,7 @@ And continues with more content that adds context."""
         assert len(parent_chunks) > 0
         assert any("summary" in c.metadata.custom_attributes for c in parent_chunks)
 
-    def test_depth_limiting(self, strategy):
+    def test_depth_limiting(self, strategy) -> None:
         """Test that hierarchy depth is limited as configured."""
         # Arrange
         config = ChunkConfig(
@@ -639,12 +642,12 @@ class TestHybridChunkingStrategy:
     """Test suite for HybridChunkingStrategy."""
 
     @pytest.fixture()
-    def strategy(self):
+    def strategy(self) -> None:
         """Create a hybrid chunking strategy instance."""
         return HybridChunkingStrategy()
 
     @pytest.fixture()
-    def config(self):
+    def config(self) -> None:
         """Create config for hybrid chunking."""
         return ChunkConfig(
             strategy_name="hybrid",
@@ -655,7 +658,7 @@ class TestHybridChunkingStrategy:
             weights={"character": 0.4, "semantic": 0.6},
         )
 
-    def test_multiple_strategy_combination(self, strategy, config):
+    def test_multiple_strategy_combination(self, strategy, config) -> None:
         """Test that multiple strategies are combined."""
         # Arrange
         text = """First topic with technical content about machine learning.
@@ -680,7 +683,7 @@ Third topic returning to technical AI discussions."""
             # Relax the assertion - strategies_used might not always be present
             assert True
 
-    def test_weighted_scoring(self, strategy, config):
+    def test_weighted_scoring(self, strategy, config) -> None:
         """Test that weights are applied correctly."""
         # Arrange
         text = "Short text for testing weighted scoring in hybrid approach."
@@ -698,7 +701,7 @@ Third topic returning to technical AI discussions."""
                 # Weighted score should be combination of individual scores
                 assert isinstance(scores, dict)
 
-    def test_fallback_on_strategy_failure(self, strategy, config):
+    def test_fallback_on_strategy_failure(self, strategy, config) -> None:
         """Test fallback when one strategy fails."""
         # Arrange
         # Use text that's long enough to avoid min_tokens issues
@@ -719,7 +722,7 @@ Third topic returning to technical AI discussions."""
         for chunk in chunks:
             assert chunk.content  # Each chunk should have content
 
-    def test_custom_strategy_selection(self, strategy):
+    def test_custom_strategy_selection(self, strategy) -> None:
         """Test using custom strategy selection."""
         # Arrange
         config = ChunkConfig(
@@ -745,7 +748,7 @@ Regular paragraph content.
         # Simply verify that chunks were created successfully
         assert all(chunk.content for chunk in chunks)
 
-    def test_consensus_building(self, strategy, config):
+    def test_consensus_building(self, strategy, config) -> None:
         """Test that consensus is built between strategies."""
         # Arrange
         text = """Technical paragraph about programming concepts and algorithms.
@@ -766,7 +769,7 @@ Regular paragraph content.
             assert chunk.metadata is not None
             assert chunk.content  # Each chunk should have content
 
-    def test_adaptive_weight_adjustment(self, strategy):
+    def test_adaptive_weight_adjustment(self, strategy) -> None:
         """Test adaptive weight adjustment based on content."""
         # Arrange
         config = ChunkConfig(

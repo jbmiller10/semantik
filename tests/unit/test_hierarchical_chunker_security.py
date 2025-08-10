@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """Unit tests for HierarchicalChunker security validation.
 
 This module tests the security features implemented in HierarchicalChunker:
@@ -7,6 +8,8 @@ This module tests the security features implemented in HierarchicalChunker:
 3. MAX_TEXT_LENGTH validation to prevent DOS attacks
 4. Input validation and sanitization
 """
+
+import logging
 
 import pytest
 
@@ -22,7 +25,7 @@ from packages.shared.text_processing.strategies.hierarchical_chunker import (
 class TestHierarchicalChunkerSecurity:
     """Test suite for HierarchicalChunker security features."""
 
-    def test_max_chunk_size_validation(self):
+    def test_max_chunk_size_validation(self) -> None:
         """Test that chunk sizes exceeding MAX_CHUNK_SIZE are rejected."""
         # Test single chunk size exceeding limit
         with pytest.raises(ValueError, match=f"exceeds maximum allowed size of {MAX_CHUNK_SIZE}"):
@@ -36,7 +39,7 @@ class TestHierarchicalChunkerSecurity:
         chunker = HierarchicalChunker(chunk_sizes=[MAX_CHUNK_SIZE, 5000, 1000])
         assert chunker.chunk_sizes[0] == MAX_CHUNK_SIZE
 
-    def test_max_hierarchy_depth_validation(self):
+    def test_max_hierarchy_depth_validation(self) -> None:
         """Test that hierarchy depth exceeding MAX_HIERARCHY_DEPTH is rejected."""
         # Create chunk sizes that exceed max depth
         too_many_levels = [1000 - (i * 100) for i in range(MAX_HIERARCHY_DEPTH + 2)]
@@ -51,7 +54,7 @@ class TestHierarchicalChunkerSecurity:
         chunker = HierarchicalChunker(chunk_sizes=max_levels)
         assert len(chunker.chunk_sizes) == MAX_HIERARCHY_DEPTH
 
-    def test_max_text_length_validation_sync(self):
+    def test_max_text_length_validation_sync(self) -> None:
         """Test that texts exceeding MAX_TEXT_LENGTH are rejected in sync chunking."""
         chunker = HierarchicalChunker()
 
@@ -72,7 +75,7 @@ class TestHierarchicalChunkerSecurity:
         assert len(chunks) > 0
 
     @pytest.mark.asyncio()
-    async def test_max_text_length_validation_async(self):
+    async def test_max_text_length_validation_async(self) -> None:
         """Test that texts exceeding MAX_TEXT_LENGTH are rejected in async chunking."""
         chunker = HierarchicalChunker()
 
@@ -82,7 +85,7 @@ class TestHierarchicalChunkerSecurity:
         with pytest.raises(ValueError, match="Text too large to process"):
             await chunker.chunk_text_async(large_text, "test_doc")
 
-    def test_max_text_length_validation_stream(self):
+    def test_max_text_length_validation_stream(self) -> None:
         """Test that texts exceeding MAX_TEXT_LENGTH are rejected in stream chunking."""
         chunker = HierarchicalChunker()
 
@@ -93,7 +96,7 @@ class TestHierarchicalChunkerSecurity:
             # Consume generator to trigger validation
             list(chunker.chunk_text_stream(large_text, "test_doc"))
 
-    def test_negative_chunk_sizes_validation(self):
+    def test_negative_chunk_sizes_validation(self) -> None:
         """Test that negative or zero chunk sizes are rejected."""
         # Test negative chunk size
         with pytest.raises(ValueError, match="Must be positive"):
@@ -103,20 +106,19 @@ class TestHierarchicalChunkerSecurity:
         with pytest.raises(ValueError, match="Must be positive"):
             HierarchicalChunker(chunk_sizes=[1000, 0, 100])
 
-    def test_empty_chunk_sizes_validation(self):
+    def test_empty_chunk_sizes_validation(self) -> None:
         """Test that empty chunk sizes list is rejected."""
         with pytest.raises(ValueError, match="chunk_sizes must contain at least one size"):
             HierarchicalChunker(chunk_sizes=[])
 
-    def test_chunk_size_ordering_validation(self):
+    def test_chunk_size_ordering_validation(self) -> None:
         """Test that chunk sizes must be in descending order."""
         # Sizes will be automatically sorted, but should log warning
         chunker = HierarchicalChunker(chunk_sizes=[100, 500, 200])
         assert chunker.chunk_sizes == [500, 200, 100]
 
-    def test_chunk_size_ratio_warning(self, caplog):
+    def test_chunk_size_ratio_warning(self, caplog) -> None:
         """Test warning when chunk size reduction is less than 2x."""
-        import logging
 
         # Ensure logging captures warnings
         caplog.set_level(logging.WARNING)
@@ -134,7 +136,7 @@ class TestHierarchicalChunkerSecurity:
             # Let's just verify the chunker was created successfully
             assert len(caplog.records) >= 0  # May or may not have warnings
 
-    def test_validate_config_security_checks(self):
+    def test_validate_config_security_checks(self) -> None:
         """Test validate_config method performs security checks."""
         chunker = HierarchicalChunker()
 
@@ -150,13 +152,13 @@ class TestHierarchicalChunkerSecurity:
         config_valid = {"chunk_sizes": [2000, 1000, 500], "chunk_overlap": 50}
         assert chunker.validate_config(config_valid) is True
 
-    def test_streaming_chunk_size_constant(self):
+    def test_streaming_chunk_size_constant(self) -> None:
         """Test that STREAMING_CHUNK_SIZE is reasonable."""
         assert STREAMING_CHUNK_SIZE == 1_000_000  # 1MB
         assert STREAMING_CHUNK_SIZE < MAX_TEXT_LENGTH
         assert STREAMING_CHUNK_SIZE > 0
 
-    def test_large_document_streaming(self):
+    def test_large_document_streaming(self) -> None:
         """Test that large documents are processed in streaming mode."""
         chunker = HierarchicalChunker()
 
@@ -172,7 +174,7 @@ class TestHierarchicalChunkerSecurity:
         chunks = chunker.chunk_text(large_text, "test_doc")
         assert len(chunks) > 0
 
-    def test_malicious_input_handling(self):
+    def test_malicious_input_handling(self) -> None:
         """Test handling of potentially malicious inputs."""
         chunker = HierarchicalChunker()
 
@@ -191,7 +193,7 @@ class TestHierarchicalChunkerSecurity:
         chunks = chunker.chunk_text(nested_text, "test_doc")
         assert len(chunks) > 0
 
-    def test_memory_efficient_processing(self):
+    def test_memory_efficient_processing(self) -> None:
         """Test that chunker processes large texts memory-efficiently."""
         chunker = HierarchicalChunker(chunk_sizes=[1000, 500, 250])
 
@@ -209,7 +211,7 @@ class TestHierarchicalChunkerSecurity:
         for chunk in chunks:
             assert len(chunk.text) <= MAX_CHUNK_SIZE
 
-    def test_config_validation_edge_cases(self):
+    def test_config_validation_edge_cases(self) -> None:
         """Test edge cases in configuration validation."""
         chunker = HierarchicalChunker()
 
@@ -227,7 +229,7 @@ class TestHierarchicalChunkerSecurity:
         # Test overlap greater than smallest chunk
         assert chunker.validate_config({"chunk_sizes": [1000, 100], "chunk_overlap": 150}) is False
 
-    def test_security_constants_reasonable_values(self):
+    def test_security_constants_reasonable_values(self) -> None:
         """Test that security constants have reasonable values."""
         # MAX_CHUNK_SIZE should be large enough for practical use
         assert 1000 <= MAX_CHUNK_SIZE <= 50000
@@ -241,7 +243,7 @@ class TestHierarchicalChunkerSecurity:
         # STREAMING_CHUNK_SIZE should be reasonable for memory usage
         assert 100_000 <= STREAMING_CHUNK_SIZE <= 5_000_000
 
-    def test_chunk_overlap_validation(self):
+    def test_chunk_overlap_validation(self) -> None:
         """Test chunk overlap validation for security."""
         # The HierarchicalChunker allows overlap equal to chunk size in initialization
         # but validate_config method would flag it as invalid
@@ -256,7 +258,7 @@ class TestHierarchicalChunkerSecurity:
         chunker2 = HierarchicalChunker(chunk_sizes=[1000, 500, 200], chunk_overlap=50)
         assert chunker2.chunk_overlap == 50
 
-    def test_whitespace_only_input(self):
+    def test_whitespace_only_input(self) -> None:
         """Test handling of whitespace-only input."""
         chunker = HierarchicalChunker()
 

@@ -1,45 +1,43 @@
 #!/usr/bin/env python3
+
 """
 Verify the 100-partition migration SQL is valid by extracting and displaying it.
 This doesn't require a database connection.
 """
 
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
+import alembic.op as real_op
 from alembic.versions.ae558c9e183f_implement_100_direct_list_partitions import upgrade
 
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-def extract_sql_statements():
+
+def extract_sql_statements() -> None:
     """Extract SQL statements from the migration."""
 
     class MockConnection:
         """Mock connection to capture SQL statements."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.statements = []
 
-        def execute(self, statement):
+        def execute(self, statement) -> None:
             # Extract SQL text
-            if hasattr(statement, "text"):
-                sql = str(statement.text)
-            else:
-                sql = str(statement)
+            sql = str(statement.text) if hasattr(statement, "text") else str(statement)
             self.statements.append(sql)
 
     class MockOp:
         """Mock Alembic op to capture operations."""
 
-        def __init__(self):
+        def __init__(self) -> None:
             self.conn = MockConnection()
 
-        def get_bind(self):
+        def get_bind(self) -> None:
             return self.conn
 
     # Monkey-patch the op module
-    import alembic.op as real_op
 
     mock_op = MockOp()
 

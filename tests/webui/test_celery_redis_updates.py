@@ -24,10 +24,10 @@ class TestCeleryTaskWithOperationUpdates:
         return mock
 
     @pytest.fixture()
-    def mock_redis_from_url(self, mock_redis):
+    def mock_redis_from_url(self, mock_redis) -> None:
         """Create a mock for redis.from_url that returns the mock_redis."""
 
-        async def async_from_url(*_, **__):
+        async def async_from_url(*_, **__) -> None:
             return mock_redis
 
         return async_from_url
@@ -38,14 +38,14 @@ class TestCeleryTaskWithOperationUpdates:
         return CeleryTaskWithOperationUpdates("test-operation-123")
 
     @pytest.mark.asyncio()
-    async def test_initialization(self, task_updater):
+    async def test_initialization(self, task_updater) -> None:
         """Test proper initialization of CeleryTaskWithOperationUpdates."""
         assert task_updater.operation_id == "test-operation-123"
         assert task_updater.stream_key == "operation-progress:test-operation-123"
         assert task_updater._redis_client is None
 
     @pytest.mark.asyncio()
-    async def test_get_redis_creates_client(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_get_redis_creates_client(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test that _get_redis creates and caches Redis client."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url) as mock_from_url:
             # First call should create client
@@ -61,7 +61,7 @@ class TestCeleryTaskWithOperationUpdates:
             mock_from_url.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_send_update_success(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_send_update_success(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test successful sending of update to Redis stream."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             update_data = {"progress": 50, "current_file": "document.pdf", "status": "processing"}
@@ -89,7 +89,7 @@ class TestCeleryTaskWithOperationUpdates:
             assert timestamp.tzinfo is not None
 
     @pytest.mark.asyncio()
-    async def test_send_update_sets_ttl(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_send_update_sets_ttl(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test that TTL is set on Redis stream."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             await task_updater.send_update("start", {"status": "started"})
@@ -98,7 +98,7 @@ class TestCeleryTaskWithOperationUpdates:
             mock_redis.expire.assert_called_once_with("operation-progress:test-operation-123", 86400)
 
     @pytest.mark.asyncio()
-    async def test_send_update_handles_redis_error(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_send_update_handles_redis_error(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test graceful handling of Redis errors."""
         mock_redis.xadd.side_effect = Exception("Redis connection lost")
 
@@ -110,7 +110,7 @@ class TestCeleryTaskWithOperationUpdates:
             mock_redis.xadd.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_send_multiple_updates(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_send_multiple_updates(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test sending multiple updates in sequence."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Send multiple updates
@@ -139,7 +139,7 @@ class TestCeleryTaskWithOperationUpdates:
             assert timestamps == sorted(timestamps)
 
     @pytest.mark.asyncio()
-    async def test_close(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_close(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test proper cleanup of Redis connection."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Create connection
@@ -152,13 +152,13 @@ class TestCeleryTaskWithOperationUpdates:
             mock_redis.close.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_close_without_connection(self, task_updater):
+    async def test_close_without_connection(self, task_updater) -> None:
         """Test close when no Redis connection exists."""
         # Should not raise exception
         await task_updater.close()
 
     @pytest.mark.asyncio()
-    async def test_update_types(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_update_types(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test various update types that might be sent."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Test different update scenarios
@@ -185,7 +185,7 @@ class TestCeleryTaskWithOperationUpdates:
                 assert message["data"] == data
 
     @pytest.mark.asyncio()
-    async def test_concurrent_updates(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_concurrent_updates(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test sending updates concurrently."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Send multiple updates concurrently
@@ -197,7 +197,7 @@ class TestCeleryTaskWithOperationUpdates:
             assert mock_redis.xadd.call_count == 10
 
     @pytest.mark.asyncio()
-    async def test_stream_key_format(self, mock_redis, mock_redis_from_url):
+    async def test_stream_key_format(self, mock_redis, mock_redis_from_url) -> None:
         """Test that stream keys are properly formatted for different operation IDs."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Test various operation ID formats
@@ -221,7 +221,7 @@ class TestCeleryTaskWithOperationUpdates:
                 mock_redis.xadd.reset_mock()
 
     @pytest.mark.asyncio()
-    async def test_message_size_limits(self, task_updater, mock_redis, mock_redis_from_url):
+    async def test_message_size_limits(self, task_updater, mock_redis, mock_redis_from_url) -> None:
         """Test handling of large messages."""
         with patch("redis.asyncio.from_url", side_effect=mock_redis_from_url):
             # Create a large data payload

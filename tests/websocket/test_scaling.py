@@ -3,6 +3,7 @@
 import asyncio
 import json
 import uuid
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import patch
 
@@ -47,7 +48,7 @@ class MockWebSocket:
 
 
 @pytest.fixture()
-async def redis_client():
+async def redis_client() -> Generator[Any, None, None]:
     """Create a test Redis client."""
     client = await redis.from_url("redis://localhost:6379/15", decode_responses=True)
 
@@ -62,7 +63,7 @@ async def redis_client():
 
 
 @pytest.fixture()
-async def manager():
+async def manager() -> Generator[Any, None, None]:
     """Create a ScalableWebSocketManager instance for testing."""
     manager = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
 
@@ -73,7 +74,7 @@ async def manager():
 
 
 @pytest.fixture()
-async def dual_managers():
+async def dual_managers() -> Generator[Any, None, None]:
     """Create two manager instances to test cross-instance communication."""
     manager1 = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
     manager2 = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
@@ -92,7 +93,7 @@ class TestCrossInstanceMessaging:
     """Test cross-instance message routing."""
 
     @pytest.mark.asyncio()
-    async def test_user_message_routing_across_instances(self, dual_managers):
+    async def test_user_message_routing_across_instances(self, dual_managers) -> None:
         """Test that messages route correctly between instances via Redis Pub/Sub."""
         manager1, manager2 = dual_managers
 
@@ -102,8 +103,8 @@ class TestCrossInstanceMessaging:
 
         # Connect to different instances with same user
         user_id = "user123"
-        conn1 = await manager1.connect(ws1, user_id)
-        conn2 = await manager2.connect(ws2, user_id)
+        await manager1.connect(ws1, user_id)
+        await manager2.connect(ws2, user_id)
 
         # Allow pub/sub subscriptions to settle
         await asyncio.sleep(0.5)
@@ -129,7 +130,7 @@ class TestCrossInstanceMessaging:
         assert ws2_test_msgs[0] == test_message
 
     @pytest.mark.asyncio()
-    async def test_operation_broadcast_across_instances(self, dual_managers):
+    async def test_operation_broadcast_across_instances(self, dual_managers) -> None:
         """Test operation broadcasts work across instances."""
         manager1, manager2 = dual_managers
 
@@ -139,8 +140,8 @@ class TestCrossInstanceMessaging:
 
         # Connect to same operation on different instances
         operation_id = str(uuid.uuid4())
-        conn1 = await manager1.connect(ws1, "user1", operation_id=operation_id)
-        conn2 = await manager2.connect(ws2, "user2", operation_id=operation_id)
+        await manager1.connect(ws1, "user1", operation_id=operation_id)
+        await manager2.connect(ws2, "user2", operation_id=operation_id)
 
         # Allow subscriptions to settle
         await asyncio.sleep(0.5)
@@ -162,7 +163,7 @@ class TestCrossInstanceMessaging:
         assert ws2_msgs[0] == test_message
 
     @pytest.mark.asyncio()
-    async def test_collection_broadcast_across_instances(self, dual_managers):
+    async def test_collection_broadcast_across_instances(self, dual_managers) -> None:
         """Test collection broadcasts work across instances."""
         manager1, manager2 = dual_managers
 
@@ -173,9 +174,9 @@ class TestCrossInstanceMessaging:
 
         # Connect to same collection on different instances
         collection_id = str(uuid.uuid4())
-        conn1 = await manager1.connect(ws1, "user1", collection_id=collection_id)
-        conn2 = await manager2.connect(ws2, "user2", collection_id=collection_id)
-        conn3 = await manager2.connect(ws3, "user3", collection_id=collection_id)
+        await manager1.connect(ws1, "user1", collection_id=collection_id)
+        await manager2.connect(ws2, "user2", collection_id=collection_id)
+        await manager2.connect(ws3, "user3", collection_id=collection_id)
 
         # Allow subscriptions to settle
         await asyncio.sleep(0.5)
@@ -194,7 +195,7 @@ class TestCrossInstanceMessaging:
             assert msgs[0] == test_message
 
     @pytest.mark.asyncio()
-    async def test_no_duplicate_messages_same_instance(self, manager):
+    async def test_no_duplicate_messages_same_instance(self, manager) -> None:
         """Test that messages aren't duplicated when sender and receiver are on same instance."""
         await manager.startup()
 
@@ -204,8 +205,8 @@ class TestCrossInstanceMessaging:
 
         # Connect multiple connections for same user
         user_id = "user456"
-        conn1 = await manager.connect(ws1, user_id)
-        conn2 = await manager.connect(ws2, user_id)
+        await manager.connect(ws1, user_id)
+        await manager.connect(ws2, user_id)
 
         # Send message to user
         test_message = {"type": "test", "data": "no-duplicate"}
@@ -222,7 +223,7 @@ class TestCrossInstanceMessaging:
         assert len(ws2_test_msgs) == 1
 
     @pytest.mark.asyncio()
-    async def test_instance_isolation(self, dual_managers):
+    async def test_instance_isolation(self, dual_managers) -> None:
         """Test that instances properly isolate their connections."""
         manager1, manager2 = dual_managers
 
@@ -230,8 +231,8 @@ class TestCrossInstanceMessaging:
         ws1 = MockWebSocket()
         ws2 = MockWebSocket()
 
-        conn1 = await manager1.connect(ws1, "user1")
-        conn2 = await manager2.connect(ws2, "user2")
+        await manager1.connect(ws1, "user1")
+        await manager2.connect(ws2, "user2")
 
         # Allow subscriptions to settle
         await asyncio.sleep(0.5)
@@ -260,7 +261,7 @@ class TestConnectionScaling:
     """Test connection scaling and limits."""
 
     @pytest.mark.asyncio()
-    async def test_max_connections_per_user(self, manager):
+    async def test_max_connections_per_user(self, manager) -> None:
         """Test that user connection limits are enforced."""
         await manager.startup()
 
@@ -268,7 +269,7 @@ class TestConnectionScaling:
         connections = []
 
         # Create connections up to the limit
-        for i in range(manager.max_connections_per_user):
+        for _i in range(manager.max_connections_per_user):
             ws = MockWebSocket()
             conn_id = await manager.connect(ws, user_id)
             connections.append((ws, conn_id))
@@ -284,7 +285,7 @@ class TestConnectionScaling:
         assert ws_overflow.close_code == 1008
 
     @pytest.mark.asyncio()
-    async def test_max_total_connections(self, manager):
+    async def test_max_total_connections(self, manager) -> None:
         """Test that global connection limits are enforced."""
         # Set a lower limit for testing
         manager.max_total_connections = 5
@@ -308,7 +309,7 @@ class TestConnectionScaling:
         assert ws_overflow.close_code == 1008
 
     @pytest.mark.asyncio()
-    async def test_connection_registry_in_redis(self, manager, redis_client):
+    async def test_connection_registry_in_redis(self, manager, redis_client) -> None:
         """Test that connections are properly registered in Redis."""
         await manager.startup()
 
@@ -338,20 +339,20 @@ class TestConnectionScaling:
             assert conn_id in user_connections
 
     @pytest.mark.asyncio()
-    async def test_sticky_sessions_simulation(self, dual_managers):
+    async def test_sticky_sessions_simulation(self, dual_managers) -> None:
         """Test that connections stick to their original instance."""
         manager1, manager2 = dual_managers
 
         # Simulate sticky session routing - user1 always goes to manager1
         user1_connections = []
-        for i in range(3):
+        for _i in range(3):
             ws = MockWebSocket()
             conn_id = await manager1.connect(ws, "user1")
             user1_connections.append((ws, conn_id))
 
         # user2 always goes to manager2
         user2_connections = []
-        for i in range(3):
+        for _i in range(3):
             ws = MockWebSocket()
             conn_id = await manager2.connect(ws, "user2")
             user2_connections.append((ws, conn_id))
@@ -377,7 +378,7 @@ class TestInstanceManagement:
     """Test instance registration and management."""
 
     @pytest.mark.asyncio()
-    async def test_instance_registration(self, manager, redis_client):
+    async def test_instance_registration(self, manager, redis_client) -> None:
         """Test that instances register themselves in Redis."""
         await manager.startup()
 
@@ -395,14 +396,14 @@ class TestInstanceManagement:
         assert 0 < ttl <= 60
 
     @pytest.mark.asyncio()
-    async def test_instance_heartbeat(self, manager, redis_client):
+    async def test_instance_heartbeat(self, manager, redis_client) -> None:
         """Test that instance heartbeat keeps registration alive."""
         await manager.startup()
 
         instance_key = f"websocket:instance:{manager.instance_id}"
 
         # Get initial TTL
-        initial_ttl = await redis_client.ttl(instance_key)
+        await redis_client.ttl(instance_key)
 
         # Wait for heartbeat to run
         await asyncio.sleep(2)
@@ -415,7 +416,7 @@ class TestInstanceManagement:
             assert current_ttl > 0
 
     @pytest.mark.asyncio()
-    async def test_instance_stats_tracking(self, manager, redis_client):
+    async def test_instance_stats_tracking(self, manager, redis_client) -> None:
         """Test that instance stats are tracked in Redis."""
         await manager.startup()
 
@@ -447,13 +448,13 @@ class TestMessageThrottling:
     """Test message throttling and performance optimizations."""
 
     @pytest.mark.asyncio()
-    async def test_message_throttling(self, manager):
+    async def test_message_throttling(self, manager) -> None:
         """Test that rapid messages are throttled appropriately."""
         await manager.startup()
 
         ws = MockWebSocket()
         user_id = "user_throttle"
-        conn_id = await manager.connect(ws, user_id)
+        await manager.connect(ws, user_id)
 
         # Send rapid messages
         for i in range(10):
@@ -474,20 +475,23 @@ class TestRedisFailure:
     """Test behavior when Redis is unavailable."""
 
     @pytest.mark.asyncio()
-    async def test_startup_with_redis_down(self):
+    async def test_startup_with_redis_down(self) -> None:
         """Test graceful handling when Redis is unavailable at startup."""
-        manager = ScalableWebSocketManager(redis_url="redis://nonexistent:6379/15")
+        # Use localhost with a port that's likely not running Redis
+        # This avoids DNS resolution errors and tests connection failure instead
+        manager = ScalableWebSocketManager(redis_url="redis://localhost:9999/15")
 
-        # Should not raise, but log errors
+        # Should not raise, but log errors and fall back to local mode
         await manager.startup()
 
-        # Manager should still be usable for local connections
-        assert manager.redis_client is not None or not manager._startup_complete
+        # Manager should work in local-only mode (redis_client will be None)
+        # or startup may be incomplete
+        assert manager.redis_client is None or not manager._startup_complete
 
         await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_local_messaging_without_redis(self):
+    async def test_local_messaging_without_redis(self) -> None:
         """Test that local messaging works even without Redis."""
         manager = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
 
@@ -497,8 +501,8 @@ class TestRedisFailure:
             ws2 = MockWebSocket()
 
             # Should still allow local connections
-            conn1 = await manager.connect(ws1, "user1")
-            conn2 = await manager.connect(ws2, "user1")
+            await manager.connect(ws1, "user1")
+            await manager.connect(ws2, "user1")
 
             # Local message delivery should work
             await manager.send_to_user("user1", {"type": "local_test"})

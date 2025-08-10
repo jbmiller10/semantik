@@ -303,9 +303,7 @@ class ScalableWebSocketManager:
                 if not remaining_coll:
                     await self.pubsub.unsubscribe(f"collection:{collection_id}")
 
-        logger.info(
-            f"WebSocket disconnected: connection={connection_id}, user={user_id}, instance={self.instance_id}"
-        )
+        logger.info(f"WebSocket disconnected: connection={connection_id}, user={user_id}, instance={self.instance_id}")
 
     async def send_to_user(self, user_id: str, message: dict) -> None:
         """Send message to all connections for a specific user.
@@ -315,7 +313,7 @@ class ScalableWebSocketManager:
             message: Message to send
         """
         # Check for local connections first
-        local_sent = await self._send_to_local_user(user_id, message)
+        await self._send_to_local_user(user_id, message)
 
         # If user has connections on other instances, publish to Redis
         if self.redis_client:
@@ -557,7 +555,7 @@ class ScalableWebSocketManager:
             stats = {
                 "instance_id": self.instance_id,
                 "connections": len(self.local_connections),
-                "users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
+                "users": len({m.get("user_id") for m in self.connection_metadata.values()}),
                 "uptime": time.time()
                 - self.connection_metadata.get(next(iter(self.connection_metadata), ""), {}).get(
                     "connected_at", time.time()
@@ -578,7 +576,7 @@ class ScalableWebSocketManager:
                     # Update instance stats
                     stats = {
                         "connections": len(self.local_connections),
-                        "users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
+                        "users": len({m.get("user_id") for m in self.connection_metadata.values()}),
                         "updated_at": time.time(),
                     }
                     await self.redis_client.hset("websocket:instances:stats", self.instance_id, json.dumps(stats))
@@ -596,9 +594,7 @@ class ScalableWebSocketManager:
                     logger.info(f"Removing dead connection {conn_id}")
                     await self.disconnect(conn_id)
 
-                logger.debug(
-                    f"Heartbeat: {len(self.local_connections)} connections, {len(dead_connections)} removed"
-                )
+                logger.debug(f"Heartbeat: {len(self.local_connections)} connections, {len(dead_connections)} removed")
 
         except asyncio.CancelledError:
             logger.info("Heartbeat task cancelled")
@@ -695,12 +691,12 @@ class ScalableWebSocketManager:
         stats = {
             "instance_id": self.instance_id,
             "local_connections": len(self.local_connections),
-            "unique_users": len(set(m.get("user_id") for m in self.connection_metadata.values())),
+            "unique_users": len({m.get("user_id") for m in self.connection_metadata.values()}),
             "operations": len(
-                set(m.get("operation_id") for m in self.connection_metadata.values() if m.get("operation_id"))
+                {m.get("operation_id") for m in self.connection_metadata.values() if m.get("operation_id")}
             ),
             "collections": len(
-                set(m.get("collection_id") for m in self.connection_metadata.values() if m.get("collection_id"))
+                {m.get("collection_id") for m in self.connection_metadata.values() if m.get("collection_id")}
             ),
         }
 

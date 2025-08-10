@@ -2,11 +2,13 @@
 Tests for v2 search API endpoints.
 """
 
+import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from starlette.requests import Request
 
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
@@ -1165,16 +1167,12 @@ class TestSearchValidation:
 
     def test_empty_collection_list_validation(self) -> None:
         """Test that empty collection list is rejected."""
-        from pydantic import ValidationError
 
         with pytest.raises(ValidationError, match="List should have at least 1 item"):
             CollectionSearchRequest(collection_uuids=[], query="test", k=10)
 
     def test_too_many_collections_validation(self) -> None:
         """Test that too many collections are rejected."""
-        import uuid
-
-        from pydantic import ValidationError
 
         # Generate 11 valid UUIDs (exceeds max of 10)
         uuids = [str(uuid.uuid4()) for _ in range(11)]
@@ -1184,9 +1182,6 @@ class TestSearchValidation:
 
     def test_query_length_validation(self) -> None:
         """Test query length limits."""
-        import uuid
-
-        from pydantic import ValidationError
 
         valid_uuid = str(uuid.uuid4())
 
@@ -1200,9 +1195,6 @@ class TestSearchValidation:
 
     def test_k_parameter_validation(self) -> None:
         """Test k parameter limits."""
-        import uuid
-
-        from pydantic import ValidationError
 
         valid_uuid = str(uuid.uuid4())
 
@@ -1216,9 +1208,6 @@ class TestSearchValidation:
 
     def test_score_threshold_validation(self) -> None:
         """Test score threshold limits."""
-        import uuid
-
-        from pydantic import ValidationError
 
         valid_uuid = str(uuid.uuid4())
 
@@ -1232,9 +1221,6 @@ class TestSearchValidation:
 
     def test_hybrid_alpha_validation(self) -> None:
         """Test hybrid alpha parameter limits."""
-        import uuid
-
-        from pydantic import ValidationError
 
         valid_uuid = str(uuid.uuid4())
 

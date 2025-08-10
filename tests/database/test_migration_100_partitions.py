@@ -2,6 +2,7 @@
 Test the 100-partition migration can be executed successfully.
 """
 
+import contextlib
 
 import pytest
 from sqlalchemy import text
@@ -14,14 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class TestMigration100Partitions:
     """Test the migration creates the correct partition structure."""
 
-    async def test_partition_count(self, db_session: AsyncSession):
+    async def test_partition_count(self, db_session: AsyncSession) -> None:
         """Verify exactly 100 partitions are created."""
         # Query to count partitions
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_inherits 
+            SELECT COUNT(*)
+            FROM pg_inherits
             WHERE inhparent = 'chunks'::regclass
         """
             )
@@ -30,13 +31,13 @@ class TestMigration100Partitions:
         partition_count = result.scalar()
         assert partition_count == 100, f"Expected 100 partitions, found {partition_count}"
 
-    async def test_partition_names(self, db_session: AsyncSession):
+    async def test_partition_names(self, db_session: AsyncSession) -> None:
         """Verify all partition names follow the expected pattern."""
         result = await db_session.execute(
             text(
                 """
-            SELECT tablename 
-            FROM pg_tables 
+            SELECT tablename
+            FROM pg_tables
             WHERE tablename LIKE 'chunks_part_%'
             ORDER BY tablename
         """
@@ -53,7 +54,7 @@ class TestMigration100Partitions:
             expected_name = f"chunks_part_{i:02d}"
             assert expected_name in partitions, f"Missing partition: {expected_name}"
 
-    async def test_partition_indexes(self, db_session: AsyncSession):
+    async def test_partition_indexes(self, db_session: AsyncSession) -> None:
         """Verify each partition has the required indexes."""
         # Check indexes on first few partitions as sample
         for i in range(5):  # Check first 5 partitions
@@ -62,8 +63,8 @@ class TestMigration100Partitions:
             result = await db_session.execute(
                 text(
                     """
-                SELECT indexname 
-                FROM pg_indexes 
+                SELECT indexname
+                FROM pg_indexes
                 WHERE tablename = :partition_name
             """
                 ),
@@ -83,14 +84,14 @@ class TestMigration100Partitions:
             for expected_idx in expected_indexes:
                 assert expected_idx in indexes, f"Missing index {expected_idx} on partition {partition_name}"
 
-    async def test_monitoring_views_exist(self, db_session: AsyncSession):
+    async def test_monitoring_views_exist(self, db_session: AsyncSession) -> None:
         """Verify monitoring views are created."""
         # Check for partition_health view
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_views 
+            SELECT COUNT(*)
+            FROM pg_views
             WHERE viewname = 'partition_health'
         """
             )
@@ -101,8 +102,8 @@ class TestMigration100Partitions:
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_views 
+            SELECT COUNT(*)
+            FROM pg_views
             WHERE viewname = 'partition_distribution'
         """
             )
@@ -113,22 +114,22 @@ class TestMigration100Partitions:
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_matviews 
+            SELECT COUNT(*)
+            FROM pg_matviews
             WHERE matviewname = 'collection_chunking_stats'
         """
             )
         )
         assert result.scalar() == 1, "collection_chunking_stats materialized view not found"
 
-    async def test_helper_functions_exist(self, db_session: AsyncSession):
+    async def test_helper_functions_exist(self, db_session: AsyncSession) -> None:
         """Verify helper functions are created."""
         # Check for get_partition_for_collection function
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_proc 
+            SELECT COUNT(*)
+            FROM pg_proc
             WHERE proname = 'get_partition_for_collection'
         """
             )
@@ -139,20 +140,20 @@ class TestMigration100Partitions:
         result = await db_session.execute(
             text(
                 """
-            SELECT COUNT(*) 
-            FROM pg_proc 
+            SELECT COUNT(*)
+            FROM pg_proc
             WHERE proname = 'analyze_partition_skew'
         """
             )
         )
         assert result.scalar() >= 1, "analyze_partition_skew function not found"
 
-    async def test_partition_key_type(self, db_session: AsyncSession):
+    async def test_partition_key_type(self, db_session: AsyncSession) -> None:
         """Verify the partition key uses LIST partitioning with hashtext."""
         result = await db_session.execute(
             text(
                 """
-            SELECT 
+            SELECT
                 pt.partnatts,
                 pt.partstrat
             FROM pg_partitioned_table pt
@@ -170,15 +171,18 @@ class TestMigration100Partitions:
         partstrat = row.partstrat
         if isinstance(partstrat, bytes):
             partstrat = partstrat.decode("utf-8")
-        assert partstrat == "l", f"Expected LIST partitioning, got {partstrat}"
+        elif isinstance(partstrat, int):
+            # Sometimes it returns as an integer code
+            partstrat = chr(partstrat)
+        assert partstrat == "l", f"Expected LIST partitioning, got {repr(partstrat)}"
 
-    async def test_partition_constraints(self, db_session: AsyncSession):
+    async def test_partition_constraints(self, db_session: AsyncSession) -> None:
         """Verify each partition has the correct constraint."""
         # Check a sample partition
         result = await db_session.execute(
             text(
                 """
-            SELECT 
+            SELECT
                 pg_get_expr(c.relpartbound, c.oid) as partition_expr
             FROM pg_class c
             WHERE c.relname = 'chunks_part_00'
@@ -192,12 +196,12 @@ class TestMigration100Partitions:
         # Should contain "FOR VALUES IN (0)"
         assert "FOR VALUES IN (0)" in row.partition_expr, f"Unexpected partition constraint: {row.partition_expr}"
 
-    async def test_foreign_keys_preserved(self, db_session: AsyncSession):
+    async def test_foreign_keys_preserved(self, db_session: AsyncSession) -> None:
         """Verify foreign keys are properly set up."""
         result = await db_session.execute(
             text(
                 """
-            SELECT 
+            SELECT
                 conname,
                 confrelid::regclass::text as referenced_table
             FROM pg_constraint
@@ -217,13 +221,13 @@ class TestMigration100Partitions:
         if any("chunking_configs" in fk for fk in foreign_keys.values()):
             assert True  # Foreign key exists and is correct
 
-    async def test_primary_key_structure(self, db_session: AsyncSession):
+    async def test_primary_key_structure(self, db_session: AsyncSession) -> None:
         """Verify the primary key is properly configured."""
         result = await db_session.execute(
             text(
                 """
-            SELECT 
-                a.attname 
+            SELECT
+                a.attname
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
             WHERE i.indrelid = 'chunks'::regclass AND i.indisprimary
@@ -243,7 +247,7 @@ class TestMigration100Partitions:
 # No need to duplicate it here
 
 
-async def cleanup_chunks_dependencies(session: AsyncSession):
+async def cleanup_chunks_dependencies(session: AsyncSession) -> None:
     """
     Helper function to clean up all chunks table dependencies.
     Based on the migration's cleanup_chunks_dependencies function.
@@ -260,21 +264,16 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
     ]
 
     for view in views_to_drop:
-        try:
+        with contextlib.suppress(Exception):
             await session.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
-        except Exception:
-            pass  # Ignore if view doesn't exist
 
     # Drop materialized views
-    try:
+    with contextlib.suppress(Exception):
         await session.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    except Exception:
-        pass
 
     # Clear any test data from chunks table
-    try:
+    with contextlib.suppress(Exception):
+        # Table might not exist or might have dependencies
         await session.execute(text("TRUNCATE TABLE chunks CASCADE"))
-    except Exception:
-        pass  # Table might not exist or might have dependencies
 
     await session.commit()

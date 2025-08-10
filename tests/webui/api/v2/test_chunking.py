@@ -15,9 +15,15 @@ import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
+import packages.webui.api.v2.chunking as chunking_module
+from packages.shared.config import settings
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+from packages.webui.auth import get_current_user
+from packages.webui.dependencies import get_collection_for_user
+from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
+from packages.webui.services.factory import get_chunking_service, get_collection_service
 
 
 @pytest.fixture()
@@ -67,10 +73,6 @@ def client(
     mock_ws_manager: AsyncMock,
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
-    from packages.webui.auth import get_current_user
-    from packages.webui.dependencies import get_collection_for_user
-    from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service, get_collection_service
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
@@ -79,7 +81,6 @@ def client(
     app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
 
     # Replace ws_manager
-    import packages.webui.api.v2.chunking as chunking_module
 
     chunking_module.ws_manager = mock_ws_manager
 
@@ -118,9 +119,6 @@ class TestStrategyManagement:
 
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
-        from packages.shared.config import settings
-        from packages.webui.auth import get_current_user
-        from packages.webui.main import app
 
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
@@ -133,7 +131,7 @@ class TestStrategyManagement:
         app.dependency_overrides.clear()
 
         # Mock the auth to always raise 401
-        def mock_get_current_user():
+        def mock_get_current_user() -> None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not authenticated",
@@ -812,7 +810,6 @@ class TestSecurityAndValidation:
     @patch("packages.webui.auth.settings")
     def test_authorization_checks(self, mock_settings: MagicMock) -> None:
         """Test that all endpoints require authentication."""
-        from packages.webui.main import app
 
         # Configure mock settings to ensure auth is enabled
         mock_settings.DISABLE_AUTH = False

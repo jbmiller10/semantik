@@ -1,20 +1,28 @@
 #!/usr/bin/env python3
+
 """Tests for domain exceptions and business rule enforcement."""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from packages.shared.chunking.domain.entities.chunk import Chunk
+from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     DocumentTooLargeError,
     InvalidConfigurationError,
     InvalidStateError,
 )
+from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class TestDomainExceptions:
     """Test suite for domain exceptions."""
 
-    def test_chunking_domain_error_base(self):
+    def test_chunking_domain_error_base(self) -> None:
         """Test base domain error."""
         # Act
         error = ChunkingDomainError("Base domain error")
@@ -23,7 +31,7 @@ class TestDomainExceptions:
         assert str(error) == "Base domain error"
         assert isinstance(error, Exception)
 
-    def test_document_too_large_error(self):
+    def test_document_too_large_error(self) -> None:
         """Test DocumentTooLargeError with size information."""
         # Arrange
         actual_size = 15_000_000
@@ -39,7 +47,7 @@ class TestDomainExceptions:
         assert "Document size" in str(error)
         assert "exceeds maximum" in str(error).lower()
 
-    def test_document_too_large_error_attributes(self):
+    def test_document_too_large_error_attributes(self) -> None:
         """Test that DocumentTooLargeError stores size attributes."""
         # Arrange
         actual_size = 20_000_000
@@ -54,7 +62,7 @@ class TestDomainExceptions:
         assert "20000000" in error_str or "20,000,000" in error_str
         assert "10000000" in error_str or "10,000,000" in error_str
 
-    def test_invalid_configuration_error(self):
+    def test_invalid_configuration_error(self) -> None:
         """Test InvalidConfigurationError."""
         # Act
         error = InvalidConfigurationError("min_tokens must be positive")
@@ -63,7 +71,7 @@ class TestDomainExceptions:
         assert isinstance(error, ChunkingDomainError)
         assert "min_tokens must be positive" in str(error)
 
-    def test_invalid_configuration_error_various_messages(self):
+    def test_invalid_configuration_error_various_messages(self) -> None:
         """Test InvalidConfigurationError with various validation messages."""
         # Arrange
         test_cases = [
@@ -79,7 +87,7 @@ class TestDomainExceptions:
             assert message in str(error)
             assert isinstance(error, ChunkingDomainError)
 
-    def test_invalid_state_error(self):
+    def test_invalid_state_error(self) -> None:
         """Test InvalidStateError."""
         # Act
         error = InvalidStateError("Cannot start operation in COMPLETED state")
@@ -88,7 +96,7 @@ class TestDomainExceptions:
         assert isinstance(error, ChunkingDomainError)
         assert "Cannot start operation in COMPLETED state" in str(error)
 
-    def test_invalid_state_error_various_transitions(self):
+    def test_invalid_state_error_various_transitions(self) -> None:
         """Test InvalidStateError for various invalid transitions."""
         # Arrange
         test_cases = [
@@ -106,7 +114,7 @@ class TestDomainExceptions:
 
     # Note: StrategyNotFoundError removed - strategy selection is handled at application layer
 
-    def test_exception_inheritance_chain(self):
+    def test_exception_inheritance_chain(self) -> None:
         """Test that all domain exceptions inherit from ChunkingDomainError."""
         # Arrange
         exceptions = [
@@ -120,7 +128,7 @@ class TestDomainExceptions:
             assert isinstance(exc, ChunkingDomainError)
             assert isinstance(exc, Exception)
 
-    def test_exception_equality(self):
+    def test_exception_equality(self) -> None:
         """Test that exceptions with same message are not equal objects."""
         # Arrange
         error1 = InvalidStateError("Same message")
@@ -130,7 +138,7 @@ class TestDomainExceptions:
         assert str(error1) == str(error2)
         assert error1 is not error2  # Different objects
 
-    def test_exception_type_checking(self):
+    def test_exception_type_checking(self) -> None:
         """Test that exceptions can be caught by type."""
         # Arrange & Act & Assert
         with pytest.raises(DocumentTooLargeError):
@@ -146,14 +154,14 @@ class TestDomainExceptions:
         with pytest.raises(ChunkingDomainError):
             raise DocumentTooLargeError(100, 50)
 
-    def test_exception_context_preservation(self):
+    def test_exception_context_preservation(self) -> None:
         """Test that exception context is preserved when re-raising."""
         # Arrange
         original_message = "Original error occurred"
 
         # Act & Assert
         # Create a function that raises the exception (PT012: single statement in raises block)
-        def raise_chained_exception():
+        def raise_chained_exception() -> None:
             try:
                 raise ValueError(original_message)
             except ValueError as ve:
@@ -170,10 +178,8 @@ class TestDomainExceptions:
 class TestBusinessRuleEnforcement:
     """Test suite for business rule enforcement in the domain."""
 
-    def test_document_size_limit_enforcement(self):
+    def test_document_size_limit_enforcement(self) -> None:
         """Test that document size limits are enforced."""
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -187,14 +193,8 @@ class TestBusinessRuleEnforcement:
 
         assert str(ChunkingOperation.MAX_DOCUMENT_SIZE) in str(exc_info.value)
 
-    def test_chunk_count_limit_enforcement(self):
+    def test_chunk_count_limit_enforcement(self) -> None:
         """Test that chunk count limits are enforced."""
-        from unittest.mock import MagicMock
-
-        from packages.shared.chunking.domain.entities.chunk import Chunk
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-        from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -233,13 +233,8 @@ class TestBusinessRuleEnforcement:
         assert "exceeding limit" in str(exc_info.value)
         assert str(ChunkingOperation.MAX_CHUNKS_PER_OPERATION) in str(exc_info.value)
 
-    def test_operation_timeout_enforcement(self):
+    def test_operation_timeout_enforcement(self) -> None:
         """Test that operation timeout is enforced."""
-        from datetime import UTC, datetime, timedelta
-        from unittest.mock import patch
-
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -264,9 +259,8 @@ class TestBusinessRuleEnforcement:
         assert not is_valid
         assert any("timeout" in issue.lower() for issue in issues)
 
-    def test_configuration_validation_enforcement(self):
+    def test_configuration_validation_enforcement(self) -> None:
         """Test that configuration validation rules are enforced."""
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Test various invalid configurations
         invalid_configs = [
@@ -280,10 +274,8 @@ class TestBusinessRuleEnforcement:
             with pytest.raises(InvalidConfigurationError):
                 ChunkConfig(strategy_name="test", **config_params)
 
-    def test_state_transition_enforcement(self):
+    def test_state_transition_enforcement(self) -> None:
         """Test that state transition rules are enforced."""
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -304,12 +296,8 @@ class TestBusinessRuleEnforcement:
         with pytest.raises(InvalidStateError):
             operation.start()
 
-    def test_coverage_requirement_enforcement(self):
+    def test_coverage_requirement_enforcement(self) -> None:
         """Test that coverage requirements are enforced."""
-        from packages.shared.chunking.domain.entities.chunk import Chunk
-        from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-        from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -343,9 +331,8 @@ class TestBusinessRuleEnforcement:
         assert not is_valid
         assert any("coverage" in issue.lower() for issue in issues)
 
-    def test_metadata_validation_enforcement(self):
+    def test_metadata_validation_enforcement(self) -> None:
         """Test that metadata validation rules are enforced."""
-        from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
         # Base valid parameters for ChunkMetadata
         base_params = {

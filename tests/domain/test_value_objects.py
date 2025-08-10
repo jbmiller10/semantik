@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+
 """Tests for domain value objects."""
+
+from datetime import UTC, datetime
 
 import pytest
 
@@ -12,7 +15,7 @@ from packages.shared.chunking.domain.value_objects.operation_status import Opera
 class TestChunkConfig:
     """Test suite for ChunkConfig value object."""
 
-    def test_valid_configuration(self):
+    def test_valid_configuration(self) -> None:
         """Test creating a valid chunk configuration."""
         # Act
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -23,7 +26,7 @@ class TestChunkConfig:
         assert config.max_tokens == 100
         assert config.overlap_tokens == 5
 
-    def test_configuration_with_additional_params(self):
+    def test_configuration_with_additional_params(self) -> None:
         """Test configuration with additional parameters."""
         # Act
         config = ChunkConfig(
@@ -42,7 +45,7 @@ class TestChunkConfig:
         assert config.additional_params["encoding"] == "utf-8"
         assert config.additional_params["language"] == "en"
 
-    def test_unknown_parameter_rejected(self):
+    def test_unknown_parameter_rejected(self) -> None:
         """Test that unknown parameters are rejected for security."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -53,7 +56,7 @@ class TestChunkConfig:
         assert "Unknown configuration parameter 'unknown_param'" in str(exc_info.value)
         assert "Allowed additional parameters" in str(exc_info.value)
 
-    def test_invalid_min_tokens_negative(self):
+    def test_invalid_min_tokens_negative(self) -> None:
         """Test that negative min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -61,7 +64,7 @@ class TestChunkConfig:
 
         assert "min_tokens must be positive" in str(exc_info.value)
 
-    def test_invalid_min_tokens_zero(self):
+    def test_invalid_min_tokens_zero(self) -> None:
         """Test that zero min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -69,7 +72,7 @@ class TestChunkConfig:
 
         assert "min_tokens must be positive" in str(exc_info.value)
 
-    def test_invalid_max_tokens_negative(self):
+    def test_invalid_max_tokens_negative(self) -> None:
         """Test that negative max_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -77,7 +80,7 @@ class TestChunkConfig:
 
         assert "max_tokens must be positive" in str(exc_info.value)
 
-    def test_invalid_min_greater_than_max(self):
+    def test_invalid_min_greater_than_max(self) -> None:
         """Test that min_tokens > max_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -85,7 +88,7 @@ class TestChunkConfig:
 
         assert "min_tokens cannot be greater than max_tokens" in str(exc_info.value)
 
-    def test_invalid_overlap_negative(self):
+    def test_invalid_overlap_negative(self) -> None:
         """Test that negative overlap_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -93,7 +96,7 @@ class TestChunkConfig:
 
         assert "overlap_tokens cannot be negative" in str(exc_info.value)
 
-    def test_invalid_overlap_greater_than_min(self):
+    def test_invalid_overlap_greater_than_min(self) -> None:
         """Test that overlap_tokens >= min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -101,7 +104,7 @@ class TestChunkConfig:
 
         assert "overlap_tokens must be less than min_tokens" in str(exc_info.value)
 
-    def test_invalid_overlap_greater_than_min_excessive(self):
+    def test_invalid_overlap_greater_than_min_excessive(self) -> None:
         """Test that overlap_tokens > min_tokens raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -109,7 +112,7 @@ class TestChunkConfig:
 
         assert "overlap_tokens must be less than min_tokens" in str(exc_info.value)
 
-    def test_empty_strategy_name(self):
+    def test_empty_strategy_name(self) -> None:
         """Test that empty strategy name raises error."""
         # Act & Assert
         with pytest.raises(InvalidConfigurationError) as exc_info:
@@ -117,7 +120,7 @@ class TestChunkConfig:
 
         assert "strategy_name cannot be empty" in str(exc_info.value)
 
-    def test_estimate_chunks_basic(self):
+    def test_estimate_chunks_basic(self) -> None:
         """Test basic chunk estimation."""
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -131,7 +134,7 @@ class TestChunkConfig:
         assert estimated >= 10
         assert estimated <= 100  # Reasonable upper bound
 
-    def test_estimate_chunks_no_overlap(self):
+    def test_estimate_chunks_no_overlap(self) -> None:
         """Test chunk estimation without overlap."""
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=0)
@@ -143,7 +146,7 @@ class TestChunkConfig:
         # With no overlap, 1000 tokens / 100 max = 10 chunks minimum
         assert estimated >= 10
 
-    def test_estimate_chunks_small_document(self):
+    def test_estimate_chunks_small_document(self) -> None:
         """Test chunk estimation for small document."""
         # Arrange
         config = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -155,7 +158,7 @@ class TestChunkConfig:
         assert estimated >= 1
         assert estimated <= 5
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test conversion to dictionary."""
         # Arrange
         config = ChunkConfig(
@@ -172,7 +175,7 @@ class TestChunkConfig:
         assert config_dict["overlap_tokens"] == 20
         assert config_dict["similarity_threshold"] == 0.8
 
-    def test_equality(self):
+    def test_equality(self) -> None:
         """Test value object equality."""
         # Arrange
         config1 = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
@@ -190,7 +193,7 @@ class TestChunkConfig:
 class TestOperationStatus:
     """Test suite for OperationStatus value object."""
 
-    def test_all_statuses_defined(self):
+    def test_all_statuses_defined(self) -> None:
         """Test that all expected statuses are defined."""
         # Assert
         assert OperationStatus.PENDING.value == "PENDING"
@@ -199,7 +202,7 @@ class TestOperationStatus:
         assert OperationStatus.FAILED.value == "FAILED"
         assert OperationStatus.CANCELLED.value == "CANCELLED"
 
-    def test_is_terminal_states(self):
+    def test_is_terminal_states(self) -> None:
         """Test identification of terminal states."""
         # Assert
         assert not OperationStatus.PENDING.is_terminal()
@@ -208,7 +211,7 @@ class TestOperationStatus:
         assert OperationStatus.FAILED.is_terminal()
         assert OperationStatus.CANCELLED.is_terminal()
 
-    def test_valid_transitions_from_pending(self):
+    def test_valid_transitions_from_pending(self) -> None:
         """Test valid transitions from PENDING state."""
         # Assert
         assert OperationStatus.PENDING.can_transition_to(OperationStatus.PROCESSING)
@@ -216,7 +219,7 @@ class TestOperationStatus:
         assert not OperationStatus.PENDING.can_transition_to(OperationStatus.COMPLETED)
         assert not OperationStatus.PENDING.can_transition_to(OperationStatus.FAILED)
 
-    def test_valid_transitions_from_processing(self):
+    def test_valid_transitions_from_processing(self) -> None:
         """Test valid transitions from PROCESSING state."""
         # Assert
         assert not OperationStatus.PROCESSING.can_transition_to(OperationStatus.PENDING)
@@ -224,34 +227,34 @@ class TestOperationStatus:
         assert OperationStatus.PROCESSING.can_transition_to(OperationStatus.FAILED)
         assert OperationStatus.PROCESSING.can_transition_to(OperationStatus.CANCELLED)
 
-    def test_no_transitions_from_completed(self):
+    def test_no_transitions_from_completed(self) -> None:
         """Test that no transitions are allowed from COMPLETED state."""
         # Assert
         for status in OperationStatus:
             if status != OperationStatus.COMPLETED:
                 assert not OperationStatus.COMPLETED.can_transition_to(status)
 
-    def test_no_transitions_from_failed(self):
+    def test_no_transitions_from_failed(self) -> None:
         """Test that no transitions are allowed from FAILED state."""
         # Assert
         for status in OperationStatus:
             if status != OperationStatus.FAILED:
                 assert not OperationStatus.FAILED.can_transition_to(status)
 
-    def test_no_transitions_from_cancelled(self):
+    def test_no_transitions_from_cancelled(self) -> None:
         """Test that no transitions are allowed from CANCELLED state."""
         # Assert
         for status in OperationStatus:
             if status != OperationStatus.CANCELLED:
                 assert not OperationStatus.CANCELLED.can_transition_to(status)
 
-    def test_self_transition_not_allowed(self):
+    def test_self_transition_not_allowed(self) -> None:
         """Test that self-transitions are not allowed."""
         # Assert
         for status in OperationStatus:
             assert not status.can_transition_to(status)
 
-    def test_string_representation(self):
+    def test_string_representation(self) -> None:
         """Test string representation of status."""
         # Assert
         assert str(OperationStatus.PENDING) == "OperationStatus.PENDING"
@@ -262,7 +265,7 @@ class TestOperationStatus:
 class TestChunkMetadata:
     """Test suite for ChunkMetadata value object."""
 
-    def test_basic_metadata_creation(self):
+    def test_basic_metadata_creation(self) -> None:
         """Test creating basic chunk metadata."""
         # Act
         metadata = ChunkMetadata(
@@ -287,9 +290,8 @@ class TestChunkMetadata:
         assert metadata.hierarchy_level is None
         assert metadata.section_title is None
 
-    def test_full_metadata_creation(self):
+    def test_full_metadata_creation(self) -> None:
         """Test creating metadata with all fields."""
-        from datetime import UTC, datetime
 
         # Act
         now = datetime.now(UTC)
@@ -320,7 +322,7 @@ class TestChunkMetadata:
         assert metadata.section_title == "Introduction"
         assert metadata.created_at == now
 
-    def test_invalid_token_count_negative(self):
+    def test_invalid_token_count_negative(self) -> None:
         """Test that negative token count raises error."""
         # Act & Assert
         with pytest.raises(ValueError, match="Token count must be positive"):
@@ -334,7 +336,7 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-    def test_invalid_offsets(self):
+    def test_invalid_offsets(self) -> None:
         """Test that invalid offsets raise error."""
         # Act & Assert - end offset <= start offset
         with pytest.raises(ValueError, match="End offset.*must be greater than start offset"):
@@ -348,7 +350,7 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-    def test_invalid_semantic_score_range(self):
+    def test_invalid_semantic_score_range(self) -> None:
         """Test that semantic score outside 0-1 range raises error."""
         # Act & Assert - semantic score above 1
         with pytest.raises(ValueError, match="Semantic score must be between 0.0 and 1.0"):
@@ -363,7 +365,7 @@ class TestChunkMetadata:
                 semantic_score=1.5,
             )
 
-    def test_negative_start_offset(self):
+    def test_negative_start_offset(self) -> None:
         """Test that negative start offset raises error."""
         # Act & Assert
         with pytest.raises(ValueError, match="Start offset must be non-negative"):
@@ -377,7 +379,7 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-    def test_negative_chunk_index(self):
+    def test_negative_chunk_index(self) -> None:
         """Test that negative chunk index raises error."""
         # Act & Assert
         with pytest.raises(ValueError, match="Chunk index must be non-negative"):
@@ -391,7 +393,7 @@ class TestChunkMetadata:
                 strategy_name="test",
             )
 
-    def test_character_count_property(self):
+    def test_character_count_property(self) -> None:
         """Test the character_count property."""
         # Arrange
         metadata = ChunkMetadata(
@@ -407,7 +409,7 @@ class TestChunkMetadata:
         # Assert
         assert metadata.character_count == 50
 
-    def test_average_token_length_property(self):
+    def test_average_token_length_property(self) -> None:
         """Test the average_token_length property."""
         # Arrange
         metadata = ChunkMetadata(
@@ -423,7 +425,7 @@ class TestChunkMetadata:
         # Assert
         assert metadata.average_token_length == 5.0
 
-    def test_overlaps_with_method(self):
+    def test_overlaps_with_method(self) -> None:
         """Test the overlaps_with method."""
         # Arrange
         metadata1 = ChunkMetadata(
@@ -468,7 +470,7 @@ class TestChunkMetadata:
         assert not metadata1.overlaps_with(metadata3)
         assert not metadata1.overlaps_with(metadata4)  # Different document
 
-    def test_overlap_size_method(self):
+    def test_overlap_size_method(self) -> None:
         """Test the overlap_size method."""
         # Arrange
         metadata1 = ChunkMetadata(
@@ -503,7 +505,7 @@ class TestChunkMetadata:
         assert metadata1.overlap_size(metadata2) == 20
         assert metadata1.overlap_size(metadata3) == 0
 
-    def test_immutability(self):
+    def test_immutability(self) -> None:
         """Test that metadata is immutable (frozen dataclass)."""
         # Arrange
         metadata = ChunkMetadata(
@@ -523,7 +525,7 @@ class TestChunkMetadata:
         with pytest.raises(AttributeError):
             metadata.chunk_id = "new-id"
 
-    def test_equality(self):
+    def test_equality(self) -> None:
         """Test value object equality."""
         # Arrange
         metadata1 = ChunkMetadata(
@@ -562,7 +564,7 @@ class TestChunkMetadata:
         assert metadata1 != metadata3
         assert metadata1 != "not metadata"
 
-    def test_hierarchy_level_validation(self):
+    def test_hierarchy_level_validation(self) -> None:
         """Test that negative hierarchy level raises error."""
         # Act & Assert
         with pytest.raises(ValueError, match="Hierarchy level must be non-negative"):

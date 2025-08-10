@@ -6,12 +6,13 @@ import pytest
 
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import create_collection_service
+from packages.webui.utils.qdrant_manager import qdrant_manager
 
 
 class TestCollectionServiceInstantiation:
     """Test proper instantiation of CollectionService."""
 
-    def test_collection_service_requires_repositories(self):
+    def test_collection_service_requires_repositories(self) -> None:
         """Test that CollectionService cannot be instantiated without repositories."""
         db_session = AsyncMock()
 
@@ -21,7 +22,7 @@ class TestCollectionServiceInstantiation:
 
         assert "missing 3 required positional arguments" in str(exc_info.value)
 
-    def test_collection_service_instantiation_with_all_args(self):
+    def test_collection_service_instantiation_with_all_args(self) -> None:
         """Test that CollectionService can be instantiated with all required arguments."""
         # Mock dependencies
         db_session = AsyncMock()
@@ -42,7 +43,7 @@ class TestCollectionServiceInstantiation:
         assert service.operation_repo == operation_repo
         assert service.document_repo == document_repo
 
-    def test_create_collection_service_factory(self):
+    def test_create_collection_service_factory(self) -> None:
         """Test that create_collection_service factory creates service properly."""
         # Mock database session
         db_session = AsyncMock()
@@ -58,13 +59,12 @@ class TestCollectionServiceInstantiation:
         assert service.document_repo is not None
 
     @pytest.mark.asyncio()
-    async def test_collection_service_delete_with_factory(self):
+    async def test_collection_service_delete_with_factory(self) -> None:
         """Test that CollectionService created with factory can call delete_collection."""
         # Mock database session
         db_session = AsyncMock()
 
         # Mock Qdrant manager
-        from packages.webui.utils.qdrant_manager import qdrant_manager
 
         original_get_client = qdrant_manager.get_client
 

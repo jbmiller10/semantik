@@ -1,5 +1,6 @@
 """Unit tests for SQLAlchemy models timezone handling."""
 
+import os
 from collections.abc import Generator
 from datetime import UTC, datetime
 
@@ -7,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+from packages.shared.config.postgres import postgres_config
 from packages.shared.database.models import (
     ApiKey,
     Base,
@@ -31,9 +33,6 @@ from packages.shared.database.models import (
 @pytest.fixture()
 def db_session() -> Generator[Session, None, None]:
     """Create a PostgreSQL database session for testing."""
-    import os
-
-    from packages.shared.config.postgres import postgres_config
 
     # Use PostgreSQL for tests - get URL from environment or config
     database_url = os.environ.get("DATABASE_URL")
@@ -47,7 +46,7 @@ def db_session() -> Generator[Session, None, None]:
     engine = create_engine(database_url)
 
     # Helper function to drop views before tables
-    def drop_views_and_tables(connection):
+    def drop_views_and_tables(connection) -> None:
         # Drop views first (in dependency order)
         views_to_drop = [
             "DROP VIEW IF EXISTS partition_hot_spots CASCADE",

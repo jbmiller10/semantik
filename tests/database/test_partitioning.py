@@ -8,8 +8,10 @@ Tests cover:
 - Monitoring and health check functions
 """
 
+import contextlib
+import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
@@ -27,11 +29,11 @@ from packages.shared.chunking.infrastructure.repositories.partition_manager impo
 class TestPartitionDistribution:
     """Test even distribution of data across partitions."""
 
-    def test_partition_count(self):
+    def test_partition_count(self) -> None:
         """Verify we have exactly 100 partitions configured."""
         assert PartitionManager.PARTITION_COUNT == 100
 
-    def test_partition_id_calculation(self):
+    def test_partition_id_calculation(self) -> None:
         """Test that partition ID calculation is deterministic and within range."""
         manager = PartitionManager()
 
@@ -48,7 +50,7 @@ class TestPartitionDistribution:
             partition_id_2 = manager.get_partition_id(collection_id)
             assert partition_id == partition_id_2, "Partition ID calculation not deterministic"
 
-    def test_partition_name_generation(self):
+    def test_partition_name_generation(self) -> None:
         """Test partition name generation with proper formatting."""
         manager = PartitionManager()
 
@@ -70,7 +72,7 @@ class TestPartitionDistribution:
             assert len(parts[2]) == 2
             assert parts[2].isdigit()
 
-    def test_even_distribution_simulation(self):
+    def test_even_distribution_simulation(self) -> None:
         """
         Simulate distribution of 10,000 collections across partitions.
         Verify no partition exceeds 40% deviation from average.
@@ -106,9 +108,9 @@ class TestPartitionDistribution:
                 max_deviation = max(max_deviation, deviation)
 
         # Assert max deviation is within 40% threshold (accounting for hash algorithm differences)
-        assert max_deviation < 0.40, (
-            f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
-        )
+        assert (
+            max_deviation < 0.40
+        ), f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
 
         # Verify all partitions get some data (statistical test)
         empty_partitions = sum(1 for i in range(PartitionManager.PARTITION_COUNT) if i not in partition_counts)
@@ -117,7 +119,7 @@ class TestPartitionDistribution:
         # being empty is extremely low
         assert empty_partitions < 5, f"Too many empty partitions: {empty_partitions}"
 
-    def test_distribution_with_sequential_ids(self):
+    def test_distribution_with_sequential_ids(self) -> None:
         """Test that sequential IDs still distribute well."""
         manager = PartitionManager()
 
@@ -144,7 +146,7 @@ class TestPartitionDistribution:
 class TestPartitionOperations:
     """Test database operations with partitions."""
 
-    async def test_partition_health_query(self, db_session: AsyncSession):
+    async def test_partition_health_query(self, db_session: AsyncSession) -> None:
         """Test that partition health view works correctly."""
         manager = PartitionManager()
 
@@ -163,7 +165,7 @@ class TestPartitionOperations:
             assert partition.size_bytes >= 0
             assert partition.partition_status in ["HOT", "COLD", "NORMAL"]
 
-    async def test_distribution_stats(self, db_session: AsyncSession):
+    async def test_distribution_stats(self, db_session: AsyncSession) -> None:
         """Test distribution statistics calculation."""
         manager = PartitionManager()
 
@@ -177,7 +179,7 @@ class TestPartitionOperations:
         assert stats.distribution_status in ["HEALTHY", "WARNING", "REBALANCE NEEDED"]
         assert len(stats.recommendations) > 0
 
-    async def test_partition_skew_analysis(self, db_session: AsyncSession):
+    async def test_partition_skew_analysis(self, db_session: AsyncSession) -> None:
         """Test partition skew analysis function."""
         manager = PartitionManager()
 
@@ -192,7 +194,7 @@ class TestPartitionOperations:
         if skew_data["status"] != "NO_DATA":
             assert skew_data["status"] in ["HEALTHY", "WARNING", "CRITICAL"]
 
-    async def test_verify_partition_assignment(self, db_session: AsyncSession):
+    async def test_verify_partition_assignment(self, db_session: AsyncSession) -> None:
         """Test that Python and PostgreSQL partition calculations are computed properly.
 
         NOTE: Python (MD5) and PostgreSQL (hashtext) use different hash algorithms,
@@ -224,22 +226,35 @@ class TestPartitionOperations:
 class TestPartitionPruning:
     """Test that partition pruning works effectively."""
 
-    async def test_single_collection_query_plan(self, db_session: AsyncSession):
+    async def test_single_collection_query_plan(self, db_session: AsyncSession) -> None:
         """
-        Test that querying a single collection only scans one partition.
+        Test that querying a single collection with partition_key only scans one partition.
+
+        Note: PostgreSQL LIST partitioning requires the partition key in the WHERE clause
+        for effective partition pruning. Without it, all partitions may be scanned.
         """
         collection_id = str(uuid.uuid4())
 
-        # Get query plan
+        # Calculate the partition key using PostgreSQL's hashtext function
+        # to match what the trigger would compute
+        partition_key_result = await db_session.execute(
+            text("SELECT mod(hashtext(:collection_id), 100) as partition_key"), {"collection_id": collection_id}
+        )
+        partition_key = partition_key_result.scalar()
+
+        # Get query plan with partition_key included for proper pruning
         explain_query = text(
             """
-            EXPLAIN (FORMAT JSON, BUFFERS FALSE, ANALYZE FALSE) 
-            SELECT * FROM chunks 
+            EXPLAIN (FORMAT JSON, BUFFERS FALSE, ANALYZE FALSE)
+            SELECT * FROM chunks
             WHERE collection_id = :collection_id
+              AND partition_key = :partition_key
         """
         )
 
-        result = await db_session.execute(explain_query, {"collection_id": collection_id})
+        result = await db_session.execute(
+            explain_query, {"collection_id": collection_id, "partition_key": partition_key}
+        )
 
         plan_json = result.scalar()
 
@@ -254,10 +269,10 @@ class TestPartitionPruning:
             if partition_name in plan_str:
                 partition_refs.append(partition_name)
 
-        # Should reference at most 1 partition (or 0 if optimized away)
+        # Should reference at most 1 partition with proper partition key
         assert len(partition_refs) <= 1, f"Query plan references multiple partitions: {partition_refs}"
 
-    async def test_partition_constraint_exclusion(self, db_session: AsyncSession):
+    async def test_partition_constraint_exclusion(self, db_session: AsyncSession) -> None:
         """
         Verify that PostgreSQL constraint exclusion is working.
         """
@@ -273,7 +288,7 @@ class TestPartitionPruning:
 class TestPartitionPerformance:
     """Performance tests for partitioned table operations."""
 
-    async def test_bulk_insert_performance(self, db_session: AsyncSession):
+    async def test_bulk_insert_performance(self, db_session: AsyncSession) -> None:
         """Test that bulk inserts distribute across partitions efficiently."""
         # Generate test data
         num_collections = 10
@@ -288,12 +303,12 @@ class TestPartitionPerformance:
                         "collection_id": collection_id,
                         "chunk_index": chunk_idx,
                         "content": f"Test content for chunk {chunk_idx}",
-                        "metadata": {},
+                        "metadata": json.dumps({}),
                     }
                 )
 
         # Measure insert time
-        start_time = datetime.now()
+        start_time = datetime.now(UTC)
 
         # Bulk insert
         for chunk in insert_data:
@@ -309,7 +324,7 @@ class TestPartitionPerformance:
 
         await db_session.commit()
 
-        insert_time = (datetime.now() - start_time).total_seconds()
+        insert_time = (datetime.now(UTC) - start_time).total_seconds()
 
         # Performance assertion - should complete reasonably quickly
         # Adjust threshold based on your performance requirements
@@ -322,7 +337,7 @@ class TestPartitionPerformance:
         assert stats.partitions_used >= min(num_collections, 100)
         assert stats.total_rows == num_collections * chunks_per_collection
 
-    async def test_query_performance_with_partition_key(self, db_session: AsyncSession):
+    async def test_query_performance_with_partition_key(self, db_session: AsyncSession) -> None:
         """Test query performance when partition key is used."""
         collection_id = str(uuid.uuid4())
 
@@ -335,17 +350,22 @@ class TestPartitionPerformance:
                     VALUES (:collection_id, :chunk_index, :content, :metadata)
                 """
                 ),
-                {"collection_id": collection_id, "chunk_index": i, "content": f"Test content {i}", "metadata": {}},
+                {
+                    "collection_id": collection_id,
+                    "chunk_index": i,
+                    "content": f"Test content {i}",
+                    "metadata": json.dumps({}),
+                },
             )
         await db_session.commit()
 
         # Measure query time
-        start_time = datetime.now()
+        start_time = datetime.now(UTC)
 
         result = await db_session.execute(
             text(
                 """
-                SELECT * FROM chunks 
+                SELECT * FROM chunks
                 WHERE collection_id = :collection_id
                 ORDER BY chunk_index
             """
@@ -354,7 +374,7 @@ class TestPartitionPerformance:
         )
 
         rows = result.fetchall()
-        query_time = (datetime.now() - start_time).total_seconds()
+        query_time = (datetime.now(UTC) - start_time).total_seconds()
 
         # Should return correct number of rows
         assert len(rows) == 10
@@ -367,7 +387,7 @@ class TestPartitionPerformance:
 class TestPartitionMonitoring:
     """Test partition monitoring and management features."""
 
-    async def test_hot_partition_detection(self, db_session: AsyncSession):
+    async def test_hot_partition_detection(self, db_session: AsyncSession) -> None:
         """Test detection of hot (overloaded) partitions."""
         manager = PartitionManager()
 
@@ -383,7 +403,7 @@ class TestPartitionMonitoring:
             # Hot partitions should have positive deviation or HOT status
             assert partition.partition_status == "HOT" or partition.pct_deviation_from_avg > 10
 
-    async def test_efficiency_report(self, db_session: AsyncSession):
+    async def test_efficiency_report(self, db_session: AsyncSession) -> None:
         """Test comprehensive efficiency report generation."""
         manager = PartitionManager()
 
@@ -411,7 +431,7 @@ class TestPartitionMonitoring:
 class TestPartitionMaintenance:
     """Test partition maintenance operations."""
 
-    def test_get_all_partition_names(self):
+    def test_get_all_partition_names(self) -> None:
         """Test generation of all partition names."""
         manager = PartitionManager()
 
@@ -427,7 +447,7 @@ class TestPartitionMaintenance:
         # Should be unique
         assert len(set(names)) == 100
 
-    def test_partition_id_consistency(self):
+    def test_partition_id_consistency(self) -> None:
         """Test that partition ID calculation is consistent with naming."""
         manager = PartitionManager()
 
@@ -450,7 +470,7 @@ class TestPartitionMaintenance:
 # The conftest.py fixture already handles all the setup we need
 
 
-async def cleanup_chunks_dependencies(session: AsyncSession):
+async def cleanup_chunks_dependencies(session: AsyncSession) -> None:
     """
     Helper function to clean up all chunks table dependencies.
     Based on the migration's cleanup_chunks_dependencies function.
@@ -467,21 +487,16 @@ async def cleanup_chunks_dependencies(session: AsyncSession):
     ]
 
     for view in views_to_drop:
-        try:
+        with contextlib.suppress(Exception):
             await session.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
-        except Exception:
-            pass  # Ignore if view doesn't exist
 
     # Drop materialized views
-    try:
+    with contextlib.suppress(Exception):
         await session.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    except Exception:
-        pass
 
     # Clear any test data from chunks table
-    try:
+    with contextlib.suppress(Exception):
+        # Table might not exist or might have dependencies
         await session.execute(text("TRUNCATE TABLE chunks CASCADE"))
-    except Exception:
-        pass  # Table might not exist or might have dependencies
 
     await session.commit()

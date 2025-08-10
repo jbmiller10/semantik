@@ -4,6 +4,8 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import redis.asyncio as redis
@@ -44,7 +46,7 @@ class MockWebSocket:
 
 
 @pytest.fixture()
-async def redis_client():
+async def redis_client() -> Generator[Any, None, None]:
     """Create a test Redis client."""
     client = await redis.from_url("redis://localhost:6379/15", decode_responses=True)
 
@@ -59,7 +61,7 @@ async def redis_client():
 
 
 @pytest.fixture()
-async def manager():
+async def manager() -> Generator[Any, None, None]:
     """Create a ScalableWebSocketManager instance for testing."""
     manager = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
 
@@ -73,7 +75,7 @@ class TestConnectionCleanup:
     """Test automatic connection cleanup."""
 
     @pytest.mark.asyncio()
-    async def test_disconnect_removes_from_registry(self, manager, redis_client):
+    async def test_disconnect_removes_from_registry(self, manager, redis_client) -> None:
         """Test that disconnect properly removes connection from all registries."""
         await manager.startup()
 
@@ -105,7 +107,7 @@ class TestConnectionCleanup:
         assert conn_id not in manager.connection_metadata
 
     @pytest.mark.asyncio()
-    async def test_dead_connection_cleanup_via_heartbeat(self, manager):
+    async def test_dead_connection_cleanup_via_heartbeat(self, manager) -> None:
         """Test that dead connections are cleaned up by heartbeat."""
         await manager.startup()
 
@@ -137,7 +139,7 @@ class TestConnectionCleanup:
         assert conn_bad not in manager.local_connections
 
     @pytest.mark.asyncio()
-    async def test_channel_unsubscribe_on_disconnect(self, manager):
+    async def test_channel_unsubscribe_on_disconnect(self, manager) -> None:
         """Test that channels are unsubscribed when last connection disconnects."""
         await manager.startup()
 
@@ -182,7 +184,7 @@ class TestConnectionCleanup:
         assert operation_channel not in subscriptions
 
     @pytest.mark.asyncio()
-    async def test_instance_cleanup_on_shutdown(self, manager, redis_client):
+    async def test_instance_cleanup_on_shutdown(self, manager, redis_client) -> None:
         """Test that instance cleanup happens properly on shutdown."""
         await manager.startup()
 
@@ -212,7 +214,7 @@ class TestConnectionCleanup:
         assert len(manager.local_connections) == 0
 
     @pytest.mark.asyncio()
-    async def test_cleanup_dead_instance_connections(self, manager, redis_client):
+    async def test_cleanup_dead_instance_connections(self, manager, redis_client) -> None:
         """Test cleanup of connections from dead instances."""
         await manager.startup()
 
@@ -255,7 +257,7 @@ class TestTTLManagement:
     """Test TTL and expiration management."""
 
     @pytest.mark.asyncio()
-    async def test_instance_ttl_refresh(self, manager, redis_client):
+    async def test_instance_ttl_refresh(self, manager, redis_client) -> None:
         """Test that instance TTL is refreshed by heartbeat."""
         await manager.startup()
 
@@ -276,7 +278,7 @@ class TestTTLManagement:
         assert new_ttl > initial_ttl - 2  # Account for time passed
 
     @pytest.mark.asyncio()
-    async def test_user_set_ttl(self, manager, redis_client):
+    async def test_user_set_ttl(self, manager, redis_client) -> None:
         """Test that user connection sets have TTL."""
         await manager.startup()
 
@@ -297,9 +299,13 @@ class TestTTLManagement:
         assert not exists
 
     @pytest.mark.asyncio()
-    async def test_connection_data_persistence(self, manager, redis_client):
+    async def test_connection_data_persistence(self, manager, redis_client) -> None:
         """Test that connection data persists across manager restarts."""
         await manager.startup()
+
+        # Skip test if Redis is not available
+        if manager.redis_client is None:
+            pytest.skip("Redis not available for this test")
 
         # Create connections
         ws1 = MockWebSocket()
@@ -360,7 +366,7 @@ class TestGracefulFailover:
     """Test graceful failover scenarios."""
 
     @pytest.mark.asyncio()
-    async def test_connection_migration_simulation(self, redis_client):
+    async def test_connection_migration_simulation(self, redis_client) -> None:
         """Test simulated connection migration between instances."""
         # Create first instance
         manager1 = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
@@ -369,7 +375,7 @@ class TestGracefulFailover:
         # Create connections
         ws1 = MockWebSocket()
         user_id = "migrate_user"
-        conn1 = await manager1.connect(ws1, user_id)
+        await manager1.connect(ws1, user_id)
 
         # Simulate instance failure
         await manager1.shutdown()
@@ -380,7 +386,7 @@ class TestGracefulFailover:
 
         # New connection from same user (simulating reconnect)
         ws2 = MockWebSocket()
-        conn2 = await manager2.connect(ws2, user_id)
+        await manager2.connect(ws2, user_id)
 
         # Send message to user
         await manager2.send_to_user(user_id, {"type": "reconnect", "status": "success"})
@@ -391,7 +397,7 @@ class TestGracefulFailover:
         await manager2.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_background_task_cleanup(self, manager):
+    async def test_background_task_cleanup(self, manager) -> None:
         """Test that background tasks are properly cleaned up."""
         await manager.startup()
 
@@ -413,7 +419,7 @@ class TestGracefulFailover:
         assert manager.cleanup_task.cancelled() or manager.cleanup_task.done()
 
     @pytest.mark.asyncio()
-    async def test_redis_reconnection(self, manager):
+    async def test_redis_reconnection(self, manager) -> None:
         """Test Redis reconnection handling."""
         await manager.startup()
 
@@ -423,17 +429,17 @@ class TestGracefulFailover:
 
         # Operations should handle gracefully
         ws = MockWebSocket()
-        try:
+
+        # Test for expected exceptions when Redis is unavailable
+        with pytest.raises((AttributeError, TypeError, Exception)) as exc_info:
             # This should attempt reconnection
-            conn_id = await manager.connect(ws, "test_user")
+            await manager.connect(ws, "test_user")
             # If Redis is truly down, this would fail
             # but the manager should handle it gracefully
-        except (AttributeError, TypeError):
-            # Expected when redis_client is None
-            assert True  # This is expected behavior
-        except Exception as e:
-            # Other exceptions should mention Redis or connection
-            assert "redis" in str(e).lower() or "connection" in str(e).lower()
+
+        # Verify the exception is related to Redis or connection
+        if exc_info.type not in (AttributeError, TypeError):
+            assert "redis" in str(exc_info.value).lower() or "connection" in str(exc_info.value).lower()
 
         # Restore Redis client
         manager.redis_client = original_client
@@ -443,7 +449,7 @@ class TestMemoryManagement:
     """Test memory usage and cleanup."""
 
     @pytest.mark.asyncio()
-    async def test_connection_metadata_cleanup(self, manager):
+    async def test_connection_metadata_cleanup(self, manager) -> None:
         """Test that connection metadata is properly cleaned up."""
         await manager.startup()
 
@@ -460,7 +466,7 @@ class TestMemoryManagement:
         assert len(manager.connection_metadata) == 0
 
     @pytest.mark.asyncio()
-    async def test_message_throttle_cleanup(self, manager):
+    async def test_message_throttle_cleanup(self, manager) -> None:
         """Test that message throttle data is cleaned up."""
         await manager.startup()
 

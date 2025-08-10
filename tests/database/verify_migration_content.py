@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
+
 """
 Verify the 100-partition migration has all required components.
 """
 
 import re
+import sys
+from pathlib import Path
 
 
-def verify_migration_file():
+def verify_migration_file() -> bool:
     """Read and verify the migration file content."""
 
-    migration_file = "/home/john/semantik/alembic/versions/ae558c9e183f_implement_100_direct_list_partitions.py"
+    migration_file = Path("/home/john/semantik/alembic/versions/ae558c9e183f_implement_100_direct_list_partitions.py")
 
-    with open(migration_file) as f:
-        content = f.read()
+    content = migration_file.read_text()
 
     print("=" * 80)
     print("MIGRATION FILE VERIFICATION")
@@ -110,7 +112,6 @@ def verify_migration_file():
 
 
 if __name__ == "__main__":
-    import sys
 
     success = verify_migration_file()
     sys.exit(0 if success else 1)

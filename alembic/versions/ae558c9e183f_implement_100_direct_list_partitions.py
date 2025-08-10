@@ -6,6 +6,7 @@ Create Date: 2025-08-10 02:20:06.337096
 
 """
 
+import contextlib
 from collections.abc import Sequence
 
 from sqlalchemy import text
@@ -33,16 +34,12 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     for view in views_to_drop:
-        try:
+        with contextlib.suppress(Exception):
             conn.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
-        except Exception:
-            pass  # Ignore if view doesn't exist
 
     # Drop materialized views
-    try:
+    with contextlib.suppress(Exception):
         conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-    except Exception:
-        pass
 
     # Drop functions that might reference chunks
     functions_to_drop = [
@@ -53,24 +50,18 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     for func_name, params in functions_to_drop:
-        try:
+        with contextlib.suppress(Exception):
             if params:
                 conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}({params}) CASCADE"))
             else:
                 conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}() CASCADE"))
-        except Exception:
-            pass
 
     # Drop triggers
-    try:
+    with contextlib.suppress(Exception):
         conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
-    except Exception:
-        pass
 
-    try:
+    with contextlib.suppress(Exception):
         conn.execute(text("DROP FUNCTION IF EXISTS compute_partition_key() CASCADE"))
-    except Exception:
-        pass
 
 
 def upgrade() -> None:
@@ -169,7 +160,7 @@ def upgrade() -> None:
 
                 -- Create index on collection_id for each partition
                 EXECUTE format('
-                    CREATE INDEX idx_chunks_part_%s_collection 
+                    CREATE INDEX idx_chunks_part_%s_collection
                     ON chunks_part_%s(collection_id)',
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
@@ -177,7 +168,7 @@ def upgrade() -> None:
 
                 -- Create index on created_at for each partition
                 EXECUTE format('
-                    CREATE INDEX idx_chunks_part_%s_created 
+                    CREATE INDEX idx_chunks_part_%s_created
                     ON chunks_part_%s(created_at)',
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
@@ -185,7 +176,7 @@ def upgrade() -> None:
 
                 -- Create index on chunk_index for each partition
                 EXECUTE format('
-                    CREATE INDEX idx_chunks_part_%s_chunk_index 
+                    CREATE INDEX idx_chunks_part_%s_chunk_index
                     ON chunks_part_%s(collection_id, chunk_index)',
                     LPAD(i::text, 2, '0'),
                     LPAD(i::text, 2, '0')
@@ -193,7 +184,7 @@ def upgrade() -> None:
 
                 -- Create index on document_id if it exists
                 EXECUTE format('
-                    CREATE INDEX idx_chunks_part_%s_document 
+                    CREATE INDEX idx_chunks_part_%s_document
                     ON chunks_part_%s(document_id)
                     WHERE document_id IS NOT NULL',
                     LPAD(i::text, 2, '0'),
@@ -213,7 +204,7 @@ def upgrade() -> None:
             """
         CREATE OR REPLACE VIEW partition_health AS
         WITH partition_stats AS (
-            SELECT 
+            SELECT
                 schemaname,
                 relname as partition_name,
                 SUBSTRING(relname FROM 'chunks_part_([0-9]+)')::INT as partition_id,
@@ -229,7 +220,7 @@ def upgrade() -> None:
             WHERE relname LIKE 'chunks_part_%'
         ),
         stats_summary AS (
-            SELECT 
+            SELECT
                 AVG(row_count) as avg_rows,
                 MAX(row_count) as max_rows,
                 MIN(row_count) as min_rows,
@@ -239,11 +230,11 @@ def upgrade() -> None:
                 SUM(size_bytes) as total_size
             FROM partition_stats
         )
-        SELECT 
+        SELECT
             ps.*,
             pg_size_pretty(ps.size_bytes) as size_pretty,
             ROUND((ps.row_count::NUMERIC / NULLIF(ss.avg_rows, 0) - 1) * 100, 2) as pct_deviation_from_avg,
-            CASE 
+            CASE
                 WHEN ss.avg_rows > 0 AND ps.row_count > ss.avg_rows * 1.2 THEN 'HOT'
                 WHEN ss.avg_rows > 0 AND ps.row_count < ss.avg_rows * 0.8 THEN 'COLD'
                 ELSE 'NORMAL'
@@ -262,7 +253,7 @@ def upgrade() -> None:
             """
         CREATE OR REPLACE VIEW partition_distribution AS
         WITH partition_counts AS (
-            SELECT 
+            SELECT
                 mod(hashtext(collection_id::text), 100) as partition_id,
                 COUNT(DISTINCT collection_id) as collection_count,
                 COUNT(*) as chunk_count
@@ -270,7 +261,7 @@ def upgrade() -> None:
             GROUP BY mod(hashtext(collection_id::text), 100)
         ),
         distribution_stats AS (
-            SELECT 
+            SELECT
                 COUNT(*) as partitions_used,
                 AVG(chunk_count) as avg_chunks_per_partition,
                 STDDEV(chunk_count) as stddev_chunks,
@@ -279,9 +270,9 @@ def upgrade() -> None:
                 MAX(chunk_count)::FLOAT / NULLIF(AVG(chunk_count), 0) as max_skew_ratio
             FROM partition_counts
         )
-        SELECT 
+        SELECT
             ds.*,
-            CASE 
+            CASE
                 WHEN max_skew_ratio > 1.2 THEN 'REBALANCE NEEDED'
                 WHEN max_skew_ratio > 1.1 THEN 'WARNING'
                 ELSE 'HEALTHY'
@@ -337,7 +328,7 @@ def upgrade() -> None:
             v_over_threshold INT;
         BEGIN
             -- Calculate statistics
-            SELECT 
+            SELECT
                 AVG(n_live_tup)::NUMERIC,
                 MAX(n_live_tup),
                 MIN(n_live_tup)
@@ -346,7 +337,7 @@ def upgrade() -> None:
             WHERE relname LIKE 'chunks_part_%';
 
             -- Calculate skew ratio
-            v_max_skew := CASE 
+            v_max_skew := CASE
                 WHEN v_avg_rows > 0 THEN v_max_rows::NUMERIC / v_avg_rows
                 ELSE 0
             END;
@@ -359,8 +350,8 @@ def upgrade() -> None:
               AND n_live_tup > v_avg_rows * 1.2;
 
             RETURN QUERY
-            SELECT 
-                CASE 
+            SELECT
+                CASE
                     WHEN v_max_skew > 1.5 THEN 'CRITICAL'
                     WHEN v_max_skew > 1.2 THEN 'WARNING'
                     ELSE 'HEALTHY'
@@ -370,7 +361,7 @@ def upgrade() -> None:
                 v_min_rows as min_rows,
                 ROUND(v_max_skew, 3) as max_skew_ratio,
                 v_over_threshold as partitions_over_threshold,
-                CASE 
+                CASE
                     WHEN v_max_skew > 1.5 THEN 'Severe skew detected. Consider data redistribution strategy.'
                     WHEN v_max_skew > 1.2 THEN 'Moderate skew detected. Monitor closely.'
                     ELSE 'Distribution is healthy.'
@@ -435,7 +426,7 @@ def upgrade() -> None:
     conn.execute(
         text(
             """
-        CREATE UNIQUE INDEX ix_collection_chunking_stats_id 
+        CREATE UNIQUE INDEX ix_collection_chunking_stats_id
         ON collection_chunking_stats(id);
     """
         )

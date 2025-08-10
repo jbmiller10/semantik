@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 WebSocket Load Testing Script for Scalable WebSocket Manager.
 
@@ -22,7 +23,7 @@ import statistics
 import sys
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import aiohttp
 from aiohttp import ClientWebSocketResponse
@@ -42,14 +43,8 @@ class ConnectionStats:
     disconnected_at: float | None = None
     messages_received: int = 0
     messages_sent: int = 0
-    latencies: list[float] = None
-    errors: list[str] = None
-
-    def __post_init__(self):
-        if self.latencies is None:
-            self.latencies = []
-        if self.errors is None:
-            self.errors = []
+    latencies: list[float] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     @property
     def connection_duration(self) -> float:
@@ -78,7 +73,7 @@ class ConnectionStats:
 class WebSocketLoadTester:
     """WebSocket load testing client."""
 
-    def __init__(self, base_url: str, auth_token: str | None = None):
+    def __init__(self, base_url: str, auth_token: str | None = None) -> None:
         self.base_url = base_url
         self.auth_token = auth_token
         self.connections: dict[str, ClientWebSocketResponse] = {}
@@ -86,12 +81,12 @@ class WebSocketLoadTester:
         self.session: aiohttp.ClientSession | None = None
         self.running = False
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the load tester."""
         self.session = aiohttp.ClientSession()
         self.running = True
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop the load tester and cleanup."""
         self.running = False
 
@@ -130,6 +125,9 @@ class WebSocketLoadTester:
         if self.auth_token:
             ws_url += f"?token={self.auth_token}"
 
+        if not self.session:
+            raise RuntimeError("Session not initialized. Call start() first.")
+
         try:
             # Connect to WebSocket
             ws = await self.session.ws_connect(ws_url)
@@ -150,7 +148,7 @@ class WebSocketLoadTester:
                 self.stats[conn_id].errors.append(str(e))
             raise
 
-    async def _handle_messages(self, conn_id: str, ws: ClientWebSocketResponse):
+    async def _handle_messages(self, conn_id: str, ws: ClientWebSocketResponse) -> None:
         """Handle incoming messages for a connection."""
         stats = self.stats.get(conn_id)
         if not stats:
@@ -193,7 +191,7 @@ class WebSocketLoadTester:
             if conn_id in self.connections:
                 del self.connections[conn_id]
 
-    async def send_message(self, conn_id: str, message: dict):
+    async def send_message(self, conn_id: str, message: dict) -> None:
         """Send a message through a specific connection."""
         if conn_id not in self.connections:
             raise ValueError(f"Connection {conn_id} not found")
@@ -212,7 +210,7 @@ class WebSocketLoadTester:
             stats.errors.append(str(e))
             raise
 
-    async def broadcast_to_user(self, user_id: str, message: dict):
+    async def broadcast_to_user(self, user_id: str, message: dict) -> None:
         """Send a message to all connections for a user."""
         user_connections = [conn_id for conn_id, stats in self.stats.items() if stats.user_id == user_id]
 
@@ -220,7 +218,7 @@ class WebSocketLoadTester:
             with contextlib.suppress(Exception):
                 await self.send_message(conn_id, message)
 
-    async def disconnect(self, conn_id: str):
+    async def disconnect(self, conn_id: str) -> None:
         """Disconnect a specific connection."""
         if conn_id in self.connections:
             ws = self.connections[conn_id]
@@ -261,7 +259,7 @@ class WebSocketLoadTester:
 
 async def run_load_test(
     url: str, num_connections: int, duration: int, connections_per_second: int = 100, auth_token: str | None = None
-):
+) -> bool:
     """Run the load test.
 
     Args:
@@ -368,7 +366,7 @@ async def run_load_test(
         return False
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="WebSocket Load Testing Tool")
     parser.add_argument(

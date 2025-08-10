@@ -3,6 +3,8 @@
 import asyncio
 import time
 import uuid
+from collections.abc import Generator
+from typing import Any
 
 import pytest
 import redis.asyncio as redis
@@ -37,7 +39,7 @@ class MockWebSocket:
 
 
 @pytest.fixture()
-async def redis_client():
+async def redis_client() -> Generator[Any, None, None]:
     """Create a test Redis client."""
     client = await redis.from_url("redis://localhost:6379/15", decode_responses=True)
 
@@ -52,7 +54,7 @@ async def redis_client():
 
 
 @pytest.fixture()
-async def manager():
+async def manager() -> Generator[Any, None, None]:
     """Create a ScalableWebSocketManager instance for testing."""
     manager = ScalableWebSocketManager(
         redis_url="redis://localhost:6379/15",
@@ -70,7 +72,7 @@ class TestMessageLatency:
     """Test message delivery latency."""
 
     @pytest.mark.asyncio()
-    async def test_single_message_latency(self, manager):
+    async def test_single_message_latency(self, manager) -> None:
         """Test latency for a single message delivery."""
         await manager.startup()
 
@@ -97,7 +99,7 @@ class TestMessageLatency:
         assert len([m for m in ws.sent_messages if m.get("type") == "latency_test"]) == 1
 
     @pytest.mark.asyncio()
-    async def test_cross_instance_latency(self):
+    async def test_cross_instance_latency(self) -> None:
         """Test message latency between instances."""
         # Create two instances
         manager1 = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
@@ -138,7 +140,7 @@ class TestMessageLatency:
             await manager2.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_broadcast_latency(self, manager):
+    async def test_broadcast_latency(self, manager) -> None:
         """Test broadcast latency to multiple connections."""
         await manager.startup()
 
@@ -175,7 +177,7 @@ class TestConnectionScaling:
     """Test scaling to many connections."""
 
     @pytest.mark.asyncio()
-    async def test_hundred_connections(self, manager):
+    async def test_hundred_connections(self, manager) -> None:
         """Test handling 100 concurrent connections."""
         await manager.startup()
 
@@ -212,7 +214,7 @@ class TestConnectionScaling:
 
     @pytest.mark.asyncio()
     @pytest.mark.slow()  # Mark as slow test
-    async def test_thousand_connections(self):
+    async def test_thousand_connections(self) -> None:
         """Test handling 1000 concurrent connections."""
         # Use dedicated manager with higher limits
         manager = ScalableWebSocketManager(
@@ -270,7 +272,7 @@ class TestConnectionScaling:
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_rapid_connect_disconnect(self, manager):
+    async def test_rapid_connect_disconnect(self, manager) -> None:
         """Test rapid connection and disconnection cycles."""
         await manager.startup()
 
@@ -301,7 +303,7 @@ class TestMemoryStability:
     """Test memory stability under load."""
 
     @pytest.mark.asyncio()
-    async def test_memory_cleanup_after_load(self, manager):
+    async def test_memory_cleanup_after_load(self, manager) -> None:
         """Test that memory is properly released after load."""
         await manager.startup()
 
@@ -330,7 +332,7 @@ class TestMemoryStability:
         assert len(manager._message_throttle) <= 100  # Some throttle entries may remain temporarily
 
     @pytest.mark.asyncio()
-    async def test_redis_memory_management(self, manager, redis_client):
+    async def test_redis_memory_management(self, manager, redis_client) -> None:
         """Test Redis memory usage remains bounded."""
         await manager.startup()
 
@@ -365,7 +367,7 @@ class TestConcurrency:
     """Test concurrent operations."""
 
     @pytest.mark.asyncio()
-    async def test_concurrent_connections(self, manager):
+    async def test_concurrent_connections(self, manager) -> None:
         """Test handling concurrent connection attempts."""
         await manager.startup()
 
@@ -383,7 +385,7 @@ class TestConcurrency:
         assert len(manager.local_connections) == 50
 
     @pytest.mark.asyncio()
-    async def test_concurrent_messages(self, manager):
+    async def test_concurrent_messages(self, manager) -> None:
         """Test handling concurrent message sending."""
         await manager.startup()
 
@@ -395,7 +397,7 @@ class TestConcurrency:
             connections.append(ws)
 
         # Send messages concurrently
-        async def send_message(user_id: str, msg_id: int):
+        async def send_message(user_id: str, msg_id: int) -> None:
             await manager.send_to_user(user_id, {"type": "concurrent", "id": msg_id})
 
         tasks = []
@@ -406,12 +408,12 @@ class TestConcurrency:
         await asyncio.gather(*tasks)
 
         # Each connection should have received its messages
-        for i, ws in enumerate(connections):
+        for _, ws in enumerate(connections):
             msgs = [m for m in ws.sent_messages if m.get("type") == "concurrent"]
             assert len(msgs) == 10  # Each user gets 10 messages
 
     @pytest.mark.asyncio()
-    async def test_concurrent_disconnections(self, manager):
+    async def test_concurrent_disconnections(self, manager) -> None:
         """Test handling concurrent disconnection."""
         await manager.startup()
 
@@ -435,7 +437,7 @@ class TestStressConditions:
     """Test behavior under stress conditions."""
 
     @pytest.mark.asyncio()
-    async def test_message_flood(self, manager):
+    async def test_message_flood(self, manager) -> None:
         """Test handling of message flooding."""
         await manager.startup()
 
@@ -462,7 +464,7 @@ class TestStressConditions:
         assert delivered <= message_count, "More messages than sent?"
 
     @pytest.mark.asyncio()
-    async def test_connection_limits_under_load(self, manager):
+    async def test_connection_limits_under_load(self, manager) -> None:
         """Test connection limits are enforced under load."""
         manager.max_total_connections = 100
         await manager.startup()

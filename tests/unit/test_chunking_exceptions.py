@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+
 """
 Unit tests for chunking custom exceptions.
 
 This module tests all custom exception classes, their serialization,
 inheritance hierarchy, and attribute handling.
 """
-
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
