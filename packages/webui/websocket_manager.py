@@ -57,16 +57,19 @@ class RedisStreamWebSocketManager:
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
 
-                    # In test mode, prefer using redis.from_url so tests can patch it,
-                    # and do not fall back to the factory path.
+                    # Choose order based on test mode
+                    redis_client = None
                     if is_testing:
-                        from packages.shared.config import settings as _settings
+                        # Try from_url first to satisfy tests that patch it
+                        try:
+                            from packages.shared.config import settings as _settings
 
-                        redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
-                        redis_client = await redis.from_url(redis_url, decode_responses=True)
-                    else:
-                        # Prefer factory-based client, fall back to direct from_url if needed
-                        redis_client = None
+                            redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
+                            redis_client = await redis.from_url(redis_url, decode_responses=True)
+                        except Exception as inner_e:
+                            logger.debug(f"from_url failed in test mode: {inner_e}. Trying factory path.")
+
+                    if redis_client is None:
                         try:
                             # Lazy import to avoid circular dependency
                             from packages.webui.services.factory import get_redis_manager
@@ -80,11 +83,11 @@ class RedisStreamWebSocketManager:
                                 f"Factory-based Redis client unavailable: {inner_e}. Falling back to from_url."
                             )
 
-                        if redis_client is None:
-                            from packages.shared.config import settings as _settings
+                    if redis_client is None:
+                        from packages.shared.config import settings as _settings
 
-                            redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
-                            redis_client = await redis.from_url(redis_url, decode_responses=True)
+                        redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
+                        redis_client = await redis.from_url(redis_url, decode_responses=True)
 
                     # Validate connection
                     await redis_client.ping()

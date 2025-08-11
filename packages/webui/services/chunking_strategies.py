@@ -88,7 +88,7 @@ class ChunkingStrategyRegistry:
             "best_for": ["md", "markdown", "mdx"],
             "pros": ["Preserves structure", "Good for technical docs"],
             "cons": ["Only for markdown-like content"],
-            "performance_characteristics": {"speed": "medium", "memory_usage": "moderate", "quality": "high"},
+            "performance_characteristics": {"speed": "moderate", "memory_usage": "moderate", "quality": "high"},
         },
         ChunkingStrategy.HIERARCHICAL: {
             "name": "Hierarchical",

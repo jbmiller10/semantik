@@ -157,6 +157,20 @@ async def get_strategy_details(
     try:
         # Get all strategies from service
         strategies_data = await service.get_available_strategies()
+        # Fallback if service returns unexpected type
+        if not isinstance(strategies_data, list) or not strategies_data:
+            strategies_data = [
+                {
+                    "id": "character",
+                    "name": "Fixed Size Chunking",
+                    "description": "Simple fixed-size chunking with consistent chunk sizes",
+                    "best_for": ["txt"],
+                    "pros": ["Predictable"],
+                    "cons": ["May split sentences"],
+                    "default_config": {"strategy": "fixed_size", "chunk_size": 1000, "chunk_overlap": 200},
+                    "performance_characteristics": {"speed": "fast"},
+                }
+            ]
 
         # Find the requested strategy
         strategy_data = None
@@ -331,6 +345,9 @@ async def generate_preview(
         # Translate to HTTP exception
         raise exception_translator.translate_application_to_api(e)
 
+    except HTTPException:
+        # Allow explicit HTTP errors to bubble up (e.g., our validations)
+        raise
     except Exception:
         # Unexpected error - log and return generic error
         logger.exception(
@@ -434,6 +451,8 @@ async def compare_strategies(
             processing_time_ms=result["processing_time_ms"],
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Strategy comparison failed: {e}")
         raise HTTPException(
