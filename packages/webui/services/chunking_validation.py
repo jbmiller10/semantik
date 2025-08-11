@@ -8,7 +8,7 @@ to prevent injection attacks, resource exhaustion, and other vulnerabilities.
 import re
 from typing import Any
 
-from packages.webui.api.chunking_exceptions import ChunkingValidationError
+from packages.shared.chunking.infrastructure.exceptions import ValidationException
 
 
 class ChunkingInputValidator:
@@ -101,36 +101,39 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ChunkingValidationError: If validation fails
+            ValidationException: If validation fails
         """
         if not content:
             return
 
         # Check for null bytes
         if "\x00" in content:
-            raise ChunkingValidationError(
-                detail="Invalid content: null bytes detected",
+            raise ValidationException(
+                field="content",
+                value="<content with null bytes>",
+                reason="Content contains null bytes",
                 correlation_id=correlation_id,
-                field_errors={"content": ["Content contains null bytes"]},
             )
 
         # Check for dangerous HTML/JS patterns
         content_lower = content.lower()
         for pattern in cls.DANGEROUS_PATTERNS:
             if re.search(pattern, content_lower, re.IGNORECASE | re.DOTALL):
-                raise ChunkingValidationError(
-                    detail="Potentially malicious content detected",
+                raise ValidationException(
+                    field="content",
+                    value=f"<content matching pattern: {pattern}>",
+                    reason="Content contains forbidden patterns",
                     correlation_id=correlation_id,
-                    field_errors={"content": ["Content contains forbidden patterns"]},
                 )
 
         # Check for SQL injection patterns
         for pattern in cls.SQL_INJECTION_PATTERNS:
             if re.search(pattern, content_lower, re.IGNORECASE):
-                raise ChunkingValidationError(
-                    detail="Potential SQL injection detected",
+                raise ValidationException(
+                    field="content",
+                    value=f"<content with SQL pattern: {pattern}>",
+                    reason="Content contains SQL-like patterns",
                     correlation_id=correlation_id,
-                    field_errors={"content": ["Content contains SQL-like patterns"]},
                 )
 
         # Check for command injection patterns (be careful with code files)
@@ -143,11 +146,13 @@ class ChunkingInputValidator:
         try:
             content.encode("utf-8")
         except UnicodeError as e:
-            raise ChunkingValidationError(
-                detail="Invalid content encoding",
+            raise ValidationException(
+                field="content",
+                value="<content with invalid encoding>",
+                reason=f"Encoding error: {str(e)}",
                 correlation_id=correlation_id,
-                field_errors={"content": [f"Encoding error: {str(e)}"]},
-            ) from e
+                cause=e,
+            )
 
     @classmethod
     def validate_chunk_size(cls, chunk_size: int, correlation_id: str) -> None:
@@ -159,20 +164,22 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ChunkingValidationError: If validation fails
+            ValidationException: If validation fails
         """
         if chunk_size < 100:
-            raise ChunkingValidationError(
-                detail="Chunk size too small",
+            raise ValidationException(
+                field="chunk_size",
+                value=chunk_size,
+                reason="Minimum chunk size is 100",
                 correlation_id=correlation_id,
-                field_errors={"chunk_size": ["Minimum chunk size is 100"]},
             )
 
         if chunk_size > 4096:
-            raise ChunkingValidationError(
-                detail="Chunk size too large",
+            raise ValidationException(
+                field="chunk_size",
+                value=chunk_size,
+                reason="Maximum chunk size is 4096",
                 correlation_id=correlation_id,
-                field_errors={"chunk_size": ["Maximum chunk size is 4096"]},
             )
 
     @classmethod
@@ -186,20 +193,22 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ChunkingValidationError: If validation fails
+            ValidationException: If validation fails
         """
         if overlap < 0:
-            raise ChunkingValidationError(
-                detail="Overlap cannot be negative",
+            raise ValidationException(
+                field="overlap",
+                value=overlap,
+                reason="Overlap must be >= 0",
                 correlation_id=correlation_id,
-                field_errors={"overlap": ["Overlap must be >= 0"]},
             )
 
         if overlap >= chunk_size:
-            raise ChunkingValidationError(
-                detail="Overlap must be less than chunk size",
+            raise ValidationException(
+                field="overlap",
+                value=overlap,
+                reason=f"Overlap must be less than chunk size ({chunk_size})",
                 correlation_id=correlation_id,
-                field_errors={"overlap": ["Overlap must be < chunk_size"]},
             )
 
     @classmethod
@@ -212,22 +221,24 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ChunkingValidationError: If validation fails
+            ValidationException: If validation fails
         """
         # Prevent path traversal in file type
         if "/" in file_type or "\\" in file_type or ".." in file_type:
-            raise ChunkingValidationError(
-                detail="Invalid file type",
+            raise ValidationException(
+                field="file_type",
+                value=file_type,
+                reason="File type contains invalid characters",
                 correlation_id=correlation_id,
-                field_errors={"file_type": ["File type contains invalid characters"]},
             )
 
         # Limit file type length
         if len(file_type) > 10:
-            raise ChunkingValidationError(
-                detail="File type too long",
+            raise ValidationException(
+                field="file_type",
+                value=file_type,
+                reason="File type must be <= 10 characters",
                 correlation_id=correlation_id,
-                field_errors={"file_type": ["File type must be <= 10 characters"]},
             )
 
     @classmethod
@@ -274,11 +285,12 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ChunkingValidationError: If validation fails
+            ValidationException: If validation fails
         """
         if priority < 1 or priority > 10:
-            raise ChunkingValidationError(
-                detail="Invalid priority",
+            raise ValidationException(
+                field="priority",
+                value=priority,
+                reason="Priority must be between 1 and 10",
                 correlation_id=correlation_id,
-                field_errors={"priority": ["Priority must be between 1 and 10"]},
             )

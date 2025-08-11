@@ -8,10 +8,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import redis.asyncio as redis
+import redis.asyncio as aioredis
 from fastapi import WebSocket
-
-from packages.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +19,10 @@ class RedisStreamWebSocketManager:
 
     def __init__(self) -> None:
         """Initialize the WebSocket manager."""
-        self.redis: redis.Redis | None = None
+        self.redis: aioredis.Redis | None = None
         self.connections: dict[str, set[WebSocket]] = {}
         self.consumer_tasks: dict[str, asyncio.Task] = {}
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
-        self.redis_url = settings.REDIS_URL
         self.max_connections_per_user = 10  # Prevent DOS attacks per user
         self.max_total_connections = 1000  # Global connection limit
         self._startup_lock = asyncio.Lock()
@@ -42,25 +39,28 @@ class RedisStreamWebSocketManager:
                 return
 
             self._startup_attempted = True
-            logger.info(f"WebSocket manager startup initiated. Redis URL: {self.redis_url}")
+            logger.info("WebSocket manager startup initiated")
             max_retries = 3
             retry_delay = 1.0  # Initial delay in seconds
 
             for attempt in range(max_retries):
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
-                    self.redis = await redis.from_url(
-                        self.redis_url,
-                        decode_responses=True,
-                        health_check_interval=30,
-                        socket_keepalive=True,
-                        retry_on_timeout=True,
-                        socket_connect_timeout=5,
-                        socket_timeout=5,
-                    )
+
+                    # Lazy import to avoid circular dependency
+                    from packages.webui.services.factory import get_redis_manager
+                    from packages.webui.services.type_guards import ensure_async_redis
+
+                    # Get async Redis client from manager
+                    redis_manager = get_redis_manager()
+                    self.redis = await redis_manager.async_client()
+
+                    # Validate client type
+                    self.redis = ensure_async_redis(self.redis)
+
                     # Test connection
                     await self.redis.ping()
-                    logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
+                    logger.info("WebSocket manager connected to Redis")
                     return
                 except Exception as e:
                     if attempt < max_retries - 1:
@@ -141,7 +141,8 @@ class RedisStreamWebSocketManager:
         self.connections[key].add(websocket)
 
         logger.info(
-            f"Operation WebSocket connected: user={user_id}, operation={operation_id} (total user connections: {user_connections + 1})"
+            f"Operation WebSocket connected: user={user_id}, operation={operation_id} "
+            f"(total user connections: {user_connections + 1})"
         )
 
         # Get current operation state from database and send it

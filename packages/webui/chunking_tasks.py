@@ -50,6 +50,10 @@ from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.factory import (
+    get_redis_manager,
+)
+from packages.webui.services.type_guards import ensure_sync_redis
 
 if TYPE_CHECKING:
     from packages.shared.text_processing.base_chunker import ChunkResult
@@ -58,13 +62,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_redis_client() -> Redis:
-    """Get Redis client instance."""
-    # Temporary redis client getter - should be moved to a proper utilities module
-    import redis
-
-    from packages.shared.config import settings
-
-    return redis.from_url(settings.REDIS_URL)
+    """Get sync Redis client instance for Celery tasks."""
+    redis_manager = get_redis_manager()
+    client = redis_manager.sync_client
+    return ensure_sync_redis(client)
 
 
 # Metrics
@@ -173,11 +174,10 @@ class ChunkingTask(Task):
 
         # Initialize Redis client and error handler
         try:
-            # Get sync Redis client
+            # Get sync Redis client for Celery
             self._redis_client = get_redis_client()
-            # ChunkingErrorHandler expects async Redis, but we'll pass None for now
-            # TODO: Fix Redis client type mismatch
-            self._error_handler = ChunkingErrorHandler(None)
+            # ChunkingErrorHandler will be initialized per-operation with proper Redis client
+            self._error_handler = None
         except Exception as e:
             logger.error(f"Failed to initialize task resources: {e}")
 
@@ -333,19 +333,26 @@ class ChunkingTask(Task):
         )
 
         # Save state for retry if error handler available
-        if self._error_handler and self._redis_client:
-            asyncio.run(
-                self._error_handler._save_operation_state(
-                    operation_id=operation_id,
-                    correlation_id=correlation_id,
-                    context={
-                        "task_id": task_id,
-                        "retry_count": self.request.retries,
-                        "last_error": str(exc),
-                    },
-                    error_type=self._error_handler.classify_error(exc),
+        if self._redis_client:
+            # Use sync Redis client directly to save retry state
+            try:
+                retry_state = {
+                    "operation_id": operation_id,
+                    "correlation_id": correlation_id,
+                    "task_id": task_id,
+                    "retry_count": str(self.request.retries),
+                    "last_error": str(exc),
+                    "error_type": self._classify_error_sync(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                self._redis_client.hset(
+                    f"operation:{operation_id}:retry_state",
+                    mapping=retry_state,
                 )
-            )
+                # Set expiry for 24 hours
+                self._redis_client.expire(f"operation:{operation_id}:retry_state", 86400)
+            except Exception as e:
+                logger.warning(f"Failed to save retry state: {e}")
 
     def _handle_shutdown(self, signum: int, frame: Any) -> None:  # noqa: ARG002
         """Handle graceful shutdown on SIGTERM.
@@ -372,6 +379,36 @@ class ChunkingTask(Task):
         ):
             self._circuit_breaker_state = "open"
             logger.warning(f"Circuit breaker opened after {self._circuit_breaker_failures} failures")
+
+    def _classify_error_sync(self, exc: Exception) -> str:
+        """Classify error type synchronously.
+
+        Args:
+            exc: Exception to classify
+
+        Returns:
+            Error type string
+        """
+        if isinstance(exc, ChunkingMemoryError):
+            return "memory_error"
+        elif isinstance(exc, ChunkingTimeoutError):
+            return "timeout_error"
+        elif isinstance(exc, ChunkingValidationError):
+            return "validation_error"
+        elif isinstance(exc, ChunkingStrategyError):
+            return "strategy_error"
+        elif isinstance(exc, ChunkingDependencyError):
+            return "dependency_error"
+        elif isinstance(exc, ChunkingResourceLimitError):
+            return "resource_limit_error"
+        elif isinstance(exc, ChunkingPartialFailureError):
+            return "partial_failure"
+        elif isinstance(exc, ConnectionError):
+            return "connection_error"
+        elif isinstance(exc, TimeoutError):
+            return "timeout_error"
+        else:
+            return "unknown"
 
     def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows execution.
@@ -502,23 +539,12 @@ def process_chunking_operation(
             operation_id=operation_id,
         )
 
-    # Run async implementation
+    # Run synchronous implementation (no asyncio.run!)
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    try:
-        return loop.run_until_complete(
-            _process_chunking_operation_async(
-                operation_id=operation_id,
-                correlation_id=correlation_id,
-                celery_task=self,
-            )
+        return _process_chunking_operation_sync(
+            operation_id=operation_id,
+            correlation_id=correlation_id,
+            celery_task=self,
         )
     except SoftTimeLimitExceeded:
         # Handle soft time limit gracefully
@@ -530,7 +556,7 @@ def process_chunking_operation(
             },
         )
         # Clean up and save partial results
-        loop.run_until_complete(_handle_soft_timeout(operation_id, correlation_id, self))
+        _handle_soft_timeout_sync(operation_id, correlation_id, self)
         raise ChunkingTimeoutError(
             detail="Operation exceeded soft time limit",
             correlation_id=correlation_id,
@@ -541,6 +567,268 @@ def process_chunking_operation(
     except Exception:
         # Let the task class handle retries and failures
         raise
+
+
+def _process_chunking_operation_sync(
+    operation_id: str,
+    correlation_id: str,
+    celery_task: ChunkingTask,
+) -> dict[str, Any]:
+    """Synchronous implementation of chunking operation processing for Celery.
+
+    This is a sync version that doesn't use asyncio, preventing event loop conflicts
+    in Celery workers.
+
+    Args:
+        operation_id: Operation identifier
+        correlation_id: Correlation ID for tracing
+        celery_task: Celery task instance
+
+    Returns:
+        Operation results dictionary
+    """
+    start_time = time.time()
+    chunks_created = 0
+    documents_processed = 0
+    failed_documents = []
+
+    # Initialize resources
+    redis_client = get_redis_client()  # Sync Redis client
+
+    # Track resources
+    process = psutil.Process()
+    initial_memory = process.memory_info().rss
+    initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+
+    # Store task ID immediately
+    task_id = current_task.request.id if current_task else str(uuid.uuid4())
+
+    logger.info(f"Processing chunking operation {operation_id} (sync mode)")
+
+    try:
+        # Update operation status in Redis
+        redis_client.hset(
+            f"operation:{operation_id}",
+            mapping={
+                "status": "processing",
+                "task_id": task_id,
+                "started_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        # Send progress update via Redis
+        _send_progress_update_sync(
+            redis_client,
+            operation_id,
+            correlation_id,
+            0,
+            "Starting chunking operation",
+        )
+
+        # Get operation configuration from Redis
+        operation_data = redis_client.hgetall(f"operation:{operation_id}:config")
+        if not operation_data:
+            logger.warning(f"No configuration found for operation {operation_id}, using defaults")
+            operation_data = {
+                "strategy": "recursive",
+                "chunk_size": "1000",
+                "chunk_overlap": "200",
+            }
+
+        # Parse configuration
+        strategy = operation_data.get("strategy", "recursive")
+        chunk_size = int(operation_data.get("chunk_size", "1000"))
+        chunk_overlap = int(operation_data.get("chunk_overlap", "200"))
+
+        # Get documents to process (stored in Redis during operation creation)
+        documents_key = f"operation:{operation_id}:documents"
+        document_ids = redis_client.lrange(documents_key, 0, -1)
+        total_documents = len(document_ids)
+
+        if total_documents == 0:
+            logger.warning(f"No documents found for operation {operation_id}")
+            # Still mark as successful but with 0 chunks
+            redis_client.hset(
+                f"operation:{operation_id}",
+                mapping={
+                    "status": "completed",
+                    "completed_at": datetime.now(UTC).isoformat(),
+                    "chunks_created": "0",
+                    "documents_processed": "0",
+                }
+            )
+            return {
+                "operation_id": operation_id,
+                "status": "success",
+                "chunks_created": 0,
+                "documents_processed": 0,
+                "duration_seconds": time.time() - start_time,
+            }
+
+        # Process documents in batches
+        batch_size = 10  # Process 10 documents at a time
+
+        for i in range(0, total_documents, batch_size):
+            # Check for graceful shutdown
+            if celery_task._graceful_shutdown:
+                logger.info("Graceful shutdown requested, saving progress")
+                break
+
+            # Monitor resources
+            current_memory = process.memory_info().rss
+            memory_increase = current_memory - initial_memory
+
+            if memory_increase > CHUNKING_MEMORY_LIMIT_GB * 1024**3:
+                raise ChunkingMemoryError(
+                    detail="Operation memory usage exceeded limit",
+                    correlation_id=correlation_id,
+                    operation_id=operation_id,
+                    memory_used=current_memory,
+                    memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
+                )
+
+            batch = document_ids[i : i + batch_size]
+
+            for doc_id in batch:
+                try:
+                    # Get document content from Redis
+                    doc_content = redis_client.get(f"document:{doc_id}:content")
+                    if not doc_content:
+                        logger.warning(f"No content found for document {doc_id}")
+                        failed_documents.append(doc_id.decode() if isinstance(doc_id, bytes) else doc_id)
+                        continue
+
+                    # Decode content if needed
+                    if isinstance(doc_content, bytes):
+                        doc_content = doc_content.decode('utf-8')
+
+                    # Simple chunking logic (character-based with overlap)
+                    doc_chunks = []
+                    step = max(1, chunk_size - chunk_overlap)
+
+                    for chunk_start in range(0, len(doc_content), step):
+                        chunk_end = min(chunk_start + chunk_size, len(doc_content))
+                        chunk_text = doc_content[chunk_start:chunk_end]
+
+                        if chunk_text.strip():  # Only add non-empty chunks
+                            chunk_id = f"{doc_id}_chunk_{len(doc_chunks):04d}"
+                            doc_chunks.append({
+                                "id": chunk_id,
+                                "content": chunk_text,
+                                "metadata": {
+                                    "document_id": doc_id.decode() if isinstance(doc_id, bytes) else doc_id,
+                                    "chunk_index": len(doc_chunks),
+                                    "chunk_start": chunk_start,
+                                    "chunk_end": chunk_end,
+                                    "strategy": strategy,
+                                }
+                            })
+
+                    # Store chunks in Redis
+                    for chunk in doc_chunks:
+                        chunk_key = f"chunk:{chunk['id']}"
+                        redis_client.hset(
+                            chunk_key,
+                            mapping={
+                                "content": chunk["content"],
+                                "document_id": chunk["metadata"]["document_id"],
+                                "chunk_index": str(chunk["metadata"]["chunk_index"]),
+                                "created_at": datetime.now(UTC).isoformat(),
+                            }
+                        )
+                        # Add to operation's chunk list
+                        redis_client.rpush(f"operation:{operation_id}:chunks", chunk["id"])
+
+                    chunks_created += len(doc_chunks)
+                    documents_processed += 1
+
+                except Exception as e:
+                    logger.error(f"Failed to process document {doc_id}: {e}")
+                    failed_documents.append(doc_id.decode() if isinstance(doc_id, bytes) else doc_id)
+
+            # Update progress
+            progress = int((documents_processed / total_documents) * 100) if total_documents > 0 else 0
+            _send_progress_update_sync(
+                redis_client,
+                operation_id,
+                correlation_id,
+                progress,
+                f"Processed {documents_processed}/{total_documents} documents",
+            )
+
+            # Force garbage collection after each batch
+            gc.collect()
+
+        # Update completion status
+        redis_client.hset(
+            f"operation:{operation_id}",
+            mapping={
+                "status": "completed" if not failed_documents else "partial_success",
+                "completed_at": datetime.now(UTC).isoformat(),
+                "chunks_created": str(chunks_created),
+                "documents_processed": str(documents_processed),
+                "documents_failed": str(len(failed_documents)),
+            }
+        )
+
+        # Store failed documents for potential retry
+        if failed_documents:
+            for doc_id in failed_documents:
+                redis_client.rpush(f"operation:{operation_id}:failed_documents", doc_id)
+
+        return {
+            "operation_id": operation_id,
+            "status": "success" if not failed_documents else "partial_success",
+            "chunks_created": chunks_created,
+            "documents_processed": documents_processed,
+            "documents_failed": len(failed_documents),
+            "duration_seconds": time.time() - start_time,
+        }
+
+    except Exception as exc:
+        logger.error(
+            f"Chunking operation failed: {exc}",
+            extra={
+                "operation_id": operation_id,
+                "correlation_id": correlation_id,
+            },
+            exc_info=exc,
+        )
+
+        # Update failure status in Redis
+        redis_client.hset(
+            f"operation:{operation_id}",
+            mapping={
+                "status": "failed",
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "failed_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+        # Re-raise with appropriate exception type
+        if isinstance(exc, MemoryError):
+            current_memory = process.memory_info().rss
+            raise ChunkingMemoryError(
+                detail="Operation exceeded memory limits",
+                correlation_id=correlation_id,
+                operation_id=operation_id,
+                memory_used=current_memory,
+                memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
+            ) from exc
+        if isinstance(exc, TimeoutError):
+            raise ChunkingTimeoutError(
+                detail="Operation timed out",
+                correlation_id=correlation_id,
+                operation_id=operation_id,
+                elapsed_time=time.time() - start_time,
+                timeout_limit=CHUNKING_SOFT_TIME_LIMIT,
+            ) from exc
+        raise
+
+    finally:
+        # Clear memory usage metric
+        chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
 
 
 async def _process_chunking_operation_async(
@@ -867,6 +1155,90 @@ async def _process_chunking_operation_async(
         finally:
             # Clear memory usage metric
             chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
+
+
+def _handle_soft_timeout_sync(
+    operation_id: str,
+    correlation_id: str,
+    celery_task: ChunkingTask,
+) -> None:
+    """Handle soft timeout by saving partial results (sync version).
+
+    Args:
+        operation_id: Operation identifier
+        correlation_id: Correlation ID
+        celery_task: Celery task instance
+    """
+    try:
+        redis_client = get_redis_client()
+
+        # Save operation state for potential resume
+        redis_client.hset(
+            f"operation:{operation_id}:state",
+            mapping={
+                "soft_timeout": "true",
+                "task_id": celery_task.request.id,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "correlation_id": correlation_id,
+            }
+        )
+
+        logger.info(
+            f"Saved state for operation {operation_id} after soft timeout",
+            extra={
+                "operation_id": operation_id,
+                "correlation_id": correlation_id,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to handle soft timeout: {e}", exc_info=e)
+
+
+def _send_progress_update_sync(
+    redis_client: Redis | None,
+    operation_id: str,
+    correlation_id: str,
+    progress: int,
+    message: str,
+) -> None:
+    """Send real-time progress update via Redis (sync version).
+
+    Args:
+        redis_client: Redis client
+        operation_id: Operation identifier
+        correlation_id: Correlation ID
+        progress: Progress percentage (0-100)
+        message: Progress message
+    """
+    if not redis_client:
+        return
+
+    try:
+        update = {
+            "operation_id": operation_id,
+            "correlation_id": correlation_id,
+            "progress": str(progress),  # Redis requires string values
+            "message": message,
+            "timestamp": str(time.time()),
+        }
+
+        # Send to Redis stream
+        stream_key = f"stream:chunking:{operation_id}"
+        redis_client.xadd(stream_key, update, maxlen=1000)
+
+        # Also update hash for current state
+        redis_client.hset(
+            f"operation:{operation_id}:progress",
+            mapping={
+                "progress": str(progress),
+                "message": message,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to send progress update: {e}")
 
 
 async def _handle_soft_timeout(

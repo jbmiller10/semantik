@@ -1,9 +1,9 @@
 """Factory functions for creating service instances with dependencies."""
 
+import logging
+
 import httpx
-import redis.asyncio as redis
 from fastapi import Depends
-from redis.asyncio import ConnectionPool
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
@@ -17,33 +17,41 @@ from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
+from .redis_manager import RedisConfig, RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
+from .type_guards import ensure_async_redis
 
-# Singleton Redis connection pool
-_redis_pool: ConnectionPool | None = None
+logger = logging.getLogger(__name__)
+
+# Singleton Redis manager
+_redis_manager: RedisManager | None = None
 
 
-def get_redis_pool() -> ConnectionPool:
-    """Get or create the Redis connection pool.
+def get_redis_manager() -> RedisManager:
+    """Get or create the Redis manager singleton.
 
-    This ensures we reuse connections efficiently instead of creating
-    new connections for each request.
+    This ensures we have a single manager handling both async and sync
+    Redis clients with proper connection pooling.
 
     Returns:
-        ConnectionPool instance for Redis
+        RedisManager instance
     """
-    global _redis_pool
-    if _redis_pool is None:
-        _redis_pool = ConnectionPool.from_url(
-            settings.REDIS_URL,
+    global _redis_manager
+    if _redis_manager is None:
+        config = RedisConfig(
+            url=settings.REDIS_URL,
             max_connections=50,
             decode_responses=True,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+            retry_on_timeout=True,
             health_check_interval=30,
             socket_keepalive=True,
-            retry_on_timeout=True,
         )
-    return _redis_pool
+        _redis_manager = RedisManager(config)
+        logger.info("Initialized Redis manager with URL: %s", settings.REDIS_URL)
+    return _redis_manager
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -256,7 +264,7 @@ async def get_directory_scan_service() -> DirectoryScanService:
     return DirectoryScanService()
 
 
-def create_chunking_service(db: AsyncSession) -> ChunkingService:
+async def create_chunking_service(db: AsyncSession) -> ChunkingService:
     """Create a ChunkingService instance with required dependencies.
 
     This factory function creates a chunking service for managing document
@@ -297,8 +305,12 @@ def create_chunking_service(db: AsyncSession) -> ChunkingService:
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
 
-    # Create Redis client using connection pool
-    redis_client = redis.Redis(connection_pool=get_redis_pool())
+    # Get async Redis client from manager
+    redis_manager = get_redis_manager()
+    redis_client = await redis_manager.async_client()
+
+    # Validate client type
+    redis_client = ensure_async_redis(redis_client)
 
     # Create and return service
     return ChunkingService(
@@ -309,6 +321,37 @@ def create_chunking_service(db: AsyncSession) -> ChunkingService:
     )
 
 
+def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
+    """Create ChunkingService for Celery tasks without Redis.
+
+    This factory creates a chunking service specifically for use in Celery tasks.
+    Since Celery tasks use sync Redis directly and ChunkingService expects async Redis,
+    we pass None for redis_client to avoid type conflicts. The Celery task will
+    handle Redis operations directly using sync client.
+
+    Args:
+        db_session: Database session (can be async, service handles it)
+
+    Returns:
+        ChunkingService configured without Redis client
+
+    Raises:
+        RuntimeError: If Redis manager is not initialized
+    """
+    # Create repository instances
+    collection_repo = CollectionRepository(db_session)
+    document_repo = DocumentRepository(db_session)
+
+    # For Celery tasks, we don't pass Redis client to ChunkingService
+    # The task itself will handle Redis operations using sync client
+    return ChunkingService(
+        db_session=db_session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        redis_client=None,  # Celery tasks handle Redis directly
+    )
+
+
 async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
     """FastAPI dependency for ChunkingService injection."""
-    return create_chunking_service(db)
+    return await create_chunking_service(db)

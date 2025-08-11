@@ -6,7 +6,7 @@ This strategy chunks text based on document structure such as headers,
 sections, and other structural elements.
 """
 
-import re
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
@@ -17,6 +17,11 @@ from packages.shared.chunking.domain.services.chunking_strategies.base import (
 )
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
+from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
+from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+
+logger = logging.getLogger(__name__)
 
 
 class MarkdownChunkingStrategy(ChunkingStrategy):
@@ -30,6 +35,29 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
     def __init__(self) -> None:
         """Initialize the markdown chunking strategy."""
         super().__init__("markdown")
+        self.safe_regex = SafeRegex(timeout=1.0)
+        self.performance_monitor = RegexPerformanceMonitor()
+
+        # Define safe patterns using RE2-compatible syntax
+        self.patterns = {
+            # Use atomic groups and possessive quantifiers where possible
+            'heading': r'^#{1,6}\s+\S.*$',  # Non-greedy, bounded
+            'code_block_start': r'^```[^`\n]*$',  # Simple code block detection
+            'list_item': r'^[\*\-\+]\s+\S.*$',  # Bounded list item
+            'numbered_list': r'^\d+\.\s+\S.*$',  # Numbered list item
+            'blockquote': r'^>\s*\S.*$',  # Bounded blockquote
+            'horizontal_rule': r'^(?:---|\*\*\*|___)$',  # Fixed alternatives
+        }
+
+        # Compile all patterns with safety checks
+        self.compiled_patterns = {}
+        for name, pattern in self.patterns.items():
+            try:
+                self.compiled_patterns[name] = self.safe_regex.compile_safe(pattern)
+            except ValueError as e:
+                logger.warning(f"Failed to compile pattern {name}: {e}")
+                # Fall back to simpler pattern if compilation fails
+                self.compiled_patterns[name] = None
 
     def chunk(
         self,
@@ -181,17 +209,44 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 i += 1
                 continue
 
-            # Check for lists
-            if re.match(r"^(\s*[-*+]|\s*\d+\.)\s+", line):
+            # Check for lists (using safe patterns)
+            is_list_item = False
+            try:
+                # Check for bullet list
+                if self.compiled_patterns['list_item'] and self.safe_regex.match_with_timeout(
+                    self.patterns['list_item'], line, timeout=0.05
+                ) or self.compiled_patterns['numbered_list'] and self.safe_regex.match_with_timeout(
+                    self.patterns['numbered_list'], line, timeout=0.05
+                ):
+                    is_list_item = True
+            except RegexTimeout:
+                logger.warning(f"Regex timeout on line {i}, treating as regular text")
+                is_list_item = False
+
+            if is_list_item:
                 list_lines = [line]
                 list_start = line_start
                 i += 1
 
                 # Collect consecutive list items
                 while i < len(lines):
-                    if re.match(r"^(\s*[-*+]|\s*\d+\.)\s+", lines[i]) or (
-                        lines[i].startswith("  ") and lines[i].strip()
-                    ):
+                    next_line = lines[i]
+                    is_continuation = False
+
+                    try:
+                        # Check if next line is also a list item
+                        if (self.compiled_patterns['list_item'] and
+                            self.safe_regex.match_with_timeout(
+                                self.patterns['list_item'], next_line, timeout=0.05
+                        )) or (self.compiled_patterns['numbered_list'] and
+                              self.safe_regex.match_with_timeout(
+                                  self.patterns['numbered_list'], next_line, timeout=0.05
+                        )) or next_line.startswith("  ") and next_line.strip():
+                            is_continuation = True
+                    except RegexTimeout:
+                        is_continuation = False
+
+                    if is_continuation:
                         current_pos += len(lines[i]) + 1
                         list_lines.append(lines[i])
                         i += 1
@@ -232,8 +287,17 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 )
                 continue
 
-            # Check for horizontal rules
-            if re.match(r"^(\*{3,}|-{3,}|_{3,})\s*$", line):
+            # Check for horizontal rules (using safe pattern)
+            is_hr = False
+            try:
+                if self.compiled_patterns['horizontal_rule'] and self.safe_regex.match_with_timeout(
+                    self.patterns['horizontal_rule'], line.strip(), timeout=0.05
+                ):
+                    is_hr = True
+            except RegexTimeout:
+                is_hr = False
+
+            if is_hr:
                 sections.append(
                     {
                         "type": "hr",
@@ -291,9 +355,22 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
         if stripped.startswith("#"):
             return True
 
-        # Lists
-        if re.match(r"^[-*+]\s+", stripped) or re.match(r"^\d+\.\s+", stripped):
-            return True
+        # Lists (using safe patterns)
+        try:
+            if self.compiled_patterns['list_item'] and self.safe_regex.match_with_timeout(
+                self.patterns['list_item'], stripped, timeout=0.01
+            ):
+                return True
+            if self.compiled_patterns['numbered_list'] and self.safe_regex.match_with_timeout(
+                self.patterns['numbered_list'], stripped, timeout=0.01
+            ):
+                return True
+        except RegexTimeout:
+            # If regex times out, check with simple string operations
+            if stripped and stripped[0] in '-*+' and len(stripped) > 2 and stripped[1] == ' ':
+                return True
+            if stripped and stripped[0].isdigit() and '. ' in stripped[:4]:
+                return True
 
         # Code blocks
         if stripped.startswith("```"):
@@ -303,9 +380,16 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
         if stripped.startswith(">"):
             return True
 
-        # Horizontal rules
-        if re.match(r"^(\*{3,}|-{3,}|_{3,})\s*$", stripped):
-            return True
+        # Horizontal rules (using safe pattern)
+        try:
+            if self.compiled_patterns['horizontal_rule'] and self.safe_regex.match_with_timeout(
+                self.patterns['horizontal_rule'], stripped, timeout=0.01
+            ):
+                return True
+        except RegexTimeout:
+            # Simple check for horizontal rules
+            if stripped in ['---', '***', '___']:
+                return True
 
         return False
 
@@ -459,7 +543,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
         min_level = 7
 
         for section in sections:
-            if section["type"].startswith("h"):
+            if section["type"].startswith("h") and len(section["type"]) == 2 and section["type"][1].isdigit():
                 level = int(section["type"][1])
                 min_level = min(min_level, level)
 
@@ -481,6 +565,12 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
         if len(content) > 50_000_000:  # 50MB limit
             return False, f"Content too large: {len(content)} characters"
+
+        # Use input validator for ReDoS protection
+        try:
+            ChunkingInputValidator.validate_document(content)
+        except ValueError as e:
+            return False, str(e)
 
         return True, None
 

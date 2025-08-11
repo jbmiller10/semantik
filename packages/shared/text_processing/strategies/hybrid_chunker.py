@@ -8,83 +8,19 @@ characteristics and selects the most appropriate chunking strategy for optimal r
 
 import asyncio
 import logging
-import platform
-import re
-import signal
-import threading
-from collections.abc import Iterator
-from contextlib import contextmanager
 from enum import Enum
 from typing import Any
 
+from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
+from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
+from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
 logger = logging.getLogger(__name__)
 
 # Security constants
-REGEX_TIMEOUT = 1  # Maximum seconds for regex execution
 MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
-
-
-# Platform-specific timeout implementation
-if platform.system() != "Windows":
-
-    @contextmanager
-    def timeout(seconds: int) -> Iterator[None]:
-        """Context manager for timeout enforcement using signal alarm (Unix/Linux)."""
-
-        def timeout_handler(signum: int, frame: Any) -> None:  # noqa: ARG001
-            raise TimeoutError("Regex execution timeout")
-
-        # Set the signal handler and alarm
-        old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-        signal.alarm(seconds)
-
-        try:
-            yield
-        finally:
-            # Restore the old handler and cancel the alarm
-            signal.alarm(0)
-            signal.signal(signal.SIGALRM, old_handler)
-
-else:
-    # Windows-compatible timeout using threading
-    @contextmanager
-    def timeout(seconds: int) -> Iterator[None]:
-        """Context manager for timeout enforcement using threading (Windows)."""
-        timer = threading.Timer(seconds, lambda: None)
-        timer.start()
-        try:
-            yield
-            # Note: Windows timeout is less reliable for regex operations
-            # Consider using regex module with timeout support as alternative
-        finally:
-            timer.cancel()
-
-
-def safe_regex_findall(pattern: re.Pattern, text: str, flags: int = 0) -> list[str]:
-    """Execute regex findall with timeout protection.
-
-    Args:
-        pattern: Compiled regex pattern or string pattern
-        text: Text to search in
-        flags: Regex flags
-
-    Returns:
-        List of matches
-
-    Raises:
-        TimeoutError: If regex execution exceeds timeout
-    """
-    try:
-        with timeout(REGEX_TIMEOUT):
-            if isinstance(pattern, str):
-                return re.findall(pattern, text, flags)
-            return pattern.findall(text)
-    except TimeoutError:
-        logger.warning("Regex execution timeout - possible ReDoS attack")
-        return []
 
 
 class ChunkingStrategy(str, Enum):
@@ -130,8 +66,13 @@ class HybridChunker(BaseChunker):
         # Cache for initialized chunkers
         self._chunker_cache: dict[str, BaseChunker] = {}
 
-        # Pre-compile regex patterns for security and performance
-        self._compiled_patterns: dict[str, tuple[re.Pattern, float]] = {}
+        # Initialize SafeRegex and monitoring
+        self.safe_regex = SafeRegex(timeout=1.0)
+        self.regex_monitor = RegexPerformanceMonitor()
+        self.input_validator = ChunkingInputValidator()
+
+        # Pre-compile safe regex patterns for security and performance
+        self._compiled_patterns: dict[str, tuple[Any, float]] = {}
         self._compile_markdown_patterns()
 
         logger.info(
@@ -144,25 +85,27 @@ class HybridChunker(BaseChunker):
 
     def _compile_markdown_patterns(self) -> None:
         """Pre-compile regex patterns with safety validation."""
+        # Use safer, bounded patterns
         patterns = [
-            (r"^#{1,6}\s+", 3.0),  # Headers (high weight)
-            (r"^\*{1,3}\s+|\-\s+|\+\s+|\d+\.\s+", 2.0),  # Lists
-            (r"\[.*?\]\(.*?\)", 2.0),  # Links
-            (r"!\[.*?\]\(.*?\)", 2.0),  # Images
-            (r"`{1,3}[^`]+`{1,3}", 1.5),  # Code blocks/inline
-            (r"^\>\s+", 1.5),  # Blockquotes
-            (r"\*{1,2}[^\*]+\*{1,2}", 1.0),  # Bold/italic
-            (r"^\s*\|.*\|", 2.0),  # Tables
-            (r"^---+$|^===+$", 1.0),  # Horizontal rules
+            (r"^#{1,6}\s+\S.*$", 3.0),  # Headers (bounded)
+            (r"^[\*\-\+]\s+\S.*$", 2.0),  # Lists (simplified)
+            (r"^\d+\.\s+\S.*$", 2.0),  # Numbered lists
+            (r"\[([^\]]+)\]\(([^)]+)\)", 2.0),  # Links (bounded)
+            (r"!\[([^\]]*)\]\(([^)]+)\)", 2.0),  # Images (bounded)
+            (r"`([^`]+)`", 1.5),  # Inline code (bounded)
+            (r"^>\s*\S.*$", 1.5),  # Blockquotes (bounded)
+            (r"\*\*([^*]+)\*\*", 1.0),  # Bold (bounded)
+            (r"\*([^*]+)\*", 1.0),  # Italic (bounded)
+            (r"^\s*\|[^|]+\|", 2.0),  # Tables (simplified)
+            (r"^(?:---|\\*\\*\\*|___)$", 1.0),  # Horizontal rules (fixed)
         ]
 
         for pattern_str, weight in patterns:
             try:
-                # Test pattern compilation with timeout
-                with timeout(REGEX_TIMEOUT):
-                    compiled = re.compile(pattern_str, re.MULTILINE)
+                # Compile with SafeRegex for ReDoS protection
+                compiled = self.safe_regex.compile_safe(pattern_str, use_re2=True)
                 self._compiled_patterns[pattern_str] = (compiled, weight)
-            except (TimeoutError, re.error) as e:
+            except (ValueError, Exception) as e:
                 logger.warning(f"Failed to compile regex pattern: {pattern_str[:50]}...")
                 logger.debug(f"Pattern compilation error: {e}")
 
@@ -222,14 +165,36 @@ class HybridChunker(BaseChunker):
         total_score = 0.0
         total_lines = max(1, len(text.splitlines()))
 
-        # Use pre-compiled patterns with safe execution
-        for _, (compiled_pattern, weight) in self._compiled_patterns.items():
+        import time
+
+        # Use pre-compiled patterns with safe execution and monitoring
+        for pattern_str, (compiled_pattern, weight) in self._compiled_patterns.items():
             try:
-                matches = safe_regex_findall(compiled_pattern, text)
+                start_time = time.time()
+                matches = self.safe_regex.findall_safe(pattern_str, text, max_matches=100)
+                execution_time = time.time() - start_time
+
+                # Record performance metrics
+                self.regex_monitor.record_execution(
+                    pattern=pattern_str,
+                    execution_time=execution_time,
+                    input_size=len(text),
+                    matched=len(matches) > 0
+                )
+
                 total_score += len(matches) * weight
-            except Exception:
+            except RegexTimeout:
+                logger.warning(f"Regex timeout for markdown pattern: {pattern_str[:30]}...")
+                self.regex_monitor.record_execution(
+                    pattern=pattern_str,
+                    execution_time=1.0,
+                    input_size=len(text),
+                    timed_out=True
+                )
+                continue
+            except Exception as e:
                 # Security: Don't expose pattern details in logs
-                logger.debug("Regex pattern execution failed")
+                logger.debug(f"Regex pattern execution failed: {e}")
                 continue
 
         # Normalize score by text length
@@ -262,11 +227,22 @@ class HybridChunker(BaseChunker):
 
         # Extract words (simple tokenization) with safe regex execution
         try:
-            word_pattern = re.compile(r"\b\w+\b")
-            words = safe_regex_findall(word_pattern, text.lower())
+            import time
+            start_time = time.time()
+            # Use a simpler, bounded pattern for word extraction
+            words = self.safe_regex.findall_safe(r"\w+", text.lower(), max_matches=10000)
+            execution_time = time.time() - start_time
+
+            self.regex_monitor.record_execution(
+                pattern=r"\w+",
+                execution_time=execution_time,
+                input_size=len(text),
+                matched=len(words) > 0
+            )
+
             unique_words = set(words)
-        except Exception:
-            logger.debug("Word extraction failed, using fallback")
+        except (RegexTimeout, Exception) as e:
+            logger.debug(f"Word extraction failed: {e}, using fallback")
             # Fallback: simple split
             words = text.lower().split()
             unique_words = set(words)
@@ -400,9 +376,13 @@ class HybridChunker(BaseChunker):
             return []
 
         # Security validation: Prevent processing of excessively large texts
-        if len(text) > MAX_TEXT_LENGTH:
-            logger.warning("Text exceeds maximum length limit")
-            raise ValueError("Text too large to process")
+        try:
+            self.input_validator.validate_document(text)
+        except ValueError as e:
+            logger.warning(f"Input validation failed: {e}")
+            # For very large documents, try to process with character chunker as fallback
+            if len(text) > MAX_TEXT_LENGTH:
+                raise ValueError("Text too large to process")
 
         # Select the best strategy
         strategy, params, reasoning = self._select_strategy(text, metadata)
@@ -499,9 +479,13 @@ class HybridChunker(BaseChunker):
             return []
 
         # Security validation: Prevent processing of excessively large texts
-        if len(text) > MAX_TEXT_LENGTH:
-            logger.warning("Text exceeds maximum length limit")
-            raise ValueError("Text too large to process")
+        try:
+            self.input_validator.validate_document(text)
+        except ValueError as e:
+            logger.warning(f"Input validation failed: {e}")
+            # For very large documents, try to process with character chunker as fallback
+            if len(text) > MAX_TEXT_LENGTH:
+                raise ValueError("Text too large to process")
 
         # Run strategy selection in executor to avoid blocking
         loop = asyncio.get_event_loop()
