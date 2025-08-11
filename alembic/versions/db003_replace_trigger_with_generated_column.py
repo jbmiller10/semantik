@@ -1,7 +1,7 @@
 """Replace trigger with generated column for partition_key
 
 Revision ID: db003_replace_trigger
-Revises: 8f67aa430c5d
+Revises: 8547ff31e80c
 Create Date: 2025-08-11 14:00:00.000000
 
 This migration replaces the trigger-based partition_key computation with a 
@@ -27,7 +27,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic
 revision: str = "db003_replace_trigger"
-down_revision: str | Sequence[str] | None = "8f67aa430c5d"
+down_revision: str | Sequence[str] | None = "8547ff31e80c"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
