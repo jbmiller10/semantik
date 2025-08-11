@@ -974,11 +974,15 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_idempotency(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test that startup can be called multiple times safely."""
-
-        async def async_from_url(*_, **__) -> None:
-            return mock_redis  # type: ignore[no-any-return]
-
-        with patch("packages.webui.websocket_manager.aioredis.from_url", side_effect=async_from_url):
+        
+        # Mock the redis manager
+        mock_redis_manager = MagicMock()
+        mock_redis_manager.async_client = AsyncMock(return_value=mock_redis)
+        
+        with (
+            patch("packages.webui.services.factory.get_redis_manager", return_value=mock_redis_manager),
+            patch("packages.webui.services.type_guards.ensure_async_redis", return_value=mock_redis),
+        ):
             # First startup
             await manager.startup()
             assert manager.redis is mock_redis
