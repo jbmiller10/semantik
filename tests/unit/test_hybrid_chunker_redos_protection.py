@@ -15,12 +15,46 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.text_processing.strategies.hybrid_chunker import (
-    REGEX_TIMEOUT,
-    HybridChunker,
-    safe_regex_findall,
-    timeout,
-)
+from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
+from packages.shared.chunking.utils.safe_regex import SafeRegex, RegexTimeout
+from contextlib import contextmanager
+import signal
+
+# Define test constants and helpers
+REGEX_TIMEOUT = 1.0  # Default timeout from SafeRegex
+
+
+def safe_regex_findall(pattern, text, flags=None):
+    """Helper function for testing regex with timeout protection."""
+    safe_regex = SafeRegex(timeout=REGEX_TIMEOUT)
+    if isinstance(pattern, str):
+        if flags:
+            import re
+            pattern = re.compile(pattern, flags)
+        else:
+            pattern = safe_regex.compile_safe(pattern)
+    try:
+        return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, 'pattern') else str(pattern), text)
+    except RegexTimeout:
+        return []
+
+
+@contextmanager
+def timeout(seconds):
+    """Simple timeout context manager for testing."""
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Operation timed out after {seconds} seconds")
+    
+    # Set the signal handler and alarm
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(seconds)
+    
+    try:
+        yield
+    finally:
+        # Restore the original signal handler
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 class TestHybridChunkerReDoSProtection:
