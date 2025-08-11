@@ -43,7 +43,7 @@ class PostgresConfig(BaseSettings):
     DB_RETRY_INTERVAL: float = Field(default=0.5, description="Retry interval in seconds")
 
     # Chunking settings
-    CHUNK_PARTITION_COUNT: int = Field(default=16, description="Number of partitions for chunks table")
+    CHUNK_PARTITION_COUNT: int = Field(default=100, description="Number of partitions for chunks table (LIST partitioning)")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
