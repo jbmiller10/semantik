@@ -352,3 +352,29 @@ class StreamingError(InfrastructureError):
             cause=cause,
         )
         self.processor_state = processor_state
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility aliases for tests and external callers expecting
+# "Exception"-suffixed class names rather than "Error"-suffixed ones.
+# ---------------------------------------------------------------------------
+
+# Base classes
+BaseChunkingException = BaseChunkingError
+DomainException = DomainError
+ApplicationException = ApplicationError
+InfrastructureException = InfrastructureError
+
+# Domain-level
+DocumentTooLargeException = DocumentTooLargeError
+InvalidStateTransition = InvalidStateTransitionError
+ChunkingStrategyException = ChunkingStrategyError
+
+# Application-level
+ValidationException = ValidationError
+ResourceNotFoundException = ResourceNotFoundError
+PermissionDeniedException = PermissionDeniedError
+
+# Infrastructure-level
+DatabaseException = DatabaseError
+ExternalServiceException = ExternalServiceError
+StreamingException = StreamingError
