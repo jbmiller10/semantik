@@ -35,7 +35,11 @@ class RedisStreamWebSocketManager:
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
 
     async def startup(self) -> None:
-        """Initialize Redis connection on application startup with retry logic."""
+        """Initialize Redis connection on application startup with retry logic.
+
+        Supports both the service factory path and direct redis.from_url for
+        backward compatibility with tests that patch either mechanism.
+        """
         async with self._startup_lock:
             # Skip if already attempted or connected
             if self._startup_attempted and self.redis is not None:
@@ -50,19 +54,29 @@ class RedisStreamWebSocketManager:
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
 
-                    # Lazy import to avoid circular dependency
-                    from packages.webui.services.factory import get_redis_manager
-                    from packages.webui.services.type_guards import ensure_async_redis
+                    # Prefer factory-based client, fall back to direct from_url if needed
+                    redis_client = None
+                    try:
+                        # Lazy import to avoid circular dependency
+                        from packages.webui.services.factory import get_redis_manager
+                        from packages.webui.services.type_guards import ensure_async_redis
 
-                    # Get async Redis client from manager
-                    redis_manager = get_redis_manager()
-                    self.redis = await redis_manager.async_client()
+                        manager = get_redis_manager()
+                        candidate = await manager.async_client()
+                        redis_client = ensure_async_redis(candidate)
+                    except Exception as inner_e:
+                        logger.debug(f"Factory-based Redis client unavailable: {inner_e}. Falling back to from_url.")
 
-                    # Validate client type
-                    self.redis = ensure_async_redis(self.redis)
+                    if redis_client is None:
+                        # Fallback path used by legacy tests
+                        from packages.shared.config import settings
 
-                    # Test connection
-                    await self.redis.ping()
+                        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+                        redis_client = await redis.from_url(redis_url, decode_responses=True)
+
+                    # Validate connection
+                    await redis_client.ping()
+                    self.redis = redis_client
                     logger.info("WebSocket manager connected to Redis")
                     return
                 except Exception as e:

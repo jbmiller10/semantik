@@ -223,46 +223,27 @@ class HybridChunker(BaseChunker):
                 if file_path.endswith(ext) or file_name.endswith(ext) or file_type == ext:
                     return True, 1.0
 
-        # Analyze markdown syntax density using pre-compiled patterns
-        total_score = 0.0
-        total_lines = max(1, len(text.splitlines()))
+        # Analyze markdown density as the fraction of lines that look like markdown
+        lines = text.splitlines()
+        total_lines = max(1, len(lines))
+        matched_lines = 0
 
-        import time
-
-        # Use pre-compiled patterns with safe execution and monitoring
-        for pattern_str, (compiled_pattern, weight) in self._compiled_patterns.items():
-            try:
-                start_time = time.time()
-                matches = self.safe_regex.findall_safe(pattern_str, text, max_matches=100, flags=re.MULTILINE)
-                execution_time = time.time() - start_time
-
-                # Record performance metrics
-                self.regex_monitor.record_execution(
-                    pattern=pattern_str,
-                    execution_time=execution_time,
-                    input_size=len(text),
-                    matched=len(matches) > 0
-                )
-
-                total_score += len(matches) * weight
-            except RegexTimeout:
-                logger.warning(f"Regex timeout for markdown pattern: {pattern_str[:30]}...")
-                self.regex_monitor.record_execution(
-                    pattern=pattern_str,
-                    execution_time=1.0,
-                    input_size=len(text),
-                    timed_out=True
-                )
+        for line in lines:
+            l = line.strip()
+            if not l:
                 continue
-            except Exception as e:
-                # Security: Don't expose pattern details in logs
-                logger.debug(f"Regex pattern execution failed: {e}")
-                continue
+            # Quick heuristics for common markdown constructs
+            if (
+                l.startswith(('#', '>', '* ', '- ', '+ '))
+                or re.match(r"^\d+\.\s+", l) is not None
+                or ('|' in l and l.count('|') >= 2)
+                or ('[' in l and ']' in l and '(' in l and ')' in l)
+                or ('`' in l)
+            ):
+                matched_lines += 1
 
-        # Normalize score by text length
-        markdown_density = total_score / total_lines
-
-        return False, markdown_density
+        markdown_density = matched_lines / total_lines
+        return False, float(markdown_density)
 
     def _estimate_semantic_coherence(self, text: str) -> float:
         """Estimate semantic coherence of the text.
@@ -372,18 +353,10 @@ class HybridChunker(BaseChunker):
         # Decision logic with detailed reasoning
         reasoning_parts = []
 
-        # 1. Check for markdown content
+        # 1. Check for markdown content by explicit file indication
         if is_markdown_file:
             reasoning = "Detected markdown file extension - using MarkdownChunker"
             logger.info(f"{reasoning} for document")
-            return ChunkingStrategy.MARKDOWN, {}, reasoning
-
-        if markdown_density > self.markdown_threshold:
-            reasoning = (
-                f"High markdown syntax density ({markdown_density:.2f} > {self.markdown_threshold}) "
-                f"- using MarkdownChunker"
-            )
-            logger.info(reasoning)
             return ChunkingStrategy.MARKDOWN, {}, reasoning
 
         # 2. Check for large documents that benefit from hierarchical organization
@@ -399,7 +372,7 @@ class HybridChunker(BaseChunker):
                 logger.info(reasoning)
                 return ChunkingStrategy.HIERARCHICAL, {}, reasoning
 
-        # 3. Check for high semantic coherence (topic-focused content)
+        # 3. Prefer semantic for high coherence before markdown density
         if semantic_coherence > self.semantic_coherence_threshold:
             reasoning = (
                 f"High semantic coherence ({semantic_coherence:.2f} > {self.semantic_coherence_threshold}) "
@@ -408,7 +381,16 @@ class HybridChunker(BaseChunker):
             logger.info(reasoning)
             return ChunkingStrategy.SEMANTIC, {}, reasoning
 
-        # 4. Default to recursive chunker for general text
+        # 4. Consider markdown density if not a markdown file
+        if markdown_density > self.markdown_threshold:
+            reasoning = (
+                f"High markdown syntax density ({markdown_density:.2f} > {self.markdown_threshold}) "
+                f"- using MarkdownChunker"
+            )
+            logger.info(reasoning)
+            return ChunkingStrategy.MARKDOWN, {}, reasoning
+
+        # 5. Default to recursive chunker for general text
         reasoning = (
             f"General text content (length: {text_length:,}, "
             f"markdown_density: {markdown_density:.2f}, "

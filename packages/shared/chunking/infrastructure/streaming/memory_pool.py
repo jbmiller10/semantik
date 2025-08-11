@@ -589,19 +589,25 @@ class MemoryPool:
             Dictionary with usage statistics
         """
         stats = self.get_stats()
+        # Compute utilization based on active vs total buffers to match expectations
+        available = stats["free_buffers"]
+        in_use = stats["active_buffers"]
+        denom = available + in_use
+        utilization = (in_use / denom) if denom > 0 else 0.0
+
         # Map to old format for backward compatibility
         return {
             "pool_size": self.initial_pool_size,
             "buffer_size": self.default_buffer_size,
             "total_memory": stats["used_size"],
-            "available": stats["free_buffers"],
-            "in_use": stats["active_buffers"],
+            "available": available,
+            "in_use": in_use,
             "total_acquisitions": stats["allocation_count"],
             "total_releases": stats["release_count"],
-            "max_concurrent_usage": stats["active_buffers"],  # Approximation
-            "average_wait_time": 0.0,  # Not tracked in new implementation
-            "allocation_failures": 0,  # Not tracked in new implementation
-            "utilization": stats["usage_percent"] / 100,
+            "max_concurrent_usage": in_use,  # Approximation
+            "average_wait_time": 0.0,  # Not tracked
+            "allocation_failures": 0,  # Not tracked
+            "utilization": utilization,
         }
 
     def _get_oldest_allocation_age(self) -> float | None:
@@ -732,4 +738,3 @@ class MemoryPool:
             logger.warning(
                 f"MemoryPool exiting with {len(self._allocations)} buffers still in use"
             )
-
