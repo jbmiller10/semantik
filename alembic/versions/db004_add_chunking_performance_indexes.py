@@ -53,7 +53,7 @@ def upgrade() -> None:
         'idx_operations_user_status',
         'operations',
         ['user_id', 'status'],
-        postgresql_where=sa.text("status IN ('processing', 'pending')"),
+        postgresql_where=sa.text("status IN ('PROCESSING', 'PENDING')"),
         postgresql_using='btree'
     )
     
