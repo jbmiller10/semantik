@@ -624,6 +624,28 @@ class MemoryPool:
                 f"free={len(self._free_buffers)})"
             )
 
+    @property
+    def buffer_size(self) -> int:
+        """Get default buffer size (backward compatibility)."""
+        return self.default_buffer_size
+    
+    @property
+    def pool_size(self) -> int:
+        """Get initial pool size (backward compatibility)."""
+        return self.initial_pool_size
+    
+    def acquire_sync(self, timeout: float = 5.0) -> tuple[str, bytearray]:
+        """
+        Synchronous acquire for backward compatibility.
+        
+        Args:
+            timeout: Maximum time to wait for buffer
+        
+        Returns:
+            Tuple of (buffer_id, buffer)
+        """
+        return self.acquire_sync_legacy(timeout)
+
     def __enter__(self) -> "MemoryPool":
         """Context manager entry."""
         return self

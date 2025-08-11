@@ -57,7 +57,7 @@ class TestCancelOperationUseCase:
         operation = MagicMock()
         operation.id = str(uuid4())
         operation.document_id = "doc-123"
-        operation.status = "in_progress"
+        operation.status = "PROCESSING"
         operation.chunks_processed = 0
         return operation
 
@@ -67,7 +67,7 @@ class TestCancelOperationUseCase:
         operation = MagicMock()
         operation.id = str(uuid4())
         operation.document_id = "doc-pending"
-        operation.status = "pending"
+        operation.status = "PENDING"
         operation.chunks_processed = 0
         return operation
 
@@ -89,7 +89,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
 
         # Act
         response = await use_case.execute(valid_request)
@@ -122,7 +122,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        pending_operation.status = "pending"
+        pending_operation.status = "PENDING"
 
         # Act
         response = await use_case.execute(request)
@@ -144,7 +144,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
 
         # Act
         response = await use_case.execute(request)
@@ -171,7 +171,7 @@ class TestCancelOperationUseCase:
         # Arrange
         completed_operation = MagicMock()
         completed_operation.id = str(uuid4())
-        completed_operation.status = "completed"
+        completed_operation.status = "COMPLETED"
 
         request = CancelOperationRequest(operation_id=completed_operation.id, reason="Trying to cancel completed")
         mock_unit_of_work.operations = AsyncMock()
@@ -188,7 +188,7 @@ class TestCancelOperationUseCase:
         # Arrange
         failed_operation = MagicMock()
         failed_operation.id = str(uuid4())
-        failed_operation.status = "failed"
+        failed_operation.status = "FAILED"
 
         request = CancelOperationRequest(operation_id=failed_operation.id, reason="Trying to cancel failed")
         mock_unit_of_work.operations = AsyncMock()
@@ -227,7 +227,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
 
         # Act
         response = await use_case.execute(valid_request)
@@ -249,7 +249,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
         use_case.notification_service.notify_operation_cancelled.side_effect = Exception("Notification failed")
 
         # Act - notification happens after commit, so the exception will be raised
@@ -276,7 +276,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
         # Note: The use case doesn't use event_publisher, using notification_service instead
         # The notify_error is used for logging, so we'll let notify_operation_cancelled succeed
         # but notify_error fail to test partial failure
@@ -312,7 +312,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=0)
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
         use_case.unit_of_work.commit.side_effect = Exception("Database error")
 
         # Act & Assert
@@ -326,7 +326,7 @@ class TestCancelOperationUseCase:
         # Arrange
         completed_operation = MagicMock()
         completed_operation.id = str(uuid4())
-        completed_operation.status = "completed"
+        completed_operation.status = "COMPLETED"
         completed_operation.chunks_processed = 10
 
         request = CancelOperationRequest(
@@ -371,7 +371,7 @@ class TestCancelOperationUseCase:
         async def find_by_id_side_effect(_op_id) -> None:
             nonlocal call_count
             if call_count == 0:
-                processing_operation.status = "in_progress"
+                processing_operation.status = "PROCESSING"
             else:
                 processing_operation.status = "cancelled"
             call_count += 1
@@ -404,7 +404,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=5)  # 5 chunks deleted
         mock_unit_of_work.checkpoints = AsyncMock()
         mock_unit_of_work.checkpoints.delete_checkpoints = AsyncMock(return_value=2)  # 2 checkpoints deleted
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
 
         # Create a request with cleanup enabled
         cleanup_request = CancelOperationRequest(
@@ -427,7 +427,7 @@ class TestCancelOperationUseCase:
     ) -> None:
         """Test that cancellation returns partial results if available."""
         # Arrange
-        processing_operation.status = "in_progress"
+        processing_operation.status = "PROCESSING"
         processing_operation.chunks_processed = 3  # Simulate some chunks were processed
 
         mock_unit_of_work.operations = AsyncMock()

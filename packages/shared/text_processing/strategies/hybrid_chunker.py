@@ -8,6 +8,9 @@ characteristics and selects the most appropriate chunking strategy for optimal r
 
 import asyncio
 import logging
+import re
+import signal
+from contextlib import contextmanager
 from enum import Enum
 from typing import Any
 
@@ -21,6 +24,65 @@ logger = logging.getLogger(__name__)
 
 # Security constants
 MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
+REGEX_TIMEOUT = 1  # Default timeout for regex operations
+
+
+def safe_regex_findall(pattern, text, flags=None):
+    """Helper function for executing regex with timeout protection.
+    
+    Args:
+        pattern: Regex pattern (string or compiled)
+        text: Text to search
+        flags: Optional regex flags
+        
+    Returns:
+        List of matches or empty list on timeout
+    """
+    safe_regex = SafeRegex(timeout=REGEX_TIMEOUT)
+    if isinstance(pattern, str):
+        if flags:
+            pattern = re.compile(pattern, flags)
+        else:
+            pattern = safe_regex.compile_safe(pattern)
+    try:
+        return safe_regex.findall_safe(
+            pattern.pattern if hasattr(pattern, 'pattern') else str(pattern), 
+            text
+        )
+    except RegexTimeout:
+        logger.warning(f"Regex timeout for pattern: {pattern}")
+        return []
+    except Exception as e:
+        logger.warning(f"Regex error: {e}")
+        return []
+
+
+@contextmanager
+def timeout(seconds):
+    """Context manager for timeout operations.
+    
+    Args:
+        seconds: Timeout duration in seconds
+        
+    Yields:
+        None
+        
+    Raises:
+        TimeoutError: If operation exceeds timeout
+    """
+    def timeout_handler(signum, frame):
+        raise TimeoutError(f"Operation timed out after {seconds} seconds")
+    
+    # Set the signal handler and alarm
+    old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(int(seconds))
+    
+    try:
+        yield
+    finally:
+        # Restore the original signal handler
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
 
 
 class ChunkingStrategy(str, Enum):

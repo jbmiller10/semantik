@@ -96,8 +96,74 @@ def client(
 class TestStrategyManagement:
     """Test strategy management endpoints."""
 
-    def test_list_strategies_success(self, client: TestClient) -> None:
+    def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
+        # Set up mock return value
+        mock_strategies = [
+            {
+                "id": ChunkingStrategy.CHARACTER,
+                "name": "character",
+                "description": "Simple fixed-size character-based chunking",
+                "best_for": ["Quick processing", "Consistent chunk sizes"],
+                "pros": ["Fast", "Predictable"],
+                "cons": ["May break mid-sentence"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "performance_characteristics": {"speed": "fast", "accuracy": "medium"}
+            },
+            {
+                "id": ChunkingStrategy.RECURSIVE,
+                "name": "recursive",
+                "description": "Smart sentence-aware splitting",
+                "best_for": ["General documents", "Maintaining context"],
+                "pros": ["Respects sentence boundaries"],
+                "cons": ["Variable chunk sizes"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"}
+            },
+            {
+                "id": ChunkingStrategy.MARKDOWN,
+                "name": "markdown",
+                "description": "Respects markdown structure",
+                "best_for": ["Markdown documents", "Technical documentation"],
+                "pros": ["Preserves structure"],
+                "cons": ["Only for markdown"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 0},
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"}
+            },
+            {
+                "id": ChunkingStrategy.SEMANTIC,
+                "name": "semantic",
+                "description": "Uses AI embeddings to find natural boundaries",
+                "best_for": ["Complex documents", "Academic papers"],
+                "pros": ["Best context preservation"],
+                "cons": ["Slower", "Requires embeddings"],
+                "default_config": {"buffer_size": 1, "breakpoint_threshold": 95},
+                "performance_characteristics": {"speed": "slow", "accuracy": "very_high"}
+            },
+            {
+                "id": ChunkingStrategy.HIERARCHICAL,
+                "name": "hierarchical",
+                "description": "Creates parent-child chunks",
+                "best_for": ["Large documents", "Multi-level analysis"],
+                "pros": ["Multiple granularities"],
+                "cons": ["Complex", "More storage"],
+                "default_config": {"chunk_sizes": [2048, 512, 128]},
+                "performance_characteristics": {"speed": "slow", "accuracy": "high"}
+            },
+            {
+                "id": ChunkingStrategy.HYBRID,
+                "name": "hybrid",
+                "description": "Automatically selects strategy based on content",
+                "best_for": ["Mixed content", "Unknown document types"],
+                "pros": ["Adaptive", "Best overall"],
+                "cons": ["Overhead from analysis"],
+                "default_config": {},
+                "performance_characteristics": {"speed": "variable", "accuracy": "high"}
+            }
+        ]
+        
+        mock_chunking_service.get_available_strategies.return_value = mock_strategies
+        
         response = client.get("/api/v2/chunking/strategies")
 
         assert response.status_code == status.HTTP_200_OK
