@@ -151,7 +151,7 @@ class TestRegexPerformanceMonitor:
         stats = monitor.get_statistics()
         assert stats["total_executions"] == 3
         assert stats["total_timeouts"] == 1
-        assert stats["timeout_rate"] == 1/3
+        assert stats["timeout_rate"] == 1 / 3
 
     def test_slow_pattern_detection(self):
         """Test detection of consistently slow patterns."""
@@ -207,17 +207,24 @@ class TestMarkdownChunkingWithReDoSProtection:
         )
 
         # Create input that could cause ReDoS with unsafe patterns
-        evil_content = """
+        evil_content = (
+            """
 # Header
 
-""" + "* " * 100 + "nested " * 100 + """
+"""
+            + "* " * 100
+            + "nested " * 100
+            + """
 
 ## Another Section
 
-""" + "-" * 1000 + """
+"""
+            + "-" * 1000
+            + """
 
 Some normal text here.
 """
+        )
 
         # First validate content
         is_valid, error = chunker.validate_content(evil_content)
@@ -261,9 +268,7 @@ Some normal text here.
                 # Should either match quickly or timeout
                 start = time.time()
                 try:
-                    result = chunker.safe_regex.match_with_timeout(
-                        pattern, test_input, timeout=0.1
-                    )
+                    chunker.safe_regex.match_with_timeout(pattern, test_input, timeout=0.1)
                     # If it matches, it should be fast
                     elapsed = time.time() - start
                     assert elapsed < 0.1

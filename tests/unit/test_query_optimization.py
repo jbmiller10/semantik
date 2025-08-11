@@ -35,8 +35,7 @@ def cache_manager(mock_redis):
 @pytest.fixture()
 def mock_db_session():
     """Create a mock database session."""
-    session = AsyncMock(spec=AsyncSession)
-    return session
+    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture()
@@ -60,7 +59,7 @@ def chunking_service(mock_db_session, mock_collection_repo, mock_document_repo, 
         db_session=mock_db_session,
         collection_repo=mock_collection_repo,
         document_repo=mock_document_repo,
-        redis_client=mock_redis
+        redis_client=mock_redis,
     )
 
 
@@ -109,11 +108,7 @@ class TestCacheManager:
 
         await cache_manager.set("test_key", data, ttl=300)
 
-        mock_redis.setex.assert_called_once_with(
-            "test_key",
-            300,
-            json.dumps(data)
-        )
+        mock_redis.setex.assert_called_once_with("test_key", 300, json.dumps(data))
 
     @pytest.mark.asyncio()
     async def test_invalidate_collection(self, cache_manager, mock_redis):
@@ -162,7 +157,7 @@ class TestQueryOptimization:
         mock_db_session.execute = AsyncMock()
         mock_db_session.execute.side_effect = [
             MagicMock(one=lambda: mock_stats),  # Stats query
-            MagicMock(one_or_none=lambda: mock_strategy)  # Strategy query
+            MagicMock(one_or_none=lambda: mock_strategy),  # Strategy query
         ]
 
         result = await chunking_service.get_chunking_statistics("test-collection")
@@ -191,10 +186,7 @@ class TestQueryOptimization:
         mock_stats.first_operation_at = datetime.now(UTC)
 
         mock_db_session.execute = AsyncMock()
-        mock_db_session.execute.side_effect = [
-            MagicMock(one=lambda: mock_stats),
-            MagicMock(one_or_none=lambda: None)
-        ]
+        mock_db_session.execute.side_effect = [MagicMock(one=lambda: mock_stats), MagicMock(one_or_none=lambda: None)]
 
         # First call - should query database
         result1 = await chunking_service.get_chunking_statistics("test-collection")
@@ -217,10 +209,7 @@ class TestQueryOptimization:
         mock_db_session.commit = AsyncMock()
 
         await chunking_service.start_chunking_operation(
-            collection_id=collection_id,
-            strategy="recursive",
-            config={"chunk_size": 1000},
-            user_id=1
+            collection_id=collection_id, strategy="recursive", config={"chunk_size": 1000}, user_id=1
         )
 
         # Verify cache invalidation was called
@@ -246,14 +235,10 @@ class TestChunkRepository:
         doc_ids = [
             "550e8400-e29b-41d4-a716-446655440001",
             "550e8400-e29b-41d4-a716-446655440002",
-            "550e8400-e29b-41d4-a716-446655440003"
+            "550e8400-e29b-41d4-a716-446655440003",
         ]
 
-        result = await repo.get_chunks_batch(
-            collection_id=collection_id,
-            document_ids=doc_ids,
-            limit=100
-        )
+        result = await repo.get_chunks_batch(collection_id=collection_id, document_ids=doc_ids, limit=100)
 
         assert len(result) == 5
         # Verify IN clause was used (check query construction)
@@ -273,11 +258,7 @@ class TestChunkRepository:
         # Use valid UUID
         collection_id = "550e8400-e29b-41d4-a716-446655440000"
 
-        chunks, total = await repo.get_chunks_paginated(
-            collection_id=collection_id,
-            page=1,
-            page_size=10
-        )
+        chunks, total = await repo.get_chunks_paginated(collection_id=collection_id, page=1, page_size=10)
 
         assert len(chunks) == 10
         assert total == 100
@@ -326,6 +307,7 @@ class TestQueryMonitor:
         @QueryMonitor.monitor("test_query")
         async def slow_query():
             import asyncio
+
             await asyncio.sleep(0.01)  # Simulate slow query
             return "result"
 
@@ -343,6 +325,7 @@ class TestQueryMonitor:
         @QueryMonitor.monitor("slow_test_query")
         async def very_slow_query():
             import asyncio
+
             await asyncio.sleep(1.1)  # Exceed 1 second threshold
             return "slow_result"
 

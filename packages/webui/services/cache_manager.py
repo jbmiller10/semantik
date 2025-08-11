@@ -48,11 +48,7 @@ class CacheManager:
         param_hash = hashlib.md5(sorted_params.encode()).hexdigest()
         return f"cache:{prefix}:{param_hash}"
 
-    async def get(
-        self,
-        key: str,
-        deserializer: Callable = json.loads
-    ) -> Any | None:
+    async def get(self, key: str, deserializer: Callable = json.loads) -> Any | None:
         """Get value from cache.
 
         Args:
@@ -76,13 +72,7 @@ class CacheManager:
             self.misses += 1
             return None
 
-    async def set(
-        self,
-        key: str,
-        value: Any,
-        ttl: int | None = None,
-        serializer: Callable = json.dumps
-    ):
+    async def set(self, key: str, value: Any, ttl: int | None = None, serializer: Callable = json.dumps):
         """Set value in cache.
 
         Args:
@@ -107,11 +97,7 @@ class CacheManager:
         try:
             cursor = 0
             while True:
-                cursor, keys = await self.redis.scan(
-                    cursor,
-                    match=pattern,
-                    count=100
-                )
+                cursor, keys = await self.redis.scan(cursor, match=pattern, count=100)
 
                 if keys:
                     await self.redis.delete(*keys)
@@ -131,12 +117,7 @@ class CacheManager:
         await self.delete(f"cache:statistics:{collection_id}")
         await self.delete(f"cache:chunks:{collection_id}:*")
 
-    def cache_result(
-        self,
-        prefix: str,
-        ttl: int | None = None,
-        key_params: list[str] | None = None
-    ):
+    def cache_result(self, prefix: str, ttl: int | None = None, key_params: list[str] | None = None):
         """Decorator for caching async function results.
 
         Args:
@@ -147,16 +128,13 @@ class CacheManager:
         Returns:
             Decorator function
         """
+
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 # Build cache key from specified params
                 if key_params:
-                    cache_params = {
-                        k: kwargs.get(k)
-                        for k in key_params
-                        if k in kwargs
-                    }
+                    cache_params = {k: kwargs.get(k) for k in key_params if k in kwargs}
                 else:
                     # Use all kwargs as cache params
                     cache_params = kwargs
@@ -181,6 +159,7 @@ class CacheManager:
             # Store original function for testing
             wrapper._original = func
             return wrapper
+
         return decorator
 
     def get_stats(self) -> dict[str, Any]:
@@ -192,12 +171,7 @@ class CacheManager:
         total = self.hits + self.misses
         hit_rate = (self.hits / total * 100) if total > 0 else 0
 
-        return {
-            "hits": self.hits,
-            "misses": self.misses,
-            "total_requests": total,
-            "hit_rate": hit_rate
-        }
+        return {"hits": self.hits, "misses": self.misses, "total_requests": total, "hit_rate": hit_rate}
 
     async def clear_all(self):
         """Clear all cache entries (use with caution)."""
@@ -216,7 +190,7 @@ class CacheManager:
         """
         try:
             # Pre-fetch commonly accessed data
-            if hasattr(service, 'get_chunking_statistics'):
+            if hasattr(service, "get_chunking_statistics"):
                 await service.get_chunking_statistics(collection_id)
 
             logger.info(f"Warmed up cache for collection {collection_id}")
@@ -236,19 +210,18 @@ class QueryMonitor:
     async def __aenter__(self):
         """Context manager entry."""
         import time
+
         self.start_time = time.time()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         import time
+
         execution_time = time.time() - self.start_time
 
         if execution_time > self.slow_query_threshold:
-            logger.warning(
-                f"Slow query detected: {execution_time:.2f}s",
-                extra={"execution_time": execution_time}
-            )
+            logger.warning(f"Slow query detected: {execution_time:.2f}s", extra={"execution_time": execution_time})
 
     @staticmethod
     def monitor(query_name: str):
@@ -260,31 +233,27 @@ class QueryMonitor:
         Returns:
             Decorator function
         """
+
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 import time
+
                 start_time = time.time()
 
                 try:
-                    result = await func(*args, **kwargs)
-                    return result
+                    return await func(*args, **kwargs)
                 finally:
                     execution_time = time.time() - start_time
 
                     if execution_time > 1.0:  # Log slow queries
                         logger.warning(
                             f"Slow query '{query_name}': {execution_time:.2f}s",
-                            extra={
-                                "query_name": query_name,
-                                "execution_time": execution_time,
-                                "params": kwargs
-                            }
+                            extra={"query_name": query_name, "execution_time": execution_time, "params": kwargs},
                         )
                     else:
-                        logger.debug(
-                            f"Query '{query_name}' executed in {execution_time:.2f}s"
-                        )
+                        logger.debug(f"Query '{query_name}' executed in {execution_time:.2f}s")
 
             return wrapper
+
         return decorator

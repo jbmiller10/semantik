@@ -460,7 +460,7 @@ class TestStatisticsAndMetrics:
     @pytest.mark.asyncio()
     async def test_get_chunking_statistics(self, chunking_service: ChunkingService, mock_db_session: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
-        # Mock aggregated stats query result  
+        # Mock aggregated stats query result
         mock_stats = MagicMock()
         mock_stats.total_operations = 6
         mock_stats.completed_operations = 5
@@ -469,18 +469,18 @@ class TestStatisticsAndMetrics:
         mock_stats.avg_processing_time = 12.5
         mock_stats.last_operation_at = datetime.now(tz=UTC)
         mock_stats.first_operation_at = datetime.now(tz=UTC) - timedelta(hours=2)
-        
+
         # Mock latest strategy query result
         mock_strategy_row = MagicMock()
         mock_strategy_row.strategy = "fixed_size"
-        
+
         # Mock the db query results
         mock_stats_result = MagicMock()
         mock_stats_result.one.return_value = mock_stats
-        
+
         mock_strategy_result = MagicMock()
         mock_strategy_result.one_or_none.return_value = mock_strategy_row
-        
+
         # Set up execute to return different results for each query
         mock_db_session.execute.side_effect = [mock_stats_result, mock_strategy_result]
 

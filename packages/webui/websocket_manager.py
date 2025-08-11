@@ -9,10 +9,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as aioredis
-from fastapi import WebSocket
 
 # Make redis available at module level for backward compatibility with tests
 import redis.asyncio as redis
+from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ class RedisStreamWebSocketManager:
             retry_delay = 1.0  # Initial delay in seconds
 
             import os
-            is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+
+            os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
 
             for attempt in range(max_retries):
                 try:
@@ -59,6 +60,7 @@ class RedisStreamWebSocketManager:
 
                     # Always use from_url with retries; tests patch this call
                     from packages.shared.config import settings as _settings
+
                     redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
                     redis_client = await redis.from_url(redis_url, decode_responses=True)
 

@@ -35,6 +35,7 @@ try:
         DomainException,
         InfrastructureException,
     )
+
     INFRASTRUCTURE_AVAILABLE = True
 except ImportError:
     INFRASTRUCTURE_AVAILABLE = False
@@ -42,10 +43,13 @@ except ImportError:
 try:
     from packages.webui.middleware.correlation import get_or_generate_correlation_id
 except ImportError:
+
     def get_or_generate_correlation_id(request: Request) -> str:
         """Fallback correlation ID generator."""
         import uuid
+
         return request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +69,12 @@ def _sanitize_error_detail(detail: str, is_production: bool = False) -> str:
 
     # Patterns to sanitize
     sanitize_patterns = [
-        (r'/[^\s]+\.(env|config|key|pem)', '[REDACTED]'),  # File paths with sensitive extensions
-        (r'/etc/[^\s]+', '[REDACTED]'),  # System config files
-        (r'/home/[^\s]+', '[REDACTED]'),  # User home directories
-        (r'(postgres|mysql|mongodb)://[^\s]+', '[REDACTED]'),  # Connection strings
-        (r'(api_key|token|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', '[REDACTED]'),  # Credentials
-        (r'\b(sk-[a-zA-Z0-9]+|key-[a-zA-Z0-9]+)\b', '[REDACTED]'),  # API keys
+        (r"/[^\s]+\.(env|config|key|pem)", "[REDACTED]"),  # File paths with sensitive extensions
+        (r"/etc/[^\s]+", "[REDACTED]"),  # System config files
+        (r"/home/[^\s]+", "[REDACTED]"),  # User home directories
+        (r"(postgres|mysql|mongodb)://[^\s]+", "[REDACTED]"),  # Connection strings
+        (r'(api_key|token|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', "[REDACTED]"),  # Credentials
+        (r"\b(sk-[a-zA-Z0-9]+|key-[a-zA-Z0-9]+)\b", "[REDACTED]"),  # API keys
     ]
 
     sanitized = detail
@@ -136,9 +140,8 @@ def _create_error_response(
 
 
 if INFRASTRUCTURE_AVAILABLE:
-    async def handle_chunking_exception(
-        request: Request, exc: BaseChunkingException
-    ) -> JSONResponse:
+
+    async def handle_chunking_exception(request: Request, exc: BaseChunkingException) -> JSONResponse:
         """Handle all chunking exceptions using the infrastructure translator.
 
         Args:
@@ -156,7 +159,7 @@ if INFRASTRUCTURE_AVAILABLE:
             extra={
                 "correlation_id": correlation_id,
                 "exception_type": exc.__class__.__name__,
-                "details": exc.to_dict() if hasattr(exc, 'to_dict') else str(exc),
+                "details": exc.to_dict() if hasattr(exc, "to_dict") else str(exc),
             },
         )
 
@@ -164,9 +167,7 @@ if INFRASTRUCTURE_AVAILABLE:
         return exception_translator.create_error_response(exc, correlation_id)
 
 
-async def handle_application_exception(
-    request: Request, exc: ApplicationException
-) -> JSONResponse:
+async def handle_application_exception(request: Request, exc: ApplicationException) -> JSONResponse:
     """Handle application-level exceptions.
 
     Args:
@@ -176,7 +177,7 @@ async def handle_application_exception(
     Returns:
         JSON response with structured error information
     """
-    correlation_id = get_or_generate_correlation_id(request)
+    get_or_generate_correlation_id(request)
 
     # Translate to HTTP exception and get status code
     http_exc = exception_translator.translate_application_to_api(exc)
@@ -187,9 +188,7 @@ async def handle_application_exception(
     )
 
 
-async def handle_domain_exception(
-    request: Request, exc: DomainException
-) -> JSONResponse:
+async def handle_domain_exception(request: Request, exc: DomainException) -> JSONResponse:
     """Handle domain-level exceptions.
 
     Args:
@@ -213,9 +212,7 @@ async def handle_domain_exception(
     )
 
 
-async def handle_infrastructure_exception(
-    request: Request, exc: InfrastructureException
-) -> JSONResponse:
+async def handle_infrastructure_exception(request: Request, exc: InfrastructureException) -> JSONResponse:
     """Handle infrastructure-level exceptions.
 
     Args:
@@ -225,12 +222,10 @@ async def handle_infrastructure_exception(
     Returns:
         JSON response with structured error information
     """
-    correlation_id = get_or_generate_correlation_id(request)
+    get_or_generate_correlation_id(request)
 
     # Translate infrastructure to application exception
-    app_exc = exception_translator.translate_infrastructure_to_application(
-        exc, {"request_path": str(request.url)}
-    )
+    app_exc = exception_translator.translate_infrastructure_to_application(exc, {"request_path": str(request.url)})
 
     # Then translate to HTTP
     http_exc = exception_translator.translate_application_to_api(app_exc)

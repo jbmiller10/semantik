@@ -305,7 +305,9 @@ async def generate_preview(
     try:
         # Basic validation to align with tests
         if not (preview_request.content or preview_request.document_id):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="document_id or content must be provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="document_id or content must be provided"
+            )
         if preview_request.content is not None:
             if "\x00" in preview_request.content:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content contains null bytes")
@@ -346,7 +348,7 @@ async def generate_preview(
 
     except ApplicationException as e:
         # Translate to HTTP exception
-        raise exception_translator.translate_application_to_api(e)
+        raise exception_translator.translate_application_to_api(e) from e
 
     except HTTPException:
         # Allow explicit HTTP errors to bubble up (e.g., our validations)
@@ -367,7 +369,7 @@ async def generate_preview(
                     "correlation_id": correlation_id,
                 }
             },
-        )
+        ) from None
 
 
 @router.post(
@@ -408,7 +410,11 @@ async def compare_strategies(
                 strategy=strategy,
                 content=compare_request.content or "",
                 document_id=compare_request.document_id,
-                config_overrides=(compare_request.configs.get(strategy).model_dump() if compare_request.configs and strategy in compare_request.configs else None),
+                config_overrides=(
+                    compare_request.configs.get(strategy).model_dump()
+                    if compare_request.configs and strategy in compare_request.configs
+                    else None
+                ),
                 user_id=current_user.get("id") if current_user else None,
                 correlation_id=str(uuid.uuid4()),
             )
@@ -443,7 +449,9 @@ async def compare_strategies(
             recommended_strategy=best_strategy or compare_request.strategies[0],
             confidence=(best_quality if best_quality >= 0 else best_conf),
             reasoning="Selected strategy with higher quality score",
-            alternative_strategies=[s for s in compare_request.strategies if s != (best_strategy or compare_request.strategies[0])],
+            alternative_strategies=[
+                s for s in compare_request.strategies if s != (best_strategy or compare_request.strategies[0])
+            ],
             suggested_config=ChunkingConfigBase(strategy=(best_strategy or compare_request.strategies[0])),
         )
 
@@ -647,7 +655,7 @@ async def start_chunking_operation(
         raise
     except ApplicationException as e:
         # Translate to HTTP exception
-        raise exception_translator.translate_application_to_api(e)
+        raise exception_translator.translate_application_to_api(e) from e
     except ValidationException as e:
         # Return 400 for validation errors
         raise HTTPException(

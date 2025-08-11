@@ -143,7 +143,6 @@ class TestMemoryPool:
 
         # Acquire, modify, and release
         buffer_id, buffer = pool.acquire_sync()
-        original_id = buffer_id
         pool.release(buffer_id)
 
         # Acquire again - should get a buffer (may be same or new)

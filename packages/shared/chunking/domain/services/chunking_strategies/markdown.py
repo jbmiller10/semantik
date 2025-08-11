@@ -41,12 +41,12 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
         # Define safe patterns using RE2-compatible syntax
         self.patterns = {
             # Use atomic groups and possessive quantifiers where possible
-            'heading': r'^#{1,6}\s+\S.*$',  # Non-greedy, bounded
-            'code_block_start': r'^```[^`\n]*$',  # Simple code block detection
-            'list_item': r'^[\*\-\+]\s+\S.*$',  # Bounded list item
-            'numbered_list': r'^\d+\.\s+\S.*$',  # Numbered list item
-            'blockquote': r'^>\s*\S.*$',  # Bounded blockquote
-            'horizontal_rule': r'^(?:---|\*\*\*|___)$',  # Fixed alternatives
+            "heading": r"^#{1,6}\s+\S.*$",  # Non-greedy, bounded
+            "code_block_start": r"^```[^`\n]*$",  # Simple code block detection
+            "list_item": r"^[\*\-\+]\s+\S.*$",  # Bounded list item
+            "numbered_list": r"^\d+\.\s+\S.*$",  # Numbered list item
+            "blockquote": r"^>\s*\S.*$",  # Bounded blockquote
+            "horizontal_rule": r"^(?:---|\*\*\*|___)$",  # Fixed alternatives
         }
 
         # Compile all patterns with safety checks
@@ -213,10 +213,11 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
             is_list_item = False
             try:
                 # Check for bullet list
-                if self.compiled_patterns['list_item'] and self.safe_regex.match_with_timeout(
-                    self.patterns['list_item'], line, timeout=0.05
-                ) or self.compiled_patterns['numbered_list'] and self.safe_regex.match_with_timeout(
-                    self.patterns['numbered_list'], line, timeout=0.05
+                if (
+                    self.compiled_patterns["list_item"]
+                    and self.safe_regex.match_with_timeout(self.patterns["list_item"], line, timeout=0.05)
+                    or self.compiled_patterns["numbered_list"]
+                    and self.safe_regex.match_with_timeout(self.patterns["numbered_list"], line, timeout=0.05)
                 ):
                     is_list_item = True
             except RegexTimeout:
@@ -235,13 +236,22 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
                     try:
                         # Check if next line is also a list item
-                        if (self.compiled_patterns['list_item'] and
-                            self.safe_regex.match_with_timeout(
-                                self.patterns['list_item'], next_line, timeout=0.05
-                        )) or (self.compiled_patterns['numbered_list'] and
-                              self.safe_regex.match_with_timeout(
-                                  self.patterns['numbered_list'], next_line, timeout=0.05
-                        )) or next_line.startswith("  ") and next_line.strip():
+                        if (
+                            (
+                                self.compiled_patterns["list_item"]
+                                and self.safe_regex.match_with_timeout(
+                                    self.patterns["list_item"], next_line, timeout=0.05
+                                )
+                            )
+                            or (
+                                self.compiled_patterns["numbered_list"]
+                                and self.safe_regex.match_with_timeout(
+                                    self.patterns["numbered_list"], next_line, timeout=0.05
+                                )
+                            )
+                            or next_line.startswith("  ")
+                            and next_line.strip()
+                        ):
                             is_continuation = True
                     except RegexTimeout:
                         is_continuation = False
@@ -290,8 +300,8 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
             # Check for horizontal rules (using safe pattern)
             is_hr = False
             try:
-                if self.compiled_patterns['horizontal_rule'] and self.safe_regex.match_with_timeout(
-                    self.patterns['horizontal_rule'], line.strip(), timeout=0.05
+                if self.compiled_patterns["horizontal_rule"] and self.safe_regex.match_with_timeout(
+                    self.patterns["horizontal_rule"], line.strip(), timeout=0.05
                 ):
                     is_hr = True
             except RegexTimeout:
@@ -357,19 +367,19 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
         # Lists (using safe patterns)
         try:
-            if self.compiled_patterns['list_item'] and self.safe_regex.match_with_timeout(
-                self.patterns['list_item'], stripped, timeout=0.01
+            if self.compiled_patterns["list_item"] and self.safe_regex.match_with_timeout(
+                self.patterns["list_item"], stripped, timeout=0.01
             ):
                 return True
-            if self.compiled_patterns['numbered_list'] and self.safe_regex.match_with_timeout(
-                self.patterns['numbered_list'], stripped, timeout=0.01
+            if self.compiled_patterns["numbered_list"] and self.safe_regex.match_with_timeout(
+                self.patterns["numbered_list"], stripped, timeout=0.01
             ):
                 return True
         except RegexTimeout:
             # If regex times out, check with simple string operations
-            if stripped and stripped[0] in '-*+' and len(stripped) > 2 and stripped[1] == ' ':
+            if stripped and stripped[0] in "-*+" and len(stripped) > 2 and stripped[1] == " ":
                 return True
-            if stripped and stripped[0].isdigit() and '. ' in stripped[:4]:
+            if stripped and stripped[0].isdigit() and ". " in stripped[:4]:
                 return True
 
         # Code blocks
@@ -382,13 +392,13 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
 
         # Horizontal rules (using safe pattern)
         try:
-            if self.compiled_patterns['horizontal_rule'] and self.safe_regex.match_with_timeout(
-                self.patterns['horizontal_rule'], stripped, timeout=0.01
+            if self.compiled_patterns["horizontal_rule"] and self.safe_regex.match_with_timeout(
+                self.patterns["horizontal_rule"], stripped, timeout=0.01
             ):
                 return True
         except RegexTimeout:
             # Simple check for horizontal rules
-            if stripped in ['---', '***', '___']:
+            if stripped in ["---", "***", "___"]:
                 return True
 
         return False

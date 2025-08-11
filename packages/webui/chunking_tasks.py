@@ -598,7 +598,7 @@ def _process_chunking_operation_sync(
     # Track resources
     process = psutil.Process()
     initial_memory = process.memory_info().rss
-    initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+    process.cpu_times().user + process.cpu_times().system
 
     # Store task ID immediately
     task_id = current_task.request.id if current_task else str(uuid.uuid4())
@@ -613,7 +613,7 @@ def _process_chunking_operation_sync(
                 "status": "processing",
                 "task_id": task_id,
                 "started_at": datetime.now(UTC).isoformat(),
-            }
+            },
         )
 
         # Send progress update via Redis
@@ -655,7 +655,7 @@ def _process_chunking_operation_sync(
                     "completed_at": datetime.now(UTC).isoformat(),
                     "chunks_created": "0",
                     "documents_processed": "0",
-                }
+                },
             )
             return {
                 "operation_id": operation_id,
@@ -700,7 +700,7 @@ def _process_chunking_operation_sync(
 
                     # Decode content if needed
                     if isinstance(doc_content, bytes):
-                        doc_content = doc_content.decode('utf-8')
+                        doc_content = doc_content.decode("utf-8")
 
                     # Simple chunking logic (character-based with overlap)
                     doc_chunks = []
@@ -712,17 +712,19 @@ def _process_chunking_operation_sync(
 
                         if chunk_text.strip():  # Only add non-empty chunks
                             chunk_id = f"{doc_id}_chunk_{len(doc_chunks):04d}"
-                            doc_chunks.append({
-                                "id": chunk_id,
-                                "content": chunk_text,
-                                "metadata": {
-                                    "document_id": doc_id.decode() if isinstance(doc_id, bytes) else doc_id,
-                                    "chunk_index": len(doc_chunks),
-                                    "chunk_start": chunk_start,
-                                    "chunk_end": chunk_end,
-                                    "strategy": strategy,
+                            doc_chunks.append(
+                                {
+                                    "id": chunk_id,
+                                    "content": chunk_text,
+                                    "metadata": {
+                                        "document_id": doc_id.decode() if isinstance(doc_id, bytes) else doc_id,
+                                        "chunk_index": len(doc_chunks),
+                                        "chunk_start": chunk_start,
+                                        "chunk_end": chunk_end,
+                                        "strategy": strategy,
+                                    },
                                 }
-                            })
+                            )
 
                     # Store chunks in Redis
                     for chunk in doc_chunks:
@@ -734,7 +736,7 @@ def _process_chunking_operation_sync(
                                 "document_id": chunk["metadata"]["document_id"],
                                 "chunk_index": str(chunk["metadata"]["chunk_index"]),
                                 "created_at": datetime.now(UTC).isoformat(),
-                            }
+                            },
                         )
                         # Add to operation's chunk list
                         redis_client.rpush(f"operation:{operation_id}:chunks", chunk["id"])
@@ -768,7 +770,7 @@ def _process_chunking_operation_sync(
                 "chunks_created": str(chunks_created),
                 "documents_processed": str(documents_processed),
                 "documents_failed": str(len(failed_documents)),
-            }
+            },
         )
 
         # Store failed documents for potential retry
@@ -803,7 +805,7 @@ def _process_chunking_operation_sync(
                 "error": str(exc),
                 "error_type": type(exc).__name__,
                 "failed_at": datetime.now(UTC).isoformat(),
-            }
+            },
         )
 
         # Re-raise with appropriate exception type
@@ -1180,7 +1182,7 @@ def _handle_soft_timeout_sync(
                 "task_id": celery_task.request.id,
                 "timestamp": datetime.now(UTC).isoformat(),
                 "correlation_id": correlation_id,
-            }
+            },
         )
 
         logger.info(
@@ -1234,7 +1236,7 @@ def _send_progress_update_sync(
                 "progress": str(progress),
                 "message": message,
                 "updated_at": datetime.now(UTC).isoformat(),
-            }
+            },
         )
 
     except Exception as e:

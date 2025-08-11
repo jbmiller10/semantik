@@ -6,30 +6,33 @@ strategy management, preview operations, collection processing, and analytics.
 """
 
 import os
+
 # Disable rate limiting for tests BEFORE importing the app
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
+# Mock background tasks and Redis manager BEFORE importing the app
+import packages.webui.background_tasks as bg_tasks
+from packages.shared.config import settings
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 
-# Mock background tasks and Redis manager BEFORE importing the app
-import packages.webui.background_tasks as bg_tasks
 bg_tasks.start_background_tasks = AsyncMock()
 bg_tasks.stop_background_tasks = AsyncMock()
 
 import packages.webui.services.factory as factory_module
+
 factory_module._redis_manager = Mock(async_client=AsyncMock(return_value=AsyncMock()))
 
 # Lazy imports to avoid initialization issues
@@ -87,15 +90,15 @@ def client(
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
     global app, chunking_module, get_chunking_service, get_collection_service
-    
+
     # Check if already imported
     if app is None:
         # Import app and modules (environment variable already set at module level)
-        from packages.webui.main import app as _app
         import packages.webui.api.v2.chunking as _chunking_module
+        from packages.webui.main import app as _app
         from packages.webui.services.factory import get_chunking_service as _get_chunking_service
         from packages.webui.services.factory import get_collection_service as _get_collection_service
-        
+
         app = _app
         chunking_module = _chunking_module
         get_chunking_service = _get_chunking_service
@@ -134,7 +137,7 @@ class TestStrategyManagement:
                 "pros": ["Fast", "Predictable"],
                 "cons": ["May break mid-sentence"],
                 "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
-                "performance_characteristics": {"speed": "fast", "accuracy": "medium"}
+                "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
             },
             {
                 "id": ChunkingStrategy.RECURSIVE,
@@ -144,7 +147,7 @@ class TestStrategyManagement:
                 "pros": ["Respects sentence boundaries"],
                 "cons": ["Variable chunk sizes"],
                 "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
-                "performance_characteristics": {"speed": "medium", "accuracy": "high"}
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
                 "id": ChunkingStrategy.MARKDOWN,
@@ -154,7 +157,7 @@ class TestStrategyManagement:
                 "pros": ["Preserves structure"],
                 "cons": ["Only for markdown"],
                 "default_config": {"chunk_size": 1000, "chunk_overlap": 0},
-                "performance_characteristics": {"speed": "medium", "accuracy": "high"}
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
                 "id": ChunkingStrategy.SEMANTIC,
@@ -164,7 +167,7 @@ class TestStrategyManagement:
                 "pros": ["Best context preservation"],
                 "cons": ["Slower", "Requires embeddings"],
                 "default_config": {"buffer_size": 1, "breakpoint_threshold": 95},
-                "performance_characteristics": {"speed": "slow", "accuracy": "very_high"}
+                "performance_characteristics": {"speed": "slow", "accuracy": "very_high"},
             },
             {
                 "id": ChunkingStrategy.HIERARCHICAL,
@@ -174,7 +177,7 @@ class TestStrategyManagement:
                 "pros": ["Multiple granularities"],
                 "cons": ["Complex", "More storage"],
                 "default_config": {"chunk_sizes": [2048, 512, 128]},
-                "performance_characteristics": {"speed": "slow", "accuracy": "high"}
+                "performance_characteristics": {"speed": "slow", "accuracy": "high"},
             },
             {
                 "id": ChunkingStrategy.HYBRID,
@@ -184,8 +187,8 @@ class TestStrategyManagement:
                 "pros": ["Adaptive", "Best overall"],
                 "cons": ["Overhead from analysis"],
                 "default_config": {},
-                "performance_characteristics": {"speed": "variable", "accuracy": "high"}
-            }
+                "performance_characteristics": {"speed": "variable", "accuracy": "high"},
+            },
         ]
 
         mock_chunking_service.get_available_strategies.return_value = mock_strategies

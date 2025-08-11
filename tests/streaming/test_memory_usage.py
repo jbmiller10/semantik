@@ -116,11 +116,7 @@ class TestMemoryUsage:
     async def test_memory_pool_limits(self) -> None:
         """Test memory pool enforces size limits."""
         # Create pool with exact max size to test exhaustion
-        pool = MemoryPool(
-            buffer_size=1024, 
-            pool_size=5,
-            max_size=5 * 1024  # Set max_size to exactly 5KB
-        )
+        pool = MemoryPool(buffer_size=1024, pool_size=5, max_size=5 * 1024)  # Set max_size to exactly 5KB
 
         # Total available memory should be limited
         assert pool.max_size == 1024 * 5

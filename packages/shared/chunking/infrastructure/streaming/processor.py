@@ -150,9 +150,7 @@ class StreamingDocumentProcessor:
                     await self._manage_backpressure()
 
                     # Use context manager for safe buffer acquisition
-                    async with self.memory_pool.acquire_async(
-                        size=self.BUFFER_SIZE, timeout=10.0
-                    ) as managed_buffer:
+                    async with self.memory_pool.acquire_async(size=self.BUFFER_SIZE, timeout=10.0) as managed_buffer:
                         buffer = managed_buffer.data
 
                         # Read chunk with size limit

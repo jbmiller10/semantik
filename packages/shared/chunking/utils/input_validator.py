@@ -26,9 +26,7 @@ class ChunkingInputValidator:
         """
         # Check size first
         if len(text) > cls.MAX_DOCUMENT_SIZE:
-            raise ValueError(
-                f"Document too large: {len(text)} > {cls.MAX_DOCUMENT_SIZE}"
-            )
+            raise ValueError(f"Document too large: {len(text)} > {cls.MAX_DOCUMENT_SIZE}")
 
         # Check for binary content early
         if "\x00" in text or "\xff" in text:
@@ -38,9 +36,7 @@ class ChunkingInputValidator:
         lines = text.split("\n")
         for i, line in enumerate(lines):
             if len(line) > cls.MAX_LINE_LENGTH:
-                raise ValueError(
-                    f"Line {i} too long: {len(line)} > {cls.MAX_LINE_LENGTH}"
-                )
+                raise ValueError(f"Line {i} too long: {len(line)} > {cls.MAX_LINE_LENGTH}")
 
         # Check for ReDoS triggers last (most expensive check)
         if cls._contains_redos_triggers(text):
@@ -85,9 +81,7 @@ class ChunkingInputValidator:
         text = re.sub(r"[*#\-]{20,}", "*" * 19, text)
 
         # Remove excessive repeated characters
-        text = re.sub(r"(.)\1{99,}", r"\1" * 99, text)
-
-        return text
+        return re.sub(r"(.)\1{99,}", r"\1" * 99, text)
 
     @classmethod
     def _contains_redos_triggers(cls, text: str) -> bool:
@@ -119,20 +113,16 @@ class ChunkingInputValidator:
 
         # Check for specific patterns using simple string operations
         # Check for excessive 'a' characters (common ReDoS payload)
-        if text.count('a') > 1000 and 'a' * 1000 in text:
+        if text.count("a") > 1000 and "a" * 1000 in text:
             return True
 
         # Check for excessive whitespace
-        if '  ' * 500 in text or '\n' * 500 in text:
+        if "  " * 500 in text or "\n" * 500 in text:
             return True
 
         # Check for excessive special characters in sequence
-        special_chars = ['*', '+', '?', '{', '}', '[', ']', '(', ')']
-        for char in special_chars:
-            if char * 100 in text:
-                return True
-
-        return False
+        special_chars = ["*", "+", "?", "{", "}", "[", "]", "(", ")"]
+        return any(char * 100 in text for char in special_chars)
 
     @classmethod
     def _has_excessive_repetition(cls, text: str) -> bool:
@@ -188,7 +178,7 @@ class ChunkingInputValidator:
         # Look for sequences of quantifier characters
         quantifier_sequences = 0
         for i in range(len(text) - 2):
-            if text[i:i+3] in ['***', '+++', '???', '*+?', '+*?', '?*+']:
+            if text[i : i + 3] in ["***", "+++", "???", "*+?", "+*?", "?*+"]:
                 quantifier_sequences += 1
                 if quantifier_sequences > 5:  # Multiple sequences found
                     risk_score += 1

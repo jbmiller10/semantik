@@ -152,7 +152,7 @@ class ChunkingInputValidator:
                 reason=f"Encoding error: {str(e)}",
                 correlation_id=correlation_id,
                 cause=e,
-            )
+            ) from e
 
     @classmethod
     def validate_chunk_size(cls, chunk_size: int, correlation_id: str) -> None:

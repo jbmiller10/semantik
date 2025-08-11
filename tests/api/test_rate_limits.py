@@ -16,6 +16,8 @@ from slowapi.errors import RateLimitExceeded
 
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.rate_limiter import circuit_breaker
+from packages.webui.main import app
+from packages.webui.services.factory import get_chunking_service
 
 
 @pytest.fixture()
@@ -60,7 +62,7 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
     """Test that preview endpoint enforces rate limits."""
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
-    
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -74,13 +76,13 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
         }
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
-    
+
     # Override the dependency at the app level
     async def override_get_chunking_service():
         return mock_chunking_service
-    
+
     app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-    
+
     try:
         # Make requests up to the limit (10 per minute for preview)
         preview_data = {
@@ -121,7 +123,7 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
     """Test that compare endpoint enforces stricter rate limits."""
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
-    
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -138,13 +140,13 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
             "processing_time_ms": 100,
         }
     )
-    
+
     # Override the dependency at the app level
     async def override_get_chunking_service():
         return mock_chunking_service
-    
+
     app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-    
+
     try:
         # Compare endpoint has 5 requests per minute limit
         compare_data = {
@@ -176,7 +178,7 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
     """Test that admin bypass token allows unlimited requests."""
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
-    
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -190,13 +192,13 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
         }
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
-    
+
     # Override the dependency at the app level
     async def override_get_chunking_service():
         return mock_chunking_service
-    
+
     app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-    
+
     try:
         # Use bypass token in Authorization header
         headers = {"Authorization": f"Bearer {bypass_token}"}
@@ -274,7 +276,7 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
     mock_redis_client = AsyncMock()
     mock_redis_manager = AsyncMock()
     mock_redis_manager.async_client = AsyncMock(return_value=mock_redis_client)
-    
+
     # Mock the chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -288,13 +290,13 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
         }
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
-    
+
     # Override the dependency at the app level
     async def override_get_chunking_service():
         return mock_chunking_service
-    
+
     app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-    
+
     try:
         preview_data = {
             "content": "Test content",
@@ -363,7 +365,7 @@ async def test_different_users_have_separate_limits(
     """Test that different users have independent rate limits."""
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
-    
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -377,13 +379,13 @@ async def test_different_users_have_separate_limits(
         }
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
-    
+
     # Override the dependency at the app level
     async def override_get_chunking_service():
         return mock_chunking_service
-    
+
     app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-    
+
     try:
         preview_data = {
             "content": "Test content",
@@ -424,12 +426,12 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
     """Test fallback behavior when Redis is unavailable."""
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
-    
+
     # Simulate Redis connection failure
     with patch("packages.webui.rate_limiter.limiter") as mock_limiter:
         # Configure mock to simulate Redis being down but fallback working
         mock_limiter.limit.return_value = lambda f: f  # Pass through decorator
-        
+
         # Create a mock chunking service
         mock_chunking_service = AsyncMock()
         mock_chunking_service.preview_chunking = AsyncMock(
@@ -443,13 +445,13 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
             }
         )
         mock_chunking_service.track_preview_usage = AsyncMock()
-        
+
         # Override the dependency at the app level
         async def override_get_chunking_service():
             return mock_chunking_service
-        
+
         app.dependency_overrides[get_chunking_service] = override_get_chunking_service
-        
+
         try:
             preview_data = {
                 "content": "Test content",

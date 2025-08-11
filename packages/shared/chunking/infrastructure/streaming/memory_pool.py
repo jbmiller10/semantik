@@ -70,10 +70,7 @@ class ManagedBuffer:
         if not self._released:
             pool = self.pool()
             if pool:
-                logger.warning(
-                    f"Buffer {self.buffer_id} released by garbage collector - "
-                    "possible leak detected"
-                )
+                logger.warning(f"Buffer {self.buffer_id} released by garbage collector - " "possible leak detected")
                 pool._force_release(self.buffer_id)
 
     def release(self):
@@ -196,9 +193,7 @@ class MemoryPool:
 
                 # Check timeout
                 if time.time() - start_time > timeout:
-                    raise TimeoutError(
-                        f"Failed to acquire buffer of size {size} after {timeout}s"
-                    )
+                    raise TimeoutError(f"Failed to acquire buffer of size {size} after {timeout}s")
 
                 # Wait before retry
                 time.sleep(0.1)
@@ -266,18 +261,14 @@ class MemoryPool:
                     # Wait for buffer to become available
                     self._allocation_event.clear()
                     try:
-                        await asyncio.wait_for(
-                            self._allocation_event.wait(), timeout=1.0
-                        )
+                        await asyncio.wait_for(self._allocation_event.wait(), timeout=1.0)
                     except TimeoutError:
                         continue  # Check again
 
             yield managed_buffer
 
         except TimeoutError as e:
-            raise TimeoutError(
-                f"Failed to acquire buffer of size {size} after {timeout}s"
-            ) from e
+            raise TimeoutError(f"Failed to acquire buffer of size {size} after {timeout}s") from e
 
         finally:
             # Always release buffer
@@ -301,9 +292,7 @@ class MemoryPool:
         Note:
             This method is deprecated. Use acquire_async context manager instead.
         """
-        logger.warning(
-            "Using deprecated acquire() method. Please use acquire_async() context manager."
-        )
+        logger.warning("Using deprecated acquire() method. Please use acquire_async() context manager.")
 
         # Don't use the context manager since it auto-releases
         # Instead, manually acquire the buffer like the old version would
@@ -338,16 +327,12 @@ class MemoryPool:
                     # Wait for buffer to become available
                     self._allocation_event.clear()
                     try:
-                        await asyncio.wait_for(
-                            self._allocation_event.wait(), timeout=1.0
-                        )
+                        await asyncio.wait_for(self._allocation_event.wait(), timeout=1.0)
                     except TimeoutError:
                         continue  # Check again
 
-        except TimeoutError:
-            raise TimeoutError(
-                f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s"
-            )
+        except TimeoutError as e:
+            raise TimeoutError(f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s") from e
 
     def acquire_sync_legacy(self, timeout: float = 5.0) -> tuple[str, bytearray]:
         """
@@ -362,9 +347,7 @@ class MemoryPool:
         Note:
             This method is deprecated. Use acquire_sync_context context manager instead.
         """
-        logger.warning(
-            "Using deprecated acquire_sync() method. Please use acquire_sync_context() context manager."
-        )
+        logger.warning("Using deprecated acquire_sync() method. Please use acquire_sync_context() context manager.")
 
         import time
 
@@ -394,9 +377,7 @@ class MemoryPool:
 
             # Check timeout
             if time.time() - start_time > timeout:
-                raise TimeoutError(
-                    f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s"
-                )
+                raise TimeoutError(f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s")
 
             # Wait before retry
             time.sleep(0.1)
@@ -480,9 +461,7 @@ class MemoryPool:
                     del self._allocations[buffer_id]
 
                 # Remove from free list if present
-                self._free_buffers = {
-                    (size, bid) for size, bid in self._free_buffers if bid != buffer_id
-                }
+                self._free_buffers = {(size, bid) for size, bid in self._free_buffers if bid != buffer_id}
 
                 self.leak_count += 1
 
@@ -574,9 +553,7 @@ class MemoryPool:
                 "release_count": self.release_count,
                 "leak_count": self.leak_count,
                 "reuse_count": self.reuse_count,
-                "reuse_rate": (
-                    (self.reuse_count / max(self.allocation_count, 1)) * 100
-                ),
+                "reuse_rate": ((self.reuse_count / max(self.allocation_count, 1)) * 100),
                 "process_memory_mb": process.memory_info().rss / 1024 / 1024,
                 "oldest_allocation_age": self._get_oldest_allocation_age(),
             }
@@ -634,9 +611,7 @@ class MemoryPool:
         """
         with self._lock:
             if self._allocations:
-                raise RuntimeError(
-                    f"Cannot clear pool: {len(self._allocations)} buffers still in use"
-                )
+                raise RuntimeError(f"Cannot clear pool: {len(self._allocations)} buffers still in use")
 
             # Clear all buffers
             self._buffers.clear()
@@ -718,10 +693,10 @@ class MemoryPool:
         """
         Synchronous acquire for backward compatibility.
         This is the non-context-manager version.
-        
+
         Args:
             timeout: Maximum time to wait for buffer
-            
+
         Returns:
             Tuple of (buffer_id, buffer)
         """
@@ -735,6 +710,4 @@ class MemoryPool:
         """Context manager exit - ensure all buffers returned."""
         if self._allocations:
             # Log warning but don't raise - buffers will be GC'd
-            logger.warning(
-                f"MemoryPool exiting with {len(self._allocations)} buffers still in use"
-            )
+            logger.warning(f"MemoryPool exiting with {len(self._allocations)} buffers still in use")

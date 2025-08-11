@@ -113,8 +113,6 @@ class ChunkingService:
         "semantic": "semantic",
         "recursive": "recursive",
         "document_structure": "markdown",
-        "markdown": "markdown",
-        "hierarchical": "hierarchical",
         "hybrid": "hybrid",
     }
 
@@ -167,17 +165,19 @@ class ChunkingService:
             # Get compatibility info from factory
             strategy_info = self.strategy_factory.get_strategy_info(strategy)
 
-            strategies.append({
-                "id": strategy.value,
-                "name": strategy_def.get("name", strategy.value),
-                "description": strategy_def.get("description", ""),
-                "best_for": strategy_def.get("best_for", []),
-                "pros": strategy_def.get("pros", []),
-                "cons": strategy_def.get("cons", []),
-                "default_config": default_config,
-                "performance_characteristics": strategy_def.get("performance_characteristics", {}),
-                "available": strategy_info.get("available", True),
-            })
+            strategies.append(
+                {
+                    "id": strategy.value,
+                    "name": strategy_def.get("name", strategy.value),
+                    "description": strategy_def.get("description", ""),
+                    "best_for": strategy_def.get("best_for", []),
+                    "pros": strategy_def.get("pros", []),
+                    "cons": strategy_def.get("cons", []),
+                    "default_config": default_config,
+                    "performance_characteristics": strategy_def.get("performance_characteristics", {}),
+                    "available": strategy_info.get("available", True),
+                }
+            )
 
         return strategies
 
@@ -389,7 +389,7 @@ class ChunkingService:
                     raise self.exception_translator.translate_infrastructure_to_application(
                         e,
                         {"resource_type": "Document", "resource_id": document_id},
-                    )
+                    ) from e
 
             # Validate content size
             if content and len(content) > 10_000_000:  # 10MB limit
@@ -432,7 +432,7 @@ class ChunkingService:
                 raise self.exception_translator.translate_domain_to_application(
                     e,
                     correlation_id,
-                )
+                ) from e
             except Exception as e:
                 raise ChunkingStrategyError(
                     strategy=str(strategy),
@@ -454,7 +454,7 @@ class ChunkingService:
                 raise self.exception_translator.translate_domain_to_application(
                     e,
                     correlation_id,
-                )
+                ) from e
             except TimeoutError as e:
                 raise ChunkingStrategyError(
                     strategy=str(strategy),
@@ -610,12 +610,12 @@ class ChunkingService:
             # Extract text content from chunk entities
             chunk_texts = [chunk.content for chunk in chunks]
 
-        except TimeoutError:
+        except TimeoutError as e:
             raise ChunkingStrategyError(
                 strategy=str(strategy_name),
                 reason="Chunking operation timed out",
                 correlation_id=str(uuid.uuid4()),
-            )
+            ) from e
         except Exception as e:
             logger.warning(f"Strategy failed, falling back: {e}")
             # Fallback to simple chunking
@@ -649,9 +649,7 @@ class ChunkingService:
             "expires_at": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
         }
 
-    def _simple_chunk_fallback(
-        self, content: str, chunk_size: int, chunk_overlap: int
-    ) -> list[str]:
+    def _simple_chunk_fallback(self, content: str, chunk_size: int, chunk_overlap: int) -> list[str]:
         """Simple fallback chunking."""
         chunks = []
         if chunk_overlap >= chunk_size:
@@ -684,7 +682,7 @@ class ChunkingService:
         variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0
 
         # Simple quality score based on consistency
-        quality_score = 1.0 - min(1.0, variance / (avg_size ** 2)) if avg_size > 0 else 0.0
+        quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
 
         return {
             "total_chunks": len(chunks),
@@ -695,9 +693,7 @@ class ChunkingService:
             "quality_score": quality_score,
         }
 
-    async def _cache_preview_result(
-        self, result: dict[str, Any], strategy: str
-    ) -> str:
+    async def _cache_preview_result(self, result: dict[str, Any], strategy: str) -> str:
         """Cache preview result and return preview ID."""
         preview_id = str(uuid.uuid4())
 
@@ -980,7 +976,7 @@ class ChunkingService:
                         sizes = [chunk.get("size", len(chunk.get("content", ""))) for chunk in chunks]
                         avg_size = sum(sizes) / len(sizes) if sizes else 0
                         variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0
-                        quality_score = 1.0 - min(1.0, variance / (avg_size ** 2)) if avg_size > 0 else 0.0
+                        quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
                     else:
                         avg_size = 0
                         variance = 0
@@ -1011,19 +1007,21 @@ class ChunkingService:
             except Exception as e:
                 logger.warning(f"Failed to process strategy {strategy}: {e}")
                 # Add failed strategy with error info
-                comparisons.append({
-                    "strategy": strategy,
-                    "config": self._get_default_config(strategy.value) if hasattr(strategy, "value") else {},
-                    "sample_chunks": [],
-                    "total_chunks": 0,
-                    "avg_chunk_size": 0,
-                    "size_variance": 0,
-                    "quality_score": 0,
-                    "processing_time_ms": 0,
-                    "pros": [],
-                    "cons": [],
-                    "error": str(e),
-                })
+                comparisons.append(
+                    {
+                        "strategy": strategy,
+                        "config": self._get_default_config(strategy.value) if hasattr(strategy, "value") else {},
+                        "sample_chunks": [],
+                        "total_chunks": 0,
+                        "avg_chunk_size": 0,
+                        "size_variance": 0,
+                        "quality_score": 0,
+                        "processing_time_ms": 0,
+                        "pros": [],
+                        "cons": [],
+                        "error": str(e),
+                    }
+                )
 
         # Generate recommendation based on comparison
         if comparisons:
@@ -1041,8 +1039,7 @@ class ChunkingService:
                     "confidence": best_comparison.get("quality_score", 0.5),
                     "reasoning": f"Based on quality score analysis, {best_strategy.value} provides the best chunking for this content",
                     "alternative_strategies": [
-                        c["strategy"] for c in valid_comparisons
-                        if c["strategy"] != best_strategy
+                        c["strategy"] for c in valid_comparisons if c["strategy"] != best_strategy
                     ],
                     "suggested_config": best_comparison.get("config", {}),
                 }
@@ -1206,15 +1203,17 @@ class ChunkingService:
 
             # In production, would fetch actual metrics from database
             # For now, returning placeholder data
-            metrics.append({
-                "strategy": strategy,
-                "usage_count": 0,
-                "avg_chunk_size": 512,
-                "avg_processing_time": 1.5,
-                "success_rate": 0.95,
-                "avg_quality_score": 0.8,
-                "best_for_types": strategy_def.get("best_for", []),
-            })
+            metrics.append(
+                {
+                    "strategy": strategy,
+                    "usage_count": 0,
+                    "avg_chunk_size": 512,
+                    "avg_processing_time": 1.5,
+                    "success_rate": 0.95,
+                    "avg_quality_score": 0.8,
+                    "best_for_types": strategy_def.get("best_for", []),
+                }
+            )
 
         return metrics
 
@@ -1232,10 +1231,7 @@ class ChunkingService:
 
         # Try to get from cache first if available
         if self.cache_manager:
-            cache_key = self.cache_manager._generate_cache_key(
-                "statistics",
-                {"collection_id": collection_id}
-            )
+            cache_key = self.cache_manager._generate_cache_key("statistics", {"collection_id": collection_id})
             cached = await self.cache_manager.get(cache_key)
             if cached:
                 return cached
@@ -1248,56 +1244,47 @@ class ChunkingService:
 
             # Single aggregation query instead of loading all records
             stats_query = select(
-                func.count(Operation.id).label('total_operations'),
-                func.count(
-                    case(
-                        (Operation.status == 'completed', Operation.id),
-                        else_=None
-                    )
-                ).label('completed_operations'),
-                func.count(
-                    case(
-                        (Operation.status == 'failed', Operation.id),
-                        else_=None
-                    )
-                ).label('failed_operations'),
-                func.count(
-                    case(
-                        (Operation.status == 'processing', Operation.id),
-                        else_=None
-                    )
-                ).label('processing_operations'),
+                func.count(Operation.id).label("total_operations"),
+                func.count(case((Operation.status == "completed", Operation.id), else_=None)).label(
+                    "completed_operations"
+                ),
+                func.count(case((Operation.status == "failed", Operation.id), else_=None)).label("failed_operations"),
+                func.count(case((Operation.status == "processing", Operation.id), else_=None)).label(
+                    "processing_operations"
+                ),
                 func.avg(
                     case(
-                        (and_(Operation.status == 'completed', Operation.completed_at.isnot(None), Operation.started_at.isnot(None)),
-                         func.extract('epoch', Operation.completed_at - Operation.started_at)),
-                        else_=None
+                        (
+                            and_(
+                                Operation.status == "completed",
+                                Operation.completed_at.isnot(None),
+                                Operation.started_at.isnot(None),
+                            ),
+                            func.extract("epoch", Operation.completed_at - Operation.started_at),
+                        ),
+                        else_=None,
                     )
-                ).label('avg_processing_time'),
-                func.max(Operation.created_at).label('last_operation_at'),
-                func.min(Operation.created_at).label('first_operation_at')
-            ).where(
-                and_(
-                    Operation.collection_id == collection_id,
-                    Operation.type == 'chunking'
-                )
-            )
+                ).label("avg_processing_time"),
+                func.max(Operation.created_at).label("last_operation_at"),
+                func.min(Operation.created_at).label("first_operation_at"),
+            ).where(and_(Operation.collection_id == collection_id, Operation.type == "chunking"))
 
             result = await self.db_session.execute(stats_query)
             stats = result.one()
 
             # Get latest strategy with a separate optimized query
-            latest_strategy_query = select(
-                Operation.config['strategy'].label('strategy')
-            ).where(
-                and_(
-                    Operation.collection_id == collection_id,
-                    Operation.type == 'chunking',
-                    Operation.config.isnot(None)
+            latest_strategy_query = (
+                select(Operation.config["strategy"].label("strategy"))
+                .where(
+                    and_(
+                        Operation.collection_id == collection_id,
+                        Operation.type == "chunking",
+                        Operation.config.isnot(None),
+                    )
                 )
-            ).order_by(
-                Operation.created_at.desc()
-            ).limit(1)
+                .order_by(Operation.created_at.desc())
+                .limit(1)
+            )
 
             strategy_result = await self.db_session.execute(latest_strategy_query)
             latest_strategy_row = strategy_result.one_or_none()
@@ -1317,10 +1304,7 @@ class ChunkingService:
 
             # Cache the result if cache manager is available
             if self.cache_manager:
-                cache_key = self.cache_manager._generate_cache_key(
-                    "statistics",
-                    {"collection_id": collection_id}
-                )
+                cache_key = self.cache_manager._generate_cache_key("statistics", {"collection_id": collection_id})
                 await self.cache_manager.set(cache_key, result, ttl=60)  # Cache for 1 minute
 
             return result
@@ -1390,10 +1374,7 @@ class ChunkingService:
             return None
 
         # Construct cache key with user ID if provided
-        if user_id:
-            cache_key = f"preview:{preview_id}:{user_id}"
-        else:
-            cache_key = f"preview:{preview_id}"
+        cache_key = f"preview:{preview_id}:{user_id}" if user_id else f"preview:{preview_id}"
 
         try:
             data = await self.redis_client.get(cache_key)
@@ -1438,10 +1419,7 @@ class ChunkingService:
             return
 
         # Construct cache key with user ID if provided
-        if user_id:
-            cache_key = f"preview:{preview_id}:{user_id}"
-        else:
-            cache_key = f"preview:{preview_id}"
+        cache_key = f"preview:{preview_id}:{user_id}" if user_id else f"preview:{preview_id}"
 
         try:
             await self.redis_client.setex(

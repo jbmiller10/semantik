@@ -253,4 +253,3 @@ class RedisManager:
         except Exception as e:
             logger.warning("Sync Redis health check failed: %s", e)
             return False
-

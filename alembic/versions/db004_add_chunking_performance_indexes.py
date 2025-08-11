@@ -22,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'db004_add_chunking_indexes'
-down_revision: str | None = 'db003_replace_trigger'
+revision: str = "db004_add_chunking_indexes"
+down_revision: str | None = "db003_replace_trigger"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -37,54 +37,41 @@ def upgrade() -> None:
 
     # Operations table indexes
     op.create_index(
-        'idx_operations_collection_type_status',
-        'operations',
-        ['collection_id', 'type', 'status'],
-        postgresql_using='btree'
+        "idx_operations_collection_type_status",
+        "operations",
+        ["collection_id", "type", "status"],
+        postgresql_using="btree",
     )
 
-    op.create_index(
-        'idx_operations_created_desc',
-        'operations',
-        [sa.text('created_at DESC')],
-        postgresql_using='btree'
-    )
+    op.create_index("idx_operations_created_desc", "operations", [sa.text("created_at DESC")], postgresql_using="btree")
 
     op.create_index(
-        'idx_operations_user_status',
-        'operations',
-        ['user_id', 'status'],
+        "idx_operations_user_status",
+        "operations",
+        ["user_id", "status"],
         postgresql_where=sa.text("status IN ('PROCESSING', 'PENDING')"),
-        postgresql_using='btree'
+        postgresql_using="btree",
     )
 
     # JSONB index for config queries
     op.create_index(
-        'idx_operations_config_strategy',
-        'operations',
+        "idx_operations_config_strategy",
+        "operations",
         [sa.text("(config->>'strategy')")],
-        postgresql_using='btree',
-        postgresql_where=sa.text("config IS NOT NULL")
+        postgresql_using="btree",
+        postgresql_where=sa.text("config IS NOT NULL"),
     )
 
     logger.info("Adding indexes for collections table...")
 
     # Collections table indexes
-    op.create_index(
-        'idx_collections_owner_status',
-        'collections',
-        ['owner_id', 'status'],
-        postgresql_using='btree'
-    )
+    op.create_index("idx_collections_owner_status", "collections", ["owner_id", "status"], postgresql_using="btree")
 
     logger.info("Adding indexes for documents table...")
 
     # Documents table indexes
     op.create_index(
-        'idx_documents_collection_status',
-        'documents',
-        ['collection_id', 'status'],
-        postgresql_using='btree'
+        "idx_documents_collection_status", "documents", ["collection_id", "status"], postgresql_using="btree"
     )
 
     logger.info("Adding partition-specific indexes for chunks table...")
@@ -94,16 +81,20 @@ def upgrade() -> None:
     # Note: Partitions are named with zero-padding (00, 01, ... 99)
     # First check which partitions exist to avoid transaction abort
     conn = op.get_bind()
-    result = conn.execute(sa.text("""
-        SELECT tablename 
-        FROM pg_tables 
-        WHERE schemaname = 'public' 
+    result = conn.execute(
+        sa.text(
+            """
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
         AND tablename LIKE 'chunks_part_%'
-    """))
+    """
+        )
+    )
     existing_partitions = {row[0] for row in result}
 
     for i in range(100):
-        partition_name = f'chunks_part_{i:02d}'
+        partition_name = f"chunks_part_{i:02d}"
 
         # Skip if partition doesn't exist
         if partition_name not in existing_partitions:
@@ -113,35 +104,32 @@ def upgrade() -> None:
         try:
             # Collection + document index for common queries
             op.create_index(
-                f'idx_{partition_name}_collection_document',
+                f"idx_{partition_name}_collection_document",
                 partition_name,
-                ['collection_id', 'document_id'],
-                postgresql_using='btree'
+                ["collection_id", "document_id"],
+                postgresql_using="btree",
             )
 
             # Document + index for ordered chunk retrieval
             op.create_index(
-                f'idx_{partition_name}_document_index',
+                f"idx_{partition_name}_document_index",
                 partition_name,
-                ['document_id', 'chunk_index'],
-                postgresql_using='btree'
+                ["document_id", "chunk_index"],
+                postgresql_using="btree",
             )
 
             # BRIN index for created_at (efficient for time-series data)
             op.create_index(
-                f'idx_{partition_name}_created_brin',
-                partition_name,
-                ['created_at'],
-                postgresql_using='brin'
+                f"idx_{partition_name}_created_brin", partition_name, ["created_at"], postgresql_using="brin"
             )
 
             # Index for chunks without embeddings
             op.create_index(
-                f'idx_{partition_name}_no_embedding',
+                f"idx_{partition_name}_no_embedding",
                 partition_name,
-                ['collection_id', 'id'],
+                ["collection_id", "id"],
                 postgresql_where=sa.text("embedding_vector_id IS NULL"),
-                postgresql_using='btree'
+                postgresql_using="btree",
             )
 
         except Exception as e:
@@ -158,7 +146,7 @@ def upgrade() -> None:
 
     # Analyze all chunk partitions that exist
     for i in range(100):
-        partition_name = f'chunks_part_{i:02d}'
+        partition_name = f"chunks_part_{i:02d}"
         if partition_name in existing_partitions:
             try:
                 op.execute(f"ANALYZE {partition_name}")
@@ -175,45 +163,49 @@ def downgrade() -> None:
     logger.info("Dropping operations table indexes...")
 
     # Drop operations table indexes
-    op.drop_index('idx_operations_collection_type_status', table_name='operations')
-    op.drop_index('idx_operations_created_desc', table_name='operations')
-    op.drop_index('idx_operations_user_status', table_name='operations')
-    op.drop_index('idx_operations_config_strategy', table_name='operations')
+    op.drop_index("idx_operations_collection_type_status", table_name="operations")
+    op.drop_index("idx_operations_created_desc", table_name="operations")
+    op.drop_index("idx_operations_user_status", table_name="operations")
+    op.drop_index("idx_operations_config_strategy", table_name="operations")
 
     logger.info("Dropping collections table indexes...")
 
     # Drop collections table indexes
-    op.drop_index('idx_collections_owner_status', table_name='collections')
+    op.drop_index("idx_collections_owner_status", table_name="collections")
 
     logger.info("Dropping documents table indexes...")
 
     # Drop documents table indexes
-    op.drop_index('idx_documents_collection_status', table_name='documents')
+    op.drop_index("idx_documents_collection_status", table_name="documents")
 
     logger.info("Dropping partition-specific indexes...")
 
     # Check which partitions exist before trying to drop indexes
     conn = op.get_bind()
-    result = conn.execute(sa.text("""
-        SELECT tablename 
-        FROM pg_tables 
-        WHERE schemaname = 'public' 
+    result = conn.execute(
+        sa.text(
+            """
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
         AND tablename LIKE 'chunks_part_%'
-    """))
+    """
+        )
+    )
     existing_partitions = {row[0] for row in result}
 
     # Drop chunk partition indexes
     for i in range(100):
-        partition_name = f'chunks_part_{i:02d}'
+        partition_name = f"chunks_part_{i:02d}"
 
         if partition_name not in existing_partitions:
             continue
 
         try:
-            op.drop_index(f'idx_{partition_name}_collection_document', table_name=partition_name)
-            op.drop_index(f'idx_{partition_name}_document_index', table_name=partition_name)
-            op.drop_index(f'idx_{partition_name}_created_brin', table_name=partition_name)
-            op.drop_index(f'idx_{partition_name}_no_embedding', table_name=partition_name)
+            op.drop_index(f"idx_{partition_name}_collection_document", table_name=partition_name)
+            op.drop_index(f"idx_{partition_name}_document_index", table_name=partition_name)
+            op.drop_index(f"idx_{partition_name}_created_brin", table_name=partition_name)
+            op.drop_index(f"idx_{partition_name}_no_embedding", table_name=partition_name)
         except Exception as e:
             logger.warning(f"Could not drop indexes for partition {partition_name}: {e}")
             continue

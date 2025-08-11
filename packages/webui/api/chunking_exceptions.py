@@ -91,10 +91,7 @@ class ChunkingMemoryError(ChunkingError):
         super().__init__(detail, correlation_id, operation_id, "CHUNKING_MEMORY_EXCEEDED")
         self.memory_used = memory_used
         self.memory_limit = memory_limit
-        self.recovery_hint = (
-            recovery_hint
-            or "Try processing smaller documents or use a more memory-efficient strategy"
-        )
+        self.recovery_hint = recovery_hint or "Try processing smaller documents or use a more memory-efficient strategy"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with memory details."""

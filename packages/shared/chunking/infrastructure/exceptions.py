@@ -23,7 +23,7 @@ class ResourceType(Enum):
     THREADS = "threads"
 
 
-class BaseChunkingException(Exception):
+class BaseChunkingError(Exception):
     """Base exception with context preservation for chunking operations."""
 
     def __init__(
@@ -68,7 +68,7 @@ class BaseChunkingException(Exception):
 
 
 # Domain Layer Exceptions
-class DomainException(BaseChunkingException):
+class DomainException(BaseChunkingError):
     """Base for all domain exceptions."""
 
 
@@ -160,7 +160,7 @@ class ChunkingStrategyError(DomainException):
 
 
 # Application Layer Exceptions
-class ApplicationException(BaseChunkingException):
+class ApplicationException(BaseChunkingError):
     """Base for application layer exceptions."""
 
 
@@ -258,7 +258,7 @@ class PermissionDeniedException(ApplicationException):
 
 
 # Infrastructure Layer Exceptions
-class InfrastructureException(BaseChunkingException):
+class InfrastructureException(BaseChunkingError):
     """Base for infrastructure exceptions."""
 
 
@@ -352,4 +352,3 @@ class StreamingException(InfrastructureException):
             cause=cause,
         )
         self.processor_state = processor_state
-

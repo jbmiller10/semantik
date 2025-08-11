@@ -145,9 +145,7 @@ class ChunkingConfigBuilder:
         }
         return strategy_mapping.get(strategy.lower())
 
-    def _merge_configs(
-        self, default: dict[str, Any], override: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _merge_configs(self, default: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Merge user config with defaults."""
         result = default.copy()
 
@@ -163,9 +161,8 @@ class ChunkingConfigBuilder:
                             value = float(value)
                         elif isinstance(result[key], bool):
                             value = bool(value)
-                        elif isinstance(result[key], list):
-                            if not isinstance(value, list):
-                                value = [value]
+                        elif isinstance(result[key], list) and not isinstance(value, list):
+                            value = [value]
                     except (ValueError, TypeError):
                         continue  # Skip invalid types
 
@@ -176,9 +173,7 @@ class ChunkingConfigBuilder:
 
         return result
 
-    def _validate_config(
-        self, strategy: ChunkingStrategyEnum, config: dict[str, Any]
-    ) -> list[str]:
+    def _validate_config(self, strategy: ChunkingStrategyEnum, config: dict[str, Any]) -> list[str]:
         """Validate configuration for a strategy."""
         errors = []
 
@@ -204,7 +199,11 @@ class ChunkingConfigBuilder:
                 if not 0 <= threshold <= 1:
                     errors.append("similarity_threshold must be between 0 and 1")
 
-            if config.get("min_chunk_size") and config.get("max_chunk_size") and config["min_chunk_size"] > config["max_chunk_size"]:
+            if (
+                config.get("min_chunk_size")
+                and config.get("max_chunk_size")
+                and config["min_chunk_size"] > config["max_chunk_size"]
+            ):
                 errors.append("min_chunk_size must be <= max_chunk_size")
 
         elif strategy == ChunkingStrategyEnum.SLIDING_WINDOW:
@@ -232,9 +231,7 @@ class ChunkingConfigBuilder:
 
         return errors
 
-    def _check_config_warnings(
-        self, strategy: ChunkingStrategyEnum, config: dict[str, Any]
-    ) -> list[str]:
+    def _check_config_warnings(self, strategy: ChunkingStrategyEnum, config: dict[str, Any]) -> list[str]:
         """Check for configuration issues that are warnings, not errors."""
         warnings = []
 
@@ -243,17 +240,21 @@ class ChunkingConfigBuilder:
             warnings.append("Very small chunk_size may impact search quality")
 
         # Check for very large overlap
-        if config.get("chunk_overlap") and config.get("chunk_size") and config["chunk_overlap"] / config["chunk_size"] > 0.5:
+        if (
+            config.get("chunk_overlap")
+            and config.get("chunk_size")
+            and config["chunk_overlap"] / config["chunk_size"] > 0.5
+        ):
             overlap_ratio = config["chunk_overlap"] / config["chunk_size"]
-            warnings.append(
-                f"Large overlap ratio ({overlap_ratio:.1%}) may cause redundancy"
-            )
+            warnings.append(f"Large overlap ratio ({overlap_ratio:.1%}) may cause redundancy")
 
         # Strategy-specific warnings
         if strategy == ChunkingStrategyEnum.SEMANTIC and not config.get("embedding_model"):
             warnings.append("No embedding model specified, using default")
 
-        elif strategy == ChunkingStrategyEnum.HYBRID and config.get("primary_strategy") == config.get("fallback_strategy"):
+        elif strategy == ChunkingStrategyEnum.HYBRID and config.get("primary_strategy") == config.get(
+            "fallback_strategy"
+        ):
             warnings.append("Primary and fallback strategies are the same")
 
         return warnings

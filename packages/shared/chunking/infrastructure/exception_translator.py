@@ -7,7 +7,10 @@ and application exceptions to HTTP exceptions with proper status codes.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
@@ -35,7 +38,6 @@ class ExceptionTranslator:
 
     def __init__(self) -> None:
         """Initialize exception translator with mappings."""
-        from collections.abc import Callable
 
         # Domain to Application mappings
         self.domain_to_app_map: dict[type[Exception], Callable] = {
@@ -117,9 +119,7 @@ class ExceptionTranslator:
 
         return HTTPException(status_code=status_code, detail=detail)
 
-    def translate_infrastructure_to_application(
-        self, exc: Exception, context: dict[str, Any]
-    ) -> ApplicationException:
+    def translate_infrastructure_to_application(self, exc: Exception, context: dict[str, Any]) -> ApplicationException:
         """Translate infrastructure exception to application exception.
 
         Args:
@@ -233,9 +233,7 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _invalid_state_to_app(
-        self, exc: InvalidStateTransition, correlation_id: str | None
-    ) -> ApplicationException:
+    def _invalid_state_to_app(self, exc: InvalidStateTransition, correlation_id: str | None) -> ApplicationException:
         """Translate invalid state transition to application exception."""
         return ApplicationException(
             message=exc.message,
@@ -245,9 +243,7 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _strategy_error_to_app(
-        self, exc: ChunkingStrategyError, correlation_id: str | None
-    ) -> ApplicationException:
+    def _strategy_error_to_app(self, exc: ChunkingStrategyError, correlation_id: str | None) -> ApplicationException:
         """Translate strategy error to application exception."""
         return ApplicationException(
             message=f"Chunking failed: {exc.reason}",
@@ -257,9 +253,7 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _default_domain_to_app(
-        self, exc: DomainException, correlation_id: str | None
-    ) -> ApplicationException:
+    def _default_domain_to_app(self, exc: DomainException, correlation_id: str | None) -> ApplicationException:
         """Default translator for unmapped domain exceptions."""
         return ApplicationException(
             message=exc.message,

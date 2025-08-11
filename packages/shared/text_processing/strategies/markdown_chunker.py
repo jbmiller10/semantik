@@ -49,10 +49,10 @@ class MarkdownChunker(BaseChunker):
         except (RegexTimeout, Exception) as e:
             logger.debug(f"Failed to check for markdown headers: {e}")
             # Fallback: simple string check
-            lines = text.split('\n')
+            lines = text.split("\n")
             for line in lines[:100]:  # Check first 100 lines only
                 stripped = line.strip()
-                if stripped and stripped[0] == '#' and len(stripped) > 1 and stripped[1] in '# \t':
+                if stripped and stripped[0] == "#" and len(stripped) > 1 and stripped[1] in "# \t":
                     return True
             return False
 

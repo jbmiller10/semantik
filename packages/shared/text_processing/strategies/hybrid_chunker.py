@@ -40,15 +40,9 @@ def safe_regex_findall(pattern, text, flags=None):
     """
     safe_regex = SafeRegex(timeout=REGEX_TIMEOUT)
     if isinstance(pattern, str):
-        if flags:
-            pattern = re.compile(pattern, flags)
-        else:
-            pattern = safe_regex.compile_safe(pattern)
+        pattern = re.compile(pattern, flags) if flags else safe_regex.compile_safe(pattern)
     try:
-        return safe_regex.findall_safe(
-            pattern.pattern if hasattr(pattern, 'pattern') else str(pattern),
-            text
-        )
+        return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, "pattern") else str(pattern), text)
     except RegexTimeout:
         logger.warning(f"Regex timeout for pattern: {pattern}")
         return []
@@ -70,6 +64,7 @@ def timeout(seconds):
     Raises:
         TimeoutError: If operation exceeds timeout
     """
+
     def timeout_handler(signum, frame):
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
 
@@ -234,11 +229,11 @@ class HybridChunker(BaseChunker):
                 continue
             # Quick heuristics for common markdown constructs
             if (
-                l.startswith(('#', '>', '* ', '- ', '+ '))
+                l.startswith(("#", ">", "* ", "- ", "+ "))
                 or re.match(r"^\d+\.\s+", l) is not None
-                or ('|' in l and l.count('|') >= 2)
-                or ('[' in l and ']' in l and '(' in l and ')' in l)
-                or ('`' in l)
+                or ("|" in l and l.count("|") >= 2)
+                or ("[" in l and "]" in l and "(" in l and ")" in l)
+                or ("`" in l)
             ):
                 matched_lines += 1
 
@@ -271,16 +266,14 @@ class HybridChunker(BaseChunker):
         # Extract words (simple tokenization) with safe regex execution
         try:
             import time
+
             start_time = time.time()
             # Use a simpler, bounded pattern for word extraction
             words = self.safe_regex.findall_safe(r"\w+", text.lower(), max_matches=10000)
             execution_time = time.time() - start_time
 
             self.regex_monitor.record_execution(
-                pattern=r"\w+",
-                execution_time=execution_time,
-                input_size=len(text),
-                matched=len(words) > 0
+                pattern=r"\w+", execution_time=execution_time, input_size=len(text), matched=len(words) > 0
             )
 
             unique_words = set(words)
@@ -426,7 +419,7 @@ class HybridChunker(BaseChunker):
             logger.warning(f"Input validation failed: {e}")
             # For very large documents, try to process with character chunker as fallback
             if len(text) > MAX_TEXT_LENGTH:
-                raise ValueError("Text too large to process")
+                raise ValueError("Text too large to process") from e
 
         # Select the best strategy
         strategy, params, reasoning = self._select_strategy(text, metadata)
@@ -529,7 +522,7 @@ class HybridChunker(BaseChunker):
             logger.warning(f"Input validation failed: {e}")
             # For very large documents, try to process with character chunker as fallback
             if len(text) > MAX_TEXT_LENGTH:
-                raise ValueError("Text too large to process")
+                raise ValueError("Text too large to process") from e
 
         # Run strategy selection in executor to avoid blocking
         loop = asyncio.get_event_loop()

@@ -61,10 +61,9 @@ class TestMemoryPool:
         """Test that buffer is released even on exception."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
-        with pytest.raises(ValueError):
-            with pool.acquire_sync_context() as buffer:
-                assert pool.used_buffers == 1
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), pool.acquire_sync_context():
+            assert pool.used_buffers == 1
+            raise ValueError("Test error")
 
         # Buffer should still be released
         assert pool.used_buffers == 0
@@ -92,7 +91,7 @@ class TestMemoryPool:
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
         with pytest.raises(ValueError):
-            async with pool.acquire_async() as buffer:
+            async with pool.acquire_async():
                 assert pool.used_buffers == 1
                 raise ValueError("Test error")
 
@@ -106,12 +105,12 @@ class TestMemoryPool:
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
         # First acquisition
-        async with pool.acquire_async() as buffer1:
-            buffer_id1 = buffer1.buffer_id
+        async with pool.acquire_async():
+            pass
 
         # Second acquisition should reuse the same buffer
-        async with pool.acquire_async() as buffer2:
-            buffer_id2 = buffer2.buffer_id
+        async with pool.acquire_async():
+            pass
 
         # Should have reused the buffer
         assert pool.reuse_count >= 1
@@ -145,10 +144,10 @@ class TestMemoryPool:
         )
 
         # Acquire the only possible buffer
-        async with pool.acquire_async(size=1024) as buffer1:
+        async with pool.acquire_async(size=1024):
             # Try to acquire another buffer (should timeout as pool is exhausted)
             with pytest.raises(TimeoutError):
-                async with pool.acquire_async(size=512, timeout=0.5) as buffer2:
+                async with pool.acquire_async(size=512, timeout=0.5):
                     pass
 
     def test_managed_buffer_garbage_collection(self):
@@ -157,7 +156,6 @@ class TestMemoryPool:
 
         # Acquire buffer without context manager (simulating leak)
         with pool.acquire_sync_context() as buffer:
-            buffer_id = buffer.buffer_id
             # Simulate forgetting to release
             buffer._released = False  # Reset the flag
 
@@ -183,10 +181,11 @@ class TestMemoryPool:
 
         try:
             # Simulate a leak by acquiring without releasing
-            buffer_id, buffer_data = None, None
-            with patch.object(pool, "_force_release") as mock_force_release:
+            _buffer_id, _buffer_data = None, None
+            with patch.object(pool, "_force_release"):
                 # Manually create an allocation that looks leaked
                 from datetime import datetime, timedelta
+
                 old_time = datetime.now(UTC) - timedelta(seconds=400)
                 pool._allocations["test_buffer"] = BufferAllocation(
                     buffer_id="test_buffer",
@@ -218,16 +217,16 @@ class TestMemoryPool:
         )
 
         # Acquire first buffer
-        async with pool.acquire_async() as buffer1:
+        async with pool.acquire_async():
             assert pool.used_size == 1024
 
             # Acquire second buffer
-            async with pool.acquire_async() as buffer2:
+            async with pool.acquire_async():
                 assert pool.used_size == 2048
 
                 # Pool is now full, third acquisition should fail
                 with pytest.raises(TimeoutError):
-                    async with pool.acquire_async(timeout=0.5) as buffer3:
+                    async with pool.acquire_async(timeout=0.5):
                         pass
 
     def test_statistics_tracking(self):
@@ -239,7 +238,7 @@ class TestMemoryPool:
         assert initial_stats["release_count"] == 0
 
         # Perform some operations
-        with pool.acquire_sync_context() as buffer:
+        with pool.acquire_sync_context():
             pass
 
         stats = pool.get_stats()
@@ -282,9 +281,8 @@ class TestMemoryPool:
         assert pool.release_count == 0
 
         # Clear should fail when buffers in use
-        with pool.acquire_sync_context() as buffer:
-            with pytest.raises(RuntimeError):
-                pool.clear()
+        with pool.acquire_sync_context(), pytest.raises(RuntimeError):
+            pool.clear()
 
 
 class TestMemoryMonitor:
@@ -417,7 +415,7 @@ class TestIntegration:
         async def process_data(data: bytes):
             """Simulate processing with buffer acquisition."""
             async with pool.acquire_async() as buffer:
-                buffer.data[:len(data)] = data
+                buffer.data[: len(data)] = data
                 await asyncio.sleep(0.01)  # Simulate work
                 return len(data)
 

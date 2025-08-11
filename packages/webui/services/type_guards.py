@@ -11,6 +11,7 @@ from typing import Any, TypeGuard
 
 import redis
 import redis.asyncio as aioredis
+
 from packages.shared.utils.testing_utils import is_testing
 
 logger = logging.getLogger(__name__)
@@ -36,15 +37,16 @@ def is_async_redis(client: Any) -> TypeGuard[aioredis.Redis]:
     if is_testing():
         # In tests, accept real Redis, fake Redis, and mocks
         from unittest.mock import AsyncMock, MagicMock
-        
+
         # Accept mocks in test mode
-        if isinstance(client, (AsyncMock, MagicMock)):
+        if isinstance(client, AsyncMock | MagicMock):
             return True
-            
+
         # Also accept real and fake Redis
         try:
             import fakeredis.aioredis
-            return isinstance(client, (aioredis.Redis, fakeredis.aioredis.FakeRedis))
+
+            return isinstance(client, aioredis.Redis | fakeredis.aioredis.FakeRedis)
         except ImportError:
             return isinstance(client, aioredis.Redis)
     return isinstance(client, aioredis.Redis)
@@ -70,15 +72,16 @@ def is_sync_redis(client: Any) -> TypeGuard[redis.Redis]:
     if is_testing():
         # In tests, accept real Redis, fake Redis, and mocks
         from unittest.mock import AsyncMock, MagicMock, Mock
-        
+
         # Accept mocks in test mode
-        if isinstance(client, (Mock, MagicMock, AsyncMock)):
+        if isinstance(client, Mock | MagicMock | AsyncMock):
             return True
-            
+
         # Also accept real and fake Redis
         try:
             import fakeredis
-            return isinstance(client, (redis.Redis, fakeredis.FakeRedis))
+
+            return isinstance(client, redis.Redis | fakeredis.FakeRedis)
         except ImportError:
             return isinstance(client, redis.Redis)
     return isinstance(client, redis.Redis)
@@ -206,4 +209,3 @@ def is_redis_available(client: Any) -> bool:
         return False
 
     return True
-

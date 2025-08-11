@@ -18,10 +18,10 @@ os.environ["DISABLE_RATE_LIMIT"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 
 import asyncpg
-import pytest
-import pytest_asyncio
 import fakeredis
 import fakeredis.aioredis
+import pytest
+import pytest_asyncio
 import redis.asyncio as redis
 from dotenv import load_dotenv
 from fastapi import WebSocket
@@ -72,21 +72,23 @@ os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
 
 
-@pytest.fixture
+@pytest.fixture()
 def use_fakeredis():
     """Opt-in fixture to use fakeredis for a specific test."""
     fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
     fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    
-    with patch('redis.from_url', return_value=fake_sync_redis), \
-         patch('redis.asyncio.from_url', return_value=fake_async_redis), \
-         patch('redis.ConnectionPool.from_url', return_value=fake_sync_redis.connection_pool), \
-         patch('redis.asyncio.ConnectionPool.from_url', return_value=fake_async_redis.connection_pool):
-        
+
+    with (
+        patch("redis.from_url", return_value=fake_sync_redis),
+        patch("redis.asyncio.from_url", return_value=fake_async_redis),
+        patch("redis.ConnectionPool.from_url", return_value=fake_sync_redis.connection_pool),
+        patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
+    ):
+
         # Also need to handle Redis() constructor with connection pool
         original_redis_init = redis.Redis.__init__
         original_async_redis_init = redis.asyncio.Redis.__init__
-        
+
         def fake_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_sync_redis.connection_pool:
                 # Initialize with fakeredis
@@ -94,7 +96,7 @@ def use_fakeredis():
                 self.__dict__.update(fake_sync_redis.__dict__)
             else:
                 original_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
-        
+
         def fake_async_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_async_redis.connection_pool:
                 # Initialize with fakeredis
@@ -102,10 +104,10 @@ def use_fakeredis():
                 self.__dict__.update(fake_async_redis.__dict__)
             else:
                 original_async_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
-        
+
         redis.Redis.__init__ = fake_redis_init
         redis.asyncio.Redis.__init__ = fake_async_redis_init
-        
+
         try:
             yield fake_sync_redis, fake_async_redis
         finally:
@@ -113,23 +115,21 @@ def use_fakeredis():
             redis.asyncio.Redis.__init__ = original_async_redis_init
 
 
-@pytest.fixture
+@pytest.fixture()
 def fake_redis_client():
     """Provide a fake Redis client for tests that need direct access."""
     return fakeredis.aioredis.FakeRedis(decode_responses=True)
 
 
-@pytest.fixture
+@pytest.fixture()
 def real_redis_client():
     """Provide real Redis client for integration tests.
-    
+
     Only use this for tests that MUST have real Redis behavior.
     """
     import redis.asyncio as aioredis
-    return aioredis.from_url(
-        os.getenv("REDIS_URL", "redis://localhost:6379"),
-        decode_responses=True
-    )
+
+    return aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
 
 
 @pytest.fixture()

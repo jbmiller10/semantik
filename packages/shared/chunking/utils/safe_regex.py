@@ -12,15 +12,15 @@ logger = logging.getLogger(__name__)
 # Try to import RE2, fall back to standard re if not available
 try:
     import re2
+
     HAS_RE2 = True
 except ImportError:
     HAS_RE2 = False
     logger.warning("RE2 not available. Using standard regex with timeout protection only.")
 
 
-class RegexTimeout(Exception):
+class RegexTimeoutError(Exception):
     """Raised when regex execution times out."""
-
 
 
 class SafeRegex:
@@ -77,9 +77,7 @@ class SafeRegex:
         else:
             return re.compile(pattern, flags=flags)
 
-    def match_with_timeout(
-        self, pattern: str, text: str, timeout: float | None = None
-    ) -> Match | None:
+    def match_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
         """Match pattern with timeout protection.
 
         Args:
@@ -91,7 +89,7 @@ class SafeRegex:
             Match object or None
 
         Raises:
-            RegexTimeout: If pattern takes too long
+            RegexTimeoutError: If pattern takes too long
         """
         timeout = timeout or self.timeout
 
@@ -103,13 +101,9 @@ class SafeRegex:
             future = self.executor.submit(_match)
             return future.result(timeout=timeout)
         except TimeoutError:
-            raise RegexTimeout(
-                f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}..."
-            )
+            raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
 
-    def findall_safe(
-        self, pattern: str, text: str, max_matches: int = 1000, flags: int = 0
-    ) -> list[str]:
+    def findall_safe(self, pattern: str, text: str, max_matches: int = 1000, flags: int = 0) -> list[str]:
         """Find all matches with safety limits.
 
         Args:
@@ -131,9 +125,7 @@ class SafeRegex:
 
         return matches
 
-    def search_with_timeout(
-        self, pattern: str, text: str, timeout: float | None = None
-    ) -> Match | None:
+    def search_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
         """Search for pattern with timeout protection.
 
         Args:
@@ -145,7 +137,7 @@ class SafeRegex:
             Match object or None
 
         Raises:
-            RegexTimeout: If pattern takes too long
+            RegexTimeoutError: If pattern takes too long
         """
         timeout = timeout or self.timeout
 
@@ -157,9 +149,7 @@ class SafeRegex:
             future = self.executor.submit(_search)
             return future.result(timeout=timeout)
         except TimeoutError:
-            raise RegexTimeout(
-                f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}..."
-            )
+            raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
 
     def _is_pattern_dangerous(self, pattern: str) -> bool:
         """Check if pattern might cause ReDoS.
@@ -180,60 +170,60 @@ class SafeRegex:
         paren_depth = 0
         i = 0
         while i < len(pattern):
-            if pattern[i] == '(':
+            if pattern[i] == "(":
                 paren_depth += 1
                 # Look ahead for quantifier after group
                 j = i + 1
                 while j < len(pattern) and paren_depth > 0:
-                    if pattern[j] == '(':
+                    if pattern[j] == "(":
                         paren_depth += 1
-                    elif pattern[j] == ')':
+                    elif pattern[j] == ")":
                         paren_depth -= 1
                         if paren_depth == 0 and j + 1 < len(pattern):
                             # Check if there's a quantifier after the group
                             next_char = pattern[j + 1]
-                            if next_char in '+*?':
+                            if next_char in "+*?":
                                 # Check if the group contains quantifiers
-                                group_content = pattern[i+1:j]
-                                if any(q in group_content for q in ['+', '*', '?']):
+                                group_content = pattern[i + 1 : j]
+                                if any(q in group_content for q in ["+", "*", "?"]):
                                     # Found nested quantifier
                                     return True
                     j += 1
-            elif pattern[i] == ')':
+            elif pattern[i] == ")":
                 paren_depth = max(0, paren_depth - 1)
             i += 1
 
         # Check for alternation with star: (...|...)*
-        if '|' in pattern:
+        if "|" in pattern:
             # Find groups containing alternation
             i = 0
             while i < len(pattern):
-                if pattern[i] == '(' and '|' in pattern[i:]:
+                if pattern[i] == "(" and "|" in pattern[i:]:
                     # Find the closing parenthesis
                     paren_count = 1
                     j = i + 1
                     while j < len(pattern) and paren_count > 0:
-                        if pattern[j] == '(':
+                        if pattern[j] == "(":
                             paren_count += 1
-                        elif pattern[j] == ')':
+                        elif pattern[j] == ")":
                             paren_count -= 1
                             if paren_count == 0 and j + 1 < len(pattern):
                                 # Check for quantifier after alternation group
-                                if pattern[j + 1] in '*+':
+                                if pattern[j + 1] in "*+":
                                     return True
                         j += 1
                 i += 1
 
         # Check for multiple unbounded wildcards: .*.*
-        if pattern.count('.*') > 1 or pattern.count('.+') > 1:
+        if pattern.count(".*") > 1 or pattern.count(".+") > 1:
             return True
 
         # Check for excessive backtracking potential
         # Look for patterns like: a*a* or a+a+ (overlapping quantifiers)
         for i in range(len(pattern) - 3):
-            if pattern[i:i+2] in ['.*', '.+', r'\w*', r'\w+', r'\d*', r'\d+']:
+            if pattern[i : i + 2] in [".*", ".+", r"\w*", r"\w+", r"\d*", r"\d+"]:
                 for j in range(i + 2, min(i + 10, len(pattern) - 1)):
-                    if pattern[j:j+2] in ['.*', '.+', r'\w*', r'\w+', r'\d*', r'\d+']:
+                    if pattern[j : j + 2] in [".*", ".+", r"\w*", r"\w+", r"\d*", r"\d+"]:
                         return True
 
         return False

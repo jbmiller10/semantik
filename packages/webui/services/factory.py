@@ -356,6 +356,7 @@ async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingSe
     """FastAPI dependency for ChunkingService injection."""
     return await create_chunking_service(db)
 
+
 # Expose commonly used dependency providers to builtins for tests that
 # reference them without importing (legacy tests convenience)
 try:  # pragma: no cover

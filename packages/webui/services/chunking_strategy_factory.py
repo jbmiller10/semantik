@@ -86,11 +86,10 @@ class ChunkingStrategyFactory:
 
         try:
             # Get strategy from shared registry
-            strategy = get_strategy(strategy_key)
+            return get_strategy(strategy_key)
 
             # Note: The shared strategies don't take config in constructor,
             # they use it in the chunk() method. So we just return the strategy.
-            return strategy
 
         except Exception as e:
             raise ChunkingStrategyError(
@@ -240,10 +239,12 @@ class ChunkingStrategyFactory:
         recommendations = []
 
         # Document structure strategy needs structured content
-        if strategy == ChunkingStrategyEnum.DOCUMENT_STRUCTURE and file_type and file_type not in [".md", ".markdown", ".rst", ".tex", ".html"]:
-            compatibility_issues.append(
-                f"Document structure strategy may not work well with {file_type} files"
-            )
+        if (
+            strategy == ChunkingStrategyEnum.DOCUMENT_STRUCTURE
+            and file_type
+            and file_type not in [".md", ".markdown", ".rst", ".tex", ".html"]
+        ):
+            compatibility_issues.append(f"Document structure strategy may not work well with {file_type} files")
             recommendations.append("Consider using 'recursive' or 'semantic' strategy")
 
         # Semantic strategy needs embedding support
@@ -253,9 +254,7 @@ class ChunkingStrategyFactory:
 
         # Sliding window works best with continuous text
         if strategy == ChunkingStrategyEnum.SLIDING_WINDOW and file_type and file_type in [".json", ".xml", ".yaml"]:
-            compatibility_issues.append(
-                "Sliding window may break structure in structured files"
-            )
+            compatibility_issues.append("Sliding window may break structure in structured files")
             recommendations.append("Use 'recursive' for structured data files")
 
         return {

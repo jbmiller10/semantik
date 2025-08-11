@@ -30,11 +30,12 @@ def safe_regex_findall(pattern, text, flags=None):
     if isinstance(pattern, str):
         if flags:
             import re
+
             pattern = re.compile(pattern, flags)
         else:
             pattern = safe_regex.compile_safe(pattern)
     try:
-        return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, 'pattern') else str(pattern), text)
+        return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, "pattern") else str(pattern), text)
     except RegexTimeout:
         return []
 
@@ -42,6 +43,7 @@ def safe_regex_findall(pattern, text, flags=None):
 @contextmanager
 def timeout(seconds):
     """Simple timeout context manager for testing."""
+
     def timeout_handler(signum, frame):
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
 
@@ -112,7 +114,7 @@ class TestHybridChunkerReDoSProtection:
         expected_patterns = [
             r"^#{1,6}\s+\S.*$",  # Headers
             r"^[\*\-\+]\s+\S.*$",  # Unordered lists
-            r"^\d+\.\s+\S.*$",  # Ordered lists  
+            r"^\d+\.\s+\S.*$",  # Ordered lists
             r"\[([^\]]+)\]\(([^)]+)\)",  # Links
             r"!\[([^\]]*)\]\(([^)]+)\)",  # Images
             r"`([^`]+)`",  # Inline code
@@ -130,6 +132,7 @@ class TestHybridChunkerReDoSProtection:
             # Handle both standard re.Pattern and re2._Regexp types
             try:
                 import re2
+
                 valid_pattern_types = (re.Pattern, re2._Regexp)
             except ImportError:
                 valid_pattern_types = (re.Pattern,)
