@@ -31,6 +31,7 @@ import enum
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -441,10 +442,12 @@ class ChunkingConfig(Base):
 class Chunk(Base):
     """Chunk model for partitioned document storage.
 
-    IMPORTANT: This table is partitioned by HASH(collection_id) in PostgreSQL.
+    IMPORTANT: This table is partitioned by LIST(partition_key) in PostgreSQL with 100 partitions.
 
     Partition Awareness:
-    - The collection_id is part of the primary key to support partitioning
+    - The table uses LIST partitioning on partition_key (0-99)
+    - partition_key is computed automatically via trigger: abs(hashtext(collection_id)) % 100
+    - Primary key is (id, collection_id, partition_key) to support partitioning
     - Always include collection_id in WHERE clauses for optimal partition pruning
     - Bulk operations should be grouped by collection_id for efficiency
     - Cross-collection queries will scan multiple partitions (use sparingly)
@@ -473,21 +476,26 @@ class Chunk(Base):
 
     __tablename__ = "chunks"
 
-    # Primary key includes partition key (collection_id) for partitioned table support
-    id = Column(String, primary_key=True)  # UUID as string for consistency with other tables
+    # Primary key includes partition key for partitioned table support
+    # Note: id is BigInteger with auto-incrementing sequence
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True, nullable=False)
+    partition_key = Column(Integer, primary_key=True, nullable=False, server_default="0")  # Computed via trigger
 
     # Foreign keys and data columns
-    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
-    chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=False, index=True)
+    document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True)  # Can be NULL
+    chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True)  # Can be NULL
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    start_offset = Column(Integer, nullable=False)
-    end_offset = Column(Integer, nullable=False)
+    start_offset = Column(Integer)  # Can be NULL
+    end_offset = Column(Integer)  # Can be NULL
     token_count = Column(Integer)
     embedding_vector_id = Column(String)  # Reference to Qdrant
-    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
-    meta = Column(JSON)
+    meta = Column(
+        "metadata", JSON
+    )  # Column name is 'metadata' in DB, but 'meta' in Python to avoid SQLAlchemy reserved word
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     # Relationships
     collection = relationship("Collection", back_populates="chunks")
@@ -496,17 +504,18 @@ class Chunk(Base):
 
     # Composite indexes optimized for partition pruning
     __table_args__ = (
-        # Always include collection_id first for partition pruning
-        Index("ix_chunks_collection_id_document_id", "collection_id", "document_id"),
-        Index("ix_chunks_collection_id_chunk_index", "collection_id", "chunk_index"),
-        Index("ix_chunks_embedding_vector_id", "embedding_vector_id"),
-        UniqueConstraint("collection_id", "document_id", "chunk_index", name="uq_chunks_collection_document_index"),
+        # Indexes that exist at the database level
+        Index("idx_chunks_part_collection", "collection_id"),  # Per-partition index
+        Index("idx_chunks_part_created", "created_at"),  # Per-partition index
+        Index("idx_chunks_part_chunk_index", "collection_id", "chunk_index"),  # Per-partition index
+        Index("idx_chunks_part_document", "document_id"),  # Per-partition conditional index
         {
-            "comment": "Partitioned by HASH(collection_id). Always include collection_id in queries.",
+            "comment": "Partitioned by LIST(partition_key) with 100 partitions. partition_key is computed via trigger.",
             "info": {
-                "partition_key": "collection_id",
-                "partition_method": "HASH",
-                "partition_count": 16,  # Default, configurable via CHUNK_PARTITION_COUNT
+                "partition_key": "partition_key",
+                "partition_method": "LIST",
+                "partition_count": 100,
+                "partition_trigger": "compute_partition_key()",
             },
         },
     )
