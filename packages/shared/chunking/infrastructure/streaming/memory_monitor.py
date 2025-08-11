@@ -40,7 +40,7 @@ class MemoryMonitor:
 
     def __init__(
         self,
-        memory_pool: "MemoryPool",  # type: ignore[name-defined]
+        memory_pool: "MemoryPool",
         warning_threshold: float = 0.8,  # 80%
         critical_threshold: float = 0.95,  # 95%
         check_interval: int = 10,  # seconds
@@ -67,7 +67,7 @@ class MemoryMonitor:
         self.alerts_sent = 0
         self.max_usage_seen = 0.0
 
-    async def start(self, alert_callback: Callable | None = None):
+    async def start(self, alert_callback: Callable | None = None) -> None:
         """
         Start monitoring.
 
@@ -80,7 +80,7 @@ class MemoryMonitor:
             f"Memory monitor started (warning={self.warning_threshold:.0%}, critical={self.critical_threshold:.0%})"
         )
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stop monitoring."""
         if self._monitor_task:
             self._monitor_task.cancel()
@@ -92,7 +92,7 @@ class MemoryMonitor:
                 self._monitor_task = None
                 logger.info("Memory monitor stopped")
 
-    async def _monitor_loop(self):
+    async def _monitor_loop(self) -> None:
         """Main monitoring loop."""
         while True:
             try:
@@ -150,7 +150,7 @@ class MemoryMonitor:
             except Exception as e:
                 logger.exception(f"Error in memory monitor: {e}")
 
-    async def _send_alert(self, alert: MemoryAlert):
+    async def _send_alert(self, alert: MemoryAlert) -> None:
         """
         Send alert to callback.
 

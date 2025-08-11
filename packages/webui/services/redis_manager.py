@@ -7,6 +7,7 @@ that can cause authentication bypasses and event loop conflicts.
 """
 
 import logging
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 
@@ -148,7 +149,7 @@ class RedisManager:
         return self._async_client
 
     @asynccontextmanager
-    async def async_transaction(self):
+    async def async_transaction(self) -> AsyncIterator[aioredis.client.Pipeline]:
         """Context manager for async Redis transactions.
 
         This provides a transactional context for async Redis operations,
@@ -173,7 +174,7 @@ class RedisManager:
                 raise
 
     @contextmanager
-    def sync_transaction(self):
+    def sync_transaction(self) -> Iterator[redis.client.Pipeline]:
         """Context manager for sync Redis transactions.
 
         This provides a transactional context for sync Redis operations,
@@ -197,7 +198,7 @@ class RedisManager:
                 logger.error("Sync Redis transaction failed: %s", e)
                 raise
 
-    async def close_async(self):
+    async def close_async(self) -> None:
         """Close async connections gracefully.
 
         This method should be called during application shutdown to
@@ -212,7 +213,7 @@ class RedisManager:
             self._async_pool = None
             logger.info("Closed async Redis connection pool")
 
-    def close_sync(self):
+    def close_sync(self) -> None:
         """Close sync connections gracefully.
 
         This method should be called during application shutdown to

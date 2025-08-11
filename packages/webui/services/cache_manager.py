@@ -72,7 +72,7 @@ class CacheManager:
             self.misses += 1
             return None
 
-    async def set(self, key: str, value: Any, ttl: int | None = None, serializer: Callable = json.dumps):
+    async def set(self, key: str, value: Any, ttl: int | None = None, serializer: Callable = json.dumps) -> None:
         """Set value in cache.
 
         Args:
@@ -88,7 +88,7 @@ class CacheManager:
         except Exception as e:
             logger.warning(f"Cache set error for key {key}: {e}")
 
-    async def delete(self, pattern: str):
+    async def delete(self, pattern: str) -> None:
         """Delete keys matching pattern.
 
         Args:
@@ -107,7 +107,7 @@ class CacheManager:
         except Exception as e:
             logger.warning(f"Cache delete error for pattern {pattern}: {e}")
 
-    async def invalidate_collection(self, collection_id: str):
+    async def invalidate_collection(self, collection_id: str) -> None:
         """Invalidate all cache entries for a collection.
 
         Args:
@@ -117,7 +117,7 @@ class CacheManager:
         await self.delete(f"cache:statistics:{collection_id}")
         await self.delete(f"cache:chunks:{collection_id}:*")
 
-    def cache_result(self, prefix: str, ttl: int | None = None, key_params: list[str] | None = None):
+    def cache_result(self, prefix: str, ttl: int | None = None, key_params: list[str] | None = None) -> Callable:
         """Decorator for caching async function results.
 
         Args:
@@ -129,9 +129,9 @@ class CacheManager:
             Decorator function
         """
 
-        def decorator(func):
+        def decorator(func: Callable) -> Callable:
             @wraps(func)
-            async def wrapper(*args, **kwargs):
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 # Build cache key from specified params
                 cache_params = {k: kwargs.get(k) for k in key_params if k in kwargs} if key_params else kwargs
 
@@ -153,7 +153,7 @@ class CacheManager:
                 return result
 
             # Store original function for testing
-            wrapper._original = func
+            wrapper._original = func  # type: ignore[attr-defined]
             return wrapper
 
         return decorator
@@ -169,7 +169,7 @@ class CacheManager:
 
         return {"hits": self.hits, "misses": self.misses, "total_requests": total, "hit_rate": hit_rate}
 
-    async def clear_all(self):
+    async def clear_all(self) -> None:
         """Clear all cache entries (use with caution)."""
         try:
             await self.delete("cache:*")
@@ -177,7 +177,7 @@ class CacheManager:
         except Exception as e:
             logger.error(f"Failed to clear cache: {e}")
 
-    async def warmup_collection_cache(self, collection_id: str, service: Any):
+    async def warmup_collection_cache(self, collection_id: str, service: Any) -> None:
         """Pre-populate cache for a collection.
 
         Args:
@@ -197,20 +197,20 @@ class CacheManager:
 class QueryMonitor:
     """Monitor database query performance."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize query monitor."""
         self.slow_query_threshold = 1.0  # 1 second
         self.query_times: list[dict[str, Any]] = []
         self.slow_queries: list[dict[str, Any]] = []
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "QueryMonitor":
         """Context manager entry."""
         import time
 
         self.start_time = time.time()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit."""
         import time
 
@@ -220,7 +220,7 @@ class QueryMonitor:
             logger.warning(f"Slow query detected: {execution_time:.2f}s", extra={"execution_time": execution_time})
 
     @staticmethod
-    def monitor(query_name: str):
+    def monitor(query_name: str) -> Callable:
         """Decorator to monitor query performance.
 
         Args:
@@ -230,9 +230,9 @@ class QueryMonitor:
             Decorator function
         """
 
-        def decorator(func):
+        def decorator(func: Callable) -> Callable:
             @wraps(func)
-            async def wrapper(*args, **kwargs):
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 import time
 
                 start_time = time.time()

@@ -11,13 +11,13 @@ from packages.shared.chunking.domain.services.chunking_strategies.markdown impor
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
 from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
-from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 
 
 class TestSafeRegex:
     """Test SafeRegex class for ReDoS protection."""
 
-    def test_redos_pattern_rejection(self):
+    def test_redos_pattern_rejection(self) -> None:
         """Test that dangerous patterns are rejected."""
         safe_regex = SafeRegex(timeout=0.1)
 
@@ -33,7 +33,7 @@ class TestSafeRegex:
             with pytest.raises(ValueError, match="potentially dangerous"):
                 safe_regex.compile_safe(pattern)
 
-    def test_timeout_protection(self):
+    def test_timeout_protection(self) -> None:
         """Test that long-running regex operations timeout."""
         safe_regex = SafeRegex(timeout=0.1)
 
@@ -42,10 +42,10 @@ class TestSafeRegex:
         pattern = r"(a+)+"
 
         # Even if pattern isn't rejected, execution should timeout
-        with pytest.raises((RegexTimeout, ValueError)):
+        with pytest.raises((RegexTimeoutError, ValueError)):
             safe_regex.match_with_timeout(pattern, evil_input, timeout=0.1)
 
-    def test_safe_patterns_work(self):
+    def test_safe_patterns_work(self) -> None:
         """Test that safe patterns work correctly."""
         safe_regex = SafeRegex()
 
@@ -62,7 +62,7 @@ class TestSafeRegex:
             result = compiled.match(text)
             assert (result is not None) == should_match
 
-    def test_findall_with_limit(self):
+    def test_findall_with_limit(self) -> None:
         """Test findall_safe respects match limits."""
         safe_regex = SafeRegex()
 
@@ -75,7 +75,7 @@ class TestSafeRegex:
 class TestChunkingInputValidator:
     """Test input validation for ReDoS prevention."""
 
-    def test_document_size_validation(self):
+    def test_document_size_validation(self) -> None:
         """Test document size limits."""
         # Document too large
         large_doc = "a" * (ChunkingInputValidator.MAX_DOCUMENT_SIZE + 1)
@@ -86,7 +86,7 @@ class TestChunkingInputValidator:
         normal_doc = "This is a normal document."
         ChunkingInputValidator.validate_document(normal_doc)  # Should not raise
 
-    def test_line_length_validation(self):
+    def test_line_length_validation(self) -> None:
         """Test line length limits."""
         # Line too long
         long_line = "a" * (ChunkingInputValidator.MAX_LINE_LENGTH + 1)
@@ -95,7 +95,7 @@ class TestChunkingInputValidator:
         with pytest.raises(ValueError, match="Line .* too long"):
             ChunkingInputValidator.validate_document(doc_with_long_line)
 
-    def test_redos_trigger_detection(self):
+    def test_redos_trigger_detection(self) -> None:
         """Test detection of ReDoS triggers in input."""
         # Document with excessive repetition
         evil_doc = "a" * 1001 + "!" * 1001
@@ -103,7 +103,7 @@ class TestChunkingInputValidator:
         with pytest.raises(ValueError, match="potential ReDoS triggers"):
             ChunkingInputValidator.validate_document(evil_doc)
 
-    def test_binary_content_detection(self):
+    def test_binary_content_detection(self) -> None:
         """Test detection of binary content."""
         # Document with binary data
         binary_doc = "Normal text\x00Binary data\xffMore binary"
@@ -111,7 +111,7 @@ class TestChunkingInputValidator:
         with pytest.raises(ValueError, match="binary data"):
             ChunkingInputValidator.validate_document(binary_doc)
 
-    def test_text_sanitization(self):
+    def test_text_sanitization(self) -> None:
         """Test text sanitization removes dangerous patterns."""
         # Text with excessive repetition
         dangerous_text = "Hello" + "!" * 100 + " World" + "*" * 50
@@ -122,7 +122,7 @@ class TestChunkingInputValidator:
         assert "*" * 50 not in sanitized
         assert "..." in sanitized or "*" * 19 in sanitized
 
-    def test_risk_estimation(self):
+    def test_risk_estimation(self) -> None:
         """Test risk level estimation."""
         # Low risk document
         safe_doc = "This is a normal document with regular text."
@@ -139,7 +139,7 @@ class TestChunkingInputValidator:
 class TestRegexPerformanceMonitor:
     """Test regex performance monitoring."""
 
-    def test_metric_recording(self):
+    def test_metric_recording(self) -> None:
         """Test that metrics are recorded correctly."""
         monitor = RegexPerformanceMonitor()
 
@@ -153,7 +153,7 @@ class TestRegexPerformanceMonitor:
         assert stats["total_timeouts"] == 1
         assert stats["timeout_rate"] == 1 / 3
 
-    def test_slow_pattern_detection(self):
+    def test_slow_pattern_detection(self) -> None:
         """Test detection of consistently slow patterns."""
         monitor = RegexPerformanceMonitor(slow_threshold=0.1, alert_threshold=3)
 
@@ -165,7 +165,7 @@ class TestRegexPerformanceMonitor:
         problematic = monitor.get_problematic_patterns()
         assert slow_pattern in problematic
 
-    def test_pattern_blocking(self):
+    def test_pattern_blocking(self) -> None:
         """Test pattern blocking based on history."""
         monitor = RegexPerformanceMonitor()
 
@@ -178,7 +178,7 @@ class TestRegexPerformanceMonitor:
         # Should recommend blocking
         assert monitor.should_block_pattern(bad_pattern)
 
-    def test_pattern_analysis(self):
+    def test_pattern_analysis(self) -> None:
         """Test analysis of specific pattern."""
         monitor = RegexPerformanceMonitor()
 
@@ -196,7 +196,7 @@ class TestRegexPerformanceMonitor:
 class TestMarkdownChunkingWithReDoSProtection:
     """Test MarkdownChunkingStrategy with ReDoS protection."""
 
-    def test_markdown_chunking_with_evil_input(self):
+    def test_markdown_chunking_with_evil_input(self) -> None:
         """Test that markdown chunking handles malicious input safely."""
         chunker = MarkdownChunkingStrategy()
         config = ChunkConfig(
@@ -238,6 +238,7 @@ Some normal text here.
             assert len(chunks) >= 0
         else:
             # Content was rejected for safety
+            assert error is not None
             assert "ReDoS" in error or "too long" in error
 
         elapsed = time.time() - start_time
@@ -245,7 +246,7 @@ Some normal text here.
         # Should complete within reasonable time (5 seconds max)
         assert elapsed < 5.0
 
-    def test_markdown_patterns_are_safe(self):
+    def test_markdown_patterns_are_safe(self) -> None:
         """Test that markdown patterns don't cause ReDoS."""
         chunker = MarkdownChunkingStrategy()
 
@@ -272,11 +273,11 @@ Some normal text here.
                     # If it matches, it should be fast
                     elapsed = time.time() - start
                     assert elapsed < 0.1
-                except RegexTimeout:
+                except RegexTimeoutError:
                     # Timeout is acceptable for safety
                     pass
 
-    def test_normal_markdown_processing(self):
+    def test_normal_markdown_processing(self) -> None:
         """Test that normal markdown processing still works correctly."""
         chunker = MarkdownChunkingStrategy()
         config = ChunkConfig(

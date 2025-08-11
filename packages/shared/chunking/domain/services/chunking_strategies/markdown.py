@@ -19,7 +19,7 @@ from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConf
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
 from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
-from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +220,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                     and self.safe_regex.match_with_timeout(self.patterns["numbered_list"], line, timeout=0.05)
                 ):
                     is_list_item = True
-            except RegexTimeout:
+            except RegexTimeoutError:
                 logger.warning(f"Regex timeout on line {i}, treating as regular text")
                 is_list_item = False
 
@@ -253,7 +253,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                             and next_line.strip()
                         ):
                             is_continuation = True
-                    except RegexTimeout:
+                    except RegexTimeoutError:
                         is_continuation = False
 
                     if is_continuation:
@@ -304,7 +304,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                     self.patterns["horizontal_rule"], line.strip(), timeout=0.05
                 ):
                     is_hr = True
-            except RegexTimeout:
+            except RegexTimeoutError:
                 is_hr = False
 
             if is_hr:
@@ -375,7 +375,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 self.patterns["numbered_list"], stripped, timeout=0.01
             ):
                 return True
-        except RegexTimeout:
+        except RegexTimeoutError:
             # If regex times out, check with simple string operations
             if stripped and stripped[0] in "-*+" and len(stripped) > 2 and stripped[1] == " ":
                 return True
@@ -396,7 +396,7 @@ class MarkdownChunkingStrategy(ChunkingStrategy):
                 self.patterns["horizontal_rule"], stripped, timeout=0.01
             ):
                 return True
-        except RegexTimeout:
+        except RegexTimeoutError:
             # Simple check for horizontal rules
             if stripped in ["---", "***", "___"]:
                 return True
