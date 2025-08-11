@@ -9,6 +9,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket
@@ -208,7 +209,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     # Check if we're in testing mode
     is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
 
-    app_kwargs = {
+    app_kwargs: dict[str, Any] = {
         "title": "Document Embedding Web UI",
         "description": "Create and search document embeddings",
         "version": "1.1.0",
@@ -323,7 +324,7 @@ app = create_app()
 try:  # pragma: no cover
     import builtins as _builtins
 
-    _builtins.app = app
+    _builtins.app = app  # type: ignore[attr-defined]
 except Exception:  # pragma: no cover
     pass
 

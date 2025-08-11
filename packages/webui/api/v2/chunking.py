@@ -17,8 +17,8 @@ from packages.shared.chunking.infrastructure.exception_translator import (
     exception_translator,
 )
 from packages.shared.chunking.infrastructure.exceptions import (
-    ApplicationException,
-    ValidationException,
+    ApplicationError,
+    ValidationError,
 )
 
 # All exceptions now handled through the infrastructure layer
@@ -66,8 +66,8 @@ router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
 # Note: Exception handlers should be registered at the app level, not router level
 # This function can be imported and registered in main.py if needed
 async def application_exception_handler(
-    request: Request,
-    exc: ApplicationException,
+    _request: Request,
+    exc: ApplicationError,
 ) -> JSONResponse:
     """Global handler for application exceptions with structured error responses."""
     return exception_translator.create_error_response(
@@ -83,7 +83,7 @@ async def application_exception_handler(
     summary="List all available chunking strategies",
 )
 async def list_strategies(
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),
 ) -> list[StrategyInfo]:
     """
@@ -145,7 +145,7 @@ async def list_strategies(
 )
 async def get_strategy_details(
     strategy_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),
 ) -> StrategyInfo:
     """
@@ -231,7 +231,7 @@ async def get_strategy_details(
 )
 async def recommend_strategy(
     file_types: list[str] = Query(..., description="List of file types to analyze"),
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),
 ) -> StrategyRecommendation:
     """
@@ -283,7 +283,7 @@ async def recommend_strategy(
 async def generate_preview(
     request: Request,  # Required for rate limiting
     preview_request: PreviewRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingService = Depends(get_chunking_service),
     correlation_id: str = Header(None, alias="X-Correlation-ID"),
 ) -> PreviewResponse:
@@ -318,11 +318,8 @@ async def generate_preview(
         # Delegate to service using the method name expected by tests
         result = await service.preview_chunking(
             strategy=preview_request.strategy,
-            content=preview_request.content,
-            document_id=preview_request.document_id,
-            config_overrides=preview_request.config.model_dump() if preview_request.config else None,
-            user_id=current_user.get("id") if current_user else None,
-            correlation_id=correlation_id,
+            content=preview_request.content or "",  # Provide empty string if content is None
+            config=preview_request.config.model_dump() if preview_request.config else None,
         )
 
         if not isinstance(result, dict):
@@ -346,7 +343,7 @@ async def generate_preview(
             correlation_id=correlation_id,
         )
 
-    except ApplicationException as e:
+    except ApplicationError as e:
         # Translate to HTTP exception
         raise exception_translator.translate_application_to_api(e) from e
 
@@ -384,7 +381,7 @@ async def generate_preview(
 async def compare_strategies(
     request: Request,  # Required for rate limiting
     compare_request: CompareRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingService = Depends(get_chunking_service),
 ) -> CompareResponse:
     """
@@ -406,17 +403,17 @@ async def compare_strategies(
         best_conf = 0.8
 
         for strategy in compare_request.strategies:
+            # Get config for this strategy if provided
+            config = None
+            if compare_request.configs and strategy in compare_request.configs:
+                strategy_config = compare_request.configs.get(strategy)
+                if strategy_config:
+                    config = strategy_config.model_dump()
+
             preview = await service.preview_chunking(
                 strategy=strategy,
                 content=compare_request.content or "",
-                document_id=compare_request.document_id,
-                config_overrides=(
-                    compare_request.configs.get(strategy).model_dump()
-                    if compare_request.configs and strategy in compare_request.configs
-                    else None
-                ),
-                user_id=current_user.get("id") if current_user else None,
-                correlation_id=str(uuid.uuid4()),
+                config=config,
             )
 
             config_dict = preview.get("config", {})
@@ -481,7 +478,7 @@ async def compare_strategies(
 async def get_cached_preview(
     request: Request,  # Required for rate limiting
     preview_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingService = Depends(get_chunking_service),
 ) -> PreviewResponse:
     """
@@ -496,11 +493,11 @@ async def get_cached_preview(
     try:
         # Tests expect using the private cache getter by key
         if hasattr(service, "_get_cached_preview_by_key"):
-            result = await service._get_cached_preview_by_key(preview_id)  # type: ignore[attr-defined]
+            result = await service._get_cached_preview_by_key(preview_id)
         elif hasattr(service, "get_cached_preview"):
             result = await service.get_cached_preview(
                 preview_id=preview_id,
-                user_id=current_user.get("id") if current_user else None,
+                user_id=_current_user.get("id") if _current_user else None,
             )
         else:
             result = None
@@ -545,7 +542,7 @@ async def get_cached_preview(
 )
 async def clear_preview_cache(
     preview_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> None:
     """
@@ -576,7 +573,7 @@ async def start_chunking_operation(
     collection_id: str,
     chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
@@ -617,7 +614,7 @@ async def start_chunking_operation(
                 "document_ids": chunking_request.document_ids,
                 "priority": chunking_request.priority,
             },
-            user_id=current_user["id"],
+            user_id=_current_user["id"],
         )
 
         # Start chunking operation and get WebSocket channel
@@ -625,7 +622,7 @@ async def start_chunking_operation(
             collection_id=collection_id,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else {},
-            user_id=current_user["id"],
+            user_id=_current_user["id"],
         )
 
         # Queue the chunking task
@@ -636,7 +633,7 @@ async def start_chunking_operation(
             chunking_request.strategy,
             chunking_request.config,
             chunking_request.document_ids,
-            current_user["id"],
+            _current_user["id"],
             websocket_channel,
             service,
         )
@@ -653,10 +650,10 @@ async def start_chunking_operation(
 
     except HTTPException:
         raise
-    except ApplicationException as e:
+    except ApplicationError as e:
         # Translate to HTTP exception
         raise exception_translator.translate_application_to_api(e) from e
-    except ValidationException as e:
+    except ValidationError as e:
         # Return 400 for validation errors
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -679,7 +676,7 @@ async def update_chunking_strategy(
     collection_id: str,
     update_request: ChunkingStrategyUpdate,
     background_tasks: BackgroundTasks,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
@@ -699,7 +696,7 @@ async def update_chunking_strategy(
                 "chunking_strategy": update_request.strategy.value,
                 "chunking_config": update_request.config.model_dump() if update_request.config else {},
             },
-            user_id=current_user["id"],
+            user_id=_current_user["id"],
         )
 
         if update_request.reprocess_existing:
@@ -711,7 +708,7 @@ async def update_chunking_strategy(
                     "strategy": update_request.strategy.value,
                     "config": update_request.config.model_dump() if update_request.config else {},
                 },
-                user_id=current_user["id"],
+                user_id=_current_user["id"],
             )
 
             # Queue reprocessing task
@@ -722,7 +719,7 @@ async def update_chunking_strategy(
                 update_request.strategy,
                 update_request.config,
                 None,  # Process all documents
-                current_user["id"],
+                _current_user["id"],
                 websocket_channel,
                 service,
             )
@@ -763,7 +760,7 @@ async def get_collection_chunks(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkListResponse:
@@ -806,7 +803,7 @@ async def get_collection_chunks(
 )
 async def get_chunking_stats(
     collection_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkingStats:
@@ -849,7 +846,7 @@ async def get_chunking_stats(
 async def get_global_metrics(
     request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> GlobalMetrics:
     """
@@ -892,7 +889,7 @@ async def get_global_metrics(
 )
 async def get_metrics_by_strategy(
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),
-    current_user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingService = Depends(get_chunking_service),
 ) -> list[StrategyMetrics]:
     """
@@ -906,8 +903,8 @@ async def get_metrics_by_strategy(
         if hasattr(service, "get_metrics_by_strategy"):
             try:
                 metrics_data = await service.get_metrics_by_strategy(
-                    period_days=period_days,
-                    user_id=current_user.get("id") if current_user else None,
+                    _period_days=period_days,
+                    _user_id=_current_user.get("id") if _current_user else None,
                 )
             except Exception:
                 metrics_data = None
@@ -967,7 +964,7 @@ async def get_metrics_by_strategy(
 )
 async def get_quality_scores(
     collection_id: str | None = Query(None, description="Specific collection ID"),  # noqa: ARG001
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> QualityAnalysis:
     """
@@ -1006,7 +1003,7 @@ async def get_quality_scores(
 )
 async def analyze_document(
     analysis_request: DocumentAnalysisRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> DocumentAnalysisResponse:
     """
@@ -1068,7 +1065,7 @@ async def analyze_document(
 )
 async def save_configuration(
     config_request: CreateConfigurationRequest,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> SavedConfiguration:
     """
@@ -1085,7 +1082,7 @@ async def save_configuration(
             description=config_request.description,
             strategy=config_request.strategy,
             config=config_request.config,
-            created_by=current_user["id"],
+            created_by=_current_user["id"],
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             usage_count=0,
@@ -1109,7 +1106,7 @@ async def save_configuration(
 async def list_configurations(
     strategy: ChunkingStrategy | None = Query(None, description="Filter by strategy"),  # noqa: ARG001
     is_default: bool | None = Query(None, description="Filter default configs"),  # noqa: ARG001
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> list[SavedConfiguration]:
     """
@@ -1138,7 +1135,7 @@ async def list_configurations(
 )
 async def get_operation_progress(
     operation_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
 ) -> ChunkingProgress:
     """

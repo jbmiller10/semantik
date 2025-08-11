@@ -10,28 +10,28 @@ import os
 # Disable rate limiting for tests BEFORE importing the app
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 
-import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+import uuid  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
+from typing import Any  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, Mock, patch  # noqa: E402
 
-import pytest
-from fastapi import HTTPException, status
-from fastapi.testclient import TestClient
+import pytest  # noqa: E402
+from fastapi import HTTPException, status  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 # Mock background tasks and Redis manager BEFORE importing the app
-import packages.webui.background_tasks as bg_tasks
-from packages.shared.config import settings
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-from packages.webui.auth import get_current_user
-from packages.webui.dependencies import get_collection_for_user
-from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.collection_service import CollectionService
+import packages.webui.background_tasks as bg_tasks  # noqa: E402
+from packages.shared.config import settings  # noqa: E402
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy  # noqa: E402
+from packages.webui.auth import get_current_user  # noqa: E402
+from packages.webui.dependencies import get_collection_for_user  # noqa: E402
+from packages.webui.services.chunking_service import ChunkingService  # noqa: E402
+from packages.webui.services.collection_service import CollectionService  # noqa: E402
 
 bg_tasks.start_background_tasks = AsyncMock()
 bg_tasks.stop_background_tasks = AsyncMock()
 
-import packages.webui.services.factory as factory_module
+import packages.webui.services.factory as factory_module  # noqa: E402
 
 factory_module._redis_manager = Mock(async_client=AsyncMock(return_value=AsyncMock()))
 

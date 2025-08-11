@@ -133,11 +133,7 @@ class CacheManager:
             @wraps(func)
             async def wrapper(*args, **kwargs):
                 # Build cache key from specified params
-                if key_params:
-                    cache_params = {k: kwargs.get(k) for k in key_params if k in kwargs}
-                else:
-                    # Use all kwargs as cache params
-                    cache_params = kwargs
+                cache_params = {k: kwargs.get(k) for k in key_params if k in kwargs} if key_params else kwargs
 
                 cache_key = self._generate_cache_key(prefix, cache_params)
 

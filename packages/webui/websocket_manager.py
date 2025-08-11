@@ -50,10 +50,6 @@ class RedisStreamWebSocketManager:
             max_retries = 3
             retry_delay = 1.0  # Initial delay in seconds
 
-            import os
-
-            os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
-
             for attempt in range(max_retries):
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")

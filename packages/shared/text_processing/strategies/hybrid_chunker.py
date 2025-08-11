@@ -10,13 +10,14 @@ import asyncio
 import logging
 import re
 import signal
+from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
 from typing import Any
 
 from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
 from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
-from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
@@ -27,7 +28,7 @@ MAX_TEXT_LENGTH = 5_000_000  # 5MB text limit to prevent DOS
 REGEX_TIMEOUT = 1  # Default timeout for regex operations
 
 
-def safe_regex_findall(pattern, text, flags=None):
+def safe_regex_findall(pattern: str | re.Pattern[str], text: str, flags: int | None = None) -> list[str]:
     """Helper function for executing regex with timeout protection.
 
     Args:
@@ -43,7 +44,7 @@ def safe_regex_findall(pattern, text, flags=None):
         pattern = re.compile(pattern, flags) if flags else safe_regex.compile_safe(pattern)
     try:
         return safe_regex.findall_safe(pattern.pattern if hasattr(pattern, "pattern") else str(pattern), text)
-    except RegexTimeout:
+    except RegexTimeoutError:
         logger.warning(f"Regex timeout for pattern: {pattern}")
         return []
     except Exception as e:
@@ -52,7 +53,7 @@ def safe_regex_findall(pattern, text, flags=None):
 
 
 @contextmanager
-def timeout(seconds):
+def timeout(seconds: int) -> Generator[None, None, None]:
     """Context manager for timeout operations.
 
     Args:
@@ -65,7 +66,7 @@ def timeout(seconds):
         TimeoutError: If operation exceeds timeout
     """
 
-    def timeout_handler(signum, frame):
+    def timeout_handler(_signum: int, _frame: Any) -> None:
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
 
     # Set the signal handler and alarm
@@ -224,16 +225,16 @@ class HybridChunker(BaseChunker):
         matched_lines = 0
 
         for line in lines:
-            l = line.strip()
-            if not l:
+            stripped_line = line.strip()
+            if not stripped_line:
                 continue
             # Quick heuristics for common markdown constructs
             if (
-                l.startswith(("#", ">", "* ", "- ", "+ "))
-                or re.match(r"^\d+\.\s+", l) is not None
-                or ("|" in l and l.count("|") >= 2)
-                or ("[" in l and "]" in l and "(" in l and ")" in l)
-                or ("`" in l)
+                stripped_line.startswith(("#", ">", "* ", "- ", "+ "))
+                or re.match(r"^\d+\.\s+", stripped_line) is not None
+                or ("|" in stripped_line and stripped_line.count("|") >= 2)
+                or ("[" in stripped_line and "]" in stripped_line and "(" in stripped_line and ")" in stripped_line)
+                or ("`" in stripped_line)
             ):
                 matched_lines += 1
 
@@ -277,7 +278,7 @@ class HybridChunker(BaseChunker):
             )
 
             unique_words = set(words)
-        except (RegexTimeout, Exception) as e:
+        except (RegexTimeoutError, Exception) as e:
             logger.debug(f"Word extraction failed: {e}, using fallback")
             # Fallback: simple split
             words = text.lower().split()

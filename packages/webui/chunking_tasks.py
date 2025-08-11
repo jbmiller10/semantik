@@ -391,24 +391,23 @@ class ChunkingTask(Task):
         """
         if isinstance(exc, ChunkingMemoryError):
             return "memory_error"
-        elif isinstance(exc, ChunkingTimeoutError):
+        if isinstance(exc, ChunkingTimeoutError):
             return "timeout_error"
-        elif isinstance(exc, ChunkingValidationError):
+        if isinstance(exc, ChunkingValidationError):
             return "validation_error"
-        elif isinstance(exc, ChunkingStrategyError):
+        if isinstance(exc, ChunkingStrategyError):
             return "strategy_error"
-        elif isinstance(exc, ChunkingDependencyError):
+        if isinstance(exc, ChunkingDependencyError):
             return "dependency_error"
-        elif isinstance(exc, ChunkingResourceLimitError):
+        if isinstance(exc, ChunkingResourceLimitError):
             return "resource_limit_error"
-        elif isinstance(exc, ChunkingPartialFailureError):
+        if isinstance(exc, ChunkingPartialFailureError):
             return "partial_failure"
-        elif isinstance(exc, ConnectionError):
+        if isinstance(exc, ConnectionError):
             return "connection_error"
-        elif isinstance(exc, TimeoutError):
+        if isinstance(exc, TimeoutError):
             return "timeout_error"
-        else:
-            return "unknown"
+        return "unknown"
 
     def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows execution.

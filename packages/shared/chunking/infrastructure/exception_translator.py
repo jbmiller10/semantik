@@ -16,18 +16,18 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from .exceptions import (
-    ApplicationException,
+    ApplicationError,
     ChunkingStrategyError,
-    DatabaseException,
+    DatabaseError,
     DocumentTooLargeError,
-    DomainException,
-    ExternalServiceException,
-    InfrastructureException,
-    InvalidStateTransition,
-    PermissionDeniedException,
-    ResourceNotFoundException,
-    StreamingException,
-    ValidationException,
+    DomainError,
+    ExternalServiceError,
+    InfrastructureError,
+    InvalidStateTransitionError,
+    PermissionDeniedError,
+    ResourceNotFoundError,
+    StreamingError,
+    ValidationError,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,25 +42,25 @@ class ExceptionTranslator:
         # Domain to Application mappings
         self.domain_to_app_map: dict[type[Exception], Callable] = {
             DocumentTooLargeError: self._document_too_large_to_app,
-            InvalidStateTransition: self._invalid_state_to_app,
+            InvalidStateTransitionError: self._invalid_state_to_app,
             ChunkingStrategyError: self._strategy_error_to_app,
         }
 
         # Application to API status code mappings
         self.app_to_api_map: dict[type[Exception], int] = {
-            ValidationException: 400,
-            ResourceNotFoundException: 404,
-            PermissionDeniedException: 403,
+            ValidationError: 400,
+            ResourceNotFoundError: 404,
+            PermissionDeniedError: 403,
             DocumentTooLargeError: 413,
-            InvalidStateTransition: 409,
+            InvalidStateTransitionError: 409,
             ChunkingStrategyError: 422,  # Unprocessable Entity for strategy errors
-            ApplicationException: 500,  # Base application exception
-            StreamingException: 500,  # Streaming errors are server-side
+            ApplicationError: 500,  # Base application exception
+            StreamingError: 500,  # Streaming errors are server-side
         }
 
     def translate_domain_to_application(
-        self, exc: DomainException, correlation_id: str | None = None
-    ) -> ApplicationException:
+        self, exc: DomainError, correlation_id: str | None = None
+    ) -> ApplicationError:
         """Translate domain exception to application exception.
 
         Args:
@@ -85,7 +85,7 @@ class ExceptionTranslator:
 
         return translator(exc, correlation_id)
 
-    def translate_application_to_api(self, exc: ApplicationException) -> HTTPException:
+    def translate_application_to_api(self, exc: ApplicationError) -> HTTPException:
         """Translate application exception to HTTP exception.
 
         Args:
@@ -119,7 +119,7 @@ class ExceptionTranslator:
 
         return HTTPException(status_code=status_code, detail=detail)
 
-    def translate_infrastructure_to_application(self, exc: Exception, context: dict[str, Any]) -> ApplicationException:
+    def translate_infrastructure_to_application(self, exc: Exception, context: dict[str, Any]) -> ApplicationError:
         """Translate infrastructure exception to application exception.
 
         Args:
@@ -129,17 +129,17 @@ class ExceptionTranslator:
         Returns:
             Translated application exception
         """
-        if isinstance(exc, DatabaseException):
+        if isinstance(exc, DatabaseError):
             # Check if it's a not found error
             if "does not exist" in str(exc).lower() or "not found" in str(exc).lower():
-                return ResourceNotFoundException(
+                return ResourceNotFoundError(
                     resource_type=context.get("resource_type", "Resource"),
                     resource_id=context.get("resource_id", "Unknown"),
                     correlation_id=getattr(exc, "correlation_id", None),
                     cause=exc,
                 )
             # Generic database error
-            return ApplicationException(
+            return ApplicationError(
                 message="Database operation failed",
                 code="DATABASE_ERROR",
                 details={"original_error": str(exc)},
@@ -147,8 +147,8 @@ class ExceptionTranslator:
                 cause=exc,
             )
 
-        if isinstance(exc, ExternalServiceException):
-            return ApplicationException(
+        if isinstance(exc, ExternalServiceError):
+            return ApplicationError(
                 message=f"External service unavailable: {exc.service}",
                 code="SERVICE_UNAVAILABLE",
                 details=exc.details,
@@ -156,8 +156,8 @@ class ExceptionTranslator:
                 cause=exc,
             )
 
-        if isinstance(exc, StreamingException):
-            return ApplicationException(
+        if isinstance(exc, StreamingError):
+            return ApplicationError(
                 message="Streaming operation failed",
                 code="STREAMING_ERROR",
                 details=exc.details,
@@ -165,9 +165,9 @@ class ExceptionTranslator:
                 cause=exc,
             )
 
-        if isinstance(exc, InfrastructureException):
+        if isinstance(exc, InfrastructureError):
             # Generic infrastructure error
-            return ApplicationException(
+            return ApplicationError(
                 message="An infrastructure error occurred",
                 code="INFRASTRUCTURE_ERROR",
                 details=getattr(exc, "details", {"error": str(exc)}),
@@ -176,7 +176,7 @@ class ExceptionTranslator:
             )
 
         # Unknown infrastructure error
-        return ApplicationException(
+        return ApplicationError(
             message="An unexpected infrastructure error occurred",
             code="INFRASTRUCTURE_ERROR",
             details={"error": str(exc), "type": type(exc).__name__},
@@ -193,15 +193,15 @@ class ExceptionTranslator:
         Returns:
             JSON response with error details
         """
-        if isinstance(exc, ApplicationException):
+        if isinstance(exc, ApplicationError):
             status_code = self.app_to_api_map.get(type(exc), 500)
             content = exc.to_dict()
-        elif isinstance(exc, DomainException):
+        elif isinstance(exc, DomainError):
             # Translate domain to application first
             app_exc = self.translate_domain_to_application(exc, correlation_id)
             status_code = self.app_to_api_map.get(type(app_exc), 500)
             content = app_exc.to_dict()
-        elif isinstance(exc, InfrastructureException):
+        elif isinstance(exc, InfrastructureError):
             # Translate infrastructure to application
             app_exc = self.translate_infrastructure_to_application(exc, {})
             status_code = self.app_to_api_map.get(type(app_exc), 500)
@@ -223,9 +223,9 @@ class ExceptionTranslator:
     # Specific translator methods
     def _document_too_large_to_app(
         self, exc: DocumentTooLargeError, correlation_id: str | None
-    ) -> ApplicationException:
+    ) -> ApplicationError:
         """Translate document too large error to application exception."""
-        return ValidationException(
+        return ValidationError(
             field="document",
             value=f"{exc.size} bytes",
             reason=f"Exceeds maximum size of {exc.max_size} bytes",
@@ -233,9 +233,9 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _invalid_state_to_app(self, exc: InvalidStateTransition, correlation_id: str | None) -> ApplicationException:
+    def _invalid_state_to_app(self, exc: InvalidStateTransitionError, correlation_id: str | None) -> ApplicationError:
         """Translate invalid state transition to application exception."""
-        return ApplicationException(
+        return ApplicationError(
             message=exc.message,
             code="INVALID_OPERATION",
             details=exc.details,
@@ -243,9 +243,9 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _strategy_error_to_app(self, exc: ChunkingStrategyError, correlation_id: str | None) -> ApplicationException:
+    def _strategy_error_to_app(self, exc: ChunkingStrategyError, correlation_id: str | None) -> ApplicationError:
         """Translate strategy error to application exception."""
-        return ApplicationException(
+        return ApplicationError(
             message=f"Chunking failed: {exc.reason}",
             code="CHUNKING_FAILED",
             details=exc.details,
@@ -253,9 +253,9 @@ class ExceptionTranslator:
             cause=exc,
         )
 
-    def _default_domain_to_app(self, exc: DomainException, correlation_id: str | None) -> ApplicationException:
+    def _default_domain_to_app(self, exc: DomainError, correlation_id: str | None) -> ApplicationError:
         """Default translator for unmapped domain exceptions."""
-        return ApplicationException(
+        return ApplicationError(
             message=exc.message,
             code=exc.code,
             details=exc.details,

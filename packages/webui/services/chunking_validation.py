@@ -8,7 +8,7 @@ to prevent injection attacks, resource exhaustion, and other vulnerabilities.
 import re
 from typing import Any
 
-from packages.shared.chunking.infrastructure.exceptions import ValidationException
+from packages.shared.chunking.infrastructure.exceptions import ValidationError
 
 
 class ChunkingInputValidator:
@@ -101,14 +101,14 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ValidationException: If validation fails
+            ValidationError: If validation fails
         """
         if not content:
             return
 
         # Check for null bytes
         if "\x00" in content:
-            raise ValidationException(
+            raise ValidationError(
                 field="content",
                 value="<content with null bytes>",
                 reason="Content contains null bytes",
@@ -119,7 +119,7 @@ class ChunkingInputValidator:
         content_lower = content.lower()
         for pattern in cls.DANGEROUS_PATTERNS:
             if re.search(pattern, content_lower, re.IGNORECASE | re.DOTALL):
-                raise ValidationException(
+                raise ValidationError(
                     field="content",
                     value=f"<content matching pattern: {pattern}>",
                     reason="Content contains forbidden patterns",
@@ -129,7 +129,7 @@ class ChunkingInputValidator:
         # Check for SQL injection patterns
         for pattern in cls.SQL_INJECTION_PATTERNS:
             if re.search(pattern, content_lower, re.IGNORECASE):
-                raise ValidationException(
+                raise ValidationError(
                     field="content",
                     value=f"<content with SQL pattern: {pattern}>",
                     reason="Content contains SQL-like patterns",
@@ -146,7 +146,7 @@ class ChunkingInputValidator:
         try:
             content.encode("utf-8")
         except UnicodeError as e:
-            raise ValidationException(
+            raise ValidationError(
                 field="content",
                 value="<content with invalid encoding>",
                 reason=f"Encoding error: {str(e)}",
@@ -164,10 +164,10 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ValidationException: If validation fails
+            ValidationError: If validation fails
         """
         if chunk_size < 100:
-            raise ValidationException(
+            raise ValidationError(
                 field="chunk_size",
                 value=chunk_size,
                 reason="Minimum chunk size is 100",
@@ -175,7 +175,7 @@ class ChunkingInputValidator:
             )
 
         if chunk_size > 4096:
-            raise ValidationException(
+            raise ValidationError(
                 field="chunk_size",
                 value=chunk_size,
                 reason="Maximum chunk size is 4096",
@@ -193,10 +193,10 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ValidationException: If validation fails
+            ValidationError: If validation fails
         """
         if overlap < 0:
-            raise ValidationException(
+            raise ValidationError(
                 field="overlap",
                 value=overlap,
                 reason="Overlap must be >= 0",
@@ -204,7 +204,7 @@ class ChunkingInputValidator:
             )
 
         if overlap >= chunk_size:
-            raise ValidationException(
+            raise ValidationError(
                 field="overlap",
                 value=overlap,
                 reason=f"Overlap must be less than chunk size ({chunk_size})",
@@ -221,11 +221,11 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ValidationException: If validation fails
+            ValidationError: If validation fails
         """
         # Prevent path traversal in file type
         if "/" in file_type or "\\" in file_type or ".." in file_type:
-            raise ValidationException(
+            raise ValidationError(
                 field="file_type",
                 value=file_type,
                 reason="File type contains invalid characters",
@@ -234,7 +234,7 @@ class ChunkingInputValidator:
 
         # Limit file type length
         if len(file_type) > 10:
-            raise ValidationException(
+            raise ValidationError(
                 field="file_type",
                 value=file_type,
                 reason="File type must be <= 10 characters",
@@ -285,10 +285,10 @@ class ChunkingInputValidator:
             correlation_id: Correlation ID for error tracking
 
         Raises:
-            ValidationException: If validation fails
+            ValidationError: If validation fails
         """
         if priority < 1 or priority > 10:
-            raise ValidationException(
+            raise ValidationError(
                 field="priority",
                 value=priority,
                 reason="Priority must be between 1 and 10",

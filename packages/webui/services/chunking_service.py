@@ -34,15 +34,15 @@ from packages.shared.chunking.infrastructure.exception_translator import (
     exception_translator,
 )
 from packages.shared.chunking.infrastructure.exceptions import (
-    ApplicationException,
+    ApplicationError,
     ChunkingStrategyError,
     DocumentTooLargeError,
-    DomainException,
-    ResourceNotFoundException,
-    ValidationException,
+    DomainError,
+    ResourceNotFoundError,
+    ValidationError,
 )
 from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedException as InfraPermissionDeniedException,
+    PermissionDeniedError as InfraPermissionDeniedError,
 )
 from packages.shared.database.models import Operation
 from packages.shared.database.repositories.collection_repository import (
@@ -203,15 +203,15 @@ class ChunkingService:
             Operation ID for tracking
 
         Raises:
-            ValidationException: If validation fails
-            InfraPermissionDeniedException: If user lacks access
-            ResourceNotFoundException: If document doesn't exist
+            ValidationError: If validation fails
+            InfraPermissionDeniedError: If user lacks access
+            ResourceNotFoundError: If document doesn't exist
         """
         correlation_id = str(uuid.uuid4())
 
         # Validate user access
         if not user_id:
-            raise InfraPermissionDeniedException(
+            raise InfraPermissionDeniedError(
                 user_id="anonymous",
                 resource="chunking_operation",
                 action="create",
@@ -228,7 +228,7 @@ class ChunkingService:
         )
 
         if config_result.validation_errors:
-            raise ValidationException(
+            raise ValidationError(
                 field="config",
                 value=config_overrides,
                 reason=f"Invalid configuration: {', '.join(config_result.validation_errors)}",
@@ -343,14 +343,14 @@ class ChunkingService:
             Preview results with chunks and metadata
 
         Raises:
-            ApplicationException: Translated application-level exceptions
+            ApplicationError: Translated application-level exceptions
         """
         correlation_id = correlation_id or str(uuid.uuid4())
 
         try:
             # Input validation - must have either content or document_id
             if not content and not document_id:
-                raise ValidationException(
+                raise ValidationError(
                     field="input",
                     value=None,
                     reason="Either content or document_id must be provided",
@@ -358,7 +358,7 @@ class ChunkingService:
                 )
 
             if content and document_id:
-                raise ValidationException(
+                raise ValidationError(
                     field="input",
                     value="both content and document_id",
                     reason="Cannot provide both content and document_id",
@@ -368,7 +368,7 @@ class ChunkingService:
             # Document access validation if document_id provided
             if document_id:
                 if not user_id:
-                    raise InfraPermissionDeniedException(
+                    raise InfraPermissionDeniedError(
                         user_id="anonymous",
                         resource=f"document:{document_id}",
                         action="read",
@@ -379,11 +379,11 @@ class ChunkingService:
                 try:
                     await self._validate_document_access(document_id, user_id)
                     content = await self._load_document_content(document_id)
-                except ResourceNotFoundException:
+                except ResourceNotFoundError:
                     # Already an infrastructure exception, just re-raise
                     raise
                 except Exception as e:
-                    if isinstance(e, ApplicationException):
+                    if isinstance(e, ApplicationError):
                         raise
                     # Translate infrastructure exception
                     raise self.exception_translator.translate_infrastructure_to_application(
@@ -406,7 +406,7 @@ class ChunkingService:
             )
 
             if config_result.validation_errors:
-                raise ValidationException(
+                raise ValidationError(
                     field="config",
                     value=config_overrides,
                     reason=f"Invalid configuration: {', '.join(config_result.validation_errors)}",
@@ -426,7 +426,7 @@ class ChunkingService:
                     reason=f"Strategy not found: {e.strategy_name}",
                     correlation_id=correlation_id,
                     cause=e,
-                )
+                ) from e
             except ChunkingDomainError as e:
                 # Translate domain exception
                 raise self.exception_translator.translate_domain_to_application(
@@ -439,7 +439,7 @@ class ChunkingService:
                     reason=str(e),
                     correlation_id=correlation_id,
                     cause=e,
-                )
+                ) from e
 
             # Execute chunking with proper exception handling
             try:
@@ -449,7 +449,7 @@ class ChunkingService:
                     config=config_result.config,
                     strategy_name=config_result.strategy,
                 )
-            except DomainException as e:
+            except DomainError as e:
                 # Translate domain exception
                 raise self.exception_translator.translate_domain_to_application(
                     e,
@@ -461,14 +461,14 @@ class ChunkingService:
                     reason="Processing timeout exceeded",
                     correlation_id=correlation_id,
                     cause=e,
-                )
+                ) from e
             except MemoryError as e:
                 raise DocumentTooLargeError(
                     size=len(content) if content else 0,
                     max_size=10_000_000,
                     correlation_id=correlation_id,
                     cause=e,
-                )
+                ) from e
             except Exception as e:
                 # Log unexpected error with full context
                 logger.exception(
@@ -479,7 +479,7 @@ class ChunkingService:
                         "error_type": type(e).__name__,
                     },
                 )
-                raise ApplicationException(
+                raise ApplicationError(
                     message="Unexpected error during chunking",
                     code="CHUNKING_ERROR",
                     details={
@@ -489,7 +489,7 @@ class ChunkingService:
                     },
                     correlation_id=correlation_id,
                     cause=e,
-                )
+                ) from e
 
             # Cache preview result
             preview_id = await self._cache_preview_result(result, str(strategy))
@@ -498,10 +498,10 @@ class ChunkingService:
 
             return result
 
-        except ApplicationException:
+        except ApplicationError:
             # Already translated, just re-raise
             raise
-        except DomainException:
+        except DomainError:
             # Domain exceptions should be re-raised as-is
             # They'll be translated at the API layer
             raise
@@ -511,20 +511,20 @@ class ChunkingService:
                 "Unexpected error in preview_chunks",
                 extra={"correlation_id": correlation_id},
             )
-            raise ApplicationException(
+            raise ApplicationError(
                 message="An unexpected error occurred",
                 code="INTERNAL_ERROR",
                 correlation_id=correlation_id,
                 cause=e,
-            )
+            ) from e
 
-    async def _validate_document_access(self, document_id: str, user_id: int) -> None:
+    async def _validate_document_access(self, document_id: str, _user_id: int) -> None:
         """Validate user has access to document."""
         # This would use actual repository methods
         # For now, simplified implementation
         document = await self.document_repo.get_by_id(document_id)
         if not document:
-            raise ResourceNotFoundException(
+            raise ResourceNotFoundError(
                 resource_type="Document",
                 resource_id=document_id,
                 correlation_id=str(uuid.uuid4()),
@@ -538,7 +538,7 @@ class ChunkingService:
         """Load document content from storage."""
         document = await self.document_repo.get_by_id(document_id)
         if not document:
-            raise ResourceNotFoundException(
+            raise ResourceNotFoundError(
                 resource_type="Document",
                 resource_id=document_id,
                 correlation_id=str(uuid.uuid4()),
@@ -693,7 +693,7 @@ class ChunkingService:
             "quality_score": quality_score,
         }
 
-    async def _cache_preview_result(self, result: dict[str, Any], strategy: str) -> str:
+    async def _cache_preview_result(self, result: dict[str, Any], _strategy: str) -> str:
         """Cache preview result and return preview ID."""
         preview_id = str(uuid.uuid4())
 
@@ -925,7 +925,7 @@ class ChunkingService:
         strategies: list[ChunkingStrategyEnum],
         configs: dict[str, dict[str, Any]] | None = None,
         max_chunks_per_strategy: int = 5,
-        user_id: int | None = None,
+        _user_id: int | None = None,
     ) -> dict[str, Any]:
         """Compare multiple chunking strategies with full business logic.
 
@@ -1178,8 +1178,8 @@ class ChunkingService:
 
     async def get_metrics_by_strategy(
         self,
-        period_days: int = 30,
-        user_id: int | None = None,
+        _period_days: int = 30,
+        _user_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Get chunking metrics grouped by strategy.
 

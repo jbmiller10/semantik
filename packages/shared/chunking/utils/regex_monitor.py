@@ -83,10 +83,10 @@ class RegexPerformanceMonitor:
 
         # Log warnings for concerning metrics
         if timed_out:
-            logger.error(f"Regex timeout: pattern='{pattern[:50]}...', " f"input_size={input_size}")
+            logger.error(f"Regex timeout: pattern='{pattern[:50]}...', input_size={input_size}")
         elif execution_time > 1.0:
             logger.warning(
-                f"Very slow regex: pattern='{pattern[:50]}...', " f"time={execution_time:.2f}s, input_size={input_size}"
+                f"Very slow regex: pattern='{pattern[:50]}...', time={execution_time:.2f}s, input_size={input_size}"
             )
 
     def get_problematic_patterns(self) -> list[str]:

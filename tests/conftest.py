@@ -17,27 +17,27 @@ os.environ["ENV"] = "test"
 os.environ["DISABLE_RATE_LIMIT"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 
-import asyncpg
-import fakeredis
-import fakeredis.aioredis
-import pytest
-import pytest_asyncio
-import redis.asyncio as redis
-from dotenv import load_dotenv
-from fastapi import WebSocket
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+import asyncpg  # noqa: E402
+import fakeredis  # noqa: E402
+import fakeredis.aioredis  # noqa: E402
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+import redis.asyncio as redis  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from fastapi import WebSocket  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from httpx import AsyncClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-import packages.webui.celery_app as celery_module
-from packages.shared.database import get_db
-from packages.shared.database.factory import (
+import packages.webui.celery_app as celery_module  # noqa: E402
+from packages.shared.database import get_db  # noqa: E402
+from packages.shared.database.factory import (  # noqa: E402
     create_auth_repository,
     create_collection_repository,
     create_user_repository,
 )
-from packages.shared.database.models import (
+from packages.shared.database.models import (  # noqa: E402
     Base,
     Collection,
     CollectionStatus,
@@ -48,10 +48,10 @@ from packages.shared.database.models import (
     OperationType,
     User,
 )
-from packages.webui.auth import create_access_token, get_current_user
-from packages.webui.main import app
-from packages.webui.utils.qdrant_manager import qdrant_manager
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.auth import create_access_token, get_current_user  # noqa: E402
+from packages.webui.main import app  # noqa: E402
+from packages.webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
+from packages.webui.websocket_manager import RedisStreamWebSocketManager  # noqa: E402
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))

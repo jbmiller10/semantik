@@ -191,7 +191,6 @@ class ChunkingInputValidator:
         # Determine risk level
         if risk_score >= 3:
             return "high"
-        elif risk_score >= 1:
+        if risk_score >= 1:
             return "medium"
-        else:
-            return "low"
+        return "low"

@@ -44,7 +44,7 @@ def safe_regex_findall(pattern, text, flags=None):
 def timeout(seconds):
     """Simple timeout context manager for testing."""
 
-    def timeout_handler(signum, frame):
+    def timeout_handler(_signum, _frame):
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
 
     # Set the signal handler and alarm

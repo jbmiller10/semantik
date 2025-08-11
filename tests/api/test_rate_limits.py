@@ -15,8 +15,8 @@ from httpx import AsyncClient
 from slowapi.errors import RateLimitExceeded
 
 from packages.webui.config.rate_limits import RateLimitConfig
-from packages.webui.rate_limiter import circuit_breaker
 from packages.webui.main import app
+from packages.webui.rate_limiter import circuit_breaker
 from packages.webui.services.factory import get_chunking_service
 
 

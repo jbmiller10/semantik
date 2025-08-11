@@ -11,6 +11,7 @@ import logging
 import threading
 import traceback
 import weakref
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -65,15 +66,15 @@ class ManagedBuffer:
         self.pool = weakref.ref(pool)
         self._released = False
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Ensure buffer is released on garbage collection."""
         if not self._released:
             pool = self.pool()
             if pool:
-                logger.warning(f"Buffer {self.buffer_id} released by garbage collector - " "possible leak detected")
+                logger.warning(f"Buffer {self.buffer_id} released by garbage collector - possible leak detected")
                 pool._force_release(self.buffer_id)
 
-    def release(self):
+    def release(self) -> None:
         """Explicitly release buffer back to pool."""
         if not self._released:
             pool = self.pool()
@@ -133,7 +134,7 @@ class MemoryPool:
         # Pre-allocate initial buffers for backward compatibility
         self._preallocate_buffers()
 
-    def _preallocate_buffers(self):
+    def _preallocate_buffers(self) -> None:
         """Pre-allocate initial buffers for backward compatibility."""
         with self._lock:
             for _ in range(self.initial_pool_size):
@@ -144,7 +145,7 @@ class MemoryPool:
                 self.used_size += self.default_buffer_size
 
     @contextmanager
-    def acquire_sync_context(self, size: int = None, timeout: float = 30.0):
+    def acquire_sync_context(self, size: int | None = None, timeout: float = 30.0) -> Generator[ManagedBuffer, None, None]:
         """
         Synchronous context manager for buffer acquisition.
 
@@ -188,6 +189,7 @@ class MemoryPool:
                         )
 
                         self.allocation_count += 1
+                        assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
                         managed_buffer = ManagedBuffer(buffer_id, buffer, self)
                         break
 
@@ -206,7 +208,7 @@ class MemoryPool:
                 self.release(buffer_id)
 
     @asynccontextmanager
-    async def acquire_async(self, size: int = None, timeout: float = 30.0):
+    async def acquire_async(self, size: int | None = None, timeout: float = 30.0) -> AsyncGenerator[ManagedBuffer, None]:
         """
         Asynchronous context manager for buffer acquisition.
 
@@ -255,6 +257,7 @@ class MemoryPool:
                                 )
 
                                 self.allocation_count += 1
+                                assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
                                 managed_buffer = ManagedBuffer(buffer_id, buffer, self)
                                 break
 
@@ -322,6 +325,7 @@ class MemoryPool:
 
                                 self.allocation_count += 1
                                 # Don't wrap in ManagedBuffer - just return raw tuple
+                                assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
                                 return buffer_id, buffer
 
                     # Wait for buffer to become available
@@ -373,6 +377,7 @@ class MemoryPool:
                     )
 
                     self.allocation_count += 1
+                    assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
                     return buffer_id, buffer
 
             # Check timeout
@@ -420,7 +425,7 @@ class MemoryPool:
 
         return buffer_id, buffer
 
-    def release(self, buffer_id: str):
+    def release(self, buffer_id: str) -> None:
         """
         Release a buffer back to the pool.
 
@@ -445,7 +450,7 @@ class MemoryPool:
             if self._allocation_event:
                 self._allocation_event.set()
 
-    def _force_release(self, buffer_id: str):
+    def _force_release(self, buffer_id: str) -> None:
         """
         Force release a buffer (used by garbage collector).
 
@@ -465,7 +470,7 @@ class MemoryPool:
 
                 self.leak_count += 1
 
-    def _reclaim_leaked_buffers(self):
+    def _reclaim_leaked_buffers(self) -> None:
         """Reclaim buffers that appear to be leaked."""
         with self._lock:
             current_time = datetime.now(UTC)
@@ -482,12 +487,12 @@ class MemoryPool:
             for buffer_id in leaked:
                 self._force_release(buffer_id)
 
-    async def start_leak_detection(self):
+    async def start_leak_detection(self) -> None:
         """Start background leak detection task."""
         if self._leak_check_task is None:
             self._leak_check_task = asyncio.create_task(self._leak_detection_loop())
 
-    async def stop_leak_detection(self):
+    async def stop_leak_detection(self) -> None:
         """Stop leak detection task."""
         if self._leak_check_task:
             self._leak_check_task.cancel()
@@ -498,7 +503,7 @@ class MemoryPool:
             finally:
                 self._leak_check_task = None
 
-    async def _leak_detection_loop(self):
+    async def _leak_detection_loop(self) -> None:
         """Background task to detect and log leaks."""
         while True:
             try:
@@ -558,7 +563,7 @@ class MemoryPool:
                 "oldest_allocation_age": self._get_oldest_allocation_age(),
             }
 
-    def get_statistics(self) -> dict:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get pool usage statistics (backward compatibility).
 

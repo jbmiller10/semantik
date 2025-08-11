@@ -77,7 +77,7 @@ class MemoryMonitor:
         self._alert_callback = alert_callback
         self._monitor_task = asyncio.create_task(self._monitor_loop())
         logger.info(
-            f"Memory monitor started (warning={self.warning_threshold:.0%}, " f"critical={self.critical_threshold:.0%})"
+            f"Memory monitor started (warning={self.warning_threshold:.0%}, critical={self.critical_threshold:.0%})"
         )
 
     async def stop(self):
@@ -133,7 +133,7 @@ class MemoryMonitor:
 
                 elif not alert_level and self._last_alert_level:
                     # Clear alert
-                    logger.info(f"Memory usage recovered to {usage_percent:.1%} " f"(was {self._last_alert_level})")
+                    logger.info(f"Memory usage recovered to {usage_percent:.1%} (was {self._last_alert_level})")
                     self._last_alert_level = None
 
                 # Log statistics periodically

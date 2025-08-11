@@ -68,11 +68,11 @@ class BaseChunkingError(Exception):
 
 
 # Domain Layer Exceptions
-class DomainException(BaseChunkingError):
+class DomainError(BaseChunkingError):
     """Base for all domain exceptions."""
 
 
-class DocumentTooLargeError(DomainException):
+class DocumentTooLargeError(DomainError):
     """Raised when document exceeds size limits."""
 
     def __init__(
@@ -101,7 +101,7 @@ class DocumentTooLargeError(DomainException):
         self.max_size = max_size
 
 
-class InvalidStateTransition(DomainException):
+class InvalidStateTransitionError(DomainError):
     """Raised when invalid state transition is attempted."""
 
     def __init__(
@@ -130,7 +130,7 @@ class InvalidStateTransition(DomainException):
         self.attempted_state = attempted_state
 
 
-class ChunkingStrategyError(DomainException):
+class ChunkingStrategyError(DomainError):
     """Raised when chunking strategy fails."""
 
     def __init__(
@@ -160,11 +160,11 @@ class ChunkingStrategyError(DomainException):
 
 
 # Application Layer Exceptions
-class ApplicationException(BaseChunkingError):
+class ApplicationError(BaseChunkingError):
     """Base for application layer exceptions."""
 
 
-class ValidationException(ApplicationException):
+class ValidationError(ApplicationError):
     """Raised when validation fails."""
 
     def __init__(
@@ -196,7 +196,7 @@ class ValidationException(ApplicationException):
         self.reason = reason
 
 
-class ResourceNotFoundException(ApplicationException):
+class ResourceNotFoundError(ApplicationError):
     """Raised when requested resource is not found."""
 
     def __init__(
@@ -225,7 +225,7 @@ class ResourceNotFoundException(ApplicationException):
         self.resource_id = resource_id
 
 
-class PermissionDeniedException(ApplicationException):
+class PermissionDeniedError(ApplicationError):
     """Raised when user lacks permission for operation."""
 
     def __init__(
@@ -258,11 +258,11 @@ class PermissionDeniedException(ApplicationException):
 
 
 # Infrastructure Layer Exceptions
-class InfrastructureException(BaseChunkingError):
+class InfrastructureError(BaseChunkingError):
     """Base for infrastructure exceptions."""
 
 
-class DatabaseException(InfrastructureException):
+class DatabaseError(InfrastructureError):
     """Raised when database operation fails."""
 
     def __init__(
@@ -294,7 +294,7 @@ class DatabaseException(InfrastructureException):
         self.error = error
 
 
-class ExternalServiceException(InfrastructureException):
+class ExternalServiceError(InfrastructureError):
     """Raised when external service fails."""
 
     def __init__(
@@ -326,7 +326,7 @@ class ExternalServiceException(InfrastructureException):
         self.error = error
 
 
-class StreamingException(InfrastructureException):
+class StreamingError(InfrastructureError):
     """Raised when streaming operation fails."""
 
     def __init__(

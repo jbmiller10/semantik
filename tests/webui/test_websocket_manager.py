@@ -136,7 +136,7 @@ class TestRedisStreamWebSocketManager:
         """Test successful startup with Redis connection."""
 
         # Mock redis.from_url to return our mock_redis
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):
@@ -150,7 +150,7 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
@@ -172,7 +172,7 @@ class TestRedisStreamWebSocketManager:
         """Test graceful degradation when Redis is completely unavailable."""
 
         # Mock redis.from_url to always fail
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             raise Exception("Connection failed")
 
         with (
@@ -958,7 +958,7 @@ class TestRedisStreamWebSocketManager:
         """Test that startup can be called multiple times safely."""
 
         # Mock redis.from_url to return our mock_redis
-        async def mock_from_url(*args, **kwargs):
+        async def mock_from_url(*_args, **_kwargs):
             return mock_redis
 
         with patch("redis.asyncio.from_url", new=mock_from_url):

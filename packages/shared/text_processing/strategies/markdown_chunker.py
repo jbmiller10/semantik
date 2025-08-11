@@ -13,7 +13,7 @@ from typing import Any
 from llama_index.core import Document
 from llama_index.core.node_parser import MarkdownNodeParser
 
-from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ class MarkdownChunker(BaseChunker):
             pattern = r"^#{1,6}\s+\S.*$"
             match = self.safe_regex.search_with_timeout(pattern, text, timeout=0.5)
             return match is not None
-        except (RegexTimeout, Exception) as e:
+        except (RegexTimeoutError, Exception) as e:
             logger.debug(f"Failed to check for markdown headers: {e}")
             # Fallback: simple string check
             lines = text.split("\n")

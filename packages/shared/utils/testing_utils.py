@@ -49,7 +49,7 @@ def validate_redis_client(client, client_type="async") -> bool:
             import redis.asyncio as aioredis
 
             return isinstance(client, aioredis.Redis)
-        else:
-            import redis
 
-            return isinstance(client, redis.Redis)
+        import redis
+
+        return isinstance(client, redis.Redis)

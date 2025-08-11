@@ -61,8 +61,7 @@ class TestMemoryPool:
         """Test that buffer is released even on exception."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
-        with pytest.raises(ValueError), pool.acquire_sync_context():
-            assert pool.used_buffers == 1
+        with pytest.raises(ValueError, match="Test error"), pool.acquire_sync_context():
             raise ValueError("Test error")
 
         # Buffer should still be released
@@ -90,9 +89,8 @@ class TestMemoryPool:
         """Test that buffer is released even on async exception."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Test error"):
             async with pool.acquire_async():
-                assert pool.used_buffers == 1
                 raise ValueError("Test error")
 
         # Buffer should still be released

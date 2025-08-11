@@ -4,8 +4,8 @@
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from functools import lru_cache
 from re import Match, Pattern
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,9 @@ class SafeRegex:
         """
         self.timeout = timeout
         self.executor = ThreadPoolExecutor(max_workers=1)
-        self._pattern_cache = {}
+        self._pattern_cache: dict[tuple[str, bool, int], Pattern[str] | Any] = {}
 
-    @lru_cache(maxsize=100)
-    def compile_safe(self, pattern: str, use_re2: bool = True, flags: int = 0) -> Pattern:
+    def compile_safe(self, pattern: str, use_re2: bool = True, flags: int = 0) -> Pattern[str] | Any:
         """Compile pattern with safety checks.
 
         Args:
@@ -62,6 +61,11 @@ class SafeRegex:
         Raises:
             ValueError: If pattern is deemed unsafe
         """
+        # Check cache first
+        cache_key = (pattern, use_re2, flags)
+        if cache_key in self._pattern_cache:
+            return self._pattern_cache[cache_key]
+
         # Check pattern complexity
         if self._is_pattern_dangerous(pattern):
             raise ValueError(f"Pattern rejected as potentially dangerous: {pattern}")
@@ -69,13 +73,19 @@ class SafeRegex:
         if use_re2 and HAS_RE2:
             try:
                 # RE2 doesn't support all Python regex features but is safe
-                return re2.compile(pattern, flags=flags)
+                compiled = re2.compile(pattern, flags=flags)
             except Exception:
                 # Fall back to Python re with timeout protection
                 logger.debug(f"RE2 compilation failed for pattern: {pattern}. Using standard re.")
-                return re.compile(pattern, flags=flags)
+                compiled = re.compile(pattern, flags=flags)
         else:
-            return re.compile(pattern, flags=flags)
+            compiled = re.compile(pattern, flags=flags)
+
+        # Cache the compiled pattern (limit cache size)
+        if len(self._pattern_cache) < 100:
+            self._pattern_cache[cache_key] = compiled
+
+        return compiled
 
     def match_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
         """Match pattern with timeout protection.
@@ -93,7 +103,7 @@ class SafeRegex:
         """
         timeout = timeout or self.timeout
 
-        def _match():
+        def _match() -> Match[str] | None:
             compiled = self.compile_safe(pattern)
             return compiled.match(text)
 
@@ -141,7 +151,7 @@ class SafeRegex:
         """
         timeout = timeout or self.timeout
 
-        def _search():
+        def _search() -> Match[str] | None:
             compiled = self.compile_safe(pattern)
             return compiled.search(text)
 
@@ -207,10 +217,9 @@ class SafeRegex:
                             paren_count += 1
                         elif pattern[j] == ")":
                             paren_count -= 1
-                            if paren_count == 0 and j + 1 < len(pattern):
-                                # Check for quantifier after alternation group
-                                if pattern[j + 1] in "*+":
-                                    return True
+                            # Check for quantifier after alternation group
+                            if paren_count == 0 and j + 1 < len(pattern) and pattern[j + 1] in "*+":
+                                return True
                         j += 1
                 i += 1
 
@@ -228,7 +237,7 @@ class SafeRegex:
 
         return False
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Clean up executor on deletion."""
         if hasattr(self, "executor"):
             self.executor.shutdown(wait=False)
