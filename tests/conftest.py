@@ -72,44 +72,45 @@ os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
 
 
-@pytest.fixture(scope="session", autouse=True)
-def mock_redis_globally():
-    """Replace Redis with fakeredis for all tests."""
-    # Create fake Redis instances with proper types
+@pytest.fixture
+def use_fakeredis():
+    """Opt-in fixture to use fakeredis for a specific test."""
     fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
     fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
     
-    # Store original functions
-    import redis
-    import redis.asyncio
-    
-    original_from_url = redis.from_url
-    original_redis = redis.Redis
-    original_async_from_url = redis.asyncio.from_url
-    original_async_redis = redis.asyncio.Redis
-    
-    # Patch all Redis entry points
     with patch('redis.from_url', return_value=fake_sync_redis), \
-         patch('redis.Redis', return_value=fake_sync_redis), \
-         patch('redis.StrictRedis', return_value=fake_sync_redis), \
          patch('redis.asyncio.from_url', return_value=fake_async_redis), \
-         patch('redis.asyncio.Redis', return_value=fake_async_redis), \
-         patch('redis.asyncio.client.Redis', return_value=fake_async_redis):
+         patch('redis.ConnectionPool.from_url', return_value=fake_sync_redis.connection_pool), \
+         patch('redis.asyncio.ConnectionPool.from_url', return_value=fake_async_redis.connection_pool):
         
-        # Also patch common import patterns
-        with patch.dict('sys.modules', {
-            'packages.webui.websocket_manager.aioredis': MagicMock(
-                from_url=lambda *a, **k: fake_async_redis,
-                Redis=lambda *a, **k: fake_async_redis
-            )
-        }):
-            yield
-    
-    # Restore originals
-    redis.from_url = original_from_url
-    redis.Redis = original_redis
-    redis.asyncio.from_url = original_async_from_url
-    redis.asyncio.Redis = original_async_redis
+        # Also need to handle Redis() constructor with connection pool
+        original_redis_init = redis.Redis.__init__
+        original_async_redis_init = redis.asyncio.Redis.__init__
+        
+        def fake_redis_init(self, *args, connection_pool=None, **kwargs):
+            if connection_pool == fake_sync_redis.connection_pool:
+                # Initialize with fakeredis
+                fake_sync_redis.__init__(*args, **kwargs)
+                self.__dict__.update(fake_sync_redis.__dict__)
+            else:
+                original_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+        
+        def fake_async_redis_init(self, *args, connection_pool=None, **kwargs):
+            if connection_pool == fake_async_redis.connection_pool:
+                # Initialize with fakeredis
+                fake_async_redis.__init__(*args, **kwargs)
+                self.__dict__.update(fake_async_redis.__dict__)
+            else:
+                original_async_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+        
+        redis.Redis.__init__ = fake_redis_init
+        redis.asyncio.Redis.__init__ = fake_async_redis_init
+        
+        try:
+            yield fake_sync_redis, fake_async_redis
+        finally:
+            redis.Redis.__init__ = original_redis_init
+            redis.asyncio.Redis.__init__ = original_async_redis_init
 
 
 @pytest.fixture
