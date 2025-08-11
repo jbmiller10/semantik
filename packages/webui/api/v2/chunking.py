@@ -906,7 +906,7 @@ async def get_metrics_by_strategy(
 
         # Transform service result to response models
         metrics = []
-        if not metrics_data:
+        if not isinstance(metrics_data, list) or not metrics_data:
             # Provide default placeholder metrics for all six primary strategies
             strategies = [
                 ChunkingStrategy.FIXED_SIZE,

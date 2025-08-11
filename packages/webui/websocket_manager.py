@@ -63,8 +63,7 @@ class RedisStreamWebSocketManager:
                     redis_client = await redis.from_url(redis_url, decode_responses=True)
 
                     # Validate connection
-                    if hasattr(redis_client, "ping"):
-                        await redis_client.ping()
+                    await redis_client.ping()
                     self.redis = redis_client
                     logger.info("WebSocket manager connected to Redis")
                     return
