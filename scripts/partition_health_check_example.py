@@ -198,9 +198,7 @@ async def periodic_partition_health_check(db: AsyncSession) -> None:
         metrics = await PartitionImplementationDetector.get_performance_metrics(db)
 
         if metrics["hot_partitions"]:
-            logger.warning(
-                f"Detected {len(metrics['hot_partitions'])} hot partitions with uneven data distribution"
-            )
+            logger.warning(f"Detected {len(metrics['hot_partitions'])} hot partitions with uneven data distribution")
 
             for hot in metrics["hot_partitions"][:3]:
                 logger.info(

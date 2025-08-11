@@ -89,7 +89,12 @@ class Phase1DryRunValidator:
                 for node in ast.walk(chunk_class):
                     if isinstance(node, ast.Assign):
                         for target in node.targets:
-                            if isinstance(target, ast.Name) and target.id == "__tablename__" and isinstance(node.value, ast.Constant) and node.value.value != "chunks":
+                            if (
+                                isinstance(target, ast.Name)
+                                and target.id == "__tablename__"
+                                and isinstance(node.value, ast.Constant)
+                                and node.value.value != "chunks"
+                            ):
                                 return ValidationResult(
                                     name="Model Definitions",
                                     passed=False,
