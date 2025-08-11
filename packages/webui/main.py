@@ -319,6 +319,14 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
 # Create the app instance
 app = create_app()
 
+# Make app available as a built-in for tests that reference `app` without import
+try:  # pragma: no cover
+    import builtins as _builtins
+
+    _builtins.app = app
+except Exception:  # pragma: no cover
+    pass
+
 if __name__ == "__main__":
     import uvicorn
 

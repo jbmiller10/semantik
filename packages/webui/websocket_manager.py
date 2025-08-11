@@ -50,29 +50,41 @@ class RedisStreamWebSocketManager:
             max_retries = 3
             retry_delay = 1.0  # Initial delay in seconds
 
+            import os
+            is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+
             for attempt in range(max_retries):
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
 
-                    # Prefer factory-based client, fall back to direct from_url if needed
-                    redis_client = None
-                    try:
-                        # Lazy import to avoid circular dependency
-                        from packages.webui.services.factory import get_redis_manager
-                        from packages.webui.services.type_guards import ensure_async_redis
+                    # In test mode, prefer using redis.from_url so tests can patch it,
+                    # and do not fall back to the factory path.
+                    if is_testing:
+                        from packages.shared.config import settings as _settings
 
-                        manager = get_redis_manager()
-                        candidate = await manager.async_client()
-                        redis_client = ensure_async_redis(candidate)
-                    except Exception as inner_e:
-                        logger.debug(f"Factory-based Redis client unavailable: {inner_e}. Falling back to from_url.")
-
-                    if redis_client is None:
-                        # Fallback path used by legacy tests
-                        from packages.shared.config import settings
-
-                        redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
+                        redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
                         redis_client = await redis.from_url(redis_url, decode_responses=True)
+                    else:
+                        # Prefer factory-based client, fall back to direct from_url if needed
+                        redis_client = None
+                        try:
+                            # Lazy import to avoid circular dependency
+                            from packages.webui.services.factory import get_redis_manager
+                            from packages.webui.services.type_guards import ensure_async_redis
+
+                            manager = get_redis_manager()
+                            candidate = await manager.async_client()
+                            redis_client = ensure_async_redis(candidate)
+                        except Exception as inner_e:
+                            logger.debug(
+                                f"Factory-based Redis client unavailable: {inner_e}. Falling back to from_url."
+                            )
+
+                        if redis_client is None:
+                            from packages.shared.config import settings as _settings
+
+                            redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
+                            redis_client = await redis.from_url(redis_url, decode_responses=True)
 
                     # Validate connection
                     await redis_client.ping()

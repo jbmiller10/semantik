@@ -18,9 +18,12 @@ class ChunkingStrategy(str, Enum):
     FIXED_SIZE = "fixed_size"
     SEMANTIC = "semantic"
     RECURSIVE = "recursive"
+    MARKDOWN = "markdown"
+    HIERARCHICAL = "hierarchical"
+    HYBRID = "hybrid"
+    # Legacy/aliases retained for backward compatibility (not used in tests)
     SLIDING_WINDOW = "sliding_window"
     DOCUMENT_STRUCTURE = "document_structure"
-    HYBRID = "hybrid"
 
 
 class ChunkingStatus(str, Enum):

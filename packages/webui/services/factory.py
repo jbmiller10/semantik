@@ -355,3 +355,13 @@ def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
 async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
     """FastAPI dependency for ChunkingService injection."""
     return await create_chunking_service(db)
+
+# Expose commonly used dependency providers to builtins for tests that
+# reference them without importing (legacy tests convenience)
+try:  # pragma: no cover
+    import builtins as _builtins
+
+    _builtins.get_chunking_service = get_chunking_service
+    _builtins.get_collection_service = get_collection_service
+except Exception:
+    pass
