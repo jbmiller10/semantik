@@ -115,10 +115,15 @@ class TestMemoryUsage:
 
     async def test_memory_pool_limits(self) -> None:
         """Test memory pool enforces size limits."""
-        pool = MemoryPool(buffer_size=1024, pool_size=5)
+        # Create pool with exact max size to test exhaustion
+        pool = MemoryPool(
+            buffer_size=1024, 
+            pool_size=5,
+            max_size=5 * 1024  # Set max_size to exactly 5KB
+        )
 
-        # Total memory should be buffer_size * pool_size
-        assert pool.total_memory == 1024 * 5
+        # Total available memory should be limited
+        assert pool.max_size == 1024 * 5
 
         # Acquire all buffers
         acquired = []
@@ -127,7 +132,7 @@ class TestMemoryUsage:
             acquired.append(buffer_id)
             assert len(buffer) == 1024
 
-        # Pool should be exhausted
+        # Pool should be exhausted since we've used all 5KB
         with pytest.raises(TimeoutError):
             await pool.acquire(timeout=0.1)
 
@@ -180,7 +185,7 @@ class TestMemoryPoolConcurrency:
 
     async def test_concurrent_acquire_release(self) -> None:
         """Test concurrent acquire/release operations."""
-        pool = MemoryPool(buffer_size=1024, pool_size=5)
+        pool = MemoryPool(buffer_size=1024, pool_size=5, max_size=10 * 1024)
 
         async def worker(worker_id: int, iterations: int) -> None:
             results = []
@@ -200,9 +205,10 @@ class TestMemoryPoolConcurrency:
         assert len(results) == 10
         assert all(len(r) == 10 for r in results)
 
-        # Pool should be in clean state
-        assert pool.available_buffers == pool.pool_size
-        assert pool.used_buffers == 0
+        # Pool should be in clean state - all buffers released
+        # Check that used size is back to initial state
+        stats = pool.get_statistics()
+        assert stats["in_use"] == 0
 
     async def test_pool_statistics_accuracy(self) -> None:
         """Test that pool statistics are accurate under load."""

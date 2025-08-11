@@ -11,9 +11,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 from uuid import uuid4
 
+# Set test environment BEFORE any app imports
+os.environ["TESTING"] = "true"
+os.environ["ENV"] = "test"
+os.environ["DISABLE_RATE_LIMIT"] = "true"
+os.environ["REDIS_URL"] = "redis://localhost:6379"
+
 import asyncpg
 import pytest
 import pytest_asyncio
+import fakeredis
+import fakeredis.aioredis
 import redis.asyncio as redis
 from dotenv import load_dotenv
 from fastapi import WebSocket
@@ -62,6 +70,65 @@ os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def mock_redis_globally():
+    """Replace Redis with fakeredis for all tests."""
+    # Create fake Redis instances with proper types
+    fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
+    fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    
+    # Store original functions
+    import redis
+    import redis.asyncio
+    
+    original_from_url = redis.from_url
+    original_redis = redis.Redis
+    original_async_from_url = redis.asyncio.from_url
+    original_async_redis = redis.asyncio.Redis
+    
+    # Patch all Redis entry points
+    with patch('redis.from_url', return_value=fake_sync_redis), \
+         patch('redis.Redis', return_value=fake_sync_redis), \
+         patch('redis.StrictRedis', return_value=fake_sync_redis), \
+         patch('redis.asyncio.from_url', return_value=fake_async_redis), \
+         patch('redis.asyncio.Redis', return_value=fake_async_redis), \
+         patch('redis.asyncio.client.Redis', return_value=fake_async_redis):
+        
+        # Also patch common import patterns
+        with patch.dict('sys.modules', {
+            'packages.webui.websocket_manager.aioredis': MagicMock(
+                from_url=lambda *a, **k: fake_async_redis,
+                Redis=lambda *a, **k: fake_async_redis
+            )
+        }):
+            yield
+    
+    # Restore originals
+    redis.from_url = original_from_url
+    redis.Redis = original_redis
+    redis.asyncio.from_url = original_async_from_url
+    redis.asyncio.Redis = original_async_redis
+
+
+@pytest.fixture
+def fake_redis_client():
+    """Provide a fake Redis client for tests that need direct access."""
+    return fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+
+@pytest.fixture
+def real_redis_client():
+    """Provide real Redis client for integration tests.
+    
+    Only use this for tests that MUST have real Redis behavior.
+    """
+    import redis.asyncio as aioredis
+    return aioredis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379"),
+        decode_responses=True
+    )
 
 
 @pytest.fixture()

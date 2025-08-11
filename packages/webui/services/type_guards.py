@@ -11,6 +11,7 @@ from typing import Any, TypeGuard
 
 import redis
 import redis.asyncio as aioredis
+from packages.shared.utils.testing_utils import is_testing
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,13 @@ def is_async_redis(client: Any) -> TypeGuard[aioredis.Redis]:
             # client is guaranteed to be aioredis.Redis here
             await client.set("key", "value")
     """
+    if is_testing():
+        # In tests, accept both real and fake Redis
+        try:
+            import fakeredis.aioredis
+            return isinstance(client, (aioredis.Redis, fakeredis.aioredis.FakeRedis))
+        except ImportError:
+            return isinstance(client, aioredis.Redis)
     return isinstance(client, aioredis.Redis)
 
 
@@ -52,6 +60,13 @@ def is_sync_redis(client: Any) -> TypeGuard[redis.Redis]:
             # client is guaranteed to be redis.Redis here
             client.set("key", "value")
     """
+    if is_testing():
+        # In tests, accept both real and fake Redis
+        try:
+            import fakeredis
+            return isinstance(client, (redis.Redis, fakeredis.FakeRedis))
+        except ImportError:
+            return isinstance(client, redis.Redis)
     return isinstance(client, redis.Redis)
 
 

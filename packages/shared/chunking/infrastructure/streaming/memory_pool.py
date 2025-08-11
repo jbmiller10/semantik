@@ -305,15 +305,49 @@ class MemoryPool:
             "Using deprecated acquire() method. Please use acquire_async() context manager."
         )
 
+        # Don't use the context manager since it auto-releases
+        # Instead, manually acquire the buffer like the old version would
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        if self._allocation_event is None:
+            self._allocation_event = asyncio.Event()
+
         try:
-            async with self.acquire_async(size=self.default_buffer_size, timeout=timeout) as managed_buffer:
-                # Return buffer but keep it tracked - caller must release
-                # Mark as not released so the context manager doesn't auto-release
-                managed_buffer._released = True  # Prevent auto-release
-                return managed_buffer.buffer_id, managed_buffer.data
+            # Acquire with timeout
+            async with asyncio.timeout(timeout):
+                while True:
+                    async with self._async_lock:
+                        with self._lock:  # Also use thread lock for thread safety
+                            buffer_id, buffer = self._try_acquire_buffer(self.default_buffer_size)
+
+                            if buffer_id:
+                                # Track allocation
+                                self._allocations[buffer_id] = BufferAllocation(
+                                    buffer_id=buffer_id,
+                                    size=self.default_buffer_size,
+                                    allocated_at=datetime.now(UTC),
+                                    last_accessed=datetime.now(UTC),
+                                    stack_trace=traceback.format_stack()[-5:],
+                                    thread_id=threading.current_thread().ident,
+                                )
+
+                                self.allocation_count += 1
+                                # Don't wrap in ManagedBuffer - just return raw tuple
+                                return buffer_id, buffer
+
+                    # Wait for buffer to become available
+                    self._allocation_event.clear()
+                    try:
+                        await asyncio.wait_for(
+                            self._allocation_event.wait(), timeout=1.0
+                        )
+                    except TimeoutError:
+                        continue  # Check again
+
         except TimeoutError:
-            # Re-raise TimeoutError to maintain backward compatibility
-            raise
+            raise TimeoutError(
+                f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s"
+            )
 
     def acquire_sync_legacy(self, timeout: float = 5.0) -> tuple[str, bytearray]:
         """

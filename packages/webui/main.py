@@ -197,14 +197,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     logger.info("PostgreSQL connection closed")
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application"""
-    app = FastAPI(
-        title="Document Embedding Web UI",
-        description="Create and search document embeddings",
-        version="1.1.0",
-        lifespan=lifespan,
-    )
+def create_app(skip_lifespan: bool = False) -> FastAPI:
+    """Create and configure the FastAPI application
+    
+    Args:
+        skip_lifespan: Skip lifespan events (for testing)
+    """
+    import os
+    
+    # Check if we're in testing mode
+    is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+    
+    app_kwargs = {
+        "title": "Document Embedding Web UI",
+        "description": "Create and search document embeddings",
+        "version": "1.1.0",
+    }
+    
+    # Only add lifespan if not skipping and not testing
+    if not skip_lifespan and not is_testing:
+        app_kwargs["lifespan"] = lifespan
+    
+    app = FastAPI(**app_kwargs)
 
     # Configure CORS middleware
     # Parse comma-separated origins from configuration
