@@ -6,7 +6,8 @@ strategy management, preview operations, collection processing, and analytics.
 """
 
 import os
-# Disable rate limiting for tests BEFORE importing the app
+# Disable rate limiting BEFORE importing anything else
+# This ensures the rate limiter doesn't try to connect to Redis
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 
 import uuid
@@ -24,11 +25,23 @@ from packages.webui.dependencies import get_collection_for_user
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 
-# Lazy imports to avoid initialization issues
-app = None
-chunking_module = None
-get_chunking_service = None
-get_collection_service = None
+# Patch the background tasks module before importing the app
+import packages.webui.background_tasks as bg_tasks
+bg_tasks.start_background_tasks = AsyncMock()
+bg_tasks.stop_background_tasks = AsyncMock()
+
+# Mock the Redis manager factory BEFORE importing the app
+import packages.webui.services.factory as factory_module
+
+# Create a mock Redis manager that doesn't try to connect
+mock_redis_manager = Mock()
+mock_redis_manager.async_client = AsyncMock(return_value=AsyncMock())
+factory_module._redis_manager = mock_redis_manager
+
+# Now import the app and related modules
+from packages.webui.services.factory import get_chunking_service, get_collection_service
+from packages.webui.main import app
+import packages.webui.api.v2.chunking as chunking_module
 
 
 @pytest.fixture()
@@ -78,23 +91,6 @@ def client(
     mock_ws_manager: AsyncMock,
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
-    global app, chunking_module, get_chunking_service, get_collection_service
-    
-    # Mock Redis and background tasks before importing
-    with patch('packages.webui.background_tasks.start_background_tasks', new_callable=AsyncMock):
-        with patch('packages.webui.background_tasks.stop_background_tasks', new_callable=AsyncMock):
-            with patch('packages.webui.services.factory._redis_manager', Mock(async_client=AsyncMock(return_value=AsyncMock()))):
-                # Now import the app and modules
-                from packages.webui.main import app as _app
-                import packages.webui.api.v2.chunking as _chunking_module
-                from packages.webui.services.factory import get_chunking_service as _get_chunking_service
-                from packages.webui.services.factory import get_collection_service as _get_collection_service
-                
-                app = _app
-                chunking_module = _chunking_module
-                get_chunking_service = _get_chunking_service
-                get_collection_service = _get_collection_service
-
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
