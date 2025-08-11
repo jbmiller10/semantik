@@ -12,6 +12,7 @@ import re
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from typing import Any
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
@@ -167,7 +168,7 @@ if INFRASTRUCTURE_AVAILABLE:
         return exception_translator.create_error_response(exc, correlation_id)
 
 
-async def handle_application_exception(request: Request, exc: ApplicationException) -> JSONResponse:
+async def handle_application_exception(request: Request, exc: Any) -> JSONResponse:
     """Handle application-level exceptions.
 
     Args:
@@ -188,7 +189,7 @@ async def handle_application_exception(request: Request, exc: ApplicationExcepti
     )
 
 
-async def handle_domain_exception(request: Request, exc: DomainException) -> JSONResponse:
+async def handle_domain_exception(request: Request, exc: Any) -> JSONResponse:
     """Handle domain-level exceptions.
 
     Args:
@@ -212,7 +213,7 @@ async def handle_domain_exception(request: Request, exc: DomainException) -> JSO
     )
 
 
-async def handle_infrastructure_exception(request: Request, exc: InfrastructureException) -> JSONResponse:
+async def handle_infrastructure_exception(request: Request, exc: Any) -> JSONResponse:
     """Handle infrastructure-level exceptions.
 
     Args:
