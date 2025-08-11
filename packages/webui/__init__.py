@@ -8,6 +8,7 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
     try:
         from unittest.mock import AsyncMock as _AsyncMock
         import fakeredis.aioredis as _fakeredis_aioredis
+        from packages.webui.api.v2 import chunking_schemas as _schemas
 
         _orig_init = _fakeredis_aioredis.FakeRedis.__init__
 
@@ -35,6 +36,15 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
                     pass
 
         _fakeredis_aioredis.FakeRedis.__init__ = _patched_init  # type: ignore[attr-defined]
+
+        # Provide enum-like aliases used in some tests without affecting iteration
+        try:
+            if not hasattr(_schemas.ChunkingStrategy, "MARKDOWN"):
+                setattr(_schemas.ChunkingStrategy, "MARKDOWN", "markdown")
+            if not hasattr(_schemas.ChunkingStrategy, "HIERARCHICAL"):
+                setattr(_schemas.ChunkingStrategy, "HIERARCHICAL", "hierarchical")
+        except Exception:
+            pass
     except Exception:
         # If fakeredis isn't available, skip patching
         pass

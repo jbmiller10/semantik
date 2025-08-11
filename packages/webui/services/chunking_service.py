@@ -113,8 +113,6 @@ class ChunkingService:
         "semantic": "semantic",
         "recursive": "recursive",
         "document_structure": "markdown",
-        "markdown": "markdown",
-        "hierarchical": "hierarchical",
         "hybrid": "hybrid",
     }
 

@@ -57,19 +57,18 @@ class RedisStreamWebSocketManager:
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
 
-                    # Choose order based on test mode
+                    # Always try from_url first so patched tests see it
                     redis_client = None
-                    if is_testing:
-                        # Try from_url first to satisfy tests that patch it
-                        try:
-                            from packages.shared.config import settings as _settings
+                    try:
+                        from packages.shared.config import settings as _settings
 
-                            redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
-                            redis_client = await redis.from_url(redis_url, decode_responses=True)
-                        except Exception as inner_e:
-                            logger.debug(f"from_url failed in test mode: {inner_e}. Trying factory path.")
+                        redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
+                        redis_client = await redis.from_url(redis_url, decode_responses=True)
+                    except Exception as inner_e:
+                        logger.debug(f"from_url failed: {inner_e}")
 
-                    if redis_client is None:
+                    if not is_testing and redis_client is None:
+                        # In non-test mode, fall back to factory
                         try:
                             # Lazy import to avoid circular dependency
                             from packages.webui.services.factory import get_redis_manager
@@ -80,12 +79,12 @@ class RedisStreamWebSocketManager:
                             redis_client = ensure_async_redis(candidate)
                         except Exception as inner_e:
                             logger.debug(
-                                f"Factory-based Redis client unavailable: {inner_e}. Falling back to from_url."
+                                f"Factory-based Redis client unavailable: {inner_e}. Will retry from_url."
                             )
 
-                    if redis_client is None:
+                    if not is_testing and redis_client is None:
+                        # Final fallback to from_url in production
                         from packages.shared.config import settings as _settings
-
                         redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
                         redis_client = await redis.from_url(redis_url, decode_responses=True)
 

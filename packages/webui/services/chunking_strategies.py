@@ -88,7 +88,7 @@ class ChunkingStrategyRegistry:
             "best_for": ["md", "markdown", "mdx"],
             "pros": ["Preserves structure", "Good for technical docs"],
             "cons": ["Only for markdown-like content"],
-            "performance_characteristics": {"speed": "moderate", "memory_usage": "moderate", "quality": "high"},
+            "performance_characteristics": {"speed": "moderate", "memory_usage": "moderate", "quality": "very_good"},
         },
         ChunkingStrategy.HIERARCHICAL: {
             "name": "Hierarchical",
@@ -96,7 +96,7 @@ class ChunkingStrategyRegistry:
             "best_for": ["large documents", "books", "reports"],
             "pros": ["Multiple granularities", "Scalable for large docs"],
             "cons": ["Complex", "More storage"],
-            "performance_characteristics": {"speed": "slow", "memory_usage": "high", "quality": "high"},
+            "performance_characteristics": {"speed": "slow", "memory_usage": "high", "quality": "excellent"},
         },
         ChunkingStrategy.HYBRID: {
             "name": "Hybrid",
