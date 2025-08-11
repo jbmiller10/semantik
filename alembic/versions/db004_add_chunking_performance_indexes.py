@@ -90,8 +90,24 @@ def upgrade() -> None:
     
     # Chunks table indexes (per partition)
     # We need to add indexes to each partition
+    # Note: Partitions are named with zero-padding (00, 01, ... 99)
+    # First check which partitions exist to avoid transaction abort
+    conn = op.get_bind()
+    result = conn.execute(sa.text("""
+        SELECT tablename 
+        FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename LIKE 'chunks_part_%'
+    """))
+    existing_partitions = {row[0] for row in result}
+    
     for i in range(100):
-        partition_name = f'chunks_part_{i}'
+        partition_name = f'chunks_part_{i:02d}'
+        
+        # Skip if partition doesn't exist
+        if partition_name not in existing_partitions:
+            logger.info(f"Skipping partition {partition_name} - does not exist")
+            continue
         
         try:
             # Collection + document index for common queries
@@ -139,13 +155,15 @@ def upgrade() -> None:
     op.execute("ANALYZE collections")
     op.execute("ANALYZE documents")
     
-    # Analyze all chunk partitions
+    # Analyze all chunk partitions that exist
     for i in range(100):
-        try:
-            op.execute(f"ANALYZE chunks_part_{i}")
-        except Exception as e:
-            logger.warning(f"Could not analyze partition chunks_part_{i}: {e}")
-            continue
+        partition_name = f'chunks_part_{i:02d}'
+        if partition_name in existing_partitions:
+            try:
+                op.execute(f"ANALYZE {partition_name}")
+            except Exception as e:
+                logger.warning(f"Could not analyze partition {partition_name}: {e}")
+                continue
     
     logger.info("Index creation completed successfully")
 
@@ -173,9 +191,22 @@ def downgrade() -> None:
     
     logger.info("Dropping partition-specific indexes...")
     
+    # Check which partitions exist before trying to drop indexes
+    conn = op.get_bind()
+    result = conn.execute(sa.text("""
+        SELECT tablename 
+        FROM pg_tables 
+        WHERE schemaname = 'public' 
+        AND tablename LIKE 'chunks_part_%'
+    """))
+    existing_partitions = {row[0] for row in result}
+    
     # Drop chunk partition indexes
     for i in range(100):
-        partition_name = f'chunks_part_{i}'
+        partition_name = f'chunks_part_{i:02d}'
+        
+        if partition_name not in existing_partitions:
+            continue
         
         try:
             op.drop_index(f'idx_{partition_name}_collection_document', table_name=partition_name)
