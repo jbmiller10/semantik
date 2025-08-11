@@ -31,6 +31,7 @@ import enum
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -476,8 +477,8 @@ class Chunk(Base):
     __tablename__ = "chunks"
 
     # Primary key includes partition key for partitioned table support
-    # Note: id is BigInteger with server-side sequence, not UUID
-    id = Column(Integer, primary_key=True, server_default=func.nextval("chunks_id_seq"))
+    # Note: id is BigInteger with auto-incrementing sequence
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True, nullable=False)
     partition_key = Column(Integer, primary_key=True, nullable=False, server_default="0")  # Computed via trigger
 
