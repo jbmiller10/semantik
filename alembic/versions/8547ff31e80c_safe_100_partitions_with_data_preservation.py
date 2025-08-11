@@ -61,6 +61,63 @@ def check_existing_data(conn) -> tuple[bool, int]:
         return False, 0
 
 
+def check_if_already_partitioned(conn) -> bool:
+    """Check if the chunks table is already partitioned with 100 partitions."""
+    try:
+        # Check if chunks_part_00 through chunks_part_99 exist
+        # If they do, the migration has already been applied
+        result = conn.execute(
+            text(
+                """
+                SELECT COUNT(*) 
+                FROM pg_tables 
+                WHERE schemaname = 'public' 
+                AND tablename LIKE 'chunks_part_%'
+                """
+            )
+        )
+        partition_count = result.scalar()
+        
+        # Check if we have exactly 100 partitions (chunks_part_00 through chunks_part_99)
+        if partition_count == 100:
+            # Verify it's the LIST partition structure (not the old HASH structure)
+            result = conn.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM pg_partitioned_table pt
+                    JOIN pg_class c ON pt.partrelid = c.oid
+                    WHERE c.relname = 'chunks'
+                    AND pt.partstrat = 'l'  -- 'l' for LIST partitioning
+                    """
+                )
+            )
+            is_list_partitioned = result.scalar() > 0
+            
+            if is_list_partitioned:
+                # Check if partition_key column exists
+                result = conn.execute(
+                    text(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'chunks'
+                            AND column_name = 'partition_key'
+                        )
+                        """
+                    )
+                )
+                has_partition_key = result.scalar()
+                
+                return has_partition_key
+        
+        return False
+        
+    except SQLAlchemyError:
+        return False
+
+
 def create_backup_table(conn, timestamp: str) -> str:
     """Create a timestamped backup of the chunks table."""
     backup_table_name = f"chunks_backup_{timestamp}"
@@ -189,6 +246,9 @@ def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
 def create_new_partitioned_structure(conn):
     """Create the new 100-partition structure alongside the old one."""
     logger.info("Creating new partitioned structure...")
+    
+    # Drop any existing chunks_new table (from failed previous attempts)
+    conn.execute(text("DROP TABLE IF EXISTS chunks_new CASCADE"))
     
     # Create staging table with new structure
     conn.execute(
@@ -437,10 +497,34 @@ def perform_atomic_swap(conn):
     logger.info("Performing atomic rename...")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
+    # Check if old partitions exist and need to be renamed
+    result = conn.execute(
+        text(
+            """
+            SELECT COUNT(*) 
+            FROM pg_tables 
+            WHERE schemaname = 'public' 
+            AND tablename LIKE 'chunks_part_%'
+            """
+        )
+    )
+    old_partitions_exist = result.scalar() > 0
+    
+    if old_partitions_exist:
+        # If old partitions exist, we need to rename them first to avoid conflicts
+        logger.info("Renaming existing partitions to avoid conflicts...")
+        for i in range(100):
+            old_part_name = f"chunks_part_{i:02d}"
+            temp_name = f"chunks_old_part_{i:02d}_{timestamp}"
+            try:
+                conn.execute(text(f"ALTER TABLE IF EXISTS {old_part_name} RENAME TO {temp_name}"))
+            except Exception:
+                pass  # Partition might not exist in old structure
+    
     conn.execute(text(f"ALTER TABLE chunks RENAME TO chunks_old_{timestamp}"))
     conn.execute(text("ALTER TABLE chunks_new RENAME TO chunks"))
     
-    # Rename all partitions
+    # Rename all new partitions
     for i in range(100):
         part_name = f"chunks_new_part_{i:02d}"
         new_name = f"chunks_part_{i:02d}"
@@ -624,19 +708,31 @@ def upgrade() -> None:
     Safe migration to 100 partitions with data preservation.
     
     This migration:
-    1. Checks for existing data
-    2. Creates timestamped backups
-    3. Creates new structure alongside old
-    4. Migrates data in batches
-    5. Verifies data integrity
-    6. Performs atomic swap
-    7. Retains old tables for safety
+    1. Checks if already partitioned (idempotent)
+    2. Checks for existing data
+    3. Creates timestamped backups
+    4. Creates new structure alongside old
+    5. Migrates data in batches
+    6. Verifies data integrity
+    7. Performs atomic swap
+    8. Retains old tables for safety
     """
     
     conn = op.get_bind()
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     logger.info(f"Starting safe migration to 100 partitions (timestamp: {timestamp})")
+    
+    # Step 0: Check if already partitioned with 100 partitions
+    if check_if_already_partitioned(conn):
+        logger.info("Chunks table is already partitioned with 100 LIST partitions. Skipping migration.")
+        # Ensure monitoring views exist (they might have been dropped)
+        try:
+            create_monitoring_views(conn)
+            logger.info("Ensured monitoring views exist")
+        except Exception as e:
+            logger.warning(f"Could not create monitoring views (may already exist): {e}")
+        return
     
     # Step 1: Check for existing data
     has_data, record_count = check_existing_data(conn)
