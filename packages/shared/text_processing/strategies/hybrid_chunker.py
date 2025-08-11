@@ -164,8 +164,8 @@ class HybridChunker(BaseChunker):
 
         for pattern_str, weight in patterns:
             try:
-                # Compile with SafeRegex for ReDoS protection
-                compiled = self.safe_regex.compile_safe(pattern_str, use_re2=True)
+                # Compile with SafeRegex for ReDoS protection, using MULTILINE for line anchors
+                compiled = self.safe_regex.compile_safe(pattern_str, use_re2=True, flags=re.MULTILINE)
                 self._compiled_patterns[pattern_str] = (compiled, weight)
             except (ValueError, Exception) as e:
                 logger.warning(f"Failed to compile regex pattern: {pattern_str[:50]}...")
@@ -233,7 +233,7 @@ class HybridChunker(BaseChunker):
         for pattern_str, (compiled_pattern, weight) in self._compiled_patterns.items():
             try:
                 start_time = time.time()
-                matches = self.safe_regex.findall_safe(pattern_str, text, max_matches=100)
+                matches = self.safe_regex.findall_safe(pattern_str, text, max_matches=100, flags=re.MULTILINE)
                 execution_time = time.time() - start_time
 
                 # Record performance metrics

@@ -295,6 +295,9 @@ class MemoryPool:
         Returns:
             Tuple of (buffer_id, buffer)
 
+        Raises:
+            TimeoutError: If buffer cannot be acquired within timeout
+
         Note:
             This method is deprecated. Use acquire_async context manager instead.
         """
@@ -302,9 +305,15 @@ class MemoryPool:
             "Using deprecated acquire() method. Please use acquire_async() context manager."
         )
 
-        async with self.acquire_async(size=self.default_buffer_size, timeout=timeout) as managed_buffer:
-            # Return buffer but keep it tracked - caller must release
-            return managed_buffer.buffer_id, managed_buffer.data
+        try:
+            async with self.acquire_async(size=self.default_buffer_size, timeout=timeout) as managed_buffer:
+                # Return buffer but keep it tracked - caller must release
+                # Mark as not released so the context manager doesn't auto-release
+                managed_buffer._released = True  # Prevent auto-release
+                return managed_buffer.buffer_id, managed_buffer.data
+        except TimeoutError:
+            # Re-raise TimeoutError to maintain backward compatibility
+            raise
 
     def acquire_sync_legacy(self, timeout: float = 5.0) -> tuple[str, bytearray]:
         """

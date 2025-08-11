@@ -7,7 +7,7 @@ This module tests the ChunkingService business logic layer.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -280,19 +280,29 @@ Content under header 2.
         mock_collection = MagicMock(id="test-collection", uuid="test-collection")
         chunking_service.collection_repo.get_by_uuid = AsyncMock(return_value=mock_collection)
 
-        # Mock operations data
-        mock_operations = []
-        for i in range(3):
-            op = MagicMock()
-            op.status = "completed" if i < 2 else "in_progress"
-            op.created_at = datetime.now(tz=UTC)
-            op.config = {"strategy": "recursive"}
-            mock_operations.append(op)
-
-        # Mock the db query result
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = mock_operations
-        chunking_service.db_session.execute = AsyncMock(return_value=mock_result)
+        # Mock aggregated stats query result  
+        mock_stats = MagicMock()
+        mock_stats.total_operations = 3
+        mock_stats.completed_operations = 2
+        mock_stats.failed_operations = 0
+        mock_stats.processing_operations = 1
+        mock_stats.avg_processing_time = 10.5
+        mock_stats.last_operation_at = datetime.now(tz=UTC)
+        mock_stats.first_operation_at = datetime.now(tz=UTC) - timedelta(hours=1)
+        
+        # Mock latest strategy query result
+        mock_strategy_row = MagicMock()
+        mock_strategy_row.strategy = "recursive"
+        
+        # Mock the db query results
+        mock_stats_result = MagicMock()
+        mock_stats_result.one.return_value = mock_stats
+        
+        mock_strategy_result = MagicMock()
+        mock_strategy_result.one_or_none.return_value = mock_strategy_row
+        
+        # Set up execute to return different results for each query
+        chunking_service.db_session.execute = AsyncMock(side_effect=[mock_stats_result, mock_strategy_result])
 
         result = await chunking_service.get_chunking_statistics(collection_id="test-collection")
 

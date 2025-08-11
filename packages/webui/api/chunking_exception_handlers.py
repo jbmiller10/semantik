@@ -65,7 +65,9 @@ def _sanitize_error_detail(detail: str, is_production: bool = False) -> str:
 
     # Patterns to sanitize
     sanitize_patterns = [
-        (r'/[^\s]+\.(env|config|key|pem)', '[REDACTED]'),  # File paths
+        (r'/[^\s]+\.(env|config|key|pem)', '[REDACTED]'),  # File paths with sensitive extensions
+        (r'/etc/[^\s]+', '[REDACTED]'),  # System config files
+        (r'/home/[^\s]+', '[REDACTED]'),  # User home directories
         (r'(postgres|mysql|mongodb)://[^\s]+', '[REDACTED]'),  # Connection strings
         (r'(api_key|token|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', '[REDACTED]'),  # Credentials
         (r'\b(sk-[a-zA-Z0-9]+|key-[a-zA-Z0-9]+)\b', '[REDACTED]'),  # API keys

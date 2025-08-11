@@ -48,12 +48,13 @@ class SafeRegex:
         self._pattern_cache = {}
 
     @lru_cache(maxsize=100)
-    def compile_safe(self, pattern: str, use_re2: bool = True) -> Pattern:
+    def compile_safe(self, pattern: str, use_re2: bool = True, flags: int = 0) -> Pattern:
         """Compile pattern with safety checks.
 
         Args:
             pattern: Regex pattern string
             use_re2: Use RE2 engine (no backreferences but guaranteed linear time)
+            flags: Regex compilation flags (e.g., re.MULTILINE)
 
         Returns:
             Compiled pattern object
@@ -68,13 +69,13 @@ class SafeRegex:
         if use_re2 and HAS_RE2:
             try:
                 # RE2 doesn't support all Python regex features but is safe
-                return re2.compile(pattern)
+                return re2.compile(pattern, flags=flags)
             except Exception:
                 # Fall back to Python re with timeout protection
                 logger.debug(f"RE2 compilation failed for pattern: {pattern}. Using standard re.")
-                return re.compile(pattern)
+                return re.compile(pattern, flags=flags)
         else:
-            return re.compile(pattern)
+            return re.compile(pattern, flags=flags)
 
     def match_with_timeout(
         self, pattern: str, text: str, timeout: float | None = None
@@ -107,7 +108,7 @@ class SafeRegex:
             )
 
     def findall_safe(
-        self, pattern: str, text: str, max_matches: int = 1000
+        self, pattern: str, text: str, max_matches: int = 1000, flags: int = 0
     ) -> list[str]:
         """Find all matches with safety limits.
 
@@ -115,11 +116,12 @@ class SafeRegex:
             pattern: Regex pattern
             text: Text to search
             max_matches: Maximum matches to return
+            flags: Regex compilation flags (e.g., re.MULTILINE)
 
         Returns:
             List of matches (limited)
         """
-        compiled = self.compile_safe(pattern)
+        compiled = self.compile_safe(pattern, flags=flags)
         matches = []
 
         for match in compiled.finditer(text):

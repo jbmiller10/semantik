@@ -176,8 +176,8 @@ class ChunkingTask(Task):
         try:
             # Get sync Redis client for Celery
             self._redis_client = get_redis_client()
-            # ChunkingErrorHandler will be initialized per-operation with proper Redis client
-            self._error_handler = None
+            # Initialize error handler with Redis client
+            self._error_handler = ChunkingErrorHandler(redis_client=self._redis_client)
         except Exception as e:
             logger.error(f"Failed to initialize task resources: {e}")
 

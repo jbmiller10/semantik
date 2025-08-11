@@ -499,6 +499,10 @@ class ChunkingService:
         except ApplicationException:
             # Already translated, just re-raise
             raise
+        except DomainException:
+            # Domain exceptions should be re-raised as-is
+            # They'll be translated at the API layer
+            raise
         except Exception as e:
             # Catch-all for unexpected errors
             logger.exception(
