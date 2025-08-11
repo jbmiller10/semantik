@@ -82,10 +82,19 @@ class CancelOperationUseCase:
                 # 6. Clean up checkpoints
                 checkpoint_count = await self.unit_of_work.checkpoints.delete_checkpoints(request.operation_id)
 
-                # 7. Update operation status
-                await self.unit_of_work.operations.mark_cancelled(
-                    operation_id=request.operation_id, reason=request.reason
-                )
+                # 7. Update operation status based on determined new status
+                if new_status == OperationStatus.PARTIALLY_COMPLETED:
+                    # Update to partially completed status
+                    await self.unit_of_work.operations.update_status(
+                        operation_id=request.operation_id,
+                        status="partially_completed",
+                        reason=request.reason
+                    )
+                else:
+                    # Mark as cancelled
+                    await self.unit_of_work.operations.mark_cancelled(
+                        operation_id=request.operation_id, reason=request.reason
+                    )
 
                 # 8. Update document status if needed
                 if hasattr(operation, "document_id") and operation.document_id:
@@ -165,6 +174,7 @@ class CancelOperationUseCase:
         status_mapping = {
             "pending": OperationStatus.PENDING,
             "in_progress": OperationStatus.IN_PROGRESS,
+            "processing": OperationStatus.IN_PROGRESS,  # Handle both forms
             "completed": OperationStatus.COMPLETED,
             "failed": OperationStatus.FAILED,
             "cancelled": OperationStatus.CANCELLED,

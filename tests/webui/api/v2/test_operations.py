@@ -318,7 +318,7 @@ class TestListOperations:
 
         # Execute
         result = await list_operations(
-            status="processing,pending",
+            status="PROCESSING,PENDING",
             operation_type=None,
             page=1,
             per_page=50,

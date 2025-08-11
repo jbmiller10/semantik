@@ -154,7 +154,7 @@ class TestMemoryPool:
     def test_context_manager(self) -> None:
         """Test using MemoryPool as context manager."""
         pool = MemoryPool(buffer_size=128, pool_size=2)
-        
+
         # Pool should work as a context manager
         with pool as p:
             assert p is pool

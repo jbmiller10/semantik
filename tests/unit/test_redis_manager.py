@@ -40,14 +40,14 @@ class TestRedisManager:
     def test_sync_client_creation(self, redis_manager: RedisManager) -> None:
         """Test that sync Redis client is created correctly."""
         client = redis_manager.sync_client
-        
+
         # Verify it's a sync Redis client
         assert isinstance(client, redis.Redis)
         assert not isinstance(client, aioredis.Redis)
-        
+
         # Verify connection pool is created
         assert redis_manager._sync_pool is not None
-        
+
         # Multiple calls should return the same client
         client2 = redis_manager.sync_client
         assert client is client2
@@ -55,13 +55,13 @@ class TestRedisManager:
     async def test_async_client_creation(self, redis_manager: RedisManager) -> None:
         """Test that async Redis client is created correctly."""
         client = await redis_manager.async_client()
-        
+
         # Verify it's an async Redis client
         assert isinstance(client, aioredis.Redis)
-        
+
         # Verify connection pool is created
         assert redis_manager._async_pool is not None
-        
+
         # Multiple calls should return the same client
         client2 = await redis_manager.async_client()
         assert client is client2
@@ -95,7 +95,7 @@ class TestTypeGuards:
         """Test sync Redis type guard."""
         sync_client = redis.Redis()
         async_client = aioredis.Redis()
-        
+
         assert is_sync_redis(sync_client) is True
         assert is_sync_redis(async_client) is False
         assert is_sync_redis(None) is False
@@ -105,7 +105,7 @@ class TestTypeGuards:
         """Test async Redis type guard."""
         sync_client = redis.Redis()
         async_client = aioredis.Redis()
-        
+
         assert is_async_redis(async_client) is True
         assert is_async_redis(sync_client) is False
         assert is_async_redis(None) is False
@@ -115,15 +115,15 @@ class TestTypeGuards:
         """Test sync Redis type enforcement."""
         sync_client = redis.Redis()
         async_client = aioredis.Redis()
-        
+
         # Should work with sync client
         result = ensure_sync_redis(sync_client)
         assert result is sync_client
-        
+
         # Should raise TypeError with async client
         with pytest.raises(TypeError, match="Expected redis.Redis"):
             ensure_sync_redis(async_client)
-        
+
         # Should raise TypeError with None
         with pytest.raises(TypeError, match="Expected redis.Redis"):
             ensure_sync_redis(None)
@@ -132,15 +132,15 @@ class TestTypeGuards:
         """Test async Redis type enforcement."""
         sync_client = redis.Redis()
         async_client = aioredis.Redis()
-        
+
         # Should work with async client
         result = ensure_async_redis(async_client)
         assert result is async_client
-        
+
         # Should raise TypeError with sync client
         with pytest.raises(TypeError, match="Expected aioredis.Redis"):
             ensure_async_redis(sync_client)
-        
+
         # Should raise TypeError with None
         with pytest.raises(TypeError, match="Expected aioredis.Redis"):
             ensure_async_redis(None)
@@ -149,7 +149,7 @@ class TestTypeGuards:
         """Test Redis availability check."""
         sync_client = redis.Redis()
         async_client = aioredis.Redis()
-        
+
         assert is_redis_available(sync_client) is True
         assert is_redis_available(async_client) is True
         assert is_redis_available(None) is False

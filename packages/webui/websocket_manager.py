@@ -8,7 +8,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import redis  # For test compatibility
 import redis.asyncio as aioredis
 from fastapi import WebSocket
 

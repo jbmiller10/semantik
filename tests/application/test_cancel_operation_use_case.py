@@ -433,6 +433,7 @@ class TestCancelOperationUseCase:
         mock_unit_of_work.operations = AsyncMock()
         mock_unit_of_work.operations.find_by_id = AsyncMock(return_value=processing_operation)
         mock_unit_of_work.operations.mark_cancelled = AsyncMock()
+        mock_unit_of_work.operations.update_status = AsyncMock()
         mock_unit_of_work.chunks = AsyncMock()
         mock_unit_of_work.chunks.delete_by_operation = AsyncMock(return_value=0)
         mock_unit_of_work.checkpoints = AsyncMock()

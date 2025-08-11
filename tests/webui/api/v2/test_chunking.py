@@ -6,6 +6,9 @@ strategy management, preview operations, collection processing, and analytics.
 """
 
 import os
+# Disable rate limiting for tests BEFORE importing the app
+os.environ["DISABLE_RATE_LIMITING"] = "true"
+
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -161,9 +164,9 @@ class TestStrategyManagement:
                 "performance_characteristics": {"speed": "variable", "accuracy": "high"}
             }
         ]
-        
+
         mock_chunking_service.get_available_strategies.return_value = mock_strategies
-        
+
         response = client.get("/api/v2/chunking/strategies")
 
         assert response.status_code == status.HTTP_200_OK

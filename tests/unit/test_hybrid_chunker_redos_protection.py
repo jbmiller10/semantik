@@ -10,18 +10,18 @@ implemented in the HybridChunker to ensure:
 """
 
 import re
+import signal
 import time
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
 
+from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
 from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-from packages.shared.chunking.utils.safe_regex import SafeRegex, RegexTimeout
-from contextlib import contextmanager
-import signal
 
 # Define test constants and helpers
-REGEX_TIMEOUT = 1.0  # Default timeout from SafeRegex
+REGEX_TIMEOUT = 1  # Default timeout from SafeRegex
 
 
 def safe_regex_findall(pattern, text, flags=None):
@@ -44,11 +44,11 @@ def timeout(seconds):
     """Simple timeout context manager for testing."""
     def timeout_handler(signum, frame):
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
-    
+
     # Set the signal handler and alarm
     old_handler = signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(seconds)
-    
+
     try:
         yield
     finally:
@@ -108,16 +108,19 @@ class TestHybridChunkerReDoSProtection:
         assert isinstance(chunker._compiled_patterns, dict)
 
         # Check expected patterns are compiled
+        # These patterns should match what's actually in the HybridChunker implementation
         expected_patterns = [
-            r"^#{1,6}\s+",  # Headers
-            r"^\*{1,3}\s+|\-\s+|\+\s+|\d+\.\s+",  # Lists
-            r"\[.*?\]\(.*?\)",  # Links
-            r"!\[.*?\]\(.*?\)",  # Images
-            r"`{1,3}[^`]+`{1,3}",  # Code blocks
-            r"^\>\s+",  # Blockquotes
-            r"\*{1,2}[^\*]+\*{1,2}",  # Bold/italic
-            r"^\s*\|.*\|",  # Tables
-            r"^---+$|^===+$",  # Horizontal rules
+            r"^#{1,6}\s+\S.*$",  # Headers
+            r"^[\*\-\+]\s+\S.*$",  # Unordered lists
+            r"^\d+\.\s+\S.*$",  # Ordered lists  
+            r"\[([^\]]+)\]\(([^)]+)\)",  # Links
+            r"!\[([^\]]*)\]\(([^)]+)\)",  # Images
+            r"`([^`]+)`",  # Inline code
+            r"^>\s*\S.*$",  # Blockquotes
+            r"\*\*([^*]+)\*\*",  # Bold
+            r"\*([^*]+)\*",  # Italic
+            r"^\s*\|[^|]+\|",  # Tables
+            r"^(?:---|\\*\\*\\*|___)$",  # Horizontal rules
         ]
 
         # Verify patterns are compiled

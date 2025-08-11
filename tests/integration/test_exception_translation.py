@@ -7,7 +7,7 @@ across architectural layers.
 """
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -219,7 +219,7 @@ class TestExceptionTranslator:
         """Test that exception context is properly preserved through translation."""
         # Create a chain of exceptions
         original_error = ValueError("Original error")
-        
+
         domain_exc = DocumentTooLargeError(
             size=1000,
             max_size=500,
@@ -317,7 +317,7 @@ class TestExceptionTranslator:
         assert self.correlation_id in content
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 class TestServiceExceptionHandling:
     """Test exception handling in the service layer."""
 

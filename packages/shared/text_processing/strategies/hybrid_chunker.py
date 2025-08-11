@@ -29,12 +29,12 @@ REGEX_TIMEOUT = 1  # Default timeout for regex operations
 
 def safe_regex_findall(pattern, text, flags=None):
     """Helper function for executing regex with timeout protection.
-    
+
     Args:
         pattern: Regex pattern (string or compiled)
         text: Text to search
         flags: Optional regex flags
-        
+
     Returns:
         List of matches or empty list on timeout
     """
@@ -46,7 +46,7 @@ def safe_regex_findall(pattern, text, flags=None):
             pattern = safe_regex.compile_safe(pattern)
     try:
         return safe_regex.findall_safe(
-            pattern.pattern if hasattr(pattern, 'pattern') else str(pattern), 
+            pattern.pattern if hasattr(pattern, 'pattern') else str(pattern),
             text
         )
     except RegexTimeout:
@@ -60,23 +60,23 @@ def safe_regex_findall(pattern, text, flags=None):
 @contextmanager
 def timeout(seconds):
     """Context manager for timeout operations.
-    
+
     Args:
         seconds: Timeout duration in seconds
-        
+
     Yields:
         None
-        
+
     Raises:
         TimeoutError: If operation exceeds timeout
     """
     def timeout_handler(signum, frame):
         raise TimeoutError(f"Operation timed out after {seconds} seconds")
-    
+
     # Set the signal handler and alarm
     old_handler = signal.signal(signal.SIGALRM, timeout_handler)
     signal.alarm(int(seconds))
-    
+
     try:
         yield
     finally:

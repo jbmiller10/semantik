@@ -6,11 +6,9 @@ This module provides FastAPI exception handlers for chunking exceptions,
 including error sanitization and structured JSON responses.
 """
 
-import json
 import logging
 import os
 import re
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -54,17 +52,17 @@ logger = logging.getLogger(__name__)
 
 def _sanitize_error_detail(detail: str, is_production: bool = False) -> str:
     """Sanitize error details to prevent information leakage.
-    
+
     Args:
         detail: The error detail message
         is_production: Whether running in production mode
-    
+
     Returns:
         Sanitized error detail
     """
     if not is_production:
         return detail
-    
+
     # Patterns to sanitize
     sanitize_patterns = [
         (r'/[^\s]+\.(env|config|key|pem)', '[REDACTED]'),  # File paths
@@ -72,11 +70,11 @@ def _sanitize_error_detail(detail: str, is_production: bool = False) -> str:
         (r'(api_key|token|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', '[REDACTED]'),  # Credentials
         (r'\b(sk-[a-zA-Z0-9]+|key-[a-zA-Z0-9]+)\b', '[REDACTED]'),  # API keys
     ]
-    
+
     sanitized = detail
     for pattern, replacement in sanitize_patterns:
         sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
-    
+
     return sanitized
 
 
@@ -87,19 +85,19 @@ def _create_error_response(
     is_production: bool = None,
 ) -> JSONResponse:
     """Create a structured error response.
-    
+
     Args:
         request: The FastAPI request
         exc: The chunking exception
         status_code: HTTP status code
         is_production: Whether in production mode (defaults to checking ENV)
-    
+
     Returns:
         JSON response with error details
     """
     if is_production is None:
         is_production = os.getenv("ENV", "development").lower() == "production"
-    
+
     # Log based on status code
     if status_code >= 500:
         logger.error(
@@ -111,27 +109,27 @@ def _create_error_response(
             f"Client error: {exc.__class__.__name__}",
             extra={"error": str(exc), "correlation_id": exc.correlation_id},
         )
-    
+
     # Build error response
     error_dict = exc.to_dict()
     error_dict["detail"] = _sanitize_error_detail(error_dict.get("detail", ""), is_production)
-    
+
     # Add request context
     error_dict["request"] = {
         "method": request.method,
         "path": str(request.url.path),
         "query_params": dict(request.query_params) if not is_production else None,
     }
-    
+
     response = JSONResponse(
         status_code=status_code,
         content=error_dict,
     )
-    
+
     # Add correlation ID header
     if exc.correlation_id:
         response.headers["X-Correlation-ID"] = exc.correlation_id
-    
+
     return response
 
 
@@ -309,14 +307,14 @@ def register_chunking_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ChunkingConfigurationError, handle_chunking_configuration_error)
     app.add_exception_handler(ChunkingDependencyError, handle_chunking_dependency_error)
     app.add_exception_handler(ChunkingError, handle_base_chunking_error)  # Base class as fallback
-    
+
     # Register infrastructure handlers if available
     if INFRASTRUCTURE_AVAILABLE:
         app.add_exception_handler(BaseChunkingException, handle_chunking_exception)
         app.add_exception_handler(ApplicationException, handle_application_exception)
         app.add_exception_handler(DomainException, handle_domain_exception)
         app.add_exception_handler(InfrastructureException, handle_infrastructure_exception)
-    
+
     logger.info("Chunking exception handlers registered")
 
 
