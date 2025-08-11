@@ -70,9 +70,9 @@ def upgrade() -> None:
     
     # Collections table indexes
     op.create_index(
-        'idx_collections_user_status',
+        'idx_collections_owner_status',
         'collections',
-        ['user_id', 'status'],
+        ['owner_id', 'status'],
         postgresql_using='btree'
     )
     
@@ -164,7 +164,7 @@ def downgrade() -> None:
     logger.info("Dropping collections table indexes...")
     
     # Drop collections table indexes
-    op.drop_index('idx_collections_user_status', table_name='collections')
+    op.drop_index('idx_collections_owner_status', table_name='collections')
     
     logger.info("Dropping documents table indexes...")
     
