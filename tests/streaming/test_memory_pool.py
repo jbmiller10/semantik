@@ -67,7 +67,7 @@ class TestMemoryPool:
 
     def test_pool_exhaustion(self) -> None:
         """Test behavior when pool is exhausted."""
-        pool = MemoryPool(buffer_size=128, pool_size=2)
+        pool = MemoryPool(buffer_size=128, pool_size=2, max_size=256)  # Limit to exactly 2 buffers
 
         # Acquire all buffers
         buffer1_id, _ = pool.acquire_sync()

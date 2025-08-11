@@ -146,7 +146,7 @@ class TestCollectionDeletion:
 
         # Create an active operation
         await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="processing"
+            collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="PROCESSING"
         )
 
         service = create_collection_service(db_session)

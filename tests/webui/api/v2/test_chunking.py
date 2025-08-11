@@ -104,8 +104,8 @@ class TestStrategyManagement:
         # Set up mock return value
         mock_strategies = [
             {
-                "id": ChunkingStrategy.CHARACTER,
-                "name": "character",
+                "id": ChunkingStrategy.FIXED_SIZE,
+                "name": "fixed_size",
                 "description": "Simple fixed-size character-based chunking",
                 "best_for": ["Quick processing", "Consistent chunk sizes"],
                 "pros": ["Fast", "Predictable"],

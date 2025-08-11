@@ -11,6 +11,9 @@ from typing import Any
 import redis.asyncio as aioredis
 from fastapi import WebSocket
 
+# Make redis available at module level for backward compatibility with tests
+import redis.asyncio as redis
+
 logger = logging.getLogger(__name__)
 
 

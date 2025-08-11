@@ -147,7 +147,7 @@ class MemoryPool:
                 self.used_size += self.default_buffer_size
 
     @contextmanager
-    def acquire_sync(self, size: int = None, timeout: float = 30.0):
+    def acquire_sync_context(self, size: int = None, timeout: float = 30.0):
         """
         Synchronous context manager for buffer acquisition.
 
@@ -317,15 +317,46 @@ class MemoryPool:
             Tuple of (buffer_id, buffer)
 
         Note:
-            This method is deprecated. Use acquire_sync context manager instead.
+            This method is deprecated. Use acquire_sync_context context manager instead.
         """
         logger.warning(
-            "Using deprecated acquire_sync() method. Please use acquire_sync() context manager."
+            "Using deprecated acquire_sync() method. Please use acquire_sync_context() context manager."
         )
 
-        with self.acquire_sync(size=self.default_buffer_size, timeout=timeout) as managed_buffer:
-            # Return buffer but keep it tracked - caller must release
-            return managed_buffer.buffer_id, managed_buffer.data
+        import time
+
+        if self.default_buffer_size > self.max_buffer_size:
+            raise ValueError(f"Buffer size {self.default_buffer_size} exceeds maximum {self.max_buffer_size}")
+
+        start_time = time.time()
+
+        while True:
+            with self._lock:
+                # Try to acquire buffer
+                buffer_id, buffer = self._try_acquire_buffer(self.default_buffer_size)
+
+                if buffer_id:
+                    # Track allocation
+                    self._allocations[buffer_id] = BufferAllocation(
+                        buffer_id=buffer_id,
+                        size=self.default_buffer_size,
+                        allocated_at=datetime.now(UTC),
+                        last_accessed=datetime.now(UTC),
+                        stack_trace=traceback.format_stack()[-5:],
+                        thread_id=threading.current_thread().ident,
+                    )
+
+                    self.allocation_count += 1
+                    return buffer_id, buffer
+
+            # Check timeout
+            if time.time() - start_time > timeout:
+                raise TimeoutError(
+                    f"Failed to acquire buffer of size {self.default_buffer_size} after {timeout}s"
+                )
+
+            # Wait before retry
+            time.sleep(0.1)
 
     def _try_acquire_buffer(self, size: int) -> tuple[str | None, bytearray | None]:
         """
@@ -337,15 +368,7 @@ class MemoryPool:
         Returns:
             Tuple of (buffer_id, buffer) or (None, None) if not available
         """
-        # Check if we can allocate
-        if self.used_size + size > self.max_size:
-            # Try to reclaim leaked buffers
-            self._reclaim_leaked_buffers()
-
-            if self.used_size + size > self.max_size:
-                return None, None
-
-        # Try to reuse a free buffer
+        # First, try to reuse a free buffer
         for buffer_size, buffer_id in list(self._free_buffers):
             if buffer_size >= size and buffer_size <= size * 1.5:
                 self._free_buffers.remove((buffer_size, buffer_id))
@@ -356,6 +379,14 @@ class MemoryPool:
                     self.used_size = self.used_size - buffer_size + size
                 self.reuse_count += 1
                 return buffer_id, buffer
+
+        # If no free buffer available, check if we can allocate a new one
+        if self.used_size + size > self.max_size:
+            # Try to reclaim leaked buffers
+            self._reclaim_leaked_buffers()
+
+            if self.used_size + size > self.max_size:
+                return None, None
 
         # Allocate new buffer
         buffer_id = str(uuid4())
@@ -637,10 +668,11 @@ class MemoryPool:
     def acquire_sync(self, timeout: float = 5.0) -> tuple[str, bytearray]:
         """
         Synchronous acquire for backward compatibility.
-
+        This is the non-context-manager version.
+        
         Args:
             timeout: Maximum time to wait for buffer
-
+            
         Returns:
             Tuple of (buffer_id, buffer)
         """

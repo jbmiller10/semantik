@@ -127,7 +127,13 @@ class TestHybridChunkerReDoSProtection:
         for pattern_str in expected_patterns:
             assert pattern_str in chunker._compiled_patterns
             compiled_pattern, weight = chunker._compiled_patterns[pattern_str]
-            assert isinstance(compiled_pattern, re.Pattern)
+            # Handle both standard re.Pattern and re2._Regexp types
+            try:
+                import re2
+                valid_pattern_types = (re.Pattern, re2._Regexp)
+            except ImportError:
+                valid_pattern_types = (re.Pattern,)
+            assert isinstance(compiled_pattern, valid_pattern_types)
             assert isinstance(weight, float)
             assert weight > 0
 

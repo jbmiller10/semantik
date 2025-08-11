@@ -47,7 +47,7 @@ class TestMemoryPool:
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
         # Successful acquisition and release
-        with pool.acquire_sync() as buffer:
+        with pool.acquire_sync_context() as buffer:
             assert buffer is not None
             assert isinstance(buffer, ManagedBuffer)
             assert len(buffer.data) == 1024
@@ -62,7 +62,7 @@ class TestMemoryPool:
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
         with pytest.raises(ValueError):
-            with pool.acquire_sync() as buffer:
+            with pool.acquire_sync_context() as buffer:
                 assert pool.used_buffers == 1
                 raise ValueError("Test error")
 
@@ -156,7 +156,7 @@ class TestMemoryPool:
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
         # Acquire buffer without context manager (simulating leak)
-        with pool.acquire_sync() as buffer:
+        with pool.acquire_sync_context() as buffer:
             buffer_id = buffer.buffer_id
             # Simulate forgetting to release
             buffer._released = False  # Reset the flag
@@ -239,7 +239,7 @@ class TestMemoryPool:
         assert initial_stats["release_count"] == 0
 
         # Perform some operations
-        with pool.acquire_sync() as buffer:
+        with pool.acquire_sync_context() as buffer:
             pass
 
         stats = pool.get_stats()
@@ -282,7 +282,7 @@ class TestMemoryPool:
         assert pool.release_count == 0
 
         # Clear should fail when buffers in use
-        with pool.acquire_sync() as buffer:
+        with pool.acquire_sync_context() as buffer:
             with pytest.raises(RuntimeError):
                 pool.clear()
 
