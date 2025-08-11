@@ -78,6 +78,7 @@ def check_current_implementation(conn) -> dict[str, bool]:
     status = {
         "has_trigger": False,
         "has_generated_column": False,
+        "is_partitioned": False,
         "trigger_name": None,
         "function_name": None,
     }
@@ -124,6 +125,39 @@ def check_current_implementation(conn) -> dict[str, bool]:
         if col_info and col_info[0] == 's':  # 's' means STORED generated column
             status["has_generated_column"] = True
             logger.info("partition_key is already a GENERATED column")
+        
+        # Check if table is partitioned
+        result = conn.execute(
+            text("""
+                SELECT 
+                    c.relkind,
+                    p.partstrat,
+                    p.partattrs
+                FROM pg_class c
+                LEFT JOIN pg_partitioned_table p ON c.oid = p.partrelid
+                WHERE c.relname = 'chunks'
+                AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+            """)
+        )
+        partition_info = result.fetchone()
+        if partition_info and partition_info[0] == 'p':  # 'p' means partitioned table
+            status["is_partitioned"] = True
+            logger.info(f"chunks table is partitioned (strategy: {partition_info[1]})")
+            
+            # Check if partition_key is part of the partition key
+            result = conn.execute(
+                text("""
+                    SELECT a.attname
+                    FROM pg_attribute a
+                    JOIN pg_class c ON a.attrelid = c.oid
+                    JOIN pg_partitioned_table p ON c.oid = p.partrelid
+                    WHERE c.relname = 'chunks'
+                    AND a.attnum = ANY(p.partattrs)
+                """)
+            )
+            partition_cols = [row[0] for row in result]
+            if 'partition_key' in partition_cols:
+                logger.info(f"partition_key is part of the partition key columns: {partition_cols}")
         
     except SQLAlchemyError as e:
         logger.warning(f"Error checking current implementation: {e}")
@@ -180,8 +214,25 @@ def convert_to_generated_column(conn):
     """Convert partition_key from trigger-computed to GENERATED column.
     
     This is the main conversion logic for PostgreSQL 12+.
+    NOTE: This function should NOT be called for partitioned tables.
     """
     logger.info("Starting conversion to GENERATED column...")
+    
+    # Safety check: Verify table is not partitioned
+    result = conn.execute(
+        text("""
+            SELECT c.relkind
+            FROM pg_class c
+            WHERE c.relname = 'chunks'
+            AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+        """)
+    )
+    table_info = result.fetchone()
+    if table_info and table_info[0] == 'p':
+        raise ValueError(
+            "CRITICAL: convert_to_generated_column called on partitioned table! "
+            "This should never happen. Aborting to prevent data loss."
+        )
     
     # Step 1: Drop the trigger (but keep the function for now, in case we need to rollback)
     logger.info("Dropping trigger...")
@@ -396,6 +447,55 @@ def upgrade() -> None:
         logger.info("partition_key is already a GENERATED column. Nothing to do.")
         return
     
+    # Special handling for partitioned tables
+    if impl_status["is_partitioned"]:
+        logger.info("=" * 60)
+        logger.info("PARTITIONED TABLE DETECTED")
+        logger.info("=" * 60)
+        logger.info(
+            "The chunks table is partitioned by partition_key. "
+            "Cannot convert to GENERATED column because partition keys cannot be dropped. "
+            "The trigger-based implementation will be kept for optimal compatibility."
+        )
+        
+        # Ensure trigger is properly set up for partitioned table
+        if not impl_status["has_trigger"]:
+            logger.info("Setting up trigger for partitioned table...")
+            conn.execute(text("""
+                CREATE OR REPLACE FUNCTION compute_partition_key()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    NEW.partition_key := abs(hashtext(NEW.collection_id::text)) % 100;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql IMMUTABLE;
+                
+                DROP TRIGGER IF EXISTS set_partition_key ON chunks;
+                
+                CREATE TRIGGER set_partition_key
+                BEFORE INSERT ON chunks
+                FOR EACH ROW
+                EXECUTE FUNCTION compute_partition_key();
+            """))
+            logger.info("Trigger created for partitioned table")
+        else:
+            logger.info("Trigger already exists for partitioned table")
+        
+        # Verify partition keys are correct
+        result = conn.execute(text("SELECT COUNT(*) FROM chunks"))
+        chunk_count = result.scalar()
+        if chunk_count > 0:
+            if verify_partition_keys(conn):
+                logger.info("✓ All partition keys verified as correct")
+            else:
+                logger.warning("⚠ Some partition keys may be incorrect")
+        
+        logger.info("=" * 60)
+        logger.info("Migration completed for partitioned table")
+        logger.info("Using trigger-based implementation (optimal for partitioned tables)")
+        logger.info("=" * 60)
+        return
+    
     if not impl_status["has_trigger"]:
         logger.warning(
             "No trigger found. This might be a fresh installation. "
@@ -489,6 +589,37 @@ def downgrade() -> None:
     
     if impl_status["has_trigger"] and not impl_status["has_generated_column"]:
         logger.info("Already using trigger-based implementation. Nothing to do.")
+        return
+    
+    # Special handling for partitioned tables
+    if impl_status["is_partitioned"]:
+        logger.info("=" * 60)
+        logger.info("PARTITIONED TABLE DETECTED (DOWNGRADE)")
+        logger.info("=" * 60)
+        logger.info(
+            "The chunks table is partitioned. "
+            "Ensuring trigger-based implementation is in place."
+        )
+        
+        # Ensure trigger exists
+        conn.execute(text("""
+            CREATE OR REPLACE FUNCTION compute_partition_key()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.partition_key := abs(hashtext(NEW.collection_id::text)) % 100;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            
+            DROP TRIGGER IF EXISTS set_partition_key ON chunks;
+            
+            CREATE TRIGGER set_partition_key
+            BEFORE INSERT ON chunks
+            FOR EACH ROW
+            EXECUTE FUNCTION compute_partition_key();
+        """))
+        
+        logger.info("Trigger-based implementation set up for partitioned table")
         return
     
     # Check if we have data
