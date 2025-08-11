@@ -24,6 +24,14 @@ from packages.webui.dependencies import get_collection_for_user
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 
+# Mock background tasks and Redis manager BEFORE importing the app
+import packages.webui.background_tasks as bg_tasks
+bg_tasks.start_background_tasks = AsyncMock()
+bg_tasks.stop_background_tasks = AsyncMock()
+
+import packages.webui.services.factory as factory_module
+factory_module._redis_manager = Mock(async_client=AsyncMock(return_value=AsyncMock()))
+
 # Lazy imports to avoid initialization issues
 app = None
 chunking_module = None
@@ -80,20 +88,18 @@ def client(
     """Create a test client with mocked dependencies."""
     global app, chunking_module, get_chunking_service, get_collection_service
     
-    # Mock Redis and background tasks before importing
-    with patch('packages.webui.background_tasks.start_background_tasks', new_callable=AsyncMock):
-        with patch('packages.webui.background_tasks.stop_background_tasks', new_callable=AsyncMock):
-            with patch('packages.webui.services.factory._redis_manager', Mock(async_client=AsyncMock(return_value=AsyncMock()))):
-                # Now import the app and modules
-                from packages.webui.main import app as _app
-                import packages.webui.api.v2.chunking as _chunking_module
-                from packages.webui.services.factory import get_chunking_service as _get_chunking_service
-                from packages.webui.services.factory import get_collection_service as _get_collection_service
-                
-                app = _app
-                chunking_module = _chunking_module
-                get_chunking_service = _get_chunking_service
-                get_collection_service = _get_collection_service
+    # Check if already imported
+    if app is None:
+        # Import app and modules (environment variable already set at module level)
+        from packages.webui.main import app as _app
+        import packages.webui.api.v2.chunking as _chunking_module
+        from packages.webui.services.factory import get_chunking_service as _get_chunking_service
+        from packages.webui.services.factory import get_collection_service as _get_collection_service
+        
+        app = _app
+        chunking_module = _chunking_module
+        get_chunking_service = _get_chunking_service
+        get_collection_service = _get_collection_service
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
