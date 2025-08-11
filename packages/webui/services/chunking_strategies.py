@@ -81,6 +81,23 @@ class ChunkingStrategyRegistry:
             ],
             "performance_characteristics": {"speed": "moderate", "memory_usage": "moderate", "quality": "very_good"},
         },
+        # Markdown and Hierarchical for API parity
+        ChunkingStrategy.MARKDOWN: {
+            "name": "Markdown",
+            "description": "Respects markdown structure and headings",
+            "best_for": ["md", "markdown", "mdx"],
+            "pros": ["Preserves structure", "Good for technical docs"],
+            "cons": ["Only for markdown-like content"],
+            "performance_characteristics": {"speed": "medium", "memory_usage": "moderate", "quality": "high"},
+        },
+        ChunkingStrategy.HIERARCHICAL: {
+            "name": "Hierarchical",
+            "description": "Creates parent-child chunks across multiple levels",
+            "best_for": ["large documents", "books", "reports"],
+            "pros": ["Multiple granularities", "Scalable for large docs"],
+            "cons": ["Complex", "More storage"],
+            "performance_characteristics": {"speed": "slow", "memory_usage": "high", "quality": "high"},
+        },
         ChunkingStrategy.HYBRID: {
             "name": "Hybrid",
             "description": "Combines multiple strategies based on content analysis",
@@ -142,20 +159,3 @@ class ChunkingStrategyRegistry:
 
         # Default to recursive as a good general-purpose strategy
         return ChunkingStrategy.RECURSIVE
-        # Add Markdown and Hierarchical strategies for API parity
-        ChunkingStrategy.MARKDOWN: {
-            "name": "Markdown",
-            "description": "Respects markdown structure and headings",
-            "best_for": ["md", "markdown", "mdx"],
-            "pros": ["Preserves structure", "Good for technical docs"],
-            "cons": ["Only for markdown-like content"],
-            "performance_characteristics": {"speed": "medium", "memory_usage": "moderate", "quality": "high"},
-        },
-        ChunkingStrategy.HIERARCHICAL: {
-            "name": "Hierarchical",
-            "description": "Creates parent-child chunks across multiple levels",
-            "best_for": ["large documents", "books", "reports"],
-            "pros": ["Multiple granularities", "Scalable for large docs"],
-            "cons": ["Complex", "More storage"],
-            "performance_characteristics": {"speed": "slow", "memory_usage": "high", "quality": "high"},
-        },
