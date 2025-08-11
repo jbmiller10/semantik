@@ -13,25 +13,21 @@ Usage:
 
 import asyncio
 import hashlib
-import json
 import logging
 import sys
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Any
 
-import asyncpg
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 # Add parent directory to path to import shared modules
 sys.path.insert(0, "/home/john/semantik")
 
 from packages.shared.database.models import (
-    Base,
     Chunk,
     ChunkingConfig,
     Collection,
@@ -196,7 +192,7 @@ class Phase1Validator:
                     session.add(chunk)
 
                 await session.commit()
-                
+
                 # Refresh chunks to get generated IDs
                 for chunk in chunks:
                     await session.refresh(chunk)
@@ -225,12 +221,10 @@ class Phase1Validator:
                 self.test_data_ids["chunks"].pop()  # Remove from tracking
 
                 # Verify delete worked
-                stmt = select(func.count()).select_from(Chunk).where(
-                    Chunk.collection_id == collection.id
-                )
+                stmt = select(func.count()).select_from(Chunk).where(Chunk.collection_id == collection.id)
                 result = await session.execute(stmt)
                 count = result.scalar()
-                
+
                 if count != 9:
                     raise ValueError(f"Expected 9 chunks after delete, got {count}")
 
@@ -264,34 +258,35 @@ class Phase1Validator:
         try:
             async with self.AsyncSessionLocal() as session:
                 # Query to check partition key computation
-                stmt = text("""
-                    SELECT 
+                stmt = text(
+                    """
+                    SELECT
                         id,
                         collection_id,
                         partition_key,
                         abs(hashtext(collection_id::text)) % 100 as computed_key
                     FROM chunks
                     WHERE collection_id = ANY(:collection_ids)
-                """)
-                
-                result = await session.execute(
-                    stmt, 
-                    {"collection_ids": self.test_data_ids["collections"]}
+                """
                 )
+
+                result = await session.execute(stmt, {"collection_ids": self.test_data_ids["collections"]})
                 rows = result.fetchall()
 
                 mismatches = []
                 for row in rows:
                     if row.partition_key != row.computed_key:
-                        mismatches.append({
-                            "id": row.id,
-                            "collection_id": row.collection_id,
-                            "stored": row.partition_key,
-                            "computed": row.computed_key,
-                        })
+                        mismatches.append(
+                            {
+                                "id": row.id,
+                                "collection_id": row.collection_id,
+                                "stored": row.partition_key,
+                                "computed": row.computed_key,
+                            }
+                        )
 
                 duration_ms = (time.time() - start_time) * 1000
-                
+
                 if mismatches:
                     return ValidationResult(
                         name="Partition Key Computation",
@@ -300,7 +295,7 @@ class Phase1Validator:
                         details={"mismatches": mismatches[:5]},  # Show first 5
                         duration_ms=duration_ms,
                     )
-                
+
                 return ValidationResult(
                     name="Partition Key Computation",
                     passed=True,
@@ -351,7 +346,7 @@ class Phase1Validator:
                 # Measure bulk insert performance
                 chunks_to_insert = []
                 num_chunks = 1000
-                
+
                 for i in range(num_chunks):
                     chunk = Chunk(
                         collection_id=collection.id,
@@ -375,8 +370,7 @@ class Phase1Validator:
 
                 # Clean up performance test chunks
                 await session.execute(
-                    text("DELETE FROM chunks WHERE collection_id = :collection_id"),
-                    {"collection_id": collection.id}
+                    text("DELETE FROM chunks WHERE collection_id = :collection_id"), {"collection_id": collection.id}
                 )
                 await session.commit()
 
@@ -426,29 +420,29 @@ class Phase1Validator:
 
                 # Test query with partition pruning (good pattern)
                 good_query_start = time.time()
-                stmt = select(Chunk).where(
-                    Chunk.collection_id == collection_id
-                ).limit(100)
+                stmt = select(Chunk).where(Chunk.collection_id == collection_id).limit(100)
                 result = await session.execute(stmt)
                 chunks = result.scalars().all()
                 good_query_time = (time.time() - good_query_start) * 1000
 
                 # Verify EXPLAIN plan shows partition pruning
-                explain_stmt = text("""
+                explain_stmt = text(
+                    """
                     EXPLAIN (FORMAT JSON)
-                    SELECT * FROM chunks 
+                    SELECT * FROM chunks
                     WHERE collection_id = :collection_id
                     LIMIT 100
-                """)
-                result = await session.execute(
-                    explain_stmt, 
-                    {"collection_id": collection_id}
+                """
                 )
-                explain_result = result.scalar()
-                
+                result = await session.execute(explain_stmt, {"collection_id": collection_id})
+                # explain_result = result.scalar()
+
                 # Parse explain plan to check for partition pruning
-                explain_data = json.loads(explain_result) if explain_result else {}
-                
+                # Note: explain_result and explain_data could be used for deeper analysis
+                # of partition pruning but for now we assume partition pruning is enabled
+                # based on query structure
+                # explain_data = json.loads(explain_result) if explain_result else {}
+
                 duration_ms = (time.time() - start_time) * 1000
 
                 return ValidationResult(
@@ -480,16 +474,18 @@ class Phase1Validator:
         try:
             async with self.AsyncSessionLocal() as session:
                 # Get partition distribution
-                stmt = text("""
-                    SELECT 
+                stmt = text(
+                    """
+                    SELECT
                         partition_key,
                         COUNT(*) as chunk_count,
                         COUNT(DISTINCT collection_id) as collection_count
                     FROM chunks
                     GROUP BY partition_key
                     ORDER BY partition_key
-                """)
-                
+                """
+                )
+
                 result = await session.execute(stmt)
                 partitions = result.fetchall()
 
@@ -506,7 +502,7 @@ class Phase1Validator:
                 avg_chunks = sum(chunk_counts) / len(chunk_counts) if chunk_counts else 0
                 max_chunks = max(chunk_counts) if chunk_counts else 0
                 min_chunks = min(chunk_counts) if chunk_counts else 0
-                
+
                 # Calculate skew factor (max/avg)
                 skew_factor = max_chunks / avg_chunks if avg_chunks > 0 else 0
 
@@ -546,32 +542,38 @@ class Phase1Validator:
         try:
             async with self.AsyncSessionLocal() as session:
                 # Check for orphaned chunks (chunks without valid collection)
-                stmt = text("""
+                stmt = text(
+                    """
                     SELECT COUNT(*) as orphaned_count
                     FROM chunks c
                     LEFT JOIN collections col ON c.collection_id = col.id
                     WHERE col.id IS NULL
-                """)
+                """
+                )
                 result = await session.execute(stmt)
                 orphaned_chunks = result.scalar() or 0
 
                 # Check for orphaned documents
-                stmt = text("""
+                stmt = text(
+                    """
                     SELECT COUNT(*) as orphaned_count
                     FROM documents d
                     LEFT JOIN collections c ON d.collection_id = c.id
                     WHERE c.id IS NULL
-                """)
+                """
+                )
                 result = await session.execute(stmt)
                 orphaned_documents = result.scalar() or 0
 
                 # Check chunk-document relationship
-                stmt = text("""
+                stmt = text(
+                    """
                     SELECT COUNT(*) as orphaned_count
                     FROM chunks c
                     LEFT JOIN documents d ON c.document_id = d.id
                     WHERE c.document_id IS NOT NULL AND d.id IS NULL
-                """)
+                """
+                )
                 result = await session.execute(stmt)
                 orphaned_chunk_docs = result.scalar() or 0
 
@@ -611,22 +613,25 @@ class Phase1Validator:
                 # Check PostgreSQL version
                 result = await session.execute(text("SELECT version()"))
                 version_string = result.scalar()
-                
+
                 # Extract major version
                 import re
-                match = re.search(r'PostgreSQL (\d+)', version_string)
+
+                match = re.search(r"PostgreSQL (\d+)", version_string)
                 pg_version = int(match.group(1)) if match else 0
 
                 # Check if partition_key is a generated column
-                stmt = text("""
-                    SELECT 
+                stmt = text(
+                    """
+                    SELECT
                         attgenerated,
                         pg_get_expr(adbin, adrelid) as generation_expression
-                    FROM pg_attribute 
+                    FROM pg_attribute
                     LEFT JOIN pg_attrdef ON attrelid = adrelid AND attnum = adnum
-                    WHERE attrelid = 'chunks'::regclass 
+                    WHERE attrelid = 'chunks'::regclass
                     AND attname = 'partition_key'
-                """)
+                """
+                )
                 result = await session.execute(stmt)
                 row = result.fetchone()
 
@@ -645,12 +650,16 @@ class Phase1Validator:
                         duration_ms=duration_ms,
                     )
 
-                is_generated = row and row.attgenerated == 's'  # 's' = STORED
+                is_generated = row and row.attgenerated == "s"  # 's' = STORED
 
                 return ValidationResult(
                     name="Generated Column",
                     passed=is_generated,
-                    message="Using GENERATED column for partition_key" if is_generated else "Using trigger for partition_key",
+                    message=(
+                        "Using GENERATED column for partition_key"
+                        if is_generated
+                        else "Using trigger for partition_key"
+                    ),
                     details={
                         "pg_version": pg_version,
                         "is_generated": is_generated,
@@ -677,33 +686,31 @@ class Phase1Validator:
                 if self.test_data_ids["chunks"]:
                     await session.execute(
                         text("DELETE FROM chunks WHERE id = ANY(:ids)"),
-                        {"ids": [int(id) for id in self.test_data_ids["chunks"] if id.isdigit()]}
+                        {"ids": [int(id) for id in self.test_data_ids["chunks"] if id.isdigit()]},
                     )
-                
+
                 if self.test_data_ids["documents"]:
                     await session.execute(
-                        text("DELETE FROM documents WHERE id = ANY(:ids)"),
-                        {"ids": self.test_data_ids["documents"]}
+                        text("DELETE FROM documents WHERE id = ANY(:ids)"), {"ids": self.test_data_ids["documents"]}
                     )
-                
+
                 if self.test_data_ids["collections"]:
                     await session.execute(
-                        text("DELETE FROM collections WHERE id = ANY(:ids)"),
-                        {"ids": self.test_data_ids["collections"]}
+                        text("DELETE FROM collections WHERE id = ANY(:ids)"), {"ids": self.test_data_ids["collections"]}
                     )
-                
+
                 if self.test_data_ids["chunking_configs"]:
                     await session.execute(
                         text("DELETE FROM chunking_configs WHERE id = ANY(:ids)"),
-                        {"ids": [int(id) for id in self.test_data_ids["chunking_configs"]]}
+                        {"ids": [int(id) for id in self.test_data_ids["chunking_configs"]]},
                     )
-                
+
                 if self.test_data_ids["users"]:
                     await session.execute(
                         text("DELETE FROM users WHERE id = ANY(:ids)"),
-                        {"ids": [int(id) for id in self.test_data_ids["users"]]}
+                        {"ids": [int(id) for id in self.test_data_ids["users"]]},
                     )
-                
+
                 await session.commit()
                 logger.info("Test data cleaned up successfully")
         except Exception as e:
@@ -729,7 +736,7 @@ class Phase1Validator:
         for category_name, test_names in categories:
             print(f"\n{category_name}:")
             print("-" * 40)
-            
+
             for result in self.results:
                 if result.name in test_names:
                     status = "✅ PASS" if result.passed else "❌ FAIL"
@@ -746,13 +753,13 @@ class Phase1Validator:
         print("\n" + "=" * 80)
         print("SUMMARY")
         print("=" * 80)
-        
+
         passed_count = sum(1 for r in self.results if r.passed)
         total_count = len(self.results)
         pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
-        
+
         print(f"Tests Passed: {passed_count}/{total_count} ({pass_rate:.1f}%)")
-        
+
         if pass_rate == 100:
             print("\n✅ All validation criteria met - Phase 1 is ready for commit!")
         else:
@@ -764,7 +771,7 @@ class Phase1Validator:
     async def run_validation(self):
         """Run all validation tests."""
         logger.info("Starting Phase 1 validation...")
-        
+
         # Setup database connections
         await self.setup_async_engine()
         self.setup_sync_engine()
@@ -804,15 +811,13 @@ async def main():
     """Main entry point for validation script."""
     # Get database URL from environment or use default
     import os
-    db_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql://semantik:semantik@localhost:5432/semantik"
-    )
-    
+
+    db_url = os.environ.get("DATABASE_URL", "postgresql://semantik:semantik@localhost:5432/semantik")
+
     # Run validation
     validator = Phase1Validator(db_url)
     success = await validator.run_validation()
-    
+
     # Exit with appropriate code
     sys.exit(0 if success else 1)
 

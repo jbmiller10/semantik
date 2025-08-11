@@ -7,13 +7,11 @@ and simulates the tests that would be performed with a database connection.
 """
 
 import ast
-import json
-import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 # Add parent directory to path
 sys.path.insert(0, "/home/john/semantik")
@@ -22,24 +20,25 @@ sys.path.insert(0, "/home/john/semantik")
 @dataclass
 class ValidationResult:
     """Container for validation results."""
+
     name: str
     passed: bool
     message: str
-    details: Dict[str, Any] | None = None
+    details: dict[str, Any] | None = None
 
 
 class Phase1DryRunValidator:
     """Dry run validator for Phase 1 - checks what can be verified without database."""
 
     def __init__(self):
-        self.results: List[ValidationResult] = []
+        self.results: list[ValidationResult] = []
         self.project_root = Path("/home/john/semantik")
 
     def validate_model_definitions(self) -> ValidationResult:
         """Validate SQLAlchemy model definitions."""
         try:
             models_file = self.project_root / "packages" / "shared" / "database" / "models.py"
-            
+
             if not models_file.exists():
                 return ValidationResult(
                     name="Model Definitions",
@@ -47,12 +46,12 @@ class Phase1DryRunValidator:
                     message="models.py file not found",
                 )
 
-            with open(models_file, 'r') as f:
+            with models_file.open() as f:
                 content = f.read()
 
             # Parse the file
             tree = ast.parse(content, filename=str(models_file))
-            
+
             # Find all class definitions
             classes = {}
             for node in ast.walk(tree):
@@ -62,7 +61,7 @@ class Phase1DryRunValidator:
             # Check for required models
             required_models = ["Chunk", "Collection", "Document", "User", "ChunkingConfig"]
             missing_models = [m for m in required_models if m not in classes]
-            
+
             if missing_models:
                 return ValidationResult(
                     name="Model Definitions",
@@ -75,38 +74,28 @@ class Phase1DryRunValidator:
             chunk_class = classes.get("Chunk")
             if chunk_class:
                 # Look for partition_key attribute
-                has_partition_key = False
-                has_collection_id = False
-                has_primary_key = False
-                
                 for node in ast.walk(chunk_class):
-                    if isinstance(node, ast.Call):
-                        if hasattr(node.func, 'id') and node.func.id == 'Column':
-                            # This is a Column definition
-                            parent = node
-                            # Try to find the assignment target
-                            for assignment in ast.walk(chunk_class):
-                                if isinstance(assignment, ast.Assign):
-                                    for target in assignment.targets:
-                                        if isinstance(target, ast.Name):
-                                            if target.id == 'partition_key':
-                                                has_partition_key = True
-                                            elif target.id == 'collection_id':
-                                                has_collection_id = True
-                
+                    if isinstance(node, ast.Call) and hasattr(node.func, "id") and node.func.id == "Column":
+                        # This is a Column definition
+                        # Try to find the assignment target
+                        for assignment in ast.walk(chunk_class):
+                            if isinstance(assignment, ast.Assign):
+                                for target in assignment.targets:
+                                    if isinstance(target, ast.Name):
+                                        # We're just checking existence, not using these values
+                                        pass
+
                 # Check for __tablename__
                 for node in ast.walk(chunk_class):
                     if isinstance(node, ast.Assign):
                         for target in node.targets:
-                            if isinstance(target, ast.Name) and target.id == "__tablename__":
-                                if isinstance(node.value, ast.Constant):
-                                    if node.value.value != "chunks":
-                                        return ValidationResult(
-                                            name="Model Definitions",
-                                            passed=False,
-                                            message="Chunk model has incorrect table name",
-                                            details={"table_name": node.value.value},
-                                        )
+                            if isinstance(target, ast.Name) and target.id == "__tablename__" and isinstance(node.value, ast.Constant) and node.value.value != "chunks":
+                                return ValidationResult(
+                                    name="Model Definitions",
+                                    passed=False,
+                                    message="Chunk model has incorrect table name",
+                                    details={"table_name": node.value.value},
+                                )
 
             # Check for partition_key in source
             if "partition_key" not in content:
@@ -139,7 +128,7 @@ class Phase1DryRunValidator:
         """Validate migration files form a proper chain."""
         try:
             migrations_dir = self.project_root / "alembic" / "versions"
-            
+
             if not migrations_dir.exists():
                 return ValidationResult(
                     name="Migration Chain",
@@ -148,17 +137,17 @@ class Phase1DryRunValidator:
                 )
 
             migration_files = [f for f in migrations_dir.glob("*.py") if f.name != "__init__.py"]
-            
+
             # Parse each migration to extract revision info
             migrations = {}
             for filepath in migration_files:
-                with open(filepath, 'r') as f:
+                with filepath.open() as f:
                     content = f.read()
-                
+
                 # Extract revision and down_revision
                 revision_match = re.search(r'revision:\s*str\s*=\s*["\']([^"\']+)["\']', content)
                 down_revision_match = re.search(r'down_revision:\s*str.*?=\s*["\']([^"\']+)["\']', content)
-                
+
                 if revision_match:
                     revision = revision_match.group(1)
                     down_revision = down_revision_match.group(1) if down_revision_match else None
@@ -176,7 +165,7 @@ class Phase1DryRunValidator:
 
             # Check for partition-related migrations
             partition_migrations = []
-            for rev, info in migrations.items():
+            for _, info in migrations.items():
                 if "partition" in info["file"].lower():
                     partition_migrations.append(info["file"])
 
@@ -203,7 +192,7 @@ class Phase1DryRunValidator:
         """Validate DB-003 migration specifically."""
         try:
             db003_file = self.project_root / "alembic" / "versions" / "db003_replace_trigger_with_generated_column.py"
-            
+
             if not db003_file.exists():
                 return ValidationResult(
                     name="DB-003 Migration",
@@ -211,7 +200,7 @@ class Phase1DryRunValidator:
                     message="DB-003 migration file not found",
                 )
 
-            with open(db003_file, 'r') as f:
+            with db003_file.open() as f:
                 content = f.read()
 
             # Check for key functions
@@ -237,7 +226,7 @@ class Phase1DryRunValidator:
 
             # Check for GENERATED column SQL
             has_generated_sql = "GENERATED ALWAYS AS" in content
-            
+
             return ValidationResult(
                 name="DB-003 Migration",
                 passed=True,
@@ -264,18 +253,18 @@ class Phase1DryRunValidator:
             # Look for the LIST partition migration
             migrations_dir = self.project_root / "alembic" / "versions"
             list_partition_file = None
-            
+
             for filepath in migrations_dir.glob("*list_partitions*.py"):
                 list_partition_file = filepath
                 break
-            
+
             if not list_partition_file:
                 # Try alternative naming
                 for filepath in migrations_dir.glob("*100*.py"):
                     if "partition" in filepath.read_text().lower():
                         list_partition_file = filepath
                         break
-            
+
             if not list_partition_file:
                 return ValidationResult(
                     name="Partition Implementation",
@@ -283,7 +272,7 @@ class Phase1DryRunValidator:
                     message="LIST partition migration not found",
                 )
 
-            with open(list_partition_file, 'r') as f:
+            with list_partition_file.open() as f:
                 content = f.read()
 
             # Check for key partition components
@@ -325,7 +314,7 @@ class Phase1DryRunValidator:
         # we'll check that the test infrastructure exists
         try:
             validation_script = self.project_root / "scripts" / "phase1_validation.py"
-            
+
             if not validation_script.exists():
                 return ValidationResult(
                     name="Performance Test Infrastructure",
@@ -333,7 +322,7 @@ class Phase1DryRunValidator:
                     message="Validation script not found",
                 )
 
-            with open(validation_script, 'r') as f:
+            with validation_script.open() as f:
                 content = f.read()
 
             # Check for performance test methods
@@ -387,7 +376,7 @@ class Phase1DryRunValidator:
 
         all_passed = True
         details = {}
-        
+
         for ticket, checks in criteria.items():
             ticket_passed = all("✅" in check for check in checks.values())
             all_passed = all_passed and ticket_passed
@@ -410,12 +399,12 @@ class Phase1DryRunValidator:
         print("=" * 80)
         print("\nNote: This is a dry run without database connection.")
         print("Full validation requires a running PostgreSQL instance.")
-        
+
         for result in self.results:
             status = "✅ PASS" if result.passed else "❌ FAIL"
             print(f"\n{status} - {result.name}")
             print(f"    {result.message}")
-            
+
             if result.details and not result.passed:
                 for key, value in result.details.items():
                     if key != "error" and not isinstance(value, dict):
@@ -425,13 +414,13 @@ class Phase1DryRunValidator:
         print("\n" + "=" * 80)
         print("SUMMARY")
         print("=" * 80)
-        
+
         passed_count = sum(1 for r in self.results if r.passed)
         total_count = len(self.results)
         pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
-        
+
         print(f"Checks Passed: {passed_count}/{total_count} ({pass_rate:.1f}%)")
-        
+
         if pass_rate == 100:
             print("\n✅ All static validation criteria met!")
             print("\nNext steps:")
@@ -444,7 +433,7 @@ class Phase1DryRunValidator:
     def run_validation(self):
         """Run all validation checks."""
         print("Starting Phase 1 dry run validation...")
-        
+
         # Run all validation checks
         checks = [
             self.validate_model_definitions(),
@@ -454,12 +443,12 @@ class Phase1DryRunValidator:
             self.simulate_performance_tests(),
             self.check_acceptance_criteria(),
         ]
-        
+
         self.results = checks
-        
+
         # Print results
         self.print_results()
-        
+
         # Return overall success
         return all(r.passed for r in self.results)
 

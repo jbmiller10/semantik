@@ -85,10 +85,7 @@ class TestSafeMigrationPatterns:
 
         # Test batch processing
         for offset in [0, 10000, 20000]:
-            mock_conn.execute(
-                text(migration_query),
-                {"batch_size": batch_size, "offset": offset}
-            )
+            mock_conn.execute(text(migration_query), {"batch_size": batch_size, "offset": offset})
 
         # Should have been called 3 times for 3 batches
         assert mock_conn.execute.call_count == 3
@@ -222,7 +219,7 @@ class TestMigrationSafetyFeatures:
             "Backup created before any modification",
             "Verification before atomic swap",
             "Original table renamed, not dropped",
-            "Rollback capability preserved"
+            "Rollback capability preserved",
         ]
 
         for check in safety_checks:
@@ -252,7 +249,7 @@ class TestMigrationSafetyFeatures:
         # Batch size should be reasonable for memory constraints
         assert batch_size > 0
         assert batch_size <= 100000  # Not too large
-        assert batch_size >= 1000    # Not too small
+        assert batch_size >= 1000  # Not too small
 
     def test_retention_period_configuration(self):
         """Test backup retention period is appropriate."""
@@ -269,7 +266,7 @@ class TestMigrationSafetyFeatures:
             "backup_verification": "Raises exception if backup fails",
             "migration_verification": "Rolls back if verification fails",
             "atomic_operations": "Uses transactions for consistency",
-            "dependency_cleanup": "Uses contextlib.suppress for safe cleanup"
+            "dependency_cleanup": "Uses contextlib.suppress for safe cleanup",
         }
 
         for pattern, description in patterns.items():
@@ -313,7 +310,7 @@ class TestMigrationEdgeCases:
         batch_size = 10000
 
         # Calculate expected batches
-        expected_batches = (large_dataset_size // batch_size)
+        expected_batches = large_dataset_size // batch_size
         if large_dataset_size % batch_size > 0:
             expected_batches += 1
 
@@ -355,12 +352,12 @@ class TestMigrationEdgeCases:
             "Migrate data (old table still active)",
             "Verify migration (old table still active)",
             "Atomic swap (brief lock required)",
-            "Cleanup (new table active)"
+            "Cleanup (new table active)",
         ]
 
         # Only the atomic swap requires exclusive access
         for i, phase in enumerate(migration_phases):
-            requires_exclusive = (i == 4)  # Only swap phase
+            requires_exclusive = i == 4  # Only swap phase
             if requires_exclusive:
                 assert "Atomic swap" in phase
             else:
