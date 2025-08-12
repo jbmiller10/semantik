@@ -54,7 +54,7 @@ export function ChunkingPreviewPanel({
     clearData: clearWebSocketData
   } = useChunkingWebSocket({
     autoConnect: true,
-    onChunkReceived: (chunk, index, total) => {
+    onChunkReceived: (_chunk, index, total) => {
       console.log(`Received chunk ${index + 1}/${total}`);
     },
     onComplete: (statistics) => {

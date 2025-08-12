@@ -81,6 +81,11 @@ export interface ChunkingCompleteData {
     totalTokens?: number;
     avgTokensPerChunk?: number;
     overlapPercentage?: number;
+    sizeDistribution?: {
+      range: string;
+      count: number;
+      percentage: number;
+    }[];
   };
   performance: {
     processingTimeMs: number;

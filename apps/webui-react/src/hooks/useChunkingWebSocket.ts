@@ -199,10 +199,15 @@ export function useChunkingWebSocket(
     ws.on(ChunkingMessageType.PREVIEW_COMPLETE, (data: ChunkingCompleteData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Preview complete:', data);
-        setStatistics(data.statistics);
+        // Ensure statistics has all required fields
+        const statistics: ChunkingStatistics = {
+          ...data.statistics,
+          sizeDistribution: data.statistics.sizeDistribution || []
+        };
+        setStatistics(statistics);
         setPerformance(data.performance);
         setProgress(null);
-        onComplete?.(data.statistics, data.performance);
+        onComplete?.(statistics, data.performance);
       }
     });
 
@@ -228,8 +233,8 @@ export function useChunkingWebSocket(
         console.log('Comparison progress:', data);
         setProgress({
           percentage: data.percentage,
-          currentChunk: data.currentStrategy,
-          totalChunks: data.totalStrategies,
+          currentChunk: data.currentStrategy || 0,
+          totalChunks: data.totalStrategies || 0,
           estimatedTimeRemaining: data.estimatedTimeRemaining,
         });
       }
