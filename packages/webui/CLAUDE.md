@@ -1,3 +1,12 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding/removing API endpoints or routers
+     - Changing service methods or patterns
+     - Modifying authentication/authorization
+     - Altering WebSocket channels or limits
+     - Changing middleware order
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>WebUI Service</name>
   <purpose>FastAPI backend service handling API routing, authentication, WebSocket management, and task orchestration</purpose>
