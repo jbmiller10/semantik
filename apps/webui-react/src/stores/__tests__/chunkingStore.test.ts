@@ -4,19 +4,183 @@ import { useChunkingStore } from '../chunkingStore'
 import { CHUNKING_PRESETS } from '@/types/chunking'
 import type { ChunkingStrategyType, ChunkingPreset } from '@/types/chunking'
 
-// Mock API calls
-vi.mock('@/api/chunking', () => ({
-  chunkingApi: {
-    preview: vi.fn(),
-    compare: vi.fn(),
-    getAnalytics: vi.fn(),
-  },
-}))
+// Create mock functions first
+const mockPreview = vi.fn()
+const mockCompare = vi.fn()
+const mockGetAnalytics = vi.fn()
+const mockGetPresets = vi.fn()
+const mockSavePreset = vi.fn()
+const mockDeletePreset = vi.fn()
+const mockProcess = vi.fn()
+const mockGetRecommendation = vi.fn()
+const mockCancelRequest = vi.fn()
+const mockCancelAllRequests = vi.fn()
+const mockIsRequestActive = vi.fn()
+const mockHandleChunkingError = vi.fn((error: unknown) => {
+  if (error && typeof error === 'object' && 'message' in error) {
+    return (error as { message: string }).message
+  }
+  return 'Error'
+})
+
+// Mock the module
+vi.mock('@/services/api/v2/chunking', () => {
+  return {
+    chunkingApi: {
+      get preview() { return mockPreview },
+      get compare() { return mockCompare },
+      get getAnalytics() { return mockGetAnalytics },
+      get getPresets() { return mockGetPresets },
+      get savePreset() { return mockSavePreset },
+      get deletePreset() { return mockDeletePreset },
+      get process() { return mockProcess },
+      get getRecommendation() { return mockGetRecommendation },
+      get cancelRequest() { return mockCancelRequest },
+      get cancelAllRequests() { return mockCancelAllRequests },
+      get isRequestActive() { return mockIsRequestActive },
+    },
+    get handleChunkingError() { return mockHandleChunkingError },
+  }
+})
 
 describe('chunkingStore', () => {
   beforeEach(() => {
     // Clear mocks before each test
     vi.clearAllMocks()
+    
+    // Set up default mock implementations
+    mockPreview.mockResolvedValue({
+      chunks: [
+        {
+          id: 'chunk-1',
+          content: 'Test chunk content',
+          startIndex: 0,
+          endIndex: 50,
+          tokens: 10,
+          overlapWithPrevious: 0,
+          overlapWithNext: 10,
+        },
+        {
+          id: 'chunk-2',
+          content: 'Second chunk content',
+          startIndex: 40,
+          endIndex: 90,
+          tokens: 12,
+          overlapWithPrevious: 10,
+          overlapWithNext: 0,
+        },
+      ],
+      statistics: {
+        totalChunks: 2,
+        avgChunkSize: 45,
+        minChunkSize: 40,
+        maxChunkSize: 50,
+        totalSize: 90,
+        overlapRatio: 0.11,
+        overlapPercentage: 11,
+        sizeDistribution: [],
+      },
+      performance: {
+        processingTimeMs: 100,
+        estimatedFullProcessingTimeMs: 500,
+      },
+    })
+    
+    mockCompare.mockResolvedValue([
+      {
+        strategy: 'recursive',
+        configuration: {
+          strategy: 'recursive',
+          parameters: { chunk_size: 600, chunk_overlap: 100 },
+        },
+        preview: {
+          chunks: [],
+          statistics: {
+            totalChunks: 3,
+            avgChunkSize: 400,
+            minChunkSize: 300,
+            maxChunkSize: 500,
+            sizeDistribution: [],
+          },
+          performance: {
+            processingTimeMs: 50,
+            estimatedFullProcessingTimeMs: 200,
+          },
+        },
+      },
+      {
+        strategy: 'semantic',
+        configuration: {
+          strategy: 'semantic',
+          parameters: { breakpoint_percentile_threshold: 90, max_chunk_size: 1000 },
+        },
+        preview: {
+          chunks: [],
+          statistics: {
+            totalChunks: 4,
+            avgChunkSize: 350,
+            minChunkSize: 250,
+            maxChunkSize: 450,
+            sizeDistribution: [],
+          },
+          performance: {
+            processingTimeMs: 150,
+            estimatedFullProcessingTimeMs: 600,
+          },
+        },
+      },
+    ])
+    
+    mockGetAnalytics.mockResolvedValue({
+      strategyUsage: [
+        { strategy: 'recursive', count: 100, percentage: 50, trend: 'up' },
+        { strategy: 'semantic', count: 50, percentage: 25, trend: 'stable' },
+      ],
+      performanceMetrics: [
+        {
+          strategy: 'recursive',
+          avgProcessingTimeMs: 100,
+          avgChunksPerDocument: 10,
+          successRate: 98,
+        },
+      ],
+      fileTypeDistribution: [
+        { fileType: 'pdf', count: 50, preferredStrategy: 'recursive' },
+      ],
+      recommendations: [
+        {
+          id: 'rec-1',
+          type: 'strategy',
+          priority: 'high',
+          title: 'Use semantic chunking for better results',
+          description: 'Based on your document types',
+        },
+      ],
+    })
+    
+    mockGetPresets.mockResolvedValue([])
+    
+    mockSavePreset.mockImplementation(async (preset) => {
+      const id = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      return { ...preset, id }
+    })
+    
+    mockDeletePreset.mockResolvedValue(undefined)
+    
+    mockProcess.mockResolvedValue({ operationId: 'op-123' })
+    
+    mockGetRecommendation.mockResolvedValue({
+      strategy: 'recursive',
+      configuration: {
+        strategy: 'recursive',
+        parameters: { chunk_size: 600, chunk_overlap: 100 },
+      },
+      confidence: 0.9,
+    })
+    
+    mockCancelRequest.mockReturnValue(true)
+    mockCancelAllRequests.mockReturnValue(undefined)
+    mockIsRequestActive.mockReturnValue(false)
   })
 
   afterEach(() => {
@@ -93,7 +257,7 @@ describe('chunkingStore', () => {
       expect(result.current.previewError).toBeNull()
     })
 
-    it('saves custom preset', () => {
+    it('saves custom preset', async () => {
       const { result } = renderHook(() => useChunkingStore())
       
       const customPreset: Omit<ChunkingPreset, 'id'> = {
@@ -109,8 +273,8 @@ describe('chunkingStore', () => {
         },
       }
       
-      act(() => {
-        result.current.saveCustomPreset(customPreset)
+      await act(async () => {
+        await result.current.saveCustomPreset(customPreset)
       })
 
       expect(result.current.customPresets).toHaveLength(1)
@@ -118,13 +282,13 @@ describe('chunkingStore', () => {
       expect(result.current.customPresets[0].id).toMatch(/^custom-\d+-[a-z0-9]+$/)
     })
 
-    it('deletes custom preset', () => {
+    it('deletes custom preset', async () => {
       const { result } = renderHook(() => useChunkingStore())
       
       // First save a preset
-      let presetId: string
-      act(() => {
-        presetId = result.current.saveCustomPreset({
+      let presetId: string = ''
+      await act(async () => {
+        presetId = await result.current.saveCustomPreset({
           name: 'Test Preset',
           description: 'Test',
           strategy: 'recursive',
@@ -138,19 +302,19 @@ describe('chunkingStore', () => {
       expect(result.current.customPresets).toHaveLength(1)
 
       // Then delete it
-      act(() => {
-        result.current.deleteCustomPreset(presetId)
+      await act(async () => {
+        await result.current.deleteCustomPreset(presetId)
       })
 
       expect(result.current.customPresets).toHaveLength(0)
     })
 
-    it('clears selected preset when deleting the active preset', () => {
+    it('clears selected preset when deleting the active preset', async () => {
       const { result } = renderHook(() => useChunkingStore())
       
-      let presetId: string
-      act(() => {
-        presetId = result.current.saveCustomPreset({
+      let presetId: string = ''
+      await act(async () => {
+        presetId = await result.current.saveCustomPreset({
           name: 'Test Preset',
           description: 'Test',
           strategy: 'recursive',
@@ -164,8 +328,8 @@ describe('chunkingStore', () => {
 
       expect(result.current.selectedPreset).toBe(presetId)
 
-      act(() => {
-        result.current.deleteCustomPreset(presetId)
+      await act(async () => {
+        await result.current.deleteCustomPreset(presetId)
       })
 
       expect(result.current.selectedPreset).toBeNull()
@@ -484,7 +648,7 @@ describe('chunkingStore', () => {
       expect(result.current.strategyConfig).toEqual(initialState.strategyConfig)
     })
 
-    it('maintains preset list consistency', () => {
+    it('maintains preset list consistency', async () => {
       // Get fresh instance of the store  
       const { result } = renderHook(() => useChunkingStore())
       
@@ -493,9 +657,9 @@ describe('chunkingStore', () => {
       
       // Add multiple presets
       const ids: string[] = []
-      act(() => {
+      await act(async () => {
         for (let i = 0; i < 5; i++) {
-          const id = result.current.saveCustomPreset({
+          const id = await result.current.saveCustomPreset({
             name: `Preset ${i}`,
             description: `Description ${i}`,
             strategy: 'recursive',
@@ -512,8 +676,8 @@ describe('chunkingStore', () => {
       expect(ids).toHaveLength(5)
       
       // Delete middle preset
-      act(() => {
-        result.current.deleteCustomPreset(ids[2])
+      await act(async () => {
+        await result.current.deleteCustomPreset(ids[2])
       })
 
       expect(result.current.customPresets).toHaveLength(4)
