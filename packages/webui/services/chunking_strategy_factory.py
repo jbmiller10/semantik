@@ -64,10 +64,9 @@ class ChunkingStrategyFactory:
             internal_name = cls._strategy_mapping.get(strategy_name)
             if not internal_name:
                 raise ChunkingStrategyError(
-                    detail=f"No implementation for strategy: {strategy_name.value}",
-                    correlation_id=correlation_id or "unknown",
                     strategy=strategy_name.value,
-                    fallback_strategy="recursive",
+                    reason=f"No implementation for strategy: {strategy_name.value}",
+                    correlation_id=correlation_id or "unknown",
                 )
             strategy_key = internal_name
         else:
@@ -78,10 +77,9 @@ class ChunkingStrategyFactory:
         if strategy_key not in STRATEGY_REGISTRY:
             available = cls.get_available_strategies()
             raise ChunkingStrategyError(
-                detail=f"Unknown strategy: {strategy_name}. Available: {', '.join(available)}",
-                correlation_id=correlation_id or "unknown",
                 strategy=str(strategy_name),
-                fallback_strategy="recursive",
+                reason=f"Unknown strategy: {strategy_name}. Available: {', '.join(available)}",
+                correlation_id=correlation_id or "unknown",
             )
 
         try:
@@ -93,10 +91,10 @@ class ChunkingStrategyFactory:
 
         except Exception as e:
             raise ChunkingStrategyError(
-                detail=f"Failed to initialize strategy {strategy_name}: {str(e)}",
-                correlation_id=correlation_id or "unknown",
                 strategy=str(strategy_name),
-                fallback_strategy="recursive",
+                reason=f"Failed to initialize strategy {strategy_name}: {str(e)}",
+                correlation_id=correlation_id or "unknown",
+                cause=e,
             ) from e
 
     @classmethod
@@ -134,8 +132,22 @@ class ChunkingStrategyFactory:
             cls._reverse_mapping[name] = api_enum
 
     @classmethod
+    def normalize_strategy_name(cls, name: str) -> str:
+        """Normalize strategy name variations to internal names.
+        
+        Public method for normalizing strategy names before persistence.
+        
+        Args:
+            name: User-provided strategy name
+            
+        Returns:
+            Normalized internal strategy name
+        """
+        return cls._normalize_strategy_name(name)
+    
+    @classmethod
     def _normalize_strategy_name(cls, name: str) -> str:
-        """Normalize strategy name variations to internal names."""
+        """Internal normalize strategy name variations to internal names."""
         name = name.lower().strip()
 
         # Direct mapping

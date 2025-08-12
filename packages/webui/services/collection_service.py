@@ -16,7 +16,10 @@ from packages.shared.database.models import Collection, CollectionStatus, Operat
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from packages.webui.celery_app import celery_app
+from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
+from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 from packages.webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
@@ -82,6 +85,51 @@ class CollectionService:
             is_public = (config.get("is_public") if config else None) or False
 
             meta = config.get("metadata") if config else None
+
+            # Validate chunking strategy if provided
+            if chunking_strategy is not None:
+                try:
+                    # Validate that the strategy exists and is supported
+                    ChunkingStrategyFactory.create_strategy(
+                        strategy_name=chunking_strategy,
+                        config=chunking_config or {},
+                    )
+                    # Normalize the strategy name to internal format for persistence
+                    chunking_strategy = ChunkingStrategyFactory.normalize_strategy_name(chunking_strategy)
+                except ChunkingStrategyError as e:
+                    # Use the structured error fields for a user-friendly response
+                    if "Unknown strategy" in e.reason:
+                        available = ChunkingStrategyFactory.get_available_strategies()
+                        raise ValueError(
+                            f"Invalid chunking_strategy '{e.strategy}'. "
+                            f"Available strategies: {', '.join(available)}"
+                        ) from None
+                    raise ValueError(f"Invalid chunking_strategy: Strategy {e.strategy} failed: {e.reason}") from None
+                except Exception as e:
+                    # Catch any other unexpected errors
+                    raise ValueError(f"Invalid chunking_strategy: {str(e)}") from None
+
+            # Validate chunking config if provided
+            if chunking_config is not None:
+                # Only validate config if we have a strategy
+                if chunking_strategy is not None:
+                    config_builder = ChunkingConfigBuilder()
+                    result = config_builder.build_config(
+                        strategy=chunking_strategy,
+                        user_config=chunking_config,
+                    )
+                    if result.validation_errors:
+                        errors = "; ".join(result.validation_errors)
+                        raise ValueError(
+                            f"Invalid chunking_config for strategy '{chunking_strategy}': {errors}"
+                        )
+                    # Use the validated and normalized config
+                    chunking_config = result.config
+                else:
+                    # Config without strategy is not allowed
+                    raise ValueError(
+                        "chunking_config requires chunking_strategy to be specified"
+                    )
 
             # Create with new chunking fields
             collection = await self.collection_repo.create(
@@ -678,6 +726,56 @@ class CollectionService:
 
         if not collection:
             raise EntityNotFoundError("Collection", collection_id)
+
+        # Validate chunking_strategy if being updated
+        if "chunking_strategy" in updates:
+            chunking_strategy = updates["chunking_strategy"]
+            if chunking_strategy is not None:
+                try:
+                    # Validate that the strategy exists and is supported
+                    ChunkingStrategyFactory.create_strategy(
+                        strategy_name=chunking_strategy,
+                        config=updates.get("chunking_config", collection.chunking_config or {}),
+                    )
+                    # Normalize the strategy name to internal format for persistence
+                    updates["chunking_strategy"] = ChunkingStrategyFactory.normalize_strategy_name(chunking_strategy)
+                except ChunkingStrategyError as e:
+                    # Use the structured error fields for a user-friendly response
+                    if "Unknown strategy" in e.reason:
+                        available = ChunkingStrategyFactory.get_available_strategies()
+                        raise ValueError(
+                            f"Invalid chunking_strategy '{e.strategy}'. "
+                            f"Available strategies: {', '.join(available)}"
+                        ) from None
+                    raise ValueError(f"Invalid chunking_strategy: Strategy {e.strategy} failed: {e.reason}") from None
+                except Exception as e:
+                    # Catch any other unexpected errors
+                    raise ValueError(f"Invalid chunking_strategy: {str(e)}") from None
+
+        # Validate chunking_config if being updated
+        if "chunking_config" in updates:
+            chunking_config = updates["chunking_config"]
+            if chunking_config is not None:
+                # Determine which strategy to validate against
+                strategy_to_use = updates.get("chunking_strategy", collection.chunking_strategy)
+                if strategy_to_use is not None:
+                    config_builder = ChunkingConfigBuilder()
+                    result = config_builder.build_config(
+                        strategy=strategy_to_use,
+                        user_config=chunking_config,
+                    )
+                    if result.validation_errors:
+                        errors = "; ".join(result.validation_errors)
+                        raise ValueError(
+                            f"Invalid chunking_config for strategy '{strategy_to_use}': {errors}"
+                        )
+                    # Use the validated and normalized config
+                    updates["chunking_config"] = result.config
+                else:
+                    # Config without strategy is not allowed
+                    raise ValueError(
+                        "chunking_config requires chunking_strategy to be specified"
+                    )
 
         # Update allowed fields
         allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]

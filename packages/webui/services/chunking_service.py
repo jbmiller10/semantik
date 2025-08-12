@@ -56,6 +56,12 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from .cache_manager import CacheManager, QueryMonitor
 from .chunking_config_builder import ChunkingConfigBuilder
 from .chunking_error_handler import ChunkingErrorHandler
+from .chunking_metrics import (
+    record_chunk_sizes,
+    record_chunking_duration,
+    record_chunking_fallback,
+    record_chunks_produced,
+)
 from .chunking_strategies import ChunkingStrategyRegistry
 from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
@@ -589,7 +595,7 @@ class ChunkingService:
                 chunk_overlap = min(200, chunk_size // 4)
 
             # Build ChunkConfig with proper parameters
-            min_tokens = min(100, chunk_size // 2)
+            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size // 2)
             max_tokens = max(chunk_size, min_tokens + 1)
             overlap_tokens = min(chunk_overlap, min_tokens - 1)
 
@@ -794,7 +800,7 @@ class ChunkingService:
 
             # Build ChunkConfig with proper parameters
             # Ensure min_tokens is less than max_tokens and overlap_tokens is valid
-            min_tokens = min(100, chunk_size // 2)  # Set reasonable min
+            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size // 2)  # Set reasonable min
             max_tokens = max(chunk_size, min_tokens + 1)  # Ensure max > min
             overlap_tokens = min(chunk_overlap, min_tokens - 1)  # Ensure overlap < min
 
@@ -1923,6 +1929,7 @@ class ChunkingService:
         This method provides a unified chunking interface for ingestion tasks (APPEND, REINDEX).
         It resolves the chunking strategy from collection configuration, executes it with proper
         error handling, and falls back to TokenChunker on recoverable errors.
+        Tracks Prometheus metrics for observability.
 
         Args:
             text: The text content to chunk
@@ -1944,6 +1951,7 @@ class ChunkingService:
         start_time = time.time()
         strategy_used = None
         fallback_used = False
+        fallback_reason = None
         chunks = []
         correlation_id = str(uuid.uuid4())
 
@@ -1970,6 +1978,10 @@ class ChunkingService:
                 chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                 chunks = chunker.chunk_text(text, document_id, metadata or {})
                 strategy_used = "TokenChunker"
+                
+                # Record metrics for direct TokenChunker usage
+                record_chunks_produced("TokenChunker", len(chunks))
+                record_chunk_sizes("TokenChunker", chunks)
 
             else:
                 # Normalize strategy name using factory
@@ -1994,6 +2006,12 @@ class ChunkingService:
                         chunks = chunker.chunk_text(text, document_id, metadata or {})
                         strategy_used = "TokenChunker"
                         fallback_used = True
+                        fallback_reason = "invalid_config"
+                        
+                        # Record fallback metrics
+                        record_chunking_fallback(chunking_strategy, "invalid_config")
+                        record_chunks_produced("TokenChunker", len(chunks))
+                        record_chunk_sizes("TokenChunker", chunks)
 
                     else:
                         # Create strategy instance
@@ -2058,6 +2076,10 @@ class ChunkingService:
                                     "correlation_id": correlation_id,
                                 }
                             )
+                            
+                            # Record metrics for successful strategy execution
+                            record_chunks_produced(strategy_used, len(chunks))
+                            record_chunk_sizes(strategy_used, chunks)
 
                         except Exception as strategy_error:
                             # Strategy execution failed, fall back to TokenChunker
@@ -2075,6 +2097,12 @@ class ChunkingService:
                             chunks = chunker.chunk_text(text, document_id, metadata or {})
                             strategy_used = "TokenChunker"
                             fallback_used = True
+                            fallback_reason = "runtime_error"
+                            
+                            # Record fallback metrics
+                            record_chunking_fallback(str(config_result.strategy), "runtime_error")
+                            record_chunks_produced("TokenChunker", len(chunks))
+                            record_chunk_sizes("TokenChunker", chunks)
 
                 except Exception as config_error:
                     # Configuration building failed, fall back to TokenChunker
@@ -2092,6 +2120,12 @@ class ChunkingService:
                     chunks = chunker.chunk_text(text, document_id, metadata or {})
                     strategy_used = "TokenChunker"
                     fallback_used = True
+                    fallback_reason = "config_error"
+                    
+                    # Record fallback metrics
+                    record_chunking_fallback(chunking_strategy, "config_error")
+                    record_chunks_produced("TokenChunker", len(chunks))
+                    record_chunk_sizes("TokenChunker", chunks)
 
         except Exception as e:
             # Fatal error - cannot proceed with chunking
@@ -2107,7 +2141,12 @@ class ChunkingService:
             raise
 
         # Calculate duration
-        duration_ms = int((time.time() - start_time) * 1000)
+        duration_seconds = time.time() - start_time
+        duration_ms = int(duration_seconds * 1000)
+
+        # Record duration metric for the strategy that was actually used
+        if strategy_used:
+            record_chunking_duration(strategy_used, duration_seconds)
 
         # Log fallback event if occurred
         if fallback_used:
@@ -2118,6 +2157,7 @@ class ChunkingService:
                     "collection_id": collection.get('id'),
                     "original_strategy": chunking_strategy,
                     "strategy_used": strategy_used,
+                    "fallback_reason": fallback_reason,
                     "correlation_id": correlation_id,
                 }
             )
@@ -2128,6 +2168,7 @@ class ChunkingService:
                 "duration_ms": duration_ms,
                 "strategy_used": strategy_used,
                 "fallback": fallback_used,
+                "fallback_reason": fallback_reason,
                 "chunk_count": len(chunks),
             },
         }

@@ -1593,13 +1593,13 @@ async def _process_append_operation(
             from shared.database.models import DocumentStatus
 
             # Create ChunkingService instance once outside the loop
-            from shared.database.repositories.collection_repository import CollectionRepository
             from webui.services.chunking_service import ChunkingService
 
-            collection_repo_for_chunking = CollectionRepository(document_repo.session)
+            # Reuse the existing collection_repo passed to this function instead of creating a new one
+            # This ensures proper transaction boundaries and avoids potential session conflicts
             chunking_service = ChunkingService(
                 db_session=document_repo.session,
-                collection_repo=collection_repo_for_chunking,
+                collection_repo=collection_repo,  # Use existing repo with same session
                 document_repo=document_repo,
                 redis_client=None,  # Redis client not needed for execute_ingestion_chunking
             )
@@ -2016,13 +2016,13 @@ async def _process_reindex_operation(
         worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
 
         # Create ChunkingService instance once before processing batches
-        from shared.database.repositories.collection_repository import CollectionRepository
         from webui.services.chunking_service import ChunkingService
 
-        collection_repo_for_chunking = CollectionRepository(document_repo.session)
+        # Reuse the existing collection_repo passed to this function instead of creating a new one
+        # This ensures proper transaction boundaries and avoids potential session conflicts
         chunking_service = ChunkingService(
             db_session=document_repo.session,
-            collection_repo=collection_repo_for_chunking,
+            collection_repo=collection_repo,  # Use existing repo with same session
             document_repo=document_repo,
             redis_client=None,  # Redis client not needed for execute_ingestion_chunking
         )
@@ -2212,6 +2212,15 @@ async def _process_reindex_operation(
 
                         logger.info(f"Successfully reprocessed document {file_path}: {len(points)} vectors created")
 
+                        # Update document with chunk count after successful reprocessing
+                        if doc.get("id") and all_chunks:
+                            await document_repo.update_status(
+                                doc["id"],
+                                DocumentStatus.COMPLETED,
+                                chunk_count=len(all_chunks),
+                            )
+                            logger.info(f"Updated document {doc['id']} with chunk_count={len(all_chunks)}")
+
                         # Free memory
                         del text_blocks, all_chunks, texts, embeddings_array, embeddings, points
                         gc.collect()
@@ -2219,6 +2228,19 @@ async def _process_reindex_operation(
                     except Exception as e:
                         logger.error(f"Failed to reprocess document {doc.get('file_path', 'unknown')}: {e}")
                         failed_count += 1
+                        
+                        # Mark failed document status
+                        if doc.get("id"):
+                            try:
+                                await document_repo.update_status(
+                                    doc["id"],
+                                    DocumentStatus.FAILED,
+                                    error_message=str(e)[:500],  # Truncate error message to avoid DB overflow
+                                )
+                                logger.info(f"Marked document {doc['id']} as FAILED due to reprocessing error")
+                            except Exception as update_error:
+                                logger.error(f"Failed to update document status to FAILED: {update_error}")
+                        
                         # Continue processing other documents
 
                 # Send progress update
