@@ -33,23 +33,14 @@ class TestWebSocketManager:
         return manager
 
     @pytest.fixture()
-    def mock_redis(self) -> None:
-        """Create mock Redis client"""
-        mock = AsyncMock(spec=redis.Redis)
-        mock.ping = AsyncMock()
-        mock.xadd = AsyncMock()
-        mock.expire = AsyncMock()
-        mock.xinfo_stream = AsyncMock()
-        mock.xgroup_create = AsyncMock()
-        mock.xreadgroup = AsyncMock()
-        mock.xack = AsyncMock()
-        mock.xgroup_delconsumer = AsyncMock()
-        mock.xrange = AsyncMock()
-        mock.delete = AsyncMock()
-        mock.xinfo_groups = AsyncMock()
-        mock.xgroup_destroy = AsyncMock()
-        mock.close = AsyncMock()
-        return mock
+    def mock_redis(self, fake_redis_client) -> None:
+        """Create mock Redis client using fakeredis"""
+        # Use the fake_redis_client from conftest.py
+        # Add any additional mock methods if needed
+        fake_redis_client.ping = AsyncMock(return_value=True)
+        fake_redis_client.xinfo_stream = AsyncMock()
+        fake_redis_client.xinfo_groups = AsyncMock(return_value=[])
+        return fake_redis_client
 
     @pytest.fixture()
     def mock_websocket(self) -> None:

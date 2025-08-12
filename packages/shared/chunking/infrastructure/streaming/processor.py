@@ -149,10 +149,10 @@ class StreamingDocumentProcessor:
                     # Check backpressure
                     await self._manage_backpressure()
 
-                    # Acquire buffer from pool
-                    buffer_id, buffer = await self.memory_pool.acquire()
+                    # Use context manager for safe buffer acquisition
+                    async with self.memory_pool.acquire_async(size=self.BUFFER_SIZE, timeout=10.0) as managed_buffer:
+                        buffer = managed_buffer.data
 
-                    try:
                         # Read chunk with size limit
                         chunk = await file.read(len(buffer))
                         if not chunk:
@@ -243,9 +243,7 @@ class StreamingDocumentProcessor:
                             last_checkpoint_bytes = bytes_processed
                             logger.debug(f"Checkpoint saved at {bytes_processed}/{file_size} bytes")
 
-                    finally:
-                        # Always release buffer
-                        self.memory_pool.release(buffer_id)
+                    # Buffer is automatically released by context manager
 
                 # Final progress update
                 await self._emit_progress(

@@ -2,16 +2,16 @@
 """
 Exception handlers for chunking-related errors.
 
-This module provides FastAPI exception handlers that convert chunking exceptions
-into structured JSON responses with appropriate HTTP status codes, correlation IDs,
-and recovery hints.
+This module provides FastAPI exception handlers for chunking exceptions,
+including error sanitization and structured JSON responses.
 """
 
 import logging
+import os
+import re
 from typing import Any
 
-from fastapi import Request, status
-from fastapi.encoders import jsonable_encoder
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from packages.webui.api.chunking_exceptions import (
@@ -25,45 +25,62 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingTimeoutError,
     ChunkingValidationError,
 )
-from packages.webui.middleware.correlation import get_or_generate_correlation_id
+
+try:
+    from packages.shared.chunking.infrastructure.exception_translator import (
+        exception_translator,
+    )
+    from packages.shared.chunking.infrastructure.exceptions import (
+        ApplicationException,
+        BaseChunkingException,
+        DomainException,
+        InfrastructureException,
+    )
+
+    INFRASTRUCTURE_AVAILABLE = True
+except ImportError:
+    INFRASTRUCTURE_AVAILABLE = False
+
+try:
+    from packages.webui.middleware.correlation import get_or_generate_correlation_id
+except ImportError:
+
+    def get_or_generate_correlation_id(request: Request) -> str:
+        """Fallback correlation ID generator."""
+        import uuid
+
+        return request.headers.get("X-Correlation-ID", str(uuid.uuid4()))
+
 
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_error_detail(detail: str, is_production: bool = True) -> str:
+def _sanitize_error_detail(detail: str, is_production: bool = False) -> str:
     """Sanitize error details to prevent information leakage.
 
     Args:
-        detail: The raw error detail message.
-        is_production: Whether the application is in production mode.
+        detail: The error detail message
+        is_production: Whether running in production mode
 
     Returns:
-        Sanitized error message safe for client consumption.
+        Sanitized error detail
     """
     if not is_production:
-        # In development, return full details
         return detail
 
-    # In production, remove sensitive information
-    # This is a basic implementation - customize based on your security needs
-    sensitive_patterns = [
-        # System files and paths
-        r"\/etc\/[a-zA-Z0-9_\-\/]+",
-        # File system paths
-        r"\/[a-zA-Z0-9_\-\/]+\.(py|conf|env|key|pem)",
-        # Database connection strings
-        r"(postgres|mysql|mongodb):\/\/[^@]+@[^\/]+",
-        # API keys or tokens
-        r"(api_key|token|secret|password)[\s]*[=:]\s*['\"]?[a-zA-Z0-9\-_]+['\"]?",
-        # Internal service names
-        r"(service|host|server)[\s]*[=:]\s*[a-zA-Z0-9\-._]+",
+    # Patterns to sanitize
+    sanitize_patterns = [
+        (r"/[^\s]+\.(env|config|key|pem)", "[REDACTED]"),  # File paths with sensitive extensions
+        (r"/etc/[^\s]+", "[REDACTED]"),  # System config files
+        (r"/home/[^\s]+", "[REDACTED]"),  # User home directories
+        (r"(postgres|mysql|mongodb)://[^\s]+", "[REDACTED]"),  # Connection strings
+        (r'(api_key|token|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', "[REDACTED]"),  # Credentials
+        (r"\b(sk-[a-zA-Z0-9]+|key-[a-zA-Z0-9]+)\b", "[REDACTED]"),  # API keys
     ]
 
     sanitized = detail
-    for pattern in sensitive_patterns:
-        import re
-
-        sanitized = re.sub(pattern, "[REDACTED]", sanitized, flags=re.IGNORECASE)
+    for pattern, replacement in sanitize_patterns:
+        sanitized = re.sub(pattern, replacement, sanitized, flags=re.IGNORECASE)
 
     return sanitized
 
@@ -72,276 +89,232 @@ def _create_error_response(
     request: Request,
     exc: ChunkingError,
     status_code: int,
-    is_production: bool = True,
+    is_production: bool = None,
 ) -> JSONResponse:
-    """Create a standardized error response from a chunking exception.
+    """Create a structured error response.
 
     Args:
-        request: The incoming request.
-        exc: The chunking exception.
-        status_code: HTTP status code for the response.
-        is_production: Whether to sanitize error messages.
+        request: The FastAPI request
+        exc: The chunking exception
+        status_code: HTTP status code
+        is_production: Whether in production mode (defaults to checking ENV)
 
     Returns:
-        JSON response with error details.
+        JSON response with error details
     """
-    # Get or ensure correlation ID
-    correlation_id = exc.correlation_id or get_or_generate_correlation_id(request)
+    if is_production is None:
+        is_production = os.getenv("ENV", "development").lower() == "production"
+
+    # Log based on status code
+    if status_code >= 500:
+        logger.error(
+            f"Server error: {exc.__class__.__name__}",
+            extra={"error": str(exc), "correlation_id": exc.correlation_id},
+        )
+    else:
+        logger.warning(
+            f"Client error: {exc.__class__.__name__}",
+            extra={"error": str(exc), "correlation_id": exc.correlation_id},
+        )
 
     # Build error response
-    error_data = exc.to_dict()
-
-    # Sanitize the detail message
-    error_data["detail"] = _sanitize_error_detail(error_data["detail"], is_production)
+    error_dict = exc.to_dict()
+    error_dict["detail"] = _sanitize_error_detail(error_dict.get("detail", ""), is_production)
 
     # Add request context
-    error_data["request"] = {
+    error_dict["request"] = {
         "method": request.method,
         "path": str(request.url.path),
         "query_params": dict(request.query_params) if not is_production else None,
     }
 
-    # Add correlation ID to response headers
-    headers = {"X-Correlation-ID": correlation_id}
+    response = JSONResponse(
+        status_code=status_code,
+        content=error_dict,
+    )
 
-    # Log the error with appropriate severity
-    log_data = {
-        "correlation_id": correlation_id,
-        "error_type": type(exc).__name__,
-        "status_code": status_code,
-        "path": str(request.url.path),
-        "method": request.method,
-    }
+    # Add correlation ID header
+    if exc.correlation_id:
+        response.headers["X-Correlation-ID"] = exc.correlation_id
 
-    if status_code >= 500:
-        logger.error(f"Server error in chunking operation: {exc}", extra=log_data, exc_info=True)
-    elif status_code >= 400:
-        logger.warning(f"Client error in chunking operation: {exc}", extra=log_data)
-    else:
-        logger.info(f"Chunking operation issue: {exc}", extra=log_data)
+    return response
+
+
+if INFRASTRUCTURE_AVAILABLE:
+
+    async def handle_chunking_exception(request: Request, exc: BaseChunkingException) -> JSONResponse:
+        """Handle all chunking exceptions using the infrastructure translator.
+
+        Args:
+            request: The FastAPI request object
+            exc: The chunking exception to handle
+
+        Returns:
+            JSON response with structured error information
+        """
+        correlation_id = get_or_generate_correlation_id(request)
+
+        # Log the exception
+        logger.error(
+            f"Chunking exception occurred: {exc.__class__.__name__}",
+            extra={
+                "correlation_id": correlation_id,
+                "exception_type": exc.__class__.__name__,
+                "details": exc.to_dict() if hasattr(exc, "to_dict") else str(exc),
+            },
+        )
+
+        # Use the exception translator to create the response
+        return exception_translator.create_error_response(exc, correlation_id)
+
+
+async def handle_application_exception(request: Request, exc: Any) -> JSONResponse:
+    """Handle application-level exceptions.
+
+    Args:
+        request: The FastAPI request object
+        exc: The application exception to handle
+
+    Returns:
+        JSON response with structured error information
+    """
+    get_or_generate_correlation_id(request)
+
+    # Translate to HTTP exception and get status code
+    http_exc = exception_translator.translate_application_to_api(exc)
 
     return JSONResponse(
-        status_code=status_code,
-        content=jsonable_encoder(error_data),
-        headers=headers,
+        status_code=http_exc.status_code,
+        content=http_exc.detail,
     )
 
 
-async def chunking_error_handler(request: Request, exc: ChunkingError) -> JSONResponse:
-    """Handle base ChunkingError exceptions.
-
-    This is the fallback handler for any chunking errors not caught by
-    more specific handlers.
+async def handle_domain_exception(request: Request, exc: Any) -> JSONResponse:
+    """Handle domain-level exceptions.
 
     Args:
-        request: The incoming request.
-        exc: The chunking error.
+        request: The FastAPI request object
+        exc: The domain exception to handle
 
     Returns:
-        JSON response with status 500.
+        JSON response with structured error information
     """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    correlation_id = get_or_generate_correlation_id(request)
+
+    # Translate domain to application exception first
+    app_exc = exception_translator.translate_domain_to_application(exc, correlation_id)
+
+    # Then translate to HTTP
+    http_exc = exception_translator.translate_application_to_api(app_exc)
+
+    return JSONResponse(
+        status_code=http_exc.status_code,
+        content=http_exc.detail,
     )
 
 
-async def chunking_memory_error_handler(
-    request: Request,
-    exc: ChunkingMemoryError,
-) -> JSONResponse:
-    """Handle memory limit exceeded errors.
+async def handle_infrastructure_exception(request: Request, exc: Any) -> JSONResponse:
+    """Handle infrastructure-level exceptions.
 
     Args:
-        request: The incoming request.
-        exc: The memory error.
+        request: The FastAPI request object
+        exc: The infrastructure exception to handle
 
     Returns:
-        JSON response with status 507 (Insufficient Storage).
+        JSON response with structured error information
     """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+    get_or_generate_correlation_id(request)
+
+    # Translate infrastructure to application exception
+    app_exc = exception_translator.translate_infrastructure_to_application(exc, {"request_path": str(request.url)})
+
+    # Then translate to HTTP
+    http_exc = exception_translator.translate_application_to_api(app_exc)
+
+    return JSONResponse(
+        status_code=http_exc.status_code,
+        content=http_exc.detail,
     )
 
 
-async def chunking_timeout_error_handler(
-    request: Request,
-    exc: ChunkingTimeoutError,
-) -> JSONResponse:
-    """Handle timeout errors.
-
-    Args:
-        request: The incoming request.
-        exc: The timeout error.
-
-    Returns:
-        JSON response with status 504 (Gateway Timeout).
-    """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-    )
+# Individual exception handlers for specific chunking exceptions
+async def handle_chunking_memory_error(request: Request, exc: ChunkingMemoryError) -> JSONResponse:
+    """Handle memory exhaustion errors."""
+    response = _create_error_response(request, exc, 507)  # Insufficient Storage
+    response.headers["Retry-After"] = "60"
+    return response
 
 
-async def chunking_validation_error_handler(
-    request: Request,
-    exc: ChunkingValidationError,
-) -> JSONResponse:
-    """Handle validation errors.
-
-    Args:
-        request: The incoming request.
-        exc: The validation error.
-
-    Returns:
-        JSON response with status 422 (Unprocessable Entity).
-    """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-    )
+async def handle_chunking_timeout_error(request: Request, exc: ChunkingTimeoutError) -> JSONResponse:
+    """Handle timeout errors."""
+    return _create_error_response(request, exc, 504)  # Gateway Timeout
 
 
-async def chunking_strategy_error_handler(
-    request: Request,
-    exc: ChunkingStrategyError,
-) -> JSONResponse:
-    """Handle strategy-related errors.
-
-    Args:
-        request: The incoming request.
-        exc: The strategy error.
-
-    Returns:
-        JSON response with status 501 (Not Implemented) or 500.
-    """
-    # Use 501 if strategy is not implemented, 500 for other strategy errors
-    status_code = (
-        status.HTTP_501_NOT_IMPLEMENTED
-        if "not implemented" in exc.detail.lower() or "unsupported" in exc.detail.lower()
-        else status.HTTP_500_INTERNAL_SERVER_ERROR
-    )
-
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status_code,
-    )
+async def handle_chunking_validation_error(request: Request, exc: ChunkingValidationError) -> JSONResponse:
+    """Handle validation errors."""
+    return _create_error_response(request, exc, 422)  # Unprocessable Entity
 
 
-async def chunking_resource_limit_error_handler(
-    request: Request,
-    exc: ChunkingResourceLimitError,
-) -> JSONResponse:
-    """Handle resource limit errors.
+async def handle_chunking_strategy_error(request: Request, exc: ChunkingStrategyError) -> JSONResponse:
+    """Handle strategy errors."""
+    return _create_error_response(request, exc, 501)  # Not Implemented
 
-    Args:
-        request: The incoming request.
-        exc: The resource limit error.
 
-    Returns:
-        JSON response with status 503 (Service Unavailable).
-    """
-    response = _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-    )
-
-    # Add Retry-After header if appropriate
-    # Suggest retry after 30 seconds for resource limits
+async def handle_chunking_resource_limit_error(request: Request, exc: ChunkingResourceLimitError) -> JSONResponse:
+    """Handle resource limit errors."""
+    response = _create_error_response(request, exc, 503)  # Service Unavailable
     response.headers["Retry-After"] = "30"
-
     return response
 
 
-async def chunking_partial_failure_error_handler(
-    request: Request,
-    exc: ChunkingPartialFailureError,
-) -> JSONResponse:
-    """Handle partial failure errors.
-
-    Args:
-        request: The incoming request.
-        exc: The partial failure error.
-
-    Returns:
-        JSON response with status 207 (Multi-Status).
-    """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_207_MULTI_STATUS,
-    )
+async def handle_chunking_partial_failure_error(request: Request, exc: ChunkingPartialFailureError) -> JSONResponse:
+    """Handle partial failure errors."""
+    return _create_error_response(request, exc, 207)  # Multi-Status
 
 
-async def chunking_configuration_error_handler(
-    request: Request,
-    exc: ChunkingConfigurationError,
-) -> JSONResponse:
-    """Handle configuration errors.
-
-    Args:
-        request: The incoming request.
-        exc: The configuration error.
-
-    Returns:
-        JSON response with status 500 (Internal Server Error).
-    """
-    return _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    )
+async def handle_chunking_configuration_error(request: Request, exc: ChunkingConfigurationError) -> JSONResponse:
+    """Handle configuration errors."""
+    return _create_error_response(request, exc, 500)  # Internal Server Error
 
 
-async def chunking_dependency_error_handler(
-    request: Request,
-    exc: ChunkingDependencyError,
-) -> JSONResponse:
-    """Handle dependency errors.
-
-    Args:
-        request: The incoming request.
-        exc: The dependency error.
-
-    Returns:
-        JSON response with status 503 (Service Unavailable).
-    """
-    response = _create_error_response(
-        request=request,
-        exc=exc,
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-    )
-
-    # Add Retry-After header for temporary dependency issues
-    response.headers["Retry-After"] = "60"  # Retry after 1 minute
-
+async def handle_chunking_dependency_error(request: Request, exc: ChunkingDependencyError) -> JSONResponse:
+    """Handle dependency errors."""
+    response = _create_error_response(request, exc, 503)  # Service Unavailable
+    response.headers["Retry-After"] = "60"
     return response
 
 
-def register_chunking_exception_handlers(app: Any) -> None:
-    """Register all chunking exception handlers with a FastAPI app.
+async def handle_base_chunking_error(request: Request, exc: ChunkingError) -> JSONResponse:
+    """Handle base chunking errors as fallback."""
+    return _create_error_response(request, exc, 500)  # Internal Server Error
+
+
+def register_chunking_exception_handlers(app: FastAPI) -> None:
+    """Register all chunking exception handlers with the FastAPI app.
 
     Args:
-        app: The FastAPI application instance.
+        app: The FastAPI application instance
     """
-    # Register specific handlers
-    app.add_exception_handler(ChunkingMemoryError, chunking_memory_error_handler)
-    app.add_exception_handler(ChunkingTimeoutError, chunking_timeout_error_handler)
-    app.add_exception_handler(ChunkingValidationError, chunking_validation_error_handler)
-    app.add_exception_handler(ChunkingStrategyError, chunking_strategy_error_handler)
-    app.add_exception_handler(ChunkingResourceLimitError, chunking_resource_limit_error_handler)
-    app.add_exception_handler(ChunkingPartialFailureError, chunking_partial_failure_error_handler)
-    app.add_exception_handler(ChunkingConfigurationError, chunking_configuration_error_handler)
-    app.add_exception_handler(ChunkingDependencyError, chunking_dependency_error_handler)
+    # Register specific exception handlers
+    app.add_exception_handler(ChunkingMemoryError, handle_chunking_memory_error)
+    app.add_exception_handler(ChunkingTimeoutError, handle_chunking_timeout_error)
+    app.add_exception_handler(ChunkingValidationError, handle_chunking_validation_error)
+    app.add_exception_handler(ChunkingStrategyError, handle_chunking_strategy_error)
+    app.add_exception_handler(ChunkingResourceLimitError, handle_chunking_resource_limit_error)
+    app.add_exception_handler(ChunkingPartialFailureError, handle_chunking_partial_failure_error)
+    app.add_exception_handler(ChunkingConfigurationError, handle_chunking_configuration_error)
+    app.add_exception_handler(ChunkingDependencyError, handle_chunking_dependency_error)
+    app.add_exception_handler(ChunkingError, handle_base_chunking_error)  # Base class as fallback
 
-    # Register base handler last (as fallback)
-    app.add_exception_handler(ChunkingError, chunking_error_handler)
+    # Register infrastructure handlers if available
+    if INFRASTRUCTURE_AVAILABLE:
+        app.add_exception_handler(BaseChunkingException, handle_chunking_exception)
+        app.add_exception_handler(ApplicationException, handle_application_exception)
+        app.add_exception_handler(DomainException, handle_domain_exception)
+        app.add_exception_handler(InfrastructureException, handle_infrastructure_exception)
 
-    logger.info("Registered all chunking exception handlers")
+    logger.info("Chunking exception handlers registered")
+
+
+# Alias for backward compatibility
+register_exception_handlers = register_chunking_exception_handlers

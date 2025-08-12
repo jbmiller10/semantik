@@ -11,25 +11,33 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 from uuid import uuid4
 
-import asyncpg
-import pytest
-import pytest_asyncio
-import redis.asyncio as redis
-from dotenv import load_dotenv
-from fastapi import WebSocket
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# Set test environment BEFORE any app imports
+os.environ["TESTING"] = "true"
+os.environ["ENV"] = "test"
+os.environ["DISABLE_RATE_LIMIT"] = "true"
+os.environ["REDIS_URL"] = "redis://localhost:6379"
 
-import packages.webui.celery_app as celery_module
-from packages.shared.database import get_db
-from packages.shared.database.factory import (
+import asyncpg  # noqa: E402
+import fakeredis  # noqa: E402
+import fakeredis.aioredis  # noqa: E402
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+import redis.asyncio as redis  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from fastapi import WebSocket  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from httpx import AsyncClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
+
+import packages.webui.celery_app as celery_module  # noqa: E402
+from packages.shared.database import get_db  # noqa: E402
+from packages.shared.database.factory import (  # noqa: E402
     create_auth_repository,
     create_collection_repository,
     create_user_repository,
 )
-from packages.shared.database.models import (
+from packages.shared.database.models import (  # noqa: E402
     Base,
     Collection,
     CollectionStatus,
@@ -40,10 +48,10 @@ from packages.shared.database.models import (
     OperationType,
     User,
 )
-from packages.webui.auth import create_access_token, get_current_user
-from packages.webui.main import app
-from packages.webui.utils.qdrant_manager import qdrant_manager
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.auth import create_access_token, get_current_user  # noqa: E402
+from packages.webui.main import app  # noqa: E402
+from packages.webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
+from packages.webui.websocket_manager import RedisStreamWebSocketManager  # noqa: E402
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -62,6 +70,66 @@ os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
+
+
+@pytest.fixture()
+def use_fakeredis():
+    """Opt-in fixture to use fakeredis for a specific test."""
+    fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
+    fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+    with (
+        patch("redis.from_url", return_value=fake_sync_redis),
+        patch("redis.asyncio.from_url", return_value=fake_async_redis),
+        patch("redis.ConnectionPool.from_url", return_value=fake_sync_redis.connection_pool),
+        patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
+    ):
+
+        # Also need to handle Redis() constructor with connection pool
+        original_redis_init = redis.Redis.__init__
+        original_async_redis_init = redis.asyncio.Redis.__init__
+
+        def fake_redis_init(self, *args, connection_pool=None, **kwargs):
+            if connection_pool == fake_sync_redis.connection_pool:
+                # Initialize with fakeredis
+                fake_sync_redis.__init__(*args, **kwargs)
+                self.__dict__.update(fake_sync_redis.__dict__)
+            else:
+                original_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+
+        def fake_async_redis_init(self, *args, connection_pool=None, **kwargs):
+            if connection_pool == fake_async_redis.connection_pool:
+                # Initialize with fakeredis
+                fake_async_redis.__init__(*args, **kwargs)
+                self.__dict__.update(fake_async_redis.__dict__)
+            else:
+                original_async_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+
+        redis.Redis.__init__ = fake_redis_init
+        redis.asyncio.Redis.__init__ = fake_async_redis_init
+
+        try:
+            yield fake_sync_redis, fake_async_redis
+        finally:
+            redis.Redis.__init__ = original_redis_init
+            redis.asyncio.Redis.__init__ = original_async_redis_init
+
+
+@pytest.fixture()
+def fake_redis_client():
+    """Provide a fake Redis client for tests that need direct access."""
+    return fakeredis.aioredis.FakeRedis(decode_responses=True)
+
+
+@pytest.fixture()
+def real_redis_client():
+    """Provide real Redis client for integration tests.
+
+    Only use this for tests that MUST have real Redis behavior.
+    """
+    import redis.asyncio as aioredis
+
+    return aioredis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"), decode_responses=True)
 
 
 @pytest.fixture()

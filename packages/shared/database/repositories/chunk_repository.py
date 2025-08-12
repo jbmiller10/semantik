@@ -387,3 +387,153 @@ class ChunkRepository(PartitionAwareMixin):
         result = await self.session.execute(query)
         count = result.scalar() or 0
         return count > 0
+
+    async def get_chunks_batch(self, collection_id: str, document_ids: list[str], limit: int = 1000) -> list[Chunk]:
+        """Batch fetch chunks for multiple documents.
+
+        Uses IN clause for efficient batch fetching.
+
+        Args:
+            collection_id: Collection ID (partition key)
+            document_ids: List of document IDs to fetch chunks for
+            limit: Maximum chunks to return
+
+        Returns:
+            List of chunks ordered by document_id and chunk_index
+        """
+        if not document_ids:
+            return []
+
+        # Validate inputs
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+        validated_doc_ids = [
+            PartitionValidation.validate_uuid(doc_id, f"document_id[{i}]") for i, doc_id in enumerate(document_ids)
+        ]
+
+        # Use IN clause for batch fetching
+        query = (
+            select(Chunk)
+            .where(and_(Chunk.collection_id == collection_id, Chunk.document_id.in_(validated_doc_ids)))
+            .order_by(Chunk.document_id, Chunk.chunk_index)
+            .limit(limit)
+        )
+
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_chunks_paginated(
+        self, collection_id: str, page: int = 1, page_size: int = 100
+    ) -> tuple[list[Chunk], int]:
+        """Get paginated chunks with total count.
+
+        Uses window function for efficient pagination.
+
+        Args:
+            collection_id: Collection ID (partition key)
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+
+        Returns:
+            Tuple of (chunks, total_count)
+        """
+        if page < 1:
+            raise ValueError("page must be >= 1")
+        if page_size < 1:
+            raise ValueError("page_size must be >= 1")
+
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        # Use window function for efficient pagination with count
+        query = (
+            select(Chunk, func.count(Chunk.id).over().label("total_count"))
+            .where(Chunk.collection_id == collection_id)
+            .order_by(Chunk.created_at.desc())
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
+
+        result = await self.session.execute(query)
+        rows = result.all()
+
+        if not rows:
+            return [], 0
+
+        chunks = [row[0] for row in rows]
+        total_count = rows[0][1] if rows else 0
+
+        return chunks, total_count
+
+    async def get_chunk_statistics_optimized(self, collection_id: str) -> dict[str, Any]:
+        """Get optimized statistics for chunks in a collection.
+
+        Uses aggregation functions for efficient statistics calculation.
+
+        Args:
+            collection_id: Collection ID
+
+        Returns:
+            Dictionary with detailed statistics
+        """
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        # Single aggregation query for all statistics
+        stats_query = select(
+            func.count(Chunk.id).label("total_chunks"),
+            func.avg(func.length(Chunk.content)).label("avg_chunk_size"),
+            func.min(func.length(Chunk.content)).label("min_chunk_size"),
+            func.max(func.length(Chunk.content)).label("max_chunk_size"),
+            func.count(func.distinct(Chunk.document_id)).label("unique_documents"),
+            func.min(Chunk.created_at).label("first_chunk_created"),
+            func.max(Chunk.created_at).label("last_chunk_created"),
+        ).where(Chunk.collection_id == collection_id)
+
+        result = await self.session.execute(stats_query)
+        stats = result.one()
+
+        return {
+            "total_chunks": stats.total_chunks or 0,
+            "avg_chunk_size": float(stats.avg_chunk_size or 0),
+            "min_chunk_size": stats.min_chunk_size or 0,
+            "max_chunk_size": stats.max_chunk_size or 0,
+            "unique_documents": stats.unique_documents or 0,
+            "first_chunk_created": stats.first_chunk_created.isoformat() if stats.first_chunk_created else None,
+            "last_chunk_created": stats.last_chunk_created.isoformat() if stats.last_chunk_created else None,
+        }
+
+    async def update_chunks_batch(self, updates: list[dict[str, Any]]) -> int:
+        """Batch update chunks with various fields.
+
+        Groups updates by collection for partition efficiency.
+
+        Args:
+            updates: List of dicts with 'id', 'collection_id', and fields to update
+
+        Returns:
+            Number of chunks updated
+        """
+        if not updates:
+            return 0
+
+        # Validate batch size
+        PartitionValidation.validate_batch_size(updates, "chunk updates")
+
+        # Group by collection for partition efficiency
+        updates_by_collection = self.group_by_partition_key(updates, lambda u: u["collection_id"])
+
+        total_updated = 0
+        for collection_id, collection_updates in updates_by_collection.items():
+            for update_data in collection_updates:
+                chunk_id = update_data.pop("id")
+                update_data.pop("collection_id")  # Remove from update fields
+
+                if update_data:  # Only update if there are fields to update
+                    stmt = (
+                        update(Chunk)
+                        .where(and_(Chunk.collection_id == collection_id, Chunk.id == chunk_id))
+                        .values(**update_data)
+                    )
+                    result = await self.session.execute(stmt)
+                    total_updated += result.rowcount or 0
+
+        logger.info(f"Batch updated {total_updated} chunks")
+        return total_updated

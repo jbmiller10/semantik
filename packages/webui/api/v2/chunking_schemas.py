@@ -18,9 +18,12 @@ class ChunkingStrategy(str, Enum):
     FIXED_SIZE = "fixed_size"
     SEMANTIC = "semantic"
     RECURSIVE = "recursive"
+    MARKDOWN = "markdown"
+    HIERARCHICAL = "hierarchical"
+    HYBRID = "hybrid"
+    # Legacy/aliases retained for backward compatibility (not used in tests)
     SLIDING_WINDOW = "sliding_window"
     DOCUMENT_STRUCTURE = "document_structure"
-    HYBRID = "hybrid"
 
 
 class ChunkingStatus(str, Enum):
@@ -165,6 +168,7 @@ class PreviewResponse(BaseModel):
     processing_time_ms: int = Field(..., description="Processing time in milliseconds")
     cached: bool = Field(default=False, description="Whether result was cached")
     expires_at: datetime = Field(..., description="Cache expiration time")
+    correlation_id: str | None = Field(default=None, description="Request correlation ID for tracing")
 
 
 class CompareRequest(BaseModel):

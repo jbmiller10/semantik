@@ -139,6 +139,10 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
+    env:
+      TESTING: "true"
+      ENV: "test"
+      DISABLE_RATE_LIMIT: "true"
     services:
       postgres:
         image: postgres:16-alpine

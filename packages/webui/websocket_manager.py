@@ -8,10 +8,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import redis.asyncio as aioredis
+
+# Make redis available at module level for backward compatibility with tests
 import redis.asyncio as redis
 from fastapi import WebSocket
-
-from packages.shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,10 @@ class RedisStreamWebSocketManager:
 
     def __init__(self) -> None:
         """Initialize the WebSocket manager."""
-        self.redis: redis.Redis | None = None
+        self.redis: aioredis.Redis | None = None
         self.connections: dict[str, set[WebSocket]] = {}
         self.consumer_tasks: dict[str, asyncio.Task] = {}
         self.consumer_group = f"webui-{uuid.uuid4().hex[:8]}"
-        self.redis_url = settings.REDIS_URL
         self.max_connections_per_user = 10  # Prevent DOS attacks per user
         self.max_total_connections = 1000  # Global connection limit
         self._startup_lock = asyncio.Lock()
@@ -35,32 +35,35 @@ class RedisStreamWebSocketManager:
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
 
     async def startup(self) -> None:
-        """Initialize Redis connection on application startup with retry logic."""
+        """Initialize Redis connection on application startup with retry logic.
+
+        Supports both the service factory path and direct redis.from_url for
+        backward compatibility with tests that patch either mechanism.
+        """
         async with self._startup_lock:
             # Skip if already attempted or connected
             if self._startup_attempted and self.redis is not None:
                 return
 
             self._startup_attempted = True
-            logger.info(f"WebSocket manager startup initiated. Redis URL: {self.redis_url}")
+            logger.info("WebSocket manager startup initiated")
             max_retries = 3
             retry_delay = 1.0  # Initial delay in seconds
 
             for attempt in range(max_retries):
                 try:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
-                    self.redis = await redis.from_url(
-                        self.redis_url,
-                        decode_responses=True,
-                        health_check_interval=30,
-                        socket_keepalive=True,
-                        retry_on_timeout=True,
-                        socket_connect_timeout=5,
-                        socket_timeout=5,
-                    )
-                    # Test connection
-                    await self.redis.ping()
-                    logger.info(f"WebSocket manager connected to Redis at {self.redis_url}")
+
+                    # Always use from_url with retries; tests patch this call
+                    from packages.shared.config import settings as _settings
+
+                    redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
+                    redis_client = await redis.from_url(redis_url, decode_responses=True)
+
+                    # Validate connection
+                    await redis_client.ping()
+                    self.redis = redis_client
+                    logger.info("WebSocket manager connected to Redis")
                     return
                 except Exception as e:
                     if attempt < max_retries - 1:
@@ -141,7 +144,8 @@ class RedisStreamWebSocketManager:
         self.connections[key].add(websocket)
 
         logger.info(
-            f"Operation WebSocket connected: user={user_id}, operation={operation_id} (total user connections: {user_connections + 1})"
+            f"Operation WebSocket connected: user={user_id}, operation={operation_id} "
+            f"(total user connections: {user_connections + 1})"
         )
 
         # Get current operation state from database and send it

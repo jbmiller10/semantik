@@ -104,7 +104,7 @@ class TestGetOperationStatusUseCase:
         # Create a mock operation to return from repository
         operation = MagicMock()
         operation.id = valid_request.operation_id
-        operation.status = "in_progress"
+        operation.status = "PROCESSING"  # Use correct enum value
         operation.total_chunks = 10
         operation.chunks_processed = 6
         operation.created_at = datetime.now(tz=UTC)
@@ -139,7 +139,7 @@ class TestGetOperationStatusUseCase:
         # Arrange
         completed_operation = MagicMock()
         completed_operation.id = valid_request.operation_id
-        completed_operation.status = "completed"  # Use lowercase
+        completed_operation.status = "COMPLETED"  # Use uppercase
         completed_operation.total_chunks = 10
         completed_operation.chunks_processed = 10
         completed_operation.created_at = datetime.now(tz=UTC)
@@ -165,7 +165,7 @@ class TestGetOperationStatusUseCase:
         # Arrange
         failed_operation = MagicMock()
         failed_operation.id = valid_request.operation_id
-        failed_operation.status = "failed"  # Use lowercase
+        failed_operation.status = "FAILED"  # Use uppercase
         failed_operation.total_chunks = 10
         failed_operation.chunks_processed = 2
         failed_operation.error_message = "Strategy execution failed"
@@ -193,7 +193,7 @@ class TestGetOperationStatusUseCase:
         # Arrange
         cancelled_operation = MagicMock()
         cancelled_operation.id = valid_request.operation_id
-        cancelled_operation.status = "cancelled"  # Use lowercase
+        cancelled_operation.status = "CANCELLED"  # Use uppercase
         cancelled_operation.total_chunks = 10
         cancelled_operation.chunks_processed = 7
         cancelled_operation.error_message = "Cancelled by user"
@@ -217,7 +217,7 @@ class TestGetOperationStatusUseCase:
         # Arrange
         operation = MagicMock()
         operation.id = valid_request.operation_id
-        operation.status = "in_progress"  # Use lowercase
+        operation.status = "PROCESSING"  # Use correct enum value  # Use lowercase
         operation.total_chunks = 10
         operation.chunks_processed = 5
         operation.created_at = datetime.now(tz=UTC) - timedelta(seconds=10)
@@ -271,7 +271,7 @@ class TestGetOperationStatusUseCase:
         old_operation = MagicMock()
         old_operation.id = "old-op"
         old_operation._created_at = datetime.now(tz=UTC) - timedelta(hours=2)
-        old_operation.status = "completed"
+        old_operation.status = "COMPLETED"
         old_operation.total_chunks = 5
         old_operation.chunks_processed = 5
         old_operation.created_at = old_operation._created_at
@@ -281,7 +281,7 @@ class TestGetOperationStatusUseCase:
         new_operation = MagicMock()
         new_operation.id = "new-op"
         new_operation._created_at = datetime.now(tz=UTC) - timedelta(minutes=5)
-        new_operation.status = "in_progress"
+        new_operation.status = "PROCESSING"  # Use correct enum value
         new_operation.total_chunks = 10
         new_operation.chunks_processed = 3
         new_operation.created_at = new_operation._created_at

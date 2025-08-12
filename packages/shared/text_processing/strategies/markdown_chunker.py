@@ -8,12 +8,12 @@ MarkdownNodeParser.
 
 import asyncio
 import logging
-import re
 from typing import Any
 
 from llama_index.core import Document
 from llama_index.core.node_parser import MarkdownNodeParser
 
+from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 logger = logging.getLogger(__name__)
@@ -33,12 +33,28 @@ class MarkdownChunker(BaseChunker):
         # Initialize LlamaIndex markdown parser
         self.splitter = MarkdownNodeParser()
 
+        # Initialize SafeRegex for pattern matching
+        self.safe_regex = SafeRegex(timeout=1.0)
+
         logger.info("Initialized MarkdownChunker")
 
     def _has_markdown_headers(self, text: str) -> bool:
         """Check if text contains markdown headers."""
-        # Look for markdown headers (# Header, ## Header, etc.)
-        return bool(re.search(r"^#{1,6}\s+", text, re.MULTILINE))
+        # Look for markdown headers (# Header, ## Header, etc.) with safe regex
+        try:
+            # Use bounded pattern for safety
+            pattern = r"^#{1,6}\s+\S.*$"
+            match = self.safe_regex.search_with_timeout(pattern, text, timeout=0.5)
+            return match is not None
+        except (RegexTimeoutError, Exception) as e:
+            logger.debug(f"Failed to check for markdown headers: {e}")
+            # Fallback: simple string check
+            lines = text.split("\n")
+            for line in lines[:100]:  # Check first 100 lines only
+                stripped = line.strip()
+                if stripped and stripped[0] == "#" and len(stripped) > 1 and stripped[1] in "# \t":
+                    return True
+            return False
 
     def _is_markdown_file(self, metadata: dict[str, Any] | None) -> bool:
         """Check if the document is a markdown file based on metadata."""
