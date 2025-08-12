@@ -1592,16 +1592,16 @@ async def _process_append_operation(
             # Import DocumentStatus for status updates
             from shared.database.models import DocumentStatus
 
-            # Create ChunkingService instance once outside the loop
-            from webui.services.chunking_service import ChunkingService
-
-            # Reuse the existing collection_repo passed to this function instead of creating a new one
-            # This ensures proper transaction boundaries and avoids potential session conflicts
-            chunking_service = ChunkingService(
+            # Create ChunkingService instance once outside the loop using factory pattern
+            # This ensures proper dependency injection and maintains transaction boundaries
+            from webui.services.factory import create_celery_chunking_service_with_repos
+            
+            # Use the factory with existing repositories to maintain transaction context
+            # This pattern ensures all operations use the same database session
+            chunking_service = create_celery_chunking_service_with_repos(
                 db_session=document_repo.session,
-                collection_repo=collection_repo,  # Use existing repo with same session
+                collection_repo=collection_repo,
                 document_repo=document_repo,
-                redis_client=None,  # Redis client not needed for execute_ingestion_chunking
             )
 
             for doc in documents:
@@ -2015,16 +2015,15 @@ async def _process_reindex_operation(
         # Get worker count from config, defaulting to 4
         worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
 
-        # Create ChunkingService instance once before processing batches
-        from webui.services.chunking_service import ChunkingService
-
-        # Reuse the existing collection_repo passed to this function instead of creating a new one
-        # This ensures proper transaction boundaries and avoids potential session conflicts
-        chunking_service = ChunkingService(
+        # Create ChunkingService instance once before processing batches using factory pattern
+        # This ensures proper dependency injection and maintains transaction boundaries
+        from webui.services.factory import create_celery_chunking_service_with_repos
+        
+        # Use the factory with existing repositories to maintain transaction context
+        chunking_service = create_celery_chunking_service_with_repos(
             db_session=document_repo.session,
-            collection_repo=collection_repo,  # Use existing repo with same session
+            collection_repo=collection_repo,
             document_repo=document_repo,
-            redis_client=None,  # Redis client not needed for execute_ingestion_chunking
         )
 
         # Create thread pool for parallel processing

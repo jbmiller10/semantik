@@ -352,6 +352,45 @@ def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
     )
 
 
+def create_celery_chunking_service_with_repos(
+    db_session: AsyncSession,
+    collection_repo: CollectionRepository,
+    document_repo: DocumentRepository,
+) -> ChunkingService:
+    """Create ChunkingService for Celery tasks with existing repositories.
+
+    This factory creates a chunking service using existing repository instances,
+    which is essential for maintaining transaction boundaries in Celery tasks.
+    This pattern ensures that all database operations within a task use the same
+    session and transaction context.
+
+    Args:
+        db_session: Database session (can be async, service handles it)
+        collection_repo: Existing collection repository instance
+        document_repo: Existing document repository instance
+
+    Returns:
+        ChunkingService configured with provided repositories and no Redis client
+
+    Example:
+        ```python
+        # In a Celery task with existing repositories
+        chunking_service = create_celery_chunking_service_with_repos(
+            db_session=document_repo.session,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+        )
+        ```
+    """
+    # Use the provided repositories directly to maintain transaction boundaries
+    return ChunkingService(
+        db_session=db_session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        redis_client=None,  # Celery tasks handle Redis directly
+    )
+
+
 async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
     """FastAPI dependency for ChunkingService injection."""
     return await create_chunking_service(db)

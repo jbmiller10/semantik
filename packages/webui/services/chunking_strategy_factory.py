@@ -5,7 +5,7 @@ This module provides a centralized factory for instantiating chunking strategies
 removing the direct dependency and logic from routers.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Type
 
 from packages.shared.chunking.domain.services.chunking_strategies import (
     STRATEGY_REGISTRY,
@@ -42,8 +42,8 @@ class ChunkingStrategyFactory:
     def create_strategy(
         cls,
         strategy_name: str | ChunkingStrategyEnum,
-        config: dict[str, Any],  # noqa: ARG003
-        correlation_id: str | None = None,
+        config: Dict[str, Any],  # noqa: ARG003
+        correlation_id: Optional[str] = None,
     ) -> Any:
         """
         Create a chunking strategy instance.
@@ -98,13 +98,13 @@ class ChunkingStrategyFactory:
             ) from e
 
     @classmethod
-    def get_available_strategies(cls) -> list[str]:
+    def get_available_strategies(cls) -> List[str]:
         """Get list of available strategy names."""
         # Return API-level strategy names
         return [s.value for s in ChunkingStrategyEnum]
 
     @classmethod
-    def get_internal_strategies(cls) -> list[str]:
+    def get_internal_strategies(cls) -> List[str]:
         """Get list of internal strategy implementations."""
         return list(STRATEGY_REGISTRY.keys())
 
@@ -112,8 +112,8 @@ class ChunkingStrategyFactory:
     def register_strategy(
         cls,
         name: str,
-        strategy_class: type[Any],
-        api_enum: ChunkingStrategyEnum | None = None,
+        strategy_class: Type[Any],
+        api_enum: Optional[ChunkingStrategyEnum] = None,
     ) -> None:
         """
         Register a custom strategy.
@@ -142,12 +142,33 @@ class ChunkingStrategyFactory:
             
         Returns:
             Normalized internal strategy name
+            
+        Raises:
+            ChunkingStrategyError: If the strategy name is unknown or invalid
         """
-        return cls._normalize_strategy_name(name)
+        normalized = cls._normalize_strategy_name(name)
+        
+        # Validate that the normalized name exists in registry
+        if normalized not in STRATEGY_REGISTRY:
+            available = cls.get_available_strategies()
+            raise ChunkingStrategyError(
+                strategy=name,
+                reason=f"Unknown strategy: {name}. Available: {', '.join(available)}",
+                correlation_id="validation",
+            )
+        
+        return normalized
     
     @classmethod
     def _normalize_strategy_name(cls, name: str) -> str:
-        """Internal normalize strategy name variations to internal names."""
+        """Internal normalize strategy name variations to internal names.
+        
+        Args:
+            name: Strategy name to normalize
+            
+        Returns:
+            Normalized internal strategy name (may not be valid)
+        """
         name = name.lower().strip()
 
         # Direct mapping
@@ -171,10 +192,11 @@ class ChunkingStrategyFactory:
             "hierarchical": "hierarchical",
         }
 
+        # Return mapped name or original (validation happens in public method)
         return direct_mappings.get(name, name)
 
     @classmethod
-    def get_strategy_info(cls, strategy_name: str | ChunkingStrategyEnum) -> dict[str, Any]:
+    def get_strategy_info(cls, strategy_name: str | ChunkingStrategyEnum) -> Dict[str, Any]:
         """
         Get information about a strategy.
 
@@ -218,9 +240,9 @@ class ChunkingStrategyFactory:
     def validate_strategy_compatibility(
         cls,
         strategy_name: str | ChunkingStrategyEnum,
-        file_type: str | None = None,
-        content_type: str | None = None,  # noqa: ARG003
-    ) -> dict[str, Any]:
+        file_type: Optional[str] = None,
+        content_type: Optional[str] = None,  # noqa: ARG003
+    ) -> Dict[str, Any]:
         """
         Validate if a strategy is compatible with given content.
 
@@ -279,7 +301,7 @@ class ChunkingStrategyFactory:
     def suggest_fallback_strategy(
         cls,
         failed_strategy: str | ChunkingStrategyEnum,
-        error_type: str | None = None,
+        error_type: Optional[str] = None,
     ) -> ChunkingStrategyEnum:
         """
         Suggest a fallback strategy when one fails.

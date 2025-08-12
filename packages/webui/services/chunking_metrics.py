@@ -5,6 +5,8 @@ This module provides observability into chunking performance,
 strategy usage, and fallback scenarios.
 """
 
+from typing import Any, Dict, List, Union
+
 from prometheus_client import Counter, Histogram, Summary
 
 from packages.shared.metrics.prometheus import registry
@@ -74,7 +76,7 @@ def record_chunks_produced(strategy: str, chunk_count: int) -> None:
     ingestion_chunks_total.labels(strategy=strategy).inc(chunk_count)
 
 
-def record_chunk_sizes(strategy: str, chunks: list) -> None:
+def record_chunk_sizes(strategy: str, chunks: List[Union[str, Dict[str, Any], Any]]) -> None:
     """Record chunk size statistics.
 
     Args:

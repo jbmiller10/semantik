@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from typing import Any, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,9 +49,9 @@ class CollectionService:
         self,
         user_id: int,
         name: str,
-        description: str | None = None,
-        config: dict[str, Any] | None = None,
-    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        description: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Create a new collection and dispatch indexing operation.
 
         Args:
@@ -224,8 +224,8 @@ class CollectionService:
         collection_id: str,
         user_id: int,
         source_path: str,
-        source_config: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        source_config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Add a source to an existing collection.
 
         Args:
@@ -457,7 +457,7 @@ class CollectionService:
             logger.error(f"Failed to delete collection {collection_id}: {e}")
             raise
 
-    async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> dict[str, Any]:
+    async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> Dict[str, Any]:
         """Remove documents from a specific source.
 
         Args:
@@ -550,7 +550,7 @@ class CollectionService:
             include_public=include_public,
         )
 
-    async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:
+    async def update(self, collection_id: str, user_id: int, updates: Dict[str, Any]) -> Collection:
         """Update collection metadata.
 
         Args:
