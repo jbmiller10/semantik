@@ -118,7 +118,7 @@ class CeleryTaskWithOperationUpdates:
         return self._redis_client
 
     async def send_update(self, update_type: str, data: dict) -> None:
-        """Send update to Redis Stream."""
+        """Send update to Redis Stream and Pub/Sub."""
         try:
             redis_client = await self._get_redis()
             message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
@@ -129,7 +129,15 @@ class CeleryTaskWithOperationUpdates:
             # Set TTL on first message
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
 
-            logger.debug(f"Sent update to Redis stream {self.stream_key}: type={update_type}")
+            # Also publish to pub/sub channel for ScalableWebSocketManager
+            pub_message = {
+                "message": message,
+                "from_instance": "celery-worker",
+                "timestamp": time.time(),
+            }
+            await redis_client.publish(f"operation:{self.operation_id}", json.dumps(pub_message))
+
+            logger.debug(f"Sent update to Redis stream {self.stream_key} and pub/sub channel: type={update_type}")
         except Exception as e:
             logger.error(f"Failed to send update to Redis stream: {e}")
 
@@ -984,7 +992,8 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
                 # Convert ORM object to dictionary for compatibility with helper functions
                 operation = {
-                    "id": operation_obj.uuid,
+                    "id": operation_obj.id,  # Use integer ID for audit log
+                    "uuid": operation_obj.uuid,  # Keep UUID for other uses
                     "collection_id": operation_obj.collection_id,
                     "type": operation_obj.type,
                     "config": operation_obj.config,

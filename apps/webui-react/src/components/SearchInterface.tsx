@@ -127,7 +127,7 @@ function SearchInterface() {
       });
 
       // Map results to match the search store's SearchResult type
-      const mappedResults = response.data.results.map((result) => ({
+      const mappedResults = response.data.results.map((result: any) => ({
         doc_id: result.document_id,
         chunk_id: result.chunk_id,
         score: result.score,

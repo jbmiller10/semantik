@@ -69,15 +69,16 @@ function CollectionDetailsModal() {
   });
 
   // Aggregate source directories from documents
-  const sourceDirs = documentsData ? Array.from(
-    documentsData.documents.reduce((acc, doc) => {
+  const sourceDirs: SourceInfo[] = documentsData ? (() => {
+    const sourceMap = documentsData.documents.reduce((acc: Map<string, SourceInfo>, doc: any) => {
       if (!acc.has(doc.source_path)) {
         acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
       }
       acc.get(doc.source_path)!.document_count++;
       return acc;
-    }, new Map<string, SourceInfo>())
-  ).map(([, info]) => info) : [];
+    }, new Map<string, SourceInfo>());
+    return Array.from(sourceMap.values());
+  })() : [];
 
   const handleClose = () => {
     setShowCollectionDetailsModal(null);
@@ -431,7 +432,7 @@ function CollectionDetailsModal() {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Source Directories</h3>
                 {sourceDirs.length > 0 ? (
                   <ul className="space-y-2">
-                    {sourceDirs.map((source, index) => (
+                    {sourceDirs.map((source: SourceInfo, index: number) => (
                       <li key={index} className="flex items-center justify-between text-sm text-gray-900">
                         <div className="flex items-center">
                           <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -7,7 +7,7 @@ Phase 3 validation expects the frontend to fetch strategies from the backend (6 
 - Add `getStrategies()` to `apps/webui-react/src/services/api/v2/chunking.ts` using `GET /api/v2/chunking/strategies` and returning `ChunkingStrategy[]`.
 - Update the chunking store to fetch and use strategies:
   - Add `fetchStrategies()` in `apps/webui-react/src/stores/chunkingStore.ts` which calls `chunkingApi.getStrategies()`.
-  - Populate `strategies` state, set `selectedStrategy` to the first id if none.
+  - Populate `strategies` state, set `selectedStrategy` to the first strategy `type` if none.
   - Handle errors via `handleChunkingError`.
 - Update strategy-related components to read strategies from the store, not static constants.
 - Add unit tests for store fetching and a representative component rendering strategies.

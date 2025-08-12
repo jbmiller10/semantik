@@ -19,6 +19,15 @@ from typing import Any
 
 import redis.asyncio as redis
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
+try:
+    from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
+except Exception:  # pragma: no cover - fallback if websockets not available
+    class ConnectionClosedOK(Exception):
+        pass
+
+    class ConnectionClosedError(Exception):
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -276,32 +285,37 @@ class ScalableWebSocketManager:
         del self.local_connections[connection_id]
         del self.connection_metadata[connection_id]
 
-        # Remove from Redis registry
+        # Remove from Redis registry only if Redis is available
         if self.redis_client:
-            await self.redis_client.hdel("websocket:connections", connection_id)
+            try:
+                await self.redis_client.hdel("websocket:connections", connection_id)
 
-            # Remove from user set
-            if user_id:
-                await self.redis_client.srem(f"websocket:user:{user_id}", connection_id)
+                # Remove from user set
+                if user_id:
+                    await self.redis_client.srem(f"websocket:user:{user_id}", connection_id)
 
                 # Check if user has any remaining connections on this instance
                 remaining_local = any(m.get("user_id") == user_id for m in self.connection_metadata.values())
 
-                if not remaining_local:
+                # Handle pub/sub unsubscriptions only if pubsub is available
+                if self.pubsub and not remaining_local:
                     # Unsubscribe from user channel if no local connections
                     await self.pubsub.unsubscribe(f"user:{user_id}")
 
-            # Handle operation channel
-            if operation_id:
-                remaining_op = any(m.get("operation_id") == operation_id for m in self.connection_metadata.values())
-                if not remaining_op:
-                    await self.pubsub.unsubscribe(f"operation:{operation_id}")
+                # Handle operation channel
+                if self.pubsub and operation_id:
+                    remaining_op = any(m.get("operation_id") == operation_id for m in self.connection_metadata.values())
+                    if not remaining_op:
+                        await self.pubsub.unsubscribe(f"operation:{operation_id}")
 
-            # Handle collection channel
-            if collection_id:
-                remaining_coll = any(m.get("collection_id") == collection_id for m in self.connection_metadata.values())
-                if not remaining_coll:
-                    await self.pubsub.unsubscribe(f"collection:{collection_id}")
+                # Handle collection channel
+                if self.pubsub and collection_id:
+                    remaining_coll = any(m.get("collection_id") == collection_id for m in self.connection_metadata.values())
+                    if not remaining_coll:
+                        await self.pubsub.unsubscribe(f"collection:{collection_id}")
+            except Exception as e:
+                logger.warning(f"Error removing connection from Redis: {e}")
+                # Continue with local cleanup even if Redis operations fail
 
         logger.info(f"WebSocket disconnected: connection={connection_id}, user={user_id}, instance={self.instance_id}")
 
@@ -647,8 +661,8 @@ class ScalableWebSocketManager:
         """Send current operation state to newly connected client."""
         try:
             # Import here to avoid circular dependencies
-            from packages.shared.database.database import AsyncSessionLocal
-            from packages.shared.database.repositories.operation_repository import OperationRepository
+            from shared.database.database import AsyncSessionLocal
+            from shared.database.repositories.operation_repository import OperationRepository
 
             async with AsyncSessionLocal() as session:
                 operation_repo = OperationRepository(session)
@@ -667,11 +681,24 @@ class ScalableWebSocketManager:
                             "error_message": operation.error_message,
                         },
                     }
-                    await websocket.send_json(state_message)
-                    logger.debug(f"Sent operation state for {operation_id}")
+                    try:
+                        await websocket.send_json(state_message)
+                        logger.debug(f"Sent operation state for {operation_id}")
+                    except (WebSocketDisconnect, ConnectionClosedOK, ConnectionClosedError, asyncio.IncompleteReadError):
+                        # Client disconnected before initial state could be delivered; not an error
+                        logger.debug(
+                            f"Client disconnected while sending initial state for operation {operation_id}"
+                        )
+                        return
 
+        except (WebSocketDisconnect, ConnectionClosedOK, ConnectionClosedError, asyncio.IncompleteReadError):
+            # Treat disconnects as normal; client closed the socket
+            logger.debug(
+                f"Client disconnected while preparing initial state for operation {operation_id}"
+            )
         except Exception as e:
-            logger.error(f"Failed to send operation state: {e}")
+            # Log other unexpected errors with stack for investigation
+            logger.error(f"Failed to send operation state for {operation_id}: {e}", exc_info=True)
 
     async def _get_hostname(self) -> str:
         """Get hostname for instance identification."""
@@ -724,4 +751,7 @@ class ScalableWebSocketManager:
 
 
 # Global instance - will be initialized by FastAPI on startup
-scalable_ws_manager = ScalableWebSocketManager()
+import os
+scalable_ws_manager = ScalableWebSocketManager(
+    redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2")
+)

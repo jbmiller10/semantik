@@ -9,10 +9,7 @@ import type {
   ReindexRequest,
   CollectionListResponse,
   PaginationParams,
-  DocumentListResponse,
-  SearchRequest,
-  SearchResponse,
-} from './types';
+} from '../../../types/collection';
 
 /**
  * V2 Collections API client
@@ -50,7 +47,7 @@ export const collectionsV2Api = {
     apiClient.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
     
   listDocuments: (uuid: string, params?: PaginationParams) => 
-    apiClient.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
+    apiClient.get<any>(`/api/v2/collections/${uuid}/documents`, { params }),
 };
 
 /**
@@ -70,14 +67,11 @@ export const operationsV2Api = {
 
 /**
  * V2 Search API client
- * Supports multi-collection search
+ * Minimal implementation for existing usage
  */
 export const searchV2Api = {
-  search: (data: SearchRequest) => 
-    apiClient.post<SearchResponse>('/api/v2/search', data),
-    
-  multiSearch: (data: SearchRequest) => 
-    apiClient.post<SearchResponse>('/api/v2/search/multi', data),
+  search: (data: any) => 
+    apiClient.post<any>('/api/v2/search', data),
 };
 
 // Helper function to handle API errors
