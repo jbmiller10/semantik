@@ -1,3 +1,11 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Changing test patterns or fixtures
+     - Modifying coverage targets
+     - Adding new test categories
+     - Altering CI configuration
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>Test Infrastructure</name>
   <purpose>Comprehensive testing for backend and frontend</purpose>

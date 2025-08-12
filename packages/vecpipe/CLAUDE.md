@@ -1,3 +1,12 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Changing embedding models or batch sizes
+     - Modifying search or reranking logic
+     - Altering memory management strategies
+     - Changing API endpoints or error handling
+     - Updating performance targets
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>VecPipe Service</name>
   <purpose>Vector embedding generation, search, and reranking service</purpose>

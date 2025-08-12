@@ -1,3 +1,11 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding new migrations
+     - Changing partitioning strategy
+     - Modifying migration patterns
+     - Altering table schemas
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>Database Migrations</name>
   <purpose>Alembic migrations for PostgreSQL schema management</purpose>

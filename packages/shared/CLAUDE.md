@@ -1,3 +1,13 @@
+<\!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding/removing models or repositories
+     - Changing database schema or partitioning
+     - Modifying chunking strategies
+     - Altering exception hierarchy
+     - Changing configuration patterns
+     Keep this documentation in sync with the actual implementation\! -->
+
+
 <component>
   <name>Shared Library</name>
   <purpose>Core models, repositories, and utilities used by all services</purpose>

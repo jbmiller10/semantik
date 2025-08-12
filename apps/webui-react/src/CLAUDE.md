@@ -1,3 +1,12 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding/removing components or stores
+     - Changing state management patterns
+     - Modifying API client methods
+     - Altering WebSocket integration
+     - Updating testing patterns
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>React Frontend</name>
   <purpose>React 19 SPA with TypeScript for Semantik UI</purpose>

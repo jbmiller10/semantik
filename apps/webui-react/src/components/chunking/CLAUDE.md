@@ -1,3 +1,12 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding/removing chunking components
+     - Changing strategy options or parameters
+     - Modifying preview or comparison features
+     - Altering state management
+     - Updating API endpoints
+     Keep this documentation in sync with the actual implementation! -->
+
 <component>
   <name>Chunking UI Components</name>
   <purpose>Interactive UI for document chunking configuration and preview</purpose>
