@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import redis.asyncio as aioredis
+from shared.text_processing.chunking import TokenChunker
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,6 +61,9 @@ from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
 
 logger = logging.getLogger(__name__)
+
+# Constants for chunking configuration
+DEFAULT_MIN_TOKEN_THRESHOLD = 100  # Minimum tokens to ensure meaningful chunks
 
 
 class ChunkingStatistics:
@@ -1905,6 +1909,228 @@ class ChunkingService:
         return strategy_mapping.get(strategy, strategy)
 
     # Additional methods for completeness
+
+    async def execute_ingestion_chunking(
+        self,
+        text: str,
+        document_id: str,
+        collection: dict,
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,  # noqa: ARG002 - Reserved for future file-type-specific optimizations
+    ) -> dict[str, Any]:
+        """Execute chunking for document ingestion with strategy resolution and fallback.
+
+        This method provides a unified chunking interface for ingestion tasks (APPEND, REINDEX).
+        It resolves the chunking strategy from collection configuration, executes it with proper
+        error handling, and falls back to TokenChunker on recoverable errors.
+
+        Args:
+            text: The text content to chunk
+            document_id: The document ID for chunk metadata
+            collection: Collection dictionary containing chunking_strategy and chunking_config
+            metadata: Optional metadata to include with chunks
+            file_type: Optional file type for strategy optimization (reserved for future use)
+
+        Returns:
+            Dictionary containing:
+                - chunks: List of chunk dictionaries in ingestion format
+                - stats: Execution statistics including strategy used and timing
+
+        Raises:
+            Exception: For fatal errors that prevent chunking
+        """
+        import time
+
+        start_time = time.time()
+        strategy_used = None
+        fallback_used = False
+        chunks = []
+        correlation_id = str(uuid.uuid4())
+
+        try:
+            # Extract chunking configuration from collection
+            chunking_strategy = collection.get("chunking_strategy")
+            chunking_config = collection.get("chunking_config", {})
+
+            # Get chunk_size and chunk_overlap for fallback (prefer chunking_config values)
+            chunk_size = chunking_config.get("chunk_size", collection.get("chunk_size", 1000))
+            chunk_overlap = chunking_config.get("chunk_overlap", collection.get("chunk_overlap", 200))
+
+            # If no strategy specified, use TokenChunker directly
+            if not chunking_strategy:
+                logger.info(
+                    "No chunking strategy specified for collection, using TokenChunker",
+                    extra={
+                        "collection_id": collection.get('id'),
+                        "document_id": document_id,
+                        "strategy_used": "TokenChunker",
+                        "correlation_id": correlation_id,
+                    }
+                )
+                chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                chunks = chunker.chunk_text(text, document_id, metadata or {})
+                strategy_used = "TokenChunker"
+
+            else:
+                # Normalize strategy name using factory
+                try:
+                    # Build and validate configuration
+                    config_result = self.config_builder.build_config(
+                        strategy=chunking_strategy,
+                        user_config=chunking_config,
+                    )
+
+                    if config_result.validation_errors:
+                        logger.warning(
+                            "Invalid chunking config, falling back to TokenChunker",
+                            extra={
+                                "collection_id": collection.get('id'),
+                                "document_id": document_id,
+                                "validation_errors": ', '.join(config_result.validation_errors),
+                                "correlation_id": correlation_id,
+                            }
+                        )
+                        chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                        chunks = chunker.chunk_text(text, document_id, metadata or {})
+                        strategy_used = "TokenChunker"
+                        fallback_used = True
+
+                    else:
+                        # Create strategy instance
+                        try:
+                            chunking_strategy_instance = self.strategy_factory.create_strategy(
+                                strategy_name=config_result.strategy,
+                                config=config_result.config,
+                                correlation_id=str(uuid.uuid4()),
+                            )
+
+                            # Execute chunking with the strategy
+                            from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
+                            # Extract relevant config values
+                            config = config_result.config
+                            chunk_size_from_config = config.get("chunk_size", chunk_size)
+                            chunk_overlap_from_config = config.get("chunk_overlap", chunk_overlap)
+
+                            # Build ChunkConfig for domain strategy
+                            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size_from_config // 2)
+                            max_tokens = max(chunk_size_from_config, min_tokens + 1)
+                            overlap_tokens = min(chunk_overlap_from_config, min_tokens - 1)
+
+                            chunk_config_obj = ChunkConfig(
+                                strategy_name=str(config_result.strategy),
+                                min_tokens=min_tokens,
+                                max_tokens=max_tokens,
+                                overlap_tokens=max(0, overlap_tokens),
+                                preserve_structure=config.get("preserve_structure", True),
+                                semantic_threshold=config.get("semantic_threshold", 0.7),
+                                hierarchy_levels=config.get("hierarchy_levels", 3),
+                            )
+
+                            # Execute chunking
+                            chunk_entities = chunking_strategy_instance.chunk(
+                                content=text,
+                                config=chunk_config_obj,
+                            )
+
+                            # Convert chunk entities to ingestion format
+                            chunks = []
+                            for idx, chunk_entity in enumerate(chunk_entities):
+                                chunk_dict = {
+                                    "chunk_id": f"{document_id}_{idx:04d}",
+                                    "text": chunk_entity.content,
+                                    "metadata": {
+                                        **(metadata or {}),
+                                        "index": idx,
+                                        "strategy": str(config_result.strategy),
+                                    },
+                                }
+                                chunks.append(chunk_dict)
+
+                            strategy_used = str(config_result.strategy)
+                            logger.info(
+                                "Successfully chunked document using strategy",
+                                extra={
+                                    "document_id": document_id,
+                                    "collection_id": collection.get('id'),
+                                    "strategy_used": strategy_used,
+                                    "chunk_count": len(chunks),
+                                    "correlation_id": correlation_id,
+                                }
+                            )
+
+                        except Exception as strategy_error:
+                            # Strategy execution failed, fall back to TokenChunker
+                            logger.warning(
+                                "Strategy execution failed, falling back to TokenChunker",
+                                extra={
+                                    "document_id": document_id,
+                                    "collection_id": collection.get('id'),
+                                    "strategy": chunking_strategy,
+                                    "error": str(strategy_error),
+                                    "correlation_id": correlation_id,
+                                }
+                            )
+                            chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                            chunks = chunker.chunk_text(text, document_id, metadata or {})
+                            strategy_used = "TokenChunker"
+                            fallback_used = True
+
+                except Exception as config_error:
+                    # Configuration building failed, fall back to TokenChunker
+                    logger.warning(
+                        "Failed to build config for strategy, falling back to TokenChunker",
+                        extra={
+                            "document_id": document_id,
+                            "collection_id": collection.get('id'),
+                            "strategy": chunking_strategy,
+                            "error": str(config_error),
+                            "correlation_id": correlation_id,
+                        }
+                    )
+                    chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    chunks = chunker.chunk_text(text, document_id, metadata or {})
+                    strategy_used = "TokenChunker"
+                    fallback_used = True
+
+        except Exception as e:
+            # Fatal error - cannot proceed with chunking
+            logger.error(
+                "Fatal error during chunking",
+                extra={
+                    "document_id": document_id,
+                    "collection_id": collection.get('id'),
+                    "error": str(e),
+                    "correlation_id": correlation_id,
+                }
+            )
+            raise
+
+        # Calculate duration
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Log fallback event if occurred
+        if fallback_used:
+            logger.warning(
+                "Chunking fallback occurred",
+                extra={
+                    "document_id": document_id,
+                    "collection_id": collection.get('id'),
+                    "original_strategy": chunking_strategy,
+                    "strategy_used": strategy_used,
+                    "correlation_id": correlation_id,
+                }
+            )
+
+        return {
+            "chunks": chunks,
+            "stats": {
+                "duration_ms": duration_ms,
+                "strategy_used": strategy_used,
+                "fallback": fallback_used,
+                "chunk_count": len(chunks),
+            },
+        }
 
     async def create_operation(
         self, collection_id: str, operation_type: str, config: dict[str, Any], user_id: int

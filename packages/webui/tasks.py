@@ -58,7 +58,6 @@ from shared.metrics.collection_metrics import (
     collections_total,
     update_collection_stats,
 )
-from shared.text_processing.chunking import TokenChunker
 from webui.celery_app import celery_app
 from webui.utils.qdrant_manager import qdrant_manager
 
@@ -1574,8 +1573,6 @@ async def _process_append_operation(
             # Get collection configuration
             embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
             quantization = collection.get("quantization", "float16")
-            chunk_size = collection.get("chunk_size", 1000)
-            chunk_overlap = collection.get("chunk_overlap", 200)
             batch_size = config.get("batch_size", EMBEDDING_BATCH_SIZE)
             instruction = config.get("instruction")
 
@@ -1594,6 +1591,18 @@ async def _process_append_operation(
 
             # Import DocumentStatus for status updates
             from shared.database.models import DocumentStatus
+
+            # Create ChunkingService instance once outside the loop
+            from shared.database.repositories.collection_repository import CollectionRepository
+            from webui.services.chunking_service import ChunkingService
+
+            collection_repo_for_chunking = CollectionRepository(document_repo.session)
+            chunking_service = ChunkingService(
+                db_session=document_repo.session,
+                collection_repo=collection_repo_for_chunking,
+                document_repo=document_repo,
+                redis_client=None,  # Redis client not needed for execute_ingestion_chunking
+            )
 
             for doc in documents:
                 try:
@@ -1617,22 +1626,32 @@ async def _process_append_operation(
                         failed_count += 1
                         continue
 
-                    # Create chunks
-                    chunker = TokenChunker(
-                        chunk_size=chunk_size,
-                        chunk_overlap=chunk_overlap,
+                    # Process all text blocks as a single text for chunking
+                    combined_text = ""
+                    combined_metadata = {}
+                    for text, metadata in text_blocks:
+                        if text.strip():
+                            combined_text += text + "\n\n"
+                            # Merge metadata
+                            if metadata:
+                                combined_metadata.update(metadata)
+
+                    # Execute chunking with strategy support
+                    chunking_result = await chunking_service.execute_ingestion_chunking(
+                        text=combined_text,
+                        document_id=doc.id,
+                        collection=collection,
+                        metadata=combined_metadata,
+                        file_type=doc.file_path.split('.')[-1] if '.' in doc.file_path else None,
                     )
 
-                    # Process each text block
-                    all_chunks = []
-                    for text, metadata in text_blocks:
-                        if not text.strip():
-                            continue
-                        chunks = chunker.chunk_text(text, doc.id, metadata)
-                        all_chunks.extend(chunks)
+                    chunks = chunking_result["chunks"]
+                    chunking_stats = chunking_result["stats"]
 
-                    chunks = all_chunks
-                    logger.info(f"Created {len(chunks)} chunks for {doc.file_path}")
+                    logger.info(
+                        f"Created {len(chunks)} chunks for {doc.file_path} using {chunking_stats['strategy_used']} "
+                        f"strategy (fallback: {chunking_stats['fallback']}, duration: {chunking_stats['duration_ms']}ms)"
+                    )
 
                     if not chunks:
                         logger.warning(f"No chunks created for {doc.file_path}")
@@ -1986,8 +2005,6 @@ async def _process_reindex_operation(
         batch_size = new_config.get("batch_size", collection.get("config", {}).get("batch_size", EMBEDDING_BATCH_SIZE))
 
         # Get the new configuration values
-        chunk_size = new_config.get("chunk_size", collection.get("config", {}).get("chunk_size", 600))
-        chunk_overlap = new_config.get("chunk_overlap", collection.get("config", {}).get("chunk_overlap", 200))
         model_name = new_config.get(
             "model_name", collection.get("config", {}).get("model_name", "Qwen/Qwen3-Embedding-0.6B")
         )
@@ -1997,6 +2014,18 @@ async def _process_reindex_operation(
 
         # Get worker count from config, defaulting to 4
         worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
+
+        # Create ChunkingService instance once before processing batches
+        from shared.database.repositories.collection_repository import CollectionRepository
+        from webui.services.chunking_service import ChunkingService
+
+        collection_repo_for_chunking = CollectionRepository(document_repo.session)
+        chunking_service = ChunkingService(
+            db_session=document_repo.session,
+            collection_repo=collection_repo_for_chunking,
+            document_repo=document_repo,
+            redis_client=None,  # Redis client not needed for execute_ingestion_chunking
+        )
 
         # Create thread pool for parallel processing
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -2017,27 +2046,48 @@ async def _process_reindex_operation(
                             timeout=300,  # 5 minute timeout
                         )
 
-                        # Create chunker with new configuration
-                        chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-
                         # Generate document ID
                         doc_id = hashlib.md5(file_path.encode()).hexdigest()[:16]
 
-                        # Process each text block
-                        all_chunks = []
+                        # Process all text blocks as a single text for chunking
+                        combined_text = ""
+                        combined_metadata = {}
                         for text, metadata in text_blocks:
-                            if not text.strip():
-                                continue
+                            if text.strip():
+                                combined_text += text + "\n\n"
+                                # Merge metadata
+                                if metadata:
+                                    combined_metadata.update(metadata)
 
-                            # Create chunks
-                            chunks = await loop.run_in_executor(
-                                executor,
-                                chunker.chunk_text,
-                                text,
-                                doc_id,
-                                metadata,
-                            )
-                            all_chunks.extend(chunks)
+                        # Execute chunking with strategy support
+                        # Note: For reindex, we use the new_config to override chunking settings
+                        reindex_collection = collection.copy()
+                        if new_config.get("chunking_strategy"):
+                            reindex_collection["chunking_strategy"] = new_config["chunking_strategy"]
+                        if new_config.get("chunking_config"):
+                            reindex_collection["chunking_config"] = new_config["chunking_config"]
+                        # Also update chunk_size and chunk_overlap if provided in new_config
+                        if "chunk_size" in new_config:
+                            reindex_collection["chunk_size"] = new_config["chunk_size"]
+                        if "chunk_overlap" in new_config:
+                            reindex_collection["chunk_overlap"] = new_config["chunk_overlap"]
+
+                        chunking_result = await chunking_service.execute_ingestion_chunking(
+                            text=combined_text,
+                            document_id=doc_id,
+                            collection=reindex_collection,
+                            metadata=combined_metadata,
+                            file_type=file_path.split('.')[-1] if '.' in file_path else None,
+                        )
+
+                        all_chunks = chunking_result["chunks"]
+                        chunking_stats = chunking_result["stats"]
+
+                        logger.info(
+                            f"Reprocessed document {file_path}: {len(all_chunks)} chunks using "
+                            f"{chunking_stats['strategy_used']} strategy (fallback: {chunking_stats['fallback']}, "
+                            f"duration: {chunking_stats['duration_ms']}ms)"
+                        )
 
                         if not all_chunks:
                             logger.warning(f"No chunks created for document: {file_path}")
