@@ -9,10 +9,10 @@ including error sanitization and structured JSON responses.
 import logging
 import os
 import re
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from typing import Any
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
