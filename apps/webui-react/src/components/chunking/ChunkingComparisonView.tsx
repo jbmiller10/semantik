@@ -13,6 +13,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useChunkingStore } from '../../stores/chunkingStore';
+import { useChunkingWebSocket } from '../../hooks/useChunkingWebSocket';
 import { CHUNKING_STRATEGIES } from '../../types/chunking';
 import type { ChunkingStrategyType } from '../../types/chunking';
 
@@ -36,16 +37,48 @@ export function ChunkingComparisonView({
     selectedStrategy
   } = useChunkingStore();
 
+  // WebSocket integration for real-time comparison updates
+  const {
+    isConnected,
+    startComparison: startWebSocketComparison,
+    clearData: clearWebSocketData
+  } = useChunkingWebSocket({
+    autoConnect: true,
+    onProgressUpdate: (progress) => {
+      console.log(`Comparison progress: ${progress.currentChunk}/${progress.totalChunks} strategies`);
+    },
+    onError: (error) => {
+      console.error('Comparison WebSocket error:', error);
+    }
+  });
+
   const [showAddStrategy, setShowAddStrategy] = useState(false);
   const [syncScroll, setSyncScroll] = useState(true);
   const [exportFormat, setExportFormat] = useState<'json' | 'csv'>('json');
+  const [useWebSocket] = useState(true);
 
   // Auto-compare when strategies change
   useEffect(() => {
     if (document && comparisonStrategies.length > 0) {
-      compareStrategies();
+      // Clear WebSocket data when starting new comparison
+      clearWebSocketData();
+      
+      // Try WebSocket first, fall back to REST API
+      if (useWebSocket && isConnected && document.id) {
+        const strategies = comparisonStrategies.map(strategy => ({
+          strategy,
+          configuration: CHUNKING_STRATEGIES[strategy].parameters.reduce((acc, param) => {
+            acc[param.key] = param.defaultValue;
+            return acc;
+          }, {} as Record<string, number | boolean | string>)
+        }));
+        startWebSocketComparison(document.id, strategies);
+      } else {
+        compareStrategies();
+      }
     }
-  }, [comparisonStrategies, document, compareStrategies]);
+  }, [comparisonStrategies, document, compareStrategies, 
+      useWebSocket, isConnected, startWebSocketComparison, clearWebSocketData]);
 
   const availableStrategies = Object.keys(CHUNKING_STRATEGIES).filter(
     strategy => !comparisonStrategies.includes(strategy as ChunkingStrategyType)
