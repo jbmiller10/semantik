@@ -2025,6 +2025,25 @@ class ChunkingService:
             chunk_size = chunking_config.get("chunk_size", collection.get("chunk_size", 1000))
             chunk_overlap = chunking_config.get("chunk_overlap", collection.get("chunk_overlap", 200))
 
+            # Ensure chunk_size and chunk_overlap are integers
+            try:
+                chunk_size = int(chunk_size)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid chunk_size type: {type(chunk_size).__name__}, using default 1000",
+                    extra={"correlation_id": correlation_id}
+                )
+                chunk_size = 1000
+            
+            try:
+                chunk_overlap = int(chunk_overlap)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid chunk_overlap type: {type(chunk_overlap).__name__}, using default 200",
+                    extra={"correlation_id": correlation_id}
+                )
+                chunk_overlap = 200
+
             # Validate and sanitize chunk_size and chunk_overlap for fallback scenarios
             # If invalid values are provided, use safe defaults
             if chunk_size <= 0:
@@ -2056,15 +2075,23 @@ class ChunkingService:
                         "correlation_id": correlation_id,
                     },
                 )
-                chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-                # Execute in thread pool to avoid blocking event loop
-                chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
-                strategy_used = "TokenChunker"
-                metrics_strategy_label = "character"  # Internal name for metrics
+                try:
+                    chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    # Execute in thread pool to avoid blocking event loop
+                    chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
+                    strategy_used = "TokenChunker"
+                    metrics_strategy_label = "character"  # Internal name for metrics
 
-                # Record metrics for direct TokenChunker usage
-                record_chunks_produced(metrics_strategy_label, len(chunks))
-                record_chunk_sizes(metrics_strategy_label, chunks)
+                    # Record metrics for direct TokenChunker usage
+                    record_chunks_produced(metrics_strategy_label, len(chunks))
+                    record_chunk_sizes(metrics_strategy_label, chunks)
+                except (MemoryError, SystemError) as e:
+                    # Fatal errors should be propagated
+                    logger.error(
+                        f"Fatal error creating TokenChunker: {e}",
+                        extra={"correlation_id": correlation_id}
+                    )
+                    raise
 
             else:
                 # Normalize strategy name using factory
@@ -2155,7 +2182,7 @@ class ChunkingService:
                             chunks = []
                             for idx, chunk_entity in enumerate(chunk_entities):
                                 chunk_dict = {
-                                    "chunk_id": f"{document_id}_{idx:04d}",  # Consistent format
+                                    "chunk_id": f"{document_id}_chunk_{idx:04d}",  # Fixed format with 'chunk_' prefix
                                     "text": chunk_entity.content,
                                     "metadata": {
                                         **(metadata or {}),
@@ -2513,7 +2540,7 @@ class ChunkingService:
 
         # Adjust chunk IDs to maintain continuity
         for idx, chunk in enumerate(result["chunks"]):
-            chunk["chunk_id"] = f"{document_id}_{chunk_id_start + idx:04d}"  # Consistent format
+            chunk["chunk_id"] = f"{document_id}_chunk_{chunk_id_start + idx:04d}"  # Fixed format with 'chunk_' prefix
             # Add segment metadata
             if metadata is None:
                 chunk["metadata"] = {}
