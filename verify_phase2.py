@@ -19,8 +19,9 @@ def verify_validation():
     print("\n🔍 Verifying Write-Time Validation...")
 
     # Check if validation code exists in CollectionService
-    from packages.webui.services.collection_service import CollectionService
     import inspect
+
+    from packages.webui.services.collection_service import CollectionService
 
     source = inspect.getsource(CollectionService.create_collection)
     validations = [
@@ -56,15 +57,15 @@ def verify_metrics():
     print("\n📊 Verifying Prometheus Metrics...")
 
     try:
+        # Check metric types
+        from prometheus_client import Counter, Histogram, Summary
+
         from packages.webui.services.chunking_metrics import (
+            ingestion_avg_chunk_size_bytes,
             ingestion_chunking_duration_seconds,
             ingestion_chunking_fallback_total,
             ingestion_chunks_total,
-            ingestion_avg_chunk_size_bytes,
         )
-
-        # Check metric types
-        from prometheus_client import Histogram, Counter, Summary
 
         checks = [
             isinstance(ingestion_chunking_duration_seconds, Histogram),
@@ -80,8 +81,9 @@ def verify_metrics():
             return False
 
         # Check if metrics are integrated in chunking_service
-        from packages.webui.services.chunking_service import ChunkingService
         import inspect
+
+        from packages.webui.services.chunking_service import ChunkingService
 
         source = inspect.getsource(ChunkingService.execute_ingestion_chunking)
         integrations = [

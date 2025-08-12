@@ -6,13 +6,12 @@ and metric accumulation over multiple operations.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prometheus_client import REGISTRY
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 from packages.webui.services.chunking_metrics import (
     ingestion_avg_chunk_size_bytes,
@@ -31,7 +30,7 @@ class TestChunkingMetrics:
     """Test suite for chunking metrics recording and accuracy."""
 
     @pytest.fixture(autouse=True)
-    def reset_metrics(self):
+    def _reset_metrics(self):
         """Reset all metrics before each test to ensure clean state."""
         # Clear all metrics in the registry
         for collector in list(REGISTRY._collector_to_names.keys()):
@@ -49,7 +48,7 @@ class TestChunkingMetrics:
             except AttributeError:
                 pass
 
-    @pytest.fixture
+    @pytest.fixture()
     def service(self):
         """Create a ChunkingService instance with mocked dependencies."""
         return ChunkingService(
@@ -59,7 +58,7 @@ class TestChunkingMetrics:
             redis_client=None,
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_token_chunker(self):
         """Mock TokenChunker for fallback scenarios."""
         with patch("packages.webui.services.chunking_service.TokenChunker") as mock:
@@ -93,9 +92,8 @@ class TestChunkingMetrics:
             key = (metric_name,) + label_values
 
             # Try to get from the metric's metrics dict
-            if hasattr(counter, "_metrics"):
-                if key in counter._metrics:
-                    return counter._metrics[key]._value.get()
+            if hasattr(counter, "_metrics") and key in counter._metrics:
+                return counter._metrics[key]._value.get()
 
             # Otherwise, create the metric with labels and get value
             return counter.labels(**labels)._value.get()
@@ -127,7 +125,7 @@ class TestChunkingMetrics:
                             prev_count = bucket_count
                     return total
             return 0
-        except Exception as e:
+        except Exception:
             return 0
 
     def get_histogram_sum(self, histogram, labels):
@@ -140,7 +138,7 @@ class TestChunkingMetrics:
                 if hasattr(metric, "_sum"):
                     return metric._sum.get()
             return 0.0
-        except Exception as e:
+        except Exception:
             return 0.0
 
     def get_summary_count(self, summary, labels):
@@ -165,7 +163,7 @@ class TestChunkingMetrics:
         except Exception:
             return 0.0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_metrics_recorded_when_chunking_succeeds_with_strategy(self, service):
         """Test that metrics are correctly recorded when chunking succeeds with a strategy."""
         collection = {
@@ -220,16 +218,18 @@ class TestChunkingMetrics:
         ]
         mock_strategy.chunk.return_value = mock_chunks
 
-        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-            with patch("time.time") as mock_time:
-                # Simulate 0.5 seconds execution time
-                mock_time.side_effect = [1000.0, 1000.5]
+        with (
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+            patch("time.time") as mock_time,
+        ):
+            # Simulate 0.5 seconds execution time
+            mock_time.side_effect = [1000.0, 1000.5]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Test document content for recursive chunking",
-                    document_id="doc-001",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Test document content for recursive chunking",
+                document_id="doc-001",
+                collection=collection,
+            )
 
         # Verify result
         assert result["stats"]["strategy_used"] in ["recursive", "ChunkingStrategy.RECURSIVE"]
@@ -258,8 +258,9 @@ class TestChunkingMetrics:
         # Average should be around (600+480+360)/3 = 480 bytes
         assert 400 <= size_sum <= 560
 
-    @pytest.mark.asyncio
-    async def test_metrics_recorded_when_using_direct_token_chunker(self, service, mock_token_chunker):
+    @pytest.mark.asyncio()
+    @pytest.mark.usefixtures("mock_token_chunker")
+    async def test_metrics_recorded_when_using_direct_token_chunker(self, service):
         """Test metrics are recorded when using TokenChunker directly (no strategy specified)."""
         collection = {
             "id": "coll-direct",
@@ -297,8 +298,9 @@ class TestChunkingMetrics:
         size_count = self.get_summary_count(ingestion_avg_chunk_size_bytes, {"strategy": "TokenChunker"})
         assert size_count == 1
 
-    @pytest.mark.asyncio
-    async def test_fallback_metrics_invalid_config(self, service, mock_token_chunker):
+    @pytest.mark.asyncio()
+    @pytest.mark.usefixtures("mock_token_chunker")
+    async def test_fallback_metrics_invalid_config(self, service):
         """Test fallback metrics are recorded with 'invalid_config' reason."""
         collection = {
             "id": "coll-invalid",
@@ -313,19 +315,21 @@ class TestChunkingMetrics:
         }
 
         # Mock config builder to return validation errors
-        with patch.object(service.config_builder, "build_config") as mock_build:
+        with (
+            patch.object(service.config_builder, "build_config") as mock_build,
+            patch("time.time") as mock_time,
+        ):
             mock_build.return_value = MagicMock(
                 validation_errors=["Invalid parameter: invalid_param"], strategy="semantic", config={}
             )
 
-            with patch("time.time") as mock_time:
-                mock_time.side_effect = [1000.0, 1000.1]
+            mock_time.side_effect = [1000.0, 1000.1]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Text with invalid config",
-                    document_id="doc-003",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Text with invalid config",
+                document_id="doc-003",
+                collection=collection,
+            )
 
         # Verify fallback was used
         assert result["stats"]["strategy_used"] == "TokenChunker"
@@ -342,8 +346,9 @@ class TestChunkingMetrics:
         chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert chunks_count == 2
 
-    @pytest.mark.asyncio
-    async def test_fallback_metrics_runtime_error(self, service, mock_token_chunker):
+    @pytest.mark.asyncio()
+    @pytest.mark.usefixtures("mock_token_chunker")
+    async def test_fallback_metrics_runtime_error(self, service):
         """Test fallback metrics are recorded with 'runtime_error' reason."""
         collection = {
             "id": "coll-runtime-error",
@@ -361,15 +366,17 @@ class TestChunkingMetrics:
         mock_strategy = MagicMock()
         mock_strategy.chunk.side_effect = RuntimeError("Strategy execution failed")
 
-        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-            with patch("time.time") as mock_time:
-                mock_time.side_effect = [1000.0, 1000.15]
+        with (
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+            patch("time.time") as mock_time,
+        ):
+            mock_time.side_effect = [1000.0, 1000.15]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Text that causes runtime error",
-                    document_id="doc-004",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Text that causes runtime error",
+                document_id="doc-004",
+                collection=collection,
+            )
 
         # Verify fallback was used
         assert result["stats"]["strategy_used"] == "TokenChunker"
@@ -386,8 +393,9 @@ class TestChunkingMetrics:
         chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert chunks_count == 2
 
-    @pytest.mark.asyncio
-    async def test_fallback_metrics_config_error(self, service, mock_token_chunker):
+    @pytest.mark.asyncio()
+    @pytest.mark.usefixtures("mock_token_chunker")
+    async def test_fallback_metrics_config_error(self, service):
         """Test fallback metrics are recorded with 'config_error' reason."""
         collection = {
             "id": "coll-config-error",
@@ -401,15 +409,17 @@ class TestChunkingMetrics:
         }
 
         # Mock config builder throwing an exception
-        with patch.object(service.config_builder, "build_config", side_effect=Exception("Config build failed")):
-            with patch("time.time") as mock_time:
-                mock_time.side_effect = [1000.0, 1000.08]
+        with (
+            patch.object(service.config_builder, "build_config", side_effect=Exception("Config build failed")),
+            patch("time.time") as mock_time,
+        ):
+            mock_time.side_effect = [1000.0, 1000.08]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Text with config build error",
-                    document_id="doc-005",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Text with config build error",
+                document_id="doc-005",
+                collection=collection,
+            )
 
         # Verify fallback was used
         assert result["stats"]["strategy_used"] == "TokenChunker"
@@ -422,7 +432,7 @@ class TestChunkingMetrics:
         )
         assert fallback_count == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_duration_histogram_records_reasonable_values(self, service):
         """Test that duration histogram records values within expected buckets."""
         collection = {
@@ -451,15 +461,17 @@ class TestChunkingMetrics:
         durations = [0.05, 0.15, 0.8, 2.5]  # Different bucket ranges
 
         for i, duration in enumerate(durations):
-            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-                with patch("time.time") as mock_time:
-                    mock_time.side_effect = [1000.0 + i * 10, 1000.0 + i * 10 + duration]
+            with (
+                patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+                patch("time.time") as mock_time,
+            ):
+                mock_time.side_effect = [1000.0 + i * 10, 1000.0 + i * 10 + duration]
 
-                    await service.execute_ingestion_chunking(
-                        text=f"Text for duration test {i}",
-                        document_id=f"doc-duration-{i}",
-                        collection=collection,
-                    )
+                await service.execute_ingestion_chunking(
+                    text=f"Text for duration test {i}",
+                    document_id=f"doc-duration-{i}",
+                    collection=collection,
+                )
 
         # Verify histogram has recorded all durations
         strategy_used = "character"  # or could be "ChunkingStrategy.CHARACTER"
@@ -478,7 +490,7 @@ class TestChunkingMetrics:
         expected_sum = sum(durations)
         assert abs(histogram_sum - expected_sum) < 0.1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunk_count_metrics_increment_correctly(self, service):
         """Test that chunk count metrics increment correctly over multiple operations."""
         collection = {
@@ -528,7 +540,7 @@ class TestChunkingMetrics:
         total_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_used})
         assert total_chunks == sum(chunk_counts)  # 3 + 5 + 2 + 4 = 14
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_average_chunk_size_calculated_and_recorded(self, service):
         """Test that average chunk size is correctly calculated and recorded."""
         collection = {
@@ -609,8 +621,9 @@ class TestChunkingMetrics:
         # Average should be (100 + 200 + 300 + 400) / 4 = 250 bytes
         assert 240 <= size_sum <= 260
 
-    @pytest.mark.asyncio
-    async def test_multiple_operations_accumulate_metrics_correctly(self, service, mock_token_chunker):
+    @pytest.mark.asyncio()
+    @pytest.mark.usefixtures("mock_token_chunker")
+    async def test_multiple_operations_accumulate_metrics_correctly(self, service):
         """Test that multiple operations correctly accumulate metrics (counters increase)."""
         # First operation - successful strategy
         collection1 = {
@@ -759,7 +772,7 @@ class TestChunkingMetrics:
         chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "zero_strategy"})
         assert chunks_count == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_metrics_with_large_documents(self, service):
         """Test metrics work correctly with large documents producing many chunks."""
         collection = {
@@ -787,16 +800,18 @@ class TestChunkingMetrics:
         ]
         mock_strategy.chunk.return_value = mock_chunks
 
-        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-            with patch("time.time") as mock_time:
-                # Simulate longer processing time for large document
-                mock_time.side_effect = [1000.0, 1003.5]
+        with (
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+            patch("time.time") as mock_time,
+        ):
+            # Simulate longer processing time for large document
+            mock_time.side_effect = [1000.0, 1003.5]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Very large document " * 1000,
-                    document_id="doc-large",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Very large document " * 1000,
+                document_id="doc-large",
+                collection=collection,
+            )
 
         strategy_used = result["stats"]["strategy_used"]
 
@@ -807,7 +822,7 @@ class TestChunkingMetrics:
         duration_sum = self.get_histogram_sum(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
         assert 3.4 <= duration_sum <= 3.6
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_operations_metrics(self, service):
         """Test that metrics handle concurrent operations correctly."""
         collection = {

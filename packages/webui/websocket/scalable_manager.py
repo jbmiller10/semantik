@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import time
 import uuid
 from datetime import UTC, datetime
@@ -22,13 +23,14 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 try:
-    from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.exceptions import ConnectionClosedOK as ConnectionClosedOKError
 except Exception:  # pragma: no cover - fallback if websockets not available
 
-    class ConnectionClosedOK(Exception):
+    class ConnectionClosedOKError(Exception):  # type: ignore[no-redef]
         pass
 
-    class ConnectionClosedError(Exception):
+    class ConnectionClosedError(Exception):  # type: ignore[no-redef]
         pass
 
 
@@ -73,7 +75,7 @@ class ScalableWebSocketManager:
 
         # Redis clients
         self.redis_client: redis.Redis | None = None
-        self.pubsub: redis.PubSub | None = None
+        self.pubsub: Any | None = None  # Redis PubSub client
 
         # Background tasks
         self.listener_task: asyncio.Task | None = None
@@ -192,7 +194,7 @@ class ScalableWebSocketManager:
         if self.pubsub:
             await self.pubsub.aclose()
         if self.redis_client:
-            await self.redis_client.aclose()
+            await self.redis_client.close()
 
         logger.info(f"ScalableWebSocketManager instance {self.instance_id} shut down complete")
 
@@ -434,12 +436,13 @@ class ScalableWebSocketManager:
             "instance_id": self.instance_id,
             "started_at": time.time(),
             "hostname": await self._get_hostname(),
-            "pid": asyncio.get_event_loop()._thread_id if hasattr(asyncio.get_event_loop(), "_thread_id") else None,
+            "pid": os.getpid(),
         }
 
-        await self.redis_client.setex(
-            f"websocket:instance:{self.instance_id}", 60, json.dumps(instance_data)  # 60 second TTL
-        )
+        if self.redis_client:
+            await self.redis_client.setex(
+                f"websocket:instance:{self.instance_id}", 60, json.dumps(instance_data)  # 60 second TTL
+            )
 
         logger.info(f"Registered instance {self.instance_id} in Redis")
 
@@ -456,17 +459,21 @@ class ScalableWebSocketManager:
             "connected_at": time.time(),
         }
 
-        # Store in connections hash
-        await self.redis_client.hset("websocket:connections", connection_id, json.dumps(connection_data))
+        if self.redis_client:
+            # Store in connections hash
+            await self.redis_client.hset("websocket:connections", connection_id, json.dumps(connection_data))
 
-        # Add to user set
-        await self.redis_client.sadd(f"websocket:user:{user_id}", connection_id)
+            # Add to user set
+            await self.redis_client.sadd(f"websocket:user:{user_id}", connection_id)
 
-        # Set TTL on user set (refresh on activity)
-        await self.redis_client.expire(f"websocket:user:{user_id}", 3600)  # 1 hour
+            # Set TTL on user set (refresh on activity)
+            await self.redis_client.expire(f"websocket:user:{user_id}", 3600)  # 1 hour
 
     async def _listen_for_messages(self) -> None:
         """Listen for Redis pub/sub messages and route to local connections."""
+        if not self.pubsub:
+            return
+
         try:
             async for message in self.pubsub.listen():
                 if message["type"] == "message":
@@ -691,7 +698,7 @@ class ScalableWebSocketManager:
                         logger.debug(f"Sent operation state for {operation_id}")
                     except (
                         WebSocketDisconnect,
-                        ConnectionClosedOK,
+                        ConnectionClosedOKError,
                         ConnectionClosedError,
                         asyncio.IncompleteReadError,
                     ):
@@ -699,7 +706,7 @@ class ScalableWebSocketManager:
                         logger.debug(f"Client disconnected while sending initial state for operation {operation_id}")
                         return
 
-        except (WebSocketDisconnect, ConnectionClosedOK, ConnectionClosedError, asyncio.IncompleteReadError):
+        except (WebSocketDisconnect, ConnectionClosedOKError, ConnectionClosedError, asyncio.IncompleteReadError):
             # Treat disconnects as normal; client closed the socket
             logger.debug(f"Client disconnected while preparing initial state for operation {operation_id}")
         except Exception as e:
@@ -757,6 +764,4 @@ class ScalableWebSocketManager:
 
 
 # Global instance - will be initialized by FastAPI on startup
-import os
-
 scalable_ws_manager = ScalableWebSocketManager(redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2"))

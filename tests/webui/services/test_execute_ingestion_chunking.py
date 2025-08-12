@@ -7,11 +7,10 @@ and edge cases.
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.webui.services.chunking_service import ChunkingService
 
@@ -19,7 +18,7 @@ from packages.webui.services.chunking_service import ChunkingService
 class TestExecuteIngestionChunkingUnit:
     """Focused unit tests for execute_ingestion_chunking method."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def service(self):
         """Create a ChunkingService instance with minimal mocking."""
         return ChunkingService(
@@ -29,7 +28,7 @@ class TestExecuteIngestionChunkingUnit:
             redis_client=None,
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_hierarchical_strategy_configuration(self, service):
         """Test hierarchical strategy with multi-level configuration."""
         collection = {
@@ -65,7 +64,7 @@ class TestExecuteIngestionChunkingUnit:
         # Accept both the plain name and the enum format
         assert chunk_config.strategy_name in ["hierarchical", "ChunkingStrategy.HIERARCHICAL"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_hybrid_strategy_configuration(self, service):
         """Test hybrid strategy with primary and fallback strategies."""
         collection = {
@@ -98,7 +97,7 @@ class TestExecuteIngestionChunkingUnit:
         assert result["stats"]["strategy_used"] in ["hybrid", "ChunkingStrategy.HYBRID"]
         assert len(result["chunks"]) == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_config_builder_validation_errors_trigger_fallback(self, service):
         """Test that validation errors from config builder trigger fallback."""
         collection = {
@@ -122,28 +121,30 @@ class TestExecuteIngestionChunkingUnit:
         mock_config_result.strategy = "recursive"
         mock_config_result.config = {}
 
-        with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-            with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
-                mock_chunker = MagicMock()
-                MockTokenChunker.return_value = mock_chunker
-                mock_chunker.chunk_text.return_value = [
-                    {"chunk_id": "doc-invalid_chunk_0000", "text": "Fallback chunk", "metadata": {}}
-                ]
+        with (
+            patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+        ):
+            mock_chunker = MagicMock()
+            mock_token_chunker.return_value = mock_chunker
+            mock_chunker.chunk_text.return_value = [
+                {"chunk_id": "doc-invalid_chunk_0000", "text": "Fallback chunk", "metadata": {}}
+            ]
 
-                result = await service.execute_ingestion_chunking(
-                    text="Text with invalid config",
-                    document_id="doc-invalid",
-                    collection=collection,
-                )
+            result = await service.execute_ingestion_chunking(
+                text="Text with invalid config",
+                document_id="doc-invalid",
+                collection=collection,
+            )
 
         # Verify fallback was used with safe defaults (not the invalid values)
         assert result["stats"]["strategy_used"] == "TokenChunker"
         assert result["stats"]["fallback"] is True
         # Should use default 1000 for chunk_size since -100 is invalid
         # Should use 500 (1000/2) for chunk_overlap since 500 < 1000
-        MockTokenChunker.assert_called_once_with(chunk_size=1000, chunk_overlap=500)
+        mock_token_chunker.assert_called_once_with(chunk_size=1000, chunk_overlap=500)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_strategy_factory_creation_failure_triggers_fallback(self, service):
         """Test that strategy factory failures trigger fallback."""
         collection = {
@@ -161,28 +162,29 @@ class TestExecuteIngestionChunkingUnit:
         mock_config_result.strategy = "recursive"
         mock_config_result.config = {"chunk_size": 200, "chunk_overlap": 40}
 
-        with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-            # Mock strategy factory to raise exception
-            with patch.object(
+        with (
+            patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+            patch.object(
                 service.strategy_factory, "create_strategy", side_effect=RuntimeError("Strategy creation failed")
-            ):
-                with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
-                    mock_chunker = MagicMock()
-                    MockTokenChunker.return_value = mock_chunker
-                    mock_chunker.chunk_text.return_value = [
-                        {"chunk_id": "fallback_chunk_0000", "text": "Fallback after factory fail", "metadata": {}}
-                    ]
+            ),
+            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+        ):
+            mock_chunker = MagicMock()
+            mock_token_chunker.return_value = mock_chunker
+            mock_chunker.chunk_text.return_value = [
+                {"chunk_id": "fallback_chunk_0000", "text": "Fallback after factory fail", "metadata": {}}
+            ]
 
-                    result = await service.execute_ingestion_chunking(
-                        text="Text causing factory failure",
-                        document_id="doc-factory-fail",
-                        collection=collection,
-                    )
+            result = await service.execute_ingestion_chunking(
+                text="Text causing factory failure",
+                document_id="doc-factory-fail",
+                collection=collection,
+            )
 
         assert result["stats"]["strategy_used"] == "TokenChunker"
         assert result["stats"]["fallback"] is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunk_config_min_max_token_calculation(self, service):
         """Test that ChunkConfig min/max tokens are calculated correctly."""
         test_cases = [
@@ -206,11 +208,12 @@ class TestExecuteIngestionChunkingUnit:
             }
 
             mock_strategy = MagicMock()
+
             # Make the mock chunk method handle keyword arguments properly
-            def mock_chunk_method(**kwargs):
+            def mock_chunk_method(**kwargs):  # noqa: ARG001
                 # Return mock chunk entities
                 return [MagicMock(content="test chunk")]
-            
+
             mock_strategy.chunk = MagicMock(side_effect=mock_chunk_method)
 
             # Mock config builder to return successful result
@@ -219,24 +222,26 @@ class TestExecuteIngestionChunkingUnit:
             mock_config_result.strategy = "recursive"
             mock_config_result.config = {"chunk_size": chunk_size, "chunk_overlap": min(10, chunk_size // 2)}
 
-            with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-                with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-                    await service.execute_ingestion_chunking(
-                        text="Test text",
-                        document_id=f"doc-{chunk_size}",
-                        collection=collection,
-                    )
+            with (
+                patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+                patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+            ):
+                await service.execute_ingestion_chunking(
+                    text="Test text",
+                    document_id=f"doc-{chunk_size}",
+                    collection=collection,
+                )
 
-                    # Verify ChunkConfig parameters
-                    mock_strategy.chunk.assert_called_once()
-                    call_args = mock_strategy.chunk.call_args
-                    # The arguments are passed as keyword arguments
-                    chunk_config = call_args.kwargs["config"]
+                # Verify ChunkConfig parameters
+                mock_strategy.chunk.assert_called_once()
+                call_args = mock_strategy.chunk.call_args
+                # The arguments are passed as keyword arguments
+                chunk_config = call_args.kwargs["config"]
 
-                    assert chunk_config.min_tokens == expected_min
-                    assert chunk_config.max_tokens == expected_max
+                assert chunk_config.min_tokens == expected_min
+                assert chunk_config.max_tokens == expected_max
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_overlap_tokens_boundary_validation(self, service):
         """Test that overlap tokens are properly bounded."""
         collection = {
@@ -260,23 +265,25 @@ class TestExecuteIngestionChunkingUnit:
         mock_config_result.strategy = "recursive"
         mock_config_result.config = {"chunk_size": 100, "chunk_overlap": 200}
 
-        with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-                await service.execute_ingestion_chunking(
-                    text="Test text",
-                    document_id="doc-overlap",
-                    collection=collection,
-                )
+        with (
+            patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+        ):
+            await service.execute_ingestion_chunking(
+                text="Test text",
+                document_id="doc-overlap",
+                collection=collection,
+            )
 
-                # Verify overlap was capped appropriately
-                call_args = mock_strategy.chunk.call_args
-                chunk_config = call_args[1]["config"]
+            # Verify overlap was capped appropriately
+            call_args = mock_strategy.chunk.call_args
+            chunk_config = call_args[1]["config"]
 
-                # Overlap should be less than min_tokens
-                assert chunk_config.overlap_tokens < chunk_config.min_tokens
-                assert chunk_config.overlap_tokens >= 0
+            # Overlap should be less than min_tokens
+            assert chunk_config.overlap_tokens < chunk_config.min_tokens
+            assert chunk_config.overlap_tokens >= 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_file_type_passed_correctly(self, service):
         """Test that file_type is properly handled."""
         file_types = ["txt", "pdf", "md", "py", "json", None]
@@ -305,7 +312,7 @@ class TestExecuteIngestionChunkingUnit:
                 # File type doesn't affect the chunking directly, but should be available for logging
                 assert result["stats"]["strategy_used"] in ["recursive", "ChunkingStrategy.RECURSIVE"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_metadata_merge_with_chunk_metadata(self, service):
         """Test that provided metadata is properly merged with chunk metadata."""
         input_metadata = {
@@ -344,7 +351,7 @@ class TestExecuteIngestionChunkingUnit:
             assert chunk["metadata"]["index"] == idx  # Should be chunk index, not 999
             assert chunk["metadata"]["strategy"] in ["recursive", "ChunkingStrategy.RECURSIVE"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_empty_metadata_handling(self, service):
         """Test handling of None and empty metadata."""
         collection = {
@@ -354,9 +361,9 @@ class TestExecuteIngestionChunkingUnit:
             "chunk_overlap": 20,
         }
 
-        with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
+        with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
             mock_chunker = MagicMock()
-            MockTokenChunker.return_value = mock_chunker
+            mock_token_chunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
                 {"chunk_id": "chunk_0000", "text": "chunk", "metadata": {"index": 0}}
             ]
@@ -381,7 +388,7 @@ class TestExecuteIngestionChunkingUnit:
 
             assert result["chunks"][0]["metadata"]["index"] == 0
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_logging_on_successful_chunking(self, service):
         """Test that appropriate logging occurs on successful chunking."""
         collection = {
@@ -403,28 +410,30 @@ class TestExecuteIngestionChunkingUnit:
         mock_config_result.strategy = "semantic"
         mock_config_result.config = {"chunk_size": 100, "chunk_overlap": 20}
 
-        with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-                with patch("packages.webui.services.chunking_service.logger") as mock_logger:
-                    result = await service.execute_ingestion_chunking(
-                        text="Text for logging test",
-                        document_id="doc-log",
-                        collection=collection,
-                    )
+        with (
+            patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+            patch("packages.webui.services.chunking_service.logger") as mock_logger,
+        ):
+            await service.execute_ingestion_chunking(
+                text="Text for logging test",
+                document_id="doc-log",
+                collection=collection,
+            )
 
-                    # Verify info log for successful chunking
-                    mock_logger.info.assert_called()
-                    # Check the log message and the extra fields
-                    log_call = mock_logger.info.call_args
-                    log_message = log_call[0][0]
-                    log_extra = log_call[1].get("extra", {})
-                    
-                    assert log_message == "Successfully chunked document using strategy"
-                    assert log_extra.get("document_id") == "doc-log"
-                    assert log_extra.get("strategy_used") == "semantic"
-                    assert log_extra.get("chunk_count") == 5
+            # Verify info log for successful chunking
+            mock_logger.info.assert_called()
+            # Check the log message and the extra fields
+            log_call = mock_logger.info.call_args
+            log_message = log_call[0][0]
+            log_extra = log_call[1].get("extra", {})
 
-    @pytest.mark.asyncio
+            assert log_message == "Successfully chunked document using strategy"
+            assert log_extra.get("document_id") == "doc-log"
+            assert log_extra.get("strategy_used") == "semantic"
+            assert log_extra.get("chunk_count") == 5
+
+    @pytest.mark.asyncio()
     async def test_logging_on_fallback(self, service):
         """Test that warning logs are generated on fallback."""
         collection = {
@@ -436,36 +445,38 @@ class TestExecuteIngestionChunkingUnit:
             "chunk_overlap": 20,
         }
 
-        with patch.object(service.config_builder, "build_config", side_effect=Exception("Config error")):
-            with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
-                mock_chunker = MagicMock()
-                MockTokenChunker.return_value = mock_chunker
-                mock_chunker.chunk_text.return_value = [{"chunk_id": "chunk_0000", "text": "fallback", "metadata": {}}]
+        with (
+            patch.object(service.config_builder, "build_config", side_effect=Exception("Config error")),
+            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+            patch("packages.webui.services.chunking_service.logger") as mock_logger,
+        ):
+            mock_chunker = MagicMock()
+            mock_token_chunker.return_value = mock_chunker
+            mock_chunker.chunk_text.return_value = [{"chunk_id": "chunk_0000", "text": "fallback", "metadata": {}}]
 
-                with patch("packages.webui.services.chunking_service.logger") as mock_logger:
-                    result = await service.execute_ingestion_chunking(
-                        text="Text",
-                        document_id="doc-fallback",
-                        collection=collection,
-                    )
+            await service.execute_ingestion_chunking(
+                text="Text",
+                document_id="doc-fallback",
+                collection=collection,
+            )
 
-                    # Should have warning logs for fallback
-                    assert mock_logger.warning.call_count >= 2
+            # Should have warning logs for fallback
+            assert mock_logger.warning.call_count >= 2
 
-                    # Check final fallback warning
-                    fallback_warning_found = False
-                    for call in mock_logger.warning.call_args_list:
-                        if len(call[0]) > 0 and "Chunking fallback occurred" in call[0][0]:
-                            fallback_warning_found = True
-                            # Check the structured logging extra fields
-                            extra = call[1].get("extra", {})
-                            assert extra.get("document_id") == "doc-fallback"
-                            assert extra.get("collection_id") == "coll-fallback-log"
-                            break
+            # Check final fallback warning
+            fallback_warning_found = False
+            for call in mock_logger.warning.call_args_list:
+                if len(call[0]) > 0 and "Chunking fallback occurred" in call[0][0]:
+                    fallback_warning_found = True
+                    # Check the structured logging extra fields
+                    extra = call[1].get("extra", {})
+                    assert extra.get("document_id") == "doc-fallback"
+                    assert extra.get("collection_id") == "coll-fallback-log"
+                    break
 
-                    assert fallback_warning_found
+            assert fallback_warning_found
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_performance_stats_accuracy(self, service):
         """Test that performance statistics are accurate."""
         collection = {
@@ -475,12 +486,12 @@ class TestExecuteIngestionChunkingUnit:
             "chunk_overlap": 20,
         }
 
-        with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
+        with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
             mock_chunker = MagicMock()
-            MockTokenChunker.return_value = mock_chunker
+            mock_token_chunker.return_value = mock_chunker
 
             # Add artificial delay to test timing
-            def slow_chunk(*args, **kwargs):
+            def slow_chunk(*args, **kwargs):  # noqa: ARG001
                 time.sleep(0.05)  # 50ms delay
                 return [{"chunk_id": f"chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(10)]
 
@@ -506,7 +517,7 @@ class TestExecuteIngestionChunkingUnit:
             assert stats["fallback"] is False
             assert stats["chunk_count"] == 10
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_chunking_requests(self, service):
         """Test that multiple concurrent chunking requests work correctly."""
         collection = {
@@ -521,7 +532,7 @@ class TestExecuteIngestionChunkingUnit:
         mock_strategy = MagicMock()
 
         # Different results for different documents
-        def create_chunks(content, config):
+        def create_chunks(content, config):  # noqa: ARG001
             doc_id = content[:10]  # Extract doc ID from content
             return [MagicMock(content=f"{doc_id} chunk {i}") for i in range(3)]
 
@@ -533,28 +544,30 @@ class TestExecuteIngestionChunkingUnit:
         mock_config_result.strategy = "recursive"
         mock_config_result.config = {"chunk_size": 100, "chunk_overlap": 20}
 
-        with patch.object(service.config_builder, "build_config", return_value=mock_config_result):
-            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
-                # Run multiple concurrent chunking operations
-                tasks = [
-                    service.execute_ingestion_chunking(
-                        text=f"doc-{i} content for concurrent test",
-                        document_id=f"doc-{i}",
-                        collection=collection,
-                    )
-                    for i in range(5)
-                ]
+        with (
+            patch.object(service.config_builder, "build_config", return_value=mock_config_result),
+            patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy),
+        ):
+            # Run multiple concurrent chunking operations
+            tasks = [
+                service.execute_ingestion_chunking(
+                    text=f"doc-{i} content for concurrent test",
+                    document_id=f"doc-{i}",
+                    collection=collection,
+                )
+                for i in range(5)
+            ]
 
-                results = await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks)
 
-                # Verify each result is correct
-                for i, result in enumerate(results):
-                    assert result["stats"]["chunk_count"] == 3
-                    # Updated chunk ID format without "_chunk_" in the middle
-                    assert result["chunks"][0]["chunk_id"] == f"doc-{i}_0000"
-                    assert f"doc-{i}" in result["chunks"][0]["text"]
+            # Verify each result is correct
+            for i, result in enumerate(results):
+                assert result["stats"]["chunk_count"] == 3
+                # Updated chunk ID format without "_chunk_" in the middle
+                assert result["chunks"][0]["chunk_id"] == f"doc-{i}_0000"
+                assert f"doc-{i}" in result["chunks"][0]["text"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_unicode_and_special_characters_in_chunk_ids(self, service):
         """Test that document IDs with special characters are handled correctly."""
         special_doc_ids = [
@@ -576,9 +589,9 @@ class TestExecuteIngestionChunkingUnit:
         }
 
         for doc_id in special_doc_ids:
-            with patch("packages.webui.services.chunking_service.TokenChunker") as MockTokenChunker:
+            with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
                 mock_chunker = MagicMock()
-                MockTokenChunker.return_value = mock_chunker
+                mock_token_chunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [
                     {"chunk_id": f"{doc_id}_chunk_0000", "text": "chunk", "metadata": {}}
                 ]

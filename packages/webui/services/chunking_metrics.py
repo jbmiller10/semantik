@@ -5,7 +5,7 @@ This module provides observability into chunking performance,
 strategy usage, and fallback scenarios.
 """
 
-from typing import Any, Dict, List, Union
+from typing import Any
 
 from prometheus_client import Counter, Histogram, Summary
 
@@ -106,7 +106,7 @@ def record_chunks_produced(strategy: str, chunk_count: int) -> None:
     ingestion_chunks_total.labels(strategy=strategy).inc(chunk_count)
 
 
-def record_chunk_sizes(strategy: str, chunks: List[Union[str, Dict[str, Any], Any]]) -> None:
+def record_chunk_sizes(strategy: str, chunks: list[str | dict[str, Any] | Any]) -> None:
     """Record chunk size statistics.
 
     Args:
@@ -122,7 +122,8 @@ def record_chunk_sizes(strategy: str, chunks: List[Union[str, Dict[str, Any], An
         if isinstance(chunk, dict):
             # Handle dictionary chunks with 'text' field
             text = chunk.get("text", chunk.get("content", ""))
-            total_size += len(text.encode("utf-8"))
+            if text is not None:
+                total_size += len(text.encode("utf-8"))
         elif isinstance(chunk, str):
             # Handle string chunks
             total_size += len(chunk.encode("utf-8"))

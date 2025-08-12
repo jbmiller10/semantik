@@ -12,7 +12,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, cast
 
 import redis.asyncio as aioredis
 from shared.text_processing.chunking import TokenChunker
@@ -157,7 +157,7 @@ class ChunkingService:
         self.cache_manager = CacheManager(redis_client) if redis_client else None
         self.query_monitor = QueryMonitor()
 
-    async def get_available_strategies(self) -> List[Dict[str, Any]]:
+    async def get_available_strategies(self) -> list[dict[str, Any]]:
         """Get list of available chunking strategies with details.
 
         This method provides the business logic for listing strategies,
@@ -169,10 +169,14 @@ class ChunkingService:
         strategies = []
 
         for strategy in ChunkingStrategyEnum:
-            strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
+            # Convert shared enum to webui enum for registry lookup
+            from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as WebUIChunkingStrategy
+
+            webui_strategy = WebUIChunkingStrategy(strategy.value)
+            strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
 
             # Get default config from builder
-            default_config = self.config_builder.get_default_config(strategy)
+            default_config = self.config_builder.get_default_config(webui_strategy)
 
             # Get compatibility info from factory
             strategy_info = self.strategy_factory.get_strategy_info(strategy)
@@ -197,8 +201,8 @@ class ChunkingService:
         self,
         document_id: str,
         strategy: str | ChunkingStrategyEnum,
-        config_overrides: Optional[Dict[str, Any]] = None,
-        user_id: Optional[int] = None,
+        config_overrides: dict[str, Any] | None = None,
+        user_id: int | None = None,
     ) -> str:
         """Apply chunking to a document.
 
@@ -255,15 +259,15 @@ class ChunkingService:
             user_id=user_id,
         )
 
-        return operation_id.get("operation_id", str(uuid.uuid4()))
+        return str(operation_id.get("operation_id", str(uuid.uuid4())))
 
     async def recommend_strategy(
         self,
-        content_size: Optional[int] = None,
-        file_types: Optional[List[str]] = None,
-        file_paths: Optional[List[str]] = None,
-        has_structure: Optional[bool] = None,
-    ) -> Dict[str, Any]:
+        content_size: int | None = None,
+        file_types: list[str] | None = None,
+        file_paths: list[str] | None = None,
+        has_structure: bool | None = None,
+    ) -> dict[str, Any]:
         """Recommend a chunking strategy based on content characteristics.
 
         Args:
@@ -331,12 +335,12 @@ class ChunkingService:
     async def preview_chunks(
         self,
         strategy: str | ChunkingStrategyEnum,
-        content: Optional[str] = None,
-        document_id: Optional[str] = None,
-        config_overrides: Optional[Dict[str, Any]] = None,
-        user_id: Optional[int] = None,
-        correlation_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        content: str | None = None,
+        document_id: str | None = None,
+        config_overrides: dict[str, Any] | None = None,
+        user_id: int | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Preview chunking results with all business logic.
 
@@ -441,8 +445,10 @@ class ChunkingService:
                 ) from e
             except ChunkingDomainError as e:
                 # Translate domain exception
+                # ChunkingDomainError is a subclass of DomainError
+                domain_error = cast(DomainError, e)
                 raise self.exception_translator.translate_domain_to_application(
-                    e,
+                    domain_error,
                     correlation_id,
                 ) from e
             except Exception as e:
@@ -558,15 +564,15 @@ class ChunkingService:
 
         # Load from appropriate storage
         # Simplified - would handle different storage types
-        return document.get("content", "")
+        return str(document.get("content", ""))
 
     async def _execute_chunking(
         self,
         strategy: Any,
         content: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         strategy_name: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute chunking with resource limits."""
         import time
 
@@ -661,7 +667,7 @@ class ChunkingService:
             "expires_at": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
         }
 
-    def _simple_chunk_fallback(self, content: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    def _simple_chunk_fallback(self, content: str, chunk_size: int, chunk_overlap: int) -> list[str]:
         """Simple fallback chunking."""
         chunks = []
         if chunk_overlap >= chunk_size:
@@ -675,7 +681,7 @@ class ChunkingService:
 
         return chunks
 
-    def _calculate_statistics(self, chunks: List[str]) -> Dict[str, Any]:
+    def _calculate_statistics(self, chunks: list[str]) -> dict[str, Any]:
         """Calculate chunking statistics."""
         if not chunks:
             return {
@@ -725,12 +731,12 @@ class ChunkingService:
     async def preview_chunking(
         self,
         content: str,
-        strategy: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-        file_type: Optional[str] = None,
-        max_chunks: Optional[int] = None,
+        strategy: str | None = None,
+        config: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        max_chunks: int | None = None,
         cache_result: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Generate a preview of how content will be chunked.
 
         Args:
@@ -934,11 +940,11 @@ class ChunkingService:
     async def compare_strategies(
         self,
         content: str,
-        strategies: List[ChunkingStrategyEnum],
-        configs: Optional[Dict[str, Dict[str, Any]]] = None,
+        strategies: list[ChunkingStrategyEnum],
+        configs: dict[str, dict[str, Any]] | None = None,
         max_chunks_per_strategy: int = 5,
-        _user_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        _user_id: int | None = None,
+    ) -> dict[str, Any]:
         """Compare multiple chunking strategies with full business logic.
 
         This method contains all the comparison logic that was previously
@@ -977,7 +983,11 @@ class ChunkingService:
                 )
 
                 # Get strategy definition from registry
-                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
+                # Convert shared enum to webui enum for registry lookup
+                from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as WebUIChunkingStrategy
+
+                webui_strategy = WebUIChunkingStrategy(strategy.value)
+                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
 
                 # Calculate quality metrics
                 metrics = result.get("metrics", {})
@@ -1087,9 +1097,9 @@ class ChunkingService:
         self,
         collection_id: str,
         strategy: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         user_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Start a chunking operation for a collection.
 
         Args:
@@ -1147,7 +1157,7 @@ class ChunkingService:
             await self.db_session.rollback()
             raise
 
-    async def get_chunking_progress(self, operation_id: str) -> Dict[str, Any]:
+    async def get_chunking_progress(self, operation_id: str) -> dict[str, Any]:
         """Get progress of a chunking operation.
 
         Args:
@@ -1191,8 +1201,8 @@ class ChunkingService:
     async def get_metrics_by_strategy(
         self,
         _period_days: int = 30,
-        _user_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        _user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Get chunking metrics grouped by strategy.
 
         This method provides strategy-specific metrics for the specified period.
@@ -1230,7 +1240,7 @@ class ChunkingService:
         return metrics
 
     @QueryMonitor.monitor("get_chunking_statistics")
-    async def get_chunking_statistics(self, collection_id: str) -> Dict[str, Any]:
+    async def get_chunking_statistics(self, collection_id: str) -> dict[str, Any]:
         """Get chunking statistics for a collection with optimized queries.
 
         Args:
@@ -1246,7 +1256,7 @@ class ChunkingService:
             cache_key = self.cache_manager._generate_cache_key("statistics", {"collection_id": collection_id})
             cached = await self.cache_manager.get(cache_key)
             if cached:
-                return cached
+                return cast(dict[str, Any], cached)
 
         try:
             # Get collection
@@ -1281,8 +1291,8 @@ class ChunkingService:
                 func.min(Operation.created_at).label("first_operation_at"),
             ).where(and_(Operation.collection_id == collection_id, Operation.type == "chunking"))
 
-            result = await self.db_session.execute(stats_query)
-            stats = result.one()
+            stats_result = await self.db_session.execute(stats_query)
+            stats = stats_result.one()
 
             # Get latest strategy with a separate optimized query
             latest_strategy_query = (
@@ -1302,7 +1312,7 @@ class ChunkingService:
             latest_strategy_row = strategy_result.one_or_none()
             latest_strategy = latest_strategy_row.strategy if latest_strategy_row else None
 
-            result = {
+            result: dict[str, Any] = {
                 "collection_id": collection_id,
                 "total_operations": stats.total_operations or 0,
                 "completed_operations": stats.completed_operations or 0,
@@ -1326,8 +1336,8 @@ class ChunkingService:
             raise
 
     async def validate_config_for_collection(
-        self, collection_id: str, strategy: str, config: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, collection_id: str, strategy: str, config: dict[str, Any]
+    ) -> dict[str, Any]:
         """Validate chunking configuration for a collection.
 
         Args:
@@ -1368,8 +1378,8 @@ class ChunkingService:
     async def get_cached_preview(
         self,
         preview_id: str,
-        user_id: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        user_id: int | None = None,
+    ) -> dict[str, Any] | None:
         """Get cached preview by ID with proper user validation.
 
         This is a PUBLIC method that replaces direct cache key construction
@@ -1413,8 +1423,8 @@ class ChunkingService:
     async def cache_preview_with_user(
         self,
         preview_id: str,
-        preview_data: Dict[str, Any],
-        user_id: Optional[int] = None,
+        preview_data: dict[str, Any],
+        user_id: int | None = None,
         ttl: int = 1800,
     ) -> None:
         """Cache preview data with user context.
@@ -1442,7 +1452,7 @@ class ChunkingService:
         except Exception as e:
             logger.warning(f"Failed to cache preview: {e}")
 
-    async def _cache_preview(self, cache_key: str, preview_data: Dict[str, Any], ttl: int = 1800) -> None:
+    async def _cache_preview(self, cache_key: str, preview_data: dict[str, Any], ttl: int = 1800) -> None:
         """Cache preview data in Redis.
 
         PRIVATE method for internal use only.
@@ -1464,7 +1474,7 @@ class ChunkingService:
         except Exception as e:
             logger.warning(f"Failed to cache preview: {e}")
 
-    async def _get_cached_preview_by_key(self, cache_key: str) -> Optional[Dict[str, Any]]:
+    async def _get_cached_preview_by_key(self, cache_key: str) -> dict[str, Any] | None:
         """Get cached preview by key.
 
         PRIVATE method for internal use only.
@@ -1488,7 +1498,7 @@ class ChunkingService:
 
         return None
 
-    async def clear_preview_cache(self, pattern: Optional[str] = None) -> int:
+    async def clear_preview_cache(self, pattern: str | None = None) -> int:
         """Clear preview cache.
 
         Args:
@@ -1515,11 +1525,11 @@ class ChunkingService:
 
     async def track_preview_usage(
         self,
-        user_id: Optional[int] = None,
-        preview_id: Optional[str] = None,
-        action: Optional[str] = None,
-        strategy: Optional[str] = None,
-        file_type: Optional[str] = None,
+        user_id: int | None = None,
+        preview_id: str | None = None,
+        action: str | None = None,
+        strategy: str | None = None,
+        file_type: str | None = None,
     ) -> None:
         """Track usage of a preview.
 
@@ -1572,10 +1582,10 @@ class ChunkingService:
 
     def _calculate_metrics(
         self,
-        chunks: List[Any],
+        chunks: list[Any],
         text_length: int,
         processing_time: float,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Calculate metrics for chunking results.
 
         Args:
@@ -1610,9 +1620,9 @@ class ChunkingService:
 
     def _get_recommendations(
         self,
-        chunks: List[Any],
-        file_type: Optional[str] = None,
-    ) -> List[str]:
+        chunks: list[Any],
+        file_type: str | None = None,
+    ) -> list[str]:
         """Get recommendations based on chunking results.
 
         Args:
@@ -1659,7 +1669,7 @@ class ChunkingService:
 
     # Helper methods
 
-    def _generate_cache_key(self, content: str, strategy: str, config: Optional[Dict[str, Any]]) -> str:
+    def _generate_cache_key(self, content: str, strategy: str, config: dict[str, Any] | None) -> str:
         """Generate a cache key for preview data.
 
         Args:
@@ -1677,7 +1687,7 @@ class ChunkingService:
         hasher.update(json.dumps(config or {}, sort_keys=True).encode())
         return f"preview:{hasher.hexdigest()[:16]}"
 
-    def _get_default_config(self, strategy: str) -> Dict[str, Any]:
+    def _get_default_config(self, strategy: str) -> dict[str, Any]:
         """Get default configuration for a strategy.
 
         Args:
@@ -1719,7 +1729,7 @@ class ChunkingService:
         }
         return defaults.get(strategy, {})
 
-    def _get_alternative_strategies(self, primary_strategy: str) -> List[Dict[str, str]]:
+    def _get_alternative_strategies(self, primary_strategy: str) -> list[dict[str, str]]:
         """Get alternative strategies to the primary one.
 
         Args:
@@ -1781,7 +1791,7 @@ class ChunkingService:
             return "markdown"
         return "text"
 
-    def _get_strategy_pros(self, strategy: str) -> List[str]:
+    def _get_strategy_pros(self, strategy: str) -> list[str]:
         """Get pros of a strategy.
 
         Args:
@@ -1824,7 +1834,7 @@ class ChunkingService:
         }
         return pros.get(strategy, [])
 
-    def _get_strategy_cons(self, strategy: str) -> List[str]:
+    def _get_strategy_cons(self, strategy: str) -> list[str]:
         """Get cons of a strategy.
 
         Args:
@@ -1920,10 +1930,10 @@ class ChunkingService:
         self,
         text: str,
         document_id: str,
-        collection: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-        file_type: Optional[str] = None,  # noqa: ARG002 - Reserved for future file-type-specific optimizations
-    ) -> Dict[str, Any]:
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,  # noqa: ARG002 - Reserved for future file-type-specific optimizations
+    ) -> dict[str, Any]:
         """Execute chunking for document ingestion with strategy resolution and fallback.
 
         This method provides a unified chunking interface for ingestion tasks (APPEND, REINDEX).
@@ -1950,6 +1960,7 @@ class ChunkingService:
             Exception: For fatal errors that prevent chunking
         """
         import time
+
         from packages.webui.services.chunking_constants import SEGMENT_SIZE_THRESHOLD, STRATEGY_SEGMENT_THRESHOLDS
 
         # Check if document requires segmentation
@@ -1991,9 +2002,9 @@ class ChunkingService:
                 collection=collection,
                 metadata=metadata,
                 file_type=file_type,
-                chunking_strategy=chunking_strategy,
-                chunk_size=collection.get("chunk_size"),
-                chunk_overlap=collection.get("chunk_overlap"),
+                chunking_strategy=chunking_strategy or "recursive",
+                chunk_size=int(collection.get("chunk_size", 512)),
+                chunk_overlap=int(collection.get("chunk_overlap", 50)),
                 correlation_id=correlation_id,
             )
 
@@ -2013,25 +2024,24 @@ class ChunkingService:
             # Get chunk_size and chunk_overlap for fallback (prefer chunking_config values)
             chunk_size = chunking_config.get("chunk_size", collection.get("chunk_size", 1000))
             chunk_overlap = chunking_config.get("chunk_overlap", collection.get("chunk_overlap", 200))
-            
+
             # Validate and sanitize chunk_size and chunk_overlap for fallback scenarios
             # If invalid values are provided, use safe defaults
             if chunk_size <= 0:
                 logger.warning(
-                    f"Invalid chunk_size {chunk_size}, using default 1000",
-                    extra={"correlation_id": correlation_id}
+                    f"Invalid chunk_size {chunk_size}, using default 1000", extra={"correlation_id": correlation_id}
                 )
                 chunk_size = 1000
             if chunk_overlap < 0:
                 logger.warning(
                     f"Invalid chunk_overlap {chunk_overlap}, using default 200",
-                    extra={"correlation_id": correlation_id}
+                    extra={"correlation_id": correlation_id},
                 )
                 chunk_overlap = 200
             if chunk_overlap >= chunk_size:
                 logger.warning(
                     f"chunk_overlap {chunk_overlap} >= chunk_size {chunk_size}, setting to chunk_size/2",
-                    extra={"correlation_id": correlation_id}
+                    extra={"correlation_id": correlation_id},
                 )
                 chunk_overlap = chunk_size // 2
 
@@ -2085,11 +2095,9 @@ class ChunkingService:
 
                         # Record fallback metrics with normalized label
                         try:
-                            from packages.webui.services.chunking_strategy_factory import (
-                                ChunkingStrategyFactory as _CSF,
-                            )
+                            from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
-                            normalized_strategy = _CSF.normalize_strategy_name(
+                            normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
                                 str(config_result.strategy)
                                 if hasattr(config_result, "strategy")
                                 else (chunking_strategy or "unknown")
@@ -2160,11 +2168,9 @@ class ChunkingService:
                             strategy_used = str(config_result.strategy)
                             # Normalize to internal strategy label for metrics
                             try:
-                                from packages.webui.services.chunking_strategy_factory import (
-                                    ChunkingStrategyFactory as _CSF,
-                                )
+                                from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
-                                metrics_strategy_label = _CSF.normalize_strategy_name(strategy_used)
+                                metrics_strategy_label = ChunkingStrategyFactory.normalize_strategy_name(strategy_used)
                             except Exception:
                                 metrics_strategy_label = strategy_used
                             logger.info(
@@ -2204,11 +2210,11 @@ class ChunkingService:
 
                             # Record fallback metrics with normalized label
                             try:
-                                from packages.webui.services.chunking_strategy_factory import (
-                                    ChunkingStrategyFactory as _CSF,
-                                )
+                                from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
-                                normalized_strategy = _CSF.normalize_strategy_name(str(config_result.strategy))
+                                normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
+                                    str(config_result.strategy)
+                                )
                             except Exception:
                                 normalized_strategy = str(config_result.strategy)
                             record_chunking_fallback(normalized_strategy, "runtime_error")
@@ -2237,11 +2243,11 @@ class ChunkingService:
 
                     # Record fallback metrics with normalized label
                     try:
-                        from packages.webui.services.chunking_strategy_factory import (
-                            ChunkingStrategyFactory as _CSF,
-                        )
+                        from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
-                        normalized_fallback = _CSF.normalize_strategy_name(chunking_strategy or "unknown")
+                        normalized_fallback = ChunkingStrategyFactory.normalize_strategy_name(
+                            chunking_strategy or "unknown"
+                        )
                     except Exception:
                         normalized_fallback = chunking_strategy or "unknown"
                     record_chunking_fallback(normalized_fallback, "config_error")
@@ -2298,14 +2304,14 @@ class ChunkingService:
         self,
         text: str,
         document_id: str,
-        collection: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-        file_type: Optional[str] = None,
-        chunking_strategy: str = None,
-        chunk_size: int = None,
-        chunk_overlap: int = None,
-        correlation_id: str = None,
-    ) -> Dict[str, Any]:
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        chunking_strategy: str | None = None,
+        chunk_size: int | None = None,  # noqa: ARG002 - Reserved for future use
+        chunk_overlap: int | None = None,  # noqa: ARG002 - Reserved for future use
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
         """Execute chunking for large documents using progressive segmentation.
 
         This method segments large documents into manageable pieces and processes
@@ -2327,16 +2333,17 @@ class ChunkingService:
                 - stats: Execution statistics including segmentation info
         """
         import time
+
         from packages.webui.services.chunking_constants import (
-            DEFAULT_SEGMENT_SIZE,
             DEFAULT_SEGMENT_OVERLAP,
+            DEFAULT_SEGMENT_SIZE,
             MAX_SEGMENTS_PER_DOCUMENT,
             STRATEGY_SEGMENT_THRESHOLDS,
         )
         from packages.webui.services.chunking_metrics import (
             record_document_segmented,
-            record_segments_created,
             record_segment_size,
+            record_segments_created,
         )
 
         start_time = time.time()
@@ -2476,13 +2483,13 @@ class ChunkingService:
         self,
         text: str,
         document_id: str,
-        collection: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-        file_type: Optional[str] = None,
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,
         chunk_id_start: int = 0,
         segment_idx: int = 0,
         total_segments: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Process a single segment of text.
 
         This is a helper method that processes a segment using the regular chunking logic
@@ -2516,8 +2523,8 @@ class ChunkingService:
         return result
 
     async def create_operation(
-        self, collection_id: str, operation_type: str, config: Dict[str, Any], user_id: int
-    ) -> Dict[str, Any]:
+        self, collection_id: str, operation_type: str, config: dict[str, Any], user_id: int
+    ) -> dict[str, Any]:
         """Create a new operation.
 
         This is an alias for start_chunking_operation for compatibility.
@@ -2542,7 +2549,7 @@ class ChunkingService:
         # This is a placeholder - actual implementation would be in a Celery task
         logger.info(f"Processing chunking operation {operation_id}")
 
-    async def update_collection(self, collection_id: str, updates: Dict[str, Any]) -> None:
+    async def update_collection(self, collection_id: str, updates: dict[str, Any]) -> None:
         """Update collection after chunking.
 
         Args:

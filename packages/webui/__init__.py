@@ -16,7 +16,7 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
 
         _orig_init = _fakeredis_aioredis.FakeRedis.__init__
 
-        def _patched_init(self, *args, **kwargs):  # type: ignore[no-redef]
+        def _patched_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
             _orig_init(self, *args, **kwargs)
             # Replace selected coroutine methods with AsyncMocks so tests can set return_value/side_effect
             for _name in (
@@ -37,7 +37,7 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
                 with contextlib.suppress(Exception):
                     setattr(self, _name, _AsyncMock())
 
-        _fakeredis_aioredis.FakeRedis.__init__ = _patched_init  # type: ignore[attr-defined]
+        _fakeredis_aioredis.FakeRedis.__init__ = _patched_init  # type: ignore[method-assign]
 
         # Provide enum-like aliases used in some tests without affecting iteration
         try:

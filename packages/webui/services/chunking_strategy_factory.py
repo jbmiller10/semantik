@@ -5,7 +5,7 @@ This module provides a centralized factory for instantiating chunking strategies
 removing the direct dependency and logic from routers.
 """
 
-from typing import Any, Dict, List, Optional, Type
+from typing import Any
 
 from packages.shared.chunking.domain.services.chunking_strategies import (
     STRATEGY_REGISTRY,
@@ -42,8 +42,8 @@ class ChunkingStrategyFactory:
     def create_strategy(
         cls,
         strategy_name: str | ChunkingStrategyEnum,
-        config: Dict[str, Any],  # noqa: ARG003
-        correlation_id: Optional[str] = None,
+        config: dict[str, Any],  # noqa: ARG003
+        correlation_id: str | None = None,
     ) -> Any:
         """
         Create a chunking strategy instance.
@@ -98,13 +98,13 @@ class ChunkingStrategyFactory:
             ) from e
 
     @classmethod
-    def get_available_strategies(cls) -> List[str]:
+    def get_available_strategies(cls) -> list[str]:
         """Get list of available strategy names."""
         # Return API-level strategy names
         return [s.value for s in ChunkingStrategyEnum]
 
     @classmethod
-    def get_internal_strategies(cls) -> List[str]:
+    def get_internal_strategies(cls) -> list[str]:
         """Get list of internal strategy implementations."""
         return list(STRATEGY_REGISTRY.keys())
 
@@ -112,8 +112,8 @@ class ChunkingStrategyFactory:
     def register_strategy(
         cls,
         name: str,
-        strategy_class: Type[Any],
-        api_enum: Optional[ChunkingStrategyEnum] = None,
+        strategy_class: type[Any],
+        api_enum: ChunkingStrategyEnum | None = None,
     ) -> None:
         """
         Register a custom strategy.
@@ -196,7 +196,7 @@ class ChunkingStrategyFactory:
         return direct_mappings.get(name, name)
 
     @classmethod
-    def get_strategy_info(cls, strategy_name: str | ChunkingStrategyEnum) -> Dict[str, Any]:
+    def get_strategy_info(cls, strategy_name: str | ChunkingStrategyEnum) -> dict[str, Any]:
         """
         Get information about a strategy.
 
@@ -240,9 +240,9 @@ class ChunkingStrategyFactory:
     def validate_strategy_compatibility(
         cls,
         strategy_name: str | ChunkingStrategyEnum,
-        file_type: Optional[str] = None,
-        content_type: Optional[str] = None,  # noqa: ARG003
-    ) -> Dict[str, Any]:
+        file_type: str | None = None,
+        content_type: str | None = None,  # noqa: ARG003
+    ) -> dict[str, Any]:
         """
         Validate if a strategy is compatible with given content.
 
@@ -256,7 +256,7 @@ class ChunkingStrategyFactory:
         """
         # Get strategy info
         if isinstance(strategy_name, ChunkingStrategyEnum):
-            strategy = strategy_name
+            strategy: ChunkingStrategyEnum | None = strategy_name
         else:
             # Try to map string to enum
             internal = cls._normalize_strategy_name(strategy_name)
@@ -301,7 +301,7 @@ class ChunkingStrategyFactory:
     def suggest_fallback_strategy(
         cls,
         failed_strategy: str | ChunkingStrategyEnum,
-        error_type: Optional[str] = None,
+        error_type: str | None = None,
     ) -> ChunkingStrategyEnum:
         """
         Suggest a fallback strategy when one fails.
@@ -323,7 +323,7 @@ class ChunkingStrategyFactory:
 
         # Strategy-specific fallbacks
         if isinstance(failed_strategy, ChunkingStrategyEnum):
-            strategy = failed_strategy
+            strategy: ChunkingStrategyEnum | None = failed_strategy
         else:
             internal = cls._normalize_strategy_name(failed_strategy)
             strategy = cls._reverse_mapping.get(internal)
@@ -337,4 +337,6 @@ class ChunkingStrategyFactory:
             ChunkingStrategyEnum.FIXED_SIZE: ChunkingStrategyEnum.FIXED_SIZE,  # No fallback
         }
 
-        return fallback_map.get(strategy, ChunkingStrategyEnum.RECURSIVE)
+        if strategy:
+            return fallback_map.get(strategy, ChunkingStrategyEnum.RECURSIVE)
+        return ChunkingStrategyEnum.RECURSIVE

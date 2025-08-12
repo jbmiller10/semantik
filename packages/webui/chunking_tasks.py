@@ -21,13 +21,17 @@ import time
 import traceback
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 import psutil
 from celery import Task, current_task
 from celery.exceptions import SoftTimeLimitExceeded
 from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
+from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import pg_connection_manager
@@ -176,8 +180,9 @@ class ChunkingTask(Task):
         try:
             # Get sync Redis client for Celery
             self._redis_client = get_redis_client()
-            # Initialize error handler with Redis client
-            self._error_handler = ChunkingErrorHandler(redis_client=self._redis_client)
+            # Initialize error handler with async Redis client (None for sync context)
+            # ChunkingErrorHandler can work without Redis for basic error handling
+            self._error_handler = ChunkingErrorHandler(redis_client=None)
         except Exception as e:
             logger.error(f"Failed to initialize task resources: {e}")
 
@@ -336,7 +341,7 @@ class ChunkingTask(Task):
         if self._redis_client:
             # Use sync Redis client directly to save retry state
             try:
-                retry_state = {
+                retry_state: "Mapping[str | bytes, bytes | float | int | str]" = {
                     "operation_id": operation_id,
                     "correlation_id": correlation_id,
                     "task_id": task_id,
@@ -702,7 +707,7 @@ def _process_chunking_operation_sync(
                         doc_content = doc_content.decode("utf-8")
 
                     # Simple chunking logic (character-based with overlap)
-                    doc_chunks = []
+                    doc_chunks: list[dict[str, Any]] = []
                     step = max(1, chunk_size - chunk_overlap)
 
                     for chunk_start in range(0, len(doc_content), step):
@@ -728,17 +733,18 @@ def _process_chunking_operation_sync(
                     # Store chunks in Redis
                     for chunk in doc_chunks:
                         chunk_key = f"chunk:{chunk['id']}"
+                        mapping_data: "Mapping[str | bytes, bytes | float | int | str]" = {
+                            "content": chunk["content"],
+                            "document_id": chunk["metadata"]["document_id"],
+                            "chunk_index": str(chunk["metadata"]["chunk_index"]),
+                            "created_at": datetime.now(UTC).isoformat(),
+                        }
                         redis_client.hset(
                             chunk_key,
-                            mapping={
-                                "content": chunk["content"],
-                                "document_id": chunk["metadata"]["document_id"],
-                                "chunk_index": str(chunk["metadata"]["chunk_index"]),
-                                "created_at": datetime.now(UTC).isoformat(),
-                            },
+                            mapping=mapping_data,
                         )
                         # Add to operation's chunk list
-                        redis_client.rpush(f"operation:{operation_id}:chunks", chunk["id"])
+                        redis_client.rpush(f"operation:{operation_id}:chunks", cast(str, chunk["id"]))
 
                     chunks_created += len(doc_chunks)
                     documents_processed += 1
@@ -854,7 +860,6 @@ async def _process_chunking_operation_async(
     # Initialize resources
     redis_client = get_redis_client()
     # ChunkingErrorHandler expects async Redis, create async client
-    from redis.asyncio import Redis as AsyncRedis
 
     from packages.shared.config import settings
 

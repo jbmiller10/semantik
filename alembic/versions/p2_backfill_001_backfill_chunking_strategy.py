@@ -15,19 +15,19 @@ Create Date: 2025-08-12 15:30:00.000000
 """
 
 import logging
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.sql import text
+
+from alembic import op
 
 logger = logging.getLogger(__name__)
 
 # revision identifiers, used by Alembic.
 revision: str = "p2_backfill_001"
-down_revision: Union[str, None] = "f1a2b3c4d5e6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "f1a2b3c4d5e6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -39,9 +39,9 @@ def upgrade() -> None:
         text(
             """
             SELECT EXISTS (
-                SELECT 1 
-                FROM information_schema.columns 
-                WHERE table_name = 'collections' 
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'collections'
                 AND column_name = 'chunking_strategy'
             )
         """
@@ -56,8 +56,8 @@ def upgrade() -> None:
     null_count = bind.execute(
         text(
             """
-            SELECT COUNT(*) 
-            FROM collections 
+            SELECT COUNT(*)
+            FROM collections
             WHERE chunking_strategy IS NULL
         """
         )
@@ -79,7 +79,7 @@ def upgrade() -> None:
             SET chunking_strategy = 'character'
             WHERE chunking_strategy IS NULL
             AND (
-                chunk_size != 1000 
+                chunk_size != 1000
                 OR chunk_overlap != 200
             )
             RETURNING id
@@ -111,8 +111,8 @@ def upgrade() -> None:
     remaining_nulls = bind.execute(
         text(
             """
-            SELECT COUNT(*) 
-            FROM collections 
+            SELECT COUNT(*)
+            FROM collections
             WHERE chunking_strategy IS NULL
         """
         )
@@ -154,9 +154,9 @@ def downgrade() -> None:
         text(
             """
             SELECT EXISTS (
-                SELECT 1 
-                FROM information_schema.columns 
-                WHERE table_name = 'collections' 
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'collections'
                 AND column_name = 'chunking_strategy'
             )
         """

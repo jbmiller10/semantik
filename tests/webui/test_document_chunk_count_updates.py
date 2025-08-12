@@ -4,9 +4,8 @@ This test suite ensures that Document.chunk_count is properly updated
 during APPEND and REINDEX operations with various chunking strategies.
 """
 
-import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +28,7 @@ from packages.webui.tasks import (
 class TestDocumentChunkCountUpdates:
     """Test Document.chunk_count updates during task processing."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_db(self):
         """Create a mock database session."""
         db = AsyncMock(spec=AsyncSession)
@@ -40,14 +39,14 @@ class TestDocumentChunkCountUpdates:
         db.flush = AsyncMock()
         return db
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_updater(self):
         """Create a mock operation updater."""
         updater = AsyncMock()
         updater.send_update = AsyncMock()
         return updater
 
-    @pytest.fixture
+    @pytest.fixture()
     def create_mock_document(self):
         """Factory fixture to create mock documents."""
 
@@ -64,14 +63,14 @@ class TestDocumentChunkCountUpdates:
 
         return _create
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.embed_texts")
     @patch("packages.webui.tasks.QdrantClient")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_append_updates_chunk_count_for_new_documents(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_qdrant,
         mock_embed_texts,
         mock_extract_text,
@@ -113,7 +112,7 @@ class TestDocumentChunkCountUpdates:
 
         # Setup ChunkingService to return different chunk counts
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
+        mock_chunking_service_class.return_value = mock_chunking_service
 
         chunk_results = [
             {
@@ -154,12 +153,12 @@ class TestDocumentChunkCountUpdates:
         for doc in docs:
             assert doc.status == DocumentStatus.COMPLETED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_append_preserves_chunk_count_on_failure(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_extract_text,
         mock_db,
         mock_updater,
@@ -192,25 +191,25 @@ class TestDocumentChunkCountUpdates:
 
         # Make chunking service raise an exception
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
-        mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=Exception("Chunking failed"))
+        mock_chunking_service_class.return_value = mock_chunking_service
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=RuntimeError("Chunking failed"))
 
         # Run APPEND operation (should fail)
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await _process_append_operation(mock_db, mock_updater, "op-fail-1")
 
         # Verify chunk_count was not changed
         assert doc.chunk_count == 10
         assert doc.status == DocumentStatus.FAILED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.embed_texts")
     @patch("packages.webui.tasks.QdrantClient")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_reindex_updates_chunk_count_correctly(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_qdrant,
         mock_embed_texts,
         mock_extract_text,
@@ -268,7 +267,7 @@ class TestDocumentChunkCountUpdates:
 
         # Setup ChunkingService with new chunk counts (semantic strategy produces fewer chunks)
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
+        mock_chunking_service_class.return_value = mock_chunking_service
 
         chunk_results = [
             {
@@ -300,14 +299,14 @@ class TestDocumentChunkCountUpdates:
         assert docs[0].chunk_count == 3  # Was 10, now 3
         assert docs[1].chunk_count == 4  # Was 15, now 4
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.embed_texts")
     @patch("packages.webui.tasks.QdrantClient")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_zero_for_empty_documents(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_qdrant,
         mock_embed_texts,
         mock_extract_text,
@@ -349,14 +348,14 @@ class TestDocumentChunkCountUpdates:
         assert doc.chunk_count == 0
         assert doc.status == DocumentStatus.COMPLETED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.embed_texts")
     @patch("packages.webui.tasks.QdrantClient")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_with_fallback_strategy(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_qdrant,
         mock_embed_texts,
         mock_extract_text,
@@ -390,7 +389,7 @@ class TestDocumentChunkCountUpdates:
 
         # Setup ChunkingService to simulate fallback
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
+        mock_chunking_service_class.return_value = mock_chunking_service
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(
             return_value={
                 "chunks": [
@@ -412,14 +411,14 @@ class TestDocumentChunkCountUpdates:
         assert doc.chunk_count == 7
         assert doc.status == DocumentStatus.COMPLETED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.embed_texts")
     @patch("packages.webui.tasks.QdrantClient")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_batch_document_chunk_count_updates(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_qdrant,
         mock_embed_texts,
         mock_extract_text,
@@ -455,7 +454,7 @@ class TestDocumentChunkCountUpdates:
 
         # Setup ChunkingService to return varying chunk counts
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
+        mock_chunking_service_class.return_value = mock_chunking_service
 
         chunk_results = []
         total_chunks = 0
@@ -487,12 +486,12 @@ class TestDocumentChunkCountUpdates:
             assert doc.chunk_count == expected_chunk_count
             assert doc.status == DocumentStatus.COMPLETED
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_text")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_persistence_across_retries(
         self,
-        MockChunkingService,
+        mock_chunking_service_class,
         mock_extract_text,
         mock_db,
         mock_updater,
@@ -524,7 +523,7 @@ class TestDocumentChunkCountUpdates:
 
         # Setup ChunkingService - succeed for first two, fail for third
         mock_chunking_service = MagicMock()
-        MockChunkingService.return_value = mock_chunking_service
+        mock_chunking_service_class.return_value = mock_chunking_service
 
         chunk_results = [
             {
@@ -535,28 +534,30 @@ class TestDocumentChunkCountUpdates:
                 "chunks": [{"chunk_id": "doc-1_chunk_0000", "text": "chunk", "metadata": {}}],
                 "stats": {"chunk_count": 2, "strategy_used": "recursive", "fallback": False},
             },
-            Exception("Failed to chunk third document"),
+            RuntimeError("Failed to chunk third document"),
         ]
 
         call_count = 0
 
-        async def chunking_side_effect(*args, **kwargs):
+        async def chunking_side_effect(*args, **kwargs):  # noqa: ARG001
             nonlocal call_count
             result = chunk_results[call_count]
             call_count += 1
-            if isinstance(result, Exception):
+            if isinstance(result, RuntimeError):
                 raise result
             return result
 
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunking_side_effect)
 
-        with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 3):
-            with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
-                mock_qdrant.return_value.upsert = MagicMock()
+        with (
+            patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 3),
+            patch("packages.webui.tasks.QdrantClient") as mock_qdrant,
+        ):
+            mock_qdrant.return_value.upsert = MagicMock()
 
-                # Run APPEND operation (should partially fail)
-                with pytest.raises(Exception):
-                    await _process_append_operation(mock_db, mock_updater, "op-retry-1")
+            # Run APPEND operation (should partially fail)
+            with pytest.raises(RuntimeError):
+                await _process_append_operation(mock_db, mock_updater, "op-retry-1")
 
         # Verify first two documents have updated chunk counts
         assert docs[0].chunk_count == 1

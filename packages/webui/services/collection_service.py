@@ -2,10 +2,11 @@
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from packages.shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
@@ -16,7 +17,6 @@ from packages.shared.database.models import Collection, CollectionStatus, Operat
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from packages.webui.celery_app import celery_app
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
@@ -49,9 +49,9 @@ class CollectionService:
         self,
         user_id: int,
         name: str,
-        description: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        description: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Create a new collection and dispatch indexing operation.
 
         Args:
@@ -191,8 +191,8 @@ class CollectionService:
         collection_id: str,
         user_id: int,
         source_path: str,
-        source_config: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        source_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Add a source to an existing collection.
 
         Args:
@@ -424,7 +424,7 @@ class CollectionService:
             logger.error(f"Failed to delete collection {collection_id}: {e}")
             raise
 
-    async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> Dict[str, Any]:
+    async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> dict[str, Any]:
         """Remove documents from a specific source.
 
         Args:
@@ -517,7 +517,7 @@ class CollectionService:
             include_public=include_public,
         )
 
-    async def update(self, collection_id: str, user_id: int, updates: Dict[str, Any]) -> Collection:
+    async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:
         """Update collection metadata with chunking validation.
 
         Args:
@@ -674,8 +674,6 @@ class CollectionService:
         Returns:
             Created operation data
         """
-        from packages.shared.database.models import OperationType
-
         # Get collection
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
             collection_uuid=collection_id,
@@ -718,7 +716,7 @@ class CollectionService:
         collection_id: str,
         updates: dict[str, Any],
         user_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Update collection settings (alias for update that returns dict).
 
         This method exists for backward compatibility with tests.
@@ -740,7 +738,7 @@ class CollectionService:
         # Build a stable dictionary representation (avoid repo.to_dict dependency)
         return self._collection_to_dict(updated_collection)
 
-    def _collection_to_dict(self, collection: Collection) -> Dict[str, Any]:
+    def _collection_to_dict(self, collection: Collection) -> dict[str, Any]:
         """Serialize a Collection ORM object into a response dictionary."""
         status_value = collection.status.value if hasattr(collection.status, "value") else collection.status
         base = {

@@ -6,17 +6,15 @@ Create Date: 2025-08-12 10:33:23.318557
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
-
 
 # revision identifiers, used by Alembic.
 revision: str = "d3673ca73e81"
-down_revision: Union[str, None] = "db004_add_chunking_indexes"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "db004_add_chunking_indexes"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -34,7 +32,7 @@ def upgrade() -> None:
     # Copy the current status values to the temp column
     op.execute(
         """
-        UPDATE operations 
+        UPDATE operations
         SET status_temp = status::text
     """
     )
@@ -51,7 +49,7 @@ def upgrade() -> None:
     # Populate the new status column with converted values
     op.execute(
         """
-        UPDATE operations 
+        UPDATE operations
         SET status = CASE status_temp
             WHEN 'PENDING' THEN 'pending'::operation_status_new
             WHEN 'PROCESSING' THEN 'processing'::operation_status_new
@@ -128,7 +126,7 @@ def downgrade() -> None:
     # Copy the current status values to the temp column
     op.execute(
         """
-        UPDATE operations 
+        UPDATE operations
         SET status_temp = status::text
     """
     )
@@ -145,7 +143,7 @@ def downgrade() -> None:
     # Populate the new status column with converted values
     op.execute(
         """
-        UPDATE operations 
+        UPDATE operations
         SET status = CASE status_temp
             WHEN 'pending' THEN 'PENDING'::operation_status_new
             WHEN 'processing' THEN 'PROCESSING'::operation_status_new

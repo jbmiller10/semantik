@@ -7,8 +7,6 @@ This script verifies that:
 3. Transaction boundaries are properly maintained
 """
 
-import asyncio
-import inspect
 import sys
 from pathlib import Path
 
@@ -22,8 +20,7 @@ def verify_reindex_chunk_count_update():
 
     # Check the code in tasks.py
     try:
-        with open("packages/webui/tasks.py", "r") as f:
-            content = f.read()
+        content = Path("packages/webui/tasks.py").read_text()
 
         # Check for chunk_count update after successful reprocessing
         checks = [
@@ -36,9 +33,8 @@ def verify_reindex_chunk_count_update():
         if all(checks):
             print("✅ REINDEX updates Document.chunk_count after successful processing")
             return True
-        else:
-            print("❌ REINDEX does not properly update Document.chunk_count")
-            return False
+        print("❌ REINDEX does not properly update Document.chunk_count")
+        return False
 
     except Exception as e:
         print(f"❌ Error checking REINDEX implementation: {e}")
@@ -50,8 +46,7 @@ def verify_failed_document_marking():
     print("\n🔍 Verifying Failed Document Status Update...")
 
     try:
-        with open("packages/webui/tasks.py", "r") as f:
-            content = f.read()
+        content = Path("packages/webui/tasks.py").read_text()
 
         # Check for failed document status update
         checks = [
@@ -64,9 +59,8 @@ def verify_failed_document_marking():
         if all(checks):
             print("✅ REINDEX marks failed documents as FAILED")
             return True
-        else:
-            print("❌ REINDEX does not properly mark failed documents")
-            return False
+        print("❌ REINDEX does not properly mark failed documents")
+        return False
 
     except Exception as e:
         print(f"❌ Error checking failed document handling: {e}")
@@ -78,8 +72,7 @@ def verify_transaction_boundaries():
     print("\n🔍 Verifying Transaction Boundaries...")
 
     try:
-        with open("packages/webui/tasks.py", "r") as f:
-            content = f.read()
+        content = Path("packages/webui/tasks.py").read_text()
 
         # Check that we're reusing existing repos instead of creating new ones
         checks = [
@@ -95,9 +88,8 @@ def verify_transaction_boundaries():
         if all(checks) and not any(bad_patterns):
             print("✅ Transaction boundaries properly maintained - reusing existing repository instances")
             return True
-        else:
-            print("⚠️  Transaction boundaries may have issues - check repository instantiation")
-            return False
+        print("⚠️  Transaction boundaries may have issues - check repository instantiation")
+        return False
 
     except Exception as e:
         print(f"❌ Error checking transaction boundaries: {e}")
@@ -109,8 +101,7 @@ def verify_consistency_between_operations():
     print("\n🔍 Verifying Consistency Between APPEND and REINDEX...")
 
     try:
-        with open("packages/webui/tasks.py", "r") as f:
-            content = f.read()
+        content = Path("packages/webui/tasks.py").read_text()
 
         # Check for chunk_count updates in both operations
         append_chunk_count = "chunk_count=len(chunks)" in content  # APPEND uses 'chunks'
@@ -119,14 +110,13 @@ def verify_consistency_between_operations():
         if append_chunk_count and reindex_chunk_count:
             print("✅ Both APPEND and REINDEX operations update chunk_count consistently")
             return True
-        else:
-            issues = []
-            if not append_chunk_count:
-                issues.append("APPEND missing chunk_count update")
-            if not reindex_chunk_count:
-                issues.append("REINDEX missing chunk_count update")
-            print(f"❌ Inconsistency found: {', '.join(issues)}")
-            return False
+        issues = []
+        if not append_chunk_count:
+            issues.append("APPEND missing chunk_count update")
+        if not reindex_chunk_count:
+            issues.append("REINDEX missing chunk_count update")
+        print(f"❌ Inconsistency found: {', '.join(issues)}")
+        return False
 
     except Exception as e:
         print(f"❌ Error checking consistency: {e}")
@@ -138,8 +128,7 @@ def check_imports():
     print("\n🔍 Verifying Required Imports...")
 
     try:
-        with open("packages/webui/tasks.py", "r") as f:
-            content = f.read()
+        content = Path("packages/webui/tasks.py").read_text()
 
         # Check for necessary imports
         imports = [
@@ -155,9 +144,8 @@ def check_imports():
         if not missing:
             print("✅ All required imports are present")
             return True
-        else:
-            print(f"❌ Missing imports: {missing}")
-            return False
+        print(f"❌ Missing imports: {missing}")
+        return False
 
     except Exception as e:
         print(f"❌ Error checking imports: {e}")
