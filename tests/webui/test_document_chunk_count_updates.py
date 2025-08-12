@@ -50,6 +50,7 @@ class TestDocumentChunkCountUpdates:
     @pytest.fixture
     def create_mock_document(self):
         """Factory fixture to create mock documents."""
+
         def _create(doc_id, file_path, chunk_count=0, status=DocumentStatus.PENDING):
             doc = MagicMock(spec=Document)
             doc.id = doc_id
@@ -60,13 +61,14 @@ class TestDocumentChunkCountUpdates:
             doc.created_at = datetime.now(UTC)
             doc.updated_at = datetime.now(UTC)
             return doc
+
         return _create
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_append_updates_chunk_count_for_new_documents(
         self,
         MockChunkingService,
@@ -85,7 +87,7 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         # Setup collection
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
@@ -97,61 +99,64 @@ class TestDocumentChunkCountUpdates:
         collection.chunking_config = {"chunk_size": 100}
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         # Create documents with initial chunk_count = 0
-        docs = [
-            create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0)
-            for i in range(3)
-        ]
-        
+        docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(3)]
+
         # Setup database mocks
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = docs
-        
+
         # Setup text extraction
         mock_extract_text.return_value = [("Sample text content", {})]
-        
+
         # Setup ChunkingService to return different chunk counts
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
-        
+
         chunk_results = [
             {
-                "chunks": [{"chunk_id": f"doc-0_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)],
+                "chunks": [
+                    {"chunk_id": f"doc-0_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)
+                ],
                 "stats": {"chunk_count": 5, "strategy_used": "recursive", "fallback": False},
             },
             {
-                "chunks": [{"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)],
+                "chunks": [
+                    {"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)
+                ],
                 "stats": {"chunk_count": 3, "strategy_used": "recursive", "fallback": False},
             },
             {
-                "chunks": [{"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(8)],
+                "chunks": [
+                    {"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(8)
+                ],
                 "stats": {"chunk_count": 8, "strategy_used": "recursive", "fallback": False},
             },
         ]
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
-        
+
         # Setup embeddings and Qdrant
         mock_embed_texts.return_value = [[0.1] * 384] * 16  # Total chunks
         mock_qdrant_instance = MagicMock()
         mock_qdrant.return_value = mock_qdrant_instance
-        
+
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-append-1")
-        
+
         # Verify chunk counts were updated
         assert docs[0].chunk_count == 5
         assert docs[1].chunk_count == 3
         assert docs[2].chunk_count == 8
-        
+
         # Verify documents were marked as completed
         for doc in docs:
             assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_append_preserves_chunk_count_on_failure(
         self,
         MockChunkingService,
@@ -168,43 +173,41 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
         collection.vector_collection_id = "vc-1"
         collection.status = CollectionStatus.READY
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         # Create document with existing chunk_count
         doc = create_mock_document("doc-fail", "/test/fail.txt", chunk_count=10)
-        
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
-        
+
         mock_extract_text.return_value = [("Text content", {})]
-        
+
         # Make chunking service raise an exception
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
-        mock_chunking_service.execute_ingestion_chunking = AsyncMock(
-            side_effect=Exception("Chunking failed")
-        )
-        
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=Exception("Chunking failed"))
+
         # Run APPEND operation (should fail)
         with pytest.raises(Exception):
             await _process_append_operation(mock_db, mock_updater, "op-fail-1")
-        
+
         # Verify chunk_count was not changed
         assert doc.chunk_count == 10
         assert doc.status == DocumentStatus.FAILED
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_reindex_updates_chunk_count_correctly(
         self,
         MockChunkingService,
@@ -228,7 +231,7 @@ class TestDocumentChunkCountUpdates:
             "chunk_size": 200,
             "chunk_overlap": 40,
         }
-        
+
         # Setup source collection
         source_collection = MagicMock(spec=Collection)
         source_collection.id = "coll-1"
@@ -238,7 +241,7 @@ class TestDocumentChunkCountUpdates:
         source_collection.chunking_strategy = "recursive"
         source_collection.chunk_size = 100
         source_collection.chunk_overlap = 20
-        
+
         # Setup staging collection
         staging_collection = MagicMock(spec=Collection)
         staging_collection.id = "coll-staging-1"
@@ -246,13 +249,13 @@ class TestDocumentChunkCountUpdates:
         staging_collection.vector_collection_id = "vc-staging"
         staging_collection.status = CollectionStatus.PROCESSING
         staging_collection.parent_collection_id = "coll-1"
-        
+
         # Create documents with old chunk counts
         docs = [
             create_mock_document("doc-1", "/test/file1.txt", chunk_count=10, status=DocumentStatus.COMPLETED),
             create_mock_document("doc-2", "/test/file2.txt", chunk_count=15, status=DocumentStatus.COMPLETED),
         ]
-        
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [
             source_collection,
@@ -260,42 +263,48 @@ class TestDocumentChunkCountUpdates:
             staging_collection,  # For swap
         ]
         mock_db.execute.return_value.scalars.return_value.all.return_value = docs
-        
+
         mock_extract_text.return_value = [("Reindexed content", {})]
-        
+
         # Setup ChunkingService with new chunk counts (semantic strategy produces fewer chunks)
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
-        
+
         chunk_results = [
             {
-                "chunks": [{"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"semantic chunk {i}", "metadata": {}} for i in range(3)],
+                "chunks": [
+                    {"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"semantic chunk {i}", "metadata": {}}
+                    for i in range(3)
+                ],
                 "stats": {"chunk_count": 3, "strategy_used": "semantic", "fallback": False},
             },
             {
-                "chunks": [{"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"semantic chunk {i}", "metadata": {}} for i in range(4)],
+                "chunks": [
+                    {"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"semantic chunk {i}", "metadata": {}}
+                    for i in range(4)
+                ],
                 "stats": {"chunk_count": 4, "strategy_used": "semantic", "fallback": False},
             },
         ]
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
-        
+
         mock_embed_texts.return_value = [[0.1] * 384] * 7  # Total chunks
         mock_qdrant_instance = MagicMock()
         mock_qdrant.return_value = mock_qdrant_instance
         mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=7)
-        
+
         # Run REINDEX operation
         await _process_reindex_operation(mock_db, mock_updater, "op-reindex-1")
-        
+
         # Verify chunk counts were updated with new values
         assert docs[0].chunk_count == 3  # Was 10, now 3
         assert docs[1].chunk_count == 4  # Was 15, now 4
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_zero_for_empty_documents(
         self,
         MockChunkingService,
@@ -313,38 +322,38 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
         collection.vector_collection_id = "vc-1"
         collection.status = CollectionStatus.READY
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         doc = create_mock_document("doc-empty", "/test/empty.txt", chunk_count=5)
-        
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
-        
+
         # Return empty text blocks
         mock_extract_text.return_value = []
-        
+
         mock_qdrant_instance = MagicMock()
         mock_qdrant.return_value = mock_qdrant_instance
-        
+
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-empty-1")
-        
+
         # Verify chunk_count is 0 for empty document
         assert doc.chunk_count == 0
         assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_with_fallback_strategy(
         self,
         MockChunkingService,
@@ -362,7 +371,7 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
         collection.vector_collection_id = "vc-1"
@@ -370,41 +379,44 @@ class TestDocumentChunkCountUpdates:
         collection.chunking_strategy = "invalid_strategy"
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         doc = create_mock_document("doc-fallback", "/test/fallback.txt", chunk_count=0)
-        
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
-        
+
         mock_extract_text.return_value = [("Text for fallback chunking", {})]
-        
+
         # Setup ChunkingService to simulate fallback
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(
             return_value={
-                "chunks": [{"chunk_id": f"doc-fallback_chunk_{i:04d}", "text": f"fallback chunk {i}", "metadata": {}} for i in range(7)],
+                "chunks": [
+                    {"chunk_id": f"doc-fallback_chunk_{i:04d}", "text": f"fallback chunk {i}", "metadata": {}}
+                    for i in range(7)
+                ],
                 "stats": {"chunk_count": 7, "strategy_used": "TokenChunker", "fallback": True},
             }
         )
-        
+
         mock_embed_texts.return_value = [[0.1] * 384] * 7
         mock_qdrant_instance = MagicMock()
         mock_qdrant.return_value = mock_qdrant_instance
-        
+
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-fallback-1")
-        
+
         # Verify chunk_count was updated correctly even with fallback
         assert doc.chunk_count == 7
         assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_batch_document_chunk_count_updates(
         self,
         MockChunkingService,
@@ -422,7 +434,7 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
         collection.vector_collection_id = "vc-1"
@@ -430,44 +442,45 @@ class TestDocumentChunkCountUpdates:
         collection.chunking_strategy = "recursive"
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         # Create a large batch of documents
         num_docs = 50
-        docs = [
-            create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0)
-            for i in range(num_docs)
-        ]
-        
+        docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(num_docs)]
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = docs
-        
+
         mock_extract_text.return_value = [("Batch document content", {})]
-        
+
         # Setup ChunkingService to return varying chunk counts
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
-        
+
         chunk_results = []
         total_chunks = 0
         for i in range(num_docs):
             chunk_count = (i % 10) + 1  # 1 to 10 chunks per document
-            chunks = [{"chunk_id": f"doc-{i}_chunk_{j:04d}", "text": f"chunk {j}", "metadata": {}} for j in range(chunk_count)]
-            chunk_results.append({
-                "chunks": chunks,
-                "stats": {"chunk_count": chunk_count, "strategy_used": "recursive", "fallback": False},
-            })
+            chunks = [
+                {"chunk_id": f"doc-{i}_chunk_{j:04d}", "text": f"chunk {j}", "metadata": {}} for j in range(chunk_count)
+            ]
+            chunk_results.append(
+                {
+                    "chunks": chunks,
+                    "stats": {"chunk_count": chunk_count, "strategy_used": "recursive", "fallback": False},
+                }
+            )
             total_chunks += chunk_count
-        
+
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
-        
+
         mock_embed_texts.return_value = [[0.1] * 384] * total_chunks
         mock_qdrant_instance = MagicMock()
         mock_qdrant.return_value = mock_qdrant_instance
-        
+
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-batch-1")
-        
+
         # Verify all documents have correct chunk counts
         for i, doc in enumerate(docs):
             expected_chunk_count = (i % 10) + 1
@@ -475,8 +488,8 @@ class TestDocumentChunkCountUpdates:
             assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.ChunkingService')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_persistence_across_retries(
         self,
         MockChunkingService,
@@ -492,30 +505,27 @@ class TestDocumentChunkCountUpdates:
         operation.type = OperationType.APPEND
         operation.status = OperationStatus.PROCESSING
         operation.config = {"source_id": "source-1"}
-        
+
         collection = MagicMock(spec=Collection)
         collection.id = "coll-1"
         collection.vector_collection_id = "vc-1"
         collection.status = CollectionStatus.READY
         collection.chunk_size = 100
         collection.chunk_overlap = 20
-        
+
         # Create multiple documents
-        docs = [
-            create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0)
-            for i in range(3)
-        ]
-        
+        docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(3)]
+
         mock_db.execute.return_value.scalar_one.return_value = operation
         mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         mock_db.execute.return_value.scalars.return_value.all.return_value = docs
-        
+
         mock_extract_text.return_value = [("Content", {})]
-        
+
         # Setup ChunkingService - succeed for first two, fail for third
         mock_chunking_service = MagicMock()
         MockChunkingService.return_value = mock_chunking_service
-        
+
         chunk_results = [
             {
                 "chunks": [{"chunk_id": "doc-0_chunk_0000", "text": "chunk", "metadata": {}}],
@@ -527,8 +537,9 @@ class TestDocumentChunkCountUpdates:
             },
             Exception("Failed to chunk third document"),
         ]
-        
+
         call_count = 0
+
         async def chunking_side_effect(*args, **kwargs):
             nonlocal call_count
             result = chunk_results[call_count]
@@ -536,23 +547,23 @@ class TestDocumentChunkCountUpdates:
             if isinstance(result, Exception):
                 raise result
             return result
-        
+
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunking_side_effect)
-        
-        with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384] * 3):
-            with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+        with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 3):
+            with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                 mock_qdrant.return_value.upsert = MagicMock()
-                
+
                 # Run APPEND operation (should partially fail)
                 with pytest.raises(Exception):
                     await _process_append_operation(mock_db, mock_updater, "op-retry-1")
-        
+
         # Verify first two documents have updated chunk counts
         assert docs[0].chunk_count == 1
         assert docs[1].chunk_count == 2
         # Third document should retain original count due to failure
         assert docs[2].chunk_count == 0
-        
+
         # Verify status updates
         assert docs[0].status == DocumentStatus.COMPLETED
         assert docs[1].status == DocumentStatus.COMPLETED

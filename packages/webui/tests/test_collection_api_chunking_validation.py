@@ -35,16 +35,16 @@ async def test_create_collection_with_invalid_chunking_strategy(authenticated_cl
             )
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.post(
             "/api/v2/collections",
             json={
                 "name": "Test Collection",
                 "description": "Test",
                 "chunking_strategy": "invalid_strategy",
-            }
+            },
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
         assert "Invalid chunking_strategy" in data["detail"]
@@ -59,12 +59,11 @@ async def test_create_collection_with_invalid_chunking_config(authenticated_clie
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
             side_effect=ValueError(
-                "Invalid chunking_config for strategy 'recursive': "
-                "chunk_size must be at least 10"
+                "Invalid chunking_config for strategy 'recursive': " "chunk_size must be at least 10"
             )
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.post(
             "/api/v2/collections",
             json={
@@ -72,9 +71,9 @@ async def test_create_collection_with_invalid_chunking_config(authenticated_clie
                 "description": "Test",
                 "chunking_strategy": "recursive",
                 "chunking_config": {"chunk_size": -100},
-            }
+            },
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
         assert "Invalid chunking_config" in data["detail"]
@@ -88,21 +87,19 @@ async def test_create_collection_with_config_but_no_strategy(authenticated_clien
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
-            side_effect=ValueError(
-                "chunking_config requires chunking_strategy to be specified"
-            )
+            side_effect=ValueError("chunking_config requires chunking_strategy to be specified")
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.post(
             "/api/v2/collections",
             json={
                 "name": "Test Collection",
                 "description": "Test",
                 "chunking_config": {"chunk_size": 500},
-            }
+            },
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
         assert "chunking_config requires chunking_strategy" in data["detail"]
@@ -112,7 +109,7 @@ async def test_create_collection_with_config_but_no_strategy(authenticated_clien
 async def test_update_collection_with_invalid_chunking_strategy(authenticated_client):
     """Test that API returns 400 for invalid chunking strategy on update."""
     collection_id = "test-uuid-123"
-    
+
     with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
@@ -123,12 +120,11 @@ async def test_update_collection_with_invalid_chunking_strategy(authenticated_cl
             )
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.patch(
-            f"/api/v2/collections/{collection_id}",
-            json={"chunking_strategy": "bad_strategy"}
+            f"/api/v2/collections/{collection_id}", json={"chunking_strategy": "bad_strategy"}
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
         assert "Invalid chunking_strategy" in data["detail"]
@@ -138,26 +134,22 @@ async def test_update_collection_with_invalid_chunking_strategy(authenticated_cl
 async def test_update_collection_with_invalid_config_for_strategy(authenticated_client):
     """Test that API returns 400 for invalid config on update."""
     collection_id = "test-uuid-123"
-    
+
     with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.update_collection = AsyncMock(
             side_effect=ValueError(
-                "Invalid chunking_config for strategy 'semantic': "
-                "similarity_threshold must be between 0 and 1"
+                "Invalid chunking_config for strategy 'semantic': " "similarity_threshold must be between 0 and 1"
             )
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.patch(
             f"/api/v2/collections/{collection_id}",
-            json={
-                "chunking_strategy": "semantic",
-                "chunking_config": {"similarity_threshold": 2.0}
-            }
+            json={"chunking_strategy": "semantic", "chunking_config": {"similarity_threshold": 2.0}},
         )
-        
+
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         data = response.json()
         assert "Invalid chunking_config" in data["detail"]
@@ -174,16 +166,16 @@ async def test_successful_collection_creation_with_valid_chunking(authenticated_
         mock_collection.name = "Test Collection"
         mock_collection.chunking_strategy = "recursive"
         mock_collection.chunking_config = {"chunk_size": 500, "chunk_overlap": 50}
-        
+
         mock_operation = {
             "uuid": "op-uuid-123",
             "collection_id": "new-uuid-123",
             "type": "index",
             "status": "pending",
             "meta": None,
-            "created_at": "2024-01-01T00:00:00"
+            "created_at": "2024-01-01T00:00:00",
         }
-        
+
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
             return_value=(
@@ -193,11 +185,11 @@ async def test_successful_collection_creation_with_valid_chunking(authenticated_
                     "chunking_strategy": mock_collection.chunking_strategy,
                     "chunking_config": mock_collection.chunking_config,
                 },
-                mock_operation
+                mock_operation,
             )
         )
         mock_get_service.return_value = mock_service
-        
+
         response = await authenticated_client.post(
             "/api/v2/collections",
             json={
@@ -205,9 +197,9 @@ async def test_successful_collection_creation_with_valid_chunking(authenticated_
                 "description": "Test",
                 "chunking_strategy": "recursive",
                 "chunking_config": {"chunk_size": 500, "chunk_overlap": 50},
-            }
+            },
         )
-        
+
         assert response.status_code == status.HTTP_201_CREATED
         data = response.json()
         assert data["collection"]["chunking_strategy"] == "recursive"

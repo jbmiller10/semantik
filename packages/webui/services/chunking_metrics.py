@@ -44,6 +44,36 @@ ingestion_avg_chunk_size_bytes = Summary(
     registry=registry,
 )
 
+# Segmentation metrics for Phase 3
+ingestion_segmented_documents_total = Counter(
+    "ingestion_segmented_documents_total",
+    "Total number of documents that required segmentation",
+    labelnames=["strategy"],
+    registry=registry,
+)
+
+ingestion_segments_total = Counter(
+    "ingestion_segments_total",
+    "Total number of segments created from large documents",
+    labelnames=["strategy"],
+    registry=registry,
+)
+
+ingestion_segment_size_bytes = Histogram(
+    "ingestion_segment_size_bytes",
+    "Size distribution of document segments in bytes",
+    labelnames=["strategy"],
+    buckets=(100000, 500000, 1000000, 2000000, 5000000, 10000000),  # 100KB to 10MB
+    registry=registry,
+)
+
+ingestion_streaming_used_total = Counter(
+    "ingestion_streaming_used_total",
+    "Total number of documents processed with streaming strategies",
+    labelnames=["strategy"],
+    registry=registry,
+)
+
 
 # Helper functions for recording metrics
 def record_chunking_duration(strategy: str, duration_seconds: float) -> None:
@@ -91,18 +121,56 @@ def record_chunk_sizes(strategy: str, chunks: List[Union[str, Dict[str, Any], An
     for chunk in chunks:
         if isinstance(chunk, dict):
             # Handle dictionary chunks with 'text' field
-            text = chunk.get('text', chunk.get('content', ''))
-            total_size += len(text.encode('utf-8'))
+            text = chunk.get("text", chunk.get("content", ""))
+            total_size += len(text.encode("utf-8"))
         elif isinstance(chunk, str):
             # Handle string chunks
-            total_size += len(chunk.encode('utf-8'))
-        elif hasattr(chunk, 'content'):
+            total_size += len(chunk.encode("utf-8"))
+        elif hasattr(chunk, "content"):
             # Handle chunk objects with content attribute
-            total_size += len(chunk.content.encode('utf-8'))
+            total_size += len(chunk.content.encode("utf-8"))
 
     if chunks:
         avg_size = total_size / len(chunks)
         ingestion_avg_chunk_size_bytes.labels(strategy=strategy).observe(avg_size)
+
+
+def record_document_segmented(strategy: str) -> None:
+    """Record that a document required segmentation.
+
+    Args:
+        strategy: The chunking strategy used
+    """
+    ingestion_segmented_documents_total.labels(strategy=strategy).inc()
+
+
+def record_segments_created(strategy: str, segment_count: int) -> None:
+    """Record the number of segments created for a document.
+
+    Args:
+        strategy: The chunking strategy used
+        segment_count: Number of segments created
+    """
+    ingestion_segments_total.labels(strategy=strategy).inc(segment_count)
+
+
+def record_segment_size(strategy: str, segment_size: int) -> None:
+    """Record the size of a document segment.
+
+    Args:
+        strategy: The chunking strategy used
+        segment_size: Size of the segment in bytes
+    """
+    ingestion_segment_size_bytes.labels(strategy=strategy).observe(segment_size)
+
+
+def record_streaming_used(strategy: str) -> None:
+    """Record that a document was processed using streaming.
+
+    Args:
+        strategy: The chunking strategy used
+    """
+    ingestion_streaming_used_total.labels(strategy=strategy).inc()
 
 
 # Export all metrics and helper functions
@@ -111,8 +179,16 @@ __all__ = [
     "ingestion_chunking_fallback_total",
     "ingestion_chunks_total",
     "ingestion_avg_chunk_size_bytes",
+    "ingestion_segmented_documents_total",
+    "ingestion_segments_total",
+    "ingestion_segment_size_bytes",
+    "ingestion_streaming_used_total",
     "record_chunking_duration",
     "record_chunking_fallback",
     "record_chunks_produced",
     "record_chunk_sizes",
+    "record_document_segmented",
+    "record_segments_created",
+    "record_segment_size",
+    "record_streaming_used",
 ]

@@ -134,20 +134,20 @@ class ChunkingStrategyFactory:
     @classmethod
     def normalize_strategy_name(cls, name: str) -> str:
         """Normalize strategy name variations to internal names.
-        
+
         Public method for normalizing strategy names before persistence.
-        
+
         Args:
             name: User-provided strategy name
-            
+
         Returns:
             Normalized internal strategy name
-            
+
         Raises:
             ChunkingStrategyError: If the strategy name is unknown or invalid
         """
         normalized = cls._normalize_strategy_name(name)
-        
+
         # Validate that the normalized name exists in registry
         if normalized not in STRATEGY_REGISTRY:
             available = cls.get_available_strategies()
@@ -156,16 +156,16 @@ class ChunkingStrategyFactory:
                 reason=f"Unknown strategy: {name}. Available: {', '.join(available)}",
                 correlation_id="validation",
             )
-        
+
         return normalized
-    
+
     @classmethod
     def _normalize_strategy_name(cls, name: str) -> str:
         """Internal normalize strategy name variations to internal names.
-        
+
         Args:
             name: Strategy name to normalize
-            
+
         Returns:
             Normalized internal strategy name (may not be valid)
         """

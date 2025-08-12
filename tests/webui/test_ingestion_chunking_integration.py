@@ -118,8 +118,8 @@ class TestExecuteIngestionChunking:
             MagicMock(content="Chunk 3 content"),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-123",
@@ -131,7 +131,7 @@ class TestExecuteIngestionChunking:
         # Verify result structure
         assert "chunks" in result
         assert "stats" in result
-        
+
         # Verify chunks
         chunks = result["chunks"]
         assert len(chunks) == 3
@@ -141,7 +141,7 @@ class TestExecuteIngestionChunking:
         assert chunks[0]["metadata"]["index"] == 0
         # Strategy could be stored as enum value or string
         assert chunks[0]["metadata"]["strategy"] in ["recursive", "ChunkingStrategy.RECURSIVE"]
-        
+
         # Verify stats
         stats = result["stats"]
         assert stats["strategy_used"] in ["recursive", "ChunkingStrategy.RECURSIVE"]
@@ -150,9 +150,7 @@ class TestExecuteIngestionChunking:
         assert "duration_ms" in stats
 
     @pytest.mark.asyncio
-    async def test_execute_ingestion_chunking_with_semantic_strategy(
-        self, chunking_service, sample_text
-    ):
+    async def test_execute_ingestion_chunking_with_semantic_strategy(self, chunking_service, sample_text):
         """Test successful chunking with semantic strategy."""
         collection = {
             "id": "coll-456",
@@ -165,15 +163,15 @@ class TestExecuteIngestionChunking:
             "chunk_size": 200,
             "chunk_overlap": 50,
         }
-        
+
         mock_strategy = MagicMock()
         mock_chunks = [
             MagicMock(content="Semantic chunk 1"),
             MagicMock(content="Semantic chunk 2"),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-456",
@@ -185,9 +183,7 @@ class TestExecuteIngestionChunking:
         assert len(result["chunks"]) == 2
 
     @pytest.mark.asyncio
-    async def test_execute_ingestion_chunking_with_document_structure_strategy(
-        self, chunking_service, sample_text
-    ):
+    async def test_execute_ingestion_chunking_with_document_structure_strategy(self, chunking_service, sample_text):
         """Test successful chunking with document_structure (markdown) strategy."""
         collection = {
             "id": "coll-789",
@@ -200,7 +196,7 @@ class TestExecuteIngestionChunking:
             "chunk_size": 150,
             "chunk_overlap": 30,
         }
-        
+
         mock_strategy = MagicMock()
         mock_chunks = [
             MagicMock(content="Structure chunk 1"),
@@ -209,8 +205,8 @@ class TestExecuteIngestionChunking:
             MagicMock(content="Structure chunk 4"),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-789",
@@ -218,9 +214,17 @@ class TestExecuteIngestionChunking:
                 file_type="md",
             )
 
-        assert result["stats"]["strategy_used"] in ["markdown", "ChunkingStrategy.MARKDOWN", "ChunkingStrategy.DOCUMENT_STRUCTURE"]
+        assert result["stats"]["strategy_used"] in [
+            "markdown",
+            "ChunkingStrategy.MARKDOWN",
+            "ChunkingStrategy.DOCUMENT_STRUCTURE",
+        ]
         assert result["stats"]["chunk_count"] == 4
-        assert result["chunks"][0]["metadata"]["strategy"] in ["markdown", "ChunkingStrategy.MARKDOWN", "ChunkingStrategy.DOCUMENT_STRUCTURE"]
+        assert result["chunks"][0]["metadata"]["strategy"] in [
+            "markdown",
+            "ChunkingStrategy.MARKDOWN",
+            "ChunkingStrategy.DOCUMENT_STRUCTURE",
+        ]
 
     @pytest.mark.asyncio
     async def test_execute_ingestion_chunking_fallback_to_token_chunker_on_missing_strategy(
@@ -234,8 +238,8 @@ class TestExecuteIngestionChunking:
             "chunk_size": 100,
             "chunk_overlap": 20,
         }
-        
-        with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+
+        with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
             mock_chunker = MagicMock()
             MockTokenChunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
@@ -250,7 +254,7 @@ class TestExecuteIngestionChunking:
                     "metadata": {"index": 1},
                 },
             ]
-            
+
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-999",
@@ -260,16 +264,14 @@ class TestExecuteIngestionChunking:
         # Verify TokenChunker was called with correct parameters
         MockTokenChunker.assert_called_once_with(chunk_size=100, chunk_overlap=20)
         mock_chunker.chunk_text.assert_called_once()
-        
+
         # Verify result
         assert result["stats"]["strategy_used"] == "TokenChunker"
         assert result["stats"]["fallback"] is False  # Not a fallback, just default behavior
         assert result["stats"]["chunk_count"] == 2
 
     @pytest.mark.asyncio
-    async def test_execute_ingestion_chunking_fallback_on_invalid_config(
-        self, chunking_service, sample_text
-    ):
+    async def test_execute_ingestion_chunking_fallback_on_invalid_config(self, chunking_service, sample_text):
         """Test fallback to TokenChunker when configuration is invalid."""
         collection = {
             "id": "coll-bad-config",
@@ -282,16 +284,16 @@ class TestExecuteIngestionChunking:
             "chunk_size": 100,
             "chunk_overlap": 20,
         }
-        
+
         # Mock config builder to return validation errors
-        with patch.object(chunking_service.config_builder, 'build_config') as mock_build_config:
+        with patch.object(chunking_service.config_builder, "build_config") as mock_build_config:
             mock_build_config.return_value = MagicMock(
                 validation_errors=["Invalid chunk_size: must be a number"],
                 strategy="recursive",
                 config={},
             )
-            
-            with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+
+            with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
                 mock_chunker = MagicMock()
                 MockTokenChunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [
@@ -301,7 +303,7 @@ class TestExecuteIngestionChunking:
                         "metadata": {},
                     },
                 ]
-                
+
                 result = await chunking_service.execute_ingestion_chunking(
                     text=sample_text,
                     document_id="doc-bad",
@@ -321,9 +323,9 @@ class TestExecuteIngestionChunking:
         # Mock strategy to raise an exception
         mock_strategy = MagicMock()
         mock_strategy.chunk.side_effect = RuntimeError("Strategy execution failed")
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
-            with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
+            with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
                 mock_chunker = MagicMock()
                 MockTokenChunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [
@@ -333,7 +335,7 @@ class TestExecuteIngestionChunking:
                         "metadata": {},
                     },
                 ]
-                
+
                 result = await chunking_service.execute_ingestion_chunking(
                     text=sample_text,
                     document_id="doc-123",
@@ -349,8 +351,10 @@ class TestExecuteIngestionChunking:
         self, chunking_service, sample_text, sample_collection
     ):
         """Test fallback to TokenChunker when config building fails."""
-        with patch.object(chunking_service.config_builder, 'build_config', side_effect=Exception("Config build failed")):
-            with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+        with patch.object(
+            chunking_service.config_builder, "build_config", side_effect=Exception("Config build failed")
+        ):
+            with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
                 mock_chunker = MagicMock()
                 MockTokenChunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [
@@ -360,7 +364,7 @@ class TestExecuteIngestionChunking:
                         "metadata": {},
                     },
                 ]
-                
+
                 result = await chunking_service.execute_ingestion_chunking(
                     text=sample_text,
                     document_id="doc-123",
@@ -380,14 +384,14 @@ class TestExecuteIngestionChunking:
             "date": "2024-01-01",
             "custom_field": "custom_value",
         }
-        
+
         mock_strategy = MagicMock()
         mock_chunks = [
             MagicMock(content="Chunk with metadata"),
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-meta",
@@ -409,12 +413,10 @@ class TestExecuteIngestionChunking:
     ):
         """Test correct chunk ID generation format."""
         mock_strategy = MagicMock()
-        mock_chunks = [
-            MagicMock(content=f"Chunk {i}") for i in range(15)
-        ]
+        mock_chunks = [MagicMock(content=f"Chunk {i}") for i in range(15)]
         mock_strategy.chunk.return_value = mock_chunks
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=sample_text,
                 document_id="doc-abc123",
@@ -433,7 +435,7 @@ class TestExecuteIngestionChunking:
     ):
         """Test that fatal errors are propagated correctly."""
         # Mock TokenChunker to also fail (simulating unrecoverable error)
-        with patch('shared.text_processing.chunking.TokenChunker', side_effect=MemoryError("Out of memory")):
+        with patch("shared.text_processing.chunking.TokenChunker", side_effect=MemoryError("Out of memory")):
             with pytest.raises(MemoryError):
                 await chunking_service.execute_ingestion_chunking(
                     text=sample_text,
@@ -488,9 +490,9 @@ class TestAppendTaskIntegration:
         }
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
     async def test_append_task_uses_execute_ingestion_chunking(
         self, mock_qdrant_client, mock_embed_texts, mock_extract_text, mock_dependencies
     ):
@@ -501,31 +503,31 @@ class TestAppendTaskIntegration:
         operation = mock_dependencies["operation"]
         collection = mock_dependencies["collection"]
         documents = mock_dependencies["documents"]
-        
+
         # Mock database queries
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]  # collection, then no staging
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         # Mock text extraction
         mock_extract_text.return_value = [
             ("Document 1 text content", {"page": 1}),
             ("Document 1 more content", {"page": 2}),
         ]
-        
+
         # Mock embeddings
         mock_embed_texts.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-        
+
         # Mock Qdrant
         mock_qdrant_instance = MagicMock()
         mock_qdrant_client.return_value = mock_qdrant_instance
         mock_qdrant_instance.upsert.return_value = MagicMock()
-        
+
         # Mock ChunkingService
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             # Mock execute_ingestion_chunking to return chunks
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
@@ -549,24 +551,24 @@ class TestAppendTaskIntegration:
                     },
                 }
             )
-            
+
             # Run the APPEND operation
             await _process_append_operation(db, updater, "op-123")
-            
+
             # Verify execute_ingestion_chunking was called
             mock_chunking_service.execute_ingestion_chunking.assert_called()
-            
+
             # Verify the call arguments
             call_args = mock_chunking_service.execute_ingestion_chunking.call_args
             assert call_args[1]["document_id"] == "doc-1"
             assert "collection" in call_args[1]
             assert call_args[1]["collection"]["chunking_strategy"] == "recursive"
-            
+
             # Verify document chunk_count was updated
             assert documents[0].chunk_count == 2
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_append_task_updates_chunk_count_correctly(self, mock_extract_text, mock_dependencies):
         """Test that APPEND task correctly updates Document.chunk_count."""
         db = mock_dependencies["db"]
@@ -574,46 +576,50 @@ class TestAppendTaskIntegration:
         operation = mock_dependencies["operation"]
         collection = mock_dependencies["collection"]
         documents = mock_dependencies["documents"]
-        
+
         # Setup database mocks
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         # Mock text extraction
         mock_extract_text.return_value = [("Test content", {})]
-        
+
         # Mock ChunkingService with different chunk counts for each document
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             # Return different chunk counts for each document
             chunk_results = [
                 {
-                    "chunks": [{"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)],
+                    "chunks": [
+                        {"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)
+                    ],
                     "stats": {"chunk_count": 5, "strategy_used": "recursive", "fallback": False},
                 },
                 {
-                    "chunks": [{"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)],
+                    "chunks": [
+                        {"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)
+                    ],
                     "stats": {"chunk_count": 3, "strategy_used": "recursive", "fallback": False},
                 },
             ]
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
-            
+
             # Mock other dependencies
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384] * 8):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 8):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant.return_value.upsert = MagicMock()
-                    
+
                     await _process_append_operation(db, updater, "op-123")
-            
+
             # Verify chunk counts were updated correctly
             assert documents[0].chunk_count == 5
             assert documents[1].chunk_count == 3
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_append_task_handles_different_strategies(self, mock_extract_text, mock_dependencies):
         """Test that APPEND task correctly handles different chunking strategies."""
         db = mock_dependencies["db"]
@@ -621,40 +627,42 @@ class TestAppendTaskIntegration:
         operation = mock_dependencies["operation"]
         collection = mock_dependencies["collection"]
         documents = [mock_dependencies["documents"][0]]  # Single document
-        
+
         # Test with semantic strategy
         collection.chunking_strategy = "semantic"
         collection.chunking_config = {"buffer_size": 1, "breakpoint_percentile_threshold": 95}
-        
+
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         mock_extract_text.return_value = [("Test content for semantic chunking", {})]
-        
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
-                    "chunks": [{"chunk_id": "doc-1_chunk_0000", "text": "Semantic chunk", "metadata": {"strategy": "semantic"}}],
+                    "chunks": [
+                        {"chunk_id": "doc-1_chunk_0000", "text": "Semantic chunk", "metadata": {"strategy": "semantic"}}
+                    ],
                     "stats": {"chunk_count": 1, "strategy_used": "semantic", "fallback": False},
                 }
             )
-            
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384]):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384]):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant.return_value.upsert = MagicMock()
-                    
+
                     await _process_append_operation(db, updater, "op-123")
-            
+
             # Verify semantic strategy was used
             call_args = mock_chunking_service.execute_ingestion_chunking.call_args
             assert call_args[1]["collection"]["chunking_strategy"] == "semantic"
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_append_task_handles_fallback_gracefully(self, mock_extract_text, mock_dependencies):
         """Test that APPEND task handles fallback to TokenChunker gracefully."""
         db = mock_dependencies["db"]
@@ -662,17 +670,17 @@ class TestAppendTaskIntegration:
         operation = mock_dependencies["operation"]
         collection = mock_dependencies["collection"]
         documents = [mock_dependencies["documents"][0]]
-        
+
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         mock_extract_text.return_value = [("Test content", {})]
-        
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             # Simulate fallback scenario
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
@@ -680,13 +688,13 @@ class TestAppendTaskIntegration:
                     "stats": {"chunk_count": 1, "strategy_used": "TokenChunker", "fallback": True},
                 }
             )
-            
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384]):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384]):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant.return_value.upsert = MagicMock()
-                    
+
                     await _process_append_operation(db, updater, "op-123")
-            
+
             # Verify operation completed successfully despite fallback
             assert documents[0].chunk_count == 1
             assert operation.status != OperationStatus.FAILED
@@ -744,9 +752,9 @@ class TestReindexTaskIntegration:
         }
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
-    @patch('packages.webui.tasks.embed_texts')
-    @patch('packages.webui.tasks.QdrantClient')
+    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.embed_texts")
+    @patch("packages.webui.tasks.QdrantClient")
     async def test_reindex_task_uses_execute_ingestion_chunking(
         self, mock_qdrant_client, mock_embed_texts, mock_extract_text, mock_reindex_dependencies
     ):
@@ -757,7 +765,7 @@ class TestReindexTaskIntegration:
         source_collection = mock_reindex_dependencies["source_collection"]
         staging_collection = mock_reindex_dependencies["staging_collection"]
         documents = mock_reindex_dependencies["documents"]
-        
+
         # Setup database mocks
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [
@@ -766,13 +774,13 @@ class TestReindexTaskIntegration:
             staging_collection,  # For the swap
         ]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         # Mock text extraction
         mock_extract_text.return_value = [("# Markdown content\n\nParagraph text", {})]
-        
+
         # Mock embeddings
         mock_embed_texts.return_value = [[0.1, 0.2, 0.3]]
-        
+
         # Mock Qdrant
         mock_qdrant_instance = MagicMock()
         mock_qdrant_client.return_value = mock_qdrant_instance
@@ -780,12 +788,12 @@ class TestReindexTaskIntegration:
         mock_qdrant_instance.delete_collection.return_value = MagicMock()
         mock_qdrant_instance.recreate_collection.return_value = MagicMock()
         mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=1)
-        
+
         # Mock ChunkingService
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
                     "chunks": [
@@ -803,13 +811,13 @@ class TestReindexTaskIntegration:
                     },
                 }
             )
-            
+
             await _process_reindex_operation(db, updater, "op-reindex-123")
-            
+
             # Verify execute_ingestion_chunking was called with overridden config
             call_args = mock_chunking_service.execute_ingestion_chunking.call_args
             collection_arg = call_args[1]["collection"]
-            
+
             # Verify strategy override from new_config
             assert collection_arg["chunking_strategy"] == "markdown"
             assert collection_arg["chunking_config"]["preserve_structure"] is True
@@ -817,7 +825,7 @@ class TestReindexTaskIntegration:
             assert collection_arg["chunk_overlap"] == 30
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_reindex_task_preserves_staging_collection(self, mock_extract_text, mock_reindex_dependencies):
         """Test that REINDEX task correctly uses staging collection."""
         db = mock_reindex_dependencies["db"]
@@ -826,7 +834,7 @@ class TestReindexTaskIntegration:
         source_collection = mock_reindex_dependencies["source_collection"]
         staging_collection = mock_reindex_dependencies["staging_collection"]
         documents = mock_reindex_dependencies["documents"]
-        
+
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [
             source_collection,
@@ -834,35 +842,35 @@ class TestReindexTaskIntegration:
             staging_collection,
         ]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         mock_extract_text.return_value = [("Test content", {})]
-        
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
                     "chunks": [{"chunk_id": "doc_chunk_0000", "text": "chunk", "metadata": {}}],
                     "stats": {"chunk_count": 1, "strategy_used": "markdown", "fallback": False},
                 }
             )
-            
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384]):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384]):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant_instance = MagicMock()
                     mock_qdrant.return_value = mock_qdrant_instance
                     mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=1)
-                    
+
                     await _process_reindex_operation(db, updater, "op-reindex-123")
-                    
+
                     # Verify staging collection was used for indexing
                     mock_qdrant_instance.upsert.assert_called()
                     upsert_call = mock_qdrant_instance.upsert.call_args
                     assert upsert_call[1]["collection_name"] == "vc-staging"
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_reindex_task_updates_document_chunk_count(self, mock_extract_text, mock_reindex_dependencies):
         """Test that REINDEX task correctly updates Document.chunk_count."""
         db = mock_reindex_dependencies["db"]
@@ -870,7 +878,7 @@ class TestReindexTaskIntegration:
         operation = mock_reindex_dependencies["operation"]
         source_collection = mock_reindex_dependencies["source_collection"]
         staging_collection = mock_reindex_dependencies["staging_collection"]
-        
+
         # Create multiple documents with different initial chunk counts
         documents = [
             MagicMock(
@@ -882,7 +890,7 @@ class TestReindexTaskIntegration:
             )
             for i in range(3)
         ]
-        
+
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [
             source_collection,
@@ -890,38 +898,41 @@ class TestReindexTaskIntegration:
             staging_collection,
         ]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         mock_extract_text.return_value = [("Content to chunk", {})]
-        
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             # Different chunk counts for each document
             chunk_results = [
                 {
-                    "chunks": [{"chunk_id": f"doc-{i}_chunk_{j:04d}", "text": f"chunk {j}", "metadata": {}} for j in range(i + 2)],
+                    "chunks": [
+                        {"chunk_id": f"doc-{i}_chunk_{j:04d}", "text": f"chunk {j}", "metadata": {}}
+                        for j in range(i + 2)
+                    ],
                     "stats": {"chunk_count": i + 2, "strategy_used": "markdown", "fallback": False},
                 }
                 for i in range(3)
             ]
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
-            
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384] * 9):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 9):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant_instance = MagicMock()
                     mock_qdrant.return_value = mock_qdrant_instance
                     mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=9)
-                    
+
                     await _process_reindex_operation(db, updater, "op-reindex-123")
-            
+
             # Verify chunk counts were updated
             assert documents[0].chunk_count == 2  # Was 10, now 2
             assert documents[1].chunk_count == 3  # Was 10, now 3
             assert documents[2].chunk_count == 4  # Was 10, now 4
 
     @pytest.mark.asyncio
-    @patch('packages.webui.tasks.extract_text')
+    @patch("packages.webui.tasks.extract_text")
     async def test_reindex_task_without_strategy_override(self, mock_extract_text, mock_reindex_dependencies):
         """Test REINDEX task when new_config doesn't override strategy."""
         db = mock_reindex_dependencies["db"]
@@ -930,10 +941,10 @@ class TestReindexTaskIntegration:
         source_collection = mock_reindex_dependencies["source_collection"]
         staging_collection = mock_reindex_dependencies["staging_collection"]
         documents = mock_reindex_dependencies["documents"]
-        
+
         # Operation config without strategy override
         operation.config = {"chunk_size": 200}  # Only override chunk_size
-        
+
         db.execute.return_value.scalar_one.return_value = operation
         db.execute.return_value.scalar_one_or_none.side_effect = [
             source_collection,
@@ -941,28 +952,28 @@ class TestReindexTaskIntegration:
             staging_collection,
         ]
         db.execute.return_value.scalars.return_value.all.return_value = documents
-        
+
         mock_extract_text.return_value = [("Content", {})]
-        
-        with patch('packages.webui.tasks.ChunkingService') as MockChunkingService:
+
+        with patch("packages.webui.tasks.ChunkingService") as MockChunkingService:
             mock_chunking_service = MagicMock()
             MockChunkingService.return_value = mock_chunking_service
-            
+
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
                     "chunks": [{"chunk_id": "chunk_0000", "text": "chunk", "metadata": {}}],
                     "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False},
                 }
             )
-            
-            with patch('packages.webui.tasks.embed_texts', return_value=[[0.1] * 384]):
-                with patch('packages.webui.tasks.QdrantClient') as mock_qdrant:
+
+            with patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384]):
+                with patch("packages.webui.tasks.QdrantClient") as mock_qdrant:
                     mock_qdrant_instance = MagicMock()
                     mock_qdrant.return_value = mock_qdrant_instance
                     mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=1)
-                    
+
                     await _process_reindex_operation(db, updater, "op-reindex-123")
-            
+
             # Verify original strategy was preserved
             call_args = mock_chunking_service.execute_ingestion_chunking.call_args
             collection_arg = call_args[1]["collection"]
@@ -979,7 +990,7 @@ class TestErrorHandlingAndEdgeCases:
         mock_db = AsyncMock(spec=AsyncSession)
         mock_collection_repo = MagicMock(spec=CollectionRepository)
         mock_document_repo = MagicMock(spec=DocumentRepository)
-        
+
         return ChunkingService(
             db_session=mock_db,
             collection_repo=mock_collection_repo,
@@ -998,11 +1009,11 @@ class TestErrorHandlingAndEdgeCases:
             "chunk_size": 100,
             "chunk_overlap": 20,
         }
-        
+
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = []
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text="",
                 document_id="doc-empty",
@@ -1017,18 +1028,18 @@ class TestErrorHandlingAndEdgeCases:
         """Test handling of very large text input."""
         # Create a large text (1MB)
         large_text = "x" * (1024 * 1024)
-        
+
         collection = {
             "id": "coll-large",
             "name": "Large Collection",
             "chunk_size": 1000,
             "chunk_overlap": 100,
         }
-        
-        with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+
+        with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
             mock_chunker = MagicMock()
             MockTokenChunker.return_value = mock_chunker
-            
+
             # Simulate chunking large text into many chunks
             num_chunks = 1000
             mock_chunker.chunk_text.return_value = [
@@ -1039,7 +1050,7 @@ class TestErrorHandlingAndEdgeCases:
                 }
                 for i in range(num_chunks)
             ]
-            
+
             result = await chunking_service.execute_ingestion_chunking(
                 text=large_text,
                 document_id="doc-large",
@@ -1053,7 +1064,7 @@ class TestErrorHandlingAndEdgeCases:
     async def test_execute_ingestion_chunking_special_characters(self, chunking_service):
         """Test handling of text with special characters."""
         special_text = "Text with 特殊字符 and émojis 🎉 and symbols ©®™"
-        
+
         collection = {
             "id": "coll-special",
             "name": "Special Collection",
@@ -1062,15 +1073,15 @@ class TestErrorHandlingAndEdgeCases:
             "chunk_size": 50,
             "chunk_overlap": 10,
         }
-        
+
         mock_strategy = MagicMock()
         mock_strategy.chunk.return_value = [
             MagicMock(content="Text with 特殊字符"),
             MagicMock(content="and émojis 🎉"),
             MagicMock(content="and symbols ©®™"),
         ]
-        
-        with patch.object(chunking_service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+        with patch.object(chunking_service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await chunking_service.execute_ingestion_chunking(
                 text=special_text,
                 document_id="doc-special",
@@ -1085,25 +1096,25 @@ class TestErrorHandlingAndEdgeCases:
     async def test_execute_ingestion_chunking_performance_timing(self, chunking_service):
         """Test that duration_ms is calculated correctly."""
         import time
-        
+
         collection = {
             "id": "coll-timing",
             "name": "Timing Collection",
             "chunk_size": 100,
             "chunk_overlap": 20,
         }
-        
-        with patch('shared.text_processing.chunking.TokenChunker') as MockTokenChunker:
+
+        with patch("shared.text_processing.chunking.TokenChunker") as MockTokenChunker:
             mock_chunker = MagicMock()
             MockTokenChunker.return_value = mock_chunker
-            
+
             # Simulate some processing time
             def slow_chunk_text(*args, **kwargs):
                 time.sleep(0.1)  # 100ms delay
                 return [{"chunk_id": "chunk_0000", "text": "chunk", "metadata": {}}]
-            
+
             mock_chunker.chunk_text = slow_chunk_text
-            
+
             result = await chunking_service.execute_ingestion_chunking(
                 text="Test text",
                 document_id="doc-timing",

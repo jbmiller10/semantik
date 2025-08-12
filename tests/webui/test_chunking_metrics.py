@@ -36,7 +36,7 @@ class TestChunkingMetrics:
         # Clear all metrics in the registry
         for collector in list(REGISTRY._collector_to_names.keys()):
             try:
-                if hasattr(collector, '_metrics'):
+                if hasattr(collector, "_metrics"):
                     collector._metrics.clear()
             except AttributeError:
                 pass
@@ -44,7 +44,7 @@ class TestChunkingMetrics:
         # Clean up after test
         for collector in list(REGISTRY._collector_to_names.keys()):
             try:
-                if hasattr(collector, '_metrics'):
+                if hasattr(collector, "_metrics"):
                     collector._metrics.clear()
             except AttributeError:
                 pass
@@ -62,7 +62,7 @@ class TestChunkingMetrics:
     @pytest.fixture
     def mock_token_chunker(self):
         """Mock TokenChunker for fallback scenarios."""
-        with patch('packages.webui.services.chunking_service.TokenChunker') as mock:
+        with patch("packages.webui.services.chunking_service.TokenChunker") as mock:
             instance = mock.return_value
             instance.chunk_text.return_value = [
                 {
@@ -91,12 +91,12 @@ class TestChunkingMetrics:
             metric_name = counter._name
             label_values = tuple(labels[k] for k in counter._labelnames)
             key = (metric_name,) + label_values
-            
+
             # Try to get from the metric's metrics dict
-            if hasattr(counter, '_metrics'):
+            if hasattr(counter, "_metrics"):
                 if key in counter._metrics:
                     return counter._metrics[key]._value.get()
-            
+
             # Otherwise, create the metric with labels and get value
             return counter.labels(**labels)._value.get()
         except Exception:
@@ -110,20 +110,20 @@ class TestChunkingMetrics:
             if label_values in histogram._metrics:
                 metric = histogram._metrics[label_values]
                 # Get samples and look for _count
-                if hasattr(metric, '_samples'):
+                if hasattr(metric, "_samples"):
                     samples = metric._samples()
                     for sample in samples:
-                        if sample.name == '_count':
+                        if sample.name == "_count":
                             return sample.value
                 # Fallback: count observations in buckets
-                if hasattr(metric, '_buckets'):
+                if hasattr(metric, "_buckets"):
                     # Sum up the incremental bucket counts
                     total = 0
                     prev_count = 0
                     for bucket in metric._buckets:
                         bucket_count = bucket.get()
                         if bucket_count > prev_count:
-                            total += (bucket_count - prev_count)
+                            total += bucket_count - prev_count
                             prev_count = bucket_count
                     return total
             return 0
@@ -137,7 +137,7 @@ class TestChunkingMetrics:
             label_values = tuple(labels[k] for k in histogram._labelnames)
             if label_values in histogram._metrics:
                 metric = histogram._metrics[label_values]
-                if hasattr(metric, '_sum'):
+                if hasattr(metric, "_sum"):
                     return metric._sum.get()
             return 0.0
         except Exception as e:
@@ -148,7 +148,7 @@ class TestChunkingMetrics:
         try:
             # Access the labeled metric
             labeled_metric = summary.labels(**labels)
-            if hasattr(labeled_metric, '_count'):
+            if hasattr(labeled_metric, "_count"):
                 return labeled_metric._count.get()
             return 0
         except Exception:
@@ -159,7 +159,7 @@ class TestChunkingMetrics:
         try:
             # Access the labeled metric
             labeled_metric = summary.labels(**labels)
-            if hasattr(labeled_metric, '_sum'):
+            if hasattr(labeled_metric, "_sum"):
                 return labeled_metric._sum.get()
             return 0.0
         except Exception:
@@ -190,8 +190,8 @@ class TestChunkingMetrics:
                     start_offset=0,
                     end_offset=600,
                     token_count=150,
-                    strategy_name="recursive"
-                )
+                    strategy_name="recursive",
+                ),
             ),  # ~600 bytes
             Chunk(
                 content="Test chunk 2" * 40,
@@ -202,8 +202,8 @@ class TestChunkingMetrics:
                     start_offset=600,
                     end_offset=1080,
                     token_count=120,
-                    strategy_name="recursive"
-                )
+                    strategy_name="recursive",
+                ),
             ),  # ~480 bytes
             Chunk(
                 content="Test chunk 3" * 30,
@@ -214,17 +214,17 @@ class TestChunkingMetrics:
                     start_offset=1080,
                     end_offset=1440,
                     token_count=90,
-                    strategy_name="recursive"
-                )
+                    strategy_name="recursive",
+                ),
             ),  # ~360 bytes
         ]
         mock_strategy.chunk.return_value = mock_chunks
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
-            with patch('time.time') as mock_time:
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
+            with patch("time.time") as mock_time:
                 # Simulate 0.5 seconds execution time
                 mock_time.side_effect = [1000.0, 1000.5]
-                
+
                 result = await service.execute_ingestion_chunking(
                     text="Test document content for recursive chunking",
                     document_id="doc-001",
@@ -236,33 +236,24 @@ class TestChunkingMetrics:
         assert result["stats"]["chunk_count"] == 3
 
         # Verify chunks counter
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total, 
-            {"strategy": result["stats"]["strategy_used"]}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": result["stats"]["strategy_used"]})
         assert chunks_count == 3
 
         # Verify duration histogram
         duration_count = self.get_histogram_count(
-            ingestion_chunking_duration_seconds,
-            {"strategy": result["stats"]["strategy_used"]}
+            ingestion_chunking_duration_seconds, {"strategy": result["stats"]["strategy_used"]}
         )
         duration_sum = self.get_histogram_sum(
-            ingestion_chunking_duration_seconds,
-            {"strategy": result["stats"]["strategy_used"]}
+            ingestion_chunking_duration_seconds, {"strategy": result["stats"]["strategy_used"]}
         )
         assert duration_count == 1
         assert 0.4 <= duration_sum <= 0.6  # Should be around 0.5 seconds
 
         # Verify average chunk size summary
         size_count = self.get_summary_count(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": result["stats"]["strategy_used"]}
+            ingestion_avg_chunk_size_bytes, {"strategy": result["stats"]["strategy_used"]}
         )
-        size_sum = self.get_summary_sum(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": result["stats"]["strategy_used"]}
-        )
+        size_sum = self.get_summary_sum(ingestion_avg_chunk_size_bytes, {"strategy": result["stats"]["strategy_used"]})
         assert size_count == 1
         # Average should be around (600+480+360)/3 = 480 bytes
         assert 400 <= size_sum <= 560
@@ -278,10 +269,10 @@ class TestChunkingMetrics:
             "chunk_overlap": 100,
         }
 
-        with patch('time.time') as mock_time:
+        with patch("time.time") as mock_time:
             # Simulate 0.2 seconds execution time
             mock_time.side_effect = [1000.0, 1000.2]
-            
+
             result = await service.execute_ingestion_chunking(
                 text="Text for direct TokenChunker processing",
                 document_id="doc-002",
@@ -293,29 +284,17 @@ class TestChunkingMetrics:
         assert result["stats"]["chunk_count"] == 2
 
         # Verify chunks counter for TokenChunker
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "TokenChunker"}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert chunks_count == 2
 
         # Verify duration histogram for TokenChunker
-        duration_count = self.get_histogram_count(
-            ingestion_chunking_duration_seconds,
-            {"strategy": "TokenChunker"}
-        )
-        duration_sum = self.get_histogram_sum(
-            ingestion_chunking_duration_seconds,
-            {"strategy": "TokenChunker"}
-        )
+        duration_count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": "TokenChunker"})
+        duration_sum = self.get_histogram_sum(ingestion_chunking_duration_seconds, {"strategy": "TokenChunker"})
         assert duration_count == 1
         assert 0.15 <= duration_sum <= 0.25  # Should be around 0.2 seconds
 
         # Verify average chunk size for TokenChunker
-        size_count = self.get_summary_count(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": "TokenChunker"}
-        )
+        size_count = self.get_summary_count(ingestion_avg_chunk_size_bytes, {"strategy": "TokenChunker"})
         assert size_count == 1
 
     @pytest.mark.asyncio
@@ -334,16 +313,14 @@ class TestChunkingMetrics:
         }
 
         # Mock config builder to return validation errors
-        with patch.object(service.config_builder, 'build_config') as mock_build:
+        with patch.object(service.config_builder, "build_config") as mock_build:
             mock_build.return_value = MagicMock(
-                validation_errors=["Invalid parameter: invalid_param"],
-                strategy="semantic",
-                config={}
+                validation_errors=["Invalid parameter: invalid_param"], strategy="semantic", config={}
             )
-            
-            with patch('time.time') as mock_time:
+
+            with patch("time.time") as mock_time:
                 mock_time.side_effect = [1000.0, 1000.1]
-                
+
                 result = await service.execute_ingestion_chunking(
                     text="Text with invalid config",
                     document_id="doc-003",
@@ -357,16 +334,12 @@ class TestChunkingMetrics:
 
         # Verify fallback counter
         fallback_count = self.get_counter_value(
-            ingestion_chunking_fallback_total,
-            {"strategy": "semantic", "reason": "invalid_config"}
+            ingestion_chunking_fallback_total, {"strategy": "semantic", "reason": "invalid_config"}
         )
         assert fallback_count == 1
 
         # Verify TokenChunker metrics were recorded
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "TokenChunker"}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert chunks_count == 2
 
     @pytest.mark.asyncio
@@ -388,10 +361,10 @@ class TestChunkingMetrics:
         mock_strategy = MagicMock()
         mock_strategy.chunk.side_effect = RuntimeError("Strategy execution failed")
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
-            with patch('time.time') as mock_time:
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
+            with patch("time.time") as mock_time:
                 mock_time.side_effect = [1000.0, 1000.15]
-                
+
                 result = await service.execute_ingestion_chunking(
                     text="Text that causes runtime error",
                     document_id="doc-004",
@@ -405,16 +378,12 @@ class TestChunkingMetrics:
 
         # Verify fallback counter
         fallback_count = self.get_counter_value(
-            ingestion_chunking_fallback_total,
-            {"strategy": "markdown", "reason": "runtime_error"}
+            ingestion_chunking_fallback_total, {"strategy": "markdown", "reason": "runtime_error"}
         )
         assert fallback_count == 1
 
         # Verify TokenChunker metrics
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "TokenChunker"}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert chunks_count == 2
 
     @pytest.mark.asyncio
@@ -432,10 +401,10 @@ class TestChunkingMetrics:
         }
 
         # Mock config builder throwing an exception
-        with patch.object(service.config_builder, 'build_config', side_effect=Exception("Config build failed")):
-            with patch('time.time') as mock_time:
+        with patch.object(service.config_builder, "build_config", side_effect=Exception("Config build failed")):
+            with patch("time.time") as mock_time:
                 mock_time.side_effect = [1000.0, 1000.08]
-                
+
                 result = await service.execute_ingestion_chunking(
                     text="Text with config build error",
                     document_id="doc-005",
@@ -449,8 +418,7 @@ class TestChunkingMetrics:
 
         # Verify fallback counter
         fallback_count = self.get_counter_value(
-            ingestion_chunking_fallback_total,
-            {"strategy": "hierarchical", "reason": "config_error"}
+            ingestion_chunking_fallback_total, {"strategy": "hierarchical", "reason": "config_error"}
         )
         assert fallback_count == 1
 
@@ -474,19 +442,19 @@ class TestChunkingMetrics:
                     start_offset=0,
                     end_offset=11,
                     token_count=3,
-                    strategy_name="character"
-                )
+                    strategy_name="character",
+                ),
             )
         ]
 
         # Test multiple executions with different durations
         durations = [0.05, 0.15, 0.8, 2.5]  # Different bucket ranges
-        
+
         for i, duration in enumerate(durations):
-            with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
-                with patch('time.time') as mock_time:
-                    mock_time.side_effect = [1000.0 + i*10, 1000.0 + i*10 + duration]
-                    
+            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
+                with patch("time.time") as mock_time:
+                    mock_time.side_effect = [1000.0 + i * 10, 1000.0 + i * 10 + duration]
+
                     await service.execute_ingestion_chunking(
                         text=f"Text for duration test {i}",
                         document_id=f"doc-duration-{i}",
@@ -497,23 +465,14 @@ class TestChunkingMetrics:
         strategy_used = "character"  # or could be "ChunkingStrategy.CHARACTER"
         # Check both possible strategy names
         for strategy_name in ["character", "ChunkingStrategy.CHARACTER"]:
-            count = self.get_histogram_count(
-                ingestion_chunking_duration_seconds,
-                {"strategy": strategy_name}
-            )
+            count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": strategy_name})
             if count > 0:
                 strategy_used = strategy_name
                 break
 
-        histogram_count = self.get_histogram_count(
-            ingestion_chunking_duration_seconds,
-            {"strategy": strategy_used}
-        )
-        histogram_sum = self.get_histogram_sum(
-            ingestion_chunking_duration_seconds,
-            {"strategy": strategy_used}
-        )
-        
+        histogram_count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
+        histogram_sum = self.get_histogram_sum(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
+
         assert histogram_count == 4
         # Sum should be approximately sum of durations
         expected_sum = sum(durations)
@@ -530,7 +489,7 @@ class TestChunkingMetrics:
 
         # Different chunk counts for each execution
         chunk_counts = [3, 5, 2, 4]
-        
+
         for i, count in enumerate(chunk_counts):
             mock_strategy = MagicMock()
             mock_chunks = [
@@ -540,16 +499,17 @@ class TestChunkingMetrics:
                         chunk_id=f"chunk_{i}_{j}",
                         document_id=f"doc-count-{i}",
                         chunk_index=j,
-                        start_offset=j*100,
-                        end_offset=(j+1)*100,
+                        start_offset=j * 100,
+                        end_offset=(j + 1) * 100,
                         token_count=20,
-                        strategy_name="recursive"
-                    )
-                ) for j in range(count)
+                        strategy_name="recursive",
+                    ),
+                )
+                for j in range(count)
             ]
             mock_strategy.chunk.return_value = mock_chunks
 
-            with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
                 await service.execute_ingestion_chunking(
                     text=f"Text for chunk count test {i}",
                     document_id=f"doc-count-{i}",
@@ -559,19 +519,13 @@ class TestChunkingMetrics:
         # Find which strategy name was used
         strategy_used = None
         for strategy_name in ["recursive", "ChunkingStrategy.RECURSIVE"]:
-            count = self.get_counter_value(
-                ingestion_chunks_total,
-                {"strategy": strategy_name}
-            )
+            count = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_name})
             if count > 0:
                 strategy_used = strategy_name
                 break
 
         # Verify total chunks
-        total_chunks = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": strategy_used}
-        )
+        total_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_used})
         assert total_chunks == sum(chunk_counts)  # 3 + 5 + 2 + 4 = 14
 
     @pytest.mark.asyncio
@@ -595,8 +549,8 @@ class TestChunkingMetrics:
                     start_offset=0,
                     end_offset=100,
                     token_count=25,
-                    strategy_name="semantic"
-                )
+                    strategy_name="semantic",
+                ),
             ),  # 100 bytes
             Chunk(
                 content="B" * 200,
@@ -607,8 +561,8 @@ class TestChunkingMetrics:
                     start_offset=100,
                     end_offset=300,
                     token_count=50,
-                    strategy_name="semantic"
-                )
+                    strategy_name="semantic",
+                ),
             ),  # 200 bytes
             Chunk(
                 content="C" * 300,
@@ -619,8 +573,8 @@ class TestChunkingMetrics:
                     start_offset=300,
                     end_offset=600,
                     token_count=75,
-                    strategy_name="semantic"
-                )
+                    strategy_name="semantic",
+                ),
             ),  # 300 bytes
             Chunk(
                 content="D" * 400,
@@ -631,13 +585,13 @@ class TestChunkingMetrics:
                     start_offset=600,
                     end_offset=1000,
                     token_count=100,
-                    strategy_name="semantic"
-                )
+                    strategy_name="semantic",
+                ),
             ),  # 400 bytes
         ]
         mock_strategy.chunk.return_value = mock_chunks
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
             result = await service.execute_ingestion_chunking(
                 text="Text for size calculation",
                 document_id="doc-size",
@@ -648,15 +602,9 @@ class TestChunkingMetrics:
         strategy_used = result["stats"]["strategy_used"]
 
         # Verify summary metric
-        size_count = self.get_summary_count(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": strategy_used}
-        )
-        size_sum = self.get_summary_sum(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": strategy_used}
-        )
-        
+        size_count = self.get_summary_count(ingestion_avg_chunk_size_bytes, {"strategy": strategy_used})
+        size_sum = self.get_summary_sum(ingestion_avg_chunk_size_bytes, {"strategy": strategy_used})
+
         assert size_count == 1
         # Average should be (100 + 200 + 300 + 400) / 4 = 250 bytes
         assert 240 <= size_sum <= 260
@@ -679,15 +627,16 @@ class TestChunkingMetrics:
                     chunk_id=f"chunk_multi_1_{i}",
                     document_id="doc-multi-1",
                     chunk_index=i,
-                    start_offset=i*100,
-                    end_offset=(i+1)*100,
+                    start_offset=i * 100,
+                    end_offset=(i + 1) * 100,
                     token_count=20,
-                    strategy_name="character"
-                )
-            ) for i in range(3)
+                    strategy_name="character",
+                ),
+            )
+            for i in range(3)
         ]
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
             await service.execute_ingestion_chunking(
                 text="First operation",
                 document_id="doc-multi-1",
@@ -705,7 +654,7 @@ class TestChunkingMetrics:
 
         mock_strategy.chunk.side_effect = RuntimeError("Failed")
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
             await service.execute_ingestion_chunking(
                 text="Second operation with fallback",
                 document_id="doc-multi-2",
@@ -729,28 +678,21 @@ class TestChunkingMetrics:
         # Character strategy chunks (only from first operation)
         character_chunks = 0
         for strategy_name in ["character", "ChunkingStrategy.CHARACTER"]:
-            count = self.get_counter_value(
-                ingestion_chunks_total,
-                {"strategy": strategy_name}
-            )
+            count = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_name})
             if count > 0:
                 character_chunks = count
                 break
         assert character_chunks == 3
 
         # TokenChunker chunks (from second and third operations)
-        token_chunks = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "TokenChunker"}
-        )
+        token_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": "TokenChunker"})
         assert token_chunks == 4  # 2 + 2
 
         # Fallback counter (only from second operation)
         fallback_count = 0
         for strategy_name in ["character", "ChunkingStrategy.CHARACTER"]:
             count = self.get_counter_value(
-                ingestion_chunking_fallback_total,
-                {"strategy": strategy_name, "reason": "runtime_error"}
+                ingestion_chunking_fallback_total, {"strategy": strategy_name, "reason": "runtime_error"}
             )
             if count > 0:
                 fallback_count = count
@@ -761,31 +703,21 @@ class TestChunkingMetrics:
         """Test that helper functions correctly record metrics."""
         # Test record_chunking_duration
         record_chunking_duration("test_strategy", 1.5)
-        count = self.get_histogram_count(
-            ingestion_chunking_duration_seconds,
-            {"strategy": "test_strategy"}
-        )
-        sum_val = self.get_histogram_sum(
-            ingestion_chunking_duration_seconds,
-            {"strategy": "test_strategy"}
-        )
+        count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": "test_strategy"})
+        sum_val = self.get_histogram_sum(ingestion_chunking_duration_seconds, {"strategy": "test_strategy"})
         assert count == 1
         assert sum_val == 1.5
 
         # Test record_chunking_fallback
         record_chunking_fallback("original_strategy", "test_reason")
         fallback_count = self.get_counter_value(
-            ingestion_chunking_fallback_total,
-            {"strategy": "original_strategy", "reason": "test_reason"}
+            ingestion_chunking_fallback_total, {"strategy": "original_strategy", "reason": "test_reason"}
         )
         assert fallback_count == 1
 
         # Test record_chunks_produced
         record_chunks_produced("chunk_strategy", 10)
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "chunk_strategy"}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "chunk_strategy"})
         assert chunks_count == 10
 
         # Test record_chunk_sizes with different chunk formats
@@ -795,45 +727,36 @@ class TestChunkingMetrics:
             {"content": "Test content"},
         ]
         record_chunk_sizes("dict_strategy", dict_chunks)
-        
+
         # Test with string chunks
         str_chunks = ["Chunk 1", "Chunk 2", "Chunk 3"]
         record_chunk_sizes("str_strategy", str_chunks)
-        
+
         # Test with object chunks
         class MockChunk:
             def __init__(self, content):
                 self.content = content
-        
+
         obj_chunks = [MockChunk("Content 1"), MockChunk("Content 2")]
         record_chunk_sizes("obj_strategy", obj_chunks)
 
         # Verify all recorded
         for strategy in ["dict_strategy", "str_strategy", "obj_strategy"]:
-            count = self.get_summary_count(
-                ingestion_avg_chunk_size_bytes,
-                {"strategy": strategy}
-            )
+            count = self.get_summary_count(ingestion_avg_chunk_size_bytes, {"strategy": strategy})
             assert count == 1
 
     def test_metrics_handle_empty_chunks(self):
         """Test that metrics handle empty chunk lists gracefully."""
         # Test record_chunk_sizes with empty list
         record_chunk_sizes("empty_strategy", [])
-        
+
         # Should not record anything for empty chunks
-        count = self.get_summary_count(
-            ingestion_avg_chunk_size_bytes,
-            {"strategy": "empty_strategy"}
-        )
+        count = self.get_summary_count(ingestion_avg_chunk_size_bytes, {"strategy": "empty_strategy"})
         assert count == 0
 
         # Test record_chunks_produced with 0
         record_chunks_produced("zero_strategy", 0)
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": "zero_strategy"}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": "zero_strategy"})
         assert chunks_count == 0
 
     @pytest.mark.asyncio
@@ -854,20 +777,21 @@ class TestChunkingMetrics:
                     chunk_id=f"chunk_large_{i}",
                     document_id="doc-large",
                     chunk_index=i,
-                    start_offset=i*100,
-                    end_offset=(i+1)*100,
+                    start_offset=i * 100,
+                    end_offset=(i + 1) * 100,
                     token_count=20,
-                    strategy_name="recursive"
-                )
-            ) for i in range(100)
+                    strategy_name="recursive",
+                ),
+            )
+            for i in range(100)
         ]
         mock_strategy.chunk.return_value = mock_chunks
 
-        with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
-            with patch('time.time') as mock_time:
+        with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
+            with patch("time.time") as mock_time:
                 # Simulate longer processing time for large document
                 mock_time.side_effect = [1000.0, 1003.5]
-                
+
                 result = await service.execute_ingestion_chunking(
                     text="Very large document " * 1000,
                     document_id="doc-large",
@@ -877,16 +801,10 @@ class TestChunkingMetrics:
         strategy_used = result["stats"]["strategy_used"]
 
         # Verify metrics for large document
-        chunks_count = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": strategy_used}
-        )
+        chunks_count = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_used})
         assert chunks_count == 100
 
-        duration_sum = self.get_histogram_sum(
-            ingestion_chunking_duration_seconds,
-            {"strategy": strategy_used}
-        )
+        duration_sum = self.get_histogram_sum(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
         assert 3.4 <= duration_sum <= 3.6
 
     @pytest.mark.asyncio
@@ -899,7 +817,7 @@ class TestChunkingMetrics:
         }
 
         mock_strategy = MagicMock()
-        
+
         async def chunk_operation(doc_id, chunk_count):
             """Helper for concurrent chunking."""
             mock_strategy.chunk.return_value = [
@@ -909,15 +827,16 @@ class TestChunkingMetrics:
                         chunk_id=f"chunk_concurrent_{doc_id}_{i}",
                         document_id=f"doc-concurrent-{doc_id}",
                         chunk_index=i,
-                        start_offset=i*100,
-                        end_offset=(i+1)*100,
+                        start_offset=i * 100,
+                        end_offset=(i + 1) * 100,
                         token_count=20,
-                        strategy_name="character"
-                    )
-                ) for i in range(chunk_count)
+                        strategy_name="character",
+                    ),
+                )
+                for i in range(chunk_count)
             ]
-            
-            with patch.object(service.strategy_factory, 'create_strategy', return_value=mock_strategy):
+
+            with patch.object(service.strategy_factory, "create_strategy", return_value=mock_strategy):
                 return await service.execute_ingestion_chunking(
                     text=f"Document {doc_id}",
                     document_id=f"doc-concurrent-{doc_id}",
@@ -931,22 +850,16 @@ class TestChunkingMetrics:
             chunk_operation(3, 2),
             chunk_operation(4, 4),
         ]
-        
+
         results = await asyncio.gather(*tasks)
 
         # Find strategy name used
         strategy_used = results[0]["stats"]["strategy_used"]
 
         # Verify total chunks from all concurrent operations
-        total_chunks = self.get_counter_value(
-            ingestion_chunks_total,
-            {"strategy": strategy_used}
-        )
+        total_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_used})
         assert total_chunks == 14  # 3 + 5 + 2 + 4
 
         # Verify histogram count matches number of operations
-        histogram_count = self.get_histogram_count(
-            ingestion_chunking_duration_seconds,
-            {"strategy": strategy_used}
-        )
+        histogram_count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
         assert histogram_count == 4

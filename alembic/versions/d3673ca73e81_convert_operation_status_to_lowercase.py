@@ -5,6 +5,7 @@ Revises: db004_add_chunking_indexes
 Create Date: 2025-08-12 10:33:23.318557
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -12,41 +13,44 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd3673ca73e81'
-down_revision: Union[str, None] = 'db004_add_chunking_indexes'
+revision: str = "d3673ca73e81"
+down_revision: Union[str, None] = "db004_add_chunking_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     """Convert OperationStatus enum values from uppercase to lowercase.
-    
+
     This migration recreates the enum type with lowercase values.
     """
-    
+
     # First, we need to remove the default constraint if it exists
     op.execute("ALTER TABLE operations ALTER COLUMN status DROP DEFAULT")
-    
+
     # Create a temporary text column to hold the values during migration
     op.execute("ALTER TABLE operations ADD COLUMN status_temp TEXT")
-    
+
     # Copy the current status values to the temp column
-    op.execute("""
+    op.execute(
+        """
         UPDATE operations 
         SET status_temp = status::text
-    """)
-    
+    """
+    )
+
     # Drop the old status column
     op.execute("ALTER TABLE operations DROP COLUMN status")
-    
+
     # Create a new enum type with lowercase values
     op.execute("CREATE TYPE operation_status_new AS ENUM ('pending', 'processing', 'completed', 'failed', 'cancelled')")
-    
+
     # Add the new status column with the new enum type
     op.execute("ALTER TABLE operations ADD COLUMN status operation_status_new")
-    
+
     # Populate the new status column with converted values
-    op.execute("""
+    op.execute(
+        """
         UPDATE operations 
         SET status = CASE status_temp
             WHEN 'PENDING' THEN 'pending'::operation_status_new
@@ -60,23 +64,24 @@ def upgrade() -> None:
             WHEN 'failed' THEN 'failed'::operation_status_new
             WHEN 'cancelled' THEN 'cancelled'::operation_status_new
         END
-    """)
-    
+    """
+    )
+
     # Make the column not null
     op.execute("ALTER TABLE operations ALTER COLUMN status SET NOT NULL")
-    
+
     # Set the default value
     op.execute("ALTER TABLE operations ALTER COLUMN status SET DEFAULT 'pending'::operation_status_new")
-    
+
     # Create index on the status column
     op.execute("CREATE INDEX IF NOT EXISTS ix_operations_status ON operations(status)")
-    
+
     # Drop the temporary column
     op.execute("ALTER TABLE operations DROP COLUMN status_temp")
-    
+
     # Drop the old enum type
     op.execute("DROP TYPE IF EXISTS operation_status")
-    
+
     # Rename the new enum type to the original name
     op.execute("ALTER TYPE operation_status_new RENAME TO operation_status")
 
@@ -113,30 +118,33 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Revert OperationStatus enum values back to uppercase."""
-    
+
     # Remove the default constraint
     op.execute("ALTER TABLE operations ALTER COLUMN status DROP DEFAULT")
-    
+
     # Create a temporary text column
     op.execute("ALTER TABLE operations ADD COLUMN status_temp TEXT")
-    
+
     # Copy the current status values to the temp column
-    op.execute("""
+    op.execute(
+        """
         UPDATE operations 
         SET status_temp = status::text
-    """)
-    
+    """
+    )
+
     # Drop the status column
     op.execute("ALTER TABLE operations DROP COLUMN status")
-    
+
     # Create a new enum type with uppercase values
     op.execute("CREATE TYPE operation_status_new AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED')")
-    
+
     # Add the new status column with the new enum type
     op.execute("ALTER TABLE operations ADD COLUMN status operation_status_new")
-    
+
     # Populate the new status column with converted values
-    op.execute("""
+    op.execute(
+        """
         UPDATE operations 
         SET status = CASE status_temp
             WHEN 'pending' THEN 'PENDING'::operation_status_new
@@ -150,23 +158,24 @@ def downgrade() -> None:
             WHEN 'FAILED' THEN 'FAILED'::operation_status_new
             WHEN 'CANCELLED' THEN 'CANCELLED'::operation_status_new
         END
-    """)
-    
+    """
+    )
+
     # Make the column not null
     op.execute("ALTER TABLE operations ALTER COLUMN status SET NOT NULL")
-    
+
     # Set the default value
     op.execute("ALTER TABLE operations ALTER COLUMN status SET DEFAULT 'PENDING'::operation_status_new")
-    
+
     # Create index on the status column
     op.execute("CREATE INDEX IF NOT EXISTS ix_operations_status ON operations(status)")
-    
+
     # Drop the temporary column
     op.execute("ALTER TABLE operations DROP COLUMN status_temp")
-    
+
     # Drop the old enum type
     op.execute("DROP TYPE IF EXISTS operation_status")
-    
+
     # Rename the new enum type to the original name
     op.execute("ALTER TYPE operation_status_new RENAME TO operation_status")
 

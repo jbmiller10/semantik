@@ -20,14 +20,17 @@ from typing import Any
 import redis.asyncio as redis
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
+
 try:
     from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError
 except Exception:  # pragma: no cover - fallback if websockets not available
+
     class ConnectionClosedOK(Exception):
         pass
 
     class ConnectionClosedError(Exception):
         pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +313,9 @@ class ScalableWebSocketManager:
 
                 # Handle collection channel
                 if self.pubsub and collection_id:
-                    remaining_coll = any(m.get("collection_id") == collection_id for m in self.connection_metadata.values())
+                    remaining_coll = any(
+                        m.get("collection_id") == collection_id for m in self.connection_metadata.values()
+                    )
                     if not remaining_coll:
                         await self.pubsub.unsubscribe(f"collection:{collection_id}")
             except Exception as e:
@@ -684,18 +689,19 @@ class ScalableWebSocketManager:
                     try:
                         await websocket.send_json(state_message)
                         logger.debug(f"Sent operation state for {operation_id}")
-                    except (WebSocketDisconnect, ConnectionClosedOK, ConnectionClosedError, asyncio.IncompleteReadError):
+                    except (
+                        WebSocketDisconnect,
+                        ConnectionClosedOK,
+                        ConnectionClosedError,
+                        asyncio.IncompleteReadError,
+                    ):
                         # Client disconnected before initial state could be delivered; not an error
-                        logger.debug(
-                            f"Client disconnected while sending initial state for operation {operation_id}"
-                        )
+                        logger.debug(f"Client disconnected while sending initial state for operation {operation_id}")
                         return
 
         except (WebSocketDisconnect, ConnectionClosedOK, ConnectionClosedError, asyncio.IncompleteReadError):
             # Treat disconnects as normal; client closed the socket
-            logger.debug(
-                f"Client disconnected while preparing initial state for operation {operation_id}"
-            )
+            logger.debug(f"Client disconnected while preparing initial state for operation {operation_id}")
         except Exception as e:
             # Log other unexpected errors with stack for investigation
             logger.error(f"Failed to send operation state for {operation_id}: {e}", exc_info=True)
@@ -752,6 +758,5 @@ class ScalableWebSocketManager:
 
 # Global instance - will be initialized by FastAPI on startup
 import os
-scalable_ws_manager = ScalableWebSocketManager(
-    redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2")
-)
+
+scalable_ws_manager = ScalableWebSocketManager(redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/2"))

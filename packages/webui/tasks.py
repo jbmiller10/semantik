@@ -1595,7 +1595,7 @@ async def _process_append_operation(
             # Create ChunkingService instance once outside the loop using factory pattern
             # This ensures proper dependency injection and maintains transaction boundaries
             from webui.services.factory import create_celery_chunking_service_with_repos
-            
+
             # Use the factory with existing repositories to maintain transaction context
             # This pattern ensures all operations use the same database session
             chunking_service = create_celery_chunking_service_with_repos(
@@ -1642,7 +1642,7 @@ async def _process_append_operation(
                         document_id=doc.id,
                         collection=collection,
                         metadata=combined_metadata,
-                        file_type=doc.file_path.split('.')[-1] if '.' in doc.file_path else None,
+                        file_type=doc.file_path.split(".")[-1] if "." in doc.file_path else None,
                     )
 
                     chunks = chunking_result["chunks"]
@@ -2018,7 +2018,7 @@ async def _process_reindex_operation(
         # Create ChunkingService instance once before processing batches using factory pattern
         # This ensures proper dependency injection and maintains transaction boundaries
         from webui.services.factory import create_celery_chunking_service_with_repos
-        
+
         # Use the factory with existing repositories to maintain transaction context
         chunking_service = create_celery_chunking_service_with_repos(
             db_session=document_repo.session,
@@ -2076,7 +2076,7 @@ async def _process_reindex_operation(
                             document_id=doc_id,
                             collection=reindex_collection,
                             metadata=combined_metadata,
-                            file_type=file_path.split('.')[-1] if '.' in file_path else None,
+                            file_type=file_path.split(".")[-1] if "." in file_path else None,
                         )
 
                         all_chunks = chunking_result["chunks"]
@@ -2227,7 +2227,7 @@ async def _process_reindex_operation(
                     except Exception as e:
                         logger.error(f"Failed to reprocess document {doc.get('file_path', 'unknown')}: {e}")
                         failed_count += 1
-                        
+
                         # Mark failed document status
                         if doc.get("id"):
                             try:
@@ -2239,7 +2239,7 @@ async def _process_reindex_operation(
                                 logger.info(f"Marked document {doc['id']} as FAILED due to reprocessing error")
                             except Exception as update_error:
                                 logger.error(f"Failed to update document status to FAILED: {update_error}")
-                        
+
                         # Continue processing other documents
 
                 # Send progress update

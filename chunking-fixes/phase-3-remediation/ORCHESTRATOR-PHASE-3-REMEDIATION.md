@@ -4,6 +4,7 @@
 - Priority: Critical – close gaps left in Phase 3
 - Duration: 1 working day (can be parallelized)
 - Success Gate: API-backed strategies in UI; cancel flows (WS/REST) working; a11y tests passing; docs aligned; validation report complete
+- Backend status: Strategies API implemented in Phase 2 (GET /api/v2/chunking/strategies). FE should either consume FE-shaped fields directly or apply the documented mapping from backend StrategyInfo to FE ChunkingStrategy.
 
 ## Tickets In Scope
 - BE-STRAT-001: Implement Strategies API (GET /api/v2/chunking/strategies)
@@ -27,6 +28,9 @@ Parallelization:
 - Run (1) and (3) in parallel (separate implementers).
 - After (2), start (6) and (7) in parallel.
 - (5) can start any time; finish before (8).
+
+Notes:
+- (1) backend is already in place; FE (2) should align on public IDs (`character` vs `fixed_size`) and field names as per updated tickets.
 
 ## Pre‑Flight Checklist
 - Phase 2 backend stable and running locally.

@@ -120,16 +120,12 @@ class CollectionService:
                     )
                     if result.validation_errors:
                         errors = "; ".join(result.validation_errors)
-                        raise ValueError(
-                            f"Invalid chunking_config for strategy '{chunking_strategy}': {errors}"
-                        )
+                        raise ValueError(f"Invalid chunking_config for strategy '{chunking_strategy}': {errors}")
                     # Use the validated and normalized config
                     chunking_config = result.config
                 else:
                     # Config without strategy is not allowed
-                    raise ValueError(
-                        "chunking_config requires chunking_strategy to be specified"
-                    )
+                    raise ValueError("chunking_config requires chunking_strategy to be specified")
 
             # Create with new chunking fields
             collection = await self.collection_repo.create(
@@ -173,37 +169,8 @@ class CollectionService:
             task_id=str(uuid.uuid4()),
         )
 
-        # Convert ORM objects to dictionaries
-        collection_dict = {
-            "id": collection.id,
-            "name": collection.name,
-            "description": collection.description,
-            "owner_id": collection.owner_id,
-            "vector_store_name": collection.vector_store_name,
-            "embedding_model": collection.embedding_model,
-            "quantization": collection.quantization,
-            "chunk_size": collection.chunk_size,
-            "chunk_overlap": collection.chunk_overlap,
-            "chunking_strategy": collection.chunking_strategy,
-            "chunking_config": collection.chunking_config,
-            "is_public": collection.is_public,
-            "metadata": collection.meta,
-            "created_at": collection.created_at,
-            "updated_at": collection.updated_at,
-            "document_count": 0,  # New collection has no documents
-            "vector_count": 0,  # New collection has no vectors
-            "status": collection.status.value if hasattr(collection.status, "value") else collection.status,
-            "config": {
-                "embedding_model": collection.embedding_model,
-                "quantization": collection.quantization,
-                "chunk_size": collection.chunk_size,
-                "chunk_overlap": collection.chunk_overlap,
-                "chunking_strategy": collection.chunking_strategy,
-                "chunking_config": collection.chunking_config,
-                "is_public": collection.is_public,
-                "metadata": collection.meta,
-            },
-        }
+        # Convert ORM object to dictionary via shared serializer
+        collection_dict = self._collection_to_dict(collection)
 
         operation_dict = {
             "uuid": operation.uuid,
@@ -551,7 +518,7 @@ class CollectionService:
         )
 
     async def update(self, collection_id: str, user_id: int, updates: Dict[str, Any]) -> Collection:
-        """Update collection metadata.
+        """Update collection metadata with chunking validation.
 
         Args:
             collection_id: UUID of the collection
@@ -565,6 +532,7 @@ class CollectionService:
             EntityNotFoundError: If collection not found
             AccessDeniedError: If user doesn't have permission
             EntityAlreadyExistsError: If new name already exists
+            ValueError: If chunking strategy/config validation fails
         """
         # Get collection with permission check (only owner can update)
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -574,6 +542,46 @@ class CollectionService:
         # Only the owner can update the collection
         if collection.owner_id != user_id:
             raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
+
+        # Handle chunking strategy update with validation
+        if "chunking_strategy" in updates:
+            strategy = updates["chunking_strategy"]
+            if strategy:
+                try:
+                    # Normalize and validate strategy
+                    factory = ChunkingStrategyFactory()
+                    normalized_strategy = factory.normalize_strategy_name(strategy)
+                    # Validate by attempting to create (but don't actually use it)
+                    factory.create_strategy(
+                        strategy_name=normalized_strategy,
+                        config={},
+                        correlation_id=str(uuid.uuid4()),
+                    )
+                    updates["chunking_strategy"] = normalized_strategy
+                except ChunkingStrategyError as e:
+                    raise ValueError(f"Invalid chunking strategy: {e}") from e
+
+        # Handle chunking config update with validation
+        if "chunking_config" in updates:
+            config = updates["chunking_config"]
+            if config:
+                # Require a strategy to be present
+                strategy = updates.get("chunking_strategy") or collection.chunking_strategy
+                if not strategy:
+                    raise ValueError("chunking_config requires chunking_strategy to be set")
+
+                # Validate and normalize config
+                try:
+                    builder = ChunkingConfigBuilder()
+                    config_result = builder.build_config(
+                        strategy=strategy,
+                        user_config=config,
+                    )
+                    if config_result.validation_errors:
+                        raise ValueError(f"Invalid chunking config: {', '.join(config_result.validation_errors)}")
+                    updates["chunking_config"] = config_result.config
+                except Exception as e:
+                    raise ValueError(f"Invalid chunking config: {e}") from e
 
         # Perform the update
         updated_collection = await self.collection_repo.update(str(collection.id), updates)
@@ -710,77 +718,60 @@ class CollectionService:
         collection_id: str,
         updates: dict[str, Any],
         user_id: int,
-    ) -> None:
-        """Update collection settings.
+    ) -> Dict[str, Any]:
+        """Update collection settings (alias for update that returns dict).
+
+        This method exists for backward compatibility with tests.
 
         Args:
             collection_id: Collection UUID
             updates: Fields to update
             user_id: User ID
+
+        Returns:
+            Updated collection as dictionary
         """
-        # Get collection with permission check
-        collection = await self.collection_repo.get_by_uuid_with_permission_check(
-            collection_uuid=collection_id,
+        # Use the main update method
+        updated_collection = await self.update(
+            collection_id=collection_id,
             user_id=user_id,
+            updates=updates,
         )
+        # Build a stable dictionary representation (avoid repo.to_dict dependency)
+        return self._collection_to_dict(updated_collection)
 
-        if not collection:
-            raise EntityNotFoundError("Collection", collection_id)
-
-        # Validate chunking_strategy if being updated
-        if "chunking_strategy" in updates:
-            chunking_strategy = updates["chunking_strategy"]
-            if chunking_strategy is not None:
-                try:
-                    # Validate that the strategy exists and is supported
-                    ChunkingStrategyFactory.create_strategy(
-                        strategy_name=chunking_strategy,
-                        config=updates.get("chunking_config", collection.chunking_config or {}),
-                    )
-                    # Normalize the strategy name to internal format for persistence
-                    updates["chunking_strategy"] = ChunkingStrategyFactory.normalize_strategy_name(chunking_strategy)
-                except ChunkingStrategyError as e:
-                    # Use the structured error fields for a user-friendly response
-                    if "Unknown strategy" in e.reason:
-                        available = ChunkingStrategyFactory.get_available_strategies()
-                        raise ValueError(
-                            f"Invalid chunking_strategy '{e.strategy}'. "
-                            f"Available strategies: {', '.join(available)}"
-                        ) from None
-                    raise ValueError(f"Invalid chunking_strategy: Strategy {e.strategy} failed: {e.reason}") from None
-                except Exception as e:
-                    # Catch any other unexpected errors
-                    raise ValueError(f"Invalid chunking_strategy: {str(e)}") from None
-
-        # Validate chunking_config if being updated
-        if "chunking_config" in updates:
-            chunking_config = updates["chunking_config"]
-            if chunking_config is not None:
-                # Determine which strategy to validate against
-                strategy_to_use = updates.get("chunking_strategy", collection.chunking_strategy)
-                if strategy_to_use is not None:
-                    config_builder = ChunkingConfigBuilder()
-                    result = config_builder.build_config(
-                        strategy=strategy_to_use,
-                        user_config=chunking_config,
-                    )
-                    if result.validation_errors:
-                        errors = "; ".join(result.validation_errors)
-                        raise ValueError(
-                            f"Invalid chunking_config for strategy '{strategy_to_use}': {errors}"
-                        )
-                    # Use the validated and normalized config
-                    updates["chunking_config"] = result.config
-                else:
-                    # Config without strategy is not allowed
-                    raise ValueError(
-                        "chunking_config requires chunking_strategy to be specified"
-                    )
-
-        # Update allowed fields
-        allowed_fields = ["name", "description", "chunking_strategy", "chunking_config", "meta"]
-        for field, value in updates.items():
-            if field in allowed_fields:
-                setattr(collection, field, value)
-
-        await self.db_session.commit()
+    def _collection_to_dict(self, collection: Collection) -> Dict[str, Any]:
+        """Serialize a Collection ORM object into a response dictionary."""
+        status_value = collection.status.value if hasattr(collection.status, "value") else collection.status
+        base = {
+            "id": collection.id,
+            "name": collection.name,
+            "description": getattr(collection, "description", None),
+            "owner_id": getattr(collection, "owner_id", None),
+            "vector_store_name": getattr(collection, "vector_store_name", None),
+            "embedding_model": getattr(collection, "embedding_model", None),
+            "quantization": getattr(collection, "quantization", None),
+            "chunk_size": getattr(collection, "chunk_size", None),
+            "chunk_overlap": getattr(collection, "chunk_overlap", None),
+            "chunking_strategy": getattr(collection, "chunking_strategy", None),
+            "chunking_config": getattr(collection, "chunking_config", None),
+            "is_public": getattr(collection, "is_public", None),
+            "metadata": getattr(collection, "meta", None),
+            "created_at": getattr(collection, "created_at", None),
+            "updated_at": getattr(collection, "updated_at", None),
+            "document_count": getattr(collection, "document_count", 0),
+            "vector_count": getattr(collection, "vector_count", 0),
+            "status": status_value,
+            "status_message": getattr(collection, "status_message", None),
+        }
+        base["config"] = {
+            "embedding_model": base["embedding_model"],
+            "quantization": base["quantization"],
+            "chunk_size": base["chunk_size"],
+            "chunk_overlap": base["chunk_overlap"],
+            "chunking_strategy": base["chunking_strategy"],
+            "chunking_config": base["chunking_config"],
+            "is_public": base["is_public"],
+            "metadata": base["metadata"],
+        }
+        return base

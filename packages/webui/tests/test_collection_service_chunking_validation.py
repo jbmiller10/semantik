@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.webui.services.collection_service import CollectionService
 from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository  
+from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.models import Collection
 
@@ -65,18 +65,15 @@ class TestCreateCollectionValidation:
         mock_collection.uuid = "test-uuid"
         mock_collection.name = "Test Collection"
         mock_collection_repo.create.return_value = mock_collection
-        
+
         # Test with a valid strategy
-        with patch('packages.webui.services.collection_service.celery_app'):
+        with patch("packages.webui.services.collection_service.celery_app"):
             result = await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
-                config={
-                    "chunking_strategy": "recursive",
-                    "chunking_config": {"chunk_size": 500}
-                }
+                config={"chunking_strategy": "recursive", "chunking_config": {"chunk_size": 500}},
             )
-        
+
         # Verify the strategy was normalized (recursive -> recursive)
         mock_collection_repo.create.assert_called_once()
         call_args = mock_collection_repo.create.call_args.kwargs
@@ -87,11 +84,9 @@ class TestCreateCollectionValidation:
         """Test that invalid chunking strategies are rejected with helpful error."""
         with pytest.raises(ValueError) as exc_info:
             await collection_service.create_collection(
-                user_id=1,
-                name="Test Collection",
-                config={"chunking_strategy": "invalid_strategy"}
+                user_id=1, name="Test Collection", config={"chunking_strategy": "invalid_strategy"}
             )
-        
+
         error_msg = str(exc_info.value)
         assert "Invalid chunking_strategy" in error_msg
         assert "Available:" in error_msg  # Check that available strategies are listed
@@ -101,11 +96,9 @@ class TestCreateCollectionValidation:
         """Test that chunking_config without strategy is rejected."""
         with pytest.raises(ValueError) as exc_info:
             await collection_service.create_collection(
-                user_id=1,
-                name="Test Collection",
-                config={"chunking_config": {"chunk_size": 500}}
+                user_id=1, name="Test Collection", config={"chunking_config": {"chunk_size": 500}}
             )
-        
+
         error_msg = str(exc_info.value)
         assert "chunking_config requires chunking_strategy" in error_msg
 
@@ -118,10 +111,10 @@ class TestCreateCollectionValidation:
                 name="Test Collection",
                 config={
                     "chunking_strategy": "recursive",
-                    "chunking_config": {"chunk_size": -100}  # Invalid: negative size
-                }
+                    "chunking_config": {"chunk_size": -100},  # Invalid: negative size
+                },
             )
-        
+
         error_msg = str(exc_info.value)
         assert "Invalid chunking_config" in error_msg
         assert "chunk_size must be at least 10" in error_msg
@@ -133,15 +126,15 @@ class TestCreateCollectionValidation:
         mock_collection.uuid = "test-uuid"
         mock_collection.name = "Test Collection"
         mock_collection_repo.create.return_value = mock_collection
-        
+
         # Test with a strategy that needs normalization
-        with patch('packages.webui.services.collection_service.celery_app'):
+        with patch("packages.webui.services.collection_service.celery_app"):
             result = await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
-                config={"chunking_strategy": "fixed_size"}  # Should normalize to "character"
+                config={"chunking_strategy": "fixed_size"},  # Should normalize to "character"
             )
-        
+
         # Verify the strategy was normalized
         mock_collection_repo.create.assert_called_once()
         call_args = mock_collection_repo.create.call_args.kwargs
@@ -159,14 +152,12 @@ class TestUpdateCollectionValidation:
         mock_collection.chunking_strategy = "recursive"
         mock_collection.chunking_config = {"chunk_size": 500}
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         # Update with valid strategy
         await collection_service.update_collection(
-            collection_id="test-uuid",
-            updates={"chunking_strategy": "semantic"},
-            user_id=1
+            collection_id="test-uuid", updates={"chunking_strategy": "semantic"}, user_id=1
         )
-        
+
         # Verify the strategy was updated and normalized
         assert mock_collection.chunking_strategy == "semantic"
         mock_db_session.commit.assert_called_once()
@@ -176,32 +167,32 @@ class TestUpdateCollectionValidation:
         """Test that invalid strategy updates are rejected."""
         mock_collection = MagicMock(spec=Collection)
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         with pytest.raises(ValueError) as exc_info:
             await collection_service.update_collection(
-                collection_id="test-uuid",
-                updates={"chunking_strategy": "nonexistent"},
-                user_id=1
+                collection_id="test-uuid", updates={"chunking_strategy": "nonexistent"}, user_id=1
             )
-        
+
         error_msg = str(exc_info.value)
         assert "Invalid chunking_strategy" in error_msg
 
     @pytest.mark.asyncio
-    async def test_config_update_with_existing_strategy(self, collection_service, mock_collection_repo, mock_db_session):
+    async def test_config_update_with_existing_strategy(
+        self, collection_service, mock_collection_repo, mock_db_session
+    ):
         """Test updating config when collection already has a strategy."""
         mock_collection = MagicMock(spec=Collection)
         mock_collection.chunking_strategy = "recursive"
         mock_collection.chunking_config = {"chunk_size": 500}
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         # Update config only
         await collection_service.update_collection(
             collection_id="test-uuid",
             updates={"chunking_config": {"chunk_size": 1000, "chunk_overlap": 100}},
-            user_id=1
+            user_id=1,
         )
-        
+
         # Verify config was updated
         assert mock_collection.chunking_config["chunk_size"] == 1000
         mock_db_session.commit.assert_called_once()
@@ -213,57 +204,55 @@ class TestUpdateCollectionValidation:
         mock_collection.chunking_strategy = None  # No existing strategy
         mock_collection.chunking_config = None
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         with pytest.raises(ValueError) as exc_info:
             await collection_service.update_collection(
-                collection_id="test-uuid",
-                updates={"chunking_config": {"chunk_size": 500}},
-                user_id=1
+                collection_id="test-uuid", updates={"chunking_config": {"chunk_size": 500}}, user_id=1
             )
-        
+
         error_msg = str(exc_info.value)
         assert "chunking_config requires chunking_strategy" in error_msg
 
     @pytest.mark.asyncio
-    async def test_simultaneous_strategy_and_config_update(self, collection_service, mock_collection_repo, mock_db_session):
+    async def test_simultaneous_strategy_and_config_update(
+        self, collection_service, mock_collection_repo, mock_db_session
+    ):
         """Test updating both strategy and config together."""
         mock_collection = MagicMock(spec=Collection)
         mock_collection.chunking_strategy = "recursive"
         mock_collection.chunking_config = {"chunk_size": 500}
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         # Update both strategy and config
         await collection_service.update_collection(
             collection_id="test-uuid",
             updates={
                 "chunking_strategy": "semantic",
-                "chunking_config": {"chunk_size": 512, "similarity_threshold": 0.7}
+                "chunking_config": {"chunk_size": 512, "similarity_threshold": 0.7},
             },
-            user_id=1
+            user_id=1,
         )
-        
+
         # Verify both were updated
         assert mock_collection.chunking_strategy == "semantic"
         assert mock_collection.chunking_config["chunk_size"] == 512
         assert mock_collection.chunking_config["similarity_threshold"] == 0.7
         mock_db_session.commit.assert_called_once()
 
-    @pytest.mark.asyncio  
+    @pytest.mark.asyncio
     async def test_invalid_config_for_strategy_rejected(self, collection_service, mock_collection_repo):
         """Test that invalid configs for specific strategies are rejected."""
         mock_collection = MagicMock(spec=Collection)
         mock_collection.chunking_strategy = "semantic"
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        
+
         with pytest.raises(ValueError) as exc_info:
             await collection_service.update_collection(
                 collection_id="test-uuid",
-                updates={
-                    "chunking_config": {"similarity_threshold": 2.0}  # Invalid: > 1.0
-                },
-                user_id=1
+                updates={"chunking_config": {"similarity_threshold": 2.0}},  # Invalid: > 1.0
+                user_id=1,
             )
-        
+
         error_msg = str(exc_info.value)
         assert "Invalid chunking_config" in error_msg
         assert "similarity_threshold must be between 0 and 1" in error_msg

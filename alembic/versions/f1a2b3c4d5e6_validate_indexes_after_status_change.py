@@ -5,6 +5,7 @@ Revises: d3673ca73e81
 Create Date: 2025-08-12 12:10:00.000000
 
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -70,4 +71,3 @@ def downgrade() -> None:
         WHERE status IN ('PROCESSING', 'PENDING');
         """
     )
-
