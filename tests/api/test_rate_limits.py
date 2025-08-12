@@ -15,7 +15,9 @@ from httpx import AsyncClient
 from slowapi.errors import RateLimitExceeded
 
 from packages.webui.config.rate_limits import RateLimitConfig
+from packages.webui.main import app
 from packages.webui.rate_limiter import circuit_breaker
+from packages.webui.services.factory import get_chunking_service
 
 
 @pytest.fixture()
@@ -58,20 +60,30 @@ def _reset_circuit_breaker() -> Generator[Any, None, None]:
 )
 async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that preview endpoint enforces rate limits."""
-    # Mock the chunking service
-    with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-        mock_service.return_value.preview_chunking = AsyncMock(
-            return_value={
-                "preview_id": "test-preview",
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size", "chunk_size": 512},
-                "chunks": [],
-                "total_chunks": 0,
-                "processing_time_ms": 100,
-            }
-        )
-        mock_service.return_value.track_preview_usage = AsyncMock()
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_chunking_service
 
+    # Create a mock chunking service
+    mock_chunking_service = AsyncMock()
+    mock_chunking_service.preview_chunking = AsyncMock(
+        return_value={
+            "preview_id": "test-preview",
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size", "chunk_size": 512},
+            "chunks": [],
+            "total_chunks": 0,
+            "processing_time_ms": 100,
+        }
+    )
+    mock_chunking_service.track_preview_usage = AsyncMock()
+
+    # Override the dependency at the app level
+    async def override_get_chunking_service():
+        return mock_chunking_service
+
+    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+    try:
         # Make requests up to the limit (10 per minute for preview)
         preview_data = {
             "content": "Test content for rate limiting",
@@ -98,6 +110,9 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
                 assert "Retry-After" in response.headers
                 error_data = response.json()
                 assert "rate_limit_exceeded" in error_data.get("error", "")
+    finally:
+        # Clean up the override
+        del app.dependency_overrides[get_chunking_service]
 
 
 @pytest.mark.asyncio()
@@ -106,23 +121,33 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
 )
 async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that compare endpoint enforces stricter rate limits."""
-    # Mock the chunking service
-    with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-        mock_service.return_value.preview_chunking = AsyncMock(
-            return_value={
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size"},
-                "chunks": [],
-                "total_chunks": 0,
-                "metrics": {
-                    "avg_chunk_size": 100,
-                    "size_variance": 10,
-                    "quality_score": 0.8,
-                },
-                "processing_time_ms": 100,
-            }
-        )
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_chunking_service
 
+    # Create a mock chunking service
+    mock_chunking_service = AsyncMock()
+    mock_chunking_service.preview_chunking = AsyncMock(
+        return_value={
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size"},
+            "chunks": [],
+            "total_chunks": 0,
+            "metrics": {
+                "avg_chunk_size": 100,
+                "size_variance": 10,
+                "quality_score": 0.8,
+            },
+            "processing_time_ms": 100,
+        }
+    )
+
+    # Override the dependency at the app level
+    async def override_get_chunking_service():
+        return mock_chunking_service
+
+    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+    try:
         # Compare endpoint has 5 requests per minute limit
         compare_data = {
             "content": "Test content",
@@ -143,25 +168,38 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
             else:
                 # 6th and 7th should be rate limited
                 assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    finally:
+        # Clean up the override
+        del app.dependency_overrides[get_chunking_service]
 
 
 @pytest.mark.asyncio()
 async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) -> None:
     """Test that admin bypass token allows unlimited requests."""
-    # Mock the chunking service
-    with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-        mock_service.return_value.preview_chunking = AsyncMock(
-            return_value={
-                "preview_id": "test-preview",
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size"},
-                "chunks": [],
-                "total_chunks": 0,
-                "processing_time_ms": 100,
-            }
-        )
-        mock_service.return_value.track_preview_usage = AsyncMock()
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_chunking_service
 
+    # Create a mock chunking service
+    mock_chunking_service = AsyncMock()
+    mock_chunking_service.preview_chunking = AsyncMock(
+        return_value={
+            "preview_id": "test-preview",
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size"},
+            "chunks": [],
+            "total_chunks": 0,
+            "processing_time_ms": 100,
+        }
+    )
+    mock_chunking_service.track_preview_usage = AsyncMock()
+
+    # Override the dependency at the app level
+    async def override_get_chunking_service():
+        return mock_chunking_service
+
+    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+    try:
         # Use bypass token in Authorization header
         headers = {"Authorization": f"Bearer {bypass_token}"}
         preview_data = {
@@ -178,6 +216,9 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
             )
             # With bypass token, should never get rate limited
             assert response.status_code != status.HTTP_429_TOO_MANY_REQUESTS
+    finally:
+        # Clean up the override
+        del app.dependency_overrides[get_chunking_service]
 
 
 @pytest.mark.asyncio()
@@ -231,19 +272,32 @@ async def test_circuit_breaker_activation(
 @pytest.mark.asyncio()
 async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that rate limit headers are included in responses."""
-    with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-        mock_service.return_value.preview_chunking = AsyncMock(
-            return_value={
-                "preview_id": "test-preview",
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size"},
-                "chunks": [],
-                "total_chunks": 0,
-                "processing_time_ms": 100,
-            }
-        )
-        mock_service.return_value.track_preview_usage = AsyncMock()
+    # Mock the Redis manager to avoid type checking issues
+    mock_redis_client = AsyncMock()
+    mock_redis_manager = AsyncMock()
+    mock_redis_manager.async_client = AsyncMock(return_value=mock_redis_client)
 
+    # Mock the chunking service
+    mock_chunking_service = AsyncMock()
+    mock_chunking_service.preview_chunking = AsyncMock(
+        return_value={
+            "preview_id": "test-preview",
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size"},
+            "chunks": [],
+            "total_chunks": 0,
+            "processing_time_ms": 100,
+        }
+    )
+    mock_chunking_service.track_preview_usage = AsyncMock()
+
+    # Override the dependency at the app level
+    async def override_get_chunking_service():
+        return mock_chunking_service
+
+    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+    try:
         preview_data = {
             "content": "Test content",
             "strategy": "fixed_size",
@@ -260,6 +314,9 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
             # These headers should be present when rate limiting is active
             # Note: Actual presence depends on slowapi configuration
             pass  # Headers may or may not be present depending on setup
+    finally:
+        # Clean up the override
+        del app.dependency_overrides[get_chunking_service]
 
 
 @pytest.mark.asyncio()
@@ -306,20 +363,30 @@ async def test_different_users_have_separate_limits(
     async_client: AsyncClient,
 ) -> None:
     """Test that different users have independent rate limits."""
-    # Mock the chunking service
-    with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-        mock_service.return_value.preview_chunking = AsyncMock(
-            return_value={
-                "preview_id": "test-preview",
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size"},
-                "chunks": [],
-                "total_chunks": 0,
-                "processing_time_ms": 100,
-            }
-        )
-        mock_service.return_value.track_preview_usage = AsyncMock()
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_chunking_service
 
+    # Create a mock chunking service
+    mock_chunking_service = AsyncMock()
+    mock_chunking_service.preview_chunking = AsyncMock(
+        return_value={
+            "preview_id": "test-preview",
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size"},
+            "chunks": [],
+            "total_chunks": 0,
+            "processing_time_ms": 100,
+        }
+    )
+    mock_chunking_service.track_preview_usage = AsyncMock()
+
+    # Override the dependency at the app level
+    async def override_get_chunking_service():
+        return mock_chunking_service
+
+    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+    try:
         preview_data = {
             "content": "Test content",
             "strategy": "fixed_size",
@@ -348,30 +415,44 @@ async def test_different_users_have_separate_limits(
         )
 
         # Both should be able to make requests independently
+    finally:
+        # Clean up the override
+        del app.dependency_overrides[get_chunking_service]
         # (actual behavior depends on auth implementation)
 
 
 @pytest.mark.asyncio()
 async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test fallback behavior when Redis is unavailable."""
+    from packages.webui.main import app
+    from packages.webui.services.factory import get_chunking_service
+
     # Simulate Redis connection failure
     with patch("packages.webui.rate_limiter.limiter") as mock_limiter:
         # Configure mock to simulate Redis being down but fallback working
         mock_limiter.limit.return_value = lambda f: f  # Pass through decorator
 
-        with patch("packages.webui.services.factory.get_chunking_service") as mock_service:
-            mock_service.return_value.preview_chunking = AsyncMock(
-                return_value={
-                    "preview_id": "test-preview",
-                    "strategy": "fixed_size",
-                    "config": {"strategy": "fixed_size"},
-                    "chunks": [],
-                    "total_chunks": 0,
-                    "processing_time_ms": 100,
-                }
-            )
-            mock_service.return_value.track_preview_usage = AsyncMock()
+        # Create a mock chunking service
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.preview_chunking = AsyncMock(
+            return_value={
+                "preview_id": "test-preview",
+                "strategy": "fixed_size",
+                "config": {"strategy": "fixed_size"},
+                "chunks": [],
+                "total_chunks": 0,
+                "processing_time_ms": 100,
+            }
+        )
+        mock_chunking_service.track_preview_usage = AsyncMock()
 
+        # Override the dependency at the app level
+        async def override_get_chunking_service():
+            return mock_chunking_service
+
+        app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+
+        try:
             preview_data = {
                 "content": "Test content",
                 "strategy": "fixed_size",
@@ -386,3 +467,6 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
 
             # Should not fail even if Redis is down
             assert response.status_code != status.HTTP_500_INTERNAL_SERVER_ERROR
+        finally:
+            # Clean up the override
+            del app.dependency_overrides[get_chunking_service]

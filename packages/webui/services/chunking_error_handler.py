@@ -18,9 +18,9 @@ from typing import Any
 import psutil
 from redis.asyncio import Redis
 
+from packages.shared.chunking.infrastructure.exceptions import ResourceType
 from packages.shared.database.models import CollectionStatus
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.webui.api.chunking_exceptions import ResourceType
 from packages.webui.middleware.correlation import get_correlation_id
 
 logger = logging.getLogger(__name__)
