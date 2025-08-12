@@ -6,24 +6,40 @@ strategy management, preview operations, collection processing, and analytics.
 """
 
 import os
-import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-from fastapi import HTTPException, status
-from fastapi.testclient import TestClient
+# Disable rate limiting for tests BEFORE importing the app
+os.environ["DISABLE_RATE_LIMITING"] = "true"
 
-import packages.webui.api.v2.chunking as chunking_module
-from packages.shared.config import settings
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-from packages.webui.auth import get_current_user
-from packages.webui.dependencies import get_collection_for_user
-from packages.webui.main import app
-from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.collection_service import CollectionService
-from packages.webui.services.factory import get_chunking_service, get_collection_service
+import uuid  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
+from typing import Any  # noqa: E402
+from unittest.mock import AsyncMock, MagicMock, Mock, patch  # noqa: E402
+
+import pytest  # noqa: E402
+from fastapi import HTTPException, status  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+# Mock background tasks and Redis manager BEFORE importing the app
+import packages.webui.background_tasks as bg_tasks  # noqa: E402
+from packages.shared.config import settings  # noqa: E402
+from packages.webui.api.v2.chunking_schemas import ChunkingStrategy  # noqa: E402
+from packages.webui.auth import get_current_user  # noqa: E402
+from packages.webui.dependencies import get_collection_for_user  # noqa: E402
+from packages.webui.services.chunking_service import ChunkingService  # noqa: E402
+from packages.webui.services.collection_service import CollectionService  # noqa: E402
+
+bg_tasks.start_background_tasks = AsyncMock()
+bg_tasks.stop_background_tasks = AsyncMock()
+
+import packages.webui.services.factory as factory_module  # noqa: E402
+
+factory_module._redis_manager = Mock(async_client=AsyncMock(return_value=AsyncMock()))
+
+# Lazy imports to avoid initialization issues
+app = None
+chunking_module = None
+get_chunking_service = None
+get_collection_service = None
 
 
 @pytest.fixture()
@@ -73,6 +89,20 @@ def client(
     mock_ws_manager: AsyncMock,
 ) -> TestClient:
     """Create a test client with mocked dependencies."""
+    global app, chunking_module, get_chunking_service, get_collection_service
+
+    # Check if already imported
+    if app is None:
+        # Import app and modules (environment variable already set at module level)
+        import packages.webui.api.v2.chunking as _chunking_module
+        from packages.webui.main import app as _app
+        from packages.webui.services.factory import get_chunking_service as _get_chunking_service
+        from packages.webui.services.factory import get_collection_service as _get_collection_service
+
+        app = _app
+        chunking_module = _chunking_module
+        get_chunking_service = _get_chunking_service
+        get_collection_service = _get_collection_service
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = lambda: mock_user
@@ -81,7 +111,6 @@ def client(
     app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
 
     # Replace ws_manager
-
     chunking_module.ws_manager = mock_ws_manager
 
     # Create test client
@@ -96,8 +125,74 @@ def client(
 class TestStrategyManagement:
     """Test strategy management endpoints."""
 
-    def test_list_strategies_success(self, client: TestClient) -> None:
+    def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
+        # Set up mock return value
+        mock_strategies = [
+            {
+                "id": ChunkingStrategy.FIXED_SIZE,
+                "name": "fixed_size",
+                "description": "Simple fixed-size character-based chunking",
+                "best_for": ["Quick processing", "Consistent chunk sizes"],
+                "pros": ["Fast", "Predictable"],
+                "cons": ["May break mid-sentence"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
+            },
+            {
+                "id": ChunkingStrategy.RECURSIVE,
+                "name": "recursive",
+                "description": "Smart sentence-aware splitting",
+                "best_for": ["General documents", "Maintaining context"],
+                "pros": ["Respects sentence boundaries"],
+                "cons": ["Variable chunk sizes"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
+            },
+            {
+                "id": ChunkingStrategy.MARKDOWN,
+                "name": "markdown",
+                "description": "Respects markdown structure",
+                "best_for": ["Markdown documents", "Technical documentation"],
+                "pros": ["Preserves structure"],
+                "cons": ["Only for markdown"],
+                "default_config": {"chunk_size": 1000, "chunk_overlap": 0},
+                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
+            },
+            {
+                "id": ChunkingStrategy.SEMANTIC,
+                "name": "semantic",
+                "description": "Uses AI embeddings to find natural boundaries",
+                "best_for": ["Complex documents", "Academic papers"],
+                "pros": ["Best context preservation"],
+                "cons": ["Slower", "Requires embeddings"],
+                "default_config": {"buffer_size": 1, "breakpoint_threshold": 95},
+                "performance_characteristics": {"speed": "slow", "accuracy": "very_high"},
+            },
+            {
+                "id": ChunkingStrategy.HIERARCHICAL,
+                "name": "hierarchical",
+                "description": "Creates parent-child chunks",
+                "best_for": ["Large documents", "Multi-level analysis"],
+                "pros": ["Multiple granularities"],
+                "cons": ["Complex", "More storage"],
+                "default_config": {"chunk_sizes": [2048, 512, 128]},
+                "performance_characteristics": {"speed": "slow", "accuracy": "high"},
+            },
+            {
+                "id": ChunkingStrategy.HYBRID,
+                "name": "hybrid",
+                "description": "Automatically selects strategy based on content",
+                "best_for": ["Mixed content", "Unknown document types"],
+                "pros": ["Adaptive", "Best overall"],
+                "cons": ["Overhead from analysis"],
+                "default_config": {},
+                "performance_characteristics": {"speed": "variable", "accuracy": "high"},
+            },
+        ]
+
+        mock_chunking_service.get_available_strategies.return_value = mock_strategies
+
         response = client.get("/api/v2/chunking/strategies")
 
         assert response.status_code == status.HTTP_200_OK
