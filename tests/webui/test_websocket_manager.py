@@ -135,11 +135,11 @@ class TestRedisStreamWebSocketManager:
     async def test_startup_success(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test successful startup with Redis connection."""
 
-        # Create an async function that returns the mock
-        async def async_from_url(*_, **__) -> None:
-            return mock_redis  # type: ignore[no-any-return]
+        # Mock redis.from_url to return our mock_redis
+        async def mock_from_url(*_args, **_kwargs):
+            return mock_redis
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("redis.asyncio.from_url", new=mock_from_url):
             await manager.startup()
 
             assert manager.redis is not None
@@ -150,17 +150,16 @@ class TestRedisStreamWebSocketManager:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args: Any, **kwargs: Any) -> AsyncMock:  # noqa: ARG001
+        async def mock_from_url(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Connection failed")
             # Return a mock redis client on the 3rd attempt
-            mock_redis.ping = AsyncMock(return_value=True)
-            return mock_redis  # type: ignore[no-any-return]
+            return mock_redis
 
         with (
-            patch("packages.webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
+            patch("redis.asyncio.from_url", side_effect=mock_from_url),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -171,8 +170,13 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_graceful_degradation(self, manager: RedisStreamWebSocketManager) -> None:
         """Test graceful degradation when Redis is completely unavailable."""
+
+        # Mock redis.from_url to always fail
+        async def mock_from_url(*_args, **_kwargs):
+            raise Exception("Connection failed")
+
         with (
-            patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("redis.asyncio.from_url", side_effect=mock_from_url),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -953,10 +957,11 @@ class TestRedisStreamWebSocketManager:
     async def test_startup_idempotency(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test that startup can be called multiple times safely."""
 
-        async def async_from_url(*_, **__) -> None:
-            return mock_redis  # type: ignore[no-any-return]
+        # Mock redis.from_url to return our mock_redis
+        async def mock_from_url(*_args, **_kwargs):
+            return mock_redis
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("redis.asyncio.from_url", new=mock_from_url):
             # First startup
             await manager.startup()
             assert manager.redis is mock_redis

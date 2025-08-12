@@ -86,11 +86,11 @@ class CollectionStatus(str, enum.Enum):
 class OperationStatus(str, enum.Enum):
     """Status of an operation."""
 
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class OperationType(str, enum.Enum):
