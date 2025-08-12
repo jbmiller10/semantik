@@ -331,7 +331,11 @@ class TestLargeDocumentIngestion:
             # Simulate more chunks for reindex
             mock_chunking.return_value = {
                 "chunks": [
-                    {"chunk_id": f"chunk_{i:04d}", "text": f"reindexed chunk {i}", "metadata": {"chunk_index": i, "reindexed": True}}
+                    {
+                        "chunk_id": f"chunk_{i:04d}",
+                        "text": f"reindexed chunk {i}",
+                        "metadata": {"chunk_index": i, "reindexed": True},
+                    }
                     for i in range(75)
                 ],
                 "stats": {

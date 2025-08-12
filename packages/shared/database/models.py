@@ -92,6 +92,18 @@ class OperationStatus(str, enum.Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+    @classmethod
+    def _missing_(cls, value):  # type: ignore[override]
+        """Provide case-insensitive lookup for enum values.
+
+        This allows constructing OperationStatus from values like "PROCESSING"
+        that appear in some test helpers, while keeping canonical values
+        lowercase in the database.
+        """
+        if isinstance(value, str):
+            return cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+        return None
+
 
 class OperationType(str, enum.Enum):
     """Types of collection operations."""

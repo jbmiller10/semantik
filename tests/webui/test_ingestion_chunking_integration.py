@@ -420,9 +420,7 @@ class TestExecuteIngestionChunking:
 
     @pytest.mark.skip(reason="Mock not working as expected with asyncio.to_thread")
     @pytest.mark.asyncio()
-    async def test_execute_ingestion_chunking_fatal_error_propagation(
-        self, chunking_service, sample_text
-    ):
+    async def test_execute_ingestion_chunking_fatal_error_propagation(self, chunking_service, sample_text):
         """Test that fatal errors are propagated correctly."""
         # Test with no strategy specified so it goes directly to TokenChunker
         collection_no_strategy = {
@@ -432,7 +430,7 @@ class TestExecuteIngestionChunking:
             "chunk_size": 100,
             "chunk_overlap": 20,
         }
-        
+
         # Mock TokenChunker to fail (simulating unrecoverable error)
         with patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker:
             mock_token_chunker.side_effect = MemoryError("Out of memory")
@@ -519,10 +517,10 @@ class TestAppendTaskIntegration:
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         # Configure mock to return different responses for embed and upsert calls
         mock_httpx_post.side_effect = [embed_response, upsert_response]
 
@@ -578,7 +576,9 @@ class TestAppendTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_append_task_updates_chunk_count_correctly(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies):
+    async def test_append_task_updates_chunk_count_correctly(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
         """Test that APPEND task correctly updates Document.chunk_count."""
         db = mock_dependencies["db"]
         updater = mock_dependencies["updater"]
@@ -593,17 +593,17 @@ class TestAppendTaskIntegration:
 
         # Mock text extraction
         mock_extract_serialize.return_value = [("Test content", {})]
-        
+
         # Mock HTTP responses for vecpipe
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384] * 8}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -641,7 +641,9 @@ class TestAppendTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_append_task_handles_different_strategies(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies):
+    async def test_append_task_handles_different_strategies(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
         """Test that APPEND task correctly handles different chunking strategies."""
         db = mock_dependencies["db"]
         updater = mock_dependencies["updater"]
@@ -658,17 +660,17 @@ class TestAppendTaskIntegration:
         db.execute.return_value.scalars.return_value.all.return_value = documents
 
         mock_extract_serialize.return_value = [("Test content for semantic chunking", {})]
-        
+
         # Mock HTTP responses
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -696,7 +698,9 @@ class TestAppendTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_append_task_handles_fallback_gracefully(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies):
+    async def test_append_task_handles_fallback_gracefully(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
         """Test that APPEND task handles fallback to TokenChunker gracefully."""
         db = mock_dependencies["db"]
         updater = mock_dependencies["updater"]
@@ -709,17 +713,17 @@ class TestAppendTaskIntegration:
         db.execute.return_value.scalars.return_value.all.return_value = documents
 
         mock_extract_serialize.return_value = [("Test content", {})]
-        
+
         # Mock HTTP responses
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -825,10 +829,10 @@ class TestReindexTaskIntegration:
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
 
         # Mock Qdrant manager
@@ -875,7 +879,9 @@ class TestReindexTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_reindex_task_preserves_staging_collection(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies):
+    async def test_reindex_task_preserves_staging_collection(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies
+    ):
         """Test that REINDEX task correctly uses staging collection."""
         db = mock_reindex_dependencies["db"]
         updater = mock_reindex_dependencies["updater"]
@@ -893,17 +899,17 @@ class TestReindexTaskIntegration:
         db.execute.return_value.scalars.return_value.all.return_value = documents
 
         mock_extract_serialize.return_value = [("Test content", {})]
-        
+
         # Mock HTTP responses
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -930,7 +936,9 @@ class TestReindexTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_reindex_task_updates_document_chunk_count(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies):
+    async def test_reindex_task_updates_document_chunk_count(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies
+    ):
         """Test that REINDEX task correctly updates Document.chunk_count."""
         db = mock_reindex_dependencies["db"]
         updater = mock_reindex_dependencies["updater"]
@@ -959,17 +967,17 @@ class TestReindexTaskIntegration:
         db.execute.return_value.scalars.return_value.all.return_value = documents
 
         mock_extract_serialize.return_value = [("Content to chunk", {})]
-        
+
         # Mock HTTP responses
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384] * 9}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -1003,7 +1011,9 @@ class TestReindexTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_reindex_task_without_strategy_override(self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies):
+    async def test_reindex_task_without_strategy_override(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies
+    ):
         """Test REINDEX task when new_config doesn't override strategy."""
         db = mock_reindex_dependencies["db"]
         updater = mock_reindex_dependencies["updater"]
@@ -1024,17 +1034,17 @@ class TestReindexTaskIntegration:
         db.execute.return_value.scalars.return_value.all.return_value = documents
 
         mock_extract_serialize.return_value = [("Content", {})]
-        
+
         # Mock HTTP responses
         embed_response = MagicMock()
         embed_response.status_code = 200
         embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
-        
+
         upsert_response = MagicMock()
         upsert_response.status_code = 200
-        
+
         mock_httpx_post.side_effect = [embed_response, upsert_response]
-        
+
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
@@ -1174,7 +1184,6 @@ class TestErrorHandlingAndEdgeCases:
     @pytest.mark.asyncio()
     async def test_execute_ingestion_chunking_performance_timing(self, chunking_service):
         """Test that duration_ms is calculated correctly."""
-        import time
 
         collection = {
             "id": "coll-timing",

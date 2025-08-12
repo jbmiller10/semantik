@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import redis.asyncio as aioredis
-from shared.text_processing.chunking import TokenChunker
+import shared.text_processing.chunking as token_chunking
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -2031,16 +2031,16 @@ class ChunkingService:
             except (TypeError, ValueError):
                 logger.warning(
                     f"Invalid chunk_size type: {type(chunk_size).__name__}, using default 1000",
-                    extra={"correlation_id": correlation_id}
+                    extra={"correlation_id": correlation_id},
                 )
                 chunk_size = 1000
-            
+
             try:
                 chunk_overlap = int(chunk_overlap)
             except (TypeError, ValueError):
                 logger.warning(
                     f"Invalid chunk_overlap type: {type(chunk_overlap).__name__}, using default 200",
-                    extra={"correlation_id": correlation_id}
+                    extra={"correlation_id": correlation_id},
                 )
                 chunk_overlap = 200
 
@@ -2076,7 +2076,7 @@ class ChunkingService:
                     },
                 )
                 try:
-                    chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                     # Execute in thread pool to avoid blocking event loop
                     chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
                     strategy_used = "TokenChunker"
@@ -2087,10 +2087,7 @@ class ChunkingService:
                     record_chunk_sizes(metrics_strategy_label, chunks)
                 except (MemoryError, SystemError) as e:
                     # Fatal errors should be propagated
-                    logger.error(
-                        f"Fatal error creating TokenChunker: {e}",
-                        extra={"correlation_id": correlation_id}
-                    )
+                    logger.error(f"Fatal error creating TokenChunker: {e}", extra={"correlation_id": correlation_id})
                     raise
 
             else:
@@ -2112,7 +2109,7 @@ class ChunkingService:
                                 "correlation_id": correlation_id,
                             },
                         )
-                        chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                        chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                         # Execute in thread pool to avoid blocking event loop
                         chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
                         strategy_used = "TokenChunker"
@@ -2227,7 +2224,7 @@ class ChunkingService:
                                     "correlation_id": correlation_id,
                                 },
                             )
-                            chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                            chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                             # Execute in thread pool to avoid blocking event loop
                             chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
                             strategy_used = "TokenChunker"
@@ -2260,7 +2257,7 @@ class ChunkingService:
                             "correlation_id": correlation_id,
                         },
                     )
-                    chunker = TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
                     # Execute in thread pool to avoid blocking event loop
                     chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
                     strategy_used = "TokenChunker"
