@@ -9,9 +9,13 @@ import {
   ChevronRight,
   Copy,
   Check,
-  Info
+  Info,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import { useChunkingStore } from '../../stores/chunkingStore';
+import { useChunkingWebSocket } from '../../hooks/useChunkingWebSocket';
 import type { ChunkPreview } from '../../types/chunking';
 
 interface ChunkingPreviewPanelProps {
@@ -32,39 +36,87 @@ export function ChunkingPreviewPanel({
     previewLoading,
     previewError,
     setPreviewDocument,
-    loadPreview
+    loadPreview,
+    selectedStrategy,
+    strategyConfig
   } = useChunkingStore();
+
+  // WebSocket integration for real-time updates
+  const {
+    connectionStatus,
+    connect: connectWebSocket,
+    isConnected,
+    chunks: wsChunks,
+    progress: wsProgress,
+    statistics: wsStatistics,
+    error: wsError,
+    startPreview: startWebSocketPreview,
+    clearData: clearWebSocketData
+  } = useChunkingWebSocket({
+    autoConnect: true,
+    onChunkReceived: (_chunk, index, total) => {
+      console.log(`Received chunk ${index + 1}/${total}`);
+    },
+    onComplete: (statistics) => {
+      console.log('Preview complete with statistics:', statistics);
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error);
+    }
+  });
 
   const [selectedChunkIndex, setSelectedChunkIndex] = useState(0);
   const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'split' | 'chunks' | 'original'>('split');
   const [fontSize, setFontSize] = useState(14);
   const [copiedChunkId, setCopiedChunkId] = useState<string | null>(null);
+  const [useWebSocket, setUseWebSocket] = useState(true);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
 
   // Use provided document or preview document from store
   const activeDocument = providedDocument || previewDocument;
 
+  // Determine which chunks and statistics to display (WebSocket or REST)
+  const displayChunks = useWebSocket && wsChunks.length > 0 ? wsChunks : previewChunks;
+  const displayStatistics = useWebSocket && wsStatistics ? wsStatistics : previewStatistics;
+  const displayLoading = useWebSocket ? (wsProgress !== null) : previewLoading;
+  const displayError = useWebSocket ? wsError?.message : previewError;
+
   useEffect(() => {
     if (providedDocument && (!previewDocument || previewDocument.id !== providedDocument.id)) {
       setPreviewDocument(providedDocument);
-      loadPreview();
+      
+      // Clear WebSocket data when document changes
+      clearWebSocketData();
+      
+      // Try WebSocket first, fall back to REST API
+      if (useWebSocket && isConnected && providedDocument.id) {
+        startWebSocketPreview(
+          providedDocument.id,
+          selectedStrategy,
+          strategyConfig.parameters
+        );
+      } else {
+        loadPreview();
+      }
     }
-  }, [providedDocument, previewDocument, setPreviewDocument, loadPreview]);
+  }, [providedDocument, previewDocument, setPreviewDocument, loadPreview, 
+      useWebSocket, isConnected, startWebSocketPreview, clearWebSocketData,
+      selectedStrategy, strategyConfig]);
 
   // Calculate chunk boundaries in original text
   const chunkBoundaries = useMemo(() => {
-    if (!activeDocument?.content || !previewChunks.length) return [];
+    if (!activeDocument?.content || !displayChunks.length) return [];
     
-    return previewChunks.map(chunk => ({
+    return displayChunks.map(chunk => ({
       id: chunk.id,
       start: chunk.startIndex,
       end: chunk.endIndex,
       overlapStart: chunk.overlapWithPrevious ? chunk.startIndex : null,
       overlapEnd: chunk.overlapWithNext ? chunk.endIndex - (chunk.overlapWithNext || 0) : null
     }));
-  }, [activeDocument, previewChunks]);
+  }, [activeDocument, displayChunks]);
 
   // Render original document with chunk boundaries highlighted
   const renderOriginalWithBoundaries = (): React.ReactNode => {
@@ -185,7 +237,7 @@ export function ChunkingPreviewPanel({
     );
   }
 
-  if (previewLoading) {
+  if (displayLoading) {
     return (
       <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
         <div className="text-center">
@@ -193,24 +245,43 @@ export function ChunkingPreviewPanel({
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
-          <p className="text-sm text-gray-600">Generating chunk preview...</p>
+          <p className="text-sm text-gray-600">
+            {wsProgress ? `Processing chunks: ${wsProgress.currentChunk}/${wsProgress.totalChunks} (${wsProgress.percentage}%)` : 'Generating chunk preview...'}
+          </p>
         </div>
       </div>
     );
   }
 
-  if (previewError) {
+  if (displayError) {
     return (
       <div className="flex items-center justify-center h-64 bg-red-50 rounded-lg">
         <div className="text-center">
           <div className="text-red-600 mb-3">⚠️</div>
-          <p className="text-sm text-red-700">{previewError}</p>
-          <button
-            onClick={() => loadPreview(true)}
-            className="mt-2 text-sm text-red-600 hover:text-red-700 font-medium"
-          >
-            Retry
-          </button>
+          <p className="text-sm text-red-700">{displayError}</p>
+          <div className="flex items-center justify-center space-x-2 mt-2">
+            <button
+              onClick={() => {
+                if (useWebSocket && activeDocument?.id) {
+                  clearWebSocketData();
+                  startWebSocketPreview(activeDocument.id, selectedStrategy, strategyConfig.parameters);
+                } else {
+                  loadPreview(true);
+                }
+              }}
+              className="text-sm text-red-600 hover:text-red-700 font-medium"
+            >
+              Retry
+            </button>
+            {useWebSocket && !isConnected && (
+              <button
+                onClick={() => setUseWebSocket(false)}
+                className="text-sm text-gray-600 hover:text-gray-700 font-medium"
+              >
+                Use REST API
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -221,6 +292,44 @@ export function ChunkingPreviewPanel({
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center space-x-4">
+          {/* Connection Status Indicator */}
+          <div className="flex items-center space-x-2">
+            {connectionStatus === 'connected' && (
+              <div className="flex items-center text-green-600">
+                <Wifi className="h-4 w-4 mr-1" />
+                <span className="text-xs font-medium">Live</span>
+              </div>
+            )}
+            {connectionStatus === 'connecting' && (
+              <div className="flex items-center text-yellow-600">
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                <span className="text-xs font-medium">Connecting...</span>
+              </div>
+            )}
+            {connectionStatus === 'reconnecting' && (
+              <div className="flex items-center text-orange-600">
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                <span className="text-xs font-medium">Reconnecting...</span>
+              </div>
+            )}
+            {(connectionStatus === 'disconnected' || connectionStatus === 'error') && (
+              <div className="flex items-center text-gray-500">
+                <WifiOff className="h-4 w-4 mr-1" />
+                <span className="text-xs font-medium">
+                  {useWebSocket ? 'Offline' : 'REST Mode'}
+                </span>
+                {useWebSocket && (
+                  <button
+                    onClick={connectWebSocket}
+                    className="ml-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    Reconnect
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* View Mode Selector */}
           <div className="flex items-center bg-white rounded-md border border-gray-300">
             <button
@@ -278,17 +387,17 @@ export function ChunkingPreviewPanel({
         </div>
 
         {/* Statistics */}
-        {previewStatistics && (
+        {displayStatistics && (
           <div className="flex items-center space-x-4 text-sm text-gray-600">
             <div className="flex items-center">
               <Hash className="h-4 w-4 mr-1" />
-              <span>{previewStatistics.totalChunks} chunks</span>
+              <span>{displayStatistics.totalChunks} chunks</span>
             </div>
             <div className="flex items-center">
               <BarChart3 className="h-4 w-4 mr-1" />
-              <span>Avg: {previewStatistics.avgChunkSize} chars</span>
+              <span>Avg: {displayStatistics.avgChunkSize} chars</span>
             </div>
-            {previewStatistics.overlapPercentage !== undefined && (
+            {displayStatistics.overlapPercentage !== undefined && (
               <div className="flex items-center">
                 <div className="group relative">
                   <Info className="h-4 w-4 mr-1" />
@@ -301,7 +410,13 @@ export function ChunkingPreviewPanel({
                     </div>
                   </div>
                 </div>
-                <span>{previewStatistics.overlapPercentage}% overlap</span>
+                <span>{displayStatistics.overlapPercentage}% overlap</span>
+              </div>
+            )}
+            {wsProgress && (
+              <div className="flex items-center text-blue-600">
+                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                <span>{wsProgress.percentage}%</span>
               </div>
             )}
           </div>
@@ -341,12 +456,12 @@ export function ChunkingPreviewPanel({
           >
             <div className="sticky top-0 bg-white z-10 px-4 py-2 border-b border-gray-100">
               <h3 className="text-sm font-medium text-gray-700">
-                Chunks ({previewChunks.length})
+                Chunks ({displayChunks.length})
               </h3>
             </div>
             
             <div className="divide-y divide-gray-200">
-              {previewChunks.map((chunk, index) => (
+              {displayChunks.map((chunk, index) => (
                 <div
                   key={chunk.id}
                   id={`preview-chunk-${index}`}
@@ -420,7 +535,7 @@ export function ChunkingPreviewPanel({
       </div>
 
       {/* Navigation Controls */}
-      {viewMode !== 'original' && previewChunks.length > 1 && (
+      {viewMode !== 'original' && displayChunks.length > 1 && (
         <div className="absolute bottom-4 right-4 flex items-center space-x-2 bg-white rounded-lg shadow-lg px-3 py-2">
           <button
             onClick={() => {
@@ -434,15 +549,15 @@ export function ChunkingPreviewPanel({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <span className="text-sm text-gray-600 font-medium">
-            {selectedChunkIndex + 1} / {previewChunks.length}
+            {selectedChunkIndex + 1} / {displayChunks.length}
           </span>
           <button
             onClick={() => {
-              const newIndex = Math.min(previewChunks.length - 1, selectedChunkIndex + 1);
+              const newIndex = Math.min(displayChunks.length - 1, selectedChunkIndex + 1);
               setSelectedChunkIndex(newIndex);
               scrollToChunk(newIndex, 'right');
             }}
-            disabled={selectedChunkIndex === previewChunks.length - 1}
+            disabled={selectedChunkIndex === displayChunks.length - 1}
             className="p-1 text-gray-600 hover:text-gray-800 disabled:text-gray-400"
           >
             <ChevronRight className="h-4 w-4" />

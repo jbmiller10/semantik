@@ -5,12 +5,12 @@ import type {
   ChunkingConfiguration, 
   ChunkingPreset,
   ChunkPreview,
-  ChunkingPreviewResponse,
   ChunkingComparisonResult,
   ChunkingAnalytics,
   ChunkingStatistics
 } from '../types/chunking';
 import { CHUNKING_STRATEGIES, CHUNKING_PRESETS } from '../types/chunking';
+import { chunkingApi, handleChunkingError } from '../services/api/v2/chunking';
 
 interface ChunkingStore {
   // Strategy Selection
@@ -26,7 +26,7 @@ interface ChunkingStore {
   
   // Comparison State
   comparisonStrategies: ChunkingStrategyType[];
-  comparisonResults: Record<ChunkingStrategyType, ChunkingComparisonResult>;
+  comparisonResults: Partial<Record<ChunkingStrategyType, ChunkingComparisonResult>>;
   comparisonLoading: boolean;
   comparisonError: string | null;
   
@@ -37,13 +37,15 @@ interface ChunkingStore {
   // Preset Management
   selectedPreset: string | null;
   customPresets: ChunkingPreset[];
+  presetsLoading: boolean;
   
   // Actions - Strategy Management
   setStrategy: (strategy: ChunkingStrategyType) => void;
   updateConfiguration: (updates: Partial<ChunkingConfiguration['parameters']>) => void;
   applyPreset: (presetId: string) => void;
-  saveCustomPreset: (preset: Omit<ChunkingPreset, 'id'>) => string;
-  deleteCustomPreset: (presetId: string) => void;
+  loadPresets: () => Promise<void>;
+  saveCustomPreset: (preset: Omit<ChunkingPreset, 'id'>) => Promise<string>;
+  deleteCustomPreset: (presetId: string) => Promise<void>;
   
   // Actions - Preview
   setPreviewDocument: (doc: { id?: string; content?: string; name?: string } | null) => void;
@@ -62,6 +64,7 @@ interface ChunkingStore {
   // Actions - Utility
   reset: () => void;
   getRecommendedStrategy: (fileType?: string) => ChunkingStrategyType;
+  cancelActiveRequests: () => void;
 }
 
 // Default configuration for each strategy
@@ -86,13 +89,14 @@ const initialState = {
   previewLoading: false,
   previewError: null,
   comparisonStrategies: [],
-  comparisonResults: {} as Record<ChunkingStrategyType, ChunkingComparisonResult>,
+  comparisonResults: {},
   comparisonLoading: false,
   comparisonError: null,
   analyticsData: null,
   analyticsLoading: false,
   selectedPreset: null,
-  customPresets: []
+  customPresets: [],
+  presetsLoading: false
 };
 
 export const useChunkingStore = create<ChunkingStore>()(
@@ -144,20 +148,58 @@ export const useChunkingStore = create<ChunkingStore>()(
         }
       },
 
-      saveCustomPreset: (preset) => {
-        const id = `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        const newPreset = { ...preset, id };
-        set(state => ({
-          customPresets: [...state.customPresets, newPreset]
-        }));
-        return id;
+      loadPresets: async () => {
+        set({ presetsLoading: true });
+        
+        try {
+          const presets = await chunkingApi.getPresets({
+            requestId: `load-presets-${Date.now()}`
+          });
+          
+          // Filter out system presets (they're already in CHUNKING_PRESETS)
+          const customPresets = presets.filter(p => p.id.startsWith('custom-'));
+          
+          set({
+            customPresets,
+            presetsLoading: false
+          });
+        } catch (error) {
+          console.error('Failed to load presets:', handleChunkingError(error));
+          set({ presetsLoading: false });
+        }
       },
 
-      deleteCustomPreset: (presetId) => {
-        set(state => ({
-          customPresets: state.customPresets.filter(p => p.id !== presetId),
-          selectedPreset: state.selectedPreset === presetId ? null : state.selectedPreset
-        }));
+      saveCustomPreset: async (preset) => {
+        try {
+          const savedPreset = await chunkingApi.savePreset(preset, {
+            requestId: `save-preset-${Date.now()}`
+          });
+          
+          set(state => ({
+            customPresets: [...state.customPresets, savedPreset]
+          }));
+          
+          return savedPreset.id;
+        } catch (error) {
+          console.error('Failed to save preset:', handleChunkingError(error));
+          throw error;
+        }
+      },
+
+      deleteCustomPreset: async (presetId) => {
+        try {
+          await chunkingApi.deletePreset(presetId, {
+            requestId: `delete-preset-${Date.now()}`
+          });
+          
+          set(state => ({
+            customPresets: state.customPresets.filter(p => p.id !== presetId),
+            selectedPreset: state.selectedPreset === presetId ? null : state.selectedPreset
+          }));
+        } catch (error) {
+          console.error('Failed to delete preset:', handleChunkingError(error));
+          throw error;
+        }
       },
 
       // Preview Actions
@@ -180,64 +222,30 @@ export const useChunkingStore = create<ChunkingStore>()(
         set({ previewLoading: true, previewError: null });
 
         try {
-          // TODO: Replace with actual API call
-          // const response = await chunkingApi.preview({
-          //   documentId: previewDocument.id,
-          //   content: previewDocument.content,
-          //   strategy: strategyConfig.strategy,
-          //   configuration: strategyConfig.parameters
-          // });
-          
-          // Using strategyConfig for future API implementation
-          console.debug('Preview requested for strategy:', strategyConfig.strategy);
-
-          // Simulate API response for now
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          const mockResponse: ChunkingPreviewResponse = {
-            chunks: [
-              {
-                id: '1',
-                content: 'This is a preview chunk showing how your document will be split...',
-                startIndex: 0,
-                endIndex: 100,
-                tokens: 20
-              },
-              {
-                id: '2',
-                content: 'The second chunk continues from here with some overlap...',
-                startIndex: 80,
-                endIndex: 180,
-                tokens: 18,
-                overlapWithPrevious: 20
-              }
-            ],
-            statistics: {
-              totalChunks: 2,
-              avgChunkSize: 90,
-              minChunkSize: 80,
-              maxChunkSize: 100,
-              totalTokens: 38,
-              avgTokensPerChunk: 19,
-              overlapPercentage: 22,
-              sizeDistribution: [
-                { range: '0-100', count: 2, percentage: 100 }
-              ]
+          const response = await chunkingApi.preview(
+            {
+              documentId: previewDocument.id,
+              content: previewDocument.content,
+              strategy: strategyConfig.strategy,
+              configuration: strategyConfig.parameters,
             },
-            performance: {
-              processingTimeMs: 150,
-              estimatedFullProcessingTimeMs: 1500
+            {
+              requestId: `preview-${previewDocument.id || 'content'}-${Date.now()}`,
+              onProgress: (progress) => {
+                // Progress tracking for UI feedback
+                console.debug(`Preview progress: ${progress.percentage}%`);
+              },
             }
-          };
+          );
 
           set({
-            previewChunks: mockResponse.chunks,
-            previewStatistics: mockResponse.statistics,
+            previewChunks: response.chunks,
+            previewStatistics: response.statistics,
             previewLoading: false
           });
         } catch (error) {
           set({
-            previewError: error instanceof Error ? error.message : 'Failed to load preview',
+            previewError: handleChunkingError(error),
             previewLoading: false
           });
         }
@@ -288,55 +296,38 @@ export const useChunkingStore = create<ChunkingStore>()(
         set({ comparisonLoading: true, comparisonError: null });
 
         try {
-          // TODO: Replace with actual API call
-          // const results = await Promise.all(
-          //   comparisonStrategies.map(strategy =>
-          //     chunkingApi.preview({
-          //       documentId: previewDocument.id,
-          //       content: previewDocument.content,
-          //       strategy,
-          //       configuration: getDefaultConfiguration(strategy).parameters
-          //     })
-          //   )
-          // );
+          const strategies = comparisonStrategies.map(strategy => ({
+            strategy,
+            configuration: getDefaultConfiguration(strategy).parameters
+          }));
 
-          // Simulate API response
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          
-          const mockResults = {} as Record<ChunkingStrategyType, ChunkingComparisonResult>;
-          comparisonStrategies.forEach(strategy => {
-            mockResults[strategy] = {
-              strategy,
-              configuration: getDefaultConfiguration(strategy),
-              preview: {
-                chunks: [],
-                statistics: {
-                  totalChunks: Math.floor(Math.random() * 20) + 5,
-                  avgChunkSize: Math.floor(Math.random() * 500) + 300,
-                  minChunkSize: 200,
-                  maxChunkSize: 800,
-                  sizeDistribution: []
-                },
-                performance: {
-                  processingTimeMs: Math.floor(Math.random() * 500) + 100,
-                  estimatedFullProcessingTimeMs: Math.floor(Math.random() * 5000) + 1000
-                }
+          const results = await chunkingApi.compare(
+            {
+              documentId: previewDocument.id,
+              content: previewDocument.content,
+              strategies,
+            },
+            {
+              requestId: `compare-${Date.now()}`,
+              onProgress: (progress) => {
+                console.debug(`Comparison progress: ${progress.percentage}%`);
               },
-              score: {
-                quality: Math.random() * 30 + 70,
-                performance: Math.random() * 30 + 70,
-                overall: Math.random() * 30 + 70
-              }
-            };
+            }
+          );
+
+          // Convert array to map for store
+          const comparisonResults: Partial<Record<ChunkingStrategyType, ChunkingComparisonResult>> = {};
+          results.forEach(result => {
+            comparisonResults[result.strategy] = result;
           });
 
           set({
-            comparisonResults: mockResults,
+            comparisonResults,
             comparisonLoading: false
           });
         } catch (error) {
           set({
-            comparisonError: error instanceof Error ? error.message : 'Failed to compare strategies',
+            comparisonError: handleChunkingError(error),
             comparisonLoading: false
           });
         }
@@ -345,7 +336,7 @@ export const useChunkingStore = create<ChunkingStore>()(
       clearComparison: () => {
         set({
           comparisonStrategies: [],
-          comparisonResults: {} as Record<ChunkingStrategyType, ChunkingComparisonResult>,
+          comparisonResults: {},
           comparisonError: null
         });
       },
@@ -355,53 +346,19 @@ export const useChunkingStore = create<ChunkingStore>()(
         set({ analyticsLoading: true });
 
         try {
-          // TODO: Replace with actual API call
-          // const analytics = await chunkingApi.getAnalytics();
-
-          // Simulate API response
-          await new Promise(resolve => setTimeout(resolve, 800));
-          
-          const mockAnalytics: ChunkingAnalytics = {
-            strategyUsage: [
-              { strategy: 'recursive', count: 145, percentage: 35, trend: 'up' },
-              { strategy: 'character', count: 95, percentage: 23, trend: 'stable' },
-              { strategy: 'semantic', count: 75, percentage: 18, trend: 'up' },
-              { strategy: 'markdown', count: 60, percentage: 14, trend: 'down' },
-              { strategy: 'hierarchical', count: 25, percentage: 6, trend: 'stable' },
-              { strategy: 'hybrid', count: 15, percentage: 4, trend: 'up' }
-            ],
-            performanceMetrics: Object.keys(CHUNKING_STRATEGIES).map(strategy => ({
-              strategy: strategy as ChunkingStrategyType,
-              avgProcessingTimeMs: Math.floor(Math.random() * 2000) + 500,
-              avgChunksPerDocument: Math.floor(Math.random() * 50) + 10,
-              successRate: Math.random() * 5 + 95
-            })),
-            fileTypeDistribution: [
-              { fileType: 'pdf', count: 120, preferredStrategy: 'recursive' },
-              { fileType: 'md', count: 80, preferredStrategy: 'markdown' },
-              { fileType: 'txt', count: 60, preferredStrategy: 'character' },
-              { fileType: 'py', count: 40, preferredStrategy: 'recursive' }
-            ],
-            recommendations: [
-              {
-                id: '1',
-                type: 'strategy',
-                priority: 'high',
-                title: 'Try Semantic Chunking for Better Results',
-                description: 'Based on your document types, semantic chunking could improve search quality by 15%',
-                action: {
-                  label: 'Switch to Semantic',
-                  configuration: getDefaultConfiguration('semantic')
-                }
-              }
-            ]
-          };
+          const analytics = await chunkingApi.getAnalytics(
+            undefined,
+            {
+              requestId: `analytics-${Date.now()}`
+            }
+          );
 
           set({
-            analyticsData: mockAnalytics,
+            analyticsData: analytics,
             analyticsLoading: false
           });
-        } catch {
+        } catch (error) {
+          console.error('Failed to load analytics:', handleChunkingError(error));
           set({ analyticsLoading: false });
         }
       },
@@ -433,6 +390,10 @@ export const useChunkingStore = create<ChunkingStore>()(
         
         // Default to recursive for most files (including code)
         return 'recursive';
+      },
+
+      cancelActiveRequests: () => {
+        chunkingApi.cancelAllRequests('User cancelled operation');
       }
     }),
     {

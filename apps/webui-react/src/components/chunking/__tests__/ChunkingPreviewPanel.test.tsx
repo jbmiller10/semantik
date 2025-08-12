@@ -3,11 +3,31 @@ import { render, screen, waitFor, fireEvent } from '@/tests/utils/test-utils'
 import userEvent from '@testing-library/user-event'
 import { ChunkingPreviewPanel } from '../ChunkingPreviewPanel'
 import { useChunkingStore } from '@/stores/chunkingStore'
+import { useChunkingWebSocket } from '@/hooks/useChunkingWebSocket'
 import type { ChunkPreview, ChunkingStatistics } from '@/types/chunking'
 
 // Mock the chunking store
 vi.mock('@/stores/chunkingStore', () => ({
   useChunkingStore: vi.fn(),
+}))
+
+// Mock the WebSocket hook to prevent authentication errors in tests
+vi.mock('@/hooks/useChunkingWebSocket', () => ({
+  useChunkingWebSocket: vi.fn(() => ({
+    connectionStatus: 'connected',
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    isConnected: true,
+    reconnectAttempts: 0,
+    chunks: [],
+    progress: null,
+    statistics: null,
+    performance: null,
+    error: null,
+    startPreview: vi.fn(),
+    startComparison: vi.fn(),
+    clearData: vi.fn(),
+  })),
 }))
 
 // Mock clipboard API
@@ -86,6 +106,14 @@ describe('ChunkingPreviewPanel', () => {
     previewError: null,
     setPreviewDocument: mockSetPreviewDocument,
     loadPreview: mockLoadPreview,
+    selectedStrategy: 'recursive',
+    strategyConfig: {
+      strategy: 'recursive',
+      parameters: {
+        chunk_size: 600,
+        chunk_overlap: 100,
+      },
+    },
   }
 
   beforeEach(() => {
@@ -121,9 +149,26 @@ describe('ChunkingPreviewPanel', () => {
       previewLoading: true,
     })
 
+    // Mock WebSocket to show progress (which triggers loading state)
+    ;(useChunkingWebSocket as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      connectionStatus: 'connected',
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnected: true,
+      reconnectAttempts: 0,
+      chunks: [],
+      progress: { currentChunk: 1, totalChunks: 5, percentage: 20 },
+      statistics: null,
+      performance: null,
+      error: null,
+      startPreview: vi.fn(),
+      startComparison: vi.fn(),
+      clearData: vi.fn(),
+    })
+
     render(<ChunkingPreviewPanel />)
 
-    expect(screen.getByText('Generating chunk preview...')).toBeInTheDocument()
+    expect(screen.getByText('Processing chunks: 1/5 (20%)')).toBeInTheDocument()
     // No explicit progressbar role, but there's an animated spinner
     expect(document.querySelector('.animate-spin')).toBeInTheDocument()
   })
@@ -133,6 +178,23 @@ describe('ChunkingPreviewPanel', () => {
     ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue({
       ...defaultMockStore,
       previewError: errorMessage,
+    })
+
+    // Mock WebSocket to show error
+    ;(useChunkingWebSocket as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      connectionStatus: 'error',
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnected: false,
+      reconnectAttempts: 0,
+      chunks: [],
+      progress: null,
+      statistics: null,
+      performance: null,
+      error: { message: errorMessage },
+      startPreview: vi.fn(),
+      startComparison: vi.fn(),
+      clearData: vi.fn(),
     })
 
     render(<ChunkingPreviewPanel />)
@@ -328,18 +390,59 @@ describe('ChunkingPreviewPanel', () => {
       name: 'provided.txt',
     }
 
+    const mockStartPreview = vi.fn()
+    ;(useChunkingWebSocket as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      connectionStatus: 'connected',
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnected: true,
+      reconnectAttempts: 0,
+      chunks: [],
+      progress: null,
+      statistics: null,
+      performance: null,
+      error: null,
+      startPreview: mockStartPreview,
+      startComparison: vi.fn(),
+      clearData: vi.fn(),
+    })
+
     render(<ChunkingPreviewPanel document={providedDoc} />)
 
     expect(mockSetPreviewDocument).toHaveBeenCalledWith(providedDoc)
-    expect(mockLoadPreview).toHaveBeenCalled()
+    // Since WebSocket is connected and document has id, it will use WebSocket
+    expect(mockStartPreview).toHaveBeenCalledWith(
+      providedDoc.id,
+      'recursive',
+      { chunk_size: 600, chunk_overlap: 100 }
+    )
   })
 
   it('reloads preview when document changes', () => {
+    const mockStartPreview = vi.fn()
+    const mockClearData = vi.fn()
+    ;(useChunkingWebSocket as ReturnType<typeof vi.fn>).mockReturnValue({
+      connectionStatus: 'connected',
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      isConnected: true,
+      reconnectAttempts: 0,
+      chunks: [],
+      progress: null,
+      statistics: null,
+      performance: null,
+      error: null,
+      startPreview: mockStartPreview,
+      startComparison: vi.fn(),
+      clearData: mockClearData,
+    })
+
     const { rerender } = render(<ChunkingPreviewPanel document={mockDocument} />)
 
     // Clear the mocks after initial render
     mockSetPreviewDocument.mockClear()
-    mockLoadPreview.mockClear()
+    mockStartPreview.mockClear()
+    mockClearData.mockClear()
 
     const newDocument = {
       id: 'new-doc',
@@ -350,7 +453,12 @@ describe('ChunkingPreviewPanel', () => {
     rerender(<ChunkingPreviewPanel document={newDocument} />)
 
     expect(mockSetPreviewDocument).toHaveBeenCalledWith(newDocument)
-    expect(mockLoadPreview).toHaveBeenCalledTimes(1)
+    expect(mockClearData).toHaveBeenCalled()
+    expect(mockStartPreview).toHaveBeenCalledWith(
+      newDocument.id,
+      'recursive',
+      { chunk_size: 600, chunk_overlap: 100 }
+    )
   })
 
   it('handles empty chunks gracefully', () => {
