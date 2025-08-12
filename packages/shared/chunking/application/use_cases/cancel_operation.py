@@ -88,7 +88,7 @@ class CancelOperationUseCase:
                     await self.unit_of_work.operations.update_status(
                         operation_id=request.operation_id,
                         status=OperationStatus.PARTIALLY_COMPLETED,
-                        error_message=request.reason
+                        error_message=request.reason,
                     )
                 else:
                     # Mark as cancelled

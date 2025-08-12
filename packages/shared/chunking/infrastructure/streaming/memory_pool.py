@@ -145,7 +145,9 @@ class MemoryPool:
                 self.used_size += self.default_buffer_size
 
     @contextmanager
-    def acquire_sync_context(self, size: int | None = None, timeout: float = 30.0) -> Generator[ManagedBuffer, None, None]:
+    def acquire_sync_context(
+        self, size: int | None = None, timeout: float = 30.0
+    ) -> Generator[ManagedBuffer, None, None]:
         """
         Synchronous context manager for buffer acquisition.
 
@@ -208,7 +210,9 @@ class MemoryPool:
                 self.release(buffer_id)
 
     @asynccontextmanager
-    async def acquire_async(self, size: int | None = None, timeout: float = 30.0) -> AsyncGenerator[ManagedBuffer, None]:
+    async def acquire_async(
+        self, size: int | None = None, timeout: float = 30.0
+    ) -> AsyncGenerator[ManagedBuffer, None]:
         """
         Asynchronous context manager for buffer acquisition.
 
@@ -257,7 +261,9 @@ class MemoryPool:
                                 )
 
                                 self.allocation_count += 1
-                                assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
+                                assert (
+                                    buffer is not None
+                                )  # Type guard - buffer_id being truthy guarantees buffer is not None
                                 managed_buffer = ManagedBuffer(buffer_id, buffer, self)
                                 break
 
@@ -325,7 +331,9 @@ class MemoryPool:
 
                                 self.allocation_count += 1
                                 # Don't wrap in ManagedBuffer - just return raw tuple
-                                assert buffer is not None  # Type guard - buffer_id being truthy guarantees buffer is not None
+                                assert (
+                                    buffer is not None
+                                )  # Type guard - buffer_id being truthy guarantees buffer is not None
                                 return buffer_id, buffer
 
                     # Wait for buffer to become available

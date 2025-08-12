@@ -353,6 +353,7 @@ class StreamingError(InfrastructureError):
         )
         self.processor_state = processor_state
 
+
 # ---------------------------------------------------------------------------
 # Backwards-compatibility aliases for tests and external callers expecting
 # "Exception"-suffixed class names rather than "Error"-suffixed ones.

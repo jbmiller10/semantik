@@ -22,6 +22,7 @@ except ImportError:
 class RegexTimeoutError(Exception):
     """Raised when regex execution times out."""
 
+
 # Backwards-compatibility alias expected by tests
 RegexTimeout = RegexTimeoutError
 

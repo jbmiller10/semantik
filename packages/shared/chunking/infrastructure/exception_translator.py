@@ -58,9 +58,7 @@ class ExceptionTranslator:
             StreamingError: 500,  # Streaming errors are server-side
         }
 
-    def translate_domain_to_application(
-        self, exc: DomainError, correlation_id: str | None = None
-    ) -> ApplicationError:
+    def translate_domain_to_application(self, exc: DomainError, correlation_id: str | None = None) -> ApplicationError:
         """Translate domain exception to application exception.
 
         Args:
@@ -221,9 +219,7 @@ class ExceptionTranslator:
         return JSONResponse(status_code=status_code, content=content)
 
     # Specific translator methods
-    def _document_too_large_to_app(
-        self, exc: DocumentTooLargeError, correlation_id: str | None
-    ) -> ApplicationError:
+    def _document_too_large_to_app(self, exc: DocumentTooLargeError, correlation_id: str | None) -> ApplicationError:
         """Translate document too large error to application exception."""
         return ValidationError(
             field="document",
