@@ -727,13 +727,16 @@ describe('WebSocketService', () => {
       expect(service.isReady()).toBe(false);
       
       service.connect();
-      await vi.advanceTimersByTimeAsync(20);
+      
+      // Wait for connection to open (10ms)
+      await vi.advanceTimersByTimeAsync(10);
       
       expect(service.getState()).toBe(WebSocketState.OPEN);
       expect(service.isConnected()).toBe(true);
       expect(service.isReady()).toBe(false); // Not authenticated yet
       
-      await vi.advanceTimersByTimeAsync(20); // Wait for auth
+      // Wait for authentication (another 10ms)
+      await vi.advanceTimersByTimeAsync(15);
       
       expect(service.isReady()).toBe(true);
       
@@ -805,9 +808,18 @@ describe('WebSocketService', () => {
       service.connect();
       await vi.advanceTimersByTimeAsync(30);
       
-      // Override send to throw error
-      mockWebSocketInstance!.send = vi.fn(() => {
-        throw new Error('Send failed');
+      // Ensure WebSocket is authenticated
+      expect(service.isReady()).toBe(true);
+      
+      // Override send to throw error only for test messages
+      const originalSend = mockWebSocketInstance!.send;
+      mockWebSocketInstance!.send = vi.fn((data: string) => {
+        const message = JSON.parse(data);
+        if (message.type === 'test') {
+          throw new Error('Send failed');
+        }
+        // For other messages, use original behavior
+        return originalSend(data);
       });
       
       const message: WebSocketMessage = {
@@ -836,11 +848,12 @@ describe('WebSocketService', () => {
       service.connect();
       await vi.advanceTimersByTimeAsync(30);
       
-      const closeSpy = vi.spyOn(mockWebSocketInstance!, 'close');
+      // Clear any previous calls to close
+      mockWebSocketInstance!.close.mockClear();
       
       service.disconnect();
       
-      expect(closeSpy).toHaveBeenCalledWith(1000, 'Client disconnect');
+      expect(mockWebSocketInstance!.close).toHaveBeenCalledWith(1000, 'Client disconnect');
       expect(service.getState()).toBe(WebSocketState.CLOSED);
       expect(service.isConnected()).toBe(false);
       expect(service.isReady()).toBe(false);

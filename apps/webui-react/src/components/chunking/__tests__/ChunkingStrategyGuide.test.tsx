@@ -116,10 +116,16 @@ describe('ChunkingStrategyGuide', () => {
     it('renders all chunking strategies in the comparison table', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
       
-      // Check all strategies are present - some names might be in the strategy object's name field
+      // Check all strategies are present in the table
       const strategies = Object.values(CHUNKING_STRATEGIES);
+      const table = screen.getByRole('table');
+      
       strategies.forEach(strategy => {
-        expect(screen.getByText(strategy.name)).toBeInTheDocument();
+        // Find strategy name within the table specifically
+        const strategyCell = table.querySelector(`td:has-text("${strategy.name}")`) ||
+                           Array.from(table.querySelectorAll('td')).find(td => 
+                             td.textContent?.includes(strategy.name));
+        expect(strategyCell).toBeTruthy();
       });
     });
 
@@ -173,8 +179,8 @@ describe('ChunkingStrategyGuide', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
       
       // Check for checkmarks - recursive and hybrid are recommended
-      // CheckCircle icons are rendered with class lucide-check-circle
-      const checkmarks = document.querySelectorAll('.lucide-check-circle');
+      // CheckCircle icons are rendered as SVG elements with text-green-500 class
+      const checkmarks = document.querySelectorAll('svg.text-green-500');
       expect(checkmarks.length).toBeGreaterThanOrEqual(2);
     });
 
@@ -200,11 +206,20 @@ describe('ChunkingStrategyGuide', () => {
     it('marks strategies as recommended based on file type', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} fileType="md" />);
       
-      // Markdown-aware should be recommended for .md files
-      const markdownRow = screen.getByText('Markdown-aware').closest('tr');
+      // Find the table and look for Markdown-aware strategy
+      const table = screen.getByRole('table');
+      const markdownCells = Array.from(table.querySelectorAll('td')).filter(td => 
+        td.textContent?.includes('Markdown-aware'));
+      
+      expect(markdownCells.length).toBeGreaterThan(0);
+      
+      // Find the row containing Markdown-aware
+      const markdownRow = markdownCells[0]?.closest('tr');
+      expect(markdownRow).toBeTruthy();
+      
       // Look for CheckCircle icon which has text-green-500 class
-      const checkmark = markdownRow?.querySelector('.lucide-check-circle');
-      expect(checkmark).toBeInTheDocument();
+      const checkmark = markdownRow?.querySelector('svg.text-green-500');
+      expect(checkmark).toBeTruthy();
     });
   });
 
