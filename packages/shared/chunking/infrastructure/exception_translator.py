@@ -40,7 +40,7 @@ class ExceptionTranslator:
         """Initialize exception translator with mappings."""
 
         # Domain to Application mappings
-        self.domain_to_app_map: dict[type[Exception], Callable[[DomainError, str | None], ApplicationError]] = {
+        self.domain_to_app_map: dict[type[Exception], Callable[[Any, str | None], ApplicationError]] = {
             DocumentTooLargeError: self._document_too_large_to_app,
             InvalidStateTransitionError: self._invalid_state_to_app,
             ChunkingStrategyError: self._strategy_error_to_app,

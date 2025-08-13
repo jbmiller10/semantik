@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 # Re-export ChunkingService for tests that patch packages.webui.tasks.ChunkingService
 try:  # Prefer packages.* import path to match test patch targets
-    from packages.webui.services.chunking_service import ChunkingService  # type: ignore
+    from packages.webui.services.chunking_service import ChunkingService
 except Exception:  # Fallback for runtime usage paths
     try:
         from webui.services.chunking_service import ChunkingService  # type: ignore
@@ -283,8 +283,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
         "vector_store_name": _get(collection_obj, "vector_collection_id") or _get(collection_obj, "vector_store_name"),
     }
 
-    # Instantiate ChunkingService (tests patch this constructor)
-    cs = ChunkingService(db)
+    # Import repositories for ChunkingService
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.document_repository import DocumentRepository
+
+    # Instantiate repositories and ChunkingService (tests patch this constructor)
+    collection_repo = CollectionRepository(db)
+    document_repo = DocumentRepository(db)
+    cs = ChunkingService(db, collection_repo, document_repo)
 
     processed = 0
     from shared.database.models import DocumentStatus
@@ -328,7 +334,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
             if chunks:
                 texts = [c.get("text", "") for c in chunks]
                 embed_req = {"texts": texts, "model_name": collection.get("embedding_model")}
-                upsert_req = {"collection_name": collection.get("vector_store_name"), "points": []}
+                upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
@@ -396,7 +402,14 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     if "chunk_overlap" in new_cfg:
         collection["chunk_overlap"] = new_cfg["chunk_overlap"]
 
-    cs = ChunkingService(db)
+    # Import repositories for ChunkingService
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.document_repository import DocumentRepository
+
+    # Instantiate repositories and ChunkingService
+    collection_repo = CollectionRepository(db)
+    document_repo = DocumentRepository(db)
+    cs = ChunkingService(db, collection_repo, document_repo)
 
     processed = 0
     from shared.database.models import DocumentStatus
@@ -1246,13 +1259,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             operation, collection, collection_repo, document_repo, updater
                         )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await _process_append_operation(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
+                        result = await _process_append_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REINDEX:
-                        result = await _process_reindex_operation(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
+                        result = await _process_reindex_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
                         result = await _process_remove_source_operation(
                             operation, collection, collection_repo, document_repo, updater

@@ -401,7 +401,7 @@ async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingSe
 try:  # pragma: no cover
     import builtins as _builtins
 
-    setattr(_builtins, "get_chunking_service", get_chunking_service)
-    setattr(_builtins, "get_collection_service", get_collection_service)
+    _builtins.get_chunking_service = get_chunking_service  # type: ignore[attr-defined]
+    _builtins.get_collection_service = get_collection_service  # type: ignore[attr-defined]
 except Exception:
     pass

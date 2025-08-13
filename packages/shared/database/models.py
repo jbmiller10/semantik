@@ -28,7 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import (
     JSON,
@@ -94,7 +94,7 @@ class OperationStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
     @classmethod
-    def _missing_(cls, value):  # type: ignore[override]
+    def _missing_(cls, value: Any) -> OperationStatus | None:
         """Provide case-insensitive lookup for enum values.
 
         This allows constructing OperationStatus from values like "PROCESSING"
@@ -102,7 +102,8 @@ class OperationStatus(str, enum.Enum):
         lowercase in the database.
         """
         if isinstance(value, str):
-            return cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast(OperationStatus | None, result)
         return None
 
 

@@ -12,8 +12,6 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
 
         import fakeredis.aioredis as _fakeredis_aioredis
 
-        from packages.webui.api.v2 import chunking_schemas as _schemas
-
         _orig_init = _fakeredis_aioredis.FakeRedis.__init__
 
         def _patched_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]

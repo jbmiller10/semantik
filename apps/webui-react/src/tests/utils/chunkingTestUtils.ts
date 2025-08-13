@@ -6,8 +6,7 @@ import type {
   ChunkingComparisonResult,
   ChunkingAnalytics,
   ChunkingPreset,
-  ChunkPreview,
-  ChunkingStatistics
+  ChunkPreview
 } from '../../types/chunking';
 import type { WebSocketMessage } from '../../services/websocket';
 
@@ -21,9 +20,9 @@ export class MockChunkingWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
-  addEventListener: any;
-  removeEventListener: any;
-  dispatchEvent: any;
+  addEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void;
+  removeEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => void;
+  dispatchEvent: (event: Event) => boolean;
   
   private messageQueue: WebSocketMessage[] = [];
   private isAuthenticated = false;
@@ -31,15 +30,15 @@ export class MockChunkingWebSocket {
   constructor(url: string) {
     this.url = url;
     // Add event listener methods for compatibility
-    this.addEventListener = vi.fn((event: string, handler: any) => {
+    this.addEventListener = vi.fn((event: string, handler: EventListenerOrEventListenerObject | ((event: Event) => void)) => {
       if (event === 'open' && this.onopen === null) {
-        this.onopen = handler;
+        this.onopen = handler as (event: Event) => void;
       } else if (event === 'close' && this.onclose === null) {
-        this.onclose = handler;
+        this.onclose = handler as (event: CloseEvent) => void;
       } else if (event === 'error' && this.onerror === null) {
-        this.onerror = handler;
+        this.onerror = handler as (event: Event) => void;
       } else if (event === 'message' && this.onmessage === null) {
-        this.onmessage = handler;
+        this.onmessage = handler as (event: MessageEvent) => void;
       }
     });
     this.removeEventListener = vi.fn();
@@ -64,7 +63,7 @@ export class MockChunkingWebSocket {
     }
   }
   
-  simulateError(error?: string) {
+  simulateError() {
     if (this.onerror) {
       this.onerror(new Event('error'));
     }

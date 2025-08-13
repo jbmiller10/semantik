@@ -265,7 +265,7 @@ describe('chunkingApi', () => {
             lengthComputable: true,
             target: {} as XMLHttpRequest,
             estimated: 1000
-          } as any);
+          } as ProgressEvent);
         }
         return mockResponse;
       });
@@ -483,7 +483,7 @@ describe('chunkingApi', () => {
               lengthComputable: true,
               target: {} as XMLHttpRequestUpload,
               estimated: (100 - percentage) * 100
-            } as any);
+            } as ProgressEvent);
           });
         }
         return mockResponse;
@@ -629,7 +629,7 @@ describe('handleChunkingError', () => {
       status: 400,
       statusText: 'Bad Request',
       headers: {},
-      config: {} as any,
+      config: {} as Record<string, unknown>,
       data: { detail: 'Invalid chunk size: must be between 100 and 10000' }
     });
 
@@ -642,7 +642,7 @@ describe('handleChunkingError', () => {
       status: 400,
       statusText: 'Bad Request',
       headers: {},
-      config: {} as any,
+      config: {} as Record<string, unknown>,
       data: { message: 'Configuration error' }
     });
 
