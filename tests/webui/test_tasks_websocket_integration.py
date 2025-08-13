@@ -193,7 +193,7 @@ class TestWebSocketMessageFlow:
         mock_chunking_service.execute_ingestion_chunking.return_value = {
             "chunks": [],
             "strategy_used": "test",
-            "metadata": {}
+            "metadata": {},
         }
         mock_factory_module.create_celery_chunking_service_with_repos = Mock(return_value=mock_chunking_service)
 

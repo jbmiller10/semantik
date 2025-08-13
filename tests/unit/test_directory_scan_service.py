@@ -514,7 +514,7 @@ class TestDirectoryScanProgress:
     async def test_progress_message_structure(self, mock_ws_manager, service) -> None:
         """Test progress message data structure"""
         mock_ws_manager.send_to_operation = AsyncMock()
-        
+
         await service._send_progress(
             channel_id="test-channel",
             scan_id="test-scan",

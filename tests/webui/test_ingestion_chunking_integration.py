@@ -122,7 +122,7 @@ class TestExecuteIngestionChunking:
         # Verify chunks
         chunks = result["chunks"]
         assert len(chunks) == 3
-        assert chunks[0]["chunk_id"] == "doc-123_chunk_0000"
+        assert chunks[0]["chunk_id"] == "doc-123_0000"
         assert chunks[0]["text"] == "Chunk 1 content"
         assert chunks[0]["metadata"]["source"] == "test"
         assert chunks[0]["metadata"]["index"] == 0
@@ -231,12 +231,12 @@ class TestExecuteIngestionChunking:
             mock_token_chunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
                 {
-                    "chunk_id": "doc-999_chunk_0000",
+                    "chunk_id": "doc-999_0000",
                     "text": "Token chunk 1",
                     "metadata": {"index": 0},
                 },
                 {
-                    "chunk_id": "doc-999_chunk_0001",
+                    "chunk_id": "doc-999_0001",
                     "text": "Token chunk 2",
                     "metadata": {"index": 1},
                 },
@@ -285,7 +285,7 @@ class TestExecuteIngestionChunking:
                 mock_token_chunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [
                     {
-                        "chunk_id": "doc-bad_chunk_0000",
+                        "chunk_id": "doc-bad_0000",
                         "text": "Fallback chunk",
                         "metadata": {},
                     },
@@ -319,7 +319,7 @@ class TestExecuteIngestionChunking:
             mock_token_chunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
                 {
-                    "chunk_id": "doc-123_chunk_0000",
+                    "chunk_id": "doc-123_0000",
                     "text": "Fallback chunk after error",
                     "metadata": {},
                 },
@@ -348,7 +348,7 @@ class TestExecuteIngestionChunking:
             mock_token_chunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
                 {
-                    "chunk_id": "doc-123_chunk_0000",
+                    "chunk_id": "doc-123_0000",
                     "text": "Fallback chunk",
                     "metadata": {},
                 },
@@ -414,9 +414,9 @@ class TestExecuteIngestionChunking:
 
         # Verify chunk ID format
         chunks = result["chunks"]
-        assert chunks[0]["chunk_id"] == "doc-abc123_chunk_0000"
-        assert chunks[9]["chunk_id"] == "doc-abc123_chunk_0009"
-        assert chunks[14]["chunk_id"] == "doc-abc123_chunk_0014"
+        assert chunks[0]["chunk_id"] == "doc-abc123_0000"
+        assert chunks[9]["chunk_id"] == "doc-abc123_0009"
+        assert chunks[14]["chunk_id"] == "doc-abc123_0014"
 
     @pytest.mark.skip(reason="Mock not working as expected with asyncio.to_thread")
     @pytest.mark.asyncio()
@@ -470,19 +470,21 @@ class TestAppendTaskIntegration:
                 chunk_overlap=20,
                 embedding_model="Qwen/Qwen3-Embedding-0.6B",
                 quantization="float16",
-                get=MagicMock(side_effect=lambda key, default=None: {
-                    "id": "coll-123",
-                    "name": "Test Collection",
-                    "path": "/test/path",
-                    "status": CollectionStatus.READY,
-                    "vector_collection_id": "vc-123",
-                    "chunking_strategy": "recursive",
-                    "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
-                    "chunk_size": 100,
-                    "chunk_overlap": 20,
-                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-                    "quantization": "float16",
-                }.get(key, default)),
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "coll-123",
+                        "name": "Test Collection",
+                        "path": "/test/path",
+                        "status": CollectionStatus.READY,
+                        "vector_collection_id": "vc-123",
+                        "chunking_strategy": "recursive",
+                        "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
+                        "chunk_size": 100,
+                        "chunk_overlap": 20,
+                        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                        "quantization": "float16",
+                    }.get(key, default)
+                ),
             ),
             "documents": [
                 MagicMock(
@@ -491,13 +493,15 @@ class TestAppendTaskIntegration:
                     file_size=1024,
                     status=DocumentStatus.PENDING,
                     chunk_count=0,
-                    get=MagicMock(side_effect=lambda key, default=None: {
-                        "id": "doc-1",
-                        "file_path": "/test/doc1.txt",
-                        "file_size": 1024,
-                        "status": DocumentStatus.PENDING,
-                        "chunk_count": 0,
-                    }.get(key, default)),
+                    get=MagicMock(
+                        side_effect=lambda key, default=None: {
+                            "id": "doc-1",
+                            "file_path": "/test/doc1.txt",
+                            "file_size": 1024,
+                            "status": DocumentStatus.PENDING,
+                            "chunk_count": 0,
+                        }.get(key, default)
+                    ),
                 ),
                 MagicMock(
                     id="doc-2",
@@ -505,13 +509,15 @@ class TestAppendTaskIntegration:
                     file_size=2048,
                     status=DocumentStatus.PENDING,
                     chunk_count=0,
-                    get=MagicMock(side_effect=lambda key, default=None: {
-                        "id": "doc-2",
-                        "file_path": "/test/doc2.pdf",
-                        "file_size": 2048,
-                        "status": DocumentStatus.PENDING,
-                        "chunk_count": 0,
-                    }.get(key, default)),
+                    get=MagicMock(
+                        side_effect=lambda key, default=None: {
+                            "id": "doc-2",
+                            "file_path": "/test/doc2.pdf",
+                            "file_size": 2048,
+                            "status": DocumentStatus.PENDING,
+                            "chunk_count": 0,
+                        }.get(key, default)
+                    ),
                 ),
             ],
         }
@@ -583,12 +589,12 @@ class TestAppendTaskIntegration:
                     {
                         "chunks": [
                             {
-                                "chunk_id": "doc-1_chunk_0000",
+                                "chunk_id": "doc-1_0000",
                                 "text": "Chunk 1 text",
                                 "metadata": {"index": 0, "strategy": "recursive"},
                             },
                             {
-                                "chunk_id": "doc-1_chunk_0001",
+                                "chunk_id": "doc-1_0001",
                                 "text": "Chunk 2 text",
                                 "metadata": {"index": 1, "strategy": "recursive"},
                             },
@@ -603,7 +609,7 @@ class TestAppendTaskIntegration:
                     {
                         "chunks": [
                             {
-                                "chunk_id": "doc-2_chunk_0000",
+                                "chunk_id": "doc-2_0000",
                                 "text": "Doc 2 Chunk 1 text",
                                 "metadata": {"index": 0, "strategy": "recursive"},
                             },
@@ -701,13 +707,13 @@ class TestAppendTaskIntegration:
             chunk_results = [
                 {
                     "chunks": [
-                        {"chunk_id": f"doc-1_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)
+                        {"chunk_id": f"doc-1_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)
                     ],
                     "stats": {"chunk_count": 5, "strategy_used": "recursive", "fallback": False},
                 },
                 {
                     "chunks": [
-                        {"chunk_id": f"doc-2_chunk_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)
+                        {"chunk_id": f"doc-2_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)
                     ],
                     "stats": {"chunk_count": 3, "strategy_used": "recursive", "fallback": False},
                 },
@@ -782,7 +788,7 @@ class TestAppendTaskIntegration:
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
                     "chunks": [
-                        {"chunk_id": "doc-1_chunk_0000", "text": "Semantic chunk", "metadata": {"strategy": "semantic"}}
+                        {"chunk_id": "doc-1_0000", "text": "Semantic chunk", "metadata": {"strategy": "semantic"}}
                     ],
                     "stats": {"chunk_count": 1, "strategy_used": "semantic", "fallback": False},
                 }
@@ -881,18 +887,20 @@ class TestReindexTaskIntegration:
                     "chunking_strategy": "markdown",
                     "chunking_config": {"preserve_structure": True},
                 },
-                get=MagicMock(side_effect=lambda key, default=None: {
-                    "id": "op-reindex-123",
-                    "collection_id": "coll-123",
-                    "type": OperationType.REINDEX,
-                    "status": OperationStatus.PENDING,
-                    "config": {
-                        "chunk_size": 150,
-                        "chunk_overlap": 30,
-                        "chunking_strategy": "markdown",
-                        "chunking_config": {"preserve_structure": True},
-                    },
-                }.get(key, default)),
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "op-reindex-123",
+                        "collection_id": "coll-123",
+                        "type": OperationType.REINDEX,
+                        "status": OperationStatus.PENDING,
+                        "config": {
+                            "chunk_size": 150,
+                            "chunk_overlap": 30,
+                            "chunking_strategy": "markdown",
+                            "chunking_config": {"preserve_structure": True},
+                        },
+                    }.get(key, default)
+                ),
             ),
             "source_collection": MagicMock(
                 id="coll-123",
@@ -906,19 +914,21 @@ class TestReindexTaskIntegration:
                 chunk_overlap=20,
                 embedding_model="Qwen/Qwen3-Embedding-0.6B",
                 quantization="float16",
-                get=MagicMock(side_effect=lambda key, default=None: {
-                    "id": "coll-123",
-                    "name": "Source Collection",
-                    "path": "/source/path",
-                    "status": CollectionStatus.READY,
-                    "vector_collection_id": "vc-source",
-                    "chunking_strategy": "recursive",
-                    "chunking_config": {},
-                    "chunk_size": 100,
-                    "chunk_overlap": 20,
-                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-                    "quantization": "float16",
-                }.get(key, default)),
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "coll-123",
+                        "name": "Source Collection",
+                        "path": "/source/path",
+                        "status": CollectionStatus.READY,
+                        "vector_collection_id": "vc-source",
+                        "chunking_strategy": "recursive",
+                        "chunking_config": {},
+                        "chunk_size": 100,
+                        "chunk_overlap": 20,
+                        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                        "quantization": "float16",
+                    }.get(key, default)
+                ),
             ),
             "staging_collection": MagicMock(
                 id="coll-staging-123",
@@ -927,14 +937,16 @@ class TestReindexTaskIntegration:
                 status=CollectionStatus.PROCESSING,
                 vector_collection_id="vc-staging",
                 parent_collection_id="coll-123",
-                get=MagicMock(side_effect=lambda key, default=None: {
-                    "id": "coll-staging-123",
-                    "name": "Source Collection (staging)",
-                    "path": "/source/path",
-                    "status": CollectionStatus.PROCESSING,
-                    "vector_collection_id": "vc-staging",
-                    "parent_collection_id": "coll-123",
-                }.get(key, default)),
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "coll-staging-123",
+                        "name": "Source Collection (staging)",
+                        "path": "/source/path",
+                        "status": CollectionStatus.PROCESSING,
+                        "vector_collection_id": "vc-staging",
+                        "parent_collection_id": "coll-123",
+                    }.get(key, default)
+                ),
             ),
             "documents": [
                 MagicMock(
@@ -943,13 +955,15 @@ class TestReindexTaskIntegration:
                     file_size=1024,
                     status=DocumentStatus.COMPLETED,
                     chunk_count=0,
-                    get=MagicMock(side_effect=lambda key, default=None: {
-                        "id": "doc-reindex-1",
-                        "file_path": "/source/doc1.md",
-                        "file_size": 1024,
-                        "status": DocumentStatus.COMPLETED,
-                        "chunk_count": 0,
-                    }.get(key, default)),
+                    get=MagicMock(
+                        side_effect=lambda key, default=None: {
+                            "id": "doc-reindex-1",
+                            "file_path": "/source/doc1.md",
+                            "file_size": 1024,
+                            "status": DocumentStatus.COMPLETED,
+                            "chunk_count": 0,
+                        }.get(key, default)
+                    ),
                 ),
             ],
         }
@@ -1018,7 +1032,7 @@ class TestReindexTaskIntegration:
                 return_value={
                     "chunks": [
                         {
-                            "chunk_id": "doc-reindex-1_chunk_0000",
+                            "chunk_id": "doc-reindex-1_0000",
                             "text": "Markdown chunk",
                             "metadata": {"strategy": "markdown"},
                         },
@@ -1104,7 +1118,7 @@ class TestReindexTaskIntegration:
 
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
                 return_value={
-                    "chunks": [{"chunk_id": "doc_chunk_0000", "text": "chunk", "metadata": {}}],
+                    "chunks": [{"chunk_id": "doc_0000", "text": "chunk", "metadata": {}}],
                     "stats": {"chunk_count": 1, "strategy_used": "markdown", "fallback": False},
                 }
             )
@@ -1175,7 +1189,14 @@ class TestReindexTaskIntegration:
 
         # Configure mock to return responses for 3 documents (3 documents = 6 calls total)
         # Each document makes one embed call and one upsert call
-        mock_httpx_post.side_effect = [embed_response, upsert_response, embed_response, upsert_response, embed_response, upsert_response]
+        mock_httpx_post.side_effect = [
+            embed_response,
+            upsert_response,
+            embed_response,
+            upsert_response,
+            embed_response,
+            upsert_response,
+        ]
 
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
@@ -1190,7 +1211,7 @@ class TestReindexTaskIntegration:
             chunk_results = [
                 {
                     "chunks": [
-                        {"chunk_id": f"doc-{i}_chunk_{j:04d}", "text": f"chunk {j}", "metadata": {}}
+                        {"chunk_id": f"doc-{i}_{j:04d}", "text": f"chunk {j}", "metadata": {}}
                         for j in range(i + 2)
                     ],
                     "stats": {"chunk_count": i + 2, "strategy_used": "markdown", "fallback": False},
@@ -1224,13 +1245,15 @@ class TestReindexTaskIntegration:
         # Operation config without strategy override
         operation.config = {"chunk_size": 200}  # Only override chunk_size
         # Update the operation's get method to reflect the new config
-        operation.get = MagicMock(side_effect=lambda key, default=None: {
-            "id": "op-reindex-123",
-            "collection_id": "coll-123",
-            "type": OperationType.REINDEX,
-            "status": OperationStatus.PENDING,
-            "config": {"chunk_size": 200},  # Updated config
-        }.get(key, default))
+        operation.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "op-reindex-123",
+                "collection_id": "coll-123",
+                "type": OperationType.REINDEX,
+                "status": OperationStatus.PENDING,
+                "config": {"chunk_size": 200},  # Updated config
+            }.get(key, default)
+        )
 
         # Setup database mocks - need to create proper mock chain for async operations
         # First execute call returns operation
@@ -1354,7 +1377,7 @@ class TestErrorHandlingAndEdgeCases:
             num_chunks = 100
             mock_chunker.chunk_text.return_value = [
                 {
-                    "chunk_id": f"doc-large_chunk_{i:04d}",
+                    "chunk_id": f"doc-large_{i:04d}",
                     "text": f"chunk {i}",
                     "metadata": {"index": i},
                 }

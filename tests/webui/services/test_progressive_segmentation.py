@@ -112,7 +112,7 @@ class TestProgressiveSegmentation:
             mock_config_result.strategy = "recursive"
             mock_config_result.config = {"chunk_size": 100, "chunk_overlap": 20}
             mock_config_builder.return_value = mock_config_result
-            
+
             # Mock the strategy
             mock_strategy = MagicMock()
             mock_chunk_entity = MagicMock()
@@ -248,7 +248,7 @@ class TestProgressiveSegmentation:
                     "duration_ms": 100,
                     "strategy_used": "recursive",
                     "chunk_count": 1,
-                }
+                },
             }
 
             result = await service.execute_ingestion_chunking_segmented(
@@ -260,10 +260,10 @@ class TestProgressiveSegmentation:
             # Verify _process_segment was called with correct parameters
             assert mock_process.call_count > 0
             call_args = mock_process.call_args_list[0]
-            # _process_segment is called with positional args: 
+            # _process_segment is called with positional args:
             # (segment_text, document_id, collection, metadata, file_type, chunk_id_start, segment_idx, total_segments)
             assert call_args[0][6] == 0  # segment_idx is the 7th positional argument (index 6)
-            
+
             # Verify the segment metadata is present in the result
             assert len(result["chunks"]) > 0
             first_chunk = result["chunks"][0]
@@ -414,15 +414,15 @@ class TestProgressiveSegmentation:
         segment_results = [
             {
                 "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i}", "metadata": {}} for i in range(3)],
-                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3},
             },
             {
                 "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i+3}", "metadata": {}} for i in range(3)],
-                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3},
             },
             {
                 "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i+6}", "metadata": {}} for i in range(3)],
-                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3},
             },
         ]
 
@@ -430,7 +430,9 @@ class TestProgressiveSegmentation:
             patch.object(service, "_process_segment", side_effect=segment_results),
             # Patch the segment size to ensure we get exactly 3 segments
             patch("packages.webui.services.chunking_constants.DEFAULT_SEGMENT_SIZE", 1000000),  # 1MB segments
-            patch("packages.webui.services.chunking_constants.STRATEGY_SEGMENT_THRESHOLDS", {"recursive": 2000000}),  # 2MB threshold
+            patch(
+                "packages.webui.services.chunking_constants.STRATEGY_SEGMENT_THRESHOLDS", {"recursive": 2000000}
+            ),  # 2MB threshold
         ):
             result = await service.execute_ingestion_chunking_segmented(
                 text=large_text,
@@ -440,7 +442,7 @@ class TestProgressiveSegmentation:
 
             # Verify we have the right number of chunks
             assert len(result["chunks"]) == 9
-            
+
             # Verify that we have chunks from all three segments
             # The chunks should have content from all segments
             chunk_texts = [chunk["text"] for chunk in result["chunks"]]

@@ -9,7 +9,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prometheus_client import REGISTRY
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
@@ -38,12 +37,12 @@ class TestChunkingMetrics:
             ingestion_chunking_duration_seconds,
             ingestion_chunking_fallback_total,
             ingestion_chunks_total,
+            ingestion_segment_size_bytes,
             ingestion_segmented_documents_total,
             ingestion_segments_total,
-            ingestion_segment_size_bytes,
             ingestion_streaming_used_total,
         )
-        
+
         # List all metrics that need to be reset
         metrics_to_reset = [
             ingestion_chunking_duration_seconds,
@@ -55,7 +54,7 @@ class TestChunkingMetrics:
             ingestion_segment_size_bytes,
             ingestion_streaming_used_total,
         ]
-        
+
         # Clear metrics by accessing their internal _metrics dictionary
         # This is the proper way to reset Prometheus metrics for testing
         for metric in metrics_to_reset:
@@ -67,9 +66,9 @@ class TestChunkingMetrics:
                 with metric._lock:
                     if hasattr(metric, "_metrics"):
                         metric._metrics.clear()
-        
+
         yield
-        
+
         # Clean up after test
         for metric in metrics_to_reset:
             if hasattr(metric, "_metrics"):
@@ -245,10 +244,10 @@ class TestChunkingMetrics:
             ),  # ~360 bytes
         ]
         mock_strategy.chunk.return_value = mock_chunks
-        
+
         # Mock the strategy factory directly before calling
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-        
+
         # Run without time mocking first to isolate the issue
         result = await service.execute_ingestion_chunking(
             text="Test document content for recursive chunking",
@@ -391,7 +390,7 @@ class TestChunkingMetrics:
 
         # Mock the strategy factory directly
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-        
+
         # Run without time mocking
         result = await service.execute_ingestion_chunking(
             text="Text that causes runtime error",
@@ -407,28 +406,32 @@ class TestChunkingMetrics:
         # Debug: Check what metrics are actually recorded
         # First, check if the metric has any data at all
         from packages.webui.services.chunking_metrics import ingestion_chunking_fallback_total
-        
+
         # Try different possible strategy names that might have been normalized
         possible_strategies = ["markdown", "ChunkingStrategy.MARKDOWN", "MARKDOWN", "document", "document_structure"]
         found_metric = False
-        
+
         for strategy in possible_strategies:
             fallback_count = self.get_counter_value(
                 ingestion_chunking_fallback_total, {"strategy": strategy, "reason": "runtime_error"}
             )
             if fallback_count > 0:
                 found_metric = True
-                assert fallback_count == 1, f"Found fallback metric for strategy '{strategy}' with count {fallback_count}"
+                assert (
+                    fallback_count == 1
+                ), f"Found fallback metric for strategy '{strategy}' with count {fallback_count}"
                 break
-        
+
         # If we didn't find any metrics, check what keys exist in the metric
         if not found_metric:
             # Inspect the metric's internal structure to see what labels were actually recorded
             metric_keys = []
             if hasattr(ingestion_chunking_fallback_total, "_metrics"):
                 metric_keys = list(ingestion_chunking_fallback_total._metrics.keys())
-            
-            assert False, f"No fallback metric found. Checked strategies: {possible_strategies}. Existing metric keys: {metric_keys}"
+
+            assert (
+                False
+            ), f"No fallback metric found. Checked strategies: {possible_strategies}. Existing metric keys: {metric_keys}"
 
         # Verify TokenChunker metrics
         # Note: TokenChunker uses "character" as the internal metric label
@@ -500,7 +503,7 @@ class TestChunkingMetrics:
 
         total_operations = 0
         strategies_used = set()
-        
+
         for i, collection in enumerate(strategies_to_test):
             mock_strategy = MagicMock()
             # Create chunks with proper content
@@ -518,17 +521,17 @@ class TestChunkingMetrics:
                     ),
                 )
             ]
-            
+
             # Mock the strategy factory for each iteration
             service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-            
+
             # Run the chunking operation
             result = await service.execute_ingestion_chunking(
                 text=f"Text for duration test {i}",
                 document_id=f"doc-duration-{i}",
                 collection=collection,
             )
-            
+
             # Track which strategies were actually used
             strategies_used.add(result["stats"]["strategy_used"])
             total_operations += 1
@@ -538,12 +541,14 @@ class TestChunkingMetrics:
         for strategy in strategies_used:
             count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": strategy})
             total_histogram_count += count
-        
+
         # We should have recorded at least some durations
         assert total_histogram_count > 0, f"No histogram entries recorded. Strategies used: {strategies_used}"
-        
+
         # The total should match the number of operations we performed
-        assert total_histogram_count == total_operations, f"Expected {total_operations} histogram entries, got {total_histogram_count}"
+        assert (
+            total_histogram_count == total_operations
+        ), f"Expected {total_operations} histogram entries, got {total_histogram_count}"
 
     @pytest.mark.asyncio()
     async def test_chunk_count_metrics_increment_correctly(self, service):
@@ -578,7 +583,7 @@ class TestChunkingMetrics:
 
             # Mock the strategy factory for this iteration
             service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-            
+
             await service.execute_ingestion_chunking(
                 text=f"Text for chunk count test {i}",
                 document_id=f"doc-count-{i}",
@@ -662,7 +667,7 @@ class TestChunkingMetrics:
 
         # Mock the strategy factory
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-        
+
         result = await service.execute_ingestion_chunking(
             text="Text for size calculation",
             document_id="doc-size",
@@ -710,14 +715,16 @@ class TestChunkingMetrics:
 
         # Mock the strategy factory
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-        
+
         result1 = await service.execute_ingestion_chunking(
             text="First operation",
             document_id="doc-multi-1",
             collection=collection1,
         )
         # Debug: Check what was actually produced
-        assert result1["stats"]["chunk_count"] == 3, f"First operation should produce 3 chunks, got {result1['stats']['chunk_count']}"
+        assert (
+            result1["stats"]["chunk_count"] == 3
+        ), f"First operation should produce 3 chunks, got {result1['stats']['chunk_count']}"
 
         # Second operation - fallback due to error
         collection2 = {
@@ -734,14 +741,16 @@ class TestChunkingMetrics:
 
         # Mock the strategy factory for the failure case
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy_fail)
-        
+
         result2 = await service.execute_ingestion_chunking(
             text="Second operation with fallback",
             document_id="doc-multi-2",
             collection=collection2,
         )
         # Debug: Check fallback result
-        assert result2["stats"]["chunk_count"] == 2, f"Second operation (fallback) should produce 2 chunks, got {result2['stats']['chunk_count']}"
+        assert (
+            result2["stats"]["chunk_count"] == 2
+        ), f"Second operation (fallback) should produce 2 chunks, got {result2['stats']['chunk_count']}"
         assert result2["stats"]["fallback"] is True, "Second operation should use fallback"
 
         # Third operation - direct TokenChunker (no strategy specified)
@@ -750,29 +759,31 @@ class TestChunkingMetrics:
             "chunk_size": 400,
             "chunk_overlap": 80,
         }
-        
+
         # No need to mock since we're using direct TokenChunker
         # Reset the strategy factory to None or leave it as is
         # The service should use TokenChunker directly when no strategy is specified
-        
+
         result3 = await service.execute_ingestion_chunking(
             text="Third operation direct",
             document_id="doc-multi-3",
             collection=collection3,
         )
         # Debug: Check direct TokenChunker result
-        assert result3["stats"]["chunk_count"] == 2, f"Third operation (direct TokenChunker) should produce 2 chunks, got {result3['stats']['chunk_count']}"
+        assert (
+            result3["stats"]["chunk_count"] == 2
+        ), f"Third operation (direct TokenChunker) should produce 2 chunks, got {result3['stats']['chunk_count']}"
 
         # Verify accumulated metrics
         # Important: TokenChunker records metrics under "character" label, not "TokenChunker"
         # The strategies use these labels:
         # First operation: 3 chunks - character strategy (may use "character" or "ChunkingStrategy.FIXED_SIZE" label)
-        # Second operation: 2 chunks - TokenChunker fallback (uses "character" label) 
+        # Second operation: 2 chunks - TokenChunker fallback (uses "character" label)
         # Third operation: 2 chunks - direct TokenChunker (uses "character" label)
-        
+
         # Count all chunks recorded under "character" label (includes TokenChunker)
         character_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": "character"})
-        
+
         # Also check for chunks under ChunkingStrategy.FIXED_SIZE or similar
         fixed_size_chunks = 0
         for strategy_name in ["ChunkingStrategy.FIXED_SIZE", "ChunkingStrategy.CHARACTER", "FIXED_SIZE"]:
@@ -780,10 +791,10 @@ class TestChunkingMetrics:
             if count > 0:
                 fixed_size_chunks = count
                 break
-        
+
         # All chunks should be recorded under either "character" or a FIXED_SIZE variant
         total_chunks = character_chunks + fixed_size_chunks
-        
+
         # We created 7 chunks total in this test:
         # 3 from character strategy + 2 from TokenChunker fallback + 2 from direct TokenChunker
         # If character strategy uses "character" label, all 7 will be under "character"
@@ -792,10 +803,12 @@ class TestChunkingMetrics:
             f"Expected at least 7 total chunks from all operations. "
             f"character: {character_chunks}, fixed_size/other: {fixed_size_chunks}, total: {total_chunks}"
         )
-        
+
         # Verify that metrics are accumulating (not resetting between operations within the test)
         # We created 7 chunks total in this test, so the sum should be at least 7
-        total_test_chunks = result1["stats"]["chunk_count"] + result2["stats"]["chunk_count"] + result3["stats"]["chunk_count"]
+        total_test_chunks = (
+            result1["stats"]["chunk_count"] + result2["stats"]["chunk_count"] + result3["stats"]["chunk_count"]
+        )
         assert total_test_chunks == 7, f"Expected 7 chunks created in this test, got {total_test_chunks}"
 
         # Fallback counter (only from second operation)
@@ -808,7 +821,7 @@ class TestChunkingMetrics:
             "ChunkingStrategy.FIXED_SIZE",
             "FIXED_SIZE",
         ]
-        
+
         for strategy_name in possible_strategies:
             count = self.get_counter_value(
                 ingestion_chunking_fallback_total, {"strategy": strategy_name, "reason": "runtime_error"}
@@ -816,7 +829,7 @@ class TestChunkingMetrics:
             if count > 0:
                 fallback_count = count
                 break
-        
+
         # If we still didn't find it, check what fallback metrics exist
         if fallback_count == 0 and hasattr(ingestion_chunking_fallback_total, "_metrics"):
             fallback_keys = [k for k in ingestion_chunking_fallback_total._metrics.keys() if "runtime_error" in str(k)]
@@ -919,7 +932,7 @@ class TestChunkingMetrics:
 
         # Mock the strategy factory
         service.strategy_factory.create_strategy = MagicMock(return_value=mock_strategy)
-        
+
         # Run without time mocking
         result = await service.execute_ingestion_chunking(
             text="Very large document " * 1000,
@@ -967,7 +980,7 @@ class TestChunkingMetrics:
 
             # Mock the strategy factory for this concurrent operation with the local mock
             service.strategy_factory.create_strategy = MagicMock(return_value=local_mock_strategy)
-            
+
             return await service.execute_ingestion_chunking(
                 text=f"Document {doc_id}",
                 document_id=f"doc-concurrent-{doc_id}",
@@ -989,16 +1002,20 @@ class TestChunkingMetrics:
 
         # Verify total chunks from all concurrent operations
         total_chunks = self.get_counter_value(ingestion_chunks_total, {"strategy": strategy_used})
-        
+
         # Verify we created the expected number of chunks in this test
         total_expected = sum([3, 5, 2, 4])  # 14 chunks
         total_created = sum(r["stats"]["chunk_count"] for r in results)
         assert total_created == total_expected, f"Expected to create {total_expected} chunks, created {total_created}"
-        
+
         # Due to potential metric accumulation from previous tests, check that we have at least the expected chunks
         # But also allow for some tolerance in case of race conditions or timing issues
-        assert total_chunks >= 11, f"Expected at least 11 total chunks from concurrent operations, got {total_chunks}"  # Allow some tolerance
+        assert (
+            total_chunks >= 11
+        ), f"Expected at least 11 total chunks from concurrent operations, got {total_chunks}"  # Allow some tolerance
 
         # Verify histogram count matches number of operations
         histogram_count = self.get_histogram_count(ingestion_chunking_duration_seconds, {"strategy": strategy_used})
-        assert histogram_count >= 4, f"Expected at least 4 histogram entries for concurrent operations, got {histogram_count}"
+        assert (
+            histogram_count >= 4
+        ), f"Expected at least 4 histogram entries for concurrent operations, got {histogram_count}"

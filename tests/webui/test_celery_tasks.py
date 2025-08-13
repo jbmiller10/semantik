@@ -24,11 +24,9 @@ from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
     _handle_task_failure_async,
-    _process_append_operation,
     _process_append_operation_impl,
     _process_collection_operation_async,
     _process_index_operation,
-    _process_reindex_operation,
     _process_reindex_operation_impl,
     _process_remove_source_operation,
     _sanitize_error_message,
@@ -774,7 +772,9 @@ class TestReindexOperation:
         document_repo.list_by_collection.return_value = [mock_doc]
 
         # Run operation
-        result = await _process_reindex_operation_impl(operation, collection, collection_repo, document_repo, mock_updater)
+        result = await _process_reindex_operation_impl(
+            operation, collection, collection_repo, document_repo, mock_updater
+        )
 
         # Verify staging collection was created
         mock_reindex_handler.assert_called_once()

@@ -257,6 +257,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     This intentionally uses a simplified flow and relies on patched dependencies
     in tests (ChunkingService, httpx, qdrant_manager, extract_and_serialize_thread_safe).
     """
+
     # Helper to access attr or dict
     def _get(obj: Any, name: str, default: Any = None) -> Any:
         try:
@@ -279,8 +280,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
         "chunk_overlap": _get(collection_obj, "chunk_overlap", 200),
         "embedding_model": _get(collection_obj, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
         "quantization": _get(collection_obj, "quantization", "float16"),
-        "vector_store_name": _get(collection_obj, "vector_collection_id")
-        or _get(collection_obj, "vector_store_name"),
+        "vector_store_name": _get(collection_obj, "vector_collection_id") or _get(collection_obj, "vector_store_name"),
     }
 
     # Instantiate ChunkingService (tests patch this constructor)
@@ -298,7 +298,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 blocks = []
             text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
             metadata: dict[str, Any] = {}
-            for _t, m in (blocks or []):
+            for _t, m in blocks or []:
                 if isinstance(m, dict):
                     metadata.update(m)
 
@@ -358,6 +358,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
 async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
     """Compatibility wrapper used by tests to process a REINDEX operation."""
+
     def _get(obj: Any, name: str, default: Any = None) -> Any:
         try:
             return obj.get(name, default)
@@ -404,7 +405,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
         text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
         metadata: dict[str, Any] = {}
-        for _t, m in (blocks or []):
+        for _t, m in blocks or []:
             if isinstance(m, dict):
                 metadata.update(m)
 
@@ -421,8 +422,13 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         if chunks:
             texts = [c.get("text", "") for c in chunks]
             async with httpx.AsyncClient(timeout=60.0) as client:
-                await client.post("http://vecpipe:8000/embed", json={"texts": texts, "model_name": collection.get("embedding_model")})
-                await client.post("http://vecpipe:8000/upsert", json={"collection_name": collection.get("vector_store_name"), "points": []})
+                await client.post(
+                    "http://vecpipe:8000/embed", json={"texts": texts, "model_name": collection.get("embedding_model")}
+                )
+                await client.post(
+                    "http://vecpipe:8000/upsert",
+                    json={"collection_name": collection.get("vector_store_name"), "points": []},
+                )
 
         try:
             doc.chunk_count = len(chunks)

@@ -23,7 +23,7 @@ async def test_directory_scan_preview_success(
     mock_ws_manager = AsyncMock()
     mock_ws_manager.send_to_user = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -58,7 +58,7 @@ async def test_directory_scan_preview_success(
                 content_hash="hash2",
             ),
         ]
-        
+
         mock_response = DirectoryScanResponse(
             scan_id=scan_id,
             path=tmpdir,
@@ -67,9 +67,9 @@ async def test_directory_scan_preview_success(
             total_size=300,
             warnings=[],
         )
-        
+
         mock_scan_service.scan_directory_preview.return_value = mock_response
-        
+
         # Make request
         response = await async_client.post(
             "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
@@ -95,7 +95,7 @@ async def test_directory_scan_preview_recursive(
     mock_ws_manager = AsyncMock()
     mock_ws_manager.send_to_user = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -137,9 +137,9 @@ async def test_directory_scan_preview_recursive(
             total_size=300,
             warnings=[],
         )
-        
+
         mock_scan_service.scan_directory_preview.return_value = mock_response
-        
+
         response = await async_client.post(
             "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
         )
@@ -162,7 +162,7 @@ async def test_directory_scan_preview_with_patterns(
     mock_ws_manager = AsyncMock()
     mock_ws_manager.send_to_user = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -206,9 +206,9 @@ async def test_directory_scan_preview_with_patterns(
             total_size=300,
             warnings=[],
         )
-        
+
         mock_scan_service.scan_directory_preview.return_value = mock_response
-        
+
         response = await async_client.post(
             "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
         )
@@ -230,7 +230,7 @@ async def test_directory_scan_preview_nonexistent_path(
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -241,13 +241,15 @@ async def test_directory_scan_preview_nonexistent_path(
             "path": "/nonexistent/path/that/does/not/exist",
             "scan_id": scan_id,
         }
-        
+
         # Configure mock to raise FileNotFoundError
         mock_scan_service.scan_directory_preview.side_effect = FileNotFoundError(
             "Path does not exist: /nonexistent/path/that/does/not/exist"
         )
 
-        response = await async_client.post("/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers)
+        response = await async_client.post(
+            "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
+        )
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "not found" in response.json()["detail"].lower()
@@ -261,7 +263,7 @@ async def test_directory_scan_preview_file_instead_of_directory(
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -277,7 +279,7 @@ async def test_directory_scan_preview_file_instead_of_directory(
                 "path": tmpfile_path,
                 "scan_id": scan_id,
             }
-            
+
             # Configure mock to raise ValueError
             mock_scan_service.scan_directory_preview.side_effect = ValueError(
                 f"Path is not a directory: {tmpfile_path}"
@@ -301,7 +303,7 @@ async def test_directory_scan_preview_invalid_scan_id(
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -329,7 +331,7 @@ async def test_directory_scan_preview_relative_path(
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -340,9 +342,11 @@ async def test_directory_scan_preview_relative_path(
             "path": "./relative/path",
             "scan_id": scan_id,
         }
-        
+
         # The API should reject relative paths before calling the service
-        response = await async_client.post("/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers)
+        response = await async_client.post(
+            "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
+        )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "must be absolute" in response.json()["detail"]
@@ -352,10 +356,10 @@ async def test_directory_scan_preview_relative_path(
 async def test_directory_scan_preview_no_auth(monkeypatch, use_fakeredis) -> None:
     """Test that authentication is required."""
     from packages.webui.main import app
-    
+
     # Mock the WebSocket manager
     mock_ws_manager = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -385,7 +389,7 @@ async def test_directory_scan_websocket_connection(
     mock_ws_manager = AsyncMock()
     mock_ws_manager.send_to_user = AsyncMock()
     mock_scan_service = AsyncMock()
-    
+
     with (
         patch("packages.webui.api.v2.directory_scan.ws_manager", mock_ws_manager),
         patch("packages.webui.services.directory_scan_service.ws_manager", mock_ws_manager),
@@ -408,20 +412,20 @@ async def test_directory_scan_websocket_connection(
             total_size=0,
             warnings=["Scan in progress - connect to WebSocket for real-time updates"],
         )
-        
+
         # Make the mock scan take some time (simulate async work)
         async def slow_scan(*args, **kwargs):
             await asyncio.sleep(1)  # Simulate scan taking time
             return mock_response
-        
+
         mock_scan_service.scan_directory_preview.side_effect = slow_scan
-        
+
         # Start scan
         response = await async_client.post(
             "/api/v2/directory-scan/preview", json=request_data, headers=test_user_headers
         )
 
         assert response.status_code == status.HTTP_200_OK
-        
+
         # Verify that WebSocket manager was called to send initial progress
         mock_ws_manager.send_to_user.assert_called()

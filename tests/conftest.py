@@ -86,8 +86,11 @@ def use_fakeredis():
     ):
 
         # Also need to handle Redis() constructor with connection pool
-        original_redis_init = redis.Redis.__init__
-        original_async_redis_init = redis.asyncio.Redis.__init__
+        # Note: 'redis' here refers to redis.asyncio due to the import alias
+        import redis as sync_redis  # Import the sync redis module
+        
+        original_sync_redis_init = sync_redis.Redis.__init__
+        original_async_redis_init = redis.Redis.__init__  # redis is already redis.asyncio
 
         def fake_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_sync_redis.connection_pool:
@@ -95,7 +98,7 @@ def use_fakeredis():
                 fake_sync_redis.__init__(*args, **kwargs)
                 self.__dict__.update(fake_sync_redis.__dict__)
             else:
-                original_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+                original_sync_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
 
         def fake_async_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_async_redis.connection_pool:
@@ -105,14 +108,14 @@ def use_fakeredis():
             else:
                 original_async_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
 
-        redis.Redis.__init__ = fake_redis_init
-        redis.asyncio.Redis.__init__ = fake_async_redis_init
+        sync_redis.Redis.__init__ = fake_redis_init
+        redis.Redis.__init__ = fake_async_redis_init  # redis is already redis.asyncio
 
         try:
             yield fake_sync_redis, fake_async_redis
         finally:
-            redis.Redis.__init__ = original_redis_init
-            redis.asyncio.Redis.__init__ = original_async_redis_init
+            sync_redis.Redis.__init__ = original_sync_redis_init
+            redis.Redis.__init__ = original_async_redis_init
 
 
 @pytest.fixture()

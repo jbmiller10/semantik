@@ -603,7 +603,7 @@ class TestDocumentChunkCountUpdates:
             {
                 "chunks": [
                     {"chunk_id": "doc-1_chunk_0000", "text": "chunk 0", "metadata": {}},
-                    {"chunk_id": "doc-1_chunk_0001", "text": "chunk 1", "metadata": {}}
+                    {"chunk_id": "doc-1_chunk_0001", "text": "chunk 1", "metadata": {}},
                 ],
                 "stats": {"chunk_count": 2, "strategy_used": "recursive", "fallback": False},
             },
