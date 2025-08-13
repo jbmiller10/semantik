@@ -29,20 +29,20 @@ logger = logging.getLogger(__name__)
 def upgrade() -> None:
     """Apply migration using PostgreSQL DO blocks with exception handling."""
     conn = op.get_bind()
-    
+
     # Use a single DO block with exception handling to prevent transaction aborts
     conn.execute(text("""
         DO $$
         BEGIN
             -- Check if chunks table exists
             IF EXISTS (
-                SELECT 1 FROM information_schema.tables 
+                SELECT 1 FROM information_schema.tables
                 WHERE table_name = 'chunks' AND table_schema = 'public'
             ) THEN
                 -- Drop existing trigger and function
                 DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE;
                 DROP FUNCTION IF EXISTS compute_partition_key() CASCADE;
-                
+
                 -- Create improved partition function
                 CREATE OR REPLACE FUNCTION compute_partition_key()
                 RETURNS TRIGGER AS $func$
@@ -58,24 +58,24 @@ def upgrade() -> None:
                     RETURN NEW;
                 END;
                 $func$ LANGUAGE plpgsql IMMUTABLE;
-                
+
                 -- Create trigger
                 CREATE TRIGGER set_partition_key
                 BEFORE INSERT ON chunks
                 FOR EACH ROW
                 EXECUTE FUNCTION compute_partition_key();
-                
+
                 RAISE NOTICE 'Partition function updated successfully';
             ELSE
                 RAISE NOTICE 'Chunks table does not exist, skipping';
             END IF;
-            
+
         EXCEPTION
             WHEN OTHERS THEN
                 RAISE NOTICE 'Error updating partition function: %', SQLERRM;
         END $$;
     """))
-    
+
     # Create monitoring view (separate DO block)
     conn.execute(text("""
         DO $$
@@ -88,7 +88,7 @@ def upgrade() -> None:
             FROM chunks
             GROUP BY partition_key
             ORDER BY partition_key;
-            
+
             RAISE NOTICE 'Monitoring view created';
         EXCEPTION
             WHEN OTHERS THEN
@@ -100,14 +100,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Revert to original partition strategy."""
     conn = op.get_bind()
-    
+
     conn.execute(text("""
         DO $$
         BEGIN
             DROP VIEW IF EXISTS partition_distribution CASCADE;
             DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE;
             DROP FUNCTION IF EXISTS compute_partition_key() CASCADE;
-            
+
             CREATE OR REPLACE FUNCTION compute_partition_key()
             RETURNS TRIGGER AS $func$
             BEGIN
@@ -115,12 +115,12 @@ def downgrade() -> None:
                 RETURN NEW;
             END;
             $func$ LANGUAGE plpgsql;
-            
+
             CREATE TRIGGER set_partition_key
             BEFORE INSERT ON chunks
             FOR EACH ROW
             EXECUTE FUNCTION compute_partition_key();
-            
+
             RAISE NOTICE 'Reverted to original partition strategy';
         EXCEPTION
             WHEN OTHERS THEN
