@@ -131,31 +131,42 @@ class RedisStreamWebSocketManager:
             logger.info("Redis not connected, attempting to reconnect...")
             await self.startup()
 
+        # Variables to track if we should accept the connection
+        should_accept = False
+        user_connections = 0
+        reject_reason = ""
+        
         # Check limits and add connection atomically
         async with self._connections_lock:
             total_connections = sum(len(sockets) for sockets in self.connections.values())
             if total_connections >= self.max_total_connections:
                 logger.error(f"Global connection limit reached ({self.max_total_connections})")
-                # Don't accept the connection if limit is exceeded
-                raise ConnectionRefusedError("Server connection limit exceeded")
+                should_accept = False
+                reject_reason = "Server connection limit exceeded"
+            else:
+                # Check connection limit for this user
+                user_connections = sum(
+                    len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
+                )
 
-            # Check connection limit for this user
-            user_connections = sum(
-                len(sockets) for key, sockets in self.connections.items() if key.startswith(f"{user_id}:")
-            )
-
-            if user_connections >= self.max_connections_per_user:
-                logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
-                # Don't accept the connection if limit is exceeded
-                raise ConnectionRefusedError("User connection limit exceeded")
-
-            # Accept and store connection while still holding the lock
-            await websocket.accept()
-
-            key = f"{user_id}:operation:{operation_id}"
-            if key not in self.connections:
-                self.connections[key] = set()
-            self.connections[key].add(websocket)
+                if user_connections >= self.max_connections_per_user:
+                    logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
+                    should_accept = False
+                    reject_reason = "User connection limit exceeded"
+                else:
+                    should_accept = True
+                    # Accept and store connection while still holding the lock
+                    await websocket.accept()
+                    
+                    key = f"{user_id}:operation:{operation_id}"
+                    if key not in self.connections:
+                        self.connections[key] = set()
+                    self.connections[key].add(websocket)
+        
+        # If we didn't accept, close the connection outside the lock
+        if not should_accept:
+            await websocket.close(code=1008, reason=reject_reason)
+            return
 
         logger.info(
             f"Operation WebSocket connected: user={user_id}, operation={operation_id} "
