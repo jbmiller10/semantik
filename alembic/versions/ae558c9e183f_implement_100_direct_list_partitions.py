@@ -65,31 +65,36 @@ def cleanup_chunks_dependencies(conn):
         with contextlib.suppress(Exception):
             if params:
                 # Use PL/pgSQL with format for safe identifier quoting
-                # Params are predefined and safe (VARCHAR, etc.)
+                # Pass function name as parameter to avoid f-strings
                 conn.execute(
                     text(
-                        f"""
+                        """
                         DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
+                            param_types TEXT := :param_types;
                         BEGIN
-                            EXECUTE format('DROP FUNCTION IF EXISTS %I({params}) CASCADE', '{func_name}');
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I(%s) CASCADE', func_name, param_types);
                         EXCEPTION WHEN undefined_function THEN
                             NULL;
                         END $$;
                         """
-                    )
+                    ).bindparams(func_name=func_name, param_types=params)
                 )
             else:
                 conn.execute(
                     text(
-                        f"""
+                        """
                         DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
                         BEGIN
-                            EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', '{func_name}');
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', func_name);
                         EXCEPTION WHEN undefined_function THEN
                             NULL;
                         END $$;
                         """
-                    )
+                    ).bindparams(func_name=func_name)
                 )
 
     # Drop triggers

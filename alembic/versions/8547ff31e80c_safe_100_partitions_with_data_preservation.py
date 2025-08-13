@@ -121,16 +121,24 @@ def create_backup_table(conn, timestamp: str) -> str:
     """Create a timestamped backup of the chunks table."""
     backup_table_name = f"chunks_backup_{timestamp}"
 
+    # Validate backup table name format BEFORE using it
+    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
+        raise ValueError(f"Invalid backup table name format: {backup_table_name}")
+
     logger.info(f"Creating backup table: {backup_table_name}")
 
-    # Create backup table with all data
+    # Create backup table with all data using safe PL/pgSQL
     conn.execute(
         text(
-            f"""
-            CREATE TABLE {backup_table_name} AS
-            TABLE chunks WITH DATA
             """
-        )
+            DO $$
+            DECLARE
+                backup_table TEXT := :backup_table;
+            BEGIN
+                EXECUTE format('CREATE TABLE %I AS TABLE chunks WITH DATA', backup_table);
+            END $$;
+            """
+        ).bindparams(backup_table=backup_table_name)
     )
 
     # Also backup all partition tables if they exist
@@ -149,14 +157,27 @@ def create_backup_table(conn, timestamp: str) -> str:
 
     for partition_table in partition_tables:
         backup_partition_name = f"{partition_table}_backup_{timestamp}"
+        # Validate partition table names
+        if not re.match(r'^chunks_part_\d{2}$', partition_table):
+            logger.warning(f"Skipping invalid partition table name: {partition_table}")
+            continue
+        if not re.match(r'^chunks_part_\d{2}_backup_\d{8}_\d{6}$', backup_partition_name):
+            logger.warning(f"Invalid backup partition name: {backup_partition_name}")
+            continue
+
         logger.info(f"Backing up partition: {partition_table} to {backup_partition_name}")
         conn.execute(
             text(
-                f"""
-                CREATE TABLE {backup_partition_name} AS
-                TABLE {partition_table} WITH DATA
                 """
-            )
+                DO $$
+                DECLARE
+                    source_table TEXT := :source_table;
+                    backup_table TEXT := :backup_table;
+                BEGIN
+                    EXECUTE format('CREATE TABLE %I AS TABLE %I WITH DATA', backup_table, source_table);
+                END $$;
+                """
+            ).bindparams(source_table=partition_table, backup_table=backup_partition_name)
         )
 
     # Create metadata table to track backup
@@ -176,14 +197,31 @@ def create_backup_table(conn, timestamp: str) -> str:
         )
     )
 
-    # Record backup metadata - validate table name first
-    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
-        raise ValueError(f"Invalid backup table name format: {backup_table_name}")
+    # Record backup metadata - table name already validated above
+    # Create a temporary function to safely get count from dynamic table
+    conn.execute(
+        text(
+            """
+            CREATE OR REPLACE FUNCTION temp_get_count(table_name TEXT)
+            RETURNS INTEGER AS $$
+            DECLARE
+                count_result INTEGER;
+            BEGIN
+                EXECUTE format('SELECT COUNT(*) FROM %I', table_name) INTO count_result;
+                RETURN count_result;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+    )
 
     result = conn.execute(
-        text("SELECT COUNT(*) FROM " + backup_table_name)
+        text("SELECT temp_get_count(:table_name)").bindparams(table_name=backup_table_name)
     )
     backup_count = result.scalar()
+
+    # Clean up temporary function
+    conn.execute(text("DROP FUNCTION IF EXISTS temp_get_count(TEXT)"))
 
     conn.execute(
         text(
@@ -207,14 +245,34 @@ def create_backup_table(conn, timestamp: str) -> str:
 
 def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
     """Verify backup integrity."""
-    # Validate backup table name format
+    # Validate backup table name format FIRST
     if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
         raise ValueError(f"Invalid backup table name format: {backup_table_name}")
 
+    # Create a temporary function to safely get count from dynamic table
+    conn.execute(
+        text(
+            """
+            CREATE OR REPLACE FUNCTION temp_verify_count(table_name TEXT)
+            RETURNS INTEGER AS $$
+            DECLARE
+                count_result INTEGER;
+            BEGIN
+                EXECUTE format('SELECT COUNT(*) FROM %I', table_name) INTO count_result;
+                RETURN count_result;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+    )
+
     result = conn.execute(
-        text("SELECT COUNT(*) FROM " + backup_table_name)
+        text("SELECT temp_verify_count(:table_name)").bindparams(table_name=backup_table_name)
     )
     backup_count = result.scalar()
+
+    # Clean up temporary function
+    conn.execute(text("DROP FUNCTION IF EXISTS temp_verify_count(TEXT)"))
 
     if backup_count != original_count:
         logger.error(f"Backup verification failed! Original: {original_count}, Backup: {backup_count}")
@@ -325,11 +383,30 @@ def migrate_data_in_batches(conn, source_table: str = "chunks"):
     if not re.match(r'^chunks(_backup_\d{8}_\d{6})?$', source_table):
         raise ValueError(f"Invalid source table name: {source_table}")
 
-    # Get total count for progress tracking
+    # Get total count for progress tracking using safe PL/pgSQL
+    conn.execute(
+        text(
+            """
+            CREATE OR REPLACE FUNCTION temp_get_source_count(table_name TEXT)
+            RETURNS INTEGER AS $$
+            DECLARE
+                count_result INTEGER;
+            BEGIN
+                EXECUTE format('SELECT COUNT(*) FROM %I', table_name) INTO count_result;
+                RETURN count_result;
+            END;
+            $$ LANGUAGE plpgsql;
+            """
+        )
+    )
+
     result = conn.execute(
-        text("SELECT COUNT(*) FROM " + source_table)
+        text("SELECT temp_get_source_count(:table_name)").bindparams(table_name=source_table)
     )
     total_records = result.scalar()
+
+    # Clean up temporary function
+    conn.execute(text("DROP FUNCTION IF EXISTS temp_get_source_count(TEXT)"))
 
     if total_records == 0:
         logger.info("No data to migrate")
@@ -667,17 +744,36 @@ def cleanup_chunks_dependencies(conn):
             raise ValueError(f"Invalid function name: {func_name}")
         with contextlib.suppress(Exception):
             if params:
-                # Params are predefined and safe (VARCHAR, etc.)
+                # Use PL/pgSQL with parameters to avoid f-strings
                 conn.execute(
                     text(
-                        f"DO $$ BEGIN EXECUTE format('DROP FUNCTION IF EXISTS %I({params}) CASCADE', '{func_name}'); END $$;"
-                    )
+                        """
+                        DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
+                            param_types TEXT := :param_types;
+                        BEGIN
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I(%s) CASCADE', func_name, param_types);
+                        EXCEPTION WHEN undefined_function THEN
+                            NULL;
+                        END $$;
+                        """
+                    ).bindparams(func_name=func_name, param_types=params)
                 )
             else:
                 conn.execute(
                     text(
-                        f"DO $$ BEGIN EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', '{func_name}'); END $$;"
-                    )
+                        """
+                        DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
+                        BEGIN
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', func_name);
+                        EXCEPTION WHEN undefined_function THEN
+                            NULL;
+                        END $$;
+                        """
+                    ).bindparams(func_name=func_name)
                 )
 
     with contextlib.suppress(Exception):
