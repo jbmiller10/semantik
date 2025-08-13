@@ -106,11 +106,7 @@ def get_table_row_count(conn: Any, table_name: str) -> int:
 
 
 def create_table_backup(
-    conn: Any,
-    table_name: str,
-    migration_revision: str,
-    check_exists: bool = True,
-    require_data: bool = False
+    conn: Any, table_name: str, migration_revision: str, check_exists: bool = True, require_data: bool = False
 ) -> tuple[str | None, int]:
     """Create a timestamped backup of a table before destructive operations.
 
@@ -175,7 +171,7 @@ def create_table_backup(
                 original_table=table_name,
                 count=row_count,
                 revision=migration_revision,
-                days=f"{BACKUP_RETENTION_DAYS} days"
+                days=f"{BACKUP_RETENTION_DAYS} days",
             )
         )
 
@@ -258,10 +254,10 @@ def is_temporary_migration_table(table_name: str) -> bool:
         True if table is a temporary migration table
     """
     temp_patterns = [
-        r".*_old$",          # Old tables being replaced
-        r".*_new$",          # New tables being created
-        r".*_temp$",         # Temporary tables
-        r".*_tmp$",          # Temporary tables
+        r".*_old$",  # Old tables being replaced
+        r".*_new$",  # New tables being created
+        r".*_temp$",  # Temporary tables
+        r".*_tmp$",  # Temporary tables
         r".*_backup_\d{8}_\d{6}$",  # Timestamped backup tables
     ]
 
@@ -269,11 +265,7 @@ def is_temporary_migration_table(table_name: str) -> bool:
 
 
 def safe_drop_table(
-    conn: Any,
-    table_name: str,
-    migration_revision: str,
-    cascade: bool = False,
-    backup: bool = True
+    conn: Any, table_name: str, migration_revision: str, cascade: bool = False, backup: bool = True
 ) -> tuple[str | None, int]:
     """Safely drop a table with optional backup and safety checks.
 
@@ -294,10 +286,10 @@ def safe_drop_table(
     if not check_table_exists(conn, table_name):
         logger.info(f"Table {table_name} does not exist, nothing to drop")
         return None, 0
-    
+
     # Get row count once
     row_count = get_table_row_count(conn, table_name)
-    
+
     # Only require flag for non-temporary tables with data
     if not is_temporary_migration_table(table_name) and row_count > 0:
         require_destructive_flag(f"DROP TABLE {table_name} with {row_count} rows")
@@ -340,12 +332,7 @@ def safe_drop_table(
     return backup_table_name, row_count
 
 
-def restore_from_backup(
-    conn: Any,
-    original_table_name: str,
-    backup_table_name: str,
-    drop_backup: bool = False
-) -> bool:
+def restore_from_backup(conn: Any, original_table_name: str, backup_table_name: str, drop_backup: bool = False) -> bool:
     """Restore a table from its backup.
 
     Args:
@@ -425,4 +412,3 @@ def restore_from_backup(
     except SQLAlchemyError as e:
         logger.error(f"Failed to restore from backup: {e}")
         return False
-

@@ -328,9 +328,7 @@ class BackupManager:
 
                 logger.info(f"Creating backup: {backup_table_name} ({row_count} rows)")
 
-                session.execute(
-                    text(f"CREATE TABLE {backup_table_name} AS TABLE {table_name} WITH DATA")
-                )
+                session.execute(text(f"CREATE TABLE {backup_table_name} AS TABLE {table_name} WITH DATA"))
 
                 # Ensure tracking table exists
                 session.execute(
@@ -421,9 +419,7 @@ class BackupManager:
                 session.execute(text(f"DROP TABLE IF EXISTS {target_table_name} CASCADE"))
 
                 # Restore from backup
-                session.execute(
-                    text(f"CREATE TABLE {target_table_name} AS TABLE {backup_table_name} WITH DATA")
-                )
+                session.execute(text(f"CREATE TABLE {target_table_name} AS TABLE {backup_table_name} WITH DATA"))
 
                 if drop_backup:
                     session.execute(text(f"DROP TABLE {backup_table_name}"))
