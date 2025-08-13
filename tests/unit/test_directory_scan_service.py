@@ -52,6 +52,7 @@ class TestDirectoryScanService:
         """Mock WebSocket manager"""
         with patch("packages.webui.services.directory_scan_service.ws_manager") as mock:
             mock._broadcast = AsyncMock()
+            mock.send_to_operation = AsyncMock()
             yield mock
 
     @pytest.mark.asyncio()
@@ -84,7 +85,7 @@ class TestDirectoryScanService:
         assert file_paths == expected_paths
 
         # Verify WebSocket messages were sent
-        assert mock_ws_manager._broadcast.call_count > 0
+        assert mock_ws_manager.send_to_operation.call_count > 0
 
     @pytest.mark.asyncio()
     async def test_scan_directory_non_recursive(self, service, fake_fs, mock_ws_manager) -> None:
@@ -239,11 +240,11 @@ class TestDirectoryScanService:
         )
 
         # Verify progress messages were sent
-        broadcast_calls = mock_ws_manager._broadcast.call_args_list
+        send_calls = mock_ws_manager.send_to_operation.call_args_list
         progress_messages = []
 
-        for call in broadcast_calls:
-            channel_id, message = call[0]
+        for call in send_calls:
+            scan_id, message = call[0]
             if isinstance(message, dict) and message.get("type") == "progress":
                 progress_messages.append(message)
 
@@ -272,7 +273,7 @@ class TestDirectoryScanService:
 
             # Verify error message was sent via WebSocket before raising
             error_calls = [
-                call for call in mock_ws_manager._broadcast.call_args_list if call[0][1].get("type") == "error"
+                call for call in mock_ws_manager.send_to_operation.call_args_list if call[0][1].get("type") == "error"
             ]
             assert len(error_calls) > 0
 
@@ -327,14 +328,14 @@ class TestDirectoryScanService:
             recursive=False,
         )
 
-        # Collect all broadcast calls
-        broadcast_calls = mock_ws_manager._broadcast.call_args_list
+        # Collect all send_to_operation calls
+        send_calls = mock_ws_manager.send_to_operation.call_args_list
 
         # Verify different message types
         message_types = set()
-        for call in broadcast_calls:
-            channel_id, message = call[0]
-            assert channel_id == "directory-scan:scan-ws-test"
+        for call in send_calls:
+            scan_id, message = call[0]
+            assert scan_id == "scan-ws-test"
             assert "type" in message
             assert "scan_id" in message
             assert "data" in message
@@ -469,8 +470,8 @@ class TestDirectoryScanServiceEdgeCases:
         fs.create_dir("/test_dir")
         fs.create_file("/test_dir/test.pdf", contents=b"test" * 100)
 
-        # Make broadcast fail
-        mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
+        # Make send_to_operation fail
+        mock_ws_manager.send_to_operation = AsyncMock(side_effect=Exception("WebSocket error"))
 
         # Should still complete scan despite WebSocket errors
         result = await service.scan_directory_preview(
@@ -512,6 +513,8 @@ class TestDirectoryScanProgress:
     @patch("packages.webui.services.directory_scan_service.ws_manager")
     async def test_progress_message_structure(self, mock_ws_manager, service) -> None:
         """Test progress message data structure"""
+        mock_ws_manager.send_to_operation = AsyncMock()
+        
         await service._send_progress(
             channel_id="test-channel",
             scan_id="test-scan",
@@ -524,12 +527,12 @@ class TestDirectoryScanProgress:
             },
         )
 
-        # Verify broadcast was called
-        mock_ws_manager._broadcast.assert_called_once()
+        # Verify send_to_operation was called
+        mock_ws_manager.send_to_operation.assert_called_once()
 
         # Verify message structure
-        channel_id, message = mock_ws_manager._broadcast.call_args[0]
-        assert channel_id == "test-channel"
+        scan_id, message = mock_ws_manager.send_to_operation.call_args[0]
+        assert scan_id == "test-scan"
         assert message["type"] == "progress"
         assert message["scan_id"] == "test-scan"
         assert message["data"]["files_scanned"] == 50
