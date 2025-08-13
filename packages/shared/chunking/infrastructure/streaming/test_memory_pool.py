@@ -27,7 +27,7 @@ from packages.shared.chunking.infrastructure.streaming.memory_pool import (
 class TestMemoryPool:
     """Test cases for MemoryPool class."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test pool initialization."""
         pool = MemoryPool(
             max_size=1024 * 1024,  # 1MB
@@ -42,7 +42,7 @@ class TestMemoryPool:
         assert pool.initial_pool_size == 5
         assert len(pool._buffers) == 5  # Pre-allocated buffers
 
-    def test_sync_context_manager(self):
+    def test_sync_context_manager(self) -> None:
         """Test synchronous context manager for buffer acquisition."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -57,7 +57,7 @@ class TestMemoryPool:
         assert pool.used_buffers == 0
         assert pool.release_count == 1
 
-    def test_sync_context_manager_with_exception(self):
+    def test_sync_context_manager_with_exception(self) -> None:
         """Test that buffer is released even on exception."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -69,7 +69,7 @@ class TestMemoryPool:
         assert pool.release_count == 1
 
     @pytest.mark.asyncio()
-    async def test_async_context_manager(self):
+    async def test_async_context_manager(self) -> None:
         """Test asynchronous context manager for buffer acquisition."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -85,7 +85,7 @@ class TestMemoryPool:
         assert pool.release_count == 1
 
     @pytest.mark.asyncio()
-    async def test_async_context_manager_with_exception(self):
+    async def test_async_context_manager_with_exception(self) -> None:
         """Test that buffer is released even on async exception."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -98,7 +98,7 @@ class TestMemoryPool:
         assert pool.release_count == 1
 
     @pytest.mark.asyncio()
-    async def test_buffer_reuse(self):
+    async def test_buffer_reuse(self) -> None:
         """Test that buffers are reused when possible."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -114,11 +114,11 @@ class TestMemoryPool:
         assert pool.reuse_count >= 1
 
     @pytest.mark.asyncio()
-    async def test_concurrent_access(self):
+    async def test_concurrent_access(self) -> None:
         """Test concurrent buffer acquisitions."""
         pool = MemoryPool(buffer_size=1024, pool_size=5)
 
-        async def acquire_and_release():
+        async def acquire_and_release() -> None:
             async with pool.acquire_async(timeout=5.0) as buffer:
                 await asyncio.sleep(0.1)
                 assert buffer is not None
@@ -132,7 +132,7 @@ class TestMemoryPool:
         assert pool.allocation_count >= 10
 
     @pytest.mark.asyncio()
-    async def test_timeout_on_exhausted_pool(self):
+    async def test_timeout_on_exhausted_pool(self) -> None:
         """Test timeout when pool is exhausted."""
         # Create a small pool with limited total size
         pool = MemoryPool(
@@ -148,7 +148,7 @@ class TestMemoryPool:
                 async with pool.acquire_async(size=512, timeout=0.5):
                     pass
 
-    def test_managed_buffer_garbage_collection(self):
+    def test_managed_buffer_garbage_collection(self) -> None:
         """Test that ManagedBuffer releases on garbage collection."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -166,7 +166,7 @@ class TestMemoryPool:
         assert pool.leak_count >= 0  # May or may not have been collected yet
 
     @pytest.mark.asyncio()
-    async def test_leak_detection(self):
+    async def test_leak_detection(self) -> None:
         """Test automatic leak detection."""
         pool = MemoryPool(
             buffer_size=1024,
@@ -205,7 +205,7 @@ class TestMemoryPool:
             await pool.stop_leak_detection()
 
     @pytest.mark.asyncio()
-    async def test_memory_pressure_handling(self):
+    async def test_memory_pressure_handling(self) -> None:
         """Test behavior under memory pressure."""
         # Small pool to test memory pressure
         pool = MemoryPool(
@@ -227,7 +227,7 @@ class TestMemoryPool:
                     async with pool.acquire_async(timeout=0.5):
                         pass
 
-    def test_statistics_tracking(self):
+    def test_statistics_tracking(self) -> None:
         """Test that statistics are properly tracked."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -243,7 +243,7 @@ class TestMemoryPool:
         assert stats["allocation_count"] == 1
         assert stats["release_count"] == 1
 
-    def test_backward_compatibility(self):
+    def test_backward_compatibility(self) -> None:
         """Test backward compatibility with old API."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -254,7 +254,7 @@ class TestMemoryPool:
         assert "utilization" in old_stats
 
     @pytest.mark.asyncio()
-    async def test_buffer_resize(self):
+    async def test_buffer_resize(self) -> None:
         """Test dynamic buffer sizing."""
         pool = MemoryPool(
             max_size=10240,  # 10KB
@@ -269,7 +269,7 @@ class TestMemoryPool:
         async with pool.acquire_async(size=2048) as buffer2:
             assert len(buffer2.data) == 2048
 
-    def test_clear_pool(self):
+    def test_clear_pool(self) -> None:
         """Test clearing the pool."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
 
@@ -287,7 +287,7 @@ class TestMemoryMonitor:
     """Test cases for MemoryMonitor class."""
 
     @pytest.mark.asyncio()
-    async def test_monitor_init(self):
+    async def test_monitor_init(self) -> None:
         """Test monitor initialization."""
         pool = MemoryPool(buffer_size=1024, pool_size=2)
         monitor = MemoryMonitor(
@@ -302,7 +302,7 @@ class TestMemoryMonitor:
         assert monitor.critical_threshold == 0.95
 
     @pytest.mark.asyncio()
-    async def test_monitor_alerts(self):
+    async def test_monitor_alerts(self) -> None:
         """Test alert generation."""
         pool = MemoryPool(
             max_size=2048,
@@ -313,12 +313,12 @@ class TestMemoryMonitor:
             pool,
             warning_threshold=0.5,  # 50% for testing
             critical_threshold=0.75,  # 75% for testing
-            check_interval=0.5,
+            check_interval=1,
         )
 
         alerts_received = []
 
-        async def alert_callback(alert: MemoryAlert):
+        async def alert_callback(alert: MemoryAlert) -> None:
             alerts_received.append(alert)
 
         await monitor.start(alert_callback)
@@ -344,7 +344,7 @@ class TestMemoryMonitor:
             await monitor.stop()
 
     @pytest.mark.asyncio()
-    async def test_health_check(self):
+    async def test_health_check(self) -> None:
         """Test health check functionality."""
         pool = MemoryPool(
             max_size=2048,
@@ -379,7 +379,7 @@ class TestIntegration:
     """Integration tests for memory pool and processor."""
 
     @pytest.mark.asyncio()
-    async def test_processor_with_safe_pool(self):
+    async def test_processor_with_safe_pool(self) -> None:
         """Test that processor works with new safe pool."""
         from packages.shared.chunking.infrastructure.streaming.processor import (
             StreamingDocumentProcessor,
@@ -402,7 +402,7 @@ class TestIntegration:
         assert "utilization" in usage
 
     @pytest.mark.asyncio()
-    async def test_concurrent_processing_no_leaks(self):
+    async def test_concurrent_processing_no_leaks(self) -> None:
         """Test that concurrent processing doesn't leak buffers."""
         pool = MemoryPool(
             max_size=10 * 1024,  # 10KB
@@ -410,7 +410,7 @@ class TestIntegration:
             pool_size=5,
         )
 
-        async def process_data(data: bytes):
+        async def process_data(data: bytes) -> int:
             """Simulate processing with buffer acquisition."""
             async with pool.acquire_async() as buffer:
                 buffer.data[: len(data)] = data

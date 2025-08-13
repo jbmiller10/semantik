@@ -569,7 +569,7 @@ class TestOperationWebSocket:
             mock_service.verify_websocket_access.return_value = None
 
             # Mock WebSocket manager
-            mock_ws_manager.connect = AsyncMock()
+            mock_ws_manager.connect = AsyncMock(return_value="connection-123")
             mock_ws_manager.disconnect = AsyncMock()
 
             # Mock WebSocket receive to simulate ping/pong and then disconnect
@@ -586,9 +586,9 @@ class TestOperationWebSocket:
             # Verify
             mock_get_user.assert_awaited_once_with("valid-jwt-token")
             mock_service.verify_websocket_access.assert_awaited_once_with(operation_uuid="op-123", user_id=1)
-            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "op-123", "1")
+            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "1", "op-123")
             mock_websocket.send_json.assert_awaited_once_with({"type": "pong"})
-            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")
+            mock_ws_manager.disconnect.assert_awaited_once_with("connection-123")
 
     @pytest.mark.asyncio()
     async def test_websocket_authentication_failure(self) -> None:
@@ -744,7 +744,7 @@ class TestOperationWebSocket:
             mock_service.verify_websocket_access.return_value = None
 
             # Mock WebSocket manager
-            mock_ws_manager.connect = AsyncMock()
+            mock_ws_manager.connect = AsyncMock(return_value="connection-123")
             mock_ws_manager.disconnect = AsyncMock()
 
             # Mock WebSocket receive to simulate immediate disconnect
@@ -755,8 +755,8 @@ class TestOperationWebSocket:
             await operation_websocket(mock_websocket, "op-123")
 
             # Verify
-            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "op-123", "1")
-            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")
+            mock_ws_manager.connect.assert_awaited_once_with(mock_websocket, "1", "op-123")
+            mock_ws_manager.disconnect.assert_awaited_once_with("connection-123")
 
     @pytest.mark.asyncio()
     async def test_websocket_multiple_messages(self) -> None:
@@ -789,7 +789,7 @@ class TestOperationWebSocket:
             mock_service.verify_websocket_access.return_value = None
 
             # Mock WebSocket manager
-            mock_ws_manager.connect = AsyncMock()
+            mock_ws_manager.connect = AsyncMock(return_value="connection-123")
             mock_ws_manager.disconnect = AsyncMock()
 
             # Mock WebSocket receive to simulate multiple ping/pong exchanges
@@ -808,4 +808,4 @@ class TestOperationWebSocket:
             # Verify
             assert mock_websocket.send_json.await_count == 2  # Only ping messages get pong responses
             mock_websocket.send_json.assert_any_await({"type": "pong"})
-            mock_ws_manager.disconnect.assert_awaited_once_with(mock_websocket, "op-123", "1")
+            mock_ws_manager.disconnect.assert_awaited_once_with("connection-123")

@@ -12,9 +12,10 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import redis.asyncio as aioredis
+import shared.text_processing.chunking as token_chunking
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,11 +56,20 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from .cache_manager import CacheManager, QueryMonitor
 from .chunking_config_builder import ChunkingConfigBuilder
 from .chunking_error_handler import ChunkingErrorHandler
+from .chunking_metrics import (
+    record_chunk_sizes,
+    record_chunking_duration,
+    record_chunking_fallback,
+    record_chunks_produced,
+)
 from .chunking_strategies import ChunkingStrategyRegistry
 from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
 
 logger = logging.getLogger(__name__)
+
+# Constants for chunking configuration
+DEFAULT_MIN_TOKEN_THRESHOLD = 100  # Minimum tokens to ensure meaningful chunks
 
 
 class ChunkingStatistics:
@@ -159,10 +169,14 @@ class ChunkingService:
         strategies = []
 
         for strategy in ChunkingStrategyEnum:
-            strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
+            # Convert shared enum to webui enum for registry lookup
+            from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as WebUIChunkingStrategy
+
+            webui_strategy = WebUIChunkingStrategy(strategy.value)
+            strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
 
             # Get default config from builder
-            default_config = self.config_builder.get_default_config(strategy)
+            default_config = self.config_builder.get_default_config(webui_strategy)
 
             # Get compatibility info from factory
             strategy_info = self.strategy_factory.get_strategy_info(strategy)
@@ -245,7 +259,7 @@ class ChunkingService:
             user_id=user_id,
         )
 
-        return operation_id.get("operation_id", str(uuid.uuid4()))
+        return str(operation_id.get("operation_id", str(uuid.uuid4())))
 
     async def recommend_strategy(
         self,
@@ -431,8 +445,10 @@ class ChunkingService:
                 ) from e
             except ChunkingDomainError as e:
                 # Translate domain exception
+                # ChunkingDomainError is a subclass of DomainError
+                domain_error = cast(DomainError, e)
                 raise self.exception_translator.translate_domain_to_application(
-                    e,
+                    domain_error,
                     correlation_id,
                 ) from e
             except Exception as e:
@@ -548,7 +564,7 @@ class ChunkingService:
 
         # Load from appropriate storage
         # Simplified - would handle different storage types
-        return document.get("content", "")
+        return str(document.get("content", ""))
 
     async def _execute_chunking(
         self,
@@ -585,7 +601,7 @@ class ChunkingService:
                 chunk_overlap = min(200, chunk_size // 4)
 
             # Build ChunkConfig with proper parameters
-            min_tokens = min(100, chunk_size // 2)
+            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size // 2)
             max_tokens = max(chunk_size, min_tokens + 1)
             overlap_tokens = min(chunk_overlap, min_tokens - 1)
 
@@ -790,7 +806,7 @@ class ChunkingService:
 
             # Build ChunkConfig with proper parameters
             # Ensure min_tokens is less than max_tokens and overlap_tokens is valid
-            min_tokens = min(100, chunk_size // 2)  # Set reasonable min
+            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size // 2)  # Set reasonable min
             max_tokens = max(chunk_size, min_tokens + 1)  # Ensure max > min
             overlap_tokens = min(chunk_overlap, min_tokens - 1)  # Ensure overlap < min
 
@@ -967,7 +983,11 @@ class ChunkingService:
                 )
 
                 # Get strategy definition from registry
-                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(strategy)
+                # Convert shared enum to webui enum for registry lookup
+                from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as WebUIChunkingStrategy
+
+                webui_strategy = WebUIChunkingStrategy(strategy.value)
+                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
 
                 # Calculate quality metrics
                 metrics = result.get("metrics", {})
@@ -1236,7 +1256,7 @@ class ChunkingService:
             cache_key = self.cache_manager._generate_cache_key("statistics", {"collection_id": collection_id})
             cached = await self.cache_manager.get(cache_key)
             if cached:
-                return cached
+                return cast(dict[str, Any], cached)
 
         try:
             # Get collection
@@ -1271,8 +1291,8 @@ class ChunkingService:
                 func.min(Operation.created_at).label("first_operation_at"),
             ).where(and_(Operation.collection_id == collection_id, Operation.type == "chunking"))
 
-            result = await self.db_session.execute(stats_query)
-            stats = result.one()
+            stats_result = await self.db_session.execute(stats_query)
+            stats = stats_result.one()
 
             # Get latest strategy with a separate optimized query
             latest_strategy_query = (
@@ -1292,7 +1312,7 @@ class ChunkingService:
             latest_strategy_row = strategy_result.one_or_none()
             latest_strategy = latest_strategy_row.strategy if latest_strategy_row else None
 
-            result = {
+            result: dict[str, Any] = {
                 "collection_id": collection_id,
                 "total_operations": stats.total_operations or 0,
                 "completed_operations": stats.completed_operations or 0,
@@ -1905,6 +1925,626 @@ class ChunkingService:
         return strategy_mapping.get(strategy, strategy)
 
     # Additional methods for completeness
+
+    async def execute_ingestion_chunking(
+        self,
+        text: str,
+        document_id: str,
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,  # noqa: ARG002 - Reserved for future file-type-specific optimizations
+    ) -> dict[str, Any]:
+        """Execute chunking for document ingestion with strategy resolution and fallback.
+
+        This method provides a unified chunking interface for ingestion tasks (APPEND, REINDEX).
+        It resolves the chunking strategy from collection configuration, executes it with proper
+        error handling, and falls back to TokenChunker on recoverable errors.
+        Tracks Prometheus metrics for observability.
+
+        For large documents, it automatically uses progressive segmentation to maintain
+        bounded memory usage.
+
+        Args:
+            text: The text content to chunk
+            document_id: The document ID for chunk metadata
+            collection: Collection dictionary containing chunking_strategy and chunking_config
+            metadata: Optional metadata to include with chunks
+            file_type: Optional file type for strategy optimization (reserved for future use)
+
+        Returns:
+            Dictionary containing:
+                - chunks: List of chunk dictionaries in ingestion format
+                - stats: Execution statistics including strategy used and timing
+
+        Raises:
+            Exception: For fatal errors that prevent chunking
+        """
+        import time
+
+        from packages.webui.services.chunking_constants import SEGMENT_SIZE_THRESHOLD, STRATEGY_SEGMENT_THRESHOLDS
+
+        # Check if document requires segmentation
+        text_size = len(text.encode("utf-8"))
+        chunking_strategy = collection.get("chunking_strategy")
+
+        # Get the threshold for this strategy - normalize the strategy name
+        if chunking_strategy:
+            # Use simple lowercase normalization
+            strategy_key = chunking_strategy.lower().replace("_", "").replace("-", "")
+            # Map common variations
+            strategy_mapping = {
+                "fixedsize": "character",
+                "tokenchunker": "character",
+                "documentstructure": "markdown",
+                "slidingwindow": "sliding",
+            }
+            strategy_key = strategy_mapping.get(strategy_key, strategy_key)
+        else:
+            strategy_key = ""
+        threshold = STRATEGY_SEGMENT_THRESHOLDS.get(strategy_key, SEGMENT_SIZE_THRESHOLD)
+
+        if text_size > threshold:
+            logger.info(
+                "Document exceeds size threshold, using progressive segmentation",
+                extra={
+                    "document_id": document_id,
+                    "text_size": text_size,
+                    "threshold": threshold,
+                    "strategy": strategy_key,
+                },
+            )
+            # Generate correlation ID for tracking
+            correlation_id = str(uuid.uuid4())
+            # Use segmented processing for large documents
+            return await self.execute_ingestion_chunking_segmented(
+                text=text,
+                document_id=document_id,
+                collection=collection,
+                metadata=metadata,
+                file_type=file_type,
+                chunking_strategy=chunking_strategy or "recursive",
+                chunk_size=int(collection.get("chunk_size", 512)),
+                chunk_overlap=int(collection.get("chunk_overlap", 50)),
+                correlation_id=correlation_id,
+            )
+
+        start_time = time.time()
+        strategy_used = None
+        metrics_strategy_label = None  # For consistent metric labels
+        fallback_used = False
+        fallback_reason = None
+        chunks = []
+        correlation_id = str(uuid.uuid4())
+
+        try:
+            # Extract chunking configuration from collection
+            chunking_strategy = collection.get("chunking_strategy")
+            chunking_config = collection.get("chunking_config", {})
+
+            # Get chunk_size and chunk_overlap for fallback (prefer chunking_config values)
+            chunk_size = chunking_config.get("chunk_size", collection.get("chunk_size", 1000))
+            chunk_overlap = chunking_config.get("chunk_overlap", collection.get("chunk_overlap", 200))
+
+            # Ensure chunk_size and chunk_overlap are integers
+            try:
+                chunk_size = int(chunk_size)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid chunk_size type: {type(chunk_size).__name__}, using default 1000",
+                    extra={"correlation_id": correlation_id},
+                )
+                chunk_size = 1000
+
+            try:
+                chunk_overlap = int(chunk_overlap)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"Invalid chunk_overlap type: {type(chunk_overlap).__name__}, using default 200",
+                    extra={"correlation_id": correlation_id},
+                )
+                chunk_overlap = 200
+
+            # Validate and sanitize chunk_size and chunk_overlap for fallback scenarios
+            # If invalid values are provided, use safe defaults
+            if chunk_size <= 0:
+                logger.warning(
+                    f"Invalid chunk_size {chunk_size}, using default 1000", extra={"correlation_id": correlation_id}
+                )
+                chunk_size = 1000
+            if chunk_overlap < 0:
+                logger.warning(
+                    f"Invalid chunk_overlap {chunk_overlap}, using default 200",
+                    extra={"correlation_id": correlation_id},
+                )
+                chunk_overlap = 200
+            if chunk_overlap >= chunk_size:
+                logger.warning(
+                    f"chunk_overlap {chunk_overlap} >= chunk_size {chunk_size}, setting to chunk_size/2",
+                    extra={"correlation_id": correlation_id},
+                )
+                chunk_overlap = chunk_size // 2
+
+            # If no strategy specified, use TokenChunker directly
+            if not chunking_strategy:
+                logger.info(
+                    "No chunking strategy specified for collection, using TokenChunker",
+                    extra={
+                        "collection_id": collection.get("id"),
+                        "document_id": document_id,
+                        "strategy_used": "TokenChunker",
+                        "correlation_id": correlation_id,
+                    },
+                )
+                try:
+                    chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    # Execute in thread pool to avoid blocking event loop
+                    chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
+                    strategy_used = "TokenChunker"
+                    metrics_strategy_label = "character"  # Internal name for metrics
+
+                    # Record metrics for direct TokenChunker usage
+                    record_chunks_produced(metrics_strategy_label, len(chunks))
+                    record_chunk_sizes(metrics_strategy_label, chunks)
+                except (MemoryError, SystemError) as e:
+                    # Fatal errors should be propagated
+                    logger.error(f"Fatal error creating TokenChunker: {e}", extra={"correlation_id": correlation_id})
+                    raise
+
+            else:
+                # Normalize strategy name using factory
+                try:
+                    # Build and validate configuration
+                    config_result = self.config_builder.build_config(
+                        strategy=chunking_strategy,
+                        user_config=chunking_config,
+                    )
+
+                    if config_result.validation_errors:
+                        logger.warning(
+                            "Invalid chunking config, falling back to TokenChunker",
+                            extra={
+                                "collection_id": collection.get("id"),
+                                "document_id": document_id,
+                                "validation_errors": ", ".join(config_result.validation_errors),
+                                "correlation_id": correlation_id,
+                            },
+                        )
+                        chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                        # Execute in thread pool to avoid blocking event loop
+                        chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
+                        strategy_used = "TokenChunker"
+                        metrics_strategy_label = "character"  # Internal name for metrics
+                        fallback_used = True
+                        fallback_reason = "invalid_config"
+
+                        # Record fallback metrics with normalized label
+                        try:
+                            from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+
+                            normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
+                                str(config_result.strategy)
+                                if hasattr(config_result, "strategy")
+                                else (chunking_strategy or "unknown")
+                            )
+                        except Exception:
+                            normalized_strategy = (
+                                str(config_result.strategy)
+                                if hasattr(config_result, "strategy")
+                                else (chunking_strategy or "unknown")
+                            )
+                        record_chunking_fallback(normalized_strategy, "invalid_config")
+                        record_chunks_produced(metrics_strategy_label, len(chunks))
+                        record_chunk_sizes(metrics_strategy_label, chunks)
+
+                    else:
+                        # Create strategy instance
+                        try:
+                            chunking_strategy_instance = self.strategy_factory.create_strategy(
+                                strategy_name=config_result.strategy,
+                                config=config_result.config,
+                                correlation_id=str(uuid.uuid4()),
+                            )
+
+                            # Execute chunking with the strategy
+                            from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
+                            # Extract relevant config values
+                            config = config_result.config
+                            chunk_size_from_config = config.get("chunk_size", chunk_size)
+                            chunk_overlap_from_config = config.get("chunk_overlap", chunk_overlap)
+
+                            # Build ChunkConfig for domain strategy
+                            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size_from_config // 2)
+                            max_tokens = max(chunk_size_from_config, min_tokens + 1)
+                            overlap_tokens = min(chunk_overlap_from_config, min_tokens - 1)
+
+                            chunk_config_obj = ChunkConfig(
+                                strategy_name=str(config_result.strategy),
+                                min_tokens=min_tokens,
+                                max_tokens=max_tokens,
+                                overlap_tokens=max(0, overlap_tokens),
+                                preserve_structure=config.get("preserve_structure", True),
+                                semantic_threshold=config.get("semantic_threshold", 0.7),
+                                hierarchy_levels=config.get("hierarchy_levels", 3),
+                            )
+
+                            # Execute chunking in thread pool to avoid blocking event loop
+                            chunk_entities = await asyncio.to_thread(
+                                chunking_strategy_instance.chunk,
+                                content=text,
+                                config=chunk_config_obj,
+                            )
+
+                            # Convert chunk entities to ingestion format
+                            chunks = []
+                            for idx, chunk_entity in enumerate(chunk_entities):
+                                chunk_dict = {
+                                    "chunk_id": f"{document_id}_{idx:04d}",  # Fixed format without '_chunk_' prefix
+                                    "text": chunk_entity.content,
+                                    "metadata": {
+                                        **(metadata or {}),
+                                        "index": idx,
+                                        "strategy": str(config_result.strategy),
+                                    },
+                                }
+                                chunks.append(chunk_dict)
+
+                            strategy_used = str(config_result.strategy)
+                            # Normalize to internal strategy label for metrics
+                            try:
+                                from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+
+                                metrics_strategy_label = ChunkingStrategyFactory.normalize_strategy_name(strategy_used)
+                            except Exception:
+                                metrics_strategy_label = strategy_used
+                            logger.info(
+                                "Successfully chunked document using strategy",
+                                extra={
+                                    "document_id": document_id,
+                                    "collection_id": collection.get("id"),
+                                    "strategy_used": strategy_used,
+                                    "chunk_count": len(chunks),
+                                    "correlation_id": correlation_id,
+                                },
+                            )
+
+                            # Record metrics for successful strategy execution
+                            record_chunks_produced(metrics_strategy_label, len(chunks))
+                            record_chunk_sizes(metrics_strategy_label, chunks)
+
+                        except Exception as strategy_error:
+                            # Strategy execution failed, fall back to TokenChunker
+                            logger.warning(
+                                "Strategy execution failed, falling back to TokenChunker",
+                                extra={
+                                    "document_id": document_id,
+                                    "collection_id": collection.get("id"),
+                                    "strategy": chunking_strategy,
+                                    "error": str(strategy_error),
+                                    "correlation_id": correlation_id,
+                                },
+                            )
+                            chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                            # Execute in thread pool to avoid blocking event loop
+                            chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
+                            strategy_used = "TokenChunker"
+                            metrics_strategy_label = "character"  # Internal name for metrics
+                            fallback_used = True
+                            fallback_reason = "runtime_error"
+
+                            # Record fallback metrics with normalized label
+                            try:
+                                from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+
+                                normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
+                                    str(config_result.strategy)
+                                )
+                            except Exception:
+                                normalized_strategy = str(config_result.strategy)
+                            record_chunking_fallback(normalized_strategy, "runtime_error")
+                            record_chunks_produced(metrics_strategy_label, len(chunks))
+                            record_chunk_sizes(metrics_strategy_label, chunks)
+
+                except Exception as config_error:
+                    # Configuration building failed, fall back to TokenChunker
+                    logger.warning(
+                        "Failed to build config for strategy, falling back to TokenChunker",
+                        extra={
+                            "document_id": document_id,
+                            "collection_id": collection.get("id"),
+                            "strategy": chunking_strategy,
+                            "error": str(config_error),
+                            "correlation_id": correlation_id,
+                        },
+                    )
+                    chunker = token_chunking.TokenChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                    # Execute in thread pool to avoid blocking event loop
+                    chunks = await asyncio.to_thread(chunker.chunk_text, text, document_id, metadata or {})
+                    strategy_used = "TokenChunker"
+                    metrics_strategy_label = "character"  # Internal name for metrics
+                    fallback_used = True
+                    fallback_reason = "config_error"
+
+                    # Record fallback metrics with normalized label
+                    try:
+                        from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+
+                        normalized_fallback = ChunkingStrategyFactory.normalize_strategy_name(
+                            chunking_strategy or "unknown"
+                        )
+                    except Exception:
+                        normalized_fallback = chunking_strategy or "unknown"
+                    record_chunking_fallback(normalized_fallback, "config_error")
+                    record_chunks_produced(metrics_strategy_label, len(chunks))
+                    record_chunk_sizes(metrics_strategy_label, chunks)
+
+        except Exception as e:
+            # Fatal error - cannot proceed with chunking
+            logger.error(
+                "Fatal error during chunking",
+                extra={
+                    "document_id": document_id,
+                    "collection_id": collection.get("id"),
+                    "error": str(e),
+                    "correlation_id": correlation_id,
+                },
+            )
+            raise
+
+        # Calculate duration
+        duration_seconds = time.time() - start_time
+        duration_ms = int(duration_seconds * 1000)
+
+        # Record duration metric for the strategy that was actually used
+        if metrics_strategy_label:
+            record_chunking_duration(metrics_strategy_label, duration_seconds)
+
+        # Log fallback event if occurred
+        if fallback_used:
+            logger.warning(
+                "Chunking fallback occurred",
+                extra={
+                    "document_id": document_id,
+                    "collection_id": collection.get("id"),
+                    "original_strategy": chunking_strategy,
+                    "strategy_used": strategy_used,
+                    "fallback_reason": fallback_reason,
+                    "correlation_id": correlation_id,
+                },
+            )
+
+        return {
+            "chunks": chunks,
+            "stats": {
+                "duration_ms": duration_ms,
+                "strategy_used": strategy_used,
+                "fallback": fallback_used,
+                "fallback_reason": fallback_reason,
+                "chunk_count": len(chunks),
+            },
+        }
+
+    async def execute_ingestion_chunking_segmented(
+        self,
+        text: str,
+        document_id: str,
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        chunking_strategy: str | None = None,
+        chunk_size: int | None = None,  # noqa: ARG002 - Reserved for future use
+        chunk_overlap: int | None = None,  # noqa: ARG002 - Reserved for future use
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute chunking for large documents using progressive segmentation.
+
+        This method segments large documents into manageable pieces and processes
+        each segment independently to maintain bounded memory usage.
+
+        Args:
+            text: The text content to chunk
+            document_id: The document ID for chunk metadata
+            collection: Collection dictionary containing chunking_strategy and chunking_config
+            metadata: Optional metadata to include with chunks
+            file_type: Optional file type for strategy optimization
+            chunking_strategy: Resolved chunking strategy name
+            chunk_size: Chunk size configuration
+            chunk_overlap: Chunk overlap configuration
+
+        Returns:
+            Dictionary containing:
+                - chunks: List of all chunks from all segments
+                - stats: Execution statistics including segmentation info
+        """
+        import time
+
+        from packages.webui.services.chunking_constants import (
+            DEFAULT_SEGMENT_OVERLAP,
+            DEFAULT_SEGMENT_SIZE,
+            MAX_SEGMENTS_PER_DOCUMENT,
+            STRATEGY_SEGMENT_THRESHOLDS,
+        )
+        from packages.webui.services.chunking_metrics import (
+            record_document_segmented,
+            record_segment_size,
+            record_segments_created,
+        )
+
+        start_time = time.time()
+        all_chunks = []
+        chunk_id_counter = 0
+
+        # Generate correlation ID if not provided
+        if not correlation_id:
+            correlation_id = str(uuid.uuid4())
+
+        # Get segmentation configuration based on strategy - normalize the strategy name
+        strategy = chunking_strategy or collection.get("chunking_strategy", "")
+        if strategy:
+            # Use simple lowercase normalization
+            strategy_key = strategy.lower().replace("_", "").replace("-", "")
+            # Map common variations
+            strategy_mapping = {
+                "fixedsize": "character",
+                "tokenchunker": "character",
+                "documentstructure": "markdown",
+                "slidingwindow": "sliding",
+            }
+            strategy_key = strategy_mapping.get(strategy_key, strategy_key)
+        else:
+            strategy_key = "recursive"  # Default
+        segment_threshold = STRATEGY_SEGMENT_THRESHOLDS.get(strategy_key, DEFAULT_SEGMENT_SIZE)
+        segment_size = min(segment_threshold, DEFAULT_SEGMENT_SIZE)
+        segment_overlap = DEFAULT_SEGMENT_OVERLAP
+
+        # Calculate segments
+        text_length = len(text.encode("utf-8"))
+        segments = []
+
+        if text_length <= segment_size:
+            # Document is small enough to process as single segment
+            segments = [text]
+        else:
+            # Create segments with overlap
+            position = 0
+            segment_count = 0
+
+            while position < len(text) and segment_count < MAX_SEGMENTS_PER_DOCUMENT:
+                # Calculate segment boundaries
+                segment_start = max(0, position - segment_overlap if position > 0 else 0)
+                segment_end = min(len(text), position + segment_size)
+
+                # Extract segment ensuring we don't split in the middle of a character
+                segment = text[segment_start:segment_end]
+
+                # Find a good break point if not at the end
+                if segment_end < len(text):
+                    # Try to break at paragraph boundary
+                    last_para = segment.rfind("\n\n")
+                    if last_para > segment_size * 0.8:  # If we have a paragraph break in last 20%
+                        segment = text[segment_start : segment_start + last_para]
+                        segment_end = segment_start + last_para
+                    else:
+                        # Try to break at sentence boundary
+                        last_sentence = max(segment.rfind(". "), segment.rfind("! "), segment.rfind("? "))
+                        if last_sentence > segment_size * 0.8:
+                            segment = text[segment_start : segment_start + last_sentence + 1]
+                            segment_end = segment_start + last_sentence + 1
+
+                segments.append(segment)
+                segment_count += 1
+
+                # Record segment metrics
+                record_segment_size(strategy_key, len(segment.encode("utf-8")))
+
+                # Move position forward (accounting for overlap)
+                position = segment_end
+
+        # Record segmentation metrics if document was segmented
+        if len(segments) > 1:
+            record_document_segmented(strategy_key)
+            record_segments_created(strategy_key, len(segments))
+            logger.info(
+                "Document segmented for processing",
+                extra={
+                    "document_id": document_id,
+                    "collection_id": collection.get("id"),
+                    "segment_count": len(segments),
+                    "text_length": text_length,
+                    "strategy": strategy_key,
+                    "correlation_id": correlation_id,
+                },
+            )
+
+        # Process each segment
+        for segment_idx, segment_text in enumerate(segments):
+            try:
+                # Process segment using the regular chunking logic
+                segment_result = await self._process_segment(
+                    segment_text,
+                    document_id,
+                    collection,
+                    metadata,
+                    file_type,
+                    chunk_id_counter,
+                    segment_idx,
+                    len(segments),
+                )
+
+                # Add chunks from this segment
+                all_chunks.extend(segment_result["chunks"])
+                chunk_id_counter += len(segment_result["chunks"])
+
+            except Exception as e:
+                logger.error(
+                    "Failed to process segment",
+                    extra={
+                        "document_id": document_id,
+                        "segment_idx": segment_idx,
+                        "error": str(e),
+                        "correlation_id": correlation_id,
+                    },
+                )
+                # Continue with other segments even if one fails
+                continue
+
+        # Calculate duration
+        duration_seconds = time.time() - start_time
+        duration_ms = int(duration_seconds * 1000)
+
+        return {
+            "chunks": all_chunks,
+            "stats": {
+                "duration_ms": duration_ms,
+                "strategy_used": strategy_key,
+                "chunk_count": len(all_chunks),
+                "segment_count": len(segments),
+                "segmented": len(segments) > 1,
+            },
+        }
+
+    async def _process_segment(
+        self,
+        text: str,
+        document_id: str,
+        collection: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        chunk_id_start: int = 0,
+        segment_idx: int = 0,
+        total_segments: int = 1,
+    ) -> dict[str, Any]:
+        """Process a single segment of text.
+
+        This is a helper method that processes a segment using the regular chunking logic
+        but with adjusted chunk IDs to maintain continuity across segments.
+
+        Args:
+            text: The segment text to chunk
+            document_id: The document ID for chunk metadata
+            collection: Collection dictionary containing chunking configuration
+            metadata: Optional metadata to include with chunks
+            file_type: Optional file type for strategy optimization
+            chunk_id_start: Starting index for chunk IDs
+            segment_idx: Index of this segment
+            total_segments: Total number of segments
+
+        Returns:
+            Dictionary containing chunks from this segment
+        """
+        # Use the regular chunking logic but adjust chunk IDs
+        result = await self.execute_ingestion_chunking(text, document_id, collection, metadata, file_type)
+
+        # Adjust chunk IDs to maintain continuity
+        for idx, chunk in enumerate(result["chunks"]):
+            chunk["chunk_id"] = f"{document_id}_{chunk_id_start + idx:04d}"  # Fixed format without '_chunk_' prefix
+            # Add segment metadata
+            if metadata is None:
+                chunk["metadata"] = {}
+            chunk["metadata"]["segment_idx"] = segment_idx
+            chunk["metadata"]["total_segments"] = total_segments
+
+        return result
 
     async def create_operation(
         self, collection_id: str, operation_type: str, config: dict[str, Any], user_id: int

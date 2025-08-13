@@ -118,7 +118,7 @@ class TestListCollectionOperations:
         # Test with status filter
         result = await list_collection_operations(
             collection_uuid=collection_uuid,
-            status="COMPLETED",
+            status="completed",
             operation_type=None,
             page=1,
             per_page=50,
@@ -127,7 +127,7 @@ class TestListCollectionOperations:
         )
 
         assert len(result) == 1
-        assert result[0].status == "COMPLETED"
+        assert result[0].status == "completed"
 
         # Test with type filter
         result = await list_collection_operations(
