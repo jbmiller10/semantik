@@ -78,8 +78,12 @@ async def test_concurrent_connections_race_condition(manager):
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Check for unexpected exceptions (not ConnectionRefusedError)
-    unexpected_exceptions = [r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)]
-    assert len(unexpected_exceptions) == 0, f"Unexpected exceptions during concurrent connections: {unexpected_exceptions}"
+    unexpected_exceptions = [
+        r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)
+    ]
+    assert (
+        len(unexpected_exceptions) == 0
+    ), f"Unexpected exceptions during concurrent connections: {unexpected_exceptions}"
 
     # Count successful connections
     successful_results = [r for r in results if r is not None and not isinstance(r, Exception)]
@@ -314,8 +318,12 @@ async def test_concurrent_connect_disconnect_race_condition(manager):
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Check for unexpected exceptions (not ConnectionRefusedError)
-    unexpected_exceptions = [r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)]
-    assert len(unexpected_exceptions) == 0, f"Unexpected exceptions during connect/disconnect cycles: {unexpected_exceptions}"
+    unexpected_exceptions = [
+        r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)
+    ]
+    assert (
+        len(unexpected_exceptions) == 0
+    ), f"Unexpected exceptions during connect/disconnect cycles: {unexpected_exceptions}"
 
     # Final state should be clean
     assert len(manager.connections) == 0

@@ -135,7 +135,7 @@ class RedisStreamWebSocketManager:
         should_accept = False
         user_connections = 0
         reject_reason = ""
-        
+
         # Check limits and add connection atomically
         async with self._connections_lock:
             total_connections = sum(len(sockets) for sockets in self.connections.values())
@@ -157,12 +157,12 @@ class RedisStreamWebSocketManager:
                     should_accept = True
                     # Accept and store connection while still holding the lock
                     await websocket.accept()
-                    
+
                     key = f"{user_id}:operation:{operation_id}"
                     if key not in self.connections:
                         self.connections[key] = set()
                     self.connections[key].add(websocket)
-        
+
         # If we didn't accept, close the connection outside the lock
         if not should_accept:
             await websocket.close(code=1008, reason=reject_reason)
