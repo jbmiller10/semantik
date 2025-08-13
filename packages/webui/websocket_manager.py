@@ -33,7 +33,7 @@ class RedisStreamWebSocketManager:
         self._get_operation_func = None  # Function to get operation by ID
         self._chunking_progress_throttle: dict[str, datetime] = {}  # Track last progress update time per operation
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
-        
+
         # Add locks for thread-safe access to shared state
         self._connections_lock = asyncio.Lock()
         self._consumer_tasks_lock = asyncio.Lock()
@@ -88,7 +88,7 @@ class RedisStreamWebSocketManager:
         # Cancel all consumer tasks
         async with self._consumer_tasks_lock:
             tasks_to_cancel = list(self.consumer_tasks.items())
-            
+
         for operation_id, task in tasks_to_cancel:
             logger.info(f"Cancelling consumer task for operation {operation_id}")
             task.cancel()
@@ -98,7 +98,7 @@ class RedisStreamWebSocketManager:
         # Close all WebSocket connections
         async with self._connections_lock:
             connections_to_close = list(self.connections.items())
-            
+
         for _, websockets in connections_to_close:
             for websocket in list(websockets):
                 with contextlib.suppress(Exception):
@@ -223,7 +223,7 @@ class RedisStreamWebSocketManager:
                 self.connections[key].discard(websocket)
                 if not self.connections[key]:
                     del self.connections[key]
-            
+
             # Check if there are any more connections for this operation
             has_connections = any(operation_id in k for k in self.connections)
 
@@ -469,7 +469,7 @@ class RedisStreamWebSocketManager:
                 if f"operation:{operation_id}" in key:
                     connections_to_close.extend(websockets)
                     keys_to_remove.append(key)
-            
+
             # Remove the connections while still holding the lock
             for key in keys_to_remove:
                 del self.connections[key]
@@ -754,13 +754,11 @@ class RedisStreamWebSocketManager:
             message: The message to broadcast
         """
         disconnected = []
-        
+
         # Get a snapshot of connections to send to
         async with self._connections_lock:
             connections_snapshot = [
-                (key, list(websockets))
-                for key, websockets in self.connections.items()
-                if channel in key
+                (key, list(websockets)) for key, websockets in self.connections.items() if channel in key
             ]
 
         # Send messages outside the lock to avoid blocking
@@ -772,7 +770,7 @@ class RedisStreamWebSocketManager:
                 except Exception as e:
                     logger.warning(f"Failed to send channel message to websocket: {e}")
                     disconnected.append((key, websocket))
-        
+
         # Clean up disconnected clients
         if disconnected:
             async with self._connections_lock:
