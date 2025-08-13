@@ -245,6 +245,32 @@ def ensure_migration_backups_table(conn: Any) -> None:
     )
 
 
+def is_temporary_migration_table(table_name: str) -> bool:
+    """Check if a table is a temporary migration table.
+    
+    Temporary migration tables are intermediate tables created during migrations
+    and don't require destructive operation flags.
+    
+    Args:
+        table_name: Name of the table to check
+        
+    Returns:
+        True if table is a temporary migration table
+    """
+    temp_patterns = [
+        r".*_old$",          # Old tables being replaced
+        r".*_new$",          # New tables being created
+        r".*_temp$",         # Temporary tables
+        r".*_tmp$",          # Temporary tables
+        r".*_backup_\d{8}_\d{6}$",  # Timestamped backup tables
+    ]
+    
+    for pattern in temp_patterns:
+        if re.match(pattern, table_name):
+            return True
+    return False
+
+
 def safe_drop_table(
     conn: Any,
     table_name: str,
@@ -267,7 +293,11 @@ def safe_drop_table(
     if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table_name):
         raise ValueError(f"Invalid table name: {table_name}")
 
-    require_destructive_flag(f"DROP TABLE {table_name}")
+    # Only require flag for non-temporary tables
+    if not is_temporary_migration_table(table_name):
+        require_destructive_flag(f"DROP TABLE {table_name}")
+    else:
+        logger.info(f"Dropping temporary migration table: {table_name}")
 
     backup_table_name = None
     row_count = 0

@@ -137,7 +137,6 @@ def upgrade() -> None:
     if result:
         # Migration was partially applied, clean up old tables first
         logger.info("Dropping chunks_old table if it exists")
-        require_destructive_flag("DROP TABLE chunks_old CASCADE")
         safe_drop_table(conn, "chunks_old", revision, cascade=True, backup=False)
 
     # Check if chunks table exists and what type its id column is
@@ -280,7 +279,6 @@ def upgrade() -> None:
 
     # Step 5: Drop the old table and its partitions
     logger.info("Dropping chunks_old table after migration")
-    require_destructive_flag("DROP TABLE chunks_old CASCADE")
     safe_drop_table(conn, "chunks_old", revision, cascade=True, backup=False)
 
     # Step 6: Update the materialized view to handle the new string ID type
@@ -336,7 +334,6 @@ def downgrade() -> None:
 
     # Clean up any leftover chunks_new table from failed downgrade
     logger.info("Dropping chunks_new table if it exists")
-    require_destructive_flag("DROP TABLE chunks_new CASCADE")
     safe_drop_table(conn, "chunks_new", revision, cascade=True, backup=False)
 
     # Step 1: Rename current table
@@ -448,7 +445,6 @@ def downgrade() -> None:
 
     # Step 5: Drop the new table
     logger.info("Dropping chunks_new table after downgrade")
-    require_destructive_flag("DROP TABLE chunks_new CASCADE")
     safe_drop_table(conn, "chunks_new", revision, cascade=True, backup=False)
 
     # Step 6: Restore original materialized view
