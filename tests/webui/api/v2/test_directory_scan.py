@@ -15,8 +15,9 @@ from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanResponse
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_success(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test successful directory scan preview."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -87,8 +88,9 @@ async def test_directory_scan_preview_success(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_recursive(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test recursive directory scan."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -154,8 +156,9 @@ async def test_directory_scan_preview_recursive(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_with_patterns(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test directory scan with include/exclude patterns."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -223,8 +226,9 @@ async def test_directory_scan_preview_with_patterns(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_nonexistent_path(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test scanning a nonexistent directory."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -256,8 +260,9 @@ async def test_directory_scan_preview_nonexistent_path(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_file_instead_of_directory(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test scanning a file instead of a directory."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -296,8 +301,9 @@ async def test_directory_scan_preview_file_instead_of_directory(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_invalid_scan_id(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test with invalid scan ID format."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -324,8 +330,9 @@ async def test_directory_scan_preview_invalid_scan_id(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_preview_relative_path(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test that relative paths are rejected."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -353,7 +360,8 @@ async def test_directory_scan_preview_relative_path(
 
 
 @pytest.mark.asyncio()
-async def test_directory_scan_preview_no_auth(monkeypatch, use_fakeredis) -> None:
+@pytest.mark.usefixtures("use_fakeredis")
+async def test_directory_scan_preview_no_auth(monkeypatch) -> None:
     """Test that authentication is required."""
     from packages.webui.main import app
 
@@ -381,8 +389,9 @@ async def test_directory_scan_preview_no_auth(monkeypatch, use_fakeredis) -> Non
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("use_fakeredis")
 async def test_directory_scan_websocket_connection(
-    async_client: AsyncClient, test_user_headers: dict[str, str], use_fakeredis
+    async_client: AsyncClient, test_user_headers: dict[str, str]
 ) -> None:
     """Test WebSocket connection for directory scan progress."""
     # Mock the WebSocket manager and DirectoryScanService
@@ -414,7 +423,7 @@ async def test_directory_scan_websocket_connection(
         )
 
         # Make the mock scan take some time (simulate async work)
-        async def slow_scan(*args, **kwargs):
+        async def slow_scan(*_args, **_kwargs):
             await asyncio.sleep(1)  # Simulate scan taking time
             return mock_response
 

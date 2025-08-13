@@ -429,9 +429,7 @@ class TestChunkingMetrics:
             if hasattr(ingestion_chunking_fallback_total, "_metrics"):
                 metric_keys = list(ingestion_chunking_fallback_total._metrics.keys())
 
-            assert (
-                False
-            ), f"No fallback metric found. Checked strategies: {possible_strategies}. Existing metric keys: {metric_keys}"
+            raise AssertionError(f"No fallback metric found. Checked strategies: {possible_strategies}. Existing metric keys: {metric_keys}")
 
         # Verify TokenChunker metrics
         # Note: TokenChunker uses "character" as the internal metric label
@@ -832,7 +830,7 @@ class TestChunkingMetrics:
 
         # If we still didn't find it, check what fallback metrics exist
         if fallback_count == 0 and hasattr(ingestion_chunking_fallback_total, "_metrics"):
-            fallback_keys = [k for k in ingestion_chunking_fallback_total._metrics.keys() if "runtime_error" in str(k)]
+            fallback_keys = [k for k in ingestion_chunking_fallback_total._metrics if "runtime_error" in str(k)]
             # We expect at least one fallback from the second operation
             assert len(fallback_keys) > 0 or fallback_count > 0, (
                 f"Expected at least one runtime_error fallback metric. "
