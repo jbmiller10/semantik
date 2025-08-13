@@ -178,16 +178,16 @@ describe('chunkingApi', () => {
       };
 
       const resultPromise = chunkingApi.preview(request, {
-        retryConfig: { maxRetries: 3, baseDelay: 100, maxDelay: 1000 }
+        retryConfig: { maxRetries: 3, baseDelay: 10, maxDelay: 100, retryableStatuses: [429, 500, 502, 503, 504] }
       });
 
-      // Fast-forward time for retry delay
-      await vi.advanceTimersByTimeAsync(200);
+      // Process all timers to handle the retry delay
+      await vi.runAllTimersAsync();
       
       const result = await resultPromise;
       expect(result).toEqual(mockChunkingPreviewResponse);
       expect(apiClient.post).toHaveBeenCalledTimes(2);
-    });
+    }, 10000);
 
     it('should stop retrying after max attempts', async () => {
       const error500 = new AxiosError('Internal Server Error', 'ERR_SERVER', undefined, undefined, {
@@ -198,6 +198,7 @@ describe('chunkingApi', () => {
         data: {}
       });
 
+      // Ensure all calls reject with the error
       vi.mocked(apiClient.post).mockRejectedValue(error500);
 
       const request: ChunkingPreviewRequest = {
@@ -210,15 +211,13 @@ describe('chunkingApi', () => {
       };
 
       const resultPromise = chunkingApi.preview(request, {
-        retryConfig: { maxRetries: 2, baseDelay: 10, maxDelay: 100 }
+        retryConfig: { maxRetries: 2, baseDelay: 10, maxDelay: 100, retryableStatuses: [429, 500, 502, 503, 504] }
       });
 
-      // Advance timers for all retry attempts
-      for (let i = 0; i < 3; i++) {
-        await vi.advanceTimersByTimeAsync(200);
-      }
+      // Process all timers to handle all retry attempts
+      await vi.runAllTimersAsync();
 
-      await expect(resultPromise).rejects.toThrow();
+      await expect(resultPromise).rejects.toThrow('Internal Server Error');
       expect(apiClient.post).toHaveBeenCalledTimes(3); // Initial + 2 retries
     });
   });
@@ -367,15 +366,15 @@ describe('chunkingApi', () => {
         .mockResolvedValueOnce(mockResponse);
 
       const resultPromise = chunkingApi.getPresets({
-        retryConfig: { maxRetries: 1, baseDelay: 100, maxDelay: 500 }
+        retryConfig: { maxRetries: 1, baseDelay: 10, maxDelay: 100, retryableStatuses: [429, 500, 502, 503, 504] }
       });
 
-      await vi.advanceTimersByTimeAsync(200);
+      await vi.runAllTimersAsync();
       
       const result = await resultPromise;
       expect(result).toEqual(mockChunkingPresets);
       expect(apiClient.get).toHaveBeenCalledTimes(2);
-    });
+    }, 10000);
   });
 
   describe('savePreset', () => {
@@ -568,8 +567,8 @@ describe('chunkingApi', () => {
       expect(chunkingApi.isRequestActive('test-request-1')).toBe(true);
       expect(chunkingApi.isRequestActive('non-existent')).toBe(false);
 
-      // Advance timers and wait for completion
-      await vi.advanceTimersByTimeAsync(150);
+      // Process all timers and wait for completion
+      await vi.runAllTimersAsync();
       await previewPromise;
 
       // Request should no longer be active

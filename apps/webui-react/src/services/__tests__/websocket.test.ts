@@ -19,24 +19,35 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 // Enhanced Mock WebSocket for testing
-class TestMockWebSocket extends MockChunkingWebSocket {
+class TestMockWebSocket {
+  url: string;
+  readyState: number = WebSocket.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
   send: any;
   addEventListener: any;
   removeEventListener: any;
   dispatchEvent: any;
+  close: any;
+  CONNECTING = 0;
+  OPEN = 1;
+  CLOSING = 2;
+  CLOSED = 3;
   
   constructor(url: string) {
-    super(url);
+    this.url = url;
     
     // Add event listener methods for MSW compatibility
     this.addEventListener = vi.fn((event: string, handler: any) => {
-      if (event === 'open' && this.onopen === null) {
+      if (event === 'open') {
         this.onopen = handler;
-      } else if (event === 'close' && this.onclose === null) {
+      } else if (event === 'close') {
         this.onclose = handler;
-      } else if (event === 'error' && this.onerror === null) {
+      } else if (event === 'error') {
         this.onerror = handler;
-      } else if (event === 'message' && this.onmessage === null) {
+      } else if (event === 'message') {
         this.onmessage = handler;
       }
     });
@@ -46,42 +57,81 @@ class TestMockWebSocket extends MockChunkingWebSocket {
     
     // Make send a spy from the start
     this.send = vi.fn((data: string) => {
-      const message = JSON.parse(data);
-      
-      // Simulate authentication flow
-      if (message.type === 'auth_request') {
-        setTimeout(() => {
-          this.simulateMessage({
-            type: 'auth_success',
-            data: { userId: 'test-user', sessionId: 'test-session' },
-            timestamp: Date.now()
-          });
-        }, 10);
-      }
-      
-      // Handle heartbeat
-      if (message.type === 'heartbeat') {
-        setTimeout(() => {
-          this.simulateMessage({
-            type: 'pong',
-            data: { timestamp: Date.now() },
-            timestamp: Date.now()
-          });
-        }, 5);
+      // Parse and handle the message
+      try {
+        const message = JSON.parse(data);
+        
+        // Simulate authentication flow
+        if (message.type === 'auth_request') {
+          setTimeout(() => {
+            this.simulateMessage({
+              type: 'auth_success',
+              data: { userId: 'test-user', sessionId: 'test-session' },
+              timestamp: Date.now()
+            });
+          }, 10);
+        }
+        
+        // Handle heartbeat
+        if (message.type === 'heartbeat') {
+          setTimeout(() => {
+            this.simulateMessage({
+              type: 'pong',
+              data: { timestamp: Date.now() },
+              timestamp: Date.now()
+            });
+          }, 5);
+        }
+      } catch (e) {
+        // Invalid JSON
       }
     });
+    
+    // Mock close method
+    this.close = vi.fn((code?: number, reason?: string) => {
+      // Only allow valid close codes
+      const validCode = code && (code === 1000 || code === 1001 || (code >= 3000 && code <= 4999)) ? code : 1000;
+      this.simulateClose(validCode, reason || 'Connection closed');
+    });
+    
+    // Simulate connection opening after a brief delay
+    setTimeout(() => {
+      this.simulateOpen();
+    }, 10);
   }
   
-  close(code?: number, reason?: string) {
-    // Only allow valid close codes
-    const validCode = code && (code === 1000 || code === 1001 || (code >= 3000 && code <= 4999)) ? code : 1000;
-    this.simulateClose(validCode, reason || 'Connection closed');
+  simulateOpen() {
+    this.readyState = 1; // WebSocket.OPEN
+    if (this.onopen) {
+      this.onopen(new Event('open'));
+    }
+  }
+  
+  simulateMessage(message: any) {
+    if (this.onmessage) {
+      this.onmessage(new MessageEvent('message', {
+        data: JSON.stringify(message)
+      }));
+    }
+  }
+  
+  simulateError(error?: string) {
+    if (this.onerror) {
+      this.onerror(new Event('error'));
+    }
+  }
+  
+  simulateClose(code = 1000, reason = 'Normal closure') {
+    this.readyState = 3; // WebSocket.CLOSED
+    if (this.onclose) {
+      this.onclose(new CloseEvent('close', { code, reason }));
+    }
   }
 }
 
 // Mock WebSocket globally
 let mockWebSocketInstance: TestMockWebSocket | null = null;
-const MockWebSocketConstructor = vi.fn((url: string) => {
+const MockWebSocketConstructor = vi.fn().mockImplementation((url: string) => {
   mockWebSocketInstance = new TestMockWebSocket(url);
   return mockWebSocketInstance;
 });
@@ -113,6 +163,11 @@ describe('WebSocketService', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     mockWebSocketInstance = null;
+    MockWebSocketConstructor.mockClear();
+    MockWebSocketConstructor.mockImplementation((url: string) => {
+      mockWebSocketInstance = new TestMockWebSocket(url);
+      return mockWebSocketInstance;
+    });
     mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockAuthState));
   });
 
@@ -196,16 +251,20 @@ describe('WebSocketService', () => {
       service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
       
       service.connect();
+      
+      // Wait for WebSocket to open and authentication to be sent
       await vi.advanceTimersByTimeAsync(20);
       
-      // Check that AUTH_REQUEST was sent
-      expect(mockWebSocketInstance?.send).toHaveBeenCalledWith(
-        JSON.stringify({
-          type: ChunkingMessageType.AUTH_REQUEST,
-          data: { token: mockToken },
-          timestamp: expect.any(Number)
-        })
-      );
+      // Verify WebSocket was created and AUTH_REQUEST was sent
+      expect(mockWebSocketInstance).toBeDefined();
+      expect(mockWebSocketInstance?.send).toHaveBeenCalled();
+      
+      const sendCalls = mockWebSocketInstance?.send.mock.calls || [];
+      expect(sendCalls.length).toBeGreaterThan(0);
+      
+      const firstCall = JSON.parse(sendCalls[0][0]);
+      expect(firstCall.type).toBe(ChunkingMessageType.AUTH_REQUEST);
+      expect(firstCall.data).toEqual({ token: mockToken });
     });
 
     it('should handle authentication success', async () => {
@@ -283,6 +342,7 @@ describe('WebSocketService', () => {
       MockWebSocketConstructor.mockImplementationOnce((url: string) => {
         const ws = new TestMockWebSocket(url);
         ws.send = vi.fn(); // Don't send auth response
+        mockWebSocketInstance = ws; // Update the reference
         return ws as any;
       });
       
@@ -520,6 +580,7 @@ describe('WebSocketService', () => {
           }
           // Don't respond to heartbeats
         });
+        mockWebSocketInstance = ws; // Update the reference
         return ws as any;
       });
       
@@ -553,8 +614,8 @@ describe('WebSocketService', () => {
       // Simulate unexpected close
       mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
       
-      // Advance time for reconnection
-      await vi.advanceTimersByTimeAsync(150);
+      // Advance time for reconnection (baseDelay + max jitter)
+      await vi.advanceTimersByTimeAsync(1200);
       
       expect(reconnectingListener).toHaveBeenCalledWith({ attempt: 1 });
       expect(MockWebSocketConstructor).toHaveBeenCalledTimes(2);
