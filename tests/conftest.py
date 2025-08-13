@@ -77,7 +77,7 @@ def use_fakeredis():
     """Opt-in fixture to use fakeredis for a specific test."""
     fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
     fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    
+
     # Import the sync redis module for proper patching
     import redis as sync_redis  # Import the sync redis module
 
