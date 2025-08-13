@@ -44,6 +44,11 @@ export function ChunkingParameterTuner({
   const strategy = CHUNKING_STRATEGIES[selectedStrategy];
   const basicParameters = strategy.parameters.filter(p => !p.advanced);
   const advancedParameters = strategy.parameters.filter(p => p.advanced);
+<<<<<<< HEAD
+=======
+  
+  // Use ref to track the debounce timer
+>>>>>>> 310f0d5 (fix(frontend): properly resolve all memory leaks in chunking components)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced parameter change handler
@@ -67,7 +72,11 @@ export function ChunkingParameterTuner({
   useEffect(() => {
     debouncedLoadPreview();
   }, [strategyConfig.parameters, debouncedLoadPreview]);
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> 310f0d5 (fix(frontend): properly resolve all memory leaks in chunking components)
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
