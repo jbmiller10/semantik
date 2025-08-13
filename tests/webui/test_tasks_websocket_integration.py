@@ -18,9 +18,13 @@ import redis.asyncio as redis
 from packages.shared.database.models import OperationType
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
-    _process_append_operation,
     _process_index_operation,
-    _process_reindex_operation,
+)
+from packages.webui.tasks import (
+    _process_append_operation_impl as _process_append_operation,
+)
+from packages.webui.tasks import (
+    _process_reindex_operation_impl as _process_reindex_operation,
 )
 
 
@@ -117,20 +121,23 @@ class TestWebSocketMessageFlow:
         async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
+        # Mock DocumentScanningService where it's imported inside the function
+        mock_module = Mock()
+        scanner = AsyncMock()
+        scanner.scan_directory_and_register_documents.return_value = {
+            "total_documents_found": 5,
+            "new_documents_registered": 3,
+            "duplicate_documents_skipped": 2,
+            "total_size_bytes": 512000,
+            "errors": [],
+        }
+        mock_scanner_class = Mock(return_value=scanner)
+        mock_module.DocumentScanningService = mock_scanner_class
+
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
-            patch("webui.services.document_scanning_service.DocumentScanningService") as mock_scanner_class,
+            patch.dict("sys.modules", {"webui.services.document_scanning_service": mock_module}),
         ):
-            # Setup document scanner
-            scanner = AsyncMock()
-            scanner.scan_directory_and_register_documents.return_value = {
-                "total_documents_found": 5,
-                "new_documents_registered": 3,
-                "duplicate_documents_skipped": 2,
-                "total_size_bytes": 512000,
-                "errors": [],
-            }
-            mock_scanner_class.return_value = scanner
 
             # Setup operation and collection
             operation = {
@@ -180,8 +187,24 @@ class TestWebSocketMessageFlow:
         async def mock_from_url(*_args, **_kwargs) -> None:
             return mock_redis_client
 
+        # Mock factory module to avoid Prometheus metrics re-registration
+        mock_factory_module = Mock()
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.execute_ingestion_chunking.return_value = {
+            "chunks": [],
+            "strategy_used": "test",
+            "metadata": {}
+        }
+        mock_factory_module.create_celery_chunking_service_with_repos = Mock(return_value=mock_chunking_service)
+
+        # Mock extract_and_serialize_thread_safe to return empty text blocks
+        def mock_extract(*_args, **_kwargs):
+            return [("sample text", {"metadata": "test"})]
+
         with (
             patch("redis.asyncio.from_url", new=mock_from_url),
+            patch.dict("sys.modules", {"webui.services.factory": mock_factory_module}),
+            patch("packages.webui.tasks.extract_and_serialize_thread_safe", mock_extract),
             patch("shared.managers.qdrant_manager.QdrantManager") as mock_qdrant_class,
             patch("packages.webui.tasks.qdrant_manager") as mock_qdrant,
         ):

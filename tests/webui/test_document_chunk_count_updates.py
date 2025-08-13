@@ -64,16 +64,14 @@ class TestDocumentChunkCountUpdates:
         return _create
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
-    @patch("packages.webui.tasks.embed_texts")
-    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.httpx")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_append_updates_chunk_count_for_new_documents(
         self,
         mock_chunking_service_class,
-        mock_qdrant,
-        mock_embed_texts,
-        mock_extract_text,
+        mock_httpx,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -103,12 +101,25 @@ class TestDocumentChunkCountUpdates:
         docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(3)]
 
         # Setup database mocks
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = docs
+        # First call returns operation via scalar_one()
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second call returns collection via scalar_one_or_none()
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        # Third call returns documents via scalars().all()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = docs
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        # Set up execute to return different results for each call
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         # Setup text extraction
-        mock_extract_text.return_value = [("Sample text content", {})]
+        mock_extract_and_serialize_thread_safe.return_value = [("Sample text content", {})]
 
         # Setup ChunkingService to return different chunk counts
         mock_chunking_service = MagicMock()
@@ -136,10 +147,10 @@ class TestDocumentChunkCountUpdates:
         ]
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
 
-        # Setup embeddings and Qdrant
-        mock_embed_texts.return_value = [[0.1] * 384] * 16  # Total chunks
-        mock_qdrant_instance = MagicMock()
-        mock_qdrant.return_value = mock_qdrant_instance
+        # Setup httpx mock for vecpipe endpoints
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+        mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-append-1")
@@ -154,12 +165,12 @@ class TestDocumentChunkCountUpdates:
             assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_append_preserves_chunk_count_on_failure(
         self,
         mock_chunking_service_class,
-        mock_extract_text,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -183,11 +194,21 @@ class TestDocumentChunkCountUpdates:
         # Create document with existing chunk_count
         doc = create_mock_document("doc-fail", "/test/fail.txt", chunk_count=10)
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
+        # Setup database mocks with proper side_effect
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
 
-        mock_extract_text.return_value = [("Text content", {})]
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [doc]
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_and_serialize_thread_safe.return_value = [("Text content", {})]
 
         # Make chunking service raise an exception
         mock_chunking_service = MagicMock()
@@ -203,16 +224,14 @@ class TestDocumentChunkCountUpdates:
         assert doc.status == DocumentStatus.FAILED
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
-    @patch("packages.webui.tasks.embed_texts")
-    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.httpx")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_reindex_updates_chunk_count_correctly(
         self,
         mock_chunking_service_class,
-        mock_qdrant,
-        mock_embed_texts,
-        mock_extract_text,
+        mock_httpx,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -255,15 +274,28 @@ class TestDocumentChunkCountUpdates:
             create_mock_document("doc-2", "/test/file2.txt", chunk_count=15, status=DocumentStatus.COMPLETED),
         ]
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [
-            source_collection,
-            staging_collection,
-            staging_collection,  # For swap
-        ]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = docs
+        # Setup database mocks for reindex (4 calls to execute)
+        # First call returns operation via scalar_one()
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
 
-        mock_extract_text.return_value = [("Reindexed content", {})]
+        # Second call returns source_collection via scalar_one_or_none()
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        # Third call returns staging_collection via scalar_one_or_none()
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = staging_collection
+
+        # Fourth call returns docs via scalars().all()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = docs
+        mock_result_4 = MagicMock()
+        mock_result_4.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
+
+        mock_extract_and_serialize_thread_safe.return_value = [("Reindexed content", {})]
 
         # Setup ChunkingService with new chunk counts (semantic strategy produces fewer chunks)
         mock_chunking_service = MagicMock()
@@ -287,10 +319,10 @@ class TestDocumentChunkCountUpdates:
         ]
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
 
-        mock_embed_texts.return_value = [[0.1] * 384] * 7  # Total chunks
-        mock_qdrant_instance = MagicMock()
-        mock_qdrant.return_value = mock_qdrant_instance
-        mock_qdrant_instance.get_collection.return_value = MagicMock(points_count=7)
+        # Setup httpx mock for vecpipe endpoints
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+        mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
         # Run REINDEX operation
         await _process_reindex_operation(mock_db, mock_updater, "op-reindex-1")
@@ -300,16 +332,14 @@ class TestDocumentChunkCountUpdates:
         assert docs[1].chunk_count == 4  # Was 15, now 4
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
-    @patch("packages.webui.tasks.embed_texts")
-    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.httpx")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_zero_for_empty_documents(
         self,
         mock_chunking_service_class,
-        mock_qdrant,
-        mock_embed_texts,
-        mock_extract_text,
+        mock_httpx,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -331,15 +361,27 @@ class TestDocumentChunkCountUpdates:
 
         doc = create_mock_document("doc-empty", "/test/empty.txt", chunk_count=5)
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
+        # Setup database mocks with proper side_effect
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [doc]
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         # Return empty text blocks
-        mock_extract_text.return_value = []
+        mock_extract_and_serialize_thread_safe.return_value = []
 
-        mock_qdrant_instance = MagicMock()
-        mock_qdrant.return_value = mock_qdrant_instance
+        # Setup httpx mock for vecpipe endpoints
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+        mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-empty-1")
@@ -349,16 +391,14 @@ class TestDocumentChunkCountUpdates:
         assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
-    @patch("packages.webui.tasks.embed_texts")
-    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.httpx")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_with_fallback_strategy(
         self,
         mock_chunking_service_class,
-        mock_qdrant,
-        mock_embed_texts,
-        mock_extract_text,
+        mock_httpx,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -381,11 +421,21 @@ class TestDocumentChunkCountUpdates:
 
         doc = create_mock_document("doc-fallback", "/test/fallback.txt", chunk_count=0)
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = [doc]
+        # Setup database mocks with proper side_effect
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
 
-        mock_extract_text.return_value = [("Text for fallback chunking", {})]
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [doc]
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_and_serialize_thread_safe.return_value = [("Text for fallback chunking", {})]
 
         # Setup ChunkingService to simulate fallback
         mock_chunking_service = MagicMock()
@@ -400,9 +450,10 @@ class TestDocumentChunkCountUpdates:
             }
         )
 
-        mock_embed_texts.return_value = [[0.1] * 384] * 7
-        mock_qdrant_instance = MagicMock()
-        mock_qdrant.return_value = mock_qdrant_instance
+        # Setup httpx mock for vecpipe endpoints
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+        mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-fallback-1")
@@ -412,16 +463,14 @@ class TestDocumentChunkCountUpdates:
         assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
-    @patch("packages.webui.tasks.embed_texts")
-    @patch("packages.webui.tasks.QdrantClient")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("packages.webui.tasks.httpx")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_batch_document_chunk_count_updates(
         self,
         mock_chunking_service_class,
-        mock_qdrant,
-        mock_embed_texts,
-        mock_extract_text,
+        mock_httpx,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -446,11 +495,21 @@ class TestDocumentChunkCountUpdates:
         num_docs = 50
         docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(num_docs)]
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = docs
+        # Setup database mocks with proper side_effect
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
 
-        mock_extract_text.return_value = [("Batch document content", {})]
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = docs
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_and_serialize_thread_safe.return_value = [("Batch document content", {})]
 
         # Setup ChunkingService to return varying chunk counts
         mock_chunking_service = MagicMock()
@@ -473,9 +532,10 @@ class TestDocumentChunkCountUpdates:
 
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunk_results)
 
-        mock_embed_texts.return_value = [[0.1] * 384] * total_chunks
-        mock_qdrant_instance = MagicMock()
-        mock_qdrant.return_value = mock_qdrant_instance
+        # Setup httpx mock for vecpipe endpoints
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+        mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
         # Run APPEND operation
         await _process_append_operation(mock_db, mock_updater, "op-batch-1")
@@ -487,12 +547,12 @@ class TestDocumentChunkCountUpdates:
             assert doc.status == DocumentStatus.COMPLETED
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.tasks.extract_text")
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("packages.webui.tasks.ChunkingService")
     async def test_chunk_count_persistence_across_retries(
         self,
         mock_chunking_service_class,
-        mock_extract_text,
+        mock_extract_and_serialize_thread_safe,
         mock_db,
         mock_updater,
         create_mock_document,
@@ -515,11 +575,21 @@ class TestDocumentChunkCountUpdates:
         # Create multiple documents
         docs = [create_mock_document(f"doc-{i}", f"/test/file{i}.txt", chunk_count=0) for i in range(3)]
 
-        mock_db.execute.return_value.scalar_one.return_value = operation
-        mock_db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        mock_db.execute.return_value.scalars.return_value.all.return_value = docs
+        # Setup database mocks with proper side_effect
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
 
-        mock_extract_text.return_value = [("Content", {})]
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = docs
+        mock_result_3 = MagicMock()
+        mock_result_3.scalars.return_value = mock_scalars
+
+        mock_db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_and_serialize_thread_safe.return_value = [("Content", {})]
 
         # Setup ChunkingService - succeed for first two, fail for third
         mock_chunking_service = MagicMock()
@@ -531,7 +601,10 @@ class TestDocumentChunkCountUpdates:
                 "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False},
             },
             {
-                "chunks": [{"chunk_id": "doc-1_chunk_0000", "text": "chunk", "metadata": {}}],
+                "chunks": [
+                    {"chunk_id": "doc-1_chunk_0000", "text": "chunk 0", "metadata": {}},
+                    {"chunk_id": "doc-1_chunk_0001", "text": "chunk 1", "metadata": {}}
+                ],
                 "stats": {"chunk_count": 2, "strategy_used": "recursive", "fallback": False},
             },
             RuntimeError("Failed to chunk third document"),
@@ -549,11 +622,10 @@ class TestDocumentChunkCountUpdates:
 
         mock_chunking_service.execute_ingestion_chunking = AsyncMock(side_effect=chunking_side_effect)
 
-        with (
-            patch("packages.webui.tasks.embed_texts", return_value=[[0.1] * 384] * 3),
-            patch("packages.webui.tasks.QdrantClient") as mock_qdrant,
-        ):
-            mock_qdrant.return_value.upsert = MagicMock()
+        with patch("packages.webui.tasks.httpx") as mock_httpx:
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(return_value=AsyncMock(status_code=200))
+            mock_httpx.AsyncClient.return_value.__aenter__.return_value = mock_client
 
             # Run APPEND operation (should partially fail)
             with pytest.raises(RuntimeError):

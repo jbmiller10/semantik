@@ -123,7 +123,7 @@ class TestExecuteIngestionChunkingUnit:
 
         with (
             patch.object(service.config_builder, "build_config", return_value=mock_config_result),
-            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+            patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker,
         ):
             mock_chunker = MagicMock()
             mock_token_chunker.return_value = mock_chunker
@@ -167,7 +167,7 @@ class TestExecuteIngestionChunkingUnit:
             patch.object(
                 service.strategy_factory, "create_strategy", side_effect=RuntimeError("Strategy creation failed")
             ),
-            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+            patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker,
         ):
             mock_chunker = MagicMock()
             mock_token_chunker.return_value = mock_chunker
@@ -361,7 +361,7 @@ class TestExecuteIngestionChunkingUnit:
             "chunk_overlap": 20,
         }
 
-        with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
+        with patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker:
             mock_chunker = MagicMock()
             mock_token_chunker.return_value = mock_chunker
             mock_chunker.chunk_text.return_value = [
@@ -447,7 +447,7 @@ class TestExecuteIngestionChunkingUnit:
 
         with (
             patch.object(service.config_builder, "build_config", side_effect=Exception("Config error")),
-            patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker,
+            patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker,
             patch("packages.webui.services.chunking_service.logger") as mock_logger,
         ):
             mock_chunker = MagicMock()
@@ -486,7 +486,7 @@ class TestExecuteIngestionChunkingUnit:
             "chunk_overlap": 20,
         }
 
-        with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
+        with patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker:
             mock_chunker = MagicMock()
             mock_token_chunker.return_value = mock_chunker
 
@@ -589,7 +589,7 @@ class TestExecuteIngestionChunkingUnit:
         }
 
         for doc_id in special_doc_ids:
-            with patch("packages.webui.services.chunking_service.TokenChunker") as mock_token_chunker:
+            with patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker:
                 mock_chunker = MagicMock()
                 mock_token_chunker.return_value = mock_chunker
                 mock_chunker.chunk_text.return_value = [

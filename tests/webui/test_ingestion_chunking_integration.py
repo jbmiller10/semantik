@@ -468,6 +468,21 @@ class TestAppendTaskIntegration:
                 chunking_config={"chunk_size": 100, "chunk_overlap": 20},
                 chunk_size=100,
                 chunk_overlap=20,
+                embedding_model="Qwen/Qwen3-Embedding-0.6B",
+                quantization="float16",
+                get=MagicMock(side_effect=lambda key, default=None: {
+                    "id": "coll-123",
+                    "name": "Test Collection",
+                    "path": "/test/path",
+                    "status": CollectionStatus.READY,
+                    "vector_collection_id": "vc-123",
+                    "chunking_strategy": "recursive",
+                    "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
+                    "chunk_size": 100,
+                    "chunk_overlap": 20,
+                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                    "quantization": "float16",
+                }.get(key, default)),
             ),
             "documents": [
                 MagicMock(
@@ -476,6 +491,13 @@ class TestAppendTaskIntegration:
                     file_size=1024,
                     status=DocumentStatus.PENDING,
                     chunk_count=0,
+                    get=MagicMock(side_effect=lambda key, default=None: {
+                        "id": "doc-1",
+                        "file_path": "/test/doc1.txt",
+                        "file_size": 1024,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
+                    }.get(key, default)),
                 ),
                 MagicMock(
                     id="doc-2",
@@ -483,6 +505,13 @@ class TestAppendTaskIntegration:
                     file_size=2048,
                     status=DocumentStatus.PENDING,
                     chunk_count=0,
+                    get=MagicMock(side_effect=lambda key, default=None: {
+                        "id": "doc-2",
+                        "file_path": "/test/doc2.pdf",
+                        "file_size": 2048,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
+                    }.get(key, default)),
                 ),
             ],
         }
@@ -502,10 +531,23 @@ class TestAppendTaskIntegration:
         collection = mock_dependencies["collection"]
         documents = mock_dependencies["documents"]
 
-        # Mock database queries
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]  # collection, then no staging
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Mock database queries - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        # Third execute call returns documents
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         # Mock text extraction
         mock_extract_serialize.return_value = [
@@ -521,8 +563,9 @@ class TestAppendTaskIntegration:
         upsert_response = MagicMock()
         upsert_response.status_code = 200
 
-        # Configure mock to return different responses for embed and upsert calls
-        mock_httpx_post.side_effect = [embed_response, upsert_response]
+        # Configure mock to return responses for each document (2 documents = 4 calls total)
+        # Each document makes one embed call and one upsert call
+        mock_httpx_post.side_effect = [embed_response, upsert_response, embed_response, upsert_response]
 
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
@@ -533,28 +576,46 @@ class TestAppendTaskIntegration:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
-            # Mock execute_ingestion_chunking to return chunks
+            # Mock execute_ingestion_chunking to return chunks for each document
+            # Return same response for both documents to simplify testing
             mock_chunking_service.execute_ingestion_chunking = AsyncMock(
-                return_value={
-                    "chunks": [
-                        {
-                            "chunk_id": "doc-1_chunk_0000",
-                            "text": "Chunk 1 text",
-                            "metadata": {"index": 0, "strategy": "recursive"},
+                side_effect=[
+                    {
+                        "chunks": [
+                            {
+                                "chunk_id": "doc-1_chunk_0000",
+                                "text": "Chunk 1 text",
+                                "metadata": {"index": 0, "strategy": "recursive"},
+                            },
+                            {
+                                "chunk_id": "doc-1_chunk_0001",
+                                "text": "Chunk 2 text",
+                                "metadata": {"index": 1, "strategy": "recursive"},
+                            },
+                        ],
+                        "stats": {
+                            "duration_ms": 50,
+                            "strategy_used": "recursive",
+                            "fallback": False,
+                            "chunk_count": 2,
                         },
-                        {
-                            "chunk_id": "doc-1_chunk_0001",
-                            "text": "Chunk 2 text",
-                            "metadata": {"index": 1, "strategy": "recursive"},
-                        },
-                    ],
-                    "stats": {
-                        "duration_ms": 50,
-                        "strategy_used": "recursive",
-                        "fallback": False,
-                        "chunk_count": 2,
                     },
-                }
+                    {
+                        "chunks": [
+                            {
+                                "chunk_id": "doc-2_chunk_0000",
+                                "text": "Doc 2 Chunk 1 text",
+                                "metadata": {"index": 0, "strategy": "recursive"},
+                            },
+                        ],
+                        "stats": {
+                            "duration_ms": 50,
+                            "strategy_used": "recursive",
+                            "fallback": False,
+                            "chunk_count": 1,
+                        },
+                    },
+                ]
             )
 
             # Run the APPEND operation
@@ -563,11 +624,19 @@ class TestAppendTaskIntegration:
             # Verify execute_ingestion_chunking was called
             mock_chunking_service.execute_ingestion_chunking.assert_called()
 
-            # Verify the call arguments
-            call_args = mock_chunking_service.execute_ingestion_chunking.call_args
-            assert call_args[1]["document_id"] == "doc-1"
-            assert "collection" in call_args[1]
-            assert call_args[1]["collection"]["chunking_strategy"] == "recursive"
+            # Verify the call arguments - check first call since we have 2 documents
+            call_args_list = mock_chunking_service.execute_ingestion_chunking.call_args_list
+            assert len(call_args_list) == 2  # Called once for each document
+
+            # Check first call (doc-1)
+            first_call_args = call_args_list[0]
+            assert first_call_args[1]["document_id"] == "doc-1"
+            assert "collection" in first_call_args[1]
+            assert first_call_args[1]["collection"]["chunking_strategy"] == "recursive"
+
+            # Check second call (doc-2)
+            second_call_args = call_args_list[1]
+            assert second_call_args[1]["document_id"] == "doc-2"
 
             # Verify document chunk_count was updated
             assert documents[0].chunk_count == 2
@@ -586,10 +655,23 @@ class TestAppendTaskIntegration:
         collection = mock_dependencies["collection"]
         documents = mock_dependencies["documents"]
 
-        # Setup database mocks
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        # Third execute call returns documents
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         # Mock text extraction
         mock_extract_serialize.return_value = [("Test content", {})]
@@ -602,7 +684,9 @@ class TestAppendTaskIntegration:
         upsert_response = MagicMock()
         upsert_response.status_code = 200
 
-        mock_httpx_post.side_effect = [embed_response, upsert_response]
+        # Configure mock to return responses for each document (2 documents = 4 calls total)
+        # Each document makes one embed call and one upsert call
+        mock_httpx_post.side_effect = [embed_response, upsert_response, embed_response, upsert_response]
 
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
@@ -654,10 +738,26 @@ class TestAppendTaskIntegration:
         # Test with semantic strategy
         collection.chunking_strategy = "semantic"
         collection.chunking_config = {"buffer_size": 1, "breakpoint_percentile_threshold": 95}
+        # Configure the collection mock to return proper values when accessed with .get()
+        collection.get = MagicMock(side_effect=lambda key, default=None: getattr(collection, key, default))
 
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        # Third execute call returns documents
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         mock_extract_serialize.return_value = [("Test content for semantic chunking", {})]
 
@@ -708,9 +808,23 @@ class TestAppendTaskIntegration:
         collection = mock_dependencies["collection"]
         documents = [mock_dependencies["documents"][0]]
 
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [collection, None]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        # Third execute call returns documents
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
 
         mock_extract_serialize.return_value = [("Test content", {})]
 
@@ -767,6 +881,18 @@ class TestReindexTaskIntegration:
                     "chunking_strategy": "markdown",
                     "chunking_config": {"preserve_structure": True},
                 },
+                get=MagicMock(side_effect=lambda key, default=None: {
+                    "id": "op-reindex-123",
+                    "collection_id": "coll-123",
+                    "type": OperationType.REINDEX,
+                    "status": OperationStatus.PENDING,
+                    "config": {
+                        "chunk_size": 150,
+                        "chunk_overlap": 30,
+                        "chunking_strategy": "markdown",
+                        "chunking_config": {"preserve_structure": True},
+                    },
+                }.get(key, default)),
             ),
             "source_collection": MagicMock(
                 id="coll-123",
@@ -778,6 +904,21 @@ class TestReindexTaskIntegration:
                 chunking_config={},
                 chunk_size=100,
                 chunk_overlap=20,
+                embedding_model="Qwen/Qwen3-Embedding-0.6B",
+                quantization="float16",
+                get=MagicMock(side_effect=lambda key, default=None: {
+                    "id": "coll-123",
+                    "name": "Source Collection",
+                    "path": "/source/path",
+                    "status": CollectionStatus.READY,
+                    "vector_collection_id": "vc-source",
+                    "chunking_strategy": "recursive",
+                    "chunking_config": {},
+                    "chunk_size": 100,
+                    "chunk_overlap": 20,
+                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                    "quantization": "float16",
+                }.get(key, default)),
             ),
             "staging_collection": MagicMock(
                 id="coll-staging-123",
@@ -786,6 +927,14 @@ class TestReindexTaskIntegration:
                 status=CollectionStatus.PROCESSING,
                 vector_collection_id="vc-staging",
                 parent_collection_id="coll-123",
+                get=MagicMock(side_effect=lambda key, default=None: {
+                    "id": "coll-staging-123",
+                    "name": "Source Collection (staging)",
+                    "path": "/source/path",
+                    "status": CollectionStatus.PROCESSING,
+                    "vector_collection_id": "vc-staging",
+                    "parent_collection_id": "coll-123",
+                }.get(key, default)),
             ),
             "documents": [
                 MagicMock(
@@ -794,6 +943,13 @@ class TestReindexTaskIntegration:
                     file_size=1024,
                     status=DocumentStatus.COMPLETED,
                     chunk_count=0,
+                    get=MagicMock(side_effect=lambda key, default=None: {
+                        "id": "doc-reindex-1",
+                        "file_path": "/source/doc1.md",
+                        "file_size": 1024,
+                        "status": DocumentStatus.COMPLETED,
+                        "chunk_count": 0,
+                    }.get(key, default)),
                 ),
             ],
         }
@@ -813,14 +969,27 @@ class TestReindexTaskIntegration:
         staging_collection = mock_reindex_dependencies["staging_collection"]
         documents = mock_reindex_dependencies["documents"]
 
-        # Setup database mocks
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [
-            source_collection,
-            staging_collection,
-            staging_collection,  # For the swap
-        ]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns source_collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        # Third execute call returns staging_collection
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = staging_collection
+
+        # Fourth execute call returns documents
+        mock_result_4 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_4.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
 
         # Mock text extraction
         mock_extract_serialize.return_value = [("# Markdown content\n\nParagraph text", {})]
@@ -890,13 +1059,27 @@ class TestReindexTaskIntegration:
         staging_collection = mock_reindex_dependencies["staging_collection"]
         documents = mock_reindex_dependencies["documents"]
 
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [
-            source_collection,
-            staging_collection,
-            staging_collection,
-        ]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns source_collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        # Third execute call returns staging_collection
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = staging_collection
+
+        # Fourth execute call returns documents
+        mock_result_4 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_4.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
 
         mock_extract_serialize.return_value = [("Test content", {})]
 
@@ -958,13 +1141,27 @@ class TestReindexTaskIntegration:
             for i in range(3)
         ]
 
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [
-            source_collection,
-            staging_collection,
-            staging_collection,
-        ]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns source_collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        # Third execute call returns staging_collection
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = staging_collection
+
+        # Fourth execute call returns documents
+        mock_result_4 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_4.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
 
         mock_extract_serialize.return_value = [("Content to chunk", {})]
 
@@ -976,7 +1173,9 @@ class TestReindexTaskIntegration:
         upsert_response = MagicMock()
         upsert_response.status_code = 200
 
-        mock_httpx_post.side_effect = [embed_response, upsert_response]
+        # Configure mock to return responses for 3 documents (3 documents = 6 calls total)
+        # Each document makes one embed call and one upsert call
+        mock_httpx_post.side_effect = [embed_response, upsert_response, embed_response, upsert_response, embed_response, upsert_response]
 
         # Mock Qdrant manager
         mock_qdrant_client = MagicMock()
@@ -1024,14 +1223,36 @@ class TestReindexTaskIntegration:
 
         # Operation config without strategy override
         operation.config = {"chunk_size": 200}  # Only override chunk_size
+        # Update the operation's get method to reflect the new config
+        operation.get = MagicMock(side_effect=lambda key, default=None: {
+            "id": "op-reindex-123",
+            "collection_id": "coll-123",
+            "type": OperationType.REINDEX,
+            "status": OperationStatus.PENDING,
+            "config": {"chunk_size": 200},  # Updated config
+        }.get(key, default))
 
-        db.execute.return_value.scalar_one.return_value = operation
-        db.execute.return_value.scalar_one_or_none.side_effect = [
-            source_collection,
-            staging_collection,
-            staging_collection,
-        ]
-        db.execute.return_value.scalars.return_value.all.return_value = documents
+        # Setup database mocks - need to create proper mock chain for async operations
+        # First execute call returns operation
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        # Second execute call returns source_collection
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        # Third execute call returns staging_collection
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = staging_collection
+
+        # Fourth execute call returns documents
+        mock_result_4 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_4.scalars.return_value = mock_scalars
+
+        # Configure db.execute to return these mocks in sequence
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
 
         mock_extract_serialize.return_value = [("Content", {})]
 

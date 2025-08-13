@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
-from packages.webui.websocket_manager import ws_manager
+from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +361,7 @@ class DirectoryScanService:
 
     async def _send_progress(
         self,
-        channel_id: str,
+        _channel_id: str,
         scan_id: str,
         msg_type: str,
         data: dict[str, Any],
@@ -373,6 +373,7 @@ class DirectoryScanService:
                 scan_id=scan_id,
                 data=data,
             )
-            await ws_manager._broadcast(channel_id, progress_msg.model_dump())
+            # Use send_to_operation since scan_id is treated as operation_id in the WebSocket handler
+            await ws_manager.send_to_operation(scan_id, progress_msg.model_dump())
         except Exception as e:
             logger.warning(f"Failed to send WebSocket progress update: {e}")

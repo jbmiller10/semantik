@@ -1,3 +1,11 @@
+<!-- IMPORTANT: If you make any changes that affect the information in this CLAUDE_DOCKER.md file,
+     you MUST update this documentation accordingly. This includes:
+     - Adding/removing services
+     - Changing ports or volumes
+     - Modifying environment variables
+     - Altering deployment commands
+     Keep this documentation in sync with the actual implementation! -->
+
 <docker-configuration>
   <purpose>Docker containerization and orchestration</purpose>
   <files>

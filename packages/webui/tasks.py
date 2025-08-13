@@ -251,7 +251,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
 
 
 # Back-compat test helpers: minimal wrappers used by tests
-async def _process_append_operation(db: Any, updater: Any, operation_id: str) -> dict[str, Any]:
+async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
     """Compatibility wrapper used by tests to process an APPEND operation.
 
     This intentionally uses a simplified flow and relies on patched dependencies
@@ -287,54 +287,76 @@ async def _process_append_operation(db: Any, updater: Any, operation_id: str) ->
     cs = ChunkingService(db)
 
     processed = 0
+    from shared.database.models import DocumentStatus
+
     for doc in docs:
-        # Extract and combine text blocks
         try:
-            blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
+            # Extract and combine text blocks
+            try:
+                blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
+            except Exception:
+                blocks = []
+            text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
+            metadata: dict[str, Any] = {}
+            for _t, m in (blocks or []):
+                if isinstance(m, dict):
+                    metadata.update(m)
+
+            # Handle empty documents
+            if not text or not blocks:
+                # Set chunk_count to 0 for empty documents
+                try:
+                    doc.chunk_count = 0
+                    doc.status = DocumentStatus.COMPLETED
+                except Exception:
+                    pass
+                processed += 1
+                continue
+
+            # Execute chunking
+            res = await cs.execute_ingestion_chunking(
+                text=text,
+                document_id=_get(doc, "id"),
+                collection=collection,
+                metadata=metadata,
+                file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
+            )
+
+            chunks = res.get("chunks", [])
+
+            # Call vecpipe endpoints (tests patch httpx) only if there are chunks
+            if chunks:
+                texts = [c.get("text", "") for c in chunks]
+                embed_req = {"texts": texts, "model_name": collection.get("embedding_model")}
+                upsert_req = {"collection_name": collection.get("vector_store_name"), "points": []}
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    await client.post("http://vecpipe:8000/embed", json=embed_req)
+                    await client.post("http://vecpipe:8000/upsert", json=upsert_req)
+
+            # Update in-memory document mock
+            try:
+                doc.chunk_count = len(chunks)
+                doc.status = DocumentStatus.COMPLETED
+            except Exception:
+                pass
+            processed += 1
+
         except Exception:
-            blocks = []
-        text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
-        metadata: dict[str, Any] = {}
-        for _t, m in (blocks or []):
-            if isinstance(m, dict):
-                metadata.update(m)
-
-        # Execute chunking
-        res = await cs.execute_ingestion_chunking(
-            text=text,
-            document_id=_get(doc, "id"),
-            collection=collection,
-            metadata=metadata,
-            file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
-        )
-
-        chunks = res.get("chunks", [])
-
-        # Call vecpipe endpoints (tests patch httpx)
-        texts = [c.get("text", "") for c in chunks]
-        embed_req = {"texts": texts, "model_name": collection.get("embedding_model")}
-        upsert_req = {"collection_name": collection.get("vector_store_name"), "points": []}
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            await client.post("http://vecpipe:8000/embed", json=embed_req)
-            await client.post("http://vecpipe:8000/upsert", json=upsert_req)
-
-        # Update in-memory document mock
-        try:
-            setattr(doc, "chunk_count", len(chunks))
-        except Exception:
-            pass
-        processed += 1
+            # On any error, mark document as failed
+            with contextlib.suppress(Exception):
+                doc.status = DocumentStatus.FAILED
+            # Re-raise the exception if it's the last document
+            if doc == docs[-1]:
+                raise
 
     # Send a basic update via mocked updater
-    try:
+    with contextlib.suppress(Exception):
         await updater.send_update("append_completed", {"processed": processed, "operation_id": _get(op, "id")})
-    except Exception:
-        pass
 
     return {"processed": processed}
 
 
-async def _process_reindex_operation(db: Any, updater: Any, operation_id: str) -> dict[str, Any]:
+async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
     """Compatibility wrapper used by tests to process a REINDEX operation."""
     def _get(obj: Any, name: str, default: Any = None) -> Any:
         try:
@@ -376,6 +398,8 @@ async def _process_reindex_operation(db: Any, updater: Any, operation_id: str) -
     cs = ChunkingService(db)
 
     processed = 0
+    from shared.database.models import DocumentStatus
+
     for doc in docs:
         blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
         text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
@@ -393,22 +417,23 @@ async def _process_reindex_operation(db: Any, updater: Any, operation_id: str) -
         )
         chunks = res.get("chunks", [])
 
-        # Vecpipe calls
-        texts = [c.get("text", "") for c in chunks]
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            await client.post("http://vecpipe:8000/embed", json={"texts": texts, "model_name": collection.get("embedding_model")})
-            await client.post("http://vecpipe:8000/upsert", json={"collection_name": collection.get("vector_store_name"), "points": []})
+        # Vecpipe calls - only if there are chunks
+        if chunks:
+            texts = [c.get("text", "") for c in chunks]
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                await client.post("http://vecpipe:8000/embed", json={"texts": texts, "model_name": collection.get("embedding_model")})
+                await client.post("http://vecpipe:8000/upsert", json={"collection_name": collection.get("vector_store_name"), "points": []})
 
         try:
-            setattr(doc, "chunk_count", len(chunks))
+            doc.chunk_count = len(chunks)
+            # Also update status for test compatibility
+            doc.status = DocumentStatus.COMPLETED
         except Exception:
             pass
         processed += 1
 
-    try:
+    with contextlib.suppress(Exception):
         await updater.send_update("reindex_completed", {"processed": processed, "operation_id": _get(op, "id")})
-    except Exception:
-        pass
 
     return {"processed": processed}
 

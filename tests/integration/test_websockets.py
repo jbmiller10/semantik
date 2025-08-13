@@ -99,7 +99,8 @@ class TestOperationsWebSocket:
                 mock_get_db.side_effect = lambda: mock_get_db_generator()
 
                 # Mock WebSocket manager
-                mock_ws_manager.connect = AsyncMock()
+                mock_connection_id = "mock-connection-id-123"
+                mock_ws_manager.connect = AsyncMock(return_value=mock_connection_id)
                 mock_ws_manager.disconnect = AsyncMock()
 
                 # Mock receive_json to simulate client disconnect after initial connection
@@ -111,8 +112,10 @@ class TestOperationsWebSocket:
                 # Verify authentication was checked
                 assert mock_websocket_client.query_params.get("token") == "valid-test-token"
 
-                # Verify connection was established
-                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
+                # Verify connection was established with correct parameter order
+                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id)
+                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "1", "test-operation-id")
 
-                # Verify disconnection was called
-                mock_ws_manager.disconnect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
+                # Verify disconnection was called with connection_id only
+                # ScalableWebSocketManager expects: disconnect(connection_id)
+                mock_ws_manager.disconnect.assert_called_once_with(mock_connection_id)
