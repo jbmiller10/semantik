@@ -648,9 +648,8 @@ describe('handleChunkingError', () => {
   });
 
   it('should extract detail from axios error response', () => {
-    const error = {
+    const error = Object.assign(new Error('Bad Request'), {
       isAxiosError: true,
-      message: 'Bad Request',
       code: 'ERR_BAD_REQUEST',
       response: {
         status: 400,
@@ -659,16 +658,15 @@ describe('handleChunkingError', () => {
         config: {} as Record<string, unknown>,
         data: { detail: 'Invalid chunk size: must be between 100 and 10000' }
       }
-    } as AxiosError;
+    });
 
     const message = handleChunkingError(error);
     expect(message).toBe('Invalid chunk size: must be between 100 and 10000');
   });
 
   it('should extract message from axios error response', () => {
-    const error = {
+    const error = Object.assign(new Error('Bad Request'), {
       isAxiosError: true,
-      message: 'Bad Request',
       code: 'ERR_BAD_REQUEST',
       response: {
         status: 400,
@@ -677,7 +675,7 @@ describe('handleChunkingError', () => {
         config: {} as Record<string, unknown>,
         data: { message: 'Configuration error' }
       }
-    } as AxiosError;
+    });
 
     const message = handleChunkingError(error);
     expect(message).toBe('Configuration error');
@@ -694,9 +692,8 @@ describe('handleChunkingError', () => {
     ];
 
     testCases.forEach(({ status, expected }) => {
-      const error = {
+      const error = Object.assign(new Error('Error'), {
         isAxiosError: true,
-        message: 'Error',
         code: 'ERR_BAD_REQUEST',
         response: {
           status,
@@ -705,7 +702,7 @@ describe('handleChunkingError', () => {
           config: {} as Record<string, unknown>,
           data: {}
         }
-      } as AxiosError;
+      });
 
       const message = handleChunkingError(error);
       expect(message).toBe(expected);

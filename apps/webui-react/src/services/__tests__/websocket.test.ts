@@ -107,7 +107,7 @@ class TestMockWebSocket {
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
     if (this.onopen) {
-      this.onopen(new Event('open'));
+      this.onopen({ type: 'open' } as Event);
     }
   }
   
@@ -121,7 +121,7 @@ class TestMockWebSocket {
   
   simulateError() {
     if (this.onerror) {
-      this.onerror(new Event('error'));
+      this.onerror({ type: 'error' } as Event);
     }
   }
   
