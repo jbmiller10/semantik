@@ -16,9 +16,7 @@ from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanResponse
 
 @pytest.mark.asyncio()
 @pytest.mark.usefixtures("use_fakeredis")
-async def test_directory_scan_preview_success(
-    async_client: AsyncClient, test_user_headers: dict[str, str]
-) -> None:
+async def test_directory_scan_preview_success(async_client: AsyncClient, test_user_headers: dict[str, str]) -> None:
     """Test successful directory scan preview."""
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
@@ -89,9 +87,7 @@ async def test_directory_scan_preview_success(
 
 @pytest.mark.asyncio()
 @pytest.mark.usefixtures("use_fakeredis")
-async def test_directory_scan_preview_recursive(
-    async_client: AsyncClient, test_user_headers: dict[str, str]
-) -> None:
+async def test_directory_scan_preview_recursive(async_client: AsyncClient, test_user_headers: dict[str, str]) -> None:
     """Test recursive directory scan."""
     # Mock the WebSocket manager and DirectoryScanService
     mock_ws_manager = AsyncMock()
