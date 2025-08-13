@@ -247,13 +247,13 @@ def ensure_migration_backups_table(conn: Any) -> None:
 
 def is_temporary_migration_table(table_name: str) -> bool:
     """Check if a table is a temporary migration table.
-    
+
     Temporary migration tables are intermediate tables created during migrations
     and don't require destructive operation flags.
-    
+
     Args:
         table_name: Name of the table to check
-        
+
     Returns:
         True if table is a temporary migration table
     """
@@ -264,11 +264,8 @@ def is_temporary_migration_table(table_name: str) -> bool:
         r".*_tmp$",          # Temporary tables
         r".*_backup_\d{8}_\d{6}$",  # Timestamped backup tables
     ]
-    
-    for pattern in temp_patterns:
-        if re.match(pattern, table_name):
-            return True
-    return False
+
+    return any(re.match(pattern, table_name) for pattern in temp_patterns)
 
 
 def safe_drop_table(

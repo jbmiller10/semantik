@@ -14,13 +14,12 @@ import logging
 import os
 from collections.abc import Sequence
 
+from migrations_utils.migration_safety import (
+    safe_drop_table,
+)
 from sqlalchemy.engine import Connection
 
 from alembic import op
-from migrations_utils.migration_safety import (
-    require_destructive_flag,
-    safe_drop_table,
-)
 
 # revision identifiers, used by Alembic.
 revision: str = "6596eda04faa"
