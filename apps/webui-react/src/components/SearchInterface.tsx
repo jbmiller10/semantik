@@ -9,6 +9,7 @@ import { isAxiosError, getErrorMessage, getInsufficientMemoryErrorDetails } from
 import { RerankingConfiguration } from './RerankingConfiguration';
 import { DEFAULT_VALIDATION_RULES } from '../utils/searchValidation';
 import { useRerankingAvailability } from '../hooks/useRerankingAvailability';
+import type { SearchResult } from '../services/api/v2/types';
 
 function SearchInterface() {
   const {
@@ -127,7 +128,7 @@ function SearchInterface() {
       });
 
       // Map results to match the search store's SearchResult type
-      const mappedResults = response.data.results.map((result: any) => ({
+      const mappedResults = response.data.results.map((result: SearchResult) => ({
         doc_id: result.document_id,
         chunk_id: result.chunk_id,
         score: result.score,

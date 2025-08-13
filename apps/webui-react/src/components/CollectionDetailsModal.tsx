@@ -70,7 +70,7 @@ function CollectionDetailsModal() {
 
   // Aggregate source directories from documents
   const sourceDirs: SourceInfo[] = documentsData ? (() => {
-    const sourceMap = documentsData.documents.reduce((acc: Map<string, SourceInfo>, doc: any) => {
+    const sourceMap = documentsData.documents.reduce((acc: Map<string, SourceInfo>, doc: DocumentResponse) => {
       if (!acc.has(doc.source_path)) {
         acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
       }

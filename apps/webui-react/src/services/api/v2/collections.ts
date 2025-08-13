@@ -10,6 +10,11 @@ import type {
   CollectionListResponse,
   PaginationParams,
 } from '../../../types/collection';
+import type {
+  DocumentListResponse,
+  SearchRequest,
+  SearchResponse,
+} from './types';
 
 /**
  * V2 Collections API client
@@ -47,7 +52,7 @@ export const collectionsV2Api = {
     apiClient.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
     
   listDocuments: (uuid: string, params?: PaginationParams) => 
-    apiClient.get<any>(`/api/v2/collections/${uuid}/documents`, { params }),
+    apiClient.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
 };
 
 /**
@@ -70,8 +75,8 @@ export const operationsV2Api = {
  * Minimal implementation for existing usage
  */
 export const searchV2Api = {
-  search: (data: any) => 
-    apiClient.post<any>('/api/v2/search', data),
+  search: (data: SearchRequest) => 
+    apiClient.post<SearchResponse>('/api/v2/search', data),
 };
 
 // Helper function to handle API errors
