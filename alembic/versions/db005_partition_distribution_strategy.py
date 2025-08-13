@@ -391,7 +391,7 @@ def create_monitoring_views(conn) -> None:
                    'Number of unused partitions'
             UNION ALL
             SELECT 'Poor Distribution Collections', v_poor_collections::NUMERIC,
-                   CASEWHEN v_poor_collections > 0 THEN 'WARNING'
+                   CASE WHEN v_poor_collections > 0 THEN 'WARNING'
                         ELSE 'HEALTHY' END,
                    'Collections not well distributed across partitions'
             UNION ALL
