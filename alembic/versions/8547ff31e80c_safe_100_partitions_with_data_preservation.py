@@ -9,6 +9,7 @@ Create Date: 2025-08-11 12:00:00.000000
 import contextlib
 import datetime
 import logging
+import re
 from collections.abc import Sequence
 
 from sqlalchemy import text
@@ -175,8 +176,13 @@ def create_backup_table(conn, timestamp: str) -> str:
         )
     )
 
-    # Record backup metadata
-    result = conn.execute(text(f"SELECT COUNT(*) FROM {backup_table_name}"))
+    # Record backup metadata - validate table name first
+    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
+        raise ValueError(f"Invalid backup table name format: {backup_table_name}")
+
+    result = conn.execute(
+        text("SELECT COUNT(*) FROM " + backup_table_name)
+    )
     backup_count = result.scalar()
 
     conn.execute(
@@ -201,7 +207,13 @@ def create_backup_table(conn, timestamp: str) -> str:
 
 def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
     """Verify backup integrity."""
-    result = conn.execute(text(f"SELECT COUNT(*) FROM {backup_table_name}"))
+    # Validate backup table name format
+    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
+        raise ValueError(f"Invalid backup table name format: {backup_table_name}")
+
+    result = conn.execute(
+        text("SELECT COUNT(*) FROM " + backup_table_name)
+    )
     backup_count = result.scalar()
 
     if backup_count != original_count:
@@ -211,23 +223,32 @@ def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
     logger.info(f"Backup verified: {backup_count} records match original")
 
     # Spot check: Compare a sample of records
+    # Use PL/pgSQL with format for safe identifier quoting
     spot_check_query = text(
-        f"""
-        SELECT COUNT(*) FROM (
-            SELECT id, collection_id, chunk_index, content
-            FROM chunks
-            LIMIT 100
-        ) original
-        INNER JOIN (
-            SELECT id, collection_id, chunk_index, content
-            FROM {backup_table_name}
-            LIMIT 100
-        ) backup
-        ON original.id = backup.id
-        AND original.collection_id = backup.collection_id
-        AND original.content = backup.content
         """
-    )
+        DO $$
+        DECLARE
+            matches INT;
+        BEGIN
+            EXECUTE format('
+                SELECT COUNT(*) FROM (
+                    SELECT id, collection_id, chunk_index, content
+                    FROM chunks
+                    LIMIT 100
+                ) original
+                INNER JOIN (
+                    SELECT id, collection_id, chunk_index, content
+                    FROM %I
+                    LIMIT 100
+                ) backup
+                ON original.id = backup.id
+                AND original.collection_id = backup.collection_id
+                AND original.content = backup.content',
+                :backup_table
+            ) INTO matches;
+        END $$;
+        """
+    ).bindparams(backup_table=backup_table_name)
 
     try:
         result = conn.execute(spot_check_query)
@@ -300,8 +321,14 @@ def create_new_partitioned_structure(conn):
 
 def migrate_data_in_batches(conn, source_table: str = "chunks"):
     """Migrate data from old structure to new in batches."""
+    # Validate source table name
+    if not re.match(r'^chunks(_backup_\d{8}_\d{6})?$', source_table):
+        raise ValueError(f"Invalid source table name: {source_table}")
+
     # Get total count for progress tracking
-    result = conn.execute(text(f"SELECT COUNT(*) FROM {source_table}"))
+    result = conn.execute(
+        text("SELECT COUNT(*) FROM " + source_table)
+    )
     total_records = result.scalar()
 
     if total_records == 0:
@@ -318,58 +345,65 @@ def migrate_data_in_batches(conn, source_table: str = "chunks"):
         offset = migrated_count
 
         # Migrate batch with computed partition_key
+        # Using PL/pgSQL to safely handle table name
         conn.execute(
             text(
-                f"""
-                INSERT INTO chunks_new (
-                    collection_id,
-                    partition_key,
-                    chunk_index,
-                    content,
-                    metadata,
-                    document_id,
-                    chunking_config_id,
-                    start_offset,
-                    end_offset,
-                    token_count,
-                    embedding_vector_id,
-                    created_at,
-                    updated_at
-                )
-                SELECT
-                    collection_id,
-                    abs(hashtext(collection_id::text)) % 100 as partition_key,
-                    chunk_index,
-                    content,
-                    COALESCE(metadata, meta::jsonb, '{{}}'::jsonb) as metadata,
-                    document_id,
-                    chunking_config_id,
-                    start_offset,
-                    end_offset,
-                    token_count,
-                    embedding_vector_id,
-                    created_at,
-                    COALESCE(updated_at, created_at) as updated_at
-                FROM {source_table}
-                ORDER BY created_at, id
-                LIMIT :batch_size
-                OFFSET :offset
                 """
-            ),
-            {"batch_size": BATCH_SIZE, "offset": offset},
+                DO $$
+                BEGIN
+                    EXECUTE format('
+                        INSERT INTO chunks_new (
+                            collection_id,
+                            partition_key,
+                            chunk_index,
+                            content,
+                            metadata,
+                            document_id,
+                            chunking_config_id,
+                            start_offset,
+                            end_offset,
+                            token_count,
+                            embedding_vector_id,
+                            created_at,
+                            updated_at
+                        )
+                        SELECT
+                            collection_id,
+                            abs(hashtext(collection_id::text)) %% 100 as partition_key,
+                            chunk_index,
+                            content,
+                            COALESCE(metadata, meta::jsonb, ''{}''::jsonb) as metadata,
+                            document_id,
+                            chunking_config_id,
+                            start_offset,
+                            end_offset,
+                            token_count,
+                            embedding_vector_id,
+                            created_at,
+                            COALESCE(updated_at, created_at) as updated_at
+                        FROM %I
+                        ORDER BY created_at, id
+                        LIMIT %s
+                        OFFSET %s',
+                        :source_table, :batch_size, :offset
+                    );
+                END $$;
+                """
+            ).bindparams(source_table=source_table, batch_size=BATCH_SIZE, offset=offset)
         )
 
         # Get actual records migrated in this batch
         result = conn.execute(
             text(
-                f"""
-                SELECT COUNT(*)
-                FROM {source_table}
-                LIMIT :batch_size
-                OFFSET :offset
                 """
-            ),
-            {"batch_size": BATCH_SIZE, "offset": offset},
+                SELECT COUNT(*) FROM (
+                    SELECT 1
+                    FROM chunks_new
+                    LIMIT :batch_size
+                    OFFSET :prev_offset
+                ) AS batch_check
+                """
+            ).bindparams(batch_size=BATCH_SIZE, prev_offset=migrated_count)
         )
         batch_count = result.scalar()
 
@@ -511,16 +545,29 @@ def perform_atomic_swap(conn):
             old_part_name = f"chunks_part_{i:02d}"
             temp_name = f"chunks_old_part_{i:02d}_{timestamp}"
             with contextlib.suppress(Exception):
-                conn.execute(text(f"ALTER TABLE IF EXISTS {old_part_name} RENAME TO {temp_name}"))
+                conn.execute(
+                    text(
+                        "DO $$ BEGIN EXECUTE format('ALTER TABLE IF EXISTS %I RENAME TO %I', :old_name, :new_name); END $$;"
+                    ).bindparams(old_name=old_part_name, new_name=temp_name)
+                )
 
-    conn.execute(text(f"ALTER TABLE chunks RENAME TO chunks_old_{timestamp}"))
+    # Rename main chunks table
+    conn.execute(
+        text(
+            "DO $$ BEGIN EXECUTE format('ALTER TABLE chunks RENAME TO %I', :new_name); END $$;"
+        ).bindparams(new_name=f"chunks_old_{timestamp}")
+    )
     conn.execute(text("ALTER TABLE chunks_new RENAME TO chunks"))
 
     # Rename all new partitions
     for i in range(100):
         part_name = f"chunks_new_part_{i:02d}"
         new_name = f"chunks_part_{i:02d}"
-        conn.execute(text(f"ALTER TABLE {part_name} RENAME TO {new_name}"))
+        conn.execute(
+            text(
+                "DO $$ BEGIN EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name); END $$;"
+            ).bindparams(old_name=part_name, new_name=new_name)
+        )
 
     # Create trigger on renamed table
     conn.execute(
@@ -593,9 +640,15 @@ def cleanup_chunks_dependencies(conn):
         "active_chunking_configs",
     ]
 
+    # Validate view names against allowlist
+    allowed_view_pattern = r'^[a-z_]+$'
     for view in views_to_drop:
+        if not re.match(allowed_view_pattern, view):
+            raise ValueError(f"Invalid view name: {view}")
         with contextlib.suppress(Exception):
-            conn.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
+            conn.execute(
+                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(view=view)
+            )
 
     with contextlib.suppress(Exception):
         conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
@@ -607,12 +660,25 @@ def cleanup_chunks_dependencies(conn):
         ("refresh_collection_chunking_stats", ""),
     ]
 
+    # Validate function names against allowlist
+    allowed_func_pattern = r'^[a-z_]+$'
     for func_name, params in functions_to_drop:
+        if not re.match(allowed_func_pattern, func_name):
+            raise ValueError(f"Invalid function name: {func_name}")
         with contextlib.suppress(Exception):
             if params:
-                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}({params}) CASCADE"))
+                # Params are predefined and safe (VARCHAR, etc.)
+                conn.execute(
+                    text(
+                        f"DO $$ BEGIN EXECUTE format('DROP FUNCTION IF EXISTS %I({params}) CASCADE', '{func_name}'); END $$;"
+                    )
+                )
             else:
-                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}() CASCADE"))
+                conn.execute(
+                    text(
+                        f"DO $$ BEGIN EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', '{func_name}'); END $$;"
+                    )
+                )
 
     with contextlib.suppress(Exception):
         conn.execute(text("DROP TRIGGER IF EXISTS set_partition_key ON chunks CASCADE"))
@@ -739,7 +805,11 @@ def upgrade() -> None:
         for i in range(100):
             part_name = f"chunks_new_part_{i:02d}"
             new_name = f"chunks_part_{i:02d}"
-            conn.execute(text(f"ALTER TABLE {part_name} RENAME TO {new_name}"))
+            conn.execute(
+                text(
+                    "DO $$ BEGIN EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name); END $$;"
+                ).bindparams(old_name=part_name, new_name=new_name)
+            )
 
         # Create trigger function and trigger
         conn.execute(

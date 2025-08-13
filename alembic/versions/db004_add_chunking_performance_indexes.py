@@ -149,7 +149,12 @@ def upgrade() -> None:
         partition_name = f"chunks_part_{i:02d}"
         if partition_name in existing_partitions:
             try:
-                op.execute(f"ANALYZE {partition_name}")
+                # Use PL/pgSQL with format for safe identifier quoting
+                conn.execute(
+                    sa.text(
+                        "DO $$ BEGIN EXECUTE format('ANALYZE %I', :table_name); END $$;"
+                    ).bindparams(table_name=partition_name)
+                )
             except Exception as e:
                 logger.warning(f"Could not analyze partition {partition_name}: {e}")
                 continue
