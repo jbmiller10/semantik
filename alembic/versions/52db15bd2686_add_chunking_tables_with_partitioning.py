@@ -57,7 +57,13 @@ def upgrade() -> None:
     """Add chunking tables with partitioning for scalable document processing."""
 
     # Get partition count from environment variable, default to 16
-    partition_count = int(os.environ.get("CHUNK_PARTITION_COUNT", "16"))
+    # Validate as integer and apply bounds checking for security
+    try:
+        partition_count = int(os.environ.get("CHUNK_PARTITION_COUNT", "16"))
+        if not 1 <= partition_count <= 1000:
+            raise ValueError(f"Partition count must be between 1 and 1000, got {partition_count}")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid CHUNK_PARTITION_COUNT: {e}") from e
 
     # Check if tables already exist
     from sqlalchemy import inspect
@@ -137,16 +143,36 @@ def upgrade() -> None:
         """
         )
 
-        # Create partitions based on configuration
-        for i in range(partition_count):
-            # Check if partition already exists
-            if not table_exists(inspector, f"chunks_p{i}"):
-                op.execute(
-                    f"""
-                    CREATE TABLE chunks_p{i} PARTITION OF chunks
-                    FOR VALUES WITH (MODULUS {partition_count}, REMAINDER {i});
+        # Create partitions based on configuration using safe PL/pgSQL
+        # Use EXECUTE format() in PL/pgSQL to avoid SQL injection
+        op.execute(
+            sa.text(
                 """
-                )
+                DO $$
+                DECLARE
+                    i INT;
+                    partition_name TEXT;
+                    table_exists BOOLEAN;
+                BEGIN
+                    FOR i IN 0..:partition_count - 1 LOOP
+                        partition_name := 'chunks_p' || i;
+
+                        -- Check if partition already exists
+                        SELECT EXISTS (
+                            SELECT FROM pg_tables
+                            WHERE schemaname = 'public'
+                            AND tablename = partition_name
+                        ) INTO table_exists;
+
+                        IF NOT table_exists THEN
+                            EXECUTE format('CREATE TABLE %I PARTITION OF chunks FOR VALUES WITH (MODULUS %s, REMAINDER %s)',
+                                partition_name, :partition_count, i);
+                        END IF;
+                    END LOOP;
+                END $$;
+                """
+            ).bindparams(partition_count=partition_count)
+        )
 
     # Create indexes on the parent table (will be inherited by partitions)
     if not index_exists(inspector, "chunks", "ix_chunks_collection_id_document_id"):

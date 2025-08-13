@@ -7,6 +7,7 @@ Create Date: 2025-08-10 02:20:06.337096
 """
 
 import contextlib
+import re
 from collections.abc import Sequence
 
 from sqlalchemy import text
@@ -33,9 +34,18 @@ def cleanup_chunks_dependencies(conn):
         "active_chunking_configs",
     ]
 
+    # Validate view names against allowlist
+    allowed_view_pattern = r"^[a-z_]+$"
     for view in views_to_drop:
+        if not re.match(allowed_view_pattern, view):
+            raise ValueError(f"Invalid view name: {view}")
         with contextlib.suppress(Exception):
-            conn.execute(text(f"DROP VIEW IF EXISTS {view} CASCADE"))
+            # Use quote_ident equivalent via format %I in PL/pgSQL for safety
+            conn.execute(
+                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(
+                    view=view
+                )
+            )
 
     # Drop materialized views
     with contextlib.suppress(Exception):
@@ -49,12 +59,45 @@ def cleanup_chunks_dependencies(conn):
         ("refresh_collection_chunking_stats", ""),
     ]
 
+    # Validate function names against allowlist
+    allowed_func_pattern = r"^[a-z_]+$"
     for func_name, params in functions_to_drop:
+        if not re.match(allowed_func_pattern, func_name):
+            raise ValueError(f"Invalid function name: {func_name}")
         with contextlib.suppress(Exception):
             if params:
-                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}({params}) CASCADE"))
+                # Use PL/pgSQL with format for safe identifier quoting
+                # Pass function name as parameter to avoid f-strings
+                conn.execute(
+                    text(
+                        """
+                        DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
+                            param_types TEXT := :param_types;
+                        BEGIN
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I(%s) CASCADE', func_name, param_types);
+                        EXCEPTION WHEN undefined_function THEN
+                            NULL;
+                        END $$;
+                        """
+                    ).bindparams(func_name=func_name, param_types=params)
+                )
             else:
-                conn.execute(text(f"DROP FUNCTION IF EXISTS {func_name}() CASCADE"))
+                conn.execute(
+                    text(
+                        """
+                        DO $$
+                        DECLARE
+                            func_name TEXT := :func_name;
+                        BEGIN
+                            EXECUTE format('DROP FUNCTION IF EXISTS %I() CASCADE', func_name);
+                        EXCEPTION WHEN undefined_function THEN
+                            NULL;
+                        END $$;
+                        """
+                    ).bindparams(func_name=func_name)
+                )
 
     # Drop triggers
     with contextlib.suppress(Exception):
@@ -489,16 +532,24 @@ def downgrade() -> None:
         )
     )
 
-    # Create 16 partitions
-    for i in range(16):
-        conn.execute(
-            text(
-                f"""
-            CREATE TABLE chunks_p{i} PARTITION OF chunks
-            FOR VALUES WITH (MODULUS 16, REMAINDER {i});
-        """
-            )
+    # Create 16 partitions using safe PL/pgSQL
+    conn.execute(
+        text(
+            """
+            DO $$
+            DECLARE
+                i INT;
+                partition_name TEXT;
+            BEGIN
+                FOR i IN 0..15 LOOP
+                    partition_name := 'chunks_p' || i;
+                    EXECUTE format('CREATE TABLE %I PARTITION OF chunks FOR VALUES WITH (MODULUS 16, REMAINDER %s)',
+                        partition_name, i);
+                END LOOP;
+            END $$;
+            """
         )
+    )
 
     # Recreate original indexes
     conn.execute(

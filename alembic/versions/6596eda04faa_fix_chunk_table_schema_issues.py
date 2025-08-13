@@ -188,10 +188,17 @@ def upgrade() -> None:
         ).scalar()
 
         if partition_exists:
-            op.execute(
-                f"""
-                ALTER TABLE chunks_p{i} RENAME TO chunks_old_p{i};
-            """
+            # Use PL/pgSQL with format for safe identifier quoting
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name);
+                    END $$;
+                    """
+                ),
+                {"old_name": f"chunks_p{i}", "new_name": f"chunks_old_p{i}"},
             )
 
     # Step 2: Create new chunks table with String ID instead of UUID
@@ -218,14 +225,29 @@ def upgrade() -> None:
     """
     )
 
-    # Create partitions
-    for i in range(partition_count):
-        op.execute(
-            f"""
-            CREATE TABLE chunks_p{i} PARTITION OF chunks
-            FOR VALUES WITH (MODULUS {partition_count}, REMAINDER {i});
-        """
-        )
+    # Create partitions using safe PL/pgSQL
+    # Validate partition_count first
+    if not 1 <= partition_count <= 1000:
+        raise ValueError(f"Partition count must be between 1 and 1000, got {partition_count}")
+
+    conn.execute(
+        text(
+            """
+            DO $$
+            DECLARE
+                i INT;
+                partition_name TEXT;
+            BEGIN
+                FOR i IN 0..:partition_count - 1 LOOP
+                    partition_name := 'chunks_p' || i;
+                    EXECUTE format('CREATE TABLE %I PARTITION OF chunks FOR VALUES WITH (MODULUS %s, REMAINDER %s)',
+                        partition_name, :partition_count, i);
+                END LOOP;
+            END $$;
+            """
+        ),
+        {"partition_count": partition_count},
+    )
 
     # Step 3: Copy data from old table to new table, converting UUID to string
     op.execute(
@@ -322,7 +344,18 @@ def downgrade() -> None:
         ).scalar()
 
         if partition_exists:
-            op.execute(f"ALTER TABLE chunks_p{i} RENAME TO chunks_new_p{i};")
+            # Use PL/pgSQL with format for safe identifier quoting
+            conn.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name);
+                    END $$;
+                    """
+                ),
+                {"old_name": f"chunks_p{i}", "new_name": f"chunks_new_p{i}"},
+            )
 
     # Step 2: Recreate original table with UUID type
     op.execute(
@@ -348,14 +381,29 @@ def downgrade() -> None:
     """
     )
 
-    # Create partitions
-    for i in range(partition_count):
-        op.execute(
-            f"""
-            CREATE TABLE chunks_p{i} PARTITION OF chunks
-            FOR VALUES WITH (MODULUS {partition_count}, REMAINDER {i});
-        """
-        )
+    # Create partitions using safe PL/pgSQL
+    # Validate partition_count first
+    if not 1 <= partition_count <= 1000:
+        raise ValueError(f"Partition count must be between 1 and 1000, got {partition_count}")
+
+    conn.execute(
+        text(
+            """
+            DO $$
+            DECLARE
+                i INT;
+                partition_name TEXT;
+            BEGIN
+                FOR i IN 0..:partition_count - 1 LOOP
+                    partition_name := 'chunks_p' || i;
+                    EXECUTE format('CREATE TABLE %I PARTITION OF chunks FOR VALUES WITH (MODULUS %s, REMAINDER %s)',
+                        partition_name, :partition_count, i);
+                END LOOP;
+            END $$;
+            """
+        ),
+        {"partition_count": partition_count},
+    )
 
     # Step 3: Copy data back, converting string to UUID
     op.execute(
