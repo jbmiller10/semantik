@@ -169,7 +169,7 @@ describe('ChunkingParameterTuner', () => {
       expect(mockUpdateConfiguration).toHaveBeenCalledWith({ chunk_sizes: '512,1024,2048' });
     });
 
-    it('debounces parameter changes for preview updates', async () => {
+    it('debounces parameter changes for preview updates', () => {
       const mockOnParameterChange = vi.fn();
       render(<ChunkingParameterTuner onParameterChange={mockOnParameterChange} />);
       
@@ -190,10 +190,8 @@ describe('ChunkingParameterTuner', () => {
       });
       
       // Now it should be called once
-      await waitFor(() => {
-        expect(mockLoadPreview).toHaveBeenCalledWith(true);
-        expect(mockOnParameterChange).toHaveBeenCalledTimes(1);
-      }, { timeout: 100 });
+      expect(mockLoadPreview).toHaveBeenCalledWith(true);
+      expect(mockOnParameterChange).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -250,29 +248,25 @@ describe('ChunkingParameterTuner', () => {
       expect(mockApplyPreset).not.toHaveBeenCalled();
     });
 
-    it('shows save preset form when Save Preset button is clicked', async () => {
+    it('shows save preset form when Save Preset button is clicked', () => {
       render(<ChunkingParameterTuner />);
       
       const saveButton = screen.getByRole('button', { name: /Save Preset/i });
       fireEvent.click(saveButton);
       
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^Save$/i })).toBeInTheDocument();
-      });
+      expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Cancel/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Save$/i })).toBeInTheDocument();
     });
 
-    it('saves custom preset with entered name', async () => {
+    it('saves custom preset with entered name', () => {
       render(<ChunkingParameterTuner />);
       
       // Open save preset form
       const savePresetButton = screen.getByRole('button', { name: /Save Preset/i });
       fireEvent.click(savePresetButton);
       
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
-      });
+      expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
       
       // Enter preset name
       const nameInput = screen.getByPlaceholderText('Enter preset name...');
@@ -290,38 +284,32 @@ describe('ChunkingParameterTuner', () => {
       });
     });
 
-    it('cancels preset saving when Cancel is clicked', async () => {
+    it('cancels preset saving when Cancel is clicked', () => {
       render(<ChunkingParameterTuner />);
       
       // Open save preset form
       const savePresetButton = screen.getByRole('button', { name: /Save Preset/i });
       fireEvent.click(savePresetButton);
       
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
-      });
+      expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
       
       // Click cancel
       const cancelButton = screen.getByRole('button', { name: /Cancel/i });
       fireEvent.click(cancelButton);
       
       // Form should be hidden
-      await waitFor(() => {
-        expect(screen.queryByPlaceholderText('Enter preset name...')).not.toBeInTheDocument();
-      });
+      expect(screen.queryByPlaceholderText('Enter preset name...')).not.toBeInTheDocument();
       expect(mockSaveCustomPreset).not.toHaveBeenCalled();
     });
 
-    it('disables save button when preset name is empty', async () => {
+    it('disables save button when preset name is empty', () => {
       render(<ChunkingParameterTuner />);
       
       // Open save preset form
       const savePresetButton = screen.getByRole('button', { name: /Save Preset/i });
       fireEvent.click(savePresetButton);
       
-      await waitFor(() => {
-        expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
-      });
+      expect(screen.getByPlaceholderText('Enter preset name...')).toBeInTheDocument();
       
       const saveButton = screen.getByRole('button', { name: /^Save$/i });
       expect(saveButton).toBeDisabled();
@@ -330,16 +318,12 @@ describe('ChunkingParameterTuner', () => {
       const nameInput = screen.getByPlaceholderText('Enter preset name...');
       fireEvent.change(nameInput, { target: { value: 'Test' } });
       
-      await waitFor(() => {
-        expect(saveButton).not.toBeDisabled();
-      });
+      expect(saveButton).not.toBeDisabled();
       
       // Clear the name
       fireEvent.change(nameInput, { target: { value: '' } });
       
-      await waitFor(() => {
-        expect(saveButton).toBeDisabled();
-      });
+      expect(saveButton).toBeDisabled();
     });
   });
 
