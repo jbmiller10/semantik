@@ -290,21 +290,31 @@ def safe_drop_table(
     if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table_name):
         raise ValueError(f"Invalid table name: {table_name}")
 
-    # Only require flag for non-temporary tables
-    if not is_temporary_migration_table(table_name):
-        require_destructive_flag(f"DROP TABLE {table_name}")
-    else:
-        logger.info(f"Dropping temporary migration table: {table_name}")
+    # Check if table exists
+    if not check_table_exists(conn, table_name):
+        logger.info(f"Table {table_name} does not exist, nothing to drop")
+        return None, 0
+    
+    # Get row count once
+    row_count = get_table_row_count(conn, table_name)
+    
+    # Only require flag for non-temporary tables with data
+    if not is_temporary_migration_table(table_name) and row_count > 0:
+        require_destructive_flag(f"DROP TABLE {table_name} with {row_count} rows")
+    elif is_temporary_migration_table(table_name):
+        logger.info(f"Dropping temporary migration table: {table_name} ({row_count} rows)")
+    elif row_count == 0:
+        logger.info(f"Dropping empty table: {table_name} (no data to protect)")
 
     backup_table_name = None
-    row_count = 0
 
-    if backup and check_table_exists(conn, table_name):
-        backup_table_name, row_count = create_table_backup(
+    # Create backup if requested and table has data
+    if backup and row_count > 0:
+        backup_table_name, actual_row_count = create_table_backup(
             conn, table_name, migration_revision, check_exists=False
         )
 
-        if row_count > 0 and backup_table_name and not verify_backup(conn, backup_table_name, row_count):
+        if backup_table_name and not verify_backup(conn, backup_table_name, actual_row_count):
             raise RuntimeError(f"Backup verification failed for {table_name}, aborting DROP")
 
     cascade_clause = "CASCADE" if cascade else ""

@@ -11,16 +11,13 @@ import logging
 import re
 from collections.abc import Sequence
 
+from migrations_utils.migration_safety import (
+    check_table_exists,
+    safe_drop_table,
+)
 from sqlalchemy import text
 
 from alembic import op
-from migrations_utils.migration_safety import (
-    check_table_exists,
-    create_table_backup,
-    require_destructive_flag,
-    safe_drop_table,
-    verify_backup,
-)
 
 # revision identifiers, used by Alembic.
 revision: str = "ae558c9e183f"
@@ -134,28 +131,18 @@ def upgrade() -> None:
 
     logger.info("Starting migration to 100 LIST partitions")
 
-    # Check if we're allowed to perform destructive operations
-    if check_table_exists(conn, "chunks"):
-        # This operation is destructive, require explicit permission
-        require_destructive_flag("DROP TABLE chunks CASCADE")
-
-        # Create backup before any destructive operations
-        backup_table_name, row_count = create_table_backup(
-            conn, "chunks", revision, check_exists=True
-        )
-
-        if backup_table_name and row_count > 0:
-            logger.info(f"Created backup: {backup_table_name} with {row_count} rows")
-            # Verify the backup
-            if not verify_backup(conn, backup_table_name, row_count):
-                raise RuntimeError("Backup verification failed! Aborting migration.")
-
     # Step 1: Drop old tables and views
+    # Note: safe_drop_table will handle:
+    # - Checking if table has data
+    # - Requiring flag only if data exists
+    # - Creating backup if data exists
+    # - Verifying backup integrity
+
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
 
-    # Now drop the tables with safety wrapper
-    backup_info = safe_drop_table(conn, "chunks", revision, cascade=True, backup=False)
+    # Drop the chunks table with safety wrapper
+    backup_info = safe_drop_table(conn, "chunks", revision, cascade=True, backup=True)
     if backup_info[0]:
         logger.info(f"Chunks table dropped. Data preserved in {backup_info[0]}")
 
@@ -537,23 +524,12 @@ def downgrade() -> None:
 
     logger.info("Starting downgrade from 100 LIST partitions")
 
-    # Check if we're allowed to perform destructive operations
-    if check_table_exists(conn, "chunks"):
-        require_destructive_flag("Downgrade: DROP TABLE chunks CASCADE")
-
-        # Create backup before downgrade
-        backup_table_name, row_count = create_table_backup(
-            conn, "chunks", revision, check_exists=True
-        )
-
-        if backup_table_name and row_count > 0:
-            logger.info(f"Created backup before downgrade: {backup_table_name} with {row_count} rows")
-
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
 
     # Drop the 100-partition table with safety wrapper
-    safe_drop_table(conn, "chunks", revision, cascade=True, backup=False)
+    # This will handle backup and safety checks automatically
+    safe_drop_table(conn, "chunks", revision, cascade=True, backup=True)
 
     # Recreate the original 16-partition structure
     conn.execute(
