@@ -31,7 +31,9 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     # Use a single DO block with exception handling to prevent transaction aborts
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         DO $$
         BEGIN
             -- Check if chunks table exists
@@ -74,10 +76,14 @@ def upgrade() -> None:
             WHEN OTHERS THEN
                 RAISE NOTICE 'Error updating partition function: %', SQLERRM;
         END $$;
-    """))
+    """
+        )
+    )
 
     # Create monitoring view (separate DO block)
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         DO $$
         BEGIN
             CREATE OR REPLACE VIEW partition_distribution AS
@@ -94,14 +100,18 @@ def upgrade() -> None:
             WHEN OTHERS THEN
                 RAISE NOTICE 'Could not create view: %', SQLERRM;
         END $$;
-    """))
+    """
+        )
+    )
 
 
 def downgrade() -> None:
     """Revert to original partition strategy."""
     conn = op.get_bind()
 
-    conn.execute(text("""
+    conn.execute(
+        text(
+            """
         DO $$
         BEGIN
             DROP VIEW IF EXISTS partition_distribution CASCADE;
@@ -126,4 +136,6 @@ def downgrade() -> None:
             WHEN OTHERS THEN
                 RAISE NOTICE 'Error reverting: %', SQLERRM;
         END $$;
-    """))
+    """
+        )
+    )
