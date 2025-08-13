@@ -35,9 +35,11 @@ class TestMockWebSocket {
   OPEN = 1;
   CLOSING = 2;
   CLOSED = 3;
+  autoOpen: boolean = true;
   
-  constructor(url: string) {
+  constructor(url: string, autoOpen: boolean = true) {
     this.url = url;
+    this.autoOpen = autoOpen;
     
     // Add event listener methods for MSW compatibility
     this.addEventListener = vi.fn((event: string, handler: any) => {
@@ -94,10 +96,12 @@ class TestMockWebSocket {
       this.simulateClose(validCode, reason || 'Connection closed');
     });
     
-    // Simulate connection opening after a brief delay
-    setTimeout(() => {
-      this.simulateOpen();
-    }, 10);
+    // Simulate connection opening after a brief delay (if autoOpen is true)
+    if (autoOpen) {
+      setTimeout(() => {
+        this.simulateOpen();
+      }, 10);
+    }
   }
   
   simulateOpen() {
@@ -165,7 +169,7 @@ describe('WebSocketService', () => {
     mockWebSocketInstance = null;
     MockWebSocketConstructor.mockClear();
     MockWebSocketConstructor.mockImplementation((url: string) => {
-      mockWebSocketInstance = new TestMockWebSocket(url);
+      mockWebSocketInstance = new TestMockWebSocket(url, true); // Default to auto-open
       return mockWebSocketInstance;
     });
     mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockAuthState));
@@ -632,25 +636,47 @@ describe('WebSocketService', () => {
       const reconnectingListener = vi.fn();
       service.on('reconnecting', reconnectingListener);
       
+      let connectionCount = 0;
+      
+      // Override mock to fail connections without opening
+      MockWebSocketConstructor.mockImplementation((url: string) => {
+        connectionCount++;
+        const ws = new TestMockWebSocket(url, false); // Don't auto-open
+        // Trigger close event immediately without opening
+        setTimeout(() => {
+          ws.readyState = 3; // Set to CLOSED directly
+          if (ws.onclose) {
+            ws.onclose(new CloseEvent('close', { code: 1006, reason: 'Connection lost' }));
+          }
+        }, 5);
+        mockWebSocketInstance = ws;
+        return ws as any;
+      });
+      
       service.connect();
-      await vi.advanceTimersByTimeAsync(30);
       
-      // Simulate multiple failed connections
-      for (let i = 1; i <= 3; i++) {
-        mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
-        
-        // Calculate expected delay with exponential backoff
-        const baseDelay = Math.min(100 * Math.pow(2, i - 1), 30000);
-        const maxDelay = baseDelay + 1000; // Account for jitter
-        
-        await vi.advanceTimersByTimeAsync(maxDelay + 100);
-        
-        if (i < 3) {
-          expect(reconnectingListener).toHaveBeenCalledWith({ attempt: i });
-        }
-      }
+      // Wait for first connection attempt to fail
+      await vi.advanceTimersByTimeAsync(10);
       
-      expect(service.getReconnectAttempts()).toBe(3);
+      // First reconnection - base delay 100ms + up to 1000ms jitter
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(reconnectingListener).toHaveBeenNthCalledWith(1, { attempt: 1 });
+      
+      // Wait for second failure
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Second reconnection - base delay 200ms + jitter
+      await vi.advanceTimersByTimeAsync(1300);
+      expect(reconnectingListener).toHaveBeenNthCalledWith(2, { attempt: 2 });
+      
+      // Wait for third failure
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Third reconnection - base delay 400ms + jitter  
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(reconnectingListener).toHaveBeenNthCalledWith(3, { attempt: 3 });
+      
+      expect(connectionCount).toBe(4); // Initial + 3 retries
     });
 
     it('should stop reconnecting after max attempts', async () => {
@@ -664,17 +690,43 @@ describe('WebSocketService', () => {
       const reconnectFailedListener = vi.fn();
       service.on('reconnect_failed', reconnectFailedListener);
       
+      let connectionCount = 0;
+      
+      // Override mock to fail connections without opening
+      MockWebSocketConstructor.mockImplementation((url: string) => {
+        connectionCount++;
+        const ws = new TestMockWebSocket(url, false); // Don't auto-open
+        // Trigger close event immediately without opening
+        setTimeout(() => {
+          ws.readyState = 3; // Set to CLOSED directly
+          if (ws.onclose) {
+            ws.onclose(new CloseEvent('close', { code: 1006, reason: 'Connection lost' }));
+          }
+        }, 5);
+        mockWebSocketInstance = ws;
+        return ws as any;
+      });
+      
       service.connect();
-      await vi.advanceTimersByTimeAsync(30);
       
-      // Fail connection multiple times
-      for (let i = 0; i < 3; i++) {
-        mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
-        await vi.advanceTimersByTimeAsync(200);
-      }
+      // First connection attempt fails
+      await vi.advanceTimersByTimeAsync(10);
       
+      // First reconnection attempt (50ms base + up to 1000ms jitter)
+      await vi.advanceTimersByTimeAsync(1100);
+      
+      // Second connection attempt fails  
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Second reconnection attempt (100ms base + jitter)
+      await vi.advanceTimersByTimeAsync(1200);
+      
+      // Third connection attempt fails (this will be the max)
+      await vi.advanceTimersByTimeAsync(10);
+      
+      // Should have emitted reconnect_failed event
       expect(reconnectFailedListener).toHaveBeenCalledWith({ attempts: 2 });
-      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(3); // Initial + 2 retries
+      expect(connectionCount).toBe(3); // Initial + 2 retries
     });
 
     it('should not reconnect on intentional disconnect', async () => {
@@ -811,16 +863,17 @@ describe('WebSocketService', () => {
       // Ensure WebSocket is authenticated
       expect(service.isReady()).toBe(true);
       
-      // Override send to throw error only for test messages
-      const originalSend = mockWebSocketInstance!.send;
-      mockWebSocketInstance!.send = vi.fn((data: string) => {
+      // Create a mock that throws an error for test messages
+      const sendMock = vi.fn((data: string) => {
         const message = JSON.parse(data);
         if (message.type === 'test') {
           throw new Error('Send failed');
         }
-        // For other messages, use original behavior
-        return originalSend(data);
+        // For other messages, just return undefined (successful send)
       });
+      
+      // Replace the send method with our mock
+      mockWebSocketInstance!.send = sendMock;
       
       const message: WebSocketMessage = {
         type: 'test',
@@ -848,19 +901,23 @@ describe('WebSocketService', () => {
       service.connect();
       await vi.advanceTimersByTimeAsync(30);
       
-      // Clear any previous calls to close
-      mockWebSocketInstance!.close.mockClear();
+      // Ensure we have a reference to the WebSocket instance
+      const wsInstance = mockWebSocketInstance;
+      expect(wsInstance).toBeDefined();
+      
+      // Create a spy on the close method before disconnecting
+      const closeSpy = vi.spyOn(wsInstance!, 'close');
       
       service.disconnect();
       
-      expect(mockWebSocketInstance!.close).toHaveBeenCalledWith(1000, 'Client disconnect');
+      expect(closeSpy).toHaveBeenCalledWith(1000, 'Client disconnect');
       expect(service.getState()).toBe(WebSocketState.CLOSED);
       expect(service.isConnected()).toBe(false);
       expect(service.isReady()).toBe(false);
       expect(service.isAuthenticatedStatus()).toBe(false);
       
       // Verify no heartbeats are sent after disconnect
-      const sendSpy = vi.spyOn(mockWebSocketInstance!, 'send');
+      const sendSpy = vi.spyOn(wsInstance!, 'send');
       sendSpy.mockClear();
       
       await vi.advanceTimersByTimeAsync(500);

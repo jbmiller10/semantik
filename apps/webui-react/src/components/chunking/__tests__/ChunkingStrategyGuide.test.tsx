@@ -122,8 +122,7 @@ describe('ChunkingStrategyGuide', () => {
       
       strategies.forEach(strategy => {
         // Find strategy name within the table specifically
-        const strategyCell = table.querySelector(`td:has-text("${strategy.name}")`) ||
-                           Array.from(table.querySelectorAll('td')).find(td => 
+        const strategyCell = Array.from(table.querySelectorAll('td')).find(td => 
                              td.textContent?.includes(strategy.name));
         expect(strategyCell).toBeTruthy();
       });
@@ -188,19 +187,27 @@ describe('ChunkingStrategyGuide', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} fileType="md" />);
       
       expect(screen.getByText('Recommendations for MD files')).toBeInTheDocument();
-      expect(screen.getByText(/Markdown-aware.*preserving document structure/)).toBeInTheDocument();
+      // The text is split across elements, so we check for the container paragraph
+      const recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
+      expect(recommendationContainer?.textContent).toContain('Markdown-aware');
+      expect(recommendationContainer?.textContent).toContain('preserving document structure');
     });
 
     it('shows correct recommendations for different file types', () => {
       const { rerender } = render(<ChunkingStrategyGuide onClose={mockOnClose} fileType="pdf" />);
       
       expect(screen.getByText('Recommendations for PDF files')).toBeInTheDocument();
-      expect(screen.getByText(/Semantic.*complex PDFs/)).toBeInTheDocument();
+      // The text is split across elements, so we check for the container paragraph
+      let recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
+      expect(recommendationContainer?.textContent).toContain('Semantic');
+      expect(recommendationContainer?.textContent).toContain('complex PDFs');
       
       rerender(<ChunkingStrategyGuide onClose={mockOnClose} fileType="py" />);
       
       expect(screen.getByText('Recommendations for PY files')).toBeInTheDocument();
-      expect(screen.getByText(/Markdown-aware.*code files/)).toBeInTheDocument();
+      recommendationContainer = document.querySelector('.space-y-2.text-sm.text-gray-600');
+      expect(recommendationContainer?.textContent).toContain('Markdown-aware');
+      expect(recommendationContainer?.textContent).toContain('code files');
     });
 
     it('marks strategies as recommended based on file type', () => {
@@ -360,11 +367,11 @@ describe('ChunkingStrategyGuide', () => {
       render(<ChunkingStrategyGuide onClose={mockOnClose} />);
       
       expect(screen.getByText('Quick Recommendation')).toBeInTheDocument();
-      // Check the paragraph content exists
-      const recommendationText = screen.getByText((content, element) => {
-        return element?.tagName === 'P' && content.includes('Not sure which to choose?');
-      });
-      expect(recommendationText).toBeInTheDocument();
+      // Check the paragraph content exists - the text is split across child elements
+      const recommendationParagraph = document.querySelector('.text-sm.text-blue-700');
+      expect(recommendationParagraph).toBeInTheDocument();
+      expect(recommendationParagraph?.textContent).toContain('Not sure which to choose?');
+      expect(recommendationParagraph?.textContent).toContain('Hybrid Auto-Select');
     });
   });
 
