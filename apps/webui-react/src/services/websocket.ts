@@ -265,7 +265,7 @@ export class WebSocketService extends EventEmitter {
   private sendAuthentication(): void {
     if (!this.authenticationToken) {
       console.error('No authentication token available');
-      this.ws?.close(4008, 'Authentication failed');
+      this.ws?.close(1008, 'Authentication failed');
       return;
     }
     
@@ -273,7 +273,7 @@ export class WebSocketService extends EventEmitter {
     this.authenticationTimer = setTimeout(() => {
       console.error('Authentication timeout');
       this.isAuthenticated = false;
-      this.ws?.close(4008, 'Authentication timeout');
+      this.ws?.close(1008, 'Authentication timeout');
       this.emit('error', { message: 'Authentication timeout', code: 'AUTH_TIMEOUT' });
     }, 5000);
     
@@ -291,7 +291,7 @@ export class WebSocketService extends EventEmitter {
         console.log('Authentication request sent');
       } catch (error) {
         console.error('Failed to send authentication:', error);
-        this.ws?.close(4008, 'Authentication failed');
+        this.ws?.close(1008, 'Authentication failed');
       }
     }
   }
@@ -380,7 +380,7 @@ export class WebSocketService extends EventEmitter {
     this.emit('authentication_failed', data);
     
     // Close connection with authentication failure code
-    this.ws?.close(4008, 'Authentication failed');
+    this.ws?.close(1008, 'Authentication failed');
   }
 
   /**

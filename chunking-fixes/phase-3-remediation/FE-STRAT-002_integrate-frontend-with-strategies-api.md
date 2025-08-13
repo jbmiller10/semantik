@@ -5,7 +5,7 @@ Phase 3 validation expects the frontend to fetch strategies from the backend (6 
 
 ## Requirements (updated)
 - Add `getStrategies()` to `apps/webui-react/src/services/api/v2/chunking.ts` using `GET /api/v2/chunking/strategies` and returning `ChunkingStrategy[]`.
-- Map backend fields to FE types if backend response isn’t FE-native yet (see Mapping). The goal is zero change to core FE types.
+- Map backend fields to FE types if backend response isn't FE-native yet (see Mapping). The goal is zero change to core FE types.
 - Update the chunking store to fetch and use strategies:
   - Add `fetchStrategies()` in `apps/webui-react/src/stores/chunkingStore.ts` which calls `chunkingApi.getStrategies()`.
   - Populate `strategies` state, set `selectedStrategy` to the first strategy `type` if none.

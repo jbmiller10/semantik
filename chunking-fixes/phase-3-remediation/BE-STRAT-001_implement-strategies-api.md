@@ -26,7 +26,7 @@ The frontend currently uses static `CHUNKING_STRATEGIES` for strategy metadata. 
 ## Acceptance Criteria (updated)
 - `GET /api/v2/chunking/strategies` returns HTTP 200 and an array of exactly 6 strategies with public IDs matching FE expectations (see alias rules).
 - Either the backend response directly matches FE `ChunkingStrategy` shape, or a documented FE adapter performs a one-to-one mapping with test coverage.
-- Contract tests validate field presence and types against FE’s `ChunkingStrategy`.
+- Contract tests validate field presence and types against FE's `ChunkingStrategy`.
 - Error case returns a 5xx with a useful `detail` message.
 
 ## Technical Notes (updated)

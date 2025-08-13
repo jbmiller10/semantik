@@ -804,6 +804,7 @@ describe('chunkingStore', () => {
       consoleError.mockRestore()
     })
 
+
     it('maintains preset list consistency', async () => {
       // Get fresh instance of the store  
       const { result } = renderHook(() => useChunkingStore())
