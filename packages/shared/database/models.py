@@ -94,7 +94,7 @@ class OperationStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
     @classmethod
-    def _missing_(cls, value: Any) -> OperationStatus | None:
+    def _missing_(cls, value: Any) -> "OperationStatus | None":
         """Provide case-insensitive lookup for enum values.
 
         This allows constructing OperationStatus from values like "PROCESSING"
@@ -103,7 +103,7 @@ class OperationStatus(str, enum.Enum):
         """
         if isinstance(value, str):
             result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
-            return cast(OperationStatus | None, result)
+            return cast("OperationStatus | None", result)
         return None
 
 
