@@ -14,7 +14,7 @@ from uuid import uuid4
 # Set test environment BEFORE any app imports
 os.environ["TESTING"] = "true"
 os.environ["ENV"] = "test"
-os.environ["DISABLE_RATE_LIMIT"] = "true"
+os.environ["DISABLE_RATE_LIMITING"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 
 import asyncpg  # noqa: E402
@@ -77,18 +77,26 @@ def use_fakeredis():
     """Opt-in fixture to use fakeredis for a specific test."""
     fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
     fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    
+    # Import the sync redis module for proper patching
+    import redis as sync_redis  # Import the sync redis module
 
     with (
+        # Patch sync redis
         patch("redis.from_url", return_value=fake_sync_redis),
-        patch("redis.asyncio.from_url", return_value=fake_async_redis),
         patch("redis.ConnectionPool.from_url", return_value=fake_sync_redis.connection_pool),
+        # Patch async redis
+        patch("redis.asyncio.from_url", return_value=fake_async_redis),
         patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
+        # Also patch the WebSocket manager's Redis imports
+        patch("packages.webui.websocket.scalable_manager.redis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.websocket_manager.redis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.websocket_manager.aioredis.from_url", return_value=fake_async_redis),
+        # Patch service manager imports
+        patch("packages.webui.services.redis_manager.aioredis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.services.redis_manager.redis.from_url", return_value=fake_sync_redis),
     ):
-
         # Also need to handle Redis() constructor with connection pool
-        # Note: 'redis' here refers to redis.asyncio due to the import alias
-        import redis as sync_redis  # Import the sync redis module
-        
         original_sync_redis_init = sync_redis.Redis.__init__
         original_async_redis_init = redis.Redis.__init__  # redis is already redis.asyncio
 

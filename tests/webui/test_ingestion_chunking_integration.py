@@ -706,15 +706,11 @@ class TestAppendTaskIntegration:
             # Return different chunk counts for each document
             chunk_results = [
                 {
-                    "chunks": [
-                        {"chunk_id": f"doc-1_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)
-                    ],
+                    "chunks": [{"chunk_id": f"doc-1_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(5)],
                     "stats": {"chunk_count": 5, "strategy_used": "recursive", "fallback": False},
                 },
                 {
-                    "chunks": [
-                        {"chunk_id": f"doc-2_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)
-                    ],
+                    "chunks": [{"chunk_id": f"doc-2_{i:04d}", "text": f"chunk {i}", "metadata": {}} for i in range(3)],
                     "stats": {"chunk_count": 3, "strategy_used": "recursive", "fallback": False},
                 },
             ]
@@ -1211,8 +1207,7 @@ class TestReindexTaskIntegration:
             chunk_results = [
                 {
                     "chunks": [
-                        {"chunk_id": f"doc-{i}_{j:04d}", "text": f"chunk {j}", "metadata": {}}
-                        for j in range(i + 2)
+                        {"chunk_id": f"doc-{i}_{j:04d}", "text": f"chunk {j}", "metadata": {}} for j in range(i + 2)
                     ],
                     "stats": {"chunk_count": i + 2, "strategy_used": "markdown", "fallback": False},
                 }
