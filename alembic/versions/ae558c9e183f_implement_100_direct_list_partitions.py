@@ -7,18 +7,29 @@ Create Date: 2025-08-10 02:20:06.337096
 """
 
 import contextlib
+import logging
 import re
 from collections.abc import Sequence
 
 from sqlalchemy import text
 
 from alembic import op
+from alembic.migrations_utils.migration_safety import (
+    check_table_exists,
+    create_table_backup,
+    require_destructive_flag,
+    safe_drop_table,
+    verify_backup,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = "ae558c9e183f"
 down_revision: str | Sequence[str] | None = "add_chunking_strategy_cols"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def cleanup_chunks_dependencies(conn):
@@ -112,21 +123,45 @@ def upgrade() -> None:
     Implement 100 direct LIST partitions for optimal chunk distribution.
 
     This migration:
-    1. Drops the old chunks table with 16 HASH partitions
-    2. Creates a new chunks table with 100 LIST partitions
-    3. Uses PostgreSQL's hashtext() for even distribution
-    4. Creates monitoring views for partition health
+    1. Backs up existing data before any destructive operations
+    2. Drops the old chunks table with 16 HASH partitions
+    3. Creates a new chunks table with 100 LIST partitions
+    4. Uses PostgreSQL's hashtext() for even distribution
+    5. Creates monitoring views for partition health
     """
 
     conn = op.get_bind()
 
-    # Step 1: Drop old tables and views (we're pre-release!)
+    logger.info("Starting migration to 100 LIST partitions")
+
+    # Check if we're allowed to perform destructive operations
+    if check_table_exists(conn, "chunks"):
+        # This operation is destructive, require explicit permission
+        require_destructive_flag("DROP TABLE chunks CASCADE")
+
+        # Create backup before any destructive operations
+        backup_table_name, row_count = create_table_backup(
+            conn, "chunks", revision, check_exists=True
+        )
+
+        if backup_table_name and row_count > 0:
+            logger.info(f"Created backup: {backup_table_name} with {row_count} rows")
+            # Verify the backup
+            if not verify_backup(conn, backup_table_name, row_count):
+                raise RuntimeError("Backup verification failed! Aborting migration.")
+
+    # Step 1: Drop old tables and views
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
 
-    # Now drop the tables
-    conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
-    conn.execute(text("DROP TABLE IF EXISTS partition_mappings CASCADE"))  # Remove any old mapping tables
+    # Now drop the tables with safety wrapper
+    backup_info = safe_drop_table(conn, "chunks", revision, cascade=True, backup=False)
+    if backup_info[0]:
+        logger.info(f"Chunks table dropped. Data preserved in {backup_info[0]}")
+
+    # Also drop partition_mappings if it exists
+    if check_table_exists(conn, "partition_mappings"):
+        safe_drop_table(conn, "partition_mappings", revision, cascade=True, backup=True)
 
     # Step 2: Create trigger function to compute partition key
     # We use a trigger because PostgreSQL doesn't allow expressions or generated columns
@@ -500,11 +535,25 @@ def downgrade() -> None:
 
     conn = op.get_bind()
 
+    logger.info("Starting downgrade from 100 LIST partitions")
+
+    # Check if we're allowed to perform destructive operations
+    if check_table_exists(conn, "chunks"):
+        require_destructive_flag("Downgrade: DROP TABLE chunks CASCADE")
+
+        # Create backup before downgrade
+        backup_table_name, row_count = create_table_backup(
+            conn, "chunks", revision, check_exists=True
+        )
+
+        if backup_table_name and row_count > 0:
+            logger.info(f"Created backup before downgrade: {backup_table_name} with {row_count} rows")
+
     # Clean up all dependencies first
     cleanup_chunks_dependencies(conn)
 
-    # Drop the 100-partition table
-    conn.execute(text("DROP TABLE IF EXISTS chunks CASCADE"))
+    # Drop the 100-partition table with safety wrapper
+    safe_drop_table(conn, "chunks", revision, cascade=True, backup=False)
 
     # Recreate the original 16-partition structure
     conn.execute(

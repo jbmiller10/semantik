@@ -6,6 +6,7 @@ Create Date: 2025-08-04 15:34:52.426728
 
 """
 
+import logging
 import os
 from collections.abc import Sequence
 
@@ -13,12 +14,19 @@ import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
 from alembic import op
+from alembic.migrations_utils.migration_safety import (
+    require_destructive_flag,
+    safe_drop_table,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = "52db15bd2686"
 down_revision: str | Sequence[str] | None = "20250727151108"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def table_exists(inspector: Inspector, table_name: str) -> bool:
@@ -366,7 +374,10 @@ def downgrade() -> None:
             op.drop_index("ix_chunks_collection_id_document_id", table_name="chunks")
 
         # Drop all partition tables (PostgreSQL will drop them with the parent)
-        op.execute("DROP TABLE chunks CASCADE")
+        logger.info("Dropping chunks table and its partitions")
+        conn = op.get_bind()
+        require_destructive_flag("Downgrade: DROP TABLE chunks CASCADE")
+        safe_drop_table(conn, "chunks", revision, cascade=True, backup=True)
 
     # Drop chunking_configs table
     if table_exists(inspector, "chunking_configs"):

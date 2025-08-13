@@ -10,18 +10,26 @@ This migration fixes several issues identified in the code review:
 3. Adds unique constraint on (collection_id, document_id, chunk_index)
 """
 
+import logging
 import os
 from collections.abc import Sequence
 
 from sqlalchemy.engine import Connection
 
 from alembic import op
+from alembic.migrations_utils.migration_safety import (
+    require_destructive_flag,
+    safe_drop_table,
+)
 
 # revision identifiers, used by Alembic.
 revision: str = "6596eda04faa"
 down_revision: str | Sequence[str] | None = "52db15bd2686"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 def _index_exists(conn: Connection, index_name: str) -> bool:
@@ -128,7 +136,9 @@ def upgrade() -> None:
 
     if result:
         # Migration was partially applied, clean up old tables first
-        op.execute("DROP TABLE IF EXISTS chunks_old CASCADE;")
+        logger.info("Dropping chunks_old table if it exists")
+        require_destructive_flag("DROP TABLE chunks_old CASCADE")
+        safe_drop_table(conn, "chunks_old", revision, cascade=True, backup=False)
 
     # Check if chunks table exists and what type its id column is
     chunks_exists = conn.execute(
@@ -269,7 +279,9 @@ def upgrade() -> None:
     _create_indexes_if_not_exist(conn)
 
     # Step 5: Drop the old table and its partitions
-    op.execute("DROP TABLE chunks_old CASCADE;")
+    logger.info("Dropping chunks_old table after migration")
+    require_destructive_flag("DROP TABLE chunks_old CASCADE")
+    safe_drop_table(conn, "chunks_old", revision, cascade=True, backup=False)
 
     # Step 6: Update the materialized view to handle the new string ID type
     _create_or_replace_materialized_view()
@@ -323,7 +335,9 @@ def downgrade() -> None:
         return
 
     # Clean up any leftover chunks_new table from failed downgrade
-    op.execute("DROP TABLE IF EXISTS chunks_new CASCADE;")
+    logger.info("Dropping chunks_new table if it exists")
+    require_destructive_flag("DROP TABLE chunks_new CASCADE")
+    safe_drop_table(conn, "chunks_new", revision, cascade=True, backup=False)
 
     # Step 1: Rename current table
     op.execute("ALTER TABLE chunks RENAME TO chunks_new;")
@@ -433,7 +447,9 @@ def downgrade() -> None:
     # as they were added by this migration
 
     # Step 5: Drop the new table
-    op.execute("DROP TABLE chunks_new CASCADE;")
+    logger.info("Dropping chunks_new table after downgrade")
+    require_destructive_flag("DROP TABLE chunks_new CASCADE")
+    safe_drop_table(conn, "chunks_new", revision, cascade=True, backup=False)
 
     # Step 6: Restore original materialized view
     _create_or_replace_materialized_view()
