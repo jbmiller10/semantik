@@ -35,13 +35,40 @@
 <migration-patterns>
   <safe-migration>
     <!-- Always backup before destructive changes -->
-    from alembic.migrations_utils.backup_manager import BackupManager
+    from alembic.migrations_utils.migration_safety import (
+        require_destructive_flag,
+        safe_drop_table,
+        create_table_backup,
+        verify_backup
+    )
     
     def upgrade():
-        backup_manager = BackupManager()
-        backup_manager.create_backup("pre_migration_backup")
-        # ... migration code ...
+        conn = op.get_bind()
+        
+        # Require explicit permission for destructive operations
+        require_destructive_flag("DROP TABLE chunks CASCADE")
+        
+        # Create backup before DROP
+        backup_table_name, row_count = create_table_backup(
+            conn, "chunks", revision, check_exists=True
+        )
+        
+        # Verify backup integrity
+        if backup_table_name and row_count > 0:
+            if not verify_backup(conn, backup_table_name, row_count):
+                raise RuntimeError("Backup verification failed!")
+        
+        # Safe drop with automatic backup
+        safe_drop_table(conn, "chunks", revision, cascade=True, backup=True)
   </safe-migration>
+  
+  <safety-requirements>
+    <!-- Environment variable required for destructive operations -->
+    ALLOW_DESTRUCTIVE_MIGRATIONS=true
+    
+    <!-- Backup retention (default 7 days) -->
+    MIGRATION_BACKUP_RETENTION_DAYS=7
+  </safety-requirements>
   
   <async-handling>
     <!-- Convert async driver for Alembic -->
@@ -59,6 +86,24 @@
   <history>poetry run alembic history</history>
 </running-migrations>
 
+<backup-utilities>
+  <module>alembic/migrations_utils/migration_safety.py</module>
+  <functions>
+    <function>require_destructive_flag() - Checks ALLOW_DESTRUCTIVE_MIGRATIONS env var</function>
+    <function>create_table_backup() - Creates timestamped backup before DROP</function>
+    <function>verify_backup() - Verifies backup integrity</function>
+    <function>safe_drop_table() - Wraps DROP TABLE with safety checks</function>
+    <function>restore_from_backup() - Restores table from backup</function>
+  </functions>
+  
+  <backup-manager>
+    <!-- Command-line backup management -->
+    poetry run python alembic/migrations_utils/backup_manager.py \
+      --database-url $DATABASE_URL \
+      --action list  # list, cleanup, verify, extend, status
+  </backup-manager>
+</backup-utilities>
+
 <common-issues>
   <issue>
     <problem>Migration fails with async driver error</problem>
@@ -67,5 +112,13 @@
   <issue>
     <problem>Partition key not calculated</problem>
     <solution>Check chunk_partition_trigger exists and is enabled</solution>
+  </issue>
+  <issue>
+    <problem>Destructive migration blocked</problem>
+    <solution>Set ALLOW_DESTRUCTIVE_MIGRATIONS=true to proceed</solution>
+  </issue>
+  <issue>
+    <problem>Backup verification fails</problem>
+    <solution>Check migration_backups table and disk space</solution>
   </issue>
 </common-issues>
