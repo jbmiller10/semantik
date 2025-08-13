@@ -166,7 +166,7 @@ class RedisStreamWebSocketManager:
         # If we didn't accept, close the connection outside the lock
         if not should_accept:
             await websocket.close(code=1008, reason=reject_reason)
-            return
+            raise ConnectionRefusedError(reject_reason)
 
         logger.info(
             f"Operation WebSocket connected: user={user_id}, operation={operation_id} "
@@ -804,7 +804,7 @@ class RedisStreamWebSocketManager:
             if total_connections >= self.max_total_connections:
                 logger.error(f"Global connection limit reached ({self.max_total_connections})")
                 await websocket.close(code=1008, reason="Server connection limit exceeded")
-                return
+                raise ConnectionRefusedError("Server connection limit exceeded")
 
             # Check connection limit for this user
             user_connections = sum(
@@ -814,7 +814,7 @@ class RedisStreamWebSocketManager:
             if user_connections >= self.max_connections_per_user:
                 logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
                 await websocket.close(code=1008, reason="User connection limit exceeded")
-                return
+                raise ConnectionRefusedError("User connection limit exceeded")
 
         await websocket.accept()
 
