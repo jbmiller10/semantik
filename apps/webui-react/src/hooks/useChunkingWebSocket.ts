@@ -373,7 +373,7 @@ export function useChunkingWebSocket(
         disconnect();
       }
     };
-  }, [autoConnect]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoConnect, connect, disconnect]);
 
   return {
     // Connection management

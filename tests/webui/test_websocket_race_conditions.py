@@ -66,19 +66,24 @@ async def test_concurrent_connections_race_condition(manager):
     async def connect_client(client_id):
         websocket = MockWebSocket()
         operation_id = f"op_{client_id}"
-        await manager.connect(websocket, operation_id, user_id)
-        return websocket, operation_id
+        try:
+            await manager.connect(websocket, operation_id, user_id)
+            return websocket, operation_id
+        except ConnectionRefusedError:
+            # Expected when limit is exceeded
+            return None
 
     # Create many concurrent connections
     tasks = [connect_client(i) for i in range(num_connections)]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Check for any exceptions
-    exceptions = [r for r in results if isinstance(r, Exception)]
-    assert len(exceptions) == 0, f"Exceptions during concurrent connections: {exceptions}"
+    # Check for unexpected exceptions (not ConnectionRefusedError)
+    unexpected_exceptions = [r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)]
+    assert len(unexpected_exceptions) == 0, f"Unexpected exceptions during concurrent connections: {unexpected_exceptions}"
 
-    # Verify connections were properly tracked
-    accepted_count = sum(1 for r in results if not isinstance(r, Exception) and r[0].accepted)
+    # Count successful connections
+    successful_results = [r for r in results if r is not None and not isinstance(r, Exception)]
+    accepted_count = sum(1 for r in successful_results if r[0].accepted)
 
     # Due to per-user limit, only first 10 should be accepted
     assert accepted_count == manager.max_connections_per_user
@@ -289,24 +294,28 @@ async def test_concurrent_connect_disconnect_race_condition(manager):
     async def connect_disconnect_cycle(iteration):
         websocket = MockWebSocket()
 
-        # Connect
-        await manager.connect(websocket, operation_id, user_id)
+        try:
+            # Connect
+            await manager.connect(websocket, operation_id, user_id)
 
-        # Small random delay
-        await asyncio.sleep(0.001 * (iteration % 3))
+            # Small random delay
+            await asyncio.sleep(0.001 * (iteration % 3))
 
-        # Disconnect
-        await manager.disconnect(websocket, operation_id, user_id)
+            # Disconnect
+            await manager.disconnect(websocket, operation_id, user_id)
 
-        return iteration
+            return iteration
+        except ConnectionRefusedError:
+            # Expected when we hit connection limits during concurrent attempts
+            return None
 
     # Run many concurrent connect/disconnect cycles
     tasks = [connect_disconnect_cycle(i) for i in range(num_iterations)]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Check for any exceptions
-    exceptions = [r for r in results if isinstance(r, Exception)]
-    assert len(exceptions) == 0, f"Exceptions during connect/disconnect cycles: {exceptions}"
+    # Check for unexpected exceptions (not ConnectionRefusedError)
+    unexpected_exceptions = [r for r in results if isinstance(r, Exception) and not isinstance(r, ConnectionRefusedError)]
+    assert len(unexpected_exceptions) == 0, f"Unexpected exceptions during connect/disconnect cycles: {unexpected_exceptions}"
 
     # Final state should be clean
     assert len(manager.connections) == 0

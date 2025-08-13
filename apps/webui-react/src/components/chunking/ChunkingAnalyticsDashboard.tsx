@@ -35,7 +35,16 @@ export function ChunkingAnalyticsDashboard({
   const [showDetails, setShowDetails] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    loadAnalytics();
+    let isMounted = true;
+    
+    if (isMounted) {
+      loadAnalytics();
+    }
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [loadAnalytics]);
 
   const handleRefresh = () => {
