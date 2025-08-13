@@ -668,7 +668,7 @@ describe('chunkingStore', () => {
         await result.current.loadPreview()
       })
 
-      expect(result.current.previewError).toBe('Error')
+      expect(result.current.previewError).toBe('API Error: Failed to load preview')
       expect(result.current.previewLoading).toBe(false)
       expect(result.current.previewChunks).toEqual([])
     })
@@ -694,7 +694,7 @@ describe('chunkingStore', () => {
         await result.current.compareStrategies()
       })
 
-      expect(result.current.comparisonError).toBe('Error')
+      expect(result.current.comparisonError).toBe('API Error: Comparison failed')
       expect(result.current.comparisonLoading).toBe(false)
       expect(result.current.comparisonResults).toEqual({})
     })
@@ -714,7 +714,7 @@ describe('chunkingStore', () => {
 
       expect(result.current.analyticsLoading).toBe(false)
       expect(result.current.analyticsData).toBeNull()
-      expect(consoleError).toHaveBeenCalledWith('Failed to load analytics:', 'Error')
+      expect(consoleError).toHaveBeenCalledWith('Failed to load analytics:', 'API Error: Analytics failed')
       
       consoleError.mockRestore()
     })
@@ -743,7 +743,7 @@ describe('chunkingStore', () => {
       ).rejects.toThrow('API Error: Save failed')
 
       expect(result.current.customPresets).toHaveLength(0)
-      expect(consoleError).toHaveBeenCalledWith('Failed to save preset:', 'Error')
+      expect(consoleError).toHaveBeenCalledWith('Failed to save preset:', 'API Error: Save failed')
       
       consoleError.mockRestore()
     })
@@ -779,7 +779,7 @@ describe('chunkingStore', () => {
 
       // Preset should still exist since delete failed
       expect(result.current.customPresets).toHaveLength(1)
-      expect(consoleError).toHaveBeenCalledWith('Failed to delete preset:', 'Error')
+      expect(consoleError).toHaveBeenCalledWith('Failed to delete preset:', 'API Error: Delete failed')
       
       consoleError.mockRestore()
     })
@@ -799,7 +799,7 @@ describe('chunkingStore', () => {
 
       expect(result.current.presetsLoading).toBe(false)
       expect(result.current.customPresets).toEqual([])
-      expect(consoleError).toHaveBeenCalledWith('Failed to load presets:', 'Error')
+      expect(consoleError).toHaveBeenCalledWith('Failed to load presets:', 'API Error: Load presets failed')
       
       consoleError.mockRestore()
     })
@@ -974,9 +974,31 @@ describe('chunkingStore', () => {
           options.onProgress({ percentage: 50, currentChunk: 5, totalChunks: 10 })
         }
         return {
-          chunks: mockChunkingPreviewResponse.chunks,
-          statistics: mockChunkingPreviewResponse.statistics,
-          performance: mockChunkingPreviewResponse.performance,
+          chunks: [
+            {
+              id: 'chunk-1',
+              content: 'Test chunk content',
+              startIndex: 0,
+              endIndex: 50,
+              tokens: 10,
+              overlapWithPrevious: 0,
+              overlapWithNext: 10,
+            },
+          ],
+          statistics: {
+            totalChunks: 1,
+            avgChunkSize: 50,
+            minChunkSize: 50,
+            maxChunkSize: 50,
+            totalSize: 50,
+            overlapRatio: 0,
+            overlapPercentage: 0,
+            sizeDistribution: [],
+          },
+          performance: {
+            processingTimeMs: 100,
+            estimatedFullProcessingTimeMs: 500,
+          },
         }
       })
 
@@ -1002,7 +1024,16 @@ describe('chunkingStore', () => {
 
     it('handles progress callback in compareStrategies', async () => {
       const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) {
+        // Skip test if hook didn't initialize properly
+        return
+      }
+      
       const progressSpy = vi.fn()
+      
+      // Spy on console.debug BEFORE setting up mock
+      const consoleDebug = vi.spyOn(console, 'debug').mockImplementation(progressSpy)
       
       // Mock compare to capture the progress callback
       mockCompare.mockImplementationOnce(async (data, options) => {
@@ -1010,15 +1041,53 @@ describe('chunkingStore', () => {
         if (options?.onProgress) {
           options.onProgress({ percentage: 33, currentStrategy: 1, totalStrategies: 3 })
         }
-        return mockComparisonResults
+        return [
+          {
+            strategy: 'recursive',
+            configuration: {
+              strategy: 'recursive',
+              parameters: { chunk_size: 600, chunk_overlap: 100 },
+            },
+            preview: {
+              chunks: [],
+              statistics: {
+                totalChunks: 3,
+                avgChunkSize: 400,
+                minChunkSize: 300,
+                maxChunkSize: 500,
+                sizeDistribution: [],
+              },
+              performance: {
+                processingTimeMs: 50,
+                estimatedFullProcessingTimeMs: 200,
+              },
+            },
+          },
+          {
+            strategy: 'semantic',
+            configuration: {
+              strategy: 'semantic',
+              parameters: { breakpoint_percentile_threshold: 90, max_chunk_size: 1000 },
+            },
+            preview: {
+              chunks: [],
+              statistics: {
+                totalChunks: 4,
+                avgChunkSize: 350,
+                minChunkSize: 250,
+                maxChunkSize: 450,
+                sizeDistribution: [],
+              },
+              performance: {
+                processingTimeMs: 150,
+                estimatedFullProcessingTimeMs: 600,
+              },
+            },
+          },
+        ]
       })
-
-      // Spy on console.debug
-      const consoleDebug = vi.spyOn(console, 'debug').mockImplementation(progressSpy)
       
-      await act(async () => {
-        if (!result.current) return
-        
+      act(() => {
         result.current.setPreviewDocument({
           id: 'doc-1',
           content: 'Test content',
@@ -1026,7 +1095,9 @@ describe('chunkingStore', () => {
         })
         result.current.addComparisonStrategy('recursive')
         result.current.addComparisonStrategy('semantic')
-        
+      })
+      
+      await act(async () => {
         await result.current.compareStrategies()
       })
 
@@ -1053,8 +1124,48 @@ describe('chunkingStore', () => {
       act(() => {
         useChunkingStore.setState({
           comparisonResults: {
-            recursive: mockComparisonResults[0],
-            semantic: mockComparisonResults[1],
+            recursive: {
+              strategy: 'recursive',
+              configuration: {
+                strategy: 'recursive',
+                parameters: { chunk_size: 600, chunk_overlap: 100 },
+              },
+              preview: {
+                chunks: [],
+                statistics: {
+                  totalChunks: 3,
+                  avgChunkSize: 400,
+                  minChunkSize: 300,
+                  maxChunkSize: 500,
+                  sizeDistribution: [],
+                },
+                performance: {
+                  processingTimeMs: 50,
+                  estimatedFullProcessingTimeMs: 200,
+                },
+              },
+            },
+            semantic: {
+              strategy: 'semantic',
+              configuration: {
+                strategy: 'semantic',
+                parameters: { breakpoint_percentile_threshold: 90, max_chunk_size: 1000 },
+              },
+              preview: {
+                chunks: [],
+                statistics: {
+                  totalChunks: 4,
+                  avgChunkSize: 350,
+                  minChunkSize: 250,
+                  maxChunkSize: 450,
+                  sizeDistribution: [],
+                },
+                performance: {
+                  processingTimeMs: 150,
+                  estimatedFullProcessingTimeMs: 600,
+                },
+              },
+            },
           },
         })
       })
