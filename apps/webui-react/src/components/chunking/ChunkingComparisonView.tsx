@@ -59,24 +59,33 @@ export function ChunkingComparisonView({
 
   // Auto-compare when strategies change
   useEffect(() => {
+    let isMounted = true;
+    
     if (document && comparisonStrategies.length > 0) {
-      // Clear WebSocket data when starting new comparison
-      clearWebSocketData();
-      
-      // Try WebSocket first, fall back to REST API
-      if (useWebSocket && isConnected && document.id) {
-        const strategies = comparisonStrategies.map(strategy => ({
-          strategy,
-          configuration: CHUNKING_STRATEGIES[strategy].parameters.reduce((acc, param) => {
-            acc[param.key] = param.defaultValue;
-            return acc;
-          }, {} as Record<string, number | boolean | string>)
-        }));
-        startWebSocketComparison(document.id, strategies);
-      } else {
-        compareStrategies();
+      if (isMounted) {
+        // Clear WebSocket data when starting new comparison
+        clearWebSocketData();
+        
+        // Try WebSocket first, fall back to REST API
+        if (useWebSocket && isConnected && document.id) {
+          const strategies = comparisonStrategies.map(strategy => ({
+            strategy,
+            configuration: CHUNKING_STRATEGIES[strategy].parameters.reduce((acc, param) => {
+              acc[param.key] = param.defaultValue;
+              return acc;
+            }, {} as Record<string, number | boolean | string>)
+          }));
+          startWebSocketComparison(document.id, strategies);
+        } else {
+          compareStrategies();
+        }
       }
     }
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [comparisonStrategies, document, compareStrategies, 
       useWebSocket, isConnected, startWebSocketComparison, clearWebSocketData]);
 

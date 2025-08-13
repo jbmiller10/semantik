@@ -268,7 +268,9 @@ class TestRedisStreamWebSocketManager:
         for i in range(manager.max_connections_per_user):
             manager.connections[f"user1:operation:operation{i}"] = {AsyncMock()}
 
-        await manager.connect(mock_websocket, "operation_new", "user1")
+        # Should raise exception when limit exceeded
+        with pytest.raises(ConnectionRefusedError, match="User connection limit exceeded"):
+            await manager.connect(mock_websocket, "operation_new", "user1")
 
         # Verify connection rejected
         mock_websocket.close.assert_called_once_with(code=1008, reason="User connection limit exceeded")

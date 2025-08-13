@@ -197,7 +197,9 @@ class TestWebSocketManager:
         for i in range(ws_manager.max_connections_per_user):
             ws_manager.connections[f"user-123:operation:op-{i}"] = {Mock()}
 
-        await ws_manager.connect(mock_websocket, "op-new", "user-123")
+        # Should raise exception when limit exceeded
+        with pytest.raises(ConnectionRefusedError, match="User connection limit exceeded"):
+            await ws_manager.connect(mock_websocket, "op-new", "user-123")
 
         # Should reject connection
         mock_websocket.close.assert_called_once_with(code=1008, reason="User connection limit exceeded")

@@ -73,6 +73,7 @@ export function ChunkingPreviewPanel({
   const [useWebSocket, setUseWebSocket] = useState(true);
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const rightPanelRef = useRef<HTMLDivElement>(null);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Use provided document or preview document from store
   const activeDocument = providedDocument || previewDocument;
@@ -83,24 +84,42 @@ export function ChunkingPreviewPanel({
   const displayLoading = useWebSocket ? (wsProgress !== null) : previewLoading;
   const displayError = useWebSocket ? wsError?.message : previewError;
 
+  // Cleanup copy timeout on unmount
   useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    
     if (providedDocument && (!previewDocument || previewDocument.id !== providedDocument.id)) {
-      setPreviewDocument(providedDocument);
-      
-      // Clear WebSocket data when document changes
-      clearWebSocketData();
-      
-      // Try WebSocket first, fall back to REST API
-      if (useWebSocket && isConnected && providedDocument.id) {
-        startWebSocketPreview(
-          providedDocument.id,
-          selectedStrategy,
-          strategyConfig.parameters
-        );
-      } else {
-        loadPreview();
+      if (isMounted) {
+        setPreviewDocument(providedDocument);
+        
+        // Clear WebSocket data when document changes
+        clearWebSocketData();
+        
+        // Try WebSocket first, fall back to REST API
+        if (useWebSocket && isConnected && providedDocument.id) {
+          startWebSocketPreview(
+            providedDocument.id,
+            selectedStrategy,
+            strategyConfig.parameters
+          );
+        } else {
+          loadPreview();
+        }
       }
     }
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [providedDocument, previewDocument, setPreviewDocument, loadPreview, 
       useWebSocket, isConnected, startWebSocketPreview, clearWebSocketData,
       selectedStrategy, strategyConfig]);
@@ -208,7 +227,17 @@ export function ChunkingPreviewPanel({
     try {
       await navigator.clipboard.writeText(chunk.content);
       setCopiedChunkId(chunk.id);
-      setTimeout(() => setCopiedChunkId(null), 2000);
+      
+      // Clear any existing timeout
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      
+      // Set new timeout and store reference
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedChunkId(null);
+        copyTimeoutRef.current = null;
+      }, 2000);
     } catch (error) {
       console.error('Failed to copy:', error);
     }

@@ -153,7 +153,8 @@ class TestWebSocketConnection:
             ws_manager.connections[key] = {websockets[i]}
 
         # Try to add one more - should be rejected
-        await ws_manager.connect(websockets[3], "op-new", user_id)
+        with pytest.raises(ConnectionRefusedError, match="User connection limit exceeded"):
+            await ws_manager.connect(websockets[3], "op-new", user_id)
 
         websockets[3].close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
 
@@ -169,7 +170,8 @@ class TestWebSocketConnection:
         ws_manager.connections["user2:operation:op2"] = {AsyncMock()}
 
         # Try to add one more - should be rejected
-        await ws_manager.connect(mock_websocket, "op3", "user3")
+        with pytest.raises(ConnectionRefusedError, match="Server connection limit exceeded"):
+            await ws_manager.connect(mock_websocket, "op3", "user3")
 
         mock_websocket.close.assert_called_once_with(code=1008, reason="Server connection limit exceeded")
 

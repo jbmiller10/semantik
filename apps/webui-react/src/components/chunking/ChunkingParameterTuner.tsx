@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Sliders, 
   RotateCcw, 
@@ -44,27 +44,38 @@ export function ChunkingParameterTuner({
   const strategy = CHUNKING_STRATEGIES[selectedStrategy];
   const basicParameters = strategy.parameters.filter(p => !p.advanced);
   const advancedParameters = strategy.parameters.filter(p => p.advanced);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Debounced parameter change handler
   const debouncedLoadPreview = useCallback(() => {
-    let timeoutId: NodeJS.Timeout;
-    return () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        if (showPreview && previewDocument) {
-          loadPreview(true);
-        }
-        onParameterChange?.();
-      }, 500);
-    };
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
+    // Set new timeout
+    timeoutRef.current = setTimeout(() => {
+      if (showPreview && previewDocument) {
+        loadPreview(true);
+      }
+      onParameterChange?.();
+      timeoutRef.current = null;
+    }, 500);
   }, [showPreview, previewDocument, loadPreview, onParameterChange]);
-
-  const debouncedUpdate = debouncedLoadPreview();
 
   // Update preview when parameters change
   useEffect(() => {
-    debouncedUpdate();
-  }, [strategyConfig.parameters, debouncedUpdate]);
+    debouncedLoadPreview();
+  }, [strategyConfig.parameters, debouncedLoadPreview]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleParameterChange = (key: string, value: number | boolean | string) => {
     updateConfiguration({ [key]: value });
