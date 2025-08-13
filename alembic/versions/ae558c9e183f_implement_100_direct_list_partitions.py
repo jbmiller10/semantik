@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from sqlalchemy import text
 
 from alembic import op
-from alembic.migrations_utils.migration_safety import (
+from migrations_utils.migration_safety import (
     check_table_exists,
     create_table_backup,
     require_destructive_flag,

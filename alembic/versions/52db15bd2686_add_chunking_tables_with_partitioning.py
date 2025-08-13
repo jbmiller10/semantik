@@ -14,7 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
 from alembic import op
-from alembic.migrations_utils.migration_safety import (
+from migrations_utils.migration_safety import (
     require_destructive_flag,
     safe_drop_table,
 )

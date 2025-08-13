@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from sqlalchemy.engine import Connection
 
 from alembic import op
-from alembic.migrations_utils.migration_safety import (
+from migrations_utils.migration_safety import (
     require_destructive_flag,
     safe_drop_table,
 )
