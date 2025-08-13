@@ -2179,7 +2179,7 @@ class ChunkingService:
                             chunks = []
                             for idx, chunk_entity in enumerate(chunk_entities):
                                 chunk_dict = {
-                                    "chunk_id": f"{document_id}_chunk_{idx:04d}",  # Fixed format with 'chunk_' prefix
+                                    "chunk_id": f"{document_id}_{idx:04d}",  # Fixed format without '_chunk_' prefix
                                     "text": chunk_entity.content,
                                     "metadata": {
                                         **(metadata or {}),
@@ -2537,7 +2537,7 @@ class ChunkingService:
 
         # Adjust chunk IDs to maintain continuity
         for idx, chunk in enumerate(result["chunks"]):
-            chunk["chunk_id"] = f"{document_id}_chunk_{chunk_id_start + idx:04d}"  # Fixed format with 'chunk_' prefix
+            chunk["chunk_id"] = f"{document_id}_{chunk_id_start + idx:04d}"  # Fixed format without '_chunk_' prefix
             # Add segment metadata
             if metadata is None:
                 chunk["metadata"] = {}

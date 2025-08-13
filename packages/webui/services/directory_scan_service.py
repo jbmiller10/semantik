@@ -361,7 +361,7 @@ class DirectoryScanService:
 
     async def _send_progress(
         self,
-        _channel_id: str,
+        channel_id: str,  # noqa: ARG002
         scan_id: str,
         msg_type: str,
         data: dict[str, Any],

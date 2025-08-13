@@ -103,11 +103,22 @@ class TestProgressiveSegmentation:
 
         with (
             patch.object(service, "execute_ingestion_chunking_segmented") as mock_segmented,
-            patch("shared.text_processing.chunking.TokenChunker") as mock_token_chunker,
+            patch.object(service.strategy_factory, "create_strategy") as mock_factory,
+            patch.object(service.config_builder, "build_config") as mock_config_builder,
         ):
-            mock_chunker = MagicMock()
-            mock_token_chunker.return_value = mock_chunker
-            mock_chunker.chunk_text.return_value = [{"chunk_id": "doc_chunk_0000", "text": small_text, "metadata": {}}]
+            # Mock the config builder
+            mock_config_result = MagicMock()
+            mock_config_result.validation_errors = []
+            mock_config_result.strategy = "recursive"
+            mock_config_result.config = {"chunk_size": 100, "chunk_overlap": 20}
+            mock_config_builder.return_value = mock_config_result
+            
+            # Mock the strategy
+            mock_strategy = MagicMock()
+            mock_chunk_entity = MagicMock()
+            mock_chunk_entity.content = small_text
+            mock_strategy.chunk.return_value = [mock_chunk_entity]
+            mock_factory.return_value = mock_strategy
 
             result = await service.execute_ingestion_chunking(
                 text=small_text,
@@ -224,6 +235,7 @@ class TestProgressiveSegmentation:
         }
 
         with patch.object(service, "_process_segment") as mock_process:
+            # _process_segment returns a dict with "chunks" and potentially "stats"
             mock_process.return_value = {
                 "chunks": [
                     {
@@ -231,10 +243,15 @@ class TestProgressiveSegmentation:
                         "text": "chunk text",
                         "metadata": {"segment_idx": 0, "total_segments": 2},
                     }
-                ]
+                ],
+                "stats": {
+                    "duration_ms": 100,
+                    "strategy_used": "recursive",
+                    "chunk_count": 1,
+                }
             }
 
-            await service.execute_ingestion_chunking_segmented(
+            result = await service.execute_ingestion_chunking_segmented(
                 text=large_text,
                 document_id="doc-metadata",
                 collection=collection,
@@ -243,7 +260,15 @@ class TestProgressiveSegmentation:
             # Verify _process_segment was called with correct parameters
             assert mock_process.call_count > 0
             call_args = mock_process.call_args_list[0]
-            assert call_args[1]["segment_idx"] == 0
+            # _process_segment is called with positional args: 
+            # (segment_text, document_id, collection, metadata, file_type, chunk_id_start, segment_idx, total_segments)
+            assert call_args[0][6] == 0  # segment_idx is the 7th positional argument (index 6)
+            
+            # Verify the segment metadata is present in the result
+            assert len(result["chunks"]) > 0
+            first_chunk = result["chunks"][0]
+            assert "segment_idx" in first_chunk["metadata"]
+            assert first_chunk["metadata"]["segment_idx"] == 0
 
     @pytest.mark.asyncio()
     async def test_segment_overlap_maintained(self, service):
@@ -373,7 +398,8 @@ class TestProgressiveSegmentation:
     @pytest.mark.asyncio()
     async def test_chunk_id_continuity_across_segments(self, service):
         """Test that chunk IDs maintain continuity across segments."""
-        large_text = "Test content for chunking. " * 50000
+        # Create a larger text to ensure segmentation
+        large_text = "Test content for chunking. " * 100000  # ~2.8MB
 
         collection = {
             "id": "coll-continuity",
@@ -384,19 +410,39 @@ class TestProgressiveSegmentation:
             "chunk_overlap": 50,
         }
 
+        # _process_segment returns a dict with "chunks" key and optionally "stats"
         segment_results = [
-            {"chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i}", "metadata": {}} for i in range(3)]},
-            {"chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i}", "metadata": {}} for i in range(3)]},
-            {"chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i}", "metadata": {}} for i in range(3)]},
+            {
+                "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i}", "metadata": {}} for i in range(3)],
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+            },
+            {
+                "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i+3}", "metadata": {}} for i in range(3)],
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+            },
+            {
+                "chunks": [{"chunk_id": f"temp_{i}", "text": f"chunk {i+6}", "metadata": {}} for i in range(3)],
+                "stats": {"duration_ms": 100, "strategy_used": "recursive", "chunk_count": 3}
+            },
         ]
 
-        with patch.object(service, "_process_segment", side_effect=segment_results):
+        with (
+            patch.object(service, "_process_segment", side_effect=segment_results),
+            # Patch the segment size to ensure we get exactly 3 segments
+            patch("packages.webui.services.chunking_constants.DEFAULT_SEGMENT_SIZE", 1000000),  # 1MB segments
+            patch("packages.webui.services.chunking_constants.STRATEGY_SEGMENT_THRESHOLDS", {"recursive": 2000000}),  # 2MB threshold
+        ):
             result = await service.execute_ingestion_chunking_segmented(
                 text=large_text,
                 document_id="doc-continuity",
                 collection=collection,
             )
 
-            # The actual implementation adjusts chunk IDs in _process_segment
-            # so we just verify we have the right number of chunks
+            # Verify we have the right number of chunks
             assert len(result["chunks"]) == 9
+            
+            # Verify that we have chunks from all three segments
+            # The chunks should have content from all segments
+            chunk_texts = [chunk["text"] for chunk in result["chunks"]]
+            expected_texts = [f"chunk {i}" for i in range(9)]
+            assert chunk_texts == expected_texts
