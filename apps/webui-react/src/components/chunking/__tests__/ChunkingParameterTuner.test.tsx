@@ -1,9 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ChunkingParameterTuner } from '../ChunkingParameterTuner';
 import { useChunkingStore } from '../../../stores/chunkingStore';
-import { CHUNKING_STRATEGIES, CHUNKING_PRESETS } from '../../../types/chunking';
 import { mockChunkingPresets, createChunkingConfig } from '../../../tests/utils/chunkingTestUtils';
 import type { ChunkingStore } from '../../../stores/chunkingStore';
 
@@ -77,8 +75,6 @@ describe('ChunkingParameterTuner', () => {
       
       // Help icons are rendered inside groups with hover effect
       const helpGroups = document.querySelectorAll('.group.relative');
-      // Look for elements that have the tooltip structure
-      const tooltipContainers = Array.from(document.querySelectorAll('.bg-gray-900.text-white.text-xs'));
       
       // There should be tooltips for parameters with descriptions
       expect(helpGroups.length).toBeGreaterThan(0);

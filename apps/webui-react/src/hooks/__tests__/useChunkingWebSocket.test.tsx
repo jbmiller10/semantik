@@ -1,16 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { useChunkingWebSocket } from '../useChunkingWebSocket'
 import { 
-  MockChunkingWebSocket, 
-  simulateChunkingProgress,
   mockChunkingPreviewResponse,
   mockComparisonResults
 } from '@/tests/utils/chunkingTestUtils'
 import type { 
-  WebSocketMessage,
   ChunkingProgressData,
-  ChunkingChunkData,
   ChunkingCompleteData,
   ChunkingErrorData
 } from '@/services/websocket'
@@ -52,14 +48,14 @@ vi.mock('@/services/websocket', () => ({
 }))
 
 describe('useChunkingWebSocket', () => {
-  let eventHandlers: Record<string, Function> = {}
+  let eventHandlers: Record<string, (...args: unknown[]) => void> = {}
 
   beforeEach(() => {
     vi.clearAllMocks()
     eventHandlers = {}
     
     // Setup mock event handler registration
-    mockWebSocketService.on.mockImplementation((event: string, handler: Function) => {
+    mockWebSocketService.on.mockImplementation((event: string, handler: (...args: unknown[]) => void) => {
       eventHandlers[event] = handler
       return mockWebSocketService
     })

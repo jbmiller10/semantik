@@ -28,6 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
+from typing import Any
 
 from sqlalchemy import (
     JSON,

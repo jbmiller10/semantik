@@ -26,11 +26,11 @@ class TestMockWebSocket {
   onclose: ((event: CloseEvent) => void) | null = null;
   onerror: ((event: Event) => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
-  send: any;
-  addEventListener: any;
-  removeEventListener: any;
-  dispatchEvent: any;
-  close: any;
+  send: (data: string | ArrayBufferLike | Blob | ArrayBufferView) => void;
+  addEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => void;
+  removeEventListener: (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => void;
+  dispatchEvent: (event: Event) => boolean;
+  close: (code?: number, reason?: string) => void;
   CONNECTING = 0;
   OPEN = 1;
   CLOSING = 2;
@@ -42,15 +42,15 @@ class TestMockWebSocket {
     this.autoOpen = autoOpen;
     
     // Add event listener methods for MSW compatibility
-    this.addEventListener = vi.fn((event: string, handler: any) => {
+    this.addEventListener = vi.fn((event: string, handler: EventListenerOrEventListenerObject | ((event: Event) => void)) => {
       if (event === 'open') {
-        this.onopen = handler;
+        this.onopen = handler as (event: Event) => void;
       } else if (event === 'close') {
-        this.onclose = handler;
+        this.onclose = handler as (event: CloseEvent) => void;
       } else if (event === 'error') {
-        this.onerror = handler;
+        this.onerror = handler as (event: Event) => void;
       } else if (event === 'message') {
-        this.onmessage = handler;
+        this.onmessage = handler as (event: MessageEvent) => void;
       }
     });
     
@@ -84,7 +84,7 @@ class TestMockWebSocket {
             });
           }, 5);
         }
-      } catch (e) {
+      } catch {
         // Invalid JSON
       }
     });
@@ -111,7 +111,7 @@ class TestMockWebSocket {
     }
   }
   
-  simulateMessage(message: any) {
+  simulateMessage(message: WebSocketMessage) {
     if (this.onmessage) {
       this.onmessage(new MessageEvent('message', {
         data: JSON.stringify(message)
@@ -119,7 +119,7 @@ class TestMockWebSocket {
     }
   }
   
-  simulateError(error?: string) {
+  simulateError() {
     if (this.onerror) {
       this.onerror(new Event('error'));
     }
@@ -236,7 +236,7 @@ describe('WebSocketService', () => {
       MockWebSocketConstructor.mockImplementationOnce((url: string) => {
         const ws = new TestMockWebSocket(url);
         ws.simulateOpen = vi.fn(); // Don't open
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -318,7 +318,7 @@ describe('WebSocketService', () => {
             }, 10);
           }
         });
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -347,7 +347,7 @@ describe('WebSocketService', () => {
         const ws = new TestMockWebSocket(url);
         ws.send = vi.fn(); // Don't send auth response
         mockWebSocketInstance = ws; // Update the reference
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -436,7 +436,7 @@ describe('WebSocketService', () => {
       MockWebSocketConstructor.mockImplementationOnce((url: string) => {
         const ws = new MockChunkingWebSocket(url);
         ws.send = vi.fn(); // Don't authenticate
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -585,7 +585,7 @@ describe('WebSocketService', () => {
           // Don't respond to heartbeats
         });
         mockWebSocketInstance = ws; // Update the reference
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -650,7 +650,7 @@ describe('WebSocketService', () => {
           }
         }, 5);
         mockWebSocketInstance = ws;
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();
@@ -704,7 +704,7 @@ describe('WebSocketService', () => {
           }
         }, 5);
         mockWebSocketInstance = ws;
-        return ws as any;
+        return ws as unknown as WebSocket;
       });
       
       service.connect();

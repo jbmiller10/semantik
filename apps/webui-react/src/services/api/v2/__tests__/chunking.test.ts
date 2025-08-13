@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios, { AxiosError } from 'axios';
-import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { chunkingApi, handleChunkingError } from '../chunking';
 import { 
   mockChunkingPreviewResponse, 
@@ -99,7 +98,7 @@ describe('chunkingApi', () => {
             lengthComputable: true,
             target: {} as XMLHttpRequestUpload,
             estimated: 2000
-          } as any);
+          } as ProgressEvent);
         }
         return mockResponse;
       });
@@ -130,7 +129,7 @@ describe('chunkingApi', () => {
         token: 'mock-cancel-token',
         cancel: vi.fn()
       };
-      vi.mocked(axios.CancelToken.source).mockReturnValueOnce(mockCancelSource as any);
+      vi.mocked(axios.CancelToken.source).mockReturnValueOnce(mockCancelSource as { token: string; cancel: () => void });
 
       const request: ChunkingPreviewRequest = {
         content: 'Test content',
@@ -142,7 +141,7 @@ describe('chunkingApi', () => {
       };
 
       // Start preview but don't await
-      const previewPromise = chunkingApi.preview(request, {
+      chunkingApi.preview(request, {
         requestId: 'test-preview-1'
       });
 
@@ -157,7 +156,7 @@ describe('chunkingApi', () => {
         status: 429,
         statusText: 'Too Many Requests',
         headers: {},
-        config: {} as any,
+        config: {} as Record<string, unknown>,
         data: {}
       });
 
@@ -194,7 +193,7 @@ describe('chunkingApi', () => {
         status: 500,
         statusText: 'Internal Server Error',
         headers: {},
-        config: {} as any,
+        config: {} as Record<string, unknown>,
         data: {}
       });
 
@@ -355,7 +354,7 @@ describe('chunkingApi', () => {
         status: 503,
         statusText: 'Service Unavailable',
         headers: {},
-        config: {} as any,
+        config: {} as Record<string, unknown>,
         data: {}
       });
 
@@ -431,7 +430,7 @@ describe('chunkingApi', () => {
         status: 404,
         statusText: 'Not Found',
         headers: {},
-        config: {} as any,
+        config: {} as Record<string, unknown>,
         data: { detail: 'Preset not found' }
       });
 
@@ -586,8 +585,8 @@ describe('chunkingApi', () => {
       };
       
       vi.mocked(axios.CancelToken.source)
-        .mockReturnValueOnce(mockCancelSource1 as any)
-        .mockReturnValueOnce(mockCancelSource2 as any);
+        .mockReturnValueOnce(mockCancelSource1 as { token: string; cancel: () => void })
+        .mockReturnValueOnce(mockCancelSource2 as { token: string; cancel: () => void });
 
       const request: ChunkingPreviewRequest = {
         content: 'Test content',
@@ -666,7 +665,7 @@ describe('handleChunkingError', () => {
         status,
         statusText: 'Error',
         headers: {},
-        config: {} as any,
+        config: {} as Record<string, unknown>,
         data: {}
       });
 

@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChunkingStrategyGuide } from '../ChunkingStrategyGuide';
 import { CHUNKING_STRATEGIES } from '../../../types/chunking';
-import type { ChunkingStrategyType } from '../../../types/chunking';
 
 describe('ChunkingStrategyGuide', () => {
   const mockOnClose = vi.fn();

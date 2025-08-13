@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { SimplifiedChunkingStrategySelector } from '../SimplifiedChunkingStrategySelector';
@@ -15,7 +15,7 @@ vi.mock('../../../stores/chunkingStore', () => ({
 
 // Mock the ChunkingParameterTuner component
 vi.mock('../ChunkingParameterTuner', () => ({
-  ChunkingParameterTuner: vi.fn(({ disabled, showPreview, onParameterChange }: any) => (
+  ChunkingParameterTuner: vi.fn(({ disabled, showPreview, onParameterChange }: { disabled?: boolean; showPreview?: boolean; onParameterChange?: () => void }) => (
     <div data-testid="chunking-parameter-tuner">
       <div>Parameter Tuner (disabled: {disabled ? 'true' : 'false'})</div>
       <div>Show Preview: {showPreview ? 'true' : 'false'}</div>
@@ -26,7 +26,7 @@ vi.mock('../ChunkingParameterTuner', () => ({
 
 // Mock the ChunkingStrategyGuide component
 vi.mock('../ChunkingStrategyGuide', () => ({
-  ChunkingStrategyGuide: vi.fn(({ onClose, currentStrategy, fileType }: any) => (
+  ChunkingStrategyGuide: vi.fn(({ onClose, currentStrategy, fileType }: { onClose?: () => void; currentStrategy?: string; fileType?: string }) => (
     <div data-testid="chunking-strategy-guide">
       <div>Strategy Guide</div>
       <div>Current Strategy: {currentStrategy}</div>
@@ -420,7 +420,7 @@ describe('SimplifiedChunkingStrategySelector', () => {
       render(<SimplifiedChunkingStrategySelector fileType="" />);
       
       // Should not show recommendation for empty file type
-      expect(screen.queryByText(/For  files/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/For {2}files/)).not.toBeInTheDocument();
     });
   });
 

@@ -39,14 +39,8 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
 
         _fakeredis_aioredis.FakeRedis.__init__ = _patched_init  # type: ignore[method-assign]
 
-        # Provide enum-like aliases used in some tests without affecting iteration
-        try:
-            if not hasattr(_schemas.ChunkingStrategy, "MARKDOWN"):
-                _schemas.ChunkingStrategy.MARKDOWN = "markdown"
-            if not hasattr(_schemas.ChunkingStrategy, "HIERARCHICAL"):
-                _schemas.ChunkingStrategy.HIERARCHICAL = "hierarchical"
-        except Exception:
-            pass
+        # Note: ChunkingStrategy.MARKDOWN and ChunkingStrategy.HIERARCHICAL are already defined
+        # as enum members in chunking_schemas.py, so no additional aliases are needed
     except Exception:
         # If fakeredis isn't available, skip patching
         pass
