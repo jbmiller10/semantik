@@ -595,6 +595,9 @@ export class WebSocketService extends EventEmitter {
     // Clear message queue
     this.messageQueue = [];
     
+    // Remove all event listeners to prevent memory leaks
+    this.removeAllListeners();
+    
     console.log('WebSocket disconnected');
   }
 
