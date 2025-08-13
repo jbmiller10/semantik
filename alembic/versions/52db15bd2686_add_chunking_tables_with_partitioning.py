@@ -11,13 +11,13 @@ import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
-
-from alembic import op
 from migrations_utils.migration_safety import (
     require_destructive_flag,
     safe_drop_table,
 )
+from sqlalchemy.engine.reflection import Inspector
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "52db15bd2686"
