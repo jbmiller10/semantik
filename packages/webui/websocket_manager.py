@@ -131,13 +131,13 @@ class RedisStreamWebSocketManager:
             logger.info("Redis not connected, attempting to reconnect...")
             await self.startup()
 
-        # Check global connection limit first
+        # Check limits and add connection atomically
         async with self._connections_lock:
             total_connections = sum(len(sockets) for sockets in self.connections.values())
             if total_connections >= self.max_total_connections:
                 logger.error(f"Global connection limit reached ({self.max_total_connections})")
-                await websocket.close(code=1008, reason="Server connection limit exceeded")
-                return
+                # Don't accept the connection if limit is exceeded
+                raise ConnectionRefusedError("Server connection limit exceeded")
 
             # Check connection limit for this user
             user_connections = sum(
@@ -146,13 +146,12 @@ class RedisStreamWebSocketManager:
 
             if user_connections >= self.max_connections_per_user:
                 logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
-                await websocket.close(code=1008, reason="User connection limit exceeded")
-                return
+                # Don't accept the connection if limit is exceeded
+                raise ConnectionRefusedError("User connection limit exceeded")
 
-        await websocket.accept()
+            # Accept and store connection while still holding the lock
+            await websocket.accept()
 
-        # Store connection
-        async with self._connections_lock:
             key = f"{user_id}:operation:{operation_id}"
             if key not in self.connections:
                 self.connections[key] = set()

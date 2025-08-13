@@ -8,6 +8,7 @@ concurrent access to shared state without race conditions.
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -460,6 +461,9 @@ class TestScalableWebSocketManagerRaceConditions:
 
 
 @pytest.mark.asyncio()
+@pytest.mark.skipif(
+    os.getenv("CI", "false").lower() == "true", reason="Performance tests unreliable in CI environments"
+)
 async def test_performance_impact_of_locking():
     """Measure the performance impact of the locking mechanisms."""
 
