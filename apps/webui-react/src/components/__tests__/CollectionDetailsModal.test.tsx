@@ -118,6 +118,24 @@ const mockCollection: Collection = {
   updated_at: '2024-01-02T00:00:00Z',
 };
 
+const mockCollectionWithChunkingStrategy: Collection = {
+  ...mockCollection,
+  chunking_strategy: 'recursive',
+  chunking_config: {
+    chunk_size: 600,
+    chunk_overlap: 100,
+    preserve_sentences: true,
+  },
+};
+
+const mockCollectionWithLegacyChunking: Collection = {
+  ...mockCollection,
+  chunking_strategy: undefined,
+  chunking_config: undefined,
+  chunk_size: 512,
+  chunk_overlap: 50,
+};
+
 const mockOperations: Operation[] = [
   {
     id: 'op-1',
@@ -862,9 +880,344 @@ describe('CollectionDetailsModal', () => {
     });
   });
 
+  describe('Chunking Strategy Display', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should display modern chunking strategy with icon', async () => {
+      mockCollectionsApi.get.mockResolvedValue({ data: mockCollectionWithChunkingStrategy });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
+      });
+
+      // Should show strategy name and description
+      expect(screen.getByText('Recursive')).toBeInTheDocument();
+      expect(screen.getByText(/Intelligent splitting that respects sentence and paragraph boundaries/)).toBeInTheDocument();
+      
+      // Should show strategy parameters
+      expect(screen.getByText('Strategy Parameters')).toBeInTheDocument();
+      expect(screen.getByText('Chunk Size')).toBeInTheDocument();
+      expect(screen.getByText('600')).toBeInTheDocument();
+      expect(screen.getByText('Chunk Overlap')).toBeInTheDocument();
+      // Use a more specific query for '100' to avoid conflicts with document count
+      const chunkOverlapElement = screen.getByText('Chunk Overlap').nextElementSibling;
+      expect(chunkOverlapElement).toHaveTextContent('100');
+      expect(screen.getByText('Preserve Sentences')).toBeInTheDocument();
+      expect(screen.getByText('Yes')).toBeInTheDocument();
+    });
+
+    it('should display legacy chunking configuration with warning', async () => {
+      mockCollectionsApi.get.mockResolvedValue({ data: mockCollectionWithLegacyChunking });
+
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
+      });
+
+      // Should show legacy warning
+      expect(screen.getByText('Legacy Configuration')).toBeInTheDocument();
+      expect(screen.getByText('This collection uses deprecated chunking parameters.')).toBeInTheDocument();
+      expect(screen.getByText('512 characters')).toBeInTheDocument();
+      expect(screen.getByText('50 characters')).toBeInTheDocument();
+      expect(screen.getByText(/Consider re-indexing with a modern chunking strategy/)).toBeInTheDocument();
+    });
+
+    it('should show correct icons for different chunking strategies', async () => {
+      const strategies = ['character', 'recursive', 'markdown', 'semantic', 'hierarchical', 'hybrid'];
+      
+      for (const strategy of strategies) {
+        mockCollectionsApi.get.mockResolvedValue({ 
+          data: {
+            ...mockCollection,
+            chunking_strategy: strategy,
+            chunking_config: { chunk_size: 600 }
+          }
+        });
+
+        const { rerender } = render(
+          <TestWrapper>
+            <CollectionDetailsModal />
+          </TestWrapper>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByText('Chunking Strategy')).toBeInTheDocument();
+        });
+
+        // Each strategy should have an icon
+        const iconContainer = document.querySelector('.text-blue-600 svg');
+        expect(iconContainer).toBeInTheDocument();
+
+        // Clean up for next iteration
+        rerender(<></>);
+      }
+    });
+  });
+
+  describe('formatNumber and formatBytes Utilities', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should format various byte sizes correctly', async () => {
+      const testCases = [
+        { bytes: 0, expected: '0 Bytes' },
+        { bytes: 512, expected: '512 Bytes' },
+        { bytes: 1024, expected: '1 KB' },
+        { bytes: 1536, expected: '1.5 KB' },
+        { bytes: 1048576, expected: '1 MB' },
+        { bytes: 1073741824, expected: '1 GB' },
+        { bytes: 1099511627776, expected: '1 TB' },
+      ];
+
+      for (const { bytes, expected } of testCases) {
+        mockCollectionsApi.get.mockResolvedValue({
+          data: { ...mockCollection, total_size_bytes: bytes }
+        });
+
+        const { rerender } = render(
+          <TestWrapper>
+            <CollectionDetailsModal />
+          </TestWrapper>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByText(expected)).toBeInTheDocument();
+        });
+
+        rerender(<></>);
+      }
+    });
+
+    it('should format edge case numbers correctly', async () => {
+      const testCases = [
+        { value: null, expectedText: '0' },
+        { value: undefined, expectedText: '0' },
+        { value: 0, expectedText: '0' },
+        { value: 1, expectedText: '1' },
+        { value: 999, expectedText: '999' },
+        { value: 1000, expectedText: '1,000' },
+        { value: 999999, expectedText: '999,999' },
+        { value: 1000000, expectedText: '1,000,000' },
+      ];
+
+      for (const { value, expectedText } of testCases) {
+        mockCollectionsApi.get.mockResolvedValue({
+          data: { ...mockCollection, document_count: value }
+        });
+
+        const { rerender } = render(
+          <TestWrapper>
+            <CollectionDetailsModal />
+          </TestWrapper>
+        );
+
+        await waitFor(() => {
+          const statsSection = screen.getByText('Statistics').parentElement;
+          if (value === null || value === undefined) {
+            // Check in the header for null/undefined (shows as 0)
+            expect(screen.getByText(/0 documents/, { exact: false })).toBeInTheDocument();
+          } else {
+            // Check in the statistics card
+            expect(statsSection).toHaveTextContent(expectedText);
+          }
+        });
+
+        rerender(<></>);
+      }
+    });
+  });
+
+  describe('Configuration Changes in Settings Tab', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should allow entering custom embedding instruction', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      const instructionTextarea = screen.getByLabelText(/Embedding Instruction/i);
+      expect(instructionTextarea).toBeInTheDocument();
+      expect(instructionTextarea).toHaveAttribute('placeholder', 'e.g., Represent this document for retrieval:');
+
+      await user.type(instructionTextarea, 'Custom instruction for embeddings');
+      expect(instructionTextarea).toHaveValue('Custom instruction for embeddings');
+    });
+
+    it('should display read-only embedding model field', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      const modelInput = screen.getByLabelText(/Embedding Model/i);
+      expect(modelInput).toBeDisabled();
+      expect(modelInput).toHaveValue('sentence-transformers/all-MiniLM-L6-v2');
+      expect(screen.getByText('Cannot be changed after collection creation')).toBeInTheDocument();
+    });
+
+    it('should open reindex modal when clicking re-index button', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+      await user.click(screen.getByRole('button', { name: /re-index collection/i }));
+
+      expect(screen.getByTestId('reindex-modal')).toBeInTheDocument();
+    });
+
+    it('should handle successful reindex operation', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+      await user.click(screen.getByRole('button', { name: /re-index collection/i }));
+      await user.click(screen.getByText('Reindex Success'));
+
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-v2', 'test-collection-id'] });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['collection-operations', 'test-collection-id'] });
+      expect(mockAddToast).toHaveBeenCalledWith({
+        type: 'success',
+        message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.',
+      });
+
+      // Should not show the reindex modal anymore
+      expect(screen.queryByTestId('reindex-modal')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Nested Modal Interactions', () => {
+    beforeEach(() => {
+      mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should properly handle closing nested modals', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /add data/i })).toBeInTheDocument();
+      });
+
+      // Open add data modal
+      await user.click(screen.getByRole('button', { name: /add data/i }));
+      expect(screen.getByTestId('add-data-modal')).toBeInTheDocument();
+
+      // Close add data modal
+      await user.click(screen.getByText('Close Add Data'));
+      expect(screen.queryByTestId('add-data-modal')).not.toBeInTheDocument();
+
+      // Main modal should still be open
+      expect(screen.getByText('Test Collection')).toBeInTheDocument();
+    });
+
+    it('should handle multiple modals opening and closing sequentially', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /add data/i })).toBeInTheDocument();
+      });
+
+      // Open and close add data modal
+      await user.click(screen.getByRole('button', { name: /add data/i }));
+      expect(screen.getByTestId('add-data-modal')).toBeInTheDocument();
+      await user.click(screen.getByText('Close Add Data'));
+
+      // Open and close rename modal
+      await user.click(screen.getByRole('button', { name: /rename/i }));
+      expect(screen.getByTestId('rename-modal')).toBeInTheDocument();
+      await user.click(screen.getByText('Close Rename'));
+
+      // Open and close delete modal
+      await user.click(screen.getByRole('button', { name: /delete/i }));
+      expect(screen.getByTestId('delete-modal')).toBeInTheDocument();
+      await user.click(screen.getByText('Close Delete'));
+
+      // Main modal should still be open
+      expect(screen.getByText('Test Collection')).toBeInTheDocument();
+    });
+  });
+
   describe('Accessibility', () => {
     beforeEach(() => {
       mockShowCollectionDetailsModal.mockReturnValue('test-collection-id');
+    });
+
+    it('should have proper ARIA labels for all inputs', async () => {
+      render(
+        <TestWrapper>
+          <CollectionDetailsModal />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /settings/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole('button', { name: /settings/i }));
+
+      // Check ARIA labels for settings inputs
+      const modelInput = screen.getByLabelText(/Embedding Model/i);
+      expect(modelInput).toHaveAttribute('aria-label', 'Embedding model (read-only)');
+      expect(modelInput).toHaveAttribute('aria-describedby', 'model-help');
+
+      const instructionInput = screen.getByLabelText(/Embedding Instruction/i);
+      expect(instructionInput).toHaveAttribute('aria-label', 'Custom embedding instruction');
+      expect(instructionInput).toHaveAttribute('aria-describedby', 'instruction-help');
+
+      const reindexButton = screen.getByRole('button', { name: /re-index collection/i });
+      expect(reindexButton).toHaveAttribute('aria-label', 'Re-index collection with new configuration');
     });
 
     it('should have proper ARIA labels and roles', async () => {

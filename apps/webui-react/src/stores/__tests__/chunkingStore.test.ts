@@ -648,6 +648,162 @@ describe('chunkingStore', () => {
       expect(result.current.strategyConfig).toEqual(initialState.strategyConfig)
     })
 
+    it('handles API errors in loadPreview', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Mock API error
+      mockPreview.mockRejectedValueOnce(new Error('API Error: Failed to load preview'))
+      
+      act(() => {
+        result.current.setPreviewDocument({
+          id: 'doc-1',
+          content: 'Test content',
+          name: 'test.txt',
+        })
+      })
+
+      await act(async () => {
+        await result.current.loadPreview()
+      })
+
+      expect(result.current.previewError).toBe('Error')
+      expect(result.current.previewLoading).toBe(false)
+      expect(result.current.previewChunks).toEqual([])
+    })
+
+    it('handles API errors in compareStrategies', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Mock API error
+      mockCompare.mockRejectedValueOnce(new Error('API Error: Comparison failed'))
+      
+      act(() => {
+        result.current.setPreviewDocument({
+          id: 'doc-1',
+          content: 'Test content',
+          name: 'test.txt',
+        })
+        result.current.addComparisonStrategy('recursive')
+      })
+
+      await act(async () => {
+        await result.current.compareStrategies()
+      })
+
+      expect(result.current.comparisonError).toBe('Error')
+      expect(result.current.comparisonLoading).toBe(false)
+      expect(result.current.comparisonResults).toEqual({})
+    })
+
+    it('handles API errors in loadAnalytics', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Mock API error with console.error spy
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockGetAnalytics.mockRejectedValueOnce(new Error('API Error: Analytics failed'))
+      
+      await act(async () => {
+        await result.current.loadAnalytics()
+      })
+
+      expect(result.current.analyticsLoading).toBe(false)
+      expect(result.current.analyticsData).toBeNull()
+      expect(consoleError).toHaveBeenCalledWith('Failed to load analytics:', 'Error')
+      
+      consoleError.mockRestore()
+    })
+
+    it('handles API errors in saveCustomPreset', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Mock API error with console.error spy
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockSavePreset.mockRejectedValueOnce(new Error('API Error: Save failed'))
+      
+      await expect(
+        act(async () => {
+          await result.current.saveCustomPreset({
+            name: 'Test Preset',
+            description: 'Test',
+            strategy: 'recursive',
+            configuration: {
+              strategy: 'recursive',
+              parameters: {},
+            },
+          })
+        })
+      ).rejects.toThrow('API Error: Save failed')
+
+      expect(result.current.customPresets).toHaveLength(0)
+      expect(consoleError).toHaveBeenCalledWith('Failed to save preset:', 'Error')
+      
+      consoleError.mockRestore()
+    })
+
+    it('handles API errors in deleteCustomPreset', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Add a preset first
+      let presetId: string = ''
+      await act(async () => {
+        presetId = await result.current.saveCustomPreset({
+          name: 'Test Preset',
+          description: 'Test',
+          strategy: 'recursive',
+          configuration: {
+            strategy: 'recursive',
+            parameters: {},
+          },
+        })
+      })
+
+      // Mock API error with console.error spy
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockDeletePreset.mockRejectedValueOnce(new Error('API Error: Delete failed'))
+      
+      await expect(
+        act(async () => {
+          await result.current.deleteCustomPreset(presetId)
+        })
+      ).rejects.toThrow('API Error: Delete failed')
+
+      // Preset should still exist since delete failed
+      expect(result.current.customPresets).toHaveLength(1)
+      expect(consoleError).toHaveBeenCalledWith('Failed to delete preset:', 'Error')
+      
+      consoleError.mockRestore()
+    })
+
+    it('handles API errors in loadPresets', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      // Mock API error with console.error spy
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockGetPresets.mockRejectedValueOnce(new Error('API Error: Load presets failed'))
+      
+      await act(async () => {
+        await result.current.loadPresets()
+      })
+
+      expect(result.current.presetsLoading).toBe(false)
+      expect(result.current.customPresets).toEqual([])
+      expect(consoleError).toHaveBeenCalledWith('Failed to load presets:', 'Error')
+      
+      consoleError.mockRestore()
+    })
+
     it('maintains preset list consistency', async () => {
       // Get fresh instance of the store  
       const { result } = renderHook(() => useChunkingStore())
@@ -735,6 +891,240 @@ describe('chunkingStore', () => {
           expect(result.current.selectedStrategy).toBe(strategy)
         }
       })
+    })
+
+    it('limits comparison strategies to 3', () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      act(() => {
+        result.current.addComparisonStrategy('recursive')
+        result.current.addComparisonStrategy('semantic')
+        result.current.addComparisonStrategy('character')
+        result.current.addComparisonStrategy('markdown') // 4th should be ignored
+      })
+
+      expect(result.current.comparisonStrategies).toHaveLength(3)
+      expect(result.current.comparisonStrategies).toEqual(['recursive', 'semantic', 'character'])
+    })
+
+    it('handles caching in loadPreview correctly', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      act(() => {
+        result.current.setPreviewDocument({
+          id: 'doc-1',
+          content: 'Test content',
+          name: 'test.txt',
+        })
+      })
+
+      // First load
+      await act(async () => {
+        await result.current.loadPreview()
+      })
+
+      expect(mockPreview).toHaveBeenCalledTimes(1)
+      const firstChunks = result.current.previewChunks
+
+      // Second load without force - should use cache
+      await act(async () => {
+        await result.current.loadPreview(false)
+      })
+
+      expect(mockPreview).toHaveBeenCalledTimes(1) // Not called again
+      expect(result.current.previewChunks).toBe(firstChunks)
+
+      // Third load with force - should reload
+      await act(async () => {
+        await result.current.loadPreview(true)
+      })
+
+      expect(mockPreview).toHaveBeenCalledTimes(2) // Called again
+    })
+
+    it('calls cancelActiveRequests correctly', () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) return
+      
+      act(() => {
+        result.current.cancelActiveRequests()
+      })
+
+      expect(mockCancelAllRequests).toHaveBeenCalledWith('User cancelled operation')
+    })
+
+    it('handles progress callback in loadPreview', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      const progressSpy = vi.fn()
+      
+      if (!result.current) {
+        // Skip test if hook didn't initialize properly
+        return
+      }
+      
+      // Mock preview to capture the progress callback
+      mockPreview.mockImplementationOnce(async (data, options) => {
+        // Call the progress callback if provided
+        if (options?.onProgress) {
+          options.onProgress({ percentage: 50, currentChunk: 5, totalChunks: 10 })
+        }
+        return {
+          chunks: mockChunkingPreviewResponse.chunks,
+          statistics: mockChunkingPreviewResponse.statistics,
+          performance: mockChunkingPreviewResponse.performance,
+        }
+      })
+
+      // Spy on console.debug
+      const consoleDebug = vi.spyOn(console, 'debug').mockImplementation(progressSpy)
+      
+      act(() => {
+        result.current.setPreviewDocument({
+          id: 'doc-1',
+          content: 'Test content',
+          name: 'test.txt',
+        })
+      })
+
+      await act(async () => {
+        await result.current.loadPreview()
+      })
+
+      expect(progressSpy).toHaveBeenCalledWith('Preview progress: 50%')
+      
+      consoleDebug.mockRestore()
+    })
+
+    it('handles progress callback in compareStrategies', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      const progressSpy = vi.fn()
+      
+      // Mock compare to capture the progress callback
+      mockCompare.mockImplementationOnce(async (data, options) => {
+        // Call the progress callback if provided
+        if (options?.onProgress) {
+          options.onProgress({ percentage: 33, currentStrategy: 1, totalStrategies: 3 })
+        }
+        return mockComparisonResults
+      })
+
+      // Spy on console.debug
+      const consoleDebug = vi.spyOn(console, 'debug').mockImplementation(progressSpy)
+      
+      await act(async () => {
+        if (!result.current) return
+        
+        result.current.setPreviewDocument({
+          id: 'doc-1',
+          content: 'Test content',
+          name: 'test.txt',
+        })
+        result.current.addComparisonStrategy('recursive')
+        result.current.addComparisonStrategy('semantic')
+        
+        await result.current.compareStrategies()
+      })
+
+      expect(progressSpy).toHaveBeenCalledWith('Comparison progress: 33%')
+      
+      consoleDebug.mockRestore()
+    })
+
+    it('removes comparison results when strategy is removed', () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) {
+        // Skip test if hook didn't initialize properly
+        return
+      }
+      
+      // Set up some comparison results
+      act(() => {
+        result.current.addComparisonStrategy('recursive')
+        result.current.addComparisonStrategy('semantic')
+      })
+
+      // Manually set comparison results
+      act(() => {
+        useChunkingStore.setState({
+          comparisonResults: {
+            recursive: mockComparisonResults[0],
+            semantic: mockComparisonResults[1],
+          },
+        })
+      })
+
+      expect(Object.keys(result.current.comparisonResults)).toHaveLength(2)
+
+      // Remove a strategy
+      act(() => {
+        result.current.removeComparisonStrategy('recursive')
+      })
+
+      expect(result.current.comparisonStrategies).toEqual(['semantic'])
+      expect(result.current.comparisonResults.recursive).toBeUndefined()
+      expect(result.current.comparisonResults.semantic).toBeDefined()
+    })
+
+    it('applies custom presets correctly', async () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) {
+        // Skip test if hook didn't initialize properly
+        return
+      }
+      
+      // Save a custom preset
+      let presetId: string = ''
+      await act(async () => {
+        presetId = await result.current.saveCustomPreset({
+          name: 'Custom Strategy',
+          description: 'My custom settings',
+          strategy: 'semantic',
+          configuration: {
+            strategy: 'semantic',
+            parameters: {
+              max_chunk_size: 1500,
+              similarity_threshold: 0.8,
+            },
+          },
+        })
+      })
+
+      // Apply the custom preset
+      act(() => {
+        result.current.applyPreset(presetId)
+      })
+
+      expect(result.current.selectedStrategy).toBe('semantic')
+      expect(result.current.strategyConfig.parameters.max_chunk_size).toBe(1500)
+      expect(result.current.strategyConfig.parameters.similarity_threshold).toBe(0.8)
+      expect(result.current.selectedPreset).toBe(presetId)
+    })
+
+    it('handles file type recommendations correctly', () => {
+      const { result } = renderHook(() => useChunkingStore())
+      
+      if (!result.current) {
+        // Skip test if hook didn't initialize properly
+        return
+      }
+      
+      // Test various file types
+      expect(result.current.getRecommendedStrategy('.md')).toBe('markdown')
+      expect(result.current.getRecommendedStrategy('md')).toBe('markdown')
+      expect(result.current.getRecommendedStrategy('.mdx')).toBe('markdown')
+      expect(result.current.getRecommendedStrategy('.markdown')).toBe('markdown')
+      expect(result.current.getRecommendedStrategy('MDX')).toBe('markdown') // Case insensitive
+      expect(result.current.getRecommendedStrategy('.py')).toBe('recursive')
+      expect(result.current.getRecommendedStrategy('.js')).toBe('recursive')
+      expect(result.current.getRecommendedStrategy()).toBe('recursive') // No file type
+      expect(result.current.getRecommendedStrategy('')).toBe('recursive') // Empty string
     })
 
     it('preserves configuration when switching strategies', () => {

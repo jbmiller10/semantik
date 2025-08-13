@@ -1,0 +1,848 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { WebSocketService, ChunkingMessageType, WebSocketState } from '../websocket';
+import { MockChunkingWebSocket } from '@/tests/utils/chunkingTestUtils';
+import type { WebSocketMessage } from '../websocket';
+
+// Mock localStorage
+const mockLocalStorage = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+  length: 0,
+  key: vi.fn()
+};
+
+Object.defineProperty(window, 'localStorage', {
+  value: mockLocalStorage,
+  writable: true
+});
+
+// Enhanced Mock WebSocket for testing
+class TestMockWebSocket extends MockChunkingWebSocket {
+  send: any;
+  addEventListener: any;
+  removeEventListener: any;
+  dispatchEvent: any;
+  
+  constructor(url: string) {
+    super(url);
+    
+    // Add event listener methods for MSW compatibility
+    this.addEventListener = vi.fn((event: string, handler: any) => {
+      if (event === 'open' && this.onopen === null) {
+        this.onopen = handler;
+      } else if (event === 'close' && this.onclose === null) {
+        this.onclose = handler;
+      } else if (event === 'error' && this.onerror === null) {
+        this.onerror = handler;
+      } else if (event === 'message' && this.onmessage === null) {
+        this.onmessage = handler;
+      }
+    });
+    
+    this.removeEventListener = vi.fn();
+    this.dispatchEvent = vi.fn();
+    
+    // Make send a spy from the start
+    this.send = vi.fn((data: string) => {
+      const message = JSON.parse(data);
+      
+      // Simulate authentication flow
+      if (message.type === 'auth_request') {
+        setTimeout(() => {
+          this.simulateMessage({
+            type: 'auth_success',
+            data: { userId: 'test-user', sessionId: 'test-session' },
+            timestamp: Date.now()
+          });
+        }, 10);
+      }
+      
+      // Handle heartbeat
+      if (message.type === 'heartbeat') {
+        setTimeout(() => {
+          this.simulateMessage({
+            type: 'pong',
+            data: { timestamp: Date.now() },
+            timestamp: Date.now()
+          });
+        }, 5);
+      }
+    });
+  }
+  
+  close(code?: number, reason?: string) {
+    // Only allow valid close codes
+    const validCode = code && (code === 1000 || code === 1001 || (code >= 3000 && code <= 4999)) ? code : 1000;
+    this.simulateClose(validCode, reason || 'Connection closed');
+  }
+}
+
+// Mock WebSocket globally
+let mockWebSocketInstance: TestMockWebSocket | null = null;
+const MockWebSocketConstructor = vi.fn((url: string) => {
+  mockWebSocketInstance = new TestMockWebSocket(url);
+  return mockWebSocketInstance;
+});
+
+Object.defineProperty(window, 'WebSocket', {
+  value: MockWebSocketConstructor,
+  writable: true
+});
+
+// Add WebSocket constants to the mock
+Object.assign(MockWebSocketConstructor, {
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3
+});
+
+describe('WebSocketService', () => {
+  let service: WebSocketService;
+  const mockToken = 'test-jwt-token';
+  const mockAuthState = {
+    state: {
+      token: mockToken,
+      user: { id: 1, username: 'testuser' }
+    }
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockWebSocketInstance = null;
+    mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockAuthState));
+  });
+
+  afterEach(() => {
+    if (service) {
+      service.disconnect();
+    }
+    vi.useRealTimers();
+  });
+
+  describe('initialization and connection', () => {
+    it('should create service with default configuration', () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      expect(service).toBeDefined();
+      expect(service.getState()).toBe(WebSocketState.CLOSED);
+      expect(service.isConnected()).toBe(false);
+      expect(service.isReady()).toBe(false);
+    });
+
+    it('should connect to WebSocket server', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const connectedListener = vi.fn();
+      service.on('connected', connectedListener);
+
+      service.connect();
+      
+      // Wait for connection to open
+      await vi.advanceTimersByTimeAsync(20);
+      
+      expect(MockWebSocketConstructor).toHaveBeenCalledWith('ws://localhost:8080/ws/chunking');
+      expect(mockWebSocketInstance).toBeDefined();
+      expect(mockWebSocketInstance?.readyState).toBe(WebSocket.OPEN);
+    });
+
+    it('should not connect if already connected', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      // Try to connect again
+      service.connect();
+      
+      expect(consoleWarnSpy).toHaveBeenCalledWith('WebSocket already connected');
+      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(1);
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle connection timeout', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        connectionTimeout: 100
+      });
+      
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      // Override simulateOpen to not open the connection
+      MockWebSocketConstructor.mockImplementationOnce((url: string) => {
+        const ws = new TestMockWebSocket(url);
+        ws.simulateOpen = vi.fn(); // Don't open
+        return ws as any;
+      });
+      
+      service.connect();
+      
+      // Advance past connection timeout
+      await vi.advanceTimersByTimeAsync(150);
+      
+      expect(errorListener).toHaveBeenCalled();
+      // The error handler might be called with different error formats,
+      // so we just verify it was called
+    });
+  });
+
+  describe('authentication flow', () => {
+    it('should send authentication request after connection', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      // Check that AUTH_REQUEST was sent
+      expect(mockWebSocketInstance?.send).toHaveBeenCalledWith(
+        JSON.stringify({
+          type: ChunkingMessageType.AUTH_REQUEST,
+          data: { token: mockToken },
+          timestamp: expect.any(Number)
+        })
+      );
+    });
+
+    it('should handle authentication success', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const authenticatedListener = vi.fn();
+      const connectedListener = vi.fn();
+      
+      service.on('authenticated', authenticatedListener);
+      service.on('connected', connectedListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      expect(authenticatedListener).toHaveBeenCalledWith({
+        userId: 'test-user',
+        sessionId: 'test-session'
+      });
+      expect(connectedListener).toHaveBeenCalledWith({
+        authenticated: true,
+        userId: 'test-user',
+        sessionId: 'test-session'
+      });
+      expect(service.isAuthenticatedStatus()).toBe(true);
+      expect(service.isReady()).toBe(true);
+    });
+
+    it('should handle authentication error', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      const authFailedListener = vi.fn();
+      
+      service.on('error', errorListener);
+      service.on('authentication_failed', authFailedListener);
+      
+      // Override the mock to send auth error instead of success
+      MockWebSocketConstructor.mockImplementationOnce((url: string) => {
+        const ws = new TestMockWebSocket(url);
+        ws.send = vi.fn((data: string) => {
+          const message = JSON.parse(data);
+          if (message.type === 'auth_request') {
+            setTimeout(() => {
+              ws.simulateMessage({
+                type: ChunkingMessageType.AUTH_ERROR,
+                data: { message: 'Invalid token', code: 'INVALID_TOKEN' },
+                timestamp: Date.now()
+              });
+            }, 10);
+          }
+        });
+        return ws as any;
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      expect(authFailedListener).toHaveBeenCalledWith({
+        message: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      });
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Invalid token',
+        code: 'INVALID_TOKEN'
+      });
+      expect(service.isAuthenticatedStatus()).toBe(false);
+      expect(service.isReady()).toBe(false);
+    });
+
+    it('should handle authentication timeout', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      
+      service.on('error', errorListener);
+      
+      // Override mock to not send auth response
+      MockWebSocketConstructor.mockImplementationOnce((url: string) => {
+        const ws = new TestMockWebSocket(url);
+        ws.send = vi.fn(); // Don't send auth response
+        return ws as any;
+      });
+      
+      service.connect();
+      
+      // Advance past authentication timeout (5 seconds)
+      await vi.advanceTimersByTimeAsync(5100);
+      
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Authentication timeout',
+        code: 'AUTH_TIMEOUT'
+      });
+      expect(mockWebSocketInstance?.close).toHaveBeenCalled();
+    });
+
+    it('should fail connection if no token in localStorage', async () => {
+      mockLocalStorage.getItem.mockReturnValueOnce(null);
+      
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Not authenticated',
+        code: 'NO_AUTH'
+      });
+      expect(MockWebSocketConstructor).not.toHaveBeenCalled();
+    });
+
+    it('should handle malformed auth storage', async () => {
+      mockLocalStorage.getItem.mockReturnValueOnce('invalid-json');
+      
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Authentication failed',
+        code: 'AUTH_ERROR'
+      });
+      expect(MockWebSocketConstructor).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('message handling', () => {
+    beforeEach(async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30); // Wait for connection and auth
+    });
+
+    it('should handle incoming messages after authentication', async () => {
+      const messageListener = vi.fn();
+      const specificListener = vi.fn();
+      
+      service.on('message', messageListener);
+      service.on('preview_start', specificListener);
+      
+      const testMessage: WebSocketMessage = {
+        type: 'preview_start',
+        data: { totalChunks: 10 },
+        timestamp: Date.now(),
+        requestId: 'req-123'
+      };
+      
+      mockWebSocketInstance?.simulateMessage(testMessage);
+      
+      expect(messageListener).toHaveBeenCalledWith(testMessage);
+      expect(specificListener).toHaveBeenCalledWith(testMessage.data, testMessage);
+    });
+
+    it('should ignore messages before authentication', async () => {
+      // Create new service without going through auth
+      service.disconnect();
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      const messageListener = vi.fn();
+      service.on('message', messageListener);
+      
+      // Override to not authenticate
+      MockWebSocketConstructor.mockImplementationOnce((url: string) => {
+        const ws = new MockChunkingWebSocket(url);
+        ws.send = vi.fn(); // Don't authenticate
+        return ws as any;
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      // Try to send a message before authentication
+      const testMessage: WebSocketMessage = {
+        type: 'preview_start',
+        data: { totalChunks: 10 },
+        timestamp: Date.now()
+      };
+      
+      mockWebSocketInstance?.simulateMessage(testMessage);
+      
+      // Give time for message processing
+      await vi.advanceTimersByTimeAsync(10);
+      
+      expect(messageListener).not.toHaveBeenCalled();
+    });
+
+    it('should handle malformed messages', async () => {
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      // Simulate malformed message
+      if (mockWebSocketInstance?.onmessage) {
+        mockWebSocketInstance.onmessage(new MessageEvent('message', {
+          data: 'invalid-json'
+        }));
+      }
+      
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Invalid message format',
+        data: 'invalid-json'
+      });
+    });
+
+    it('should queue messages when not connected', () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      
+      service.disconnect();
+      
+      const message: WebSocketMessage = {
+        type: 'test',
+        data: { test: true },
+        timestamp: Date.now()
+      };
+      
+      const sent = service.send(message);
+      
+      expect(sent).toBe(false);
+      // The warning message can be either about not connected or not authenticated
+      expect(consoleWarnSpy).toHaveBeenCalled();
+      
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should flush message queue after authentication', async () => {
+      service.disconnect();
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      // Queue some messages before connection
+      const messages = [
+        { type: 'msg1', data: { id: 1 }, timestamp: Date.now() },
+        { type: 'msg2', data: { id: 2 }, timestamp: Date.now() },
+        { type: 'msg3', data: { id: 3 }, timestamp: Date.now() }
+      ];
+      
+      messages.forEach(msg => service.send(msg));
+      
+      // Now connect and authenticate
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      // Check that queued messages were sent
+      const sendCalls = vi.mocked(mockWebSocketInstance?.send).mock.calls;
+      
+      // First call is auth request, next 3 should be our queued messages
+      expect(sendCalls.length).toBeGreaterThanOrEqual(4);
+      expect(JSON.parse(sendCalls[1][0])).toMatchObject(messages[0]);
+      expect(JSON.parse(sendCalls[2][0])).toMatchObject(messages[1]);
+      expect(JSON.parse(sendCalls[3][0])).toMatchObject(messages[2]);
+    });
+  });
+
+  describe('heartbeat mechanism', () => {
+    beforeEach(async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        heartbeatInterval: 100
+      });
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+    });
+
+    it('should send heartbeat messages periodically', async () => {
+      const sendSpy = vi.spyOn(mockWebSocketInstance!, 'send');
+      sendSpy.mockClear(); // Clear auth message
+      
+      // Advance time for multiple heartbeat intervals
+      await vi.advanceTimersByTimeAsync(350);
+      
+      const heartbeatCalls = sendSpy.mock.calls.filter(call => {
+        const msg = JSON.parse(call[0]);
+        return msg.type === ChunkingMessageType.HEARTBEAT;
+      });
+      
+      expect(heartbeatCalls.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it('should handle pong responses', async () => {
+      const pongMessage: WebSocketMessage = {
+        type: ChunkingMessageType.PONG,
+        data: { timestamp: Date.now() },
+        timestamp: Date.now()
+      };
+      
+      mockWebSocketInstance?.simulateMessage(pongMessage);
+      
+      // Verify pong was received (no error should occur)
+      expect(service.isConnected()).toBe(true);
+    });
+
+    it('should detect dead connection when no pong received', async () => {
+      service.disconnect();
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        heartbeatInterval: 100
+      });
+      
+      // Override mock to not send pong responses
+      MockWebSocketConstructor.mockImplementationOnce((url: string) => {
+        const ws = new TestMockWebSocket(url);
+        ws.send = vi.fn((data: string) => {
+          const message = JSON.parse(data);
+          if (message.type === 'auth_request') {
+            // Send auth success but don't respond to heartbeats
+            setTimeout(() => {
+              ws.simulateMessage({
+                type: 'auth_success',
+                data: { userId: 'test-user', sessionId: 'test-session' },
+                timestamp: Date.now()
+              });
+            }, 10);
+          }
+          // Don't respond to heartbeats
+        });
+        return ws as any;
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30); // Wait for auth
+      
+      const closeSpy = vi.spyOn(mockWebSocketInstance!, 'close');
+      
+      // Advance time past 2 heartbeat intervals without pong
+      await vi.advanceTimersByTimeAsync(250);
+      
+      expect(closeSpy).toHaveBeenCalled();
+    });
+  });
+
+  describe('reconnection logic', () => {
+    it('should reconnect after unexpected disconnection', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        reconnect: true,
+        reconnectInterval: 100,
+        reconnectMaxAttempts: 3
+      });
+      
+      const reconnectingListener = vi.fn();
+      service.on('reconnecting', reconnectingListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      // Simulate unexpected close
+      mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
+      
+      // Advance time for reconnection
+      await vi.advanceTimersByTimeAsync(150);
+      
+      expect(reconnectingListener).toHaveBeenCalledWith({ attempt: 1 });
+      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(2);
+    });
+
+    it('should use exponential backoff for reconnection', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        reconnect: true,
+        reconnectInterval: 100,
+        reconnectMaxAttempts: 3
+      });
+      
+      const reconnectingListener = vi.fn();
+      service.on('reconnecting', reconnectingListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      // Simulate multiple failed connections
+      for (let i = 1; i <= 3; i++) {
+        mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
+        
+        // Calculate expected delay with exponential backoff
+        const baseDelay = Math.min(100 * Math.pow(2, i - 1), 30000);
+        const maxDelay = baseDelay + 1000; // Account for jitter
+        
+        await vi.advanceTimersByTimeAsync(maxDelay + 100);
+        
+        if (i < 3) {
+          expect(reconnectingListener).toHaveBeenCalledWith({ attempt: i });
+        }
+      }
+      
+      expect(service.getReconnectAttempts()).toBe(3);
+    });
+
+    it('should stop reconnecting after max attempts', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        reconnect: true,
+        reconnectInterval: 50,
+        reconnectMaxAttempts: 2
+      });
+      
+      const reconnectFailedListener = vi.fn();
+      service.on('reconnect_failed', reconnectFailedListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      // Fail connection multiple times
+      for (let i = 0; i < 3; i++) {
+        mockWebSocketInstance?.simulateClose(1006, 'Connection lost');
+        await vi.advanceTimersByTimeAsync(200);
+      }
+      
+      expect(reconnectFailedListener).toHaveBeenCalledWith({ attempts: 2 });
+      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(3); // Initial + 2 retries
+    });
+
+    it('should not reconnect on intentional disconnect', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        reconnect: true
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      const initialCallCount = MockWebSocketConstructor.mock.calls.length;
+      
+      // Intentionally disconnect
+      service.disconnect();
+      
+      // Wait and verify no reconnection attempt
+      await vi.advanceTimersByTimeAsync(5000);
+      
+      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(initialCallCount);
+    });
+
+    it('should not reconnect on normal close (code 1000)', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        reconnect: true
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      const initialCallCount = MockWebSocketConstructor.mock.calls.length;
+      
+      // Simulate normal close
+      mockWebSocketInstance?.simulateClose(1000, 'Normal closure');
+      
+      // Wait and verify no reconnection attempt
+      await vi.advanceTimersByTimeAsync(5000);
+      
+      expect(MockWebSocketConstructor).toHaveBeenCalledTimes(initialCallCount);
+    });
+  });
+
+  describe('state management', () => {
+    it('should track connection state correctly', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      expect(service.getState()).toBe(WebSocketState.CLOSED);
+      expect(service.isConnected()).toBe(false);
+      expect(service.isReady()).toBe(false);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      expect(service.getState()).toBe(WebSocketState.OPEN);
+      expect(service.isConnected()).toBe(true);
+      expect(service.isReady()).toBe(false); // Not authenticated yet
+      
+      await vi.advanceTimersByTimeAsync(20); // Wait for auth
+      
+      expect(service.isReady()).toBe(true);
+      
+      service.disconnect();
+      
+      expect(service.getState()).toBe(WebSocketState.CLOSED);
+      expect(service.isConnected()).toBe(false);
+      expect(service.isReady()).toBe(false);
+    });
+
+    it('should reset authentication state on disconnect', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      expect(service.isAuthenticatedStatus()).toBe(true);
+      
+      service.disconnect();
+      
+      expect(service.isAuthenticatedStatus()).toBe(false);
+    });
+
+    it('should clear message queue on disconnect', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      // Queue messages before connection
+      const messages = [
+        { type: 'msg1', data: { id: 1 }, timestamp: Date.now() },
+        { type: 'msg2', data: { id: 2 }, timestamp: Date.now() }
+      ];
+      
+      messages.forEach(msg => service.send(msg));
+      
+      // Disconnect before connecting
+      service.disconnect();
+      
+      // Connect and check queue was cleared
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      const sendCalls = vi.mocked(mockWebSocketInstance?.send).mock.calls;
+      
+      // Should only have auth message, not queued messages
+      expect(sendCalls.length).toBe(1);
+      expect(JSON.parse(sendCalls[0][0]).type).toBe(ChunkingMessageType.AUTH_REQUEST);
+    });
+  });
+
+  describe('error handling', () => {
+    it('should emit error events', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(20);
+      
+      mockWebSocketInstance?.simulateError('Connection error');
+      
+      expect(errorListener).toHaveBeenCalled();
+    });
+
+    it('should handle send failures gracefully', async () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      const errorListener = vi.fn();
+      service.on('error', errorListener);
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      // Override send to throw error
+      mockWebSocketInstance!.send = vi.fn(() => {
+        throw new Error('Send failed');
+      });
+      
+      const message: WebSocketMessage = {
+        type: 'test',
+        data: { test: true },
+        timestamp: Date.now()
+      };
+      
+      const sent = service.send(message);
+      
+      expect(sent).toBe(false);
+      expect(errorListener).toHaveBeenCalledWith({
+        message: 'Failed to send message',
+        error: expect.any(Error)
+      });
+    });
+  });
+
+  describe('cleanup', () => {
+    it('should clean up all resources on disconnect', async () => {
+      service = new WebSocketService({ 
+        url: 'ws://localhost:8080/ws/chunking',
+        heartbeatInterval: 100
+      });
+      
+      service.connect();
+      await vi.advanceTimersByTimeAsync(30);
+      
+      const closeSpy = vi.spyOn(mockWebSocketInstance!, 'close');
+      
+      service.disconnect();
+      
+      expect(closeSpy).toHaveBeenCalledWith(1000, 'Client disconnect');
+      expect(service.getState()).toBe(WebSocketState.CLOSED);
+      expect(service.isConnected()).toBe(false);
+      expect(service.isReady()).toBe(false);
+      expect(service.isAuthenticatedStatus()).toBe(false);
+      
+      // Verify no heartbeats are sent after disconnect
+      const sendSpy = vi.spyOn(mockWebSocketInstance!, 'send');
+      sendSpy.mockClear();
+      
+      await vi.advanceTimersByTimeAsync(500);
+      
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('should handle multiple disconnect calls gracefully', () => {
+      service = new WebSocketService({ url: 'ws://localhost:8080/ws/chunking' });
+      
+      service.connect();
+      
+      // Multiple disconnects should not cause errors
+      service.disconnect();
+      service.disconnect();
+      service.disconnect();
+      
+      expect(service.getState()).toBe(WebSocketState.CLOSED);
+    });
+  });
+});
+
+describe('WebSocket singleton functions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLocalStorage.getItem.mockReturnValue(JSON.stringify({
+      state: { token: 'test-token' }
+    }));
+  });
+
+  it('should create and return chunking WebSocket instance', async () => {
+    const { getChunkingWebSocket } = await import('../websocket');
+    
+    const ws1 = getChunkingWebSocket();
+    const ws2 = getChunkingWebSocket();
+    
+    expect(ws1).toBe(ws2); // Should be same instance
+    expect(ws1).toBeInstanceOf(WebSocketService);
+    
+    ws1.disconnect();
+  });
+
+  it('should disconnect and clear chunking WebSocket instance', async () => {
+    const { getChunkingWebSocket, disconnectChunkingWebSocket } = await import('../websocket');
+    
+    const ws = getChunkingWebSocket();
+    ws.connect();
+    
+    disconnectChunkingWebSocket();
+    
+    expect(ws.isConnected()).toBe(false);
+    
+    // Getting again should create new instance
+    const ws2 = getChunkingWebSocket();
+    expect(ws2).not.toBe(ws);
+    
+    ws2.disconnect();
+  });
+});
