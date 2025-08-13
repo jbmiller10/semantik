@@ -1,6 +1,7 @@
 """Utilities for testing support."""
 
 import os
+from typing import Any, Literal
 
 
 def is_testing() -> bool:
@@ -13,7 +14,7 @@ def is_redis_mock_allowed() -> bool:
     return is_testing()
 
 
-def validate_redis_client(client, client_type="async") -> bool:
+def validate_redis_client(client: Any, client_type: Literal["async", "sync"] = "async") -> bool:
     """Validate Redis client type with test support.
 
     Args:

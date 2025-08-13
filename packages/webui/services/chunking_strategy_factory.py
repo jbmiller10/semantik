@@ -64,10 +64,9 @@ class ChunkingStrategyFactory:
             internal_name = cls._strategy_mapping.get(strategy_name)
             if not internal_name:
                 raise ChunkingStrategyError(
-                    detail=f"No implementation for strategy: {strategy_name.value}",
-                    correlation_id=correlation_id or "unknown",
                     strategy=strategy_name.value,
-                    fallback_strategy="recursive",
+                    reason=f"No implementation for strategy: {strategy_name.value}",
+                    correlation_id=correlation_id or "unknown",
                 )
             strategy_key = internal_name
         else:
@@ -78,10 +77,9 @@ class ChunkingStrategyFactory:
         if strategy_key not in STRATEGY_REGISTRY:
             available = cls.get_available_strategies()
             raise ChunkingStrategyError(
-                detail=f"Unknown strategy: {strategy_name}. Available: {', '.join(available)}",
-                correlation_id=correlation_id or "unknown",
                 strategy=str(strategy_name),
-                fallback_strategy="recursive",
+                reason=f"Unknown strategy: {strategy_name}. Available: {', '.join(available)}",
+                correlation_id=correlation_id or "unknown",
             )
 
         try:
@@ -93,10 +91,10 @@ class ChunkingStrategyFactory:
 
         except Exception as e:
             raise ChunkingStrategyError(
-                detail=f"Failed to initialize strategy {strategy_name}: {str(e)}",
-                correlation_id=correlation_id or "unknown",
                 strategy=str(strategy_name),
-                fallback_strategy="recursive",
+                reason=f"Failed to initialize strategy {strategy_name}: {str(e)}",
+                correlation_id=correlation_id or "unknown",
+                cause=e,
             ) from e
 
     @classmethod
@@ -134,8 +132,43 @@ class ChunkingStrategyFactory:
             cls._reverse_mapping[name] = api_enum
 
     @classmethod
+    def normalize_strategy_name(cls, name: str) -> str:
+        """Normalize strategy name variations to internal names.
+
+        Public method for normalizing strategy names before persistence.
+
+        Args:
+            name: User-provided strategy name
+
+        Returns:
+            Normalized internal strategy name
+
+        Raises:
+            ChunkingStrategyError: If the strategy name is unknown or invalid
+        """
+        normalized = cls._normalize_strategy_name(name)
+
+        # Validate that the normalized name exists in registry
+        if normalized not in STRATEGY_REGISTRY:
+            available = cls.get_available_strategies()
+            raise ChunkingStrategyError(
+                strategy=name,
+                reason=f"Unknown strategy: {name}. Available: {', '.join(available)}",
+                correlation_id="validation",
+            )
+
+        return normalized
+
+    @classmethod
     def _normalize_strategy_name(cls, name: str) -> str:
-        """Normalize strategy name variations to internal names."""
+        """Internal normalize strategy name variations to internal names.
+
+        Args:
+            name: Strategy name to normalize
+
+        Returns:
+            Normalized internal strategy name (may not be valid)
+        """
         name = name.lower().strip()
 
         # Direct mapping
@@ -159,6 +192,7 @@ class ChunkingStrategyFactory:
             "hierarchical": "hierarchical",
         }
 
+        # Return mapped name or original (validation happens in public method)
         return direct_mappings.get(name, name)
 
     @classmethod
@@ -222,7 +256,7 @@ class ChunkingStrategyFactory:
         """
         # Get strategy info
         if isinstance(strategy_name, ChunkingStrategyEnum):
-            strategy = strategy_name
+            strategy: ChunkingStrategyEnum | None = strategy_name
         else:
             # Try to map string to enum
             internal = cls._normalize_strategy_name(strategy_name)
@@ -289,7 +323,7 @@ class ChunkingStrategyFactory:
 
         # Strategy-specific fallbacks
         if isinstance(failed_strategy, ChunkingStrategyEnum):
-            strategy = failed_strategy
+            strategy: ChunkingStrategyEnum | None = failed_strategy
         else:
             internal = cls._normalize_strategy_name(failed_strategy)
             strategy = cls._reverse_mapping.get(internal)
@@ -303,4 +337,6 @@ class ChunkingStrategyFactory:
             ChunkingStrategyEnum.FIXED_SIZE: ChunkingStrategyEnum.FIXED_SIZE,  # No fallback
         }
 
-        return fallback_map.get(strategy, ChunkingStrategyEnum.RECURSIVE)
+        if strategy:
+            return fallback_map.get(strategy, ChunkingStrategyEnum.RECURSIVE)
+        return ChunkingStrategyEnum.RECURSIVE

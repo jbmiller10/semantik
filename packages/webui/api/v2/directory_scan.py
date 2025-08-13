@@ -87,8 +87,7 @@ async def scan_directory_preview(
             return await asyncio.wait_for(scan_task, timeout=0.5)
         except TimeoutError:
             # Normal case - scan is still running
-            # Send initial "started" message via WebSocket
-            channel_id = f"directory-scan:{scan_request.scan_id}"
+            # Send initial "started" message via WebSocket to the user
             progress_msg = DirectoryScanProgress(
                 type="started",
                 scan_id=scan_request.scan_id,
@@ -98,7 +97,8 @@ async def scan_directory_preview(
                     "message": "Directory scan started",
                 },
             )
-            await ws_manager._broadcast(channel_id, progress_msg.model_dump())
+            # Send to the user who initiated the scan
+            await ws_manager.send_to_user(str(current_user["id"]), progress_msg.model_dump())
 
             # Return a partial response indicating scan is in progress
             return DirectoryScanResponse(
@@ -175,8 +175,8 @@ async def directory_scan_websocket(websocket: WebSocket, scan_id: str) -> None:
         return
 
     # Authentication successful, connect the WebSocket
-    channel_id = f"directory-scan:{scan_id}"
-    await ws_manager.connect(websocket, channel_id, user_id)
+    # Use scan_id as operation_id for directory scan tracking
+    connection_id = await ws_manager.connect(websocket, user_id, operation_id=scan_id)
 
     try:
         # Keep the connection alive and handle any incoming messages
@@ -195,4 +195,5 @@ async def directory_scan_websocket(websocket: WebSocket, scan_id: str) -> None:
         pass
     finally:
         # Ensure we always disconnect properly to clean up resources
-        await ws_manager.disconnect(websocket, channel_id, user_id)
+        if "connection_id" in locals():
+            await ws_manager.disconnect(connection_id)

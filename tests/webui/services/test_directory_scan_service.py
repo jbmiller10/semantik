@@ -28,7 +28,7 @@ def directory_scan_service() -> DirectoryScanService:
 def mock_ws_manager() -> AsyncMock:
     """Mock websocket manager."""
     with patch("packages.webui.services.directory_scan_service.ws_manager") as mock:
-        mock._broadcast = AsyncMock()
+        mock.send_to_operation = AsyncMock()
         yield mock
 
 
@@ -99,22 +99,21 @@ class TestDirectoryScanService:
         assert str(temp_scan_directory / "restricted" / "secret.pdf") in file_paths
 
         # Verify WebSocket calls
-        channel_id = f"directory-scan:{scan_id}"
-        assert mock_ws_manager._broadcast.called
+        assert mock_ws_manager.send_to_operation.called
 
         # Check for counting message
         counting_calls = [
             call
-            for call in mock_ws_manager._broadcast.call_args_list
-            if call[0][0] == channel_id and call[0][1]["type"] == "counting"
+            for call in mock_ws_manager.send_to_operation.call_args_list
+            if call[0][0] == scan_id and call[0][1]["type"] == "counting"
         ]
         assert len(counting_calls) > 0
 
         # Check for completion message
         completion_calls = [
             call
-            for call in mock_ws_manager._broadcast.call_args_list
-            if call[0][0] == channel_id and call[0][1]["type"] == "completed"
+            for call in mock_ws_manager.send_to_operation.call_args_list
+            if call[0][0] == scan_id and call[0][1]["type"] == "completed"
         ]
         assert len(completion_calls) == 1
 
@@ -456,9 +455,9 @@ class TestDirectoryScanService:
             channel_id=channel_id, scan_id=scan_id, msg_type="progress", data=data
         )
 
-        mock_ws_manager._broadcast.assert_called_once()
-        call_args = mock_ws_manager._broadcast.call_args[0]
-        assert call_args[0] == channel_id
+        mock_ws_manager.send_to_operation.assert_called_once()
+        call_args = mock_ws_manager.send_to_operation.call_args[0]
+        assert call_args[0] == scan_id  # First arg is scan_id, not channel_id
 
         broadcast_data = call_args[1]
         assert broadcast_data["type"] == "progress"
@@ -469,7 +468,7 @@ class TestDirectoryScanService:
         self, directory_scan_service: DirectoryScanService, mock_ws_manager: AsyncMock
     ) -> None:
         """Test sending progress update with WebSocket error."""
-        mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
+        mock_ws_manager.send_to_operation.side_effect = Exception("WebSocket error")
 
         # Should not raise exception
         await directory_scan_service._send_progress(
@@ -477,7 +476,7 @@ class TestDirectoryScanService:
         )
 
         # Verify broadcast was attempted
-        assert mock_ws_manager._broadcast.called
+        assert mock_ws_manager.send_to_operation.called
 
     async def test_scan_recursive_error_handling(
         self, directory_scan_service: DirectoryScanService, temp_scan_directory: Path
@@ -518,11 +517,10 @@ class TestDirectoryScanService:
         )
 
         # Check that progress updates were sent
-        channel_id = f"directory-scan:{scan_id}"
         progress_calls = [
             call
-            for call in mock_ws_manager._broadcast.call_args_list
-            if call[0][0] == channel_id and call[0][1]["type"] == "progress"
+            for call in mock_ws_manager.send_to_operation.call_args_list
+            if call[0][0] == scan_id and call[0][1]["type"] == "progress"
         ]
 
         # Should have at least one progress update due to interval

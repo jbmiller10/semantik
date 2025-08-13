@@ -15,7 +15,7 @@ class ChunkingConfigBuilder:
     """Builds and validates chunking configurations."""
 
     # Default configurations per strategy
-    DEFAULT_CONFIGS = {
+    DEFAULT_CONFIGS: dict[ChunkingStrategyEnum, dict[str, Any]] = {
         ChunkingStrategyEnum.FIXED_SIZE: {
             "chunk_size": 500,
             "chunk_overlap": 50,
@@ -89,13 +89,14 @@ class ChunkingConfigBuilder:
                 strategy_enum = ChunkingStrategyEnum(strategy.lower())
             except ValueError:
                 # Try to map common variations
-                strategy_enum = self._map_strategy_name(strategy)
-                if not strategy_enum:
+                mapped_strategy = self._map_strategy_name(strategy)
+                if not mapped_strategy:
                     return self.ChunkingConfigResult(
                         strategy=ChunkingStrategyEnum.RECURSIVE,  # Default fallback
                         config={},
                         validation_errors=[f"Unknown strategy: {strategy}"],
                     )
+                strategy_enum = mapped_strategy
         else:
             strategy_enum = strategy
 
@@ -316,6 +317,9 @@ class ChunkingConfigBuilder:
             Suggested configuration
         """
         # Determine best strategy based on context
+        strategy: ChunkingStrategyEnum
+        config: dict[str, Any]
+
         if file_type in [".md", ".markdown", ".rst", ".tex"]:
             strategy = ChunkingStrategyEnum.DOCUMENT_STRUCTURE
             config = {

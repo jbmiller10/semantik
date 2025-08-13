@@ -28,6 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
+from typing import Any, cast
 
 from sqlalchemy import (
     JSON,
@@ -86,11 +87,24 @@ class CollectionStatus(str, enum.Enum):
 class OperationStatus(str, enum.Enum):
     """Status of an operation."""
 
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "OperationStatus | None":
+        """Provide case-insensitive lookup for enum values.
+
+        This allows constructing OperationStatus from values like "PROCESSING"
+        that appear in some test helpers, while keeping canonical values
+        lowercase in the database.
+        """
+        if isinstance(value, str):
+            result = cls.__members__.get(value.upper()) or cls._value2member_map_.get(value.lower())
+            return cast("OperationStatus | None", result)
+        return None
 
 
 class OperationType(str, enum.Enum):
@@ -330,7 +344,18 @@ class Operation(Base):
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(Enum(OperationType, name="operation_type", native_enum=True, create_constraint=False), nullable=False, index=True)  # type: ignore[var-annotated]
-    status = Column(Enum(OperationStatus, name="operation_status", native_enum=True, create_constraint=False), nullable=False, default=OperationStatus.PENDING, index=True)  # type: ignore[var-annotated]
+    status = Column(
+        Enum(
+            OperationStatus,
+            name="operation_status",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=OperationStatus.PENDING,
+        index=True,
+    )  # type: ignore[var-annotated]
     task_id = Column(String)  # Celery task ID
     config = Column(JSON, nullable=False)
     error_message = Column(Text)

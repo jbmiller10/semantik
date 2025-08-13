@@ -16,6 +16,27 @@ DEFAULT_CHUNK_SIZE = 512
 DEFAULT_CHUNK_OVERLAP = 50
 MAX_CHUNK_OVERLAP = 500
 
+# Progressive segmentation configuration
+SEGMENT_SIZE_THRESHOLD = 5 * 1024 * 1024  # 5MB - Documents larger than this will be segmented
+DEFAULT_SEGMENT_SIZE = 1 * 1024 * 1024  # 1MB - Size of each segment
+DEFAULT_SEGMENT_OVERLAP = 10 * 1024  # 10KB - Overlap between segments to preserve context
+MAX_SEGMENTS_PER_DOCUMENT = 100  # Maximum number of segments to prevent runaway processing
+
+# Per-strategy segmentation thresholds (optional overrides)
+STRATEGY_SEGMENT_THRESHOLDS = {
+    "semantic": 2 * 1024 * 1024,  # 2MB - Semantic needs smaller segments for embedding
+    "markdown": 10 * 1024 * 1024,  # 10MB - Markdown can handle larger segments
+    "recursive": 8 * 1024 * 1024,  # 8MB - Recursive can handle moderately large segments
+    "hierarchical": 5 * 1024 * 1024,  # 5MB - Hierarchical needs moderate segments
+    "hybrid": 3 * 1024 * 1024,  # 3MB - Hybrid needs smaller segments for strategy switching
+}
+
+# Streaming configuration
+STREAMING_ENABLED = True  # Enable streaming strategies for supported types
+STREAMING_STRATEGIES = ["markdown", "recursive"]  # Strategies with streaming support
+STREAMING_BUFFER_SIZE = 64 * 1024  # 64KB - Read buffer for streaming
+STREAMING_WINDOW_SIZE = 256 * 1024  # 256KB - Processing window for streaming
+
 # Preview limits
 MAX_PREVIEW_CHUNKS = 50
 DEFAULT_PREVIEW_CHUNKS = 10
