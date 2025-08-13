@@ -26,7 +26,7 @@ settings = Settings()
 try:  # pragma: no cover
     import builtins as _builtins
 
-    _builtins.settings = settings
+    _builtins.settings = settings  # type: ignore[attr-defined]
 except Exception:  # pragma: no cover
     pass
 

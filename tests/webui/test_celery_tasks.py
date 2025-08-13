@@ -24,10 +24,10 @@ from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
     _handle_task_failure_async,
-    _process_append_operation,
+    _process_append_operation_impl,
     _process_collection_operation_async,
     _process_index_operation,
-    _process_reindex_operation,
+    _process_reindex_operation_impl,
     _process_remove_source_operation,
     _sanitize_error_message,
     _validate_reindex,
@@ -570,7 +570,7 @@ class TestAppendOperation:
         # Patch both the extract function and TokenChunker
         with (
             patch("packages.webui.tasks.extract_and_serialize_thread_safe", side_effect=mock_extract_func),
-            patch("packages.webui.tasks.TokenChunker", return_value=mock_chunker),
+            patch("shared.text_processing.chunking.TokenChunker", return_value=mock_chunker),
             patch("asyncio.get_event_loop", return_value=mock_loop),
         ):
             # Mock httpx client for vecpipe API
@@ -622,7 +622,7 @@ class TestAppendOperation:
             }
 
             # Run operation
-            result = await _process_append_operation(
+            result = await _process_append_operation_impl(
                 operation, collection, collection_repo, document_repo, mock_updater
             )
 
@@ -664,7 +664,7 @@ class TestAppendOperation:
 
         # Should raise ValueError
         with pytest.raises(ValueError, match="source_path is required"):
-            await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
+            await _process_append_operation_impl(operation, collection, collection_repo, document_repo, mock_updater)
 
 
 class TestReindexOperation:
@@ -772,7 +772,9 @@ class TestReindexOperation:
         document_repo.list_by_collection.return_value = [mock_doc]
 
         # Run operation
-        result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, mock_updater)
+        result = await _process_reindex_operation_impl(
+            operation, collection, collection_repo, document_repo, mock_updater
+        )
 
         # Verify staging collection was created
         mock_reindex_handler.assert_called_once()
@@ -846,7 +848,7 @@ class TestReindexOperation:
 
                 # Should raise validation error
                 with pytest.raises(ValueError, match="Reindex validation failed"):
-                    await _process_reindex_operation(
+                    await _process_reindex_operation_impl(
                         operation, collection, collection_repo, document_repo, mock_updater
                     )
 

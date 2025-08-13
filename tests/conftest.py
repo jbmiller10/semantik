@@ -14,7 +14,7 @@ from uuid import uuid4
 # Set test environment BEFORE any app imports
 os.environ["TESTING"] = "true"
 os.environ["ENV"] = "test"
-os.environ["DISABLE_RATE_LIMIT"] = "true"
+os.environ["DISABLE_RATE_LIMITING"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 
 import asyncpg  # noqa: E402
@@ -78,16 +78,27 @@ def use_fakeredis():
     fake_sync_redis = fakeredis.FakeRedis(decode_responses=True)
     fake_async_redis = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
-    with (
-        patch("redis.from_url", return_value=fake_sync_redis),
-        patch("redis.asyncio.from_url", return_value=fake_async_redis),
-        patch("redis.ConnectionPool.from_url", return_value=fake_sync_redis.connection_pool),
-        patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
-    ):
+    # Import the sync redis module for proper patching
+    import redis as sync_redis  # Import the sync redis module
 
+    with (
+        # Patch sync redis
+        patch("redis.from_url", return_value=fake_sync_redis),
+        patch("redis.ConnectionPool.from_url", return_value=fake_sync_redis.connection_pool),
+        # Patch async redis
+        patch("redis.asyncio.from_url", return_value=fake_async_redis),
+        patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
+        # Also patch the WebSocket manager's Redis imports
+        patch("packages.webui.websocket.scalable_manager.redis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.websocket_manager.redis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.websocket_manager.aioredis.from_url", return_value=fake_async_redis),
+        # Patch service manager imports
+        patch("packages.webui.services.redis_manager.aioredis.from_url", return_value=fake_async_redis),
+        patch("packages.webui.services.redis_manager.redis.from_url", return_value=fake_sync_redis),
+    ):
         # Also need to handle Redis() constructor with connection pool
-        original_redis_init = redis.Redis.__init__
-        original_async_redis_init = redis.asyncio.Redis.__init__
+        original_sync_redis_init = sync_redis.Redis.__init__
+        original_async_redis_init = redis.Redis.__init__  # redis is already redis.asyncio
 
         def fake_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_sync_redis.connection_pool:
@@ -95,7 +106,7 @@ def use_fakeredis():
                 fake_sync_redis.__init__(*args, **kwargs)
                 self.__dict__.update(fake_sync_redis.__dict__)
             else:
-                original_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
+                original_sync_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
 
         def fake_async_redis_init(self, *args, connection_pool=None, **kwargs):
             if connection_pool == fake_async_redis.connection_pool:
@@ -105,14 +116,14 @@ def use_fakeredis():
             else:
                 original_async_redis_init(self, *args, connection_pool=connection_pool, **kwargs)
 
-        redis.Redis.__init__ = fake_redis_init
-        redis.asyncio.Redis.__init__ = fake_async_redis_init
+        sync_redis.Redis.__init__ = fake_redis_init
+        redis.Redis.__init__ = fake_async_redis_init  # redis is already redis.asyncio
 
         try:
             yield fake_sync_redis, fake_async_redis
         finally:
-            redis.Redis.__init__ = original_redis_init
-            redis.asyncio.Redis.__init__ = original_async_redis_init
+            sync_redis.Redis.__init__ = original_sync_redis_init
+            redis.Redis.__init__ = original_async_redis_init
 
 
 @pytest.fixture()
