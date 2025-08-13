@@ -122,7 +122,7 @@ def create_backup_table(conn, timestamp: str) -> str:
     backup_table_name = f"chunks_backup_{timestamp}"
 
     # Validate backup table name format BEFORE using it
-    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
+    if not re.match(r"^chunks_backup_\d{8}_\d{6}$", backup_table_name):
         raise ValueError(f"Invalid backup table name format: {backup_table_name}")
 
     logger.info(f"Creating backup table: {backup_table_name}")
@@ -158,10 +158,10 @@ def create_backup_table(conn, timestamp: str) -> str:
     for partition_table in partition_tables:
         backup_partition_name = f"{partition_table}_backup_{timestamp}"
         # Validate partition table names
-        if not re.match(r'^chunks_part_\d{2}$', partition_table):
+        if not re.match(r"^chunks_part_\d{2}$", partition_table):
             logger.warning(f"Skipping invalid partition table name: {partition_table}")
             continue
-        if not re.match(r'^chunks_part_\d{2}_backup_\d{8}_\d{6}$', backup_partition_name):
+        if not re.match(r"^chunks_part_\d{2}_backup_\d{8}_\d{6}$", backup_partition_name):
             logger.warning(f"Invalid backup partition name: {backup_partition_name}")
             continue
 
@@ -215,9 +215,7 @@ def create_backup_table(conn, timestamp: str) -> str:
         )
     )
 
-    result = conn.execute(
-        text("SELECT temp_get_count(:table_name)").bindparams(table_name=backup_table_name)
-    )
+    result = conn.execute(text("SELECT temp_get_count(:table_name)").bindparams(table_name=backup_table_name))
     backup_count = result.scalar()
 
     # Clean up temporary function
@@ -246,7 +244,7 @@ def create_backup_table(conn, timestamp: str) -> str:
 def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
     """Verify backup integrity."""
     # Validate backup table name format FIRST
-    if not re.match(r'^chunks_backup_\d{8}_\d{6}$', backup_table_name):
+    if not re.match(r"^chunks_backup_\d{8}_\d{6}$", backup_table_name):
         raise ValueError(f"Invalid backup table name format: {backup_table_name}")
 
     # Create a temporary function to safely get count from dynamic table
@@ -266,9 +264,7 @@ def verify_backup(conn, backup_table_name: str, original_count: int) -> bool:
         )
     )
 
-    result = conn.execute(
-        text("SELECT temp_verify_count(:table_name)").bindparams(table_name=backup_table_name)
-    )
+    result = conn.execute(text("SELECT temp_verify_count(:table_name)").bindparams(table_name=backup_table_name))
     backup_count = result.scalar()
 
     # Clean up temporary function
@@ -380,7 +376,7 @@ def create_new_partitioned_structure(conn):
 def migrate_data_in_batches(conn, source_table: str = "chunks"):
     """Migrate data from old structure to new in batches."""
     # Validate source table name
-    if not re.match(r'^chunks(_backup_\d{8}_\d{6})?$', source_table):
+    if not re.match(r"^chunks(_backup_\d{8}_\d{6})?$", source_table):
         raise ValueError(f"Invalid source table name: {source_table}")
 
     # Get total count for progress tracking using safe PL/pgSQL
@@ -400,9 +396,7 @@ def migrate_data_in_batches(conn, source_table: str = "chunks"):
         )
     )
 
-    result = conn.execute(
-        text("SELECT temp_get_source_count(:table_name)").bindparams(table_name=source_table)
-    )
+    result = conn.execute(text("SELECT temp_get_source_count(:table_name)").bindparams(table_name=source_table))
     total_records = result.scalar()
 
     # Clean up temporary function
@@ -630,9 +624,9 @@ def perform_atomic_swap(conn):
 
     # Rename main chunks table
     conn.execute(
-        text(
-            "DO $$ BEGIN EXECUTE format('ALTER TABLE chunks RENAME TO %I', :new_name); END $$;"
-        ).bindparams(new_name=f"chunks_old_{timestamp}")
+        text("DO $$ BEGIN EXECUTE format('ALTER TABLE chunks RENAME TO %I', :new_name); END $$;").bindparams(
+            new_name=f"chunks_old_{timestamp}"
+        )
     )
     conn.execute(text("ALTER TABLE chunks_new RENAME TO chunks"))
 
@@ -641,9 +635,9 @@ def perform_atomic_swap(conn):
         part_name = f"chunks_new_part_{i:02d}"
         new_name = f"chunks_part_{i:02d}"
         conn.execute(
-            text(
-                "DO $$ BEGIN EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name); END $$;"
-            ).bindparams(old_name=part_name, new_name=new_name)
+            text("DO $$ BEGIN EXECUTE format('ALTER TABLE %I RENAME TO %I', :old_name, :new_name); END $$;").bindparams(
+                old_name=part_name, new_name=new_name
+            )
         )
 
     # Create trigger on renamed table
@@ -718,13 +712,15 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     # Validate view names against allowlist
-    allowed_view_pattern = r'^[a-z_]+$'
+    allowed_view_pattern = r"^[a-z_]+$"
     for view in views_to_drop:
         if not re.match(allowed_view_pattern, view):
             raise ValueError(f"Invalid view name: {view}")
         with contextlib.suppress(Exception):
             conn.execute(
-                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(view=view)
+                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(
+                    view=view
+                )
             )
 
     with contextlib.suppress(Exception):
@@ -738,7 +734,7 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     # Validate function names against allowlist
-    allowed_func_pattern = r'^[a-z_]+$'
+    allowed_func_pattern = r"^[a-z_]+$"
     for func_name, params in functions_to_drop:
         if not re.match(allowed_func_pattern, func_name):
             raise ValueError(f"Invalid function name: {func_name}")

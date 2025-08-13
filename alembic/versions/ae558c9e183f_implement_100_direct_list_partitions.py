@@ -35,14 +35,16 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     # Validate view names against allowlist
-    allowed_view_pattern = r'^[a-z_]+$'
+    allowed_view_pattern = r"^[a-z_]+$"
     for view in views_to_drop:
         if not re.match(allowed_view_pattern, view):
             raise ValueError(f"Invalid view name: {view}")
         with contextlib.suppress(Exception):
             # Use quote_ident equivalent via format %I in PL/pgSQL for safety
             conn.execute(
-                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(view=view)
+                text("DO $$ BEGIN EXECUTE format('DROP VIEW IF EXISTS %I CASCADE', :view); END $$;").bindparams(
+                    view=view
+                )
             )
 
     # Drop materialized views
@@ -58,7 +60,7 @@ def cleanup_chunks_dependencies(conn):
     ]
 
     # Validate function names against allowlist
-    allowed_func_pattern = r'^[a-z_]+$'
+    allowed_func_pattern = r"^[a-z_]+$"
     for func_name, params in functions_to_drop:
         if not re.match(allowed_func_pattern, func_name):
             raise ValueError(f"Invalid function name: {func_name}")
