@@ -1,7 +1,7 @@
 """Fix partition distribution strategy to spread chunks within collections
 
 Revision ID: db005_partition_distribution
-Revises: db004_add_chunking_indexes
+Revises: p2_backfill_001
 Create Date: 2025-08-13 00:00:00.000000
 
 CRITICAL FIX: The current partition strategy puts ALL chunks from a collection
@@ -30,7 +30,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic
 revision: str = "db005_partition_distribution"
-down_revision: str | None = "db004_add_chunking_indexes"
+down_revision: str | None = "p2_backfill_001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
