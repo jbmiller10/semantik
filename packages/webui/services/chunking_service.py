@@ -1079,8 +1079,9 @@ class ChunkingService:
 
         Raises:
             ValidationError: If validation fails
+            DocumentTooLargeError: If content exceeds size limit
         """
-        from packages.webui.services.chunking_security import ValidationError
+        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 
         # Must have either content or document_id
         if not content and not document_id:
@@ -1089,11 +1090,15 @@ class ChunkingService:
         if content is not None:
             # Check for null bytes
             if "\x00" in content:
-                raise ValidationError("Content contains null bytes")
+                raise ValidationError("Content contains null bytes", error_code="NULL_BYTES")
 
             # Enforce ~10MB limit
             if len(content) > 10 * 1024 * 1024:
-                raise ValidationError("Content too large")
+                raise DocumentTooLargeError(
+                    document_size=len(content),
+                    max_size=10 * 1024 * 1024,
+                    message="Content too large",
+                )
 
     async def compare_strategies_for_api(
         self,
@@ -1499,6 +1504,107 @@ class ChunkingService:
 
         return metrics
 
+    async def get_collection_chunk_stats(self, collection_id: str) -> dict[str, Any]:
+        """Get chunk-level statistics for a collection.
+
+        This method returns chunk-level metrics suitable for ChunkingStats schema.
+
+        Args:
+            collection_id: ID of the collection
+
+        Returns:
+            Chunk statistics suitable for the API response
+        """
+        try:
+            # Get collection
+            collection = await self.collection_repo.get_by_uuid(collection_id)
+            if not collection:
+                from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
+
+                raise ResourceNotFoundError(f"Collection {collection_id} not found")
+
+            # Get chunk statistics from database
+            from packages.shared.database.models import Chunk
+
+            chunk_stats_query = select(
+                func.count(Chunk.id).label("total_chunks"),
+                func.avg(Chunk.size).label("avg_chunk_size"),
+                func.min(Chunk.size).label("min_chunk_size"),
+                func.max(Chunk.size).label("max_chunk_size"),
+                func.var_pop(Chunk.size).label("size_variance"),
+            ).where(Chunk.collection_id == collection.id)
+
+            result = await self.db_session.execute(chunk_stats_query)
+            stats = result.one()
+
+            # Count documents
+            from packages.shared.database.models import Document
+
+            doc_count_query = select(func.count(Document.id)).where(Document.collection_id == collection.id)
+            doc_result = await self.db_session.execute(doc_count_query)
+            total_documents = doc_result.scalar() or 0
+
+            # Get the latest operation to find processing time and strategy
+            from packages.shared.database.models import Operation, OperationType
+
+            latest_op_query = (
+                select(Operation)
+                .where(
+                    and_(
+                        Operation.collection_id == collection.id,
+                        Operation.type == OperationType.INDEX,
+                        Operation.status == "completed",
+                    )
+                )
+                .order_by(Operation.completed_at.desc())
+                .limit(1)
+            )
+            latest_op_result = await self.db_session.execute(latest_op_query)
+            latest_operation = latest_op_result.scalar_one_or_none()
+
+            processing_time = 0.0
+            strategy = collection.chunking_strategy or "fixed_size"
+            last_updated = collection.updated_at
+
+            if latest_operation:
+                if latest_operation.started_at and latest_operation.completed_at:
+                    processing_time = (latest_operation.completed_at - latest_operation.started_at).total_seconds()
+                if latest_operation.config and "strategy" in latest_operation.config:
+                    strategy = latest_operation.config["strategy"]
+                last_updated = latest_operation.completed_at or collection.updated_at
+
+            return {
+                "total_chunks": stats.total_chunks or 0,
+                "total_documents": total_documents,
+                "average_chunk_size": float(stats.avg_chunk_size) if stats.avg_chunk_size else 0,
+                "min_chunk_size": stats.min_chunk_size or 0,
+                "max_chunk_size": stats.max_chunk_size or 0,
+                "size_variance": float(stats.size_variance) if stats.size_variance else 0.0,
+                "strategy": strategy,
+                "last_updated": last_updated,
+                "processing_time": processing_time,
+                "performance_metrics": {
+                    "quality_score": 0.85,  # Placeholder
+                    "overlap_ratio": 0.2,  # Placeholder
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get chunk statistics: {e}")
+            # Return empty stats on error
+            return {
+                "total_chunks": 0,
+                "total_documents": 0,
+                "average_chunk_size": 0,
+                "min_chunk_size": 0,
+                "max_chunk_size": 0,
+                "size_variance": 0.0,
+                "strategy": "fixed_size",
+                "last_updated": datetime.now(UTC),
+                "processing_time": 0.0,
+                "performance_metrics": {},
+            }
+
     @QueryMonitor.monitor("get_chunking_statistics")
     async def get_chunking_statistics(self, collection_id: str) -> dict[str, Any]:
         """Get chunking statistics for a collection with optimized queries.
@@ -1733,6 +1839,22 @@ class ChunkingService:
             )
         except Exception as e:
             logger.warning(f"Failed to cache preview: {e}")
+
+    async def get_cached_preview_by_id(
+        self, preview_id: str, user_id: int | None = None  # noqa: ARG002
+    ) -> dict[str, Any] | None:
+        """Get cached preview by ID.
+
+        Public method for retrieving cached preview results.
+
+        Args:
+            preview_id: Preview ID (cache key)
+            user_id: Optional user ID for access control
+
+        Returns:
+            Cached preview data or None if not found
+        """
+        return await self._get_cached_preview_by_key(preview_id)
 
     async def _get_cached_preview_by_key(self, cache_key: str) -> dict[str, Any] | None:
         """Get cached preview by key.

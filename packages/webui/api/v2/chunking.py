@@ -33,6 +33,7 @@ from packages.webui.api.v2.chunking_schemas import (
     ChunkingStrategy,
     ChunkingStrategyUpdate,
     ChunkListResponse,
+    ChunkPreview,
     CompareRequest,
     CompareResponse,
     CreateConfigurationRequest,
@@ -246,21 +247,23 @@ async def generate_preview(
 
     try:
         # Delegate validation to service
+        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+
         try:
             await service.validate_preview_content(
                 content=preview_request.content,
                 document_id=preview_request.document_id,
             )
-        except Exception as e:
-            # Map service validation errors to appropriate HTTP errors
-            error_msg = str(e)
-            if "null bytes" in error_msg:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content contains null bytes") from e
-            if "too large" in error_msg:
-                raise HTTPException(status_code=status.HTTP_507_INSUFFICIENT_STORAGE, detail="Content too large") from e
-            if "must be provided" in error_msg:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="document_id or content must be provided") from e
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg) from e
+        except DocumentTooLargeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=str(e) if str(e) else "Content too large",
+            ) from e
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
 
         # Delegate to service using the method name expected by tests
         result = await service.preview_chunking(
@@ -277,11 +280,32 @@ async def generate_preview(
         if "strategy" not in config_data:
             config_data["strategy"] = result["strategy"]
 
+        # Transform service chunks to ChunkPreview objects
+        chunks = []
+        for chunk in result.get("chunks", []):
+            # Handle both 'content' and 'text' keys for chunk content
+            content = chunk.get("content") or chunk.get("text", "")
+            char_count = len(content)
+            # Approximate token count (rough estimate: ~4 chars per token)
+            token_count = chunk.get("token_count", char_count // 4)
+
+            chunks.append(
+                ChunkPreview(
+                    index=chunk.get("index", 0),
+                    content=content,
+                    token_count=token_count,
+                    char_count=char_count,
+                    metadata=chunk.get("metadata", {}),
+                    quality_score=chunk.get("quality_score", 0.8),
+                    overlap_info=chunk.get("overlap_info"),
+                )
+            )
+
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
             config=ChunkingConfigBase(**config_data),
-            chunks=result["chunks"],
+            chunks=chunks,
             total_chunks=result["total_chunks"],
             metrics=result.get("metrics"),
             processing_time_ms=result["processing_time_ms"],
@@ -401,16 +425,11 @@ async def get_cached_preview(
     check_circuit_breaker(request)
 
     try:
-        # Tests expect using the private cache getter by key
-        if hasattr(service, "_get_cached_preview_by_key"):
-            result = await service._get_cached_preview_by_key(preview_id)
-        elif hasattr(service, "get_cached_preview"):
-            result = await service.get_cached_preview(
-                preview_id=preview_id,
-                user_id=_current_user.get("id") if _current_user else None,
-            )
-        else:
-            result = None
+        # Use public service method for cache retrieval
+        result = await service.get_cached_preview_by_id(
+            preview_id=preview_id,
+            user_id=_current_user.get("id") if _current_user else None,
+        )
 
         if not result:
             raise HTTPException(
@@ -423,11 +442,32 @@ async def get_cached_preview(
         if "strategy" not in config_data:
             config_data["strategy"] = result["strategy"]
 
+        # Transform service chunks to ChunkPreview objects
+        chunks = []
+        for chunk in result.get("chunks", []):
+            # Handle both 'content' and 'text' keys for chunk content
+            content = chunk.get("content") or chunk.get("text", "")
+            char_count = len(content)
+            # Approximate token count (rough estimate: ~4 chars per token)
+            token_count = chunk.get("token_count", char_count // 4)
+
+            chunks.append(
+                ChunkPreview(
+                    index=chunk.get("index", 0),
+                    content=content,
+                    token_count=token_count,
+                    char_count=char_count,
+                    metadata=chunk.get("metadata", {}),
+                    quality_score=chunk.get("quality_score", 0.8),
+                    overlap_info=chunk.get("overlap_info"),
+                )
+            )
+
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
             config=ChunkingConfigBase(**config_data),
-            chunks=result["chunks"],
+            chunks=chunks,
             total_chunks=result["total_chunks"],
             metrics=result.get("metrics"),
             processing_time_ms=result["processing_time_ms"],
@@ -507,11 +547,13 @@ async def start_chunking_operation(
         )
 
         # Check if configuration is valid
-        if not validation_result.get("is_valid", True):
+        if not validation_result.get("valid", True):
             # Return 400 for invalid configuration
+            errors = validation_result.get("errors", [])
+            error_msg = "; ".join(errors) if errors else "Configuration validation failed"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid configuration: {validation_result.get('reason', 'Configuration validation failed')}",
+                detail=f"Invalid configuration: {error_msg}",
             )
 
         # Create operation record
@@ -721,7 +763,8 @@ async def get_chunking_stats(
     Get detailed chunking statistics and metrics for a collection.
     """
     try:
-        stats = await service.get_chunking_statistics(
+        # Use the new method that returns chunk-level statistics
+        stats = await service.get_collection_chunk_stats(
             collection_id=collection_id,
         )
 
