@@ -115,8 +115,8 @@ class TestListCollectionOperations:
 
         # Configure mock to return filtered results based on filter parameters
         def filter_side_effect(
-            collection_id, user_id, status=None, operation_type=None, offset=0, limit=50
-        ):  # noqa: ARG001
+            _collection_id, _user_id, status=None, operation_type=None, _offset=0, _limit=50
+        ):
             results = [operation1, operation2]
 
             # Apply status filter
