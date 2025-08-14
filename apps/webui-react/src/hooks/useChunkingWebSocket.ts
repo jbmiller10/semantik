@@ -302,7 +302,7 @@ export function useChunkingWebSocket(
     // Remove all event listeners before disconnecting
     if (wsRef.current) {
       listenersRef.current.forEach((handler, event) => {
-        wsRef.current?.removeListener(event, handler);
+        wsRef.current?.off(event, handler);
       });
       listenersRef.current.clear();
     }
