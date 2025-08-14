@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
@@ -26,6 +27,10 @@ from packages.shared.chunking.infrastructure.exceptions import (
 from packages.shared.chunking.infrastructure.exceptions import (
     ValidationError as ChunkingValidationError,
 )
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.database.models import Collection, CollectionStatus, User
 from packages.webui.auth import create_access_token, get_current_user
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
