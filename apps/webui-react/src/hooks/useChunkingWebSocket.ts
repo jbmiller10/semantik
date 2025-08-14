@@ -459,7 +459,7 @@ export function useChunkingWebSocket(
         wsRef.current = null;
       }
     };
-  }, [autoConnect, connect, disconnect]);
+  }, [autoConnect]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     // Connection management

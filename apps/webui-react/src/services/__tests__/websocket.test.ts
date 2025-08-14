@@ -203,7 +203,7 @@ describe('WebSocketService', () => {
     // Disconnect the service if it exists
     if (service) {
       service.disconnect();
-      service = undefined as any;
+      service = undefined;
     }
     
     // Force close any remaining mock WebSocket instances
