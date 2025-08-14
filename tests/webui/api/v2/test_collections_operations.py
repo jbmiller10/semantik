@@ -63,7 +63,7 @@ class TestListCollectionOperations:
             op.completed_at = datetime.now(UTC)
             operations.append(op)
 
-        mock_collection_service.list_operations.return_value = (operations, 3)
+        mock_collection_service.list_operations_filtered.return_value = (operations, 3)
 
         # Execute
         result = await list_collection_operations(
@@ -113,7 +113,7 @@ class TestListCollectionOperations:
         operation2.started_at = datetime.now(UTC)
         operation2.completed_at = None
 
-        mock_collection_service.list_operations.return_value = ([operation1, operation2], 2)
+        mock_collection_service.list_operations_filtered.return_value = ([operation1, operation2], 2)
 
         # Test with status filter
         result = await list_collection_operations(
@@ -150,6 +150,11 @@ class TestListCollectionOperations:
         """Test listing operations with invalid status."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
+        # Setup
+        mock_collection_service.list_operations_filtered.side_effect = ValueError(
+            "Invalid status: invalid_status. Valid values are: ['pending', 'processing', 'completed', 'failed', 'cancelled']"
+        )
+
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_operations(
@@ -171,6 +176,11 @@ class TestListCollectionOperations:
     ) -> None:
         """Test listing operations with invalid type."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
+
+        # Setup
+        mock_collection_service.list_operations_filtered.side_effect = ValueError(
+            "Invalid operation type: invalid_type. Valid values are: ['index', 'append', 'reindex', 'delete', 'remove_source']"
+        )
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
@@ -194,7 +204,7 @@ class TestListCollectionOperations:
         """Test 404 error when collection not found."""
         collection_uuid = "non-existent-uuid"
 
-        mock_collection_service.list_operations.side_effect = EntityNotFoundError("Collection", collection_uuid)
+        mock_collection_service.list_operations_filtered.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_operations(
@@ -217,7 +227,7 @@ class TestListCollectionOperations:
         """Test 403 error when user lacks access."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
-        mock_collection_service.list_operations.side_effect = AccessDeniedError(
+        mock_collection_service.list_operations_filtered.side_effect = AccessDeniedError(
             str(mock_user["id"]), "collection", collection_uuid
         )
 
@@ -263,7 +273,7 @@ class TestListCollectionDocuments:
             doc.updated_at = datetime.now(UTC)
             documents.append(doc)
 
-        mock_collection_service.list_documents.return_value = (documents, 3)
+        mock_collection_service.list_documents_filtered.return_value = (documents, 3)
 
         # Execute
         result = await list_collection_documents(
@@ -320,7 +330,7 @@ class TestListCollectionDocuments:
         doc2.created_at = datetime.now(UTC)
         doc2.updated_at = datetime.now(UTC)
 
-        mock_collection_service.list_documents.return_value = ([doc1, doc2], 2)
+        mock_collection_service.list_documents_filtered.return_value = ([doc1, doc2], 2)
 
         # Test with status filter
         result = await list_collection_documents(
@@ -343,6 +353,11 @@ class TestListCollectionDocuments:
         """Test listing documents with invalid status."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
+        # Setup
+        mock_collection_service.list_documents_filtered.side_effect = ValueError(
+            "Invalid status: invalid_status. Valid values are: ['pending', 'processing', 'completed', 'failed']"
+        )
+
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_documents(
@@ -364,7 +379,7 @@ class TestListCollectionDocuments:
         """Test 404 error when collection not found."""
         collection_uuid = "non-existent-uuid"
 
-        mock_collection_service.list_documents.side_effect = EntityNotFoundError("Collection", collection_uuid)
+        mock_collection_service.list_documents_filtered.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_documents(
@@ -386,7 +401,7 @@ class TestListCollectionDocuments:
         """Test 403 error when user lacks access."""
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
-        mock_collection_service.list_documents.side_effect = AccessDeniedError(
+        mock_collection_service.list_documents_filtered.side_effect = AccessDeniedError(
             str(mock_user["id"]), "collection", collection_uuid
         )
 
@@ -411,7 +426,7 @@ class TestListCollectionDocuments:
         collection_uuid = "123e4567-e89b-12d3-a456-426614174000"
 
         # Return empty list for page 2
-        mock_collection_service.list_documents.return_value = ([], 50)
+        mock_collection_service.list_documents_filtered.return_value = ([], 50)
 
         # Execute
         result = await list_collection_documents(
@@ -430,6 +445,6 @@ class TestListCollectionDocuments:
         assert result.per_page == 20
 
         # Verify offset calculation
-        mock_collection_service.list_documents.assert_called_once_with(
-            collection_id=collection_uuid, user_id=1, offset=20, limit=20  # (page-1) * per_page = (2-1) * 20
+        mock_collection_service.list_documents_filtered.assert_called_once_with(
+            collection_id=collection_uuid, user_id=1, status=None, offset=20, limit=20  # (page-1) * per_page = (2-1) * 20
         )

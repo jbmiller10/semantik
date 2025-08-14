@@ -272,7 +272,7 @@ class TestListOperations:
             op.completed_at = datetime.now(UTC)
             operations.append(op)
 
-        mock_operation_service.list_operations.return_value = (operations, 3)
+        mock_operation_service.list_operations_with_filters.return_value = (operations, 3)
 
         # Execute
         result = await list_operations(
@@ -291,8 +291,8 @@ class TestListOperations:
         assert result[1].id == "op-1"
         assert result[2].id == "op-2"
 
-        mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"], status_list=None, operation_type=None, offset=0, limit=50
+        mock_operation_service.list_operations_with_filters.assert_awaited_once_with(
+            user_id=mock_user["id"], status=None, operation_type=None, offset=0, limit=50
         )
 
     @pytest.mark.asyncio()
@@ -314,7 +314,7 @@ class TestListOperations:
         op.completed_at = None
         operations.append(op)
 
-        mock_operation_service.list_operations.return_value = (operations, 1)
+        mock_operation_service.list_operations_with_filters.return_value = (operations, 1)
 
         # Execute
         result = await list_operations(
@@ -330,9 +330,9 @@ class TestListOperations:
         assert len(result) == 1
         assert result[0].status == OperationStatus.PROCESSING.value
 
-        mock_operation_service.list_operations.assert_awaited_once_with(
+        mock_operation_service.list_operations_with_filters.assert_awaited_once_with(
             user_id=mock_user["id"],
-            status_list=[OperationStatus.PROCESSING, OperationStatus.PENDING],
+            status="PROCESSING,PENDING",
             operation_type=None,
             offset=0,
             limit=50,
@@ -357,7 +357,7 @@ class TestListOperations:
         op.completed_at = datetime.now(UTC)
         operations.append(op)
 
-        mock_operation_service.list_operations.return_value = (operations, 1)
+        mock_operation_service.list_operations_with_filters.return_value = (operations, 1)
 
         # Execute
         result = await list_operations(
@@ -373,8 +373,8 @@ class TestListOperations:
         assert len(result) == 1
         assert result[0].type == OperationType.REINDEX.value
 
-        mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"], status_list=None, operation_type=OperationType.REINDEX, offset=0, limit=50
+        mock_operation_service.list_operations_with_filters.assert_awaited_once_with(
+            user_id=mock_user["id"], status=None, operation_type="reindex", offset=0, limit=50
         )
 
     @pytest.mark.asyncio()
@@ -398,7 +398,7 @@ class TestListOperations:
             operations.append(op)
 
         # Return only page 2 (items 10-19)
-        mock_operation_service.list_operations.return_value = (operations[10:20], 20)
+        mock_operation_service.list_operations_with_filters.return_value = (operations[10:20], 20)
 
         # Execute
         result = await list_operations(
@@ -415,8 +415,8 @@ class TestListOperations:
         assert result[0].id == "op-10"
         assert result[9].id == "op-19"
 
-        mock_operation_service.list_operations.assert_awaited_once_with(
-            user_id=mock_user["id"], status_list=None, operation_type=None, offset=10, limit=10  # (page-1) * per_page
+        mock_operation_service.list_operations_with_filters.assert_awaited_once_with(
+            user_id=mock_user["id"], status=None, operation_type=None, offset=10, limit=10  # (page-1) * per_page
         )
 
     @pytest.mark.asyncio()
@@ -424,6 +424,11 @@ class TestListOperations:
         self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with invalid status."""
+        # Setup
+        mock_operation_service.list_operations_with_filters.side_effect = ValueError(
+            "Invalid status: invalid_status. Valid values are: ['pending', 'processing', 'completed', 'failed', 'cancelled']"
+        )
+        
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
@@ -444,6 +449,11 @@ class TestListOperations:
         self, mock_user: dict[str, Any], mock_operation_service: AsyncMock
     ) -> None:
         """Test listing operations with invalid type."""
+        # Setup
+        mock_operation_service.list_operations_with_filters.side_effect = ValueError(
+            "Invalid operation type: invalid_type. Valid values are: ['index', 'append', 'reindex', 'delete', 'remove_source']"
+        )
+        
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
@@ -493,7 +503,7 @@ class TestListOperations:
         op2.completed_at = datetime.now(UTC)
         operations.append(op2)
 
-        mock_operation_service.list_operations.return_value = (operations, 2)
+        mock_operation_service.list_operations_with_filters.return_value = (operations, 2)
 
         # Execute
         result = await list_operations(
@@ -518,7 +528,7 @@ class TestListOperations:
     ) -> None:
         """Test generic error handling when listing operations."""
         # Setup
-        mock_operation_service.list_operations.side_effect = Exception("Database connection error")
+        mock_operation_service.list_operations_with_filters.side_effect = Exception("Database connection error")
 
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
