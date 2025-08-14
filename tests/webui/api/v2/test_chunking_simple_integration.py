@@ -6,11 +6,6 @@ to improve coverage of the actual endpoint code.
 """
 
 import os
-
-# Disable rate limiting for tests
-os.environ["DISABLE_RATE_LIMITING"] = "true"
-os.environ["TESTING"] = "true"
-
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -31,6 +26,10 @@ from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_chunking_service, get_collection_service
+
+# Disable rate limiting for tests
+os.environ["DISABLE_RATE_LIMITING"] = "true"
+os.environ["TESTING"] = "true"
 
 
 @pytest.fixture()

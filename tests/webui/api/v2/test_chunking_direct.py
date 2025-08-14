@@ -5,12 +5,12 @@ This module directly tests the endpoint functions to ensure proper coverage.
 Similar to test_collections_operations.py approach.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, create_autospec, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
@@ -28,6 +28,7 @@ from packages.webui.api.v2.chunking import (
     start_chunking_operation,
 )
 from packages.webui.api.v2.chunking_schemas import (
+    ChunkingConfigBase,
     ChunkingOperationRequest,
     ChunkingStatus,
     ChunkingStrategy,
@@ -55,10 +56,16 @@ def mock_chunking_service() -> AsyncMock:
             "id": "recursive",
             "name": "Recursive",
             "description": "Recursively splits text",
-            "config": {"chunk_size": 1000, "chunk_overlap": 100},
+            "default_config": {
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+                "preserve_sentences": True,
+            },
+            "best_for": ["text", "markdown", "code"],
             "pros": ["Good for structured text"],
             "cons": ["May split sentences"],
-            "use_cases": ["General documents"],
+            "performance_characteristics": {"speed": "fast", "quality": "good"},
         }
     ]
 
@@ -66,88 +73,122 @@ def mock_chunking_service() -> AsyncMock:
         "id": "recursive",
         "name": "Recursive",
         "description": "Recursively splits text",
-        "parameters": [
-            {
-                "name": "chunk_size",
-                "type": "integer",
-                "default": 1000,
-                "min": 100,
-                "max": 10000,
-                "description": "Target chunk size",
-            }
-        ],
-        "examples": [],
+        "default_config": {
+            "strategy": ChunkingStrategy.RECURSIVE,
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+            "preserve_sentences": True,
+        },
+        "best_for": ["text", "markdown", "code"],
+        "pros": ["Good for structured text"],
+        "cons": ["May split sentences"],
+        "performance_characteristics": {"speed": "fast", "quality": "good"},
     }
 
     service.recommend_strategy.return_value = {
         "strategy": ChunkingStrategy.RECURSIVE,
         "reasoning": "Best for mixed content",
-        "params": {"chunk_size": 1000, "chunk_overlap": 100},
+        "confidence": 0.85,
+        "chunk_size": 1000,
+        "chunk_overlap": 100,
         "alternatives": [],
     }
 
     service.preview_chunking.return_value = {
         "preview_id": "test-preview-id",
-        "strategy": "recursive",
+        "strategy": ChunkingStrategy.RECURSIVE,
+        "config": {
+            "strategy": ChunkingStrategy.RECURSIVE,
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+        },
         "chunks": [
             {"content": "Test chunk 1", "metadata": {"index": 0}},
             {"content": "Test chunk 2", "metadata": {"index": 1}},
         ],
         "total_chunks": 2,
-        "is_cached": False,
-        "cached_at": None,
-        "performance_metrics": {"processing_time_ms": 50},
-        "recommendations": [],
+        "processing_time_ms": 50,
+        "cached": False,
+        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
     }
 
-    service.get_cached_preview.return_value = {
+    service.get_cached_preview_by_id.return_value = {
         "preview_id": "cached-preview-id",
+        "strategy": ChunkingStrategy.RECURSIVE,
+        "config": {
+            "strategy": ChunkingStrategy.RECURSIVE,
+            "chunk_size": 1000,
+            "chunk_overlap": 100,
+        },
         "chunks": [{"content": "Cached chunk", "metadata": {}}],
         "total_chunks": 1,
-        "is_cached": True,
-        "cached_at": datetime.now(UTC).isoformat(),
+        "processing_time_ms": 50,
+        "cached": True,
+        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
     }
 
-    service.compare_strategies.return_value = {
+    service.compare_strategies_for_api.return_value = {
+        "comparison_id": "comp-123",
         "comparisons": [
             {
-                "strategy": "recursive",
-                "chunk_count": 10,
-                "avg_chunk_size": 500,
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "config": {
+                    "strategy": ChunkingStrategy.RECURSIVE,
+                    "chunk_size": 1000,
+                    "chunk_overlap": 100,
+                },
+                "sample_chunks": [],
+                "total_chunks": 10,
+                "avg_chunk_size": 500.0,
+                "size_variance": 0.1,
+                "quality_score": 0.85,
                 "processing_time_ms": 100,
-                "score": 0.85,
-                "preview": {"chunks": []},
+                "pros": ["Good for structured text"],
+                "cons": ["May split sentences"],
             }
         ],
         "recommendation": {
-            "best_strategy": "recursive",
+            "recommended_strategy": ChunkingStrategy.RECURSIVE,
+            "confidence": 0.9,
             "reasoning": "Best balance of chunk size and count",
+            "alternative_strategies": [],
+            "suggested_config": {
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "chunk_size": 1000,
+                "chunk_overlap": 100,
+            },
         },
+        "processing_time_ms": 100,
     }
 
-    service.start_chunking_operation.return_value = {
-        "operation_id": "op-123",
-        "collection_id": "coll-123",
-        "status": "pending",
-    }
+    service.start_chunking_operation.return_value = (
+        "chunking:coll-123:op-123",  # websocket_channel
+        {"operation_id": "op-123", "status": "pending"},  # operation_info
+    )
 
     service.get_chunking_progress.return_value = {
         "operation_id": "op-123",
         "status": "in_progress",
         "progress_percentage": 50.0,
-        "chunks_processed": 50,
-        "total_chunks": 100,
+        "documents_processed": 5,
+        "total_documents": 10,
+        "chunks_created": 50,
+        "current_document": "doc-5.txt",
         "estimated_time_remaining": 60,
-        "started_at": datetime.now(UTC).isoformat(),
+        "errors": [],
     }
 
-    service.get_chunking_statistics.return_value = {
-        "collection_id": "coll-123",
-        "total_operations": 10,
-        "completed_operations": 8,
-        "failed_operations": 1,
-        "in_progress_operations": 1,
-        "latest_strategy": "recursive",
+    service.get_collection_chunk_stats.return_value = {
+        "total_chunks": 100,
+        "total_documents": 10,
+        "average_chunk_size": 500,
+        "min_chunk_size": 100,
+        "max_chunk_size": 1000,
+        "size_variance": 0.2,
+        "strategy": "fixed_size",
+        "last_updated": datetime.now(UTC),
+        "processing_time": 120.0,
+        "performance_metrics": {"quality": 0.85},
     }
 
     return service
@@ -193,11 +234,13 @@ class TestStrategyEndpoints:
         """Test strategy listing with service error."""
         mock_chunking_service.get_available_strategies_for_api.side_effect = Exception("Service error")
 
-        with pytest.raises(Exception, match="Service error"):
+        with pytest.raises(HTTPException) as exc_info:
             await list_strategies(
                 _current_user=mock_user,
                 service=mock_chunking_service,
             )
+        assert exc_info.value.status_code == 500
+        assert "Failed to list strategies" in exc_info.value.detail
 
     @pytest.mark.asyncio()
     async def test_get_strategy_details_success(
@@ -205,13 +248,13 @@ class TestStrategyEndpoints:
     ) -> None:
         """Test getting strategy details."""
         result = await get_strategy_details(
-            strategy="recursive",
+            strategy_id="recursive",
             _current_user=mock_user,
             service=mock_chunking_service,
         )
 
-        assert result["id"] == "recursive"
-        assert "parameters" in result
+        assert result.id == "recursive"
+        assert result.default_config is not None
         mock_chunking_service.get_strategy_details.assert_called_once_with("recursive")
 
     @pytest.mark.asyncio()
@@ -223,7 +266,7 @@ class TestStrategyEndpoints:
 
         with pytest.raises(HTTPException) as exc_info:
             await get_strategy_details(
-                strategy="nonexistent",
+                strategy_id="nonexistent",
                 _current_user=mock_user,
                 service=mock_chunking_service,
             )
@@ -235,12 +278,12 @@ class TestStrategyEndpoints:
     ) -> None:
         """Test strategy recommendation."""
         result = await recommend_strategy(
-            file_paths=["doc1.txt", "doc2.pdf"],
+            file_types=["txt", "pdf"],
             _current_user=mock_user,
             service=mock_chunking_service,
         )
 
-        assert result.strategy == ChunkingStrategy.RECURSIVE
+        assert result.recommended_strategy == ChunkingStrategy.RECURSIVE
         assert result.reasoning == "Best for mixed content"
         mock_chunking_service.recommend_strategy.assert_called_once()
 
@@ -256,13 +299,20 @@ class TestPreviewEndpoints:
         request = PreviewRequest(
             content="Test document content",
             strategy=ChunkingStrategy.RECURSIVE,
-            config={"chunk_size": 1000},
+            config=ChunkingConfigBase(
+                strategy=ChunkingStrategy.RECURSIVE,
+                chunk_size=1000,
+                chunk_overlap=100,
+            ),
         )
 
+        mock_request = create_autospec(Request, spec_set=True)
         result = await generate_preview(
-            request=request,
+            request=mock_request,
+            preview_request=request,
             _current_user=mock_user,
             service=mock_chunking_service,
+            correlation_id=None,
         )
 
         assert result.preview_id == "test-preview-id"
@@ -279,65 +329,87 @@ class TestPreviewEndpoints:
         self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
     ) -> None:
         """Test preview with validation error."""
-        mock_chunking_service.preview_chunking.side_effect = ValidationError("Invalid chunk size")
+        mock_chunking_service.validate_preview_content.side_effect = ValidationError(
+            field="chunk_size", value=-100, reason="chunk_size must be positive"
+        )
 
         request = PreviewRequest(
             content="Test content",
-            config={"chunk_size": -100},  # Invalid
+            strategy=ChunkingStrategy.RECURSIVE,
+            config=ChunkingConfigBase(
+                strategy=ChunkingStrategy.RECURSIVE,
+                chunk_size=100,  # Valid config, error will be raised from validate
+                chunk_overlap=10,
+            ),
         )
 
+        mock_request = create_autospec(Request, spec_set=True)
         with pytest.raises(HTTPException) as exc_info:
             await generate_preview(
-                request=request,
+                request=mock_request,
+                preview_request=request,
                 _current_user=mock_user,
                 service=mock_chunking_service,
+                correlation_id=None,
             )
         assert exc_info.value.status_code == 400
-        assert "Invalid chunk size" in exc_info.value.detail
+        assert "chunk_size must be positive" in exc_info.value.detail
 
     @pytest.mark.asyncio()
     async def test_generate_preview_content_too_large(
         self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
     ) -> None:
         """Test preview with content too large."""
-        mock_chunking_service.preview_chunking.side_effect = DocumentTooLargeError("Content exceeds 10MB limit")
+        mock_chunking_service.validate_preview_content.side_effect = DocumentTooLargeError(
+            size=11_000_000, max_size=10_000_000
+        )
 
-        request = PreviewRequest(content="x" * 11_000_000)  # 11MB
+        request = PreviewRequest(
+            content="x" * 11_000_000,  # 11MB
+            strategy=ChunkingStrategy.RECURSIVE,
+        )
 
+        mock_request = create_autospec(Request, spec_set=True)
         with pytest.raises(HTTPException) as exc_info:
             await generate_preview(
-                request=request,
+                request=mock_request,
+                preview_request=request,
                 _current_user=mock_user,
                 service=mock_chunking_service,
+                correlation_id=None,
             )
-        assert exc_info.value.status_code == 413
-        assert "Content exceeds 10MB limit" in exc_info.value.detail
+        assert exc_info.value.status_code == 507  # API uses 507 for too large
+        assert "exceeds maximum" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio()
     async def test_get_cached_preview_success(
         self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
     ) -> None:
         """Test getting cached preview."""
+        mock_request = create_autospec(Request, spec_set=True)
         result = await get_cached_preview(
+            request=mock_request,
             preview_id="cached-preview-id",
             _current_user=mock_user,
             service=mock_chunking_service,
         )
 
-        assert result["preview_id"] == "cached-preview-id"
-        assert result["is_cached"] is True
-        assert result["total_chunks"] == 1
-        mock_chunking_service.get_cached_preview.assert_called_once_with("cached-preview-id")
+        assert result.preview_id == "cached-preview-id"
+        assert result.cached is True
+        assert result.total_chunks == 1
+        mock_chunking_service.get_cached_preview_by_id.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_get_cached_preview_not_found(
         self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
     ) -> None:
         """Test getting non-existent cached preview."""
-        mock_chunking_service.get_cached_preview.return_value = None
+        mock_chunking_service.get_cached_preview_by_id.return_value = None
 
+        mock_request = create_autospec(Request, spec_set=True)
         with pytest.raises(HTTPException) as exc_info:
             await get_cached_preview(
+                request=mock_request,
                 preview_id="nonexistent",
                 _current_user=mock_user,
                 service=mock_chunking_service,
@@ -354,16 +426,19 @@ class TestPreviewEndpoints:
             strategies=[ChunkingStrategy.RECURSIVE, ChunkingStrategy.FIXED_SIZE],
         )
 
+        mock_request = create_autospec(Request, spec_set=True)
         result = await compare_strategies(
-            request=request,
+            request=mock_request,
+            compare_request=request,
             _current_user=mock_user,
             service=mock_chunking_service,
         )
 
+        assert result.comparison_id == "comp-123"
         assert len(result.comparisons) == 1
-        assert result.comparisons[0].strategy == "recursive"
-        assert result.recommendation.best_strategy == "recursive"
-        mock_chunking_service.compare_strategies.assert_called_once()
+        assert result.comparisons[0].strategy == ChunkingStrategy.RECURSIVE
+        assert result.recommendation.recommended_strategy == ChunkingStrategy.RECURSIVE
+        mock_chunking_service.compare_strategies_for_api.assert_called_once()
 
 
 class TestOperationEndpoints:
@@ -379,20 +454,37 @@ class TestOperationEndpoints:
         """Test starting a chunking operation."""
         request = ChunkingOperationRequest(
             strategy=ChunkingStrategy.RECURSIVE,
-            config={"chunk_size": 1000, "chunk_overlap": 100},
+            config=ChunkingConfigBase(
+                strategy=ChunkingStrategy.RECURSIVE,
+                chunk_size=1000,
+                chunk_overlap=100,
+            ),
         )
 
         with patch("packages.webui.api.v2.chunking.BackgroundTasks") as mock_bg:
             mock_bg_instance = MagicMock()
             mock_bg.return_value = mock_bg_instance
 
+            mock_request = create_autospec(Request, spec_set=True)
+            mock_collection_service = AsyncMock(spec=CollectionService)
+            mock_collection_service.create_operation.return_value = {
+                "uuid": "op-123",
+                "status": "pending",
+            }
+            mock_chunking_service.validate_config_for_collection.return_value = {
+                "valid": True,
+                "estimated_time": 60,
+            }
+
             result = await start_chunking_operation(
-                collection_uuid="coll-123",
-                request=request,
+                request=mock_request,
+                collection_id="coll-123",
+                chunking_request=request,
                 background_tasks=mock_bg_instance,
                 _current_user=mock_user,
-                _collection=mock_collection,
+                collection=mock_collection,
                 service=mock_chunking_service,
+                collection_service=mock_collection_service,
             )
 
             assert result.operation_id == "op-123"
@@ -414,8 +506,9 @@ class TestOperationEndpoints:
         assert result.operation_id == "op-123"
         assert result.status == ChunkingStatus.IN_PROGRESS
         assert result.progress_percentage == 50.0
-        assert result.chunks_processed == 50
-        mock_chunking_service.get_chunking_progress.assert_called_once_with("op-123")
+        assert result.documents_processed == 5
+        assert result.chunks_created == 50
+        mock_chunking_service.get_chunking_progress.assert_called_once_with(operation_id="op-123")
 
     @pytest.mark.asyncio()
     async def test_get_operation_progress_not_found(
@@ -441,18 +534,19 @@ class TestStatsEndpoints:
         self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
     ) -> None:
         """Test getting chunking statistics."""
+        mock_collection = {"id": "coll-123", "name": "Test Collection"}
         result = await get_chunking_stats(
-            collection_uuid="coll-123",
+            collection_id="coll-123",
             _current_user=mock_user,
+            collection=mock_collection,
             service=mock_chunking_service,
         )
 
-        assert result.collection_id == "coll-123"
-        assert result.total_operations == 10
-        assert result.completed_operations == 8
-        assert result.failed_operations == 1
-        assert result.latest_strategy == "recursive"
-        mock_chunking_service.get_chunking_statistics.assert_called_once_with(collection_id="coll-123")
+        assert result.total_chunks == 100
+        assert result.total_documents == 10
+        assert result.avg_chunk_size == 500
+        assert result.strategy_used == ChunkingStrategy.FIXED_SIZE
+        mock_chunking_service.get_collection_chunk_stats.assert_called_once_with(collection_id="coll-123")
 
 
 class TestErrorHandling:
@@ -466,7 +560,7 @@ class TestErrorHandling:
         from packages.shared.chunking.infrastructure.exceptions import ApplicationError
         from packages.webui.api.v2.chunking import application_exception_handler
 
-        error = ApplicationError("Test error", correlation_id="test-123")
+        error = ApplicationError(message="Test error", code="TEST_ERROR", correlation_id="test-123")
         request = MagicMock()
 
         response = await application_exception_handler(request, error)

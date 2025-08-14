@@ -7,19 +7,16 @@ Only external dependencies (Redis, Celery, Qdrant) are mocked.
 """
 
 import os
-
-# Disable rate limiting for tests
-os.environ["DISABLE_RATE_LIMITING"] = "true"
-os.environ["TESTING"] = "true"
-
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
@@ -27,13 +24,14 @@ from packages.shared.chunking.infrastructure.exceptions import (
 from packages.shared.chunking.infrastructure.exceptions import (
     ValidationError as ChunkingValidationError,
 )
-from fastapi import HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from packages.shared.database.models import Collection, CollectionStatus, User
 from packages.webui.auth import create_access_token, get_current_user
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
+
+# Disable rate limiting for tests
+os.environ["DISABLE_RATE_LIMITING"] = "true"
+os.environ["TESTING"] = "true"
 
 
 @pytest.fixture()
@@ -82,6 +80,26 @@ def unauthenticated_client():
     app.dependency_overrides.clear()
     with TestClient(app) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def test_collection_with_user(db_session: AsyncSession, test_user_db: User) -> Collection:
+    """Create a test collection owned by the test user."""
+    collection = Collection(
+        id=str(uuid.uuid4()),
+        name="Test Collection",
+        description="Collection for chunking tests",
+        owner_id=test_user_db.id,
+        status=CollectionStatus.READY,
+        vector_store_name=f"test_collection_{uuid.uuid4().hex[:8]}",
+        embedding_model="test-model",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(collection)
+    await db_session.commit()
+    await db_session.refresh(collection)
+    return collection
 
 
 class TestChunkingStrategyEndpoints:
@@ -276,7 +294,7 @@ class TestChunkingPreviewEndpoints:
         with patch("packages.webui.api.v2.chunking.get_chunking_service") as mock_get_service:
             mock_service = AsyncMock(spec=ChunkingService)
             mock_service.validate_preview_content.side_effect = DocumentTooLargeError(
-                "Content exceeds maximum size of 1MB"
+                size=2_000_000, max_size=1_000_000
             )
             mock_get_service.return_value = mock_service
 
@@ -304,7 +322,7 @@ class TestChunkingPreviewEndpoints:
         with patch("packages.webui.api.v2.chunking.get_chunking_service") as mock_get_service:
             mock_service = AsyncMock(spec=ChunkingService)
             mock_service.validate_preview_content.side_effect = ChunkingValidationError(
-                "Invalid configuration: chunk_size must be positive"
+                field="chunk_size", value=-1, reason="chunk_size must be positive"
             )
             mock_get_service.return_value = mock_service
 
@@ -406,25 +424,6 @@ class TestChunkingPreviewEndpoints:
 
 class TestChunkingOperationEndpoints:
     """Integration tests for chunking operation endpoints."""
-
-    @pytest_asyncio.fixture
-    async def test_collection_with_user(self, db_session: AsyncSession, test_user_db: User) -> Collection:
-        """Create a test collection owned by the test user."""
-        collection = Collection(
-            id=str(uuid.uuid4()),
-            name="Test Collection",
-            description="Collection for chunking tests",
-            owner_id=test_user_db.id,
-            status=CollectionStatus.READY,
-            vector_store_name=f"test_collection_{uuid.uuid4().hex[:8]}",
-            embedding_model="test-model",
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-        )
-        db_session.add(collection)
-        await db_session.commit()
-        await db_session.refresh(collection)
-        return collection
 
     @pytest.mark.asyncio()
     async def test_start_chunking_operation_success(
