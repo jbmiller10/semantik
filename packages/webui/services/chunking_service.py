@@ -885,9 +885,7 @@ class ChunkingService:
         # Check size limit
         if len(content) > MAX_PREVIEW_CONTENT_SIZE:
             raise DocumentTooLargeError(
-                size=len(content),
-                max_size=MAX_PREVIEW_CONTENT_SIZE,
-                correlation_id=str(uuid.uuid4())
+                size=len(content), max_size=MAX_PREVIEW_CONTENT_SIZE, correlation_id=str(uuid.uuid4())
             )
 
         # Validate chunk size if provided in config (do this before try block)
@@ -895,9 +893,7 @@ class ChunkingService:
             chunk_size = config["params"]["chunk_size"]
             if chunk_size <= 0 or chunk_size > 10000:
                 raise ValidationError(
-                    field="chunk_size",
-                    value=chunk_size,
-                    reason=f"Must be between 1 and 10000, got {chunk_size}"
+                    field="chunk_size", value=chunk_size, reason=f"Must be between 1 and 10000, got {chunk_size}"
                 )
 
         try:
@@ -1092,11 +1088,7 @@ class ChunkingService:
 
         # Must have either content or document_id
         if not content and not document_id:
-            raise ValidationError(
-                field="input",
-                value=None,
-                reason="document_id or content must be provided"
-            )
+            raise ValidationError(field="input", value=None, reason="document_id or content must be provided")
 
         if content is not None:
             # Check for null bytes
@@ -1104,15 +1096,13 @@ class ChunkingService:
                 raise ValidationError(
                     field="content",
                     value=content[:100] + "..." if len(content) > 100 else content,  # Truncate for error message
-                    reason="Content contains null bytes"
+                    reason="Content contains null bytes",
                 )
 
             # Enforce ~10MB limit
             if len(content) > 10 * 1024 * 1024:
                 raise DocumentTooLargeError(
-                    size=len(content),
-                    max_size=10 * 1024 * 1024,
-                    correlation_id=str(uuid.uuid4())
+                    size=len(content), max_size=10 * 1024 * 1024, correlation_id=str(uuid.uuid4())
                 )
 
     async def compare_strategies_for_api(

@@ -428,7 +428,7 @@ class TestListOperations:
         mock_operation_service.list_operations_with_filters.side_effect = ValueError(
             "Invalid status: invalid_status. Valid values are: ['pending', 'processing', 'completed', 'failed', 'cancelled']"
         )
-        
+
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(
@@ -453,7 +453,7 @@ class TestListOperations:
         mock_operation_service.list_operations_with_filters.side_effect = ValueError(
             "Invalid operation type: invalid_type. Valid values are: ['index', 'append', 'reindex', 'delete', 'remove_source']"
         )
-        
+
         # Execute & Verify
         with pytest.raises(HTTPException) as exc_info:
             await list_operations(

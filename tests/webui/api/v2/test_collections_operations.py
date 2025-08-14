@@ -114,7 +114,9 @@ class TestListCollectionOperations:
         operation2.completed_at = None
 
         # Configure mock to return filtered results based on filter parameters
-        def filter_side_effect(collection_id, user_id, status=None, operation_type=None, offset=0, limit=50):  # noqa: ARG001
+        def filter_side_effect(
+            collection_id, user_id, status=None, operation_type=None, offset=0, limit=50
+        ):  # noqa: ARG001
             results = [operation1, operation2]
 
             # Apply status filter
@@ -222,7 +224,9 @@ class TestListCollectionOperations:
         """Test 404 error when collection not found."""
         collection_uuid = "non-existent-uuid"
 
-        mock_collection_service.list_operations_filtered.side_effect = EntityNotFoundError("Collection", collection_uuid)
+        mock_collection_service.list_operations_filtered.side_effect = EntityNotFoundError(
+            "Collection", collection_uuid
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await list_collection_operations(
@@ -476,5 +480,9 @@ class TestListCollectionDocuments:
 
         # Verify offset calculation
         mock_collection_service.list_documents_filtered.assert_called_once_with(
-            collection_id=collection_uuid, user_id=1, status=None, offset=20, limit=20  # (page-1) * per_page = (2-1) * 20
+            collection_id=collection_uuid,
+            user_id=1,
+            status=None,
+            offset=20,
+            limit=20,  # (page-1) * per_page = (2-1) * 20
         )

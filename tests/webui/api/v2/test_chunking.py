@@ -139,7 +139,9 @@ class TestStrategyManagement:
                 "best_for": ["Quick processing", "Consistent chunk sizes"],
                 "pros": ["Fast", "Predictable"],
                 "cons": ["May break mid-sentence"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200),
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
+                ),
                 "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
             },
             {
@@ -149,7 +151,9 @@ class TestStrategyManagement:
                 "best_for": ["General documents", "Maintaining context"],
                 "pros": ["Respects sentence boundaries"],
                 "cons": ["Variable chunk sizes"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.RECURSIVE, chunk_size=1000, chunk_overlap=200),
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.RECURSIVE, chunk_size=1000, chunk_overlap=200
+                ),
                 "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
@@ -159,7 +163,9 @@ class TestStrategyManagement:
                 "best_for": ["Markdown documents", "Technical documentation"],
                 "pros": ["Preserves structure"],
                 "cons": ["Only for markdown"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.MARKDOWN, chunk_size=1000, chunk_overlap=0),
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.MARKDOWN, chunk_size=1000, chunk_overlap=0
+                ),
                 "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
@@ -169,7 +175,9 @@ class TestStrategyManagement:
                 "best_for": ["Complex documents", "Academic papers"],
                 "pros": ["Best context preservation"],
                 "cons": ["Slower", "Requires embeddings"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.SEMANTIC, buffer_size=1, breakpoint_threshold=95),
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.SEMANTIC, buffer_size=1, breakpoint_threshold=95
+                ),
                 "performance_characteristics": {"speed": "slow", "accuracy": "very_high"},
             },
             {
@@ -179,7 +187,9 @@ class TestStrategyManagement:
                 "best_for": ["Large documents", "Multi-level analysis"],
                 "pros": ["Multiple granularities"],
                 "cons": ["Complex", "More storage"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.HIERARCHICAL, chunk_sizes=[2048, 512, 128]),
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.HIERARCHICAL, chunk_sizes=[2048, 512, 128]
+                ),
                 "performance_characteristics": {"speed": "slow", "accuracy": "high"},
             },
             {
@@ -260,7 +270,9 @@ class TestStrategyManagement:
             "best_for": ["Quick processing", "Consistent chunk sizes"],
             "pros": ["Fast", "Predictable"],
             "cons": ["May break mid-sentence"],
-            "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200),
+            "default_config": ChunkingConfigBase(
+                strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
+            ),
             "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
         }
 
@@ -419,9 +431,7 @@ class TestPreviewOperations:
         from packages.shared.chunking.infrastructure.exceptions import ValidationError
 
         mock_chunking_service.validate_preview_content.side_effect = ValidationError(
-            field="input",
-            value=None,
-            reason="document_id or content must be provided"
+            field="input", value=None, reason="document_id or content must be provided"
         )
 
         request_data = {
@@ -442,9 +452,7 @@ class TestPreviewOperations:
         large_content = "x" * (11 * 1024 * 1024)
 
         mock_chunking_service.validate_preview_content.side_effect = DocumentTooLargeError(
-            size=len(large_content),
-            max_size=10 * 1024 * 1024,
-            correlation_id="test-correlation-id"
+            size=len(large_content), max_size=10 * 1024 * 1024, correlation_id="test-correlation-id"
         )
 
         request_data = {
@@ -463,9 +471,7 @@ class TestPreviewOperations:
         from packages.shared.chunking.infrastructure.exceptions import ValidationError
 
         mock_chunking_service.validate_preview_content.side_effect = ValidationError(
-            field="content",
-            value="test\x00content",
-            reason="Content contains null bytes"
+            field="content", value="test\x00content", reason="Content contains null bytes"
         )
 
         request_data = {
@@ -546,10 +552,7 @@ class TestPreviewOperations:
                 {
                     "strategy": "semantic",
                     "config": ChunkingConfigBase(
-                        strategy=ChunkingStrategy.SEMANTIC,
-                        chunk_size=512,
-                        chunk_overlap=50,
-                        preserve_sentences=True
+                        strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
                     ),
                     "sample_chunks": [
                         {
@@ -577,13 +580,10 @@ class TestPreviewOperations:
                 "reasoning": "Higher quality score",
                 "alternative_strategies": ["fixed_size"],
                 "suggested_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.SEMANTIC,
-                    chunk_size=512,
-                    chunk_overlap=50,
-                    preserve_sentences=True
-                )
+                    strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
+                ),
             },
-            "processing_time_ms": 300
+            "processing_time_ms": 300,
         }
 
         request_data = {
