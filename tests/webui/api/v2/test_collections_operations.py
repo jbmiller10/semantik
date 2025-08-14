@@ -113,7 +113,25 @@ class TestListCollectionOperations:
         operation2.started_at = datetime.now(UTC)
         operation2.completed_at = None
 
-        mock_collection_service.list_operations_filtered.return_value = ([operation1, operation2], 2)
+        # Configure mock to return filtered results based on filter parameters
+        def filter_side_effect(collection_id, user_id, status=None, operation_type=None, offset=0, limit=50):  # noqa: ARG001
+            results = [operation1, operation2]
+
+            # Apply status filter
+            if status == "completed":
+                results = [op for op in results if op.status == OperationStatus.COMPLETED]
+            elif status == "processing":
+                results = [op for op in results if op.status == OperationStatus.PROCESSING]
+
+            # Apply type filter
+            if operation_type == "index":
+                results = [op for op in results if op.type == OperationType.INDEX]
+            elif operation_type == "reindex":
+                results = [op for op in results if op.type == OperationType.REINDEX]
+
+            return (results, len(results))
+
+        mock_collection_service.list_operations_filtered.side_effect = filter_side_effect
 
         # Test with status filter
         result = await list_collection_operations(
@@ -330,7 +348,19 @@ class TestListCollectionDocuments:
         doc2.created_at = datetime.now(UTC)
         doc2.updated_at = datetime.now(UTC)
 
-        mock_collection_service.list_documents_filtered.return_value = ([doc1, doc2], 2)
+        # Configure mock to return filtered results based on filter parameters
+        def filter_side_effect(collection_id, user_id, status=None, offset=0, limit=50):  # noqa: ARG001
+            results = [doc1, doc2]
+
+            # Apply status filter
+            if status == "completed":
+                results = [doc for doc in results if doc.status == DocumentStatus.COMPLETED]
+            elif status == "pending":
+                results = [doc for doc in results if doc.status == DocumentStatus.PENDING]
+
+            return (results, len(results))
+
+        mock_collection_service.list_documents_filtered.side_effect = filter_side_effect
 
         # Test with status filter
         result = await list_collection_documents(

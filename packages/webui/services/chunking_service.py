@@ -881,17 +881,24 @@ class ChunkingService:
             Preview response with chunks and metadata
         """
         from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-        from packages.webui.services.chunking_security import ValidationError
 
         # Check size limit
         if len(content) > MAX_PREVIEW_CONTENT_SIZE:
-            raise ValidationError("Document too large")
+            raise DocumentTooLargeError(
+                size=len(content),
+                max_size=MAX_PREVIEW_CONTENT_SIZE,
+                correlation_id=str(uuid.uuid4())
+            )
 
         # Validate chunk size if provided in config (do this before try block)
         if config and "params" in config and "chunk_size" in config["params"]:
             chunk_size = config["params"]["chunk_size"]
             if chunk_size <= 0 or chunk_size > 10000:
-                raise ValidationError(f"Invalid chunk size: {chunk_size}. Must be between 1 and 10000.")
+                raise ValidationError(
+                    field="chunk_size",
+                    value=chunk_size,
+                    reason=f"Must be between 1 and 10000, got {chunk_size}"
+                )
 
         try:
             # Check if cached result exists
@@ -1085,19 +1092,27 @@ class ChunkingService:
 
         # Must have either content or document_id
         if not content and not document_id:
-            raise ValidationError("document_id or content must be provided")
+            raise ValidationError(
+                field="input",
+                value=None,
+                reason="document_id or content must be provided"
+            )
 
         if content is not None:
             # Check for null bytes
             if "\x00" in content:
-                raise ValidationError("Content contains null bytes", error_code="NULL_BYTES")
+                raise ValidationError(
+                    field="content",
+                    value=content[:100] + "..." if len(content) > 100 else content,  # Truncate for error message
+                    reason="Content contains null bytes"
+                )
 
             # Enforce ~10MB limit
             if len(content) > 10 * 1024 * 1024:
                 raise DocumentTooLargeError(
-                    document_size=len(content),
+                    size=len(content),
                     max_size=10 * 1024 * 1024,
-                    message="Content too large",
+                    correlation_id=str(uuid.uuid4())
                 )
 
     async def compare_strategies_for_api(
