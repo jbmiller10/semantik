@@ -96,6 +96,7 @@ export function useChunkingWebSocket(
   // Refs for stable callbacks
   const wsRef = useRef<ReturnType<typeof getChunkingWebSocket> | null>(null);
   const activeRequestId = useRef<string | null>(null);
+  const listenersRef = useRef<Map<string, (...args: unknown[]) => void>>(new Map());
 
   /**
    * Initialize WebSocket connection
@@ -110,15 +111,20 @@ export function useChunkingWebSocket(
     const ws = getChunkingWebSocket();
     wsRef.current = ws;
 
-    // Set up event listeners
-    ws.on('connected', () => {
+    // Clear any existing listeners
+    listenersRef.current.clear();
+
+    // Set up event listeners and store references
+    const connectedHandler = () => {
       console.log('Chunking WebSocket connected');
       setConnectionStatus('connected');
       setReconnectAttempts(0);
       setError(null);
-    });
+    };
+    ws.on('connected', connectedHandler);
+    listenersRef.current.set('connected', connectedHandler);
 
-    ws.on('disconnected', (event: CloseEvent) => {
+    const disconnectedHandler = (event: CloseEvent) => {
       console.log('Chunking WebSocket disconnected:', event.code, event.reason);
       setConnectionStatus('disconnected');
       
@@ -126,24 +132,30 @@ export function useChunkingWebSocket(
       if (event.code !== 1000) {
         setProgress(null);
       }
-    });
+    };
+    ws.on('disconnected', disconnectedHandler);
+    listenersRef.current.set('disconnected', disconnectedHandler);
 
-    ws.on('reconnecting', ({ attempt }: { attempt: number }) => {
+    const reconnectingHandler = ({ attempt }: { attempt: number }) => {
       console.log(`Chunking WebSocket reconnecting (attempt ${attempt})`);
       setConnectionStatus('reconnecting');
       setReconnectAttempts(attempt);
-    });
+    };
+    ws.on('reconnecting', reconnectingHandler);
+    listenersRef.current.set('reconnecting', reconnectingHandler);
 
-    ws.on('reconnect_failed', ({ attempts }: { attempts: number }) => {
+    const reconnectFailedHandler = ({ attempts }: { attempts: number }) => {
       console.error(`Chunking WebSocket reconnection failed after ${attempts} attempts`);
       setConnectionStatus('error');
       setError({
         message: 'Failed to reconnect to server',
         code: 'RECONNECT_FAILED',
       });
-    });
+    };
+    ws.on('reconnect_failed', reconnectFailedHandler);
+    listenersRef.current.set('reconnect_failed', reconnectFailedHandler);
 
-    ws.on('error', (errorData: ChunkingErrorData) => {
+    const errorHandler = (errorData: ChunkingErrorData) => {
       console.error('Chunking WebSocket error:', errorData);
       setConnectionStatus('error');
       setError({
@@ -152,10 +164,12 @@ export function useChunkingWebSocket(
         details: errorData.details,
       });
       onError?.(errorData);
-    });
+    };
+    ws.on('error', errorHandler);
+    listenersRef.current.set('error', errorHandler);
 
     // Handle chunking-specific messages
-    ws.on(ChunkingMessageType.PREVIEW_START, (data: unknown, message: WebSocketMessage) => {
+    const previewStartHandler = (data: unknown, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Preview started:', data);
         setChunks([]);
@@ -164,17 +178,21 @@ export function useChunkingWebSocket(
         setPerformance(null);
         setError(null);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.PREVIEW_START, previewStartHandler);
+    listenersRef.current.set(ChunkingMessageType.PREVIEW_START, previewStartHandler);
 
-    ws.on(ChunkingMessageType.PREVIEW_PROGRESS, (data: ChunkingProgressData, message: WebSocketMessage) => {
+    const previewProgressHandler = (data: ChunkingProgressData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Preview progress:', data);
         setProgress(data);
         onProgressUpdate?.(data);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.PREVIEW_PROGRESS, previewProgressHandler);
+    listenersRef.current.set(ChunkingMessageType.PREVIEW_PROGRESS, previewProgressHandler);
 
-    ws.on(ChunkingMessageType.PREVIEW_CHUNK, (data: ChunkingChunkData, message: WebSocketMessage) => {
+    const previewChunkHandler = (data: ChunkingChunkData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Chunk received:', data.index, '/', data.total);
         
@@ -194,9 +212,11 @@ export function useChunkingWebSocket(
         
         onChunkReceived?.(data.chunk, data.index, data.total);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.PREVIEW_CHUNK, previewChunkHandler);
+    listenersRef.current.set(ChunkingMessageType.PREVIEW_CHUNK, previewChunkHandler);
 
-    ws.on(ChunkingMessageType.PREVIEW_COMPLETE, (data: ChunkingCompleteData, message: WebSocketMessage) => {
+    const previewCompleteHandler = (data: ChunkingCompleteData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Preview complete:', data);
         // Ensure statistics has all required fields
@@ -209,26 +229,32 @@ export function useChunkingWebSocket(
         setProgress(null);
         onComplete?.(statistics, data.performance);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.PREVIEW_COMPLETE, previewCompleteHandler);
+    listenersRef.current.set(ChunkingMessageType.PREVIEW_COMPLETE, previewCompleteHandler);
 
-    ws.on(ChunkingMessageType.PREVIEW_ERROR, (data: ChunkingErrorData, message: WebSocketMessage) => {
+    const previewErrorHandler = (data: ChunkingErrorData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.error('Preview error:', data);
         setError(data);
         setProgress(null);
         onError?.(data);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.PREVIEW_ERROR, previewErrorHandler);
+    listenersRef.current.set(ChunkingMessageType.PREVIEW_ERROR, previewErrorHandler);
 
     // Handle comparison messages
-    ws.on(ChunkingMessageType.COMPARISON_START, (data: unknown, message: WebSocketMessage) => {
+    const comparisonStartHandler = (data: unknown, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Comparison started:', data);
         setError(null);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.COMPARISON_START, comparisonStartHandler);
+    listenersRef.current.set(ChunkingMessageType.COMPARISON_START, comparisonStartHandler);
 
-    ws.on(ChunkingMessageType.COMPARISON_PROGRESS, (data: ChunkingProgressData & { currentStrategy?: number; totalStrategies?: number; estimatedTimeRemaining?: number }, message: WebSocketMessage) => {
+    const comparisonProgressHandler = (data: ChunkingProgressData & { currentStrategy?: number; totalStrategies?: number; estimatedTimeRemaining?: number }, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Comparison progress:', data);
         setProgress({
@@ -238,23 +264,29 @@ export function useChunkingWebSocket(
           estimatedTimeRemaining: data.estimatedTimeRemaining,
         });
       }
-    });
+    };
+    ws.on(ChunkingMessageType.COMPARISON_PROGRESS, comparisonProgressHandler);
+    listenersRef.current.set(ChunkingMessageType.COMPARISON_PROGRESS, comparisonProgressHandler);
 
-    ws.on(ChunkingMessageType.COMPARISON_COMPLETE, (data: unknown, message: WebSocketMessage) => {
+    const comparisonCompleteHandler = (data: unknown, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.log('Comparison complete:', data);
         setProgress(null);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.COMPARISON_COMPLETE, comparisonCompleteHandler);
+    listenersRef.current.set(ChunkingMessageType.COMPARISON_COMPLETE, comparisonCompleteHandler);
 
-    ws.on(ChunkingMessageType.COMPARISON_ERROR, (data: ChunkingErrorData, message: WebSocketMessage) => {
+    const comparisonErrorHandler = (data: ChunkingErrorData, message: WebSocketMessage) => {
       if (message.requestId === activeRequestId.current || !activeRequestId.current) {
         console.error('Comparison error:', data);
         setError(data);
         setProgress(null);
         onError?.(data);
       }
-    });
+    };
+    ws.on(ChunkingMessageType.COMPARISON_ERROR, comparisonErrorHandler);
+    listenersRef.current.set(ChunkingMessageType.COMPARISON_ERROR, comparisonErrorHandler);
 
     // Connect to WebSocket
     setConnectionStatus('connecting');
@@ -266,6 +298,15 @@ export function useChunkingWebSocket(
    */
   const disconnect = useCallback(() => {
     console.log('Disconnecting chunking WebSocket');
+    
+    // Remove all event listeners before disconnecting
+    if (wsRef.current) {
+      listenersRef.current.forEach((handler, event) => {
+        wsRef.current?.removeListener(event, handler);
+      });
+      listenersRef.current.clear();
+    }
+    
     disconnectChunkingWebSocket();
     wsRef.current = null;
     setConnectionStatus('disconnected');
