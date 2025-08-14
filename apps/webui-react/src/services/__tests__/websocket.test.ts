@@ -36,6 +36,7 @@ class TestMockWebSocket {
   CLOSING = 2;
   CLOSED = 3;
   autoOpen: boolean = true;
+  private timeoutIds: Set<NodeJS.Timeout> = new Set();
   
   constructor(url: string, autoOpen: boolean = true) {
     this.url = url;
@@ -59,30 +60,41 @@ class TestMockWebSocket {
     
     // Make send a spy from the start
     this.send = vi.fn((data: string) => {
+      // Only handle messages if connection is open
+      if (this.readyState !== this.OPEN) return;
+      
       // Parse and handle the message
       try {
         const message = JSON.parse(data);
         
         // Simulate authentication flow
         if (message.type === 'auth_request') {
-          setTimeout(() => {
-            this.simulateMessage({
-              type: 'auth_success',
-              data: { userId: 'test-user', sessionId: 'test-session' },
-              timestamp: Date.now()
-            });
+          const timeoutId = setTimeout(() => {
+            if (this.readyState === this.OPEN) {
+              this.simulateMessage({
+                type: 'auth_success',
+                data: { userId: 'test-user', sessionId: 'test-session' },
+                timestamp: Date.now()
+              });
+            }
+            this.timeoutIds.delete(timeoutId);
           }, 10);
+          this.timeoutIds.add(timeoutId);
         }
         
         // Handle heartbeat
         if (message.type === 'heartbeat') {
-          setTimeout(() => {
-            this.simulateMessage({
-              type: 'pong',
-              data: { timestamp: Date.now() },
-              timestamp: Date.now()
-            });
+          const timeoutId = setTimeout(() => {
+            if (this.readyState === this.OPEN) {
+              this.simulateMessage({
+                type: 'pong',
+                data: { timestamp: Date.now() },
+                timestamp: Date.now()
+              });
+            }
+            this.timeoutIds.delete(timeoutId);
           }, 5);
+          this.timeoutIds.add(timeoutId);
         }
       } catch {
         // Invalid JSON
@@ -91,6 +103,9 @@ class TestMockWebSocket {
     
     // Mock close method
     this.close = vi.fn((code?: number, reason?: string) => {
+      // Clear all pending timeouts
+      this.clearTimeouts();
+      
       // Only allow valid close codes
       const validCode = code && (code === 1000 || code === 1001 || (code >= 3000 && code <= 4999)) ? code : 1000;
       this.simulateClose(validCode, reason || 'Connection closed');
@@ -98,10 +113,17 @@ class TestMockWebSocket {
     
     // Simulate connection opening after a brief delay (if autoOpen is true)
     if (autoOpen) {
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         this.simulateOpen();
+        this.timeoutIds.delete(timeoutId);
       }, 10);
+      this.timeoutIds.add(timeoutId);
     }
+  }
+  
+  private clearTimeouts() {
+    this.timeoutIds.forEach(id => clearTimeout(id));
+    this.timeoutIds.clear();
   }
   
   simulateOpen() {
@@ -126,6 +148,8 @@ class TestMockWebSocket {
   }
   
   simulateClose(code = 1000, reason = 'Normal closure') {
+    // Clear any pending timeouts before closing
+    this.clearTimeouts();
     this.readyState = 3; // WebSocket.CLOSED
     if (this.onclose) {
       this.onclose(new CloseEvent('close', { code, reason }));
@@ -175,10 +199,27 @@ describe('WebSocketService', () => {
     mockLocalStorage.getItem.mockReturnValue(JSON.stringify(mockAuthState));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Disconnect the service if it exists
     if (service) {
       service.disconnect();
+      service = undefined as any;
     }
+    
+    // Force close any remaining mock WebSocket instances
+    if (mockWebSocketInstance) {
+      mockWebSocketInstance.simulateClose(1000, 'Test cleanup');
+      mockWebSocketInstance = null;
+    }
+    
+    // Clear all mocks and timers
+    vi.clearAllMocks();
+    vi.clearAllTimers();
+    
+    // Advance timers to ensure all pending operations complete
+    await vi.runAllTimersAsync();
+    
+    // Reset to real timers
     vi.useRealTimers();
   });
 
