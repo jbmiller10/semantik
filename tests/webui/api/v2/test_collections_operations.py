@@ -114,7 +114,9 @@ class TestListCollectionOperations:
         operation2.completed_at = None
 
         # Configure mock to return filtered results based on filter parameters
-        def filter_side_effect(_collection_id, _user_id, status=None, operation_type=None, _offset=0, _limit=50):
+        def filter_side_effect(**kwargs):
+            status = kwargs.get("status")
+            operation_type = kwargs.get("operation_type")
             results = [operation1, operation2]
 
             # Apply status filter
