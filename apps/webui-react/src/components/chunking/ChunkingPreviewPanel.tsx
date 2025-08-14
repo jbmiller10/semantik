@@ -223,6 +223,15 @@ export function ChunkingPreviewPanel({
     }
   };
 
+  // Cleanup copy timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+  
   const copyChunkToClipboard = async (chunk: ChunkPreview) => {
     try {
       await navigator.clipboard.writeText(chunk.content);
