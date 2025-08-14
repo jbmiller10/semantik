@@ -13,8 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from redis import Redis
 
+from packages.shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+    ValidationError,
+)
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import ChunkingService
 
 
@@ -185,7 +188,7 @@ Content under header 2.
         # Text larger than preview limit (10MB)
         large_text = "x" * (11 * 1024 * 1024)  # 11MB (larger than 10MB limit)
 
-        with pytest.raises(ValidationError, match="Document too large"):
+        with pytest.raises(DocumentTooLargeError):
             await chunking_service.preview_chunking(content=large_text)
 
     async def test_preview_chunking_cached(
