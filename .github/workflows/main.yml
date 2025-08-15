@@ -204,9 +204,13 @@ jobs:
 
   # Backend tests with proper service management
   backend-tests:
-    name: Backend Tests
+    name: Backend Tests - ${{ matrix.group }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit-1, unit-2, webui, integration-other]
     env:
       TESTING: "true"
       ENV: "test"
@@ -279,13 +283,49 @@ jobs:
 
       - name: Run backend tests in parallel
         run: |
-          poetry run pytest tests/ -v \
-            -n auto \
-            --ignore=tests/e2e \
-            --cov=packages \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            -m "not e2e"
+          if [ "${{ matrix.group }}" = "unit-1" ]; then
+            # Run first half of unit tests (test_a* through test_g*)
+            TEST_FILES=$(find tests/unit -name "test_[a-g]*.py" | tr '\n' ' ')
+            poetry run pytest $TEST_FILES -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "unit-2" ]; then
+            # Run second half of unit tests (test_h* through test_z*)
+            TEST_FILES=$(find tests/unit -name "test_[h-z]*.py" | tr '\n' ' ')
+            poetry run pytest $TEST_FILES -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "webui" ]; then
+            # Run all webui tests
+            poetry run pytest tests/webui/ -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "integration-other" ]; then
+            # Run integration and all other test directories
+            poetry run pytest \
+              tests/integration/ \
+              tests/domain/ \
+              tests/application/ \
+              tests/streaming/ \
+              tests/websocket/ \
+              tests/database/ \
+              tests/security/ \
+              tests/api/ \
+              tests/chunking/ \
+              -v \
+              -n auto \
+              --ignore=tests/e2e \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing \
+              -m "not e2e"
+          fi
 
       - name: Upload backend coverage
         if: github.event_name == 'push' || github.event_name == 'pull_request'
@@ -293,7 +333,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
-          flags: backend
+          flags: backend-${{ matrix.group }}
           fail_ci_if_error: false
 
   # Frontend tests - simplified without matrix
