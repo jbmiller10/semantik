@@ -48,7 +48,7 @@ def auth_headers(mock_user):
 @pytest.fixture()
 def mock_chunking_service():
     """Create a mock ChunkingService."""
-    service = AsyncMock(spec=ChunkingService, name='MockChunkingService')
+    service = AsyncMock(spec=ChunkingService, name="MockChunkingService")
 
     # Mock get_available_strategies_for_api
     service.get_available_strategies_for_api.return_value = [
@@ -707,18 +707,20 @@ class TestErrorHandling:
         assert response.status_code == 500
         assert "Failed to list strategies" in response.json()["detail"]
 
-    @pytest.mark.xfail(reason="Test passes in isolation but fails when run with other tests due to fixture state pollution")
+    @pytest.mark.xfail(
+        reason="Test passes in isolation but fails when run with other tests due to fixture state pollution"
+    )
     def test_content_too_large_error(
         self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of content too large error."""
         from unittest.mock import patch
-        
+
         # Use patch to ensure clean mock state
         with patch.object(
             mock_chunking_service,
-            'validate_preview_content',
-            side_effect=DocumentTooLargeError(size=2_000_000, max_size=1_000_000)
+            "validate_preview_content",
+            side_effect=DocumentTooLargeError(size=2_000_000, max_size=1_000_000),
         ):
             preview_request = {
                 "strategy": "fixed_size",

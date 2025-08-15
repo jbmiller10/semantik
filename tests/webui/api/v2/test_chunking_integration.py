@@ -1329,35 +1329,48 @@ class TestChunkingErrorHandling:
         # Note: Circuit breaker is typically disabled in test environment
         # This test verifies the endpoint structure supports circuit breaking
 
-        with patch("packages.webui.api.v2.chunking.check_circuit_breaker") as mock_check:
-            mock_check.side_effect = HTTPException(
-                status_code=503,
-                detail="Circuit breaker is open - too many failures",
-            )
+        # Temporarily enable rate limiting to test circuit breaker
+        original_value = os.environ.get("DISABLE_RATE_LIMITING", "false")
+        os.environ["DISABLE_RATE_LIMITING"] = "false"
 
-            # Act
-            response = client_with_auth.post(
-                "/api/v2/chunking/preview",
-                headers=auth_headers,
-                json={"strategy": "fixed_size", "content": "test"},
-            )
+        try:
+            with patch("packages.webui.rate_limiter.check_circuit_breaker") as mock_check:
+                mock_check.side_effect = HTTPException(
+                    status_code=503,
+                    detail="Circuit breaker is open - too many failures",
+                )
 
-            # Assert
-            assert response.status_code == 503
-            assert "Circuit breaker is open" in response.json()["detail"]
+                # Act
+                response = client_with_auth.post(
+                    "/api/v2/chunking/preview",
+                    headers=auth_headers,
+                    json={"strategy": "fixed_size", "content": "test"},
+                )
+
+                # Assert
+                assert response.status_code == 503
+                assert "Circuit breaker is open" in response.json()["detail"]
+        finally:
+            # Restore original value
+            os.environ["DISABLE_RATE_LIMITING"] = original_value
 
     def test_unexpected_error_handling(
         self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of unexpected errors with proper error response."""
-        # Arrange - Configure the existing mock to raise an error
+        # Arrange - Clear the return value and set side_effect to raise an error
+        mock_chunking_service.preview_chunking.return_value = None
         mock_chunking_service.preview_chunking.side_effect = RuntimeError("Unexpected internal error")
 
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/preview",
             headers=auth_headers,
-            json={"strategy": "fixed_size", "content": "test"},
+            json={
+                "strategy": "fixed_size",
+                "content": "test",
+                "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
+            },
         )
 
         # Assert
@@ -1367,8 +1380,23 @@ class TestChunkingErrorHandling:
         assert error_detail["error"]["code"] == "INTERNAL_ERROR"
         assert "correlation_id" in error_detail["error"]
 
-        # Reset the mock
+        # Reset the mock - restore original behavior
         mock_chunking_service.preview_chunking.side_effect = None
+        # Restore the original return value from the fixture
+        mock_chunking_service.preview_chunking.return_value = {
+            "preview_id": str(uuid.uuid4()),
+            "strategy": "fixed_size",
+            "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
+            "chunks": [
+                {"index": 0, "content": "Test chunk 1", "metadata": {}},
+                {"index": 1, "content": "Test chunk 2", "metadata": {}},
+            ],
+            "total_chunks": 2,
+            "metrics": {"avg_chunk_size": 100},
+            "processing_time_ms": 50,
+            "cached": False,
+            "expires_at": datetime.now(UTC) + timedelta(minutes=15),
+        }
 
 
 class TestChunkingSecurityAndAuth:
