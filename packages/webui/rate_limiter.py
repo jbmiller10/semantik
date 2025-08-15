@@ -75,29 +75,28 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
     Returns:
         JSONResponse with 429 status and proper headers
     """
-    # If rate limiting is disabled, this handler should never be called
-    # But if it is, don't interfere with normal endpoint processing
+    # If rate limiting is disabled, this should never be called
+    # The rate limiter should be configured with such high limits that it never triggers
+    # If it does get called, something is wrong with the configuration
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-        # In test mode, rate limiting should be completely bypassed
-        # This handler should not be triggered at all
-        logger.warning("Rate limit handler called despite rate limiting being disabled")
-        # Let the request proceed normally by not returning anything special
-        # The actual endpoint should handle the request
+        logger.error("Rate limit handler called despite rate limiting being disabled - this should not happen!")
+        # Don't return anything that would interfere with the response
+        # Since we can't pass through to the endpoint from here, return a minimal response
+        # that indicates the rate limiter was bypassed
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content={},  # Empty response to avoid interfering
+            content={"status": "ok", "bypass": True},
         )
 
     # Check for bypass token ONLY - not global disable
     key = get_user_or_ip(request)
     if key in ("admin_bypass", "test_bypass"):
         # Don't return 429 for bypass tokens in production
-        # But still let the endpoint execute normally
         logger.debug(f"Rate limit bypassed for key: {key}")
-        # Return a non-error status but don't interfere with the response
+        # Return bypass indication
         return JSONResponse(
             status_code=status.HTTP_200_OK,
-            content={},  # Empty response
+            content={"status": "ok", "bypass": True},
         )
 
     # Extract retry_after from the exception message
@@ -278,11 +277,12 @@ if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
     # Use very high limits for testing - effectively disabling rate limiting
     limiter = Limiter(
         key_func=get_user_or_ip,
-        default_limits=["100000/second"],  # Even higher limit to ensure no rate limiting in tests
+        default_limits=["1000000/second"],  # Extremely high limit to ensure no rate limiting in tests
         headers_enabled=False,  # Disable automatic header injection (incompatible with dict responses)
         swallow_errors=True,  # Don't raise errors in test mode
+        enabled=False,  # Completely disable rate limiting in test mode
     )
-    logger.info("Rate limiter configured for testing with high limits (effectively disabled)")
+    logger.info("Rate limiter completely disabled for testing")
 else:
     try:
         limiter = Limiter(

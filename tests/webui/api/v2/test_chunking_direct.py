@@ -478,7 +478,7 @@ class TestOperationEndpoints:
 
             result = await start_chunking_operation(
                 request=mock_request,
-                collection_id="coll-123",
+                collection_uuid="coll-123",
                 chunking_request=request,
                 background_tasks=mock_bg_instance,
                 _current_user=mock_user,

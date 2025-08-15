@@ -136,7 +136,7 @@ logs/
 data/
 images/
 models/
-repopackpy-output.txt
+repomixpy-output.txt
 
 # Logging
 *.pid
