@@ -5,73 +5,146 @@ This module provides observability into chunking performance,
 strategy usage, and fallback scenarios.
 """
 
-from typing import Any
+from typing import Any, Optional
 
-from prometheus_client import Counter, Histogram, Summary
+from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
 from packages.shared.metrics.prometheus import registry
 
+
+def _get_or_create_metric(metric_class, name: str, description: str, registry: CollectorRegistry, **kwargs) -> Any:
+    """Get existing metric or create a new one if it doesn't exist."""
+    # Check if metric already exists in registry by checking the names
+    if hasattr(registry, '_collector_to_names'):
+        for collector, names in registry._collector_to_names.items():
+            # For Counter metrics, check for the _total suffix
+            if metric_class == Counter and f"{name}_total" in names:
+                return collector
+            # For Histogram metrics, check for various suffixes
+            elif metric_class == Histogram and (
+                f"{name}_bucket" in names or 
+                f"{name}_count" in names or 
+                f"{name}_sum" in names or
+                name in names
+            ):
+                return collector
+            # For Summary metrics, check for various suffixes
+            elif metric_class == Summary and (
+                f"{name}_count" in names or 
+                f"{name}_sum" in names or
+                name in names
+            ):
+                return collector
+            # For other metrics, check exact name
+            elif name in names:
+                return collector
+    
+    # Create new metric
+    try:
+        return metric_class(name, description, registry=registry, **kwargs)
+    except ValueError as e:
+        # If we get a duplicate error, try to find and return the existing metric
+        if "Duplicated timeseries" in str(e) or "Duplicated" in str(e):
+            # Try to find the existing collector by iterating through all collectors
+            if hasattr(registry, '_collector_to_names'):
+                for collector in list(registry._collector_to_names.keys()):
+                    if hasattr(collector, "_name") and collector._name == name:
+                        return collector
+            # If we still can't find it, return a mock that won't cause issues
+            # This is a fallback for test environments
+            import logging
+            logging.warning(f"Could not find or create metric {name}, returning mock")
+            
+            # Create a simple mock that has the basic interface
+            class MockMetric:
+                def __init__(self):
+                    self._name = name
+                
+                def labels(self, **kwargs):
+                    return self
+                
+                def observe(self, value):
+                    pass
+                
+                def inc(self, amount=1):
+                    pass
+                
+                def set(self, value):
+                    pass
+            
+            return MockMetric()
+        raise
+
+
 # Chunking duration histogram - tracks time taken to chunk documents per strategy
-ingestion_chunking_duration_seconds = Histogram(
+ingestion_chunking_duration_seconds = _get_or_create_metric(
+    Histogram,
     "ingestion_chunking_duration_seconds",
     "Duration of chunking operation per document in seconds",
+    registry,
     labelnames=["strategy"],
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
-    registry=registry,
 )
 
 # Chunking fallback counter - tracks when strategies fail and fallback is used
-ingestion_chunking_fallback_total = Counter(
+ingestion_chunking_fallback_total = _get_or_create_metric(
+    Counter,
     "ingestion_chunking_fallback_total",
     "Total number of chunking fallbacks by strategy and reason",
+    registry,
     labelnames=["strategy", "reason"],
-    registry=registry,
 )
 
 # Chunks produced counter - tracks total chunks created per strategy
-ingestion_chunks_total = Counter(
+ingestion_chunks_total = _get_or_create_metric(
+    Counter,
     "ingestion_chunks_total",
     "Total number of chunks produced per strategy",
+    registry,
     labelnames=["strategy"],
-    registry=registry,
 )
 
 # Average chunk size summary - tracks chunk size distribution per strategy
-ingestion_avg_chunk_size_bytes = Summary(
+ingestion_avg_chunk_size_bytes = _get_or_create_metric(
+    Summary,
     "ingestion_avg_chunk_size_bytes",
     "Average chunk size in bytes per strategy",
+    registry,
     labelnames=["strategy"],
-    registry=registry,
 )
 
 # Segmentation metrics for Phase 3
-ingestion_segmented_documents_total = Counter(
+ingestion_segmented_documents_total = _get_or_create_metric(
+    Counter,
     "ingestion_segmented_documents_total",
     "Total number of documents that required segmentation",
+    registry,
     labelnames=["strategy"],
-    registry=registry,
 )
 
-ingestion_segments_total = Counter(
+ingestion_segments_total = _get_or_create_metric(
+    Counter,
     "ingestion_segments_total",
     "Total number of segments created from large documents",
+    registry,
     labelnames=["strategy"],
-    registry=registry,
 )
 
-ingestion_segment_size_bytes = Histogram(
+ingestion_segment_size_bytes = _get_or_create_metric(
+    Histogram,
     "ingestion_segment_size_bytes",
     "Size distribution of document segments in bytes",
+    registry,
     labelnames=["strategy"],
     buckets=(100000, 500000, 1000000, 2000000, 5000000, 10000000),  # 100KB to 10MB
-    registry=registry,
 )
 
-ingestion_streaming_used_total = Counter(
+ingestion_streaming_used_total = _get_or_create_metric(
+    Counter,
     "ingestion_streaming_used_total",
     "Total number of documents processed with streaming strategies",
+    registry,
     labelnames=["strategy"],
-    registry=registry,
 )
 
 

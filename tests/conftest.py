@@ -297,9 +297,25 @@ def mock_embedding_service() -> None:
 @pytest.fixture(autouse=True)
 def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
-    # This helps ensure test isolation
-    return
-    # Cleanup code here if needed
+    # Clear Prometheus metrics registry to avoid duplicate metric registration
+    from prometheus_client import REGISTRY
+    from packages.shared.metrics.prometheus import registry
+    
+    # Clear all collectors from the custom registry
+    collectors_to_remove = list(registry._collector_to_names.keys())
+    for collector in collectors_to_remove:
+        try:
+            registry.unregister(collector)
+        except Exception:
+            pass  # Ignore if already unregistered
+    
+    # Also clear the default registry if needed
+    collectors_to_remove = list(REGISTRY._collector_to_names.keys())
+    for collector in collectors_to_remove:
+        try:
+            REGISTRY.unregister(collector)
+        except Exception:
+            pass  # Ignore if already unregistered
 
 
 def create_async_mock(return_value=None) -> None:
