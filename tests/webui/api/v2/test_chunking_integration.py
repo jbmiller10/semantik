@@ -343,33 +343,47 @@ def unauthenticated_client():
     # Override the database dependency to prevent 500 errors
     app.dependency_overrides[get_db] = mock_get_db
 
+    # Create patches that will persist for the test duration
+    patches = []
+    
+    # Mock the lifespan events to prevent real database connections  
+    patches.append(patch("packages.webui.main.pg_connection_manager"))
+    patches.append(patch("packages.webui.main.ws_manager"))
+    patches.append(patch("packages.shared.database.get_db_session"))
+    
     # Mock the user repository creation to return None for user lookups
     mock_user_repo = AsyncMock()
     mock_user_repo.get_user_by_username.return_value = None
+    patches.append(patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo))
+    
+    # Start all patches
+    mocked_objects = []
+    for p in patches:
+        mock = p.start()
+        mocked_objects.append(mock)
+        if hasattr(mock, 'initialize'):
+            mock.initialize = AsyncMock()
+        if hasattr(mock, 'startup'):
+            mock.startup = AsyncMock()
+        if hasattr(mock, 'shutdown'):
+            mock.shutdown = AsyncMock()
+    
+    # Set up get_db_session mock (it's the third patch)
+    mock_get_db_session = mocked_objects[2]
+    async def mock_db_session_generator():
+        yield AsyncMock()
+    mock_get_db_session.return_value = mock_db_session_generator()
 
-    # Mock the lifespan events to prevent real database connections
-    with (
-        patch("packages.webui.main.pg_connection_manager") as mock_pg,
-        patch("packages.webui.main.ws_manager") as mock_ws,
-        patch("packages.shared.database.get_db_session") as mock_get_db_session,
-        patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo),
-    ):
-        # Mock the async methods
-        mock_pg.initialize = AsyncMock()
-        mock_ws.startup = AsyncMock()
-        mock_ws.shutdown = AsyncMock()
-
-        # Make get_db_session return an async generator that yields a mock session
-        async def mock_db_session_generator():
-            yield AsyncMock()
-        
-        mock_get_db_session.return_value = mock_db_session_generator()
-
+    try:
         with TestClient(app) as client:
             yield client
-
-    # Clean up overrides
-    app.dependency_overrides.clear()
+    finally:
+        # Stop all patches
+        for p in patches:
+            p.stop()
+        
+        # Clean up overrides
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture()
