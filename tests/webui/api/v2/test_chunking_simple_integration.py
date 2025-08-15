@@ -278,6 +278,16 @@ def mock_chunking_service():
     # Mock process_chunking_operation
     service.process_chunking_operation.return_value = None
 
+    # Mock get_collection_chunks if method exists
+    if hasattr(service, "get_collection_chunks"):
+        service.get_collection_chunks.return_value = {
+            "chunks": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 20,
+            "has_next": False,
+        }
+
     return service
 
 
@@ -319,7 +329,7 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
     async def override_get_current_user():
         return mock_user
 
-    async def override_get_collection_for_user():
+    def override_get_collection_for_user(*args, **kwargs):  # noqa: ARG001
         return mock_collection
 
     app.dependency_overrides[get_current_user] = override_get_current_user
@@ -327,8 +337,18 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
     app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
 
-    with TestClient(app) as client:
-        yield client
+    # Mock the lifespan events to prevent real database connections
+    with (
+        patch("packages.webui.main.pg_connection_manager") as mock_pg,
+        patch("packages.webui.main.ws_manager") as mock_ws,
+    ):
+        # Mock the async methods
+        mock_pg.initialize = AsyncMock()
+        mock_ws.startup = AsyncMock()
+        mock_ws.shutdown = AsyncMock()
+
+        with TestClient(app) as client:
+            yield client
 
     app.dependency_overrides.clear()
 
@@ -337,8 +357,19 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
 def unauthenticated_client():
     """Create a test client without authentication."""
     app.dependency_overrides.clear()
-    with TestClient(app) as client:
-        yield client
+
+    # Mock the lifespan events to prevent real database connections
+    with (
+        patch("packages.webui.main.pg_connection_manager") as mock_pg,
+        patch("packages.webui.main.ws_manager") as mock_ws,
+    ):
+        # Mock the async methods
+        mock_pg.initialize = AsyncMock()
+        mock_ws.startup = AsyncMock()
+        mock_ws.shutdown = AsyncMock()
+
+        with TestClient(app) as client:
+            yield client
 
 
 class TestStrategyEndpoints:
@@ -698,6 +729,9 @@ class TestErrorHandling:
         # Check that the error message mentions the size limit was exceeded
         error_detail = response.json()["detail"]
         assert "exceeds maximum" in error_detail or "Content exceeds maximum size" in error_detail
+
+        # Reset the side effect
+        mock_chunking_service.validate_preview_content.side_effect = None
 
 
 class TestAuthenticationSecurity:
