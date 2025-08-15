@@ -227,7 +227,9 @@ class TestStrategyManagement:
 
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
-
+        # Import app for this test
+        from packages.webui.main import app
+        
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
         settings.DISABLE_AUTH = False
@@ -991,6 +993,8 @@ class TestSecurityAndValidation:
     @patch("packages.webui.auth.settings")
     def test_authorization_checks(self, mock_settings: MagicMock) -> None:
         """Test that all endpoints require authentication."""
+        # Import app for this test
+        from packages.webui.main import app
 
         # Configure mock settings to ensure auth is enabled
         mock_settings.DISABLE_AUTH = False
