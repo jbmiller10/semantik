@@ -1,5 +1,6 @@
 """Shared test configuration and fixtures."""
 
+import asyncio
 import os
 import random
 import sys
@@ -502,9 +503,9 @@ def db_isolation():
     pass
 
 
-@pytest_asyncio.fixture(scope="session")
-async def db_engine():
-    """Create a database engine once per test session."""
+@pytest_asyncio.fixture
+async def db_session():
+    """Create a new database session for testing."""
     # Get database URL from environment, prioritizing DATABASE_URL
     database_url = os.environ.get("DATABASE_URL")
 
@@ -550,56 +551,31 @@ async def db_engine():
         pytest.skip(f"PostgreSQL test database not available: {e}")
         return
 
-    engine = create_async_engine(async_database_url, echo=False)
+    # Create engine with isolation level for better concurrency
+    engine = create_async_engine(
+        async_database_url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=1,  # Small pool size per test
+        max_overflow=0,  # No overflow connections
+    )
 
-    # Helper function to drop views before tables
-    async def drop_views_and_tables(conn) -> None:
-        # Drop views first (in dependency order)
-        views_to_drop = [
-            "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
-            "DROP VIEW IF EXISTS partition_health_summary CASCADE",
-            "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_health CASCADE",
-            "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
-            "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
-        ]
-
-        for view_sql in views_to_drop:
-            await conn.execute(text(view_sql))
-
-        # Now drop all tables
-        await conn.run_sync(Base.metadata.drop_all)
-
-    # Create tables once for the entire test session
+    # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
-        # Only drop and recreate if running in CI or explicitly requested
-        if os.environ.get("CI") or os.environ.get("RECREATE_TEST_DB"):
-            await drop_views_and_tables(conn)
-            await conn.run_sync(Base.metadata.create_all)
-        else:
-            # Just ensure tables exist
-            await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all)
 
-    yield engine
+    # Create session for this test
+    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Cleanup after all tests are done
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def db_session(db_engine) -> None:
-    """Create a new database session for each test."""
-    async_session = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
-
-    # Create a new session for the test
     async with async_session() as session:
         yield session
         # Rollback any uncommitted changes
         if session.in_transaction():
             await session.rollback()
         await session.close()
+
+    # Dispose of the engine to close all connections
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture
