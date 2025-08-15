@@ -354,13 +354,14 @@ def unauthenticated_client():
         mock_ws.startup = AsyncMock()
         mock_ws.shutdown = AsyncMock()
 
-        # Make get_db_session return an empty async generator to prevent connection errors
-        async def empty_generator():
-            # Don't yield anything - this will cause auth to fail with 401 properly
-            return
-            yield
+        # Make get_db_session return a proper async generator that yields nothing
+        # This prevents errors when code tries to iterate over it
+        async def mock_db_session_generator():
+            # Don't yield anything - just make it a valid async generator
+            if False:  # This ensures it's a generator but never yields
+                yield
 
-        mock_get_db_session.return_value = empty_generator()
+        mock_get_db_session.return_value = mock_db_session_generator()
 
         with TestClient(app) as client:
             yield client
@@ -1353,44 +1354,40 @@ class TestChunkingErrorHandling:
 
         # Import circuit_breaker to modify its state directly
         import time
+        from unittest.mock import patch
 
         from packages.webui.rate_limiter import circuit_breaker
 
-        # Temporarily enable rate limiting to test circuit breaker
-        original_value = os.environ.get("DISABLE_RATE_LIMITING", "false")
-        os.environ["DISABLE_RATE_LIMITING"] = "false"
+        # The get_user_or_ip function will return a key based on the username hash
+        # since the test token doesn't include user_id, only username
+        test_username = "testuser"  # From mock_user fixture
+        test_user_id = hash(test_username) % 1000000  # This is what RateLimitMiddleware does
+        test_key = f"user:{test_user_id}"
+
+        # Set up circuit breaker state to simulate an open circuit
+        circuit_breaker.blocked_until[test_key] = time.time() + 60
+        circuit_breaker.failure_counts[test_key] = 5  # Simulate 5 failures
 
         try:
-            # Set up circuit breaker state to simulate an open circuit
-            # The get_user_or_ip function will return the username from the JWT token
-            # which is "testuser" in our mock_user fixture
-            test_key = "testuser"  # This matches the username in our auth token
+            # Patch the environment check to enable rate limiting for this test
+            with patch.dict(os.environ, {"DISABLE_RATE_LIMITING": "false"}):
+                # Act
+                response = client_with_auth.post(
+                    "/api/v2/chunking/preview",
+                    headers=auth_headers,
+                    json={"strategy": "fixed_size", "content": "test"},
+                )
 
-            # Set the circuit breaker to be blocked for 60 seconds from now
-            circuit_breaker.blocked_until[test_key] = time.time() + 60
-            circuit_breaker.failure_counts[test_key] = 5  # Simulate 5 failures
-
-            # Act
-            response = client_with_auth.post(
-                "/api/v2/chunking/preview",
-                headers=auth_headers,
-                json={"strategy": "fixed_size", "content": "test"},
-            )
-
-            # Assert
-            assert response.status_code == 503
-            error_detail = response.json()["detail"]
-            assert "Circuit breaker open" in error_detail or "temporarily unavailable" in error_detail
-
+                # Assert
+                assert response.status_code == 503
+                error_detail = response.json()["detail"]
+                assert "Circuit breaker open" in error_detail or "temporarily unavailable" in error_detail
+        finally:
             # Clean up circuit breaker state
             if test_key in circuit_breaker.blocked_until:
                 del circuit_breaker.blocked_until[test_key]
             if test_key in circuit_breaker.failure_counts:
                 del circuit_breaker.failure_counts[test_key]
-
-        finally:
-            # Restore original value
-            os.environ["DISABLE_RATE_LIMITING"] = original_value
 
     def test_unexpected_error_handling(
         self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock

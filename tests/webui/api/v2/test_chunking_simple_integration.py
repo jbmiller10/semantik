@@ -383,13 +383,14 @@ def unauthenticated_client():
         mock_ws.startup = AsyncMock()
         mock_ws.shutdown = AsyncMock()
 
-        # Make get_db_session return an empty async generator to prevent connection errors
-        async def empty_generator():
-            # Don't yield anything - this will cause auth to fail with 401 properly
-            return
-            yield
+        # Make get_db_session return a proper async generator that yields nothing
+        # This prevents errors when code tries to iterate over it
+        async def mock_db_session_generator():
+            # Don't yield anything - just make it a valid async generator
+            if False:  # This ensures it's a generator but never yields
+                yield
 
-        mock_get_db_session.return_value = empty_generator()
+        mock_get_db_session.return_value = mock_db_session_generator()
 
         with TestClient(app) as client:
             yield client
