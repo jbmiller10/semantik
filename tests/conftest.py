@@ -502,11 +502,9 @@ def db_isolation():
     pass
 
 
-@pytest_asyncio.fixture
-async def db_session() -> None:
-    """Create a new database session for testing."""
-    # Check if we have a test database available
-
+@pytest_asyncio.fixture(scope="session")
+async def db_engine():
+    """Create a database engine once per test session."""
     # Get database URL from environment, prioritizing DATABASE_URL
     database_url = os.environ.get("DATABASE_URL")
 
@@ -574,7 +572,7 @@ async def db_session() -> None:
         # Now drop all tables
         await conn.run_sync(Base.metadata.drop_all)
 
-    # Create tables once for the test run
+    # Create tables once for the entire test session
     async with engine.begin() as conn:
         # Only drop and recreate if running in CI or explicitly requested
         if os.environ.get("CI") or os.environ.get("RECREATE_TEST_DB"):
@@ -584,7 +582,16 @@ async def db_session() -> None:
             # Just ensure tables exist
             await conn.run_sync(Base.metadata.create_all)
 
-    async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    yield engine
+
+    # Cleanup after all tests are done
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(db_engine) -> None:
+    """Create a new database session for each test."""
+    async_session = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Create a new session for the test
     async with async_session() as session:
@@ -593,8 +600,6 @@ async def db_session() -> None:
         if session.in_transaction():
             await session.rollback()
         await session.close()
-
-    await engine.dispose()
 
 
 @pytest_asyncio.fixture
