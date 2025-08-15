@@ -360,10 +360,11 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
 @pytest.fixture()
 def unauthenticated_client():
     """Create a test client without authentication."""
+    from fastapi import Depends, HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
     from packages.webui.auth import get_current_user
-    from fastapi import HTTPException, Depends
-    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    
+
     app.dependency_overrides.clear()
 
     # Override get_current_user to always raise 401 with the appropriate message
@@ -383,7 +384,7 @@ def unauthenticated_client():
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     app.dependency_overrides[get_current_user] = mock_get_current_user
 
     # Mock the lifespan events to prevent real database connections

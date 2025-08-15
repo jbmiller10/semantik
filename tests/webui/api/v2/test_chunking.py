@@ -229,7 +229,7 @@ class TestStrategyManagement:
         """Test that listing strategies requires authentication."""
         # Import app for this test
         from packages.webui.main import app
-        
+
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
         settings.DISABLE_AUTH = False

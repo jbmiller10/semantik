@@ -5,7 +5,7 @@ This module provides observability into chunking performance,
 strategy usage, and fallback scenarios.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
@@ -15,30 +15,22 @@ from packages.shared.metrics.prometheus import registry
 def _get_or_create_metric(metric_class, name: str, description: str, registry: CollectorRegistry, **kwargs) -> Any:
     """Get existing metric or create a new one if it doesn't exist."""
     # Check if metric already exists in registry by checking the names
-    if hasattr(registry, '_collector_to_names'):
+    if hasattr(registry, "_collector_to_names"):
         for collector, names in registry._collector_to_names.items():
             # For Counter metrics, check for the _total suffix
-            if metric_class == Counter and f"{name}_total" in names:
-                return collector
-            # For Histogram metrics, check for various suffixes
-            elif metric_class == Histogram and (
-                f"{name}_bucket" in names or 
-                f"{name}_count" in names or 
-                f"{name}_sum" in names or
-                name in names
+            if (
+                metric_class == Counter
+                and f"{name}_total" in names
+                or metric_class == Histogram
+                and (f"{name}_bucket" in names or f"{name}_count" in names or f"{name}_sum" in names or name in names)
+                or (
+                    metric_class == Summary
+                    and (f"{name}_count" in names or f"{name}_sum" in names or name in names)
+                    or name in names
+                )
             ):
                 return collector
-            # For Summary metrics, check for various suffixes
-            elif metric_class == Summary and (
-                f"{name}_count" in names or 
-                f"{name}_sum" in names or
-                name in names
-            ):
-                return collector
-            # For other metrics, check exact name
-            elif name in names:
-                return collector
-    
+
     # Create new metric
     try:
         return metric_class(name, description, registry=registry, **kwargs)
@@ -46,32 +38,33 @@ def _get_or_create_metric(metric_class, name: str, description: str, registry: C
         # If we get a duplicate error, try to find and return the existing metric
         if "Duplicated timeseries" in str(e) or "Duplicated" in str(e):
             # Try to find the existing collector by iterating through all collectors
-            if hasattr(registry, '_collector_to_names'):
+            if hasattr(registry, "_collector_to_names"):
                 for collector in list(registry._collector_to_names.keys()):
                     if hasattr(collector, "_name") and collector._name == name:
                         return collector
             # If we still can't find it, return a mock that won't cause issues
             # This is a fallback for test environments
             import logging
+
             logging.warning(f"Could not find or create metric {name}, returning mock")
-            
+
             # Create a simple mock that has the basic interface
             class MockMetric:
                 def __init__(self):
                     self._name = name
-                
-                def labels(self, **kwargs):
+
+                def labels(self, **_kwargs):
                     return self
-                
+
                 def observe(self, value):
                     pass
-                
+
                 def inc(self, amount=1):
                     pass
-                
+
                 def set(self, value):
                     pass
-            
+
             return MockMetric()
         raise
 

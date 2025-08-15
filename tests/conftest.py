@@ -1,6 +1,6 @@
 """Shared test configuration and fixtures."""
 
-import asyncio
+import contextlib
 import os
 import random
 import sys
@@ -28,7 +28,6 @@ from dotenv import load_dotenv  # noqa: E402
 from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
 import packages.webui.celery_app as celery_module  # noqa: E402
@@ -300,23 +299,20 @@ def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
     # Clear Prometheus metrics registry to avoid duplicate metric registration
     from prometheus_client import REGISTRY
+
     from packages.shared.metrics.prometheus import registry
-    
+
     # Clear all collectors from the custom registry
     collectors_to_remove = list(registry._collector_to_names.keys())
     for collector in collectors_to_remove:
-        try:
+        with contextlib.suppress(Exception):
             registry.unregister(collector)
-        except Exception:
-            pass  # Ignore if already unregistered
-    
+
     # Also clear the default registry if needed
     collectors_to_remove = list(REGISTRY._collector_to_names.keys())
     for collector in collectors_to_remove:
-        try:
+        with contextlib.suppress(Exception):
             REGISTRY.unregister(collector)
-        except Exception:
-            pass  # Ignore if already unregistered
 
 
 def create_async_mock(return_value=None) -> None:
@@ -498,9 +494,8 @@ def websocket_test_client(test_client) -> None:
 
 # Additional fixtures for collection deletion tests
 @pytest.fixture()
-def db_isolation():
+def _db_isolation():
     """Marker fixture to indicate tests that require database isolation."""
-    pass
 
 
 @pytest_asyncio.fixture
