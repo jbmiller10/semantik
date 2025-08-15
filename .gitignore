@@ -246,3 +246,5 @@ nginx.conf.example
 # Project summaries
 /summaries/
 /summary/
+*repopack*
+*repomix*
