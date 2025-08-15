@@ -325,7 +325,9 @@ def upgrade() -> None:
         op.add_column("collections", sa.Column("chunking_strategy", sa.String(), nullable=True))
 
     if not column_exists(conn, "collections", "chunking_config"):
-        op.add_column("collections", sa.Column("chunking_config", postgresql.JSON(astext_type=sa.Text()), nullable=True))
+        op.add_column(
+            "collections", sa.Column("chunking_config", postgresql.JSON(astext_type=sa.Text()), nullable=True)
+        )
 
     # Add performance indexes for collections
     if not index_exists(conn, "idx_collections_owner_status"):
@@ -339,11 +341,7 @@ def upgrade() -> None:
     if not column_exists(conn, "documents", "chunking_config_id"):
         op.add_column("documents", sa.Column("chunking_config_id", sa.Integer(), nullable=True))
         op.create_foreign_key(
-            "fk_documents_chunking_config",
-            "documents",
-            "chunking_configs",
-            ["chunking_config_id"],
-            ["id"]
+            "fk_documents_chunking_config", "documents", "chunking_configs", ["chunking_config_id"], ["id"]
         )
         if not index_exists(conn, "ix_documents_chunking_config_id"):
             op.create_index("ix_documents_chunking_config_id", "documents", ["chunking_config_id"])
@@ -360,9 +358,7 @@ def upgrade() -> None:
     # Add performance indexes for documents
     if not index_exists(conn, "ix_documents_collection_id_chunking_completed_at"):
         op.create_index(
-            "ix_documents_collection_id_chunking_completed_at",
-            "documents",
-            ["collection_id", "chunking_completed_at"]
+            "ix_documents_collection_id_chunking_completed_at", "documents", ["collection_id", "chunking_completed_at"]
         )
 
     if not index_exists(conn, "idx_documents_collection_status"):
@@ -374,25 +370,17 @@ def upgrade() -> None:
     logger.info("Adding performance indexes to operations table...")
 
     if not index_exists(conn, "idx_operations_collection_type_status"):
-        op.create_index(
-            "idx_operations_collection_type_status",
-            "operations",
-            ["collection_id", "type", "status"]
-        )
+        op.create_index("idx_operations_collection_type_status", "operations", ["collection_id", "type", "status"])
 
     if not index_exists(conn, "idx_operations_created_desc"):
-        op.create_index(
-            "idx_operations_created_desc",
-            "operations",
-            [sa.text("created_at DESC")]
-        )
+        op.create_index("idx_operations_created_desc", "operations", [sa.text("created_at DESC")])
 
     if not index_exists(conn, "idx_operations_user_status"):
         op.create_index(
             "idx_operations_user_status",
             "operations",
             ["user_id", "status"],
-            postgresql_where=sa.text("status IN ('PROCESSING', 'PENDING')")
+            postgresql_where=sa.text("status IN ('PROCESSING', 'PENDING')"),
         )
 
     if not index_exists(conn, "idx_operations_config_strategy"):
@@ -400,7 +388,7 @@ def upgrade() -> None:
             "idx_operations_config_strategy",
             "operations",
             [sa.text("(config->>'strategy')")],
-            postgresql_where=sa.text("config IS NOT NULL")
+            postgresql_where=sa.text("config IS NOT NULL"),
         )
 
     # ========================================================================
