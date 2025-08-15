@@ -508,7 +508,7 @@ async def clear_preview_cache(
 
 # Collection Processing
 @router.post(
-    "/collections/{collection_id}/chunk",
+    "/collections/{collection_uuid}/chunk",
     response_model=ChunkingOperationResponse,
     summary="Start chunking operation on collection",
     status_code=status.HTTP_202_ACCEPTED,
@@ -521,7 +521,7 @@ async def clear_preview_cache(
 @limiter.limit(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
-    collection_id: str,
+    collection_uuid: str,  # Changed from collection_id to match dependency
     chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
@@ -542,7 +542,7 @@ async def start_chunking_operation(
     try:
         # First validate the configuration
         validation_result = await service.validate_config_for_collection(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else {},
         )
@@ -559,7 +559,7 @@ async def start_chunking_operation(
 
         # Create operation record
         operation = await collection_service.create_operation(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             operation_type="chunking",
             config={
                 "strategy": chunking_request.strategy.value,
@@ -572,7 +572,7 @@ async def start_chunking_operation(
 
         # Start chunking operation and get WebSocket channel
         websocket_channel, _ = await service.start_chunking_operation(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else {},
             user_id=_current_user["id"],
@@ -582,7 +582,7 @@ async def start_chunking_operation(
         background_tasks.add_task(
             process_chunking_operation,
             operation["uuid"],
-            collection_id,
+            collection_uuid,
             chunking_request.strategy,
             chunking_request.config,
             chunking_request.document_ids,
@@ -593,7 +593,7 @@ async def start_chunking_operation(
 
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             status=ChunkingStatus.PENDING,
             strategy=chunking_request.strategy,
             estimated_time_seconds=validation_result.get("estimated_time"),
@@ -702,14 +702,14 @@ async def update_chunking_strategy(
 
 
 @router.get(
-    "/collections/{collection_id}/chunks",
+    "/collections/{collection_uuid}/chunks",
     response_model=ChunkListResponse,
     summary="Get chunks with pagination",
 )
 @limiter.limit(RateLimitConfig.READ_RATE)
 async def get_collection_chunks(
     request: Request,  # Required for rate limiting
-    collection_id: str,  # noqa: ARG001
+    collection_uuid: str,  # Changed from collection_id to match dependency # noqa: ARG001
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001

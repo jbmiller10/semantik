@@ -9,6 +9,7 @@ Only external dependencies (Redis, Celery, Qdrant) are mocked.
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -755,8 +756,12 @@ class TestChunkingOperationEndpoints:
         }
 
         # Override dependencies
-        # Create a proper function that returns the test collection
-        def get_test_collection(**kwargs):  # noqa: ARG001
+        # Create a proper function that returns the test collection with correct signature
+        async def get_test_collection(
+            collection_uuid: str = None,  # noqa: ARG001
+            current_user: dict = None,  # noqa: ARG001
+            db: Any = None,  # noqa: ARG001
+        ):
             return test_collection_with_user
 
         app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
@@ -803,12 +808,25 @@ class TestChunkingOperationEndpoints:
     ) -> None:
         """Test starting chunking operation with invalid configuration."""
         # Arrange
+        from packages.shared.database import get_db
         from packages.webui.dependencies import get_collection_for_user
 
+        # Mock database session
+        mock_db = AsyncMock()
+
         # Override dependencies
-        app.dependency_overrides[get_collection_for_user] = (
-            lambda *args, **kwargs: test_collection_with_user
-        )  # noqa: ARG005
+        async def get_test_collection(
+            collection_uuid: str = None,  # noqa: ARG001
+            current_user: dict = None,  # noqa: ARG001
+            db: Any = None,  # noqa: ARG001
+        ):
+            return test_collection_with_user
+
+        async def get_mock_db():
+            return mock_db
+
+        app.dependency_overrides[get_collection_for_user] = get_test_collection
+        app.dependency_overrides[get_db] = get_mock_db
 
         chunking_request = {
             "strategy": "fixed_size",
@@ -834,6 +852,7 @@ class TestChunkingOperationEndpoints:
 
         # Clean up
         app.dependency_overrides.pop(get_collection_for_user, None)
+        app.dependency_overrides.pop(get_db, None)
 
     def test_start_chunking_operation_collection_not_found(
         self,
@@ -847,7 +866,11 @@ class TestChunkingOperationEndpoints:
         non_existent_id = str(uuid.uuid4())
 
         # Override dependency to raise 404
-        def override_get_collection_for_user(*args, **kwargs):  # noqa: ARG001
+        async def override_get_collection_for_user(
+            collection_uuid: str = None,  # noqa: ARG001
+            current_user: dict = None,  # noqa: ARG001
+            db: Any = None,  # noqa: ARG001
+        ):
             raise HTTPException(status_code=404, detail="Collection not found")
 
         app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user
@@ -886,7 +909,11 @@ class TestChunkingOperationEndpoints:
         from packages.webui.dependencies import get_collection_for_user
 
         # Override dependency to raise 403 for unauthorized access
-        def override_get_collection_for_user(*args, **kwargs):  # noqa: ARG001
+        async def override_get_collection_for_user(
+            collection_uuid: str = None,  # noqa: ARG001
+            current_user: dict = None,  # noqa: ARG001
+            db: Any = None,  # noqa: ARG001
+        ):
             raise HTTPException(status_code=403, detail="You don't have access to this collection")
 
         app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user
@@ -1110,9 +1137,14 @@ class TestChunkingStatsEndpoints:
         from packages.webui.dependencies import get_collection_for_user
 
         # Override dependencies
-        app.dependency_overrides[get_collection_for_user] = (
-            lambda *args, **kwargs: test_collection_with_user
-        )  # noqa: ARG005
+        async def get_test_collection(
+            collection_uuid: str = None,  # noqa: ARG001
+            current_user: dict = None,  # noqa: ARG001
+            db: Any = None,  # noqa: ARG001
+        ):
+            return test_collection_with_user
+
+        app.dependency_overrides[get_collection_for_user] = get_test_collection
 
         # Act
         response = client_with_auth.get(

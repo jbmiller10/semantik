@@ -329,7 +329,11 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
     async def override_get_current_user():
         return mock_user
 
-    def override_get_collection_for_user(*args, **kwargs):  # noqa: ARG001
+    async def override_get_collection_for_user(
+        collection_uuid: str = None,  # noqa: ARG001
+        current_user: dict = None,  # noqa: ARG001
+        db: Any = None,  # noqa: ARG001
+    ):
         return mock_collection
 
     app.dependency_overrides[get_current_user] = override_get_current_user
