@@ -63,6 +63,7 @@ interface ChunkingStore {
   
   // Actions - Utility
   reset: () => void;
+  resetToDefaults: () => void;
   getRecommendedStrategy: (fileType?: string) => ChunkingStrategyType;
   cancelActiveRequests: () => void;
 }
@@ -365,6 +366,10 @@ export const useChunkingStore = create<ChunkingStore>()(
 
       // Utility Actions
       reset: () => {
+        set(initialState);
+      },
+
+      resetToDefaults: () => {
         set(initialState);
       },
 

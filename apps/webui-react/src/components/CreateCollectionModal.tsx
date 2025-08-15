@@ -8,6 +8,8 @@ import { useNavigate } from 'react-router-dom';
 import { useDirectoryScan } from '../hooks/useDirectoryScan';
 import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
 import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
+import ErrorBoundary from './ErrorBoundary';
+import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
 import type { CreateCollectionRequest } from '../types/collection';
 
 interface CreateCollectionModalProps {
@@ -480,10 +482,25 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             </div>
 
             {/* Chunking Strategy */}
-            <SimplifiedChunkingStrategySelector 
-              disabled={isSubmitting}
-              fileType={detectedFileType}
-            />
+            <ErrorBoundary 
+              level="component"
+              fallback={(error, resetError) => (
+                <ConfigurationErrorFallback 
+                  error={error} 
+                  resetError={resetError}
+                  onResetConfiguration={() => {
+                    const chunkingStore = useChunkingStore.getState();
+                    chunkingStore.resetToDefaults();
+                    resetError();
+                  }}
+                />
+              )}
+            >
+              <SimplifiedChunkingStrategySelector 
+                disabled={isSubmitting}
+                fileType={detectedFileType}
+              />
+            </ErrorBoundary>
 
             {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">

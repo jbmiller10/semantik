@@ -5,6 +5,8 @@ import { useReindexCollection } from '../hooks/useCollectionOperations';
 import { useNavigate } from 'react-router-dom';
 import { useChunkingStore } from '../stores/chunkingStore';
 import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
+import ErrorBoundary from './ErrorBoundary';
+import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { Collection, ReindexRequest } from '../types/collection';
 import type { ChunkingStrategyType } from '../types/chunking';
@@ -173,13 +175,28 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 
                 {showStrategySelector && (
                   <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <SimplifiedChunkingStrategySelector
-                      onStrategyChange={(strategy) => {
-                        setSelectedStrategy(strategy);
-                        setStrategy(strategy);
-                      }}
-                      disabled={isSubmitting}
-                    />
+                    <ErrorBoundary 
+                      level="component"
+                      fallback={(error, resetError) => (
+                        <ConfigurationErrorFallback 
+                          error={error} 
+                          resetError={resetError}
+                          onResetConfiguration={() => {
+                            const chunkingStore = useChunkingStore.getState();
+                            chunkingStore.resetToDefaults();
+                            resetError();
+                          }}
+                        />
+                      )}
+                    >
+                      <SimplifiedChunkingStrategySelector
+                        onStrategyChange={(strategy) => {
+                          setSelectedStrategy(strategy);
+                          setStrategy(strategy);
+                        }}
+                        disabled={isSubmitting}
+                      />
+                    </ErrorBoundary>
                   </div>
                 )}
               </div>
