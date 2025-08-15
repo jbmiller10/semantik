@@ -586,12 +586,13 @@ async def db_session() -> None:
 
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Use a transaction that rolls back after each test
+    # Create a new session for the test
     async with async_session() as session:
-        # Start a savepoint for nested transaction support
-        async with session.begin():
-            yield session
-            # Rollback happens automatically when exiting the context
+        yield session
+        # Rollback any uncommitted changes
+        await session.rollback()
+
+    # Clean up is handled by rollback above, no need to drop/recreate every time
 
     await engine.dispose()
 

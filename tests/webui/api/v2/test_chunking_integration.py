@@ -343,11 +343,16 @@ def unauthenticated_client():
     # Override the database dependency to prevent 500 errors
     app.dependency_overrides[get_db] = mock_get_db
 
+    # Mock the user repository creation to return None for user lookups
+    mock_user_repo = AsyncMock()
+    mock_user_repo.get_user_by_username.return_value = None
+
     # Mock the lifespan events to prevent real database connections
     with (
         patch("packages.webui.main.pg_connection_manager") as mock_pg,
         patch("packages.webui.main.ws_manager") as mock_ws,
         patch("packages.shared.database.get_db_session") as mock_get_db_session,
+        patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo),
     ):
         # Mock the async methods
         mock_pg.initialize = AsyncMock()
@@ -355,18 +360,9 @@ def unauthenticated_client():
         mock_ws.shutdown = AsyncMock()
 
         # Make get_db_session return an async generator that yields a mock session
-        # This allows the auth code to execute and properly return 401 errors
         async def mock_db_session_generator():
-            # Yield a mock session so the auth code can run
-            mock_session = AsyncMock()
-            # Mock the user repository to return None (user not found)
-            mock_user_repo = AsyncMock()
-            mock_user_repo.get_user_by_username.return_value = None
-            
-            # Patch the repository creation to return our mock
-            with patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo):
-                yield mock_session
-
+            yield AsyncMock()
+        
         mock_get_db_session.return_value = mock_db_session_generator()
 
         with TestClient(app) as client:
