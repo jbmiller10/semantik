@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d3673ca73e81"
-down_revision: str | None = "db004_add_chunking_indexes"
+down_revision: str | None = "add_complete_chunking"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
