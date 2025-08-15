@@ -13,14 +13,6 @@ function ThrowError({ message = 'Test error' }: { message?: string }) {
   throw new Error(message);
 }
 
-// Component that throws on demand
-function ConditionalError({ shouldThrow }: { shouldThrow: boolean }) {
-  if (shouldThrow) {
-    throw new Error('Conditional error');
-  }
-  return <div>No error</div>;
-}
-
 describe('ChunkingErrorBoundary', () => {
   const mockResetToDefaults = vi.fn();
   
