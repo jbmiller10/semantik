@@ -331,20 +331,42 @@ def client_with_auth(mock_user, mock_chunking_service):
 @pytest.fixture()
 def unauthenticated_client():
     """Create a test client without authentication."""
+    from packages.shared.database import get_db
+
     app.dependency_overrides.clear()
+
+    # Mock the database to prevent real connections in auth checks
+    async def mock_get_db():
+        # Return a mock that will cause auth to fail properly
+        return AsyncMock()
+
+    # Override the database dependency to prevent 500 errors
+    app.dependency_overrides[get_db] = mock_get_db
 
     # Mock the lifespan events to prevent real database connections
     with (
         patch("packages.webui.main.pg_connection_manager") as mock_pg,
         patch("packages.webui.main.ws_manager") as mock_ws,
+        patch("packages.shared.database.get_db_session") as mock_get_db_session,
     ):
         # Mock the async methods
         mock_pg.initialize = AsyncMock()
         mock_ws.startup = AsyncMock()
         mock_ws.shutdown = AsyncMock()
 
+        # Make get_db_session return an empty async generator to prevent connection errors
+        async def empty_generator():
+            # Don't yield anything - this will cause auth to fail with 401 properly
+            return
+            yield
+
+        mock_get_db_session.return_value = empty_generator()
+
         with TestClient(app) as client:
             yield client
+
+    # Clean up overrides
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture()
@@ -1329,27 +1351,43 @@ class TestChunkingErrorHandling:
         # Note: Circuit breaker is typically disabled in test environment
         # This test verifies the endpoint structure supports circuit breaking
 
+        # Import circuit_breaker to modify its state directly
+        import time
+
+        from packages.webui.rate_limiter import circuit_breaker
+
         # Temporarily enable rate limiting to test circuit breaker
         original_value = os.environ.get("DISABLE_RATE_LIMITING", "false")
         os.environ["DISABLE_RATE_LIMITING"] = "false"
 
         try:
-            with patch("packages.webui.rate_limiter.check_circuit_breaker") as mock_check:
-                mock_check.side_effect = HTTPException(
-                    status_code=503,
-                    detail="Circuit breaker is open - too many failures",
-                )
+            # Set up circuit breaker state to simulate an open circuit
+            # The get_user_or_ip function will return the username from the JWT token
+            # which is "testuser" in our mock_user fixture
+            test_key = "testuser"  # This matches the username in our auth token
 
-                # Act
-                response = client_with_auth.post(
-                    "/api/v2/chunking/preview",
-                    headers=auth_headers,
-                    json={"strategy": "fixed_size", "content": "test"},
-                )
+            # Set the circuit breaker to be blocked for 60 seconds from now
+            circuit_breaker.blocked_until[test_key] = time.time() + 60
+            circuit_breaker.failure_counts[test_key] = 5  # Simulate 5 failures
 
-                # Assert
-                assert response.status_code == 503
-                assert "Circuit breaker is open" in response.json()["detail"]
+            # Act
+            response = client_with_auth.post(
+                "/api/v2/chunking/preview",
+                headers=auth_headers,
+                json={"strategy": "fixed_size", "content": "test"},
+            )
+
+            # Assert
+            assert response.status_code == 503
+            error_detail = response.json()["detail"]
+            assert "Circuit breaker open" in error_detail or "temporarily unavailable" in error_detail
+
+            # Clean up circuit breaker state
+            if test_key in circuit_breaker.blocked_until:
+                del circuit_breaker.blocked_until[test_key]
+            if test_key in circuit_breaker.failure_counts:
+                del circuit_breaker.failure_counts[test_key]
+
         finally:
             # Restore original value
             os.environ["DISABLE_RATE_LIMITING"] = original_value
