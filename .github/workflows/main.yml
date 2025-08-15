@@ -210,7 +210,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [unit-1, unit-2, webui, integration-other]
+        group: [unit, webui, integration, other]
     env:
       TESTING: "true"
       ENV: "test"
@@ -283,18 +283,9 @@ jobs:
 
       - name: Run backend tests in parallel
         run: |
-          if [ "${{ matrix.group }}" = "unit-1" ]; then
-            # Run first half of unit tests (test_a* through test_g*)
-            TEST_FILES=$(find tests/unit -name "test_[a-g]*.py" | tr '\n' ' ')
-            poetry run pytest $TEST_FILES -v \
-              -n auto \
-              --cov=packages \
-              --cov-report=xml \
-              --cov-report=term-missing
-          elif [ "${{ matrix.group }}" = "unit-2" ]; then
-            # Run second half of unit tests (test_h* through test_z*)
-            TEST_FILES=$(find tests/unit -name "test_[h-z]*.py" | tr '\n' ' ')
-            poetry run pytest $TEST_FILES -v \
+          if [ "${{ matrix.group }}" = "unit" ]; then
+            # Run all unit tests
+            poetry run pytest tests/unit/ -v \
               -n auto \
               --cov=packages \
               --cov-report=xml \
@@ -306,10 +297,16 @@ jobs:
               --cov=packages \
               --cov-report=xml \
               --cov-report=term-missing
-          elif [ "${{ matrix.group }}" = "integration-other" ]; then
-            # Run integration and all other test directories
+          elif [ "${{ matrix.group }}" = "integration" ]; then
+            # Run integration tests
+            poetry run pytest tests/integration/ -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "other" ]; then
+            # Run all other test directories
             poetry run pytest \
-              tests/integration/ \
               tests/domain/ \
               tests/application/ \
               tests/streaming/ \
