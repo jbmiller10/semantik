@@ -656,6 +656,130 @@ class CollectionService:
 
         return operations, total
 
+    async def list_operations_filtered(
+        self,
+        collection_id: str,
+        user_id: int,
+        status: str | None = None,
+        operation_type: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Any], int]:
+        """List operations for a collection with filtering.
+
+        This method contains the filtering logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            collection_id: Collection UUID
+            user_id: User ID for permission check
+            status: Optional status filter
+            operation_type: Optional type filter
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (filtered operations, total count)
+
+        Raises:
+            ValueError: If invalid filter values provided
+        """
+        from packages.shared.database.models import OperationStatus, OperationType
+
+        # Validate filters first
+        if status:
+            try:
+                OperationStatus(status)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid status: {status}. Valid values are: {[st.value for st in OperationStatus]}"
+                ) from None
+
+        if operation_type:
+            try:
+                OperationType(operation_type)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}"
+                ) from None
+
+        # Get all operations
+        operations, total = await self.list_operations(
+            collection_id=collection_id,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+
+        # Apply filters if specified
+        if status or operation_type:
+            filtered_operations = operations
+
+            if status:
+                status_enum = OperationStatus(status)
+                filtered_operations = [op for op in filtered_operations if op.status == status_enum]
+
+            if operation_type:
+                type_enum = OperationType(operation_type)
+                filtered_operations = [op for op in filtered_operations if op.type == type_enum]
+
+            return filtered_operations, len(filtered_operations)
+
+        return operations, total
+
+    async def list_documents_filtered(
+        self,
+        collection_id: str,
+        user_id: int,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Any], int]:
+        """List documents in a collection with filtering.
+
+        This method contains the filtering logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            collection_id: Collection UUID
+            user_id: User ID for permission check
+            status: Optional status filter
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (filtered documents, total count)
+
+        Raises:
+            ValueError: If invalid filter values provided
+        """
+        from packages.shared.database.models import DocumentStatus
+
+        # Validate status filter first
+        if status:
+            try:
+                DocumentStatus(status)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid status: {status}. Valid values are: {[st.value for st in DocumentStatus]}"
+                ) from None
+
+        # Get all documents
+        documents, total = await self.list_documents(
+            collection_id=collection_id,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+
+        # Apply filter if specified
+        if status:
+            status_enum = DocumentStatus(status)
+            documents = [doc for doc in documents if doc.status == status_enum]
+            total = len(documents)  # Update total after filtering
+
+        return documents, total
+
     async def create_operation(
         self,
         collection_id: str,

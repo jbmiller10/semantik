@@ -14,11 +14,14 @@ import pytest
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+    ValidationError,
+)
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_validation import ChunkingInputValidator
 
@@ -152,11 +155,8 @@ class TestChunkingServiceErrorHandling:
 
         large_text = "x" * 11 * 1024 * 1024  # 11MB
 
-        with pytest.raises(ValidationError) as exc_info:
+        with pytest.raises(DocumentTooLargeError):
             await chunking_service.preview_chunking(content=large_text)
-
-        # Check the error message
-        assert "Document too large" in str(exc_info.value)
 
     async def test_validation_error_chunk_params(
         self,
@@ -176,7 +176,6 @@ class TestChunkingServiceErrorHandling:
             )
 
         # Check the error message
-        assert "Invalid chunk size" in str(exc_info.value)
         assert "Must be between 1 and 10000" in str(exc_info.value)
 
     async def test_process_collection_with_partial_failure(

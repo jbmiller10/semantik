@@ -197,6 +197,136 @@ class ChunkingService:
 
         return strategies
 
+    async def get_available_strategies_for_api(self) -> list[dict[str, Any]]:
+        """Get available strategies formatted for API response.
+
+        This method handles all the transformation logic that was previously
+        in the router, including strategy mapping and configuration building.
+
+        Returns:
+            List of strategies formatted for API response
+        """
+        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+
+        strategies_data = await self.get_available_strategies()
+        strategies = []
+
+        for strategy_data in strategies_data:
+            # Build config object from dict
+            config_dict = strategy_data.get("default_config", {})
+            if "strategy" not in config_dict:
+                # Find strategy enum from ID
+                try:
+                    # Map internal identifiers to public API enum where needed
+                    public_id = strategy_data["id"]
+                    alias_map = {"character": "fixed_size", "markdown": "markdown", "hierarchical": "hierarchical"}
+                    public_id = alias_map.get(public_id, public_id)
+                    strategy_enum = ChunkingStrategy(public_id)
+                    config_dict["strategy"] = strategy_enum
+                except ValueError:
+                    continue  # Skip invalid strategies
+
+            try:
+                default_config = ChunkingConfigBase(**config_dict)
+            except Exception:
+                # If config building fails, skip this strategy
+                continue
+
+            strategies.append(
+                {
+                    "id": public_id,
+                    "name": strategy_data["name"],
+                    "description": strategy_data["description"],
+                    "best_for": strategy_data.get("best_for", []),
+                    "pros": strategy_data.get("pros", []),
+                    "cons": strategy_data.get("cons", []),
+                    "default_config": default_config,
+                    "performance_characteristics": strategy_data.get("performance_characteristics", {}),
+                }
+            )
+
+        return strategies
+
+    async def get_strategy_details(self, strategy_id: str) -> dict[str, Any] | None:
+        """Get detailed information about a specific strategy.
+
+        This method handles strategy lookup with alias mapping and all
+        transformation logic that was previously in the router.
+
+        Args:
+            strategy_id: Strategy identifier (supports aliases)
+
+        Returns:
+            Strategy details dictionary or None if not found
+        """
+        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+
+        # Get all strategies from service
+        strategies_data = await self.get_available_strategies()
+
+        # Fallback if service returns unexpected type
+        if not isinstance(strategies_data, list) or not strategies_data:
+            strategies_data = [
+                {
+                    "id": "character",
+                    "name": "Fixed Size Chunking",
+                    "description": "Simple fixed-size chunking with consistent chunk sizes",
+                    "best_for": ["txt"],
+                    "pros": ["Predictable"],
+                    "cons": ["May split sentences"],
+                    "default_config": {"strategy": "fixed_size", "chunk_size": 1000, "chunk_overlap": 200},
+                    "performance_characteristics": {"speed": "fast"},
+                }
+            ]
+
+        # Find the requested strategy
+        strategy_data = None
+        # Map public ID to internal ID for lookup
+        alias_to_internal = {
+            "fixed_size": "character",
+            "document_structure": "markdown",
+            "sliding_window": "character",
+        }
+        internal_id = alias_to_internal.get(strategy_id, strategy_id)
+        for s in strategies_data:
+            if s["id"] == internal_id:
+                strategy_data = s
+                break
+
+        if not strategy_data:
+            return None
+
+        # Build response with proper config
+        public_id = strategy_id
+        if public_id == "character":
+            public_id = "fixed_size"
+
+        try:
+            strategy_enum = ChunkingStrategy(public_id)
+        except ValueError:
+            return None
+
+        config_dict = strategy_data.get("default_config", {})
+        if "strategy" not in config_dict:
+            config_dict["strategy"] = strategy_enum
+
+        try:
+            default_config = ChunkingConfigBase(**config_dict)
+        except Exception:
+            # If config building fails, use a minimal config
+            default_config = ChunkingConfigBase(strategy=strategy_enum)
+
+        return {
+            "id": public_id,
+            "name": strategy_data["name"],
+            "description": strategy_data["description"],
+            "best_for": strategy_data.get("best_for", []),
+            "pros": strategy_data.get("pros", []),
+            "cons": strategy_data.get("cons", []),
+            "default_config": default_config,
+            "performance_characteristics": strategy_data.get("performance_characteristics", {}),
+        }
+
     async def apply_chunking(
         self,
         document_id: str,
@@ -751,17 +881,20 @@ class ChunkingService:
             Preview response with chunks and metadata
         """
         from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-        from packages.webui.services.chunking_security import ValidationError
 
         # Check size limit
         if len(content) > MAX_PREVIEW_CONTENT_SIZE:
-            raise ValidationError("Document too large")
+            raise DocumentTooLargeError(
+                size=len(content), max_size=MAX_PREVIEW_CONTENT_SIZE, correlation_id=str(uuid.uuid4())
+            )
 
         # Validate chunk size if provided in config (do this before try block)
         if config and "params" in config and "chunk_size" in config["params"]:
             chunk_size = config["params"]["chunk_size"]
             if chunk_size <= 0 or chunk_size > 10000:
-                raise ValidationError(f"Invalid chunk size: {chunk_size}. Must be between 1 and 10000.")
+                raise ValidationError(
+                    field="chunk_size", value=chunk_size, reason=f"Must be between 1 and 10000, got {chunk_size}"
+                )
 
         try:
             # Check if cached result exists
@@ -936,6 +1069,143 @@ class ChunkingService:
                 "total_chunks": 0,
                 "recommendations": ["Please try again or contact support if the issue persists"],
             }
+
+    async def validate_preview_content(self, content: str | None, document_id: str | None) -> None:
+        """Validate preview request content.
+
+        This method contains all the validation logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            content: Optional content to validate
+            document_id: Optional document ID
+
+        Raises:
+            ValidationError: If validation fails
+            DocumentTooLargeError: If content exceeds size limit
+        """
+        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+
+        # Must have either content or document_id
+        if not content and not document_id:
+            raise ValidationError(field="input", value=None, reason="document_id or content must be provided")
+
+        if content is not None:
+            # Check for null bytes
+            if "\x00" in content:
+                raise ValidationError(
+                    field="content",
+                    value=content[:100] + "..." if len(content) > 100 else content,  # Truncate for error message
+                    reason="Content contains null bytes",
+                )
+
+            # Enforce ~10MB limit
+            if len(content) > 10 * 1024 * 1024:
+                raise DocumentTooLargeError(
+                    size=len(content), max_size=10 * 1024 * 1024, correlation_id=str(uuid.uuid4())
+                )
+
+    async def compare_strategies_for_api(
+        self,
+        content: str,
+        strategies: list[str],
+        configs: dict[str, dict[str, Any]] | None = None,
+        max_chunks_per_strategy: int = 5,  # noqa: ARG002
+    ) -> dict[str, Any]:
+        """Compare multiple chunking strategies formatted for API response.
+
+        This method handles all the comparison and transformation logic
+        that was previously in the router.
+
+        Args:
+            content: Content to chunk
+            strategies: List of strategy names
+            configs: Optional per-strategy configurations
+            max_chunks_per_strategy: Maximum chunks to return per strategy
+
+        Returns:
+            Comparison results formatted for API response
+        """
+        from packages.webui.api.v2.chunking_schemas import (
+            ChunkingConfigBase,
+            ChunkingStrategy,
+            StrategyComparison,
+            StrategyRecommendation,
+        )
+
+        comparisons = []
+        best_strategy = None
+        best_quality = -1.0
+        best_conf = 0.8
+
+        for strategy in strategies:
+            # Get config for this strategy if provided
+            config = None
+            if configs and strategy in configs:
+                strategy_config = configs.get(strategy)
+                if strategy_config:
+                    config = strategy_config.model_dump() if hasattr(strategy_config, "model_dump") else strategy_config
+
+            # Execute preview
+            preview = await self.preview_chunking(
+                strategy=strategy,
+                content=content or "",
+                config=config,
+            )
+
+            config_dict = preview.get("config", {})
+            if "strategy" not in config_dict:
+                config_dict["strategy"] = preview["strategy"]
+
+            metrics = preview.get("metrics", {})
+            quality = float(metrics.get("quality_score", 0.0))
+            if quality > best_quality:
+                best_quality = quality
+                best_strategy = preview["strategy"]
+
+            try:
+                config_obj = ChunkingConfigBase(**config_dict)
+            except Exception:
+                config_obj = ChunkingConfigBase(strategy=ChunkingStrategy(strategy))
+
+            comparison = StrategyComparison(
+                strategy=ChunkingStrategy(preview["strategy"]),
+                config=config_obj,
+                sample_chunks=preview.get("chunks", []),
+                total_chunks=preview.get("total_chunks", 0),
+                avg_chunk_size=metrics.get("avg_chunk_size", 0),
+                size_variance=metrics.get("size_variance", 0.0),
+                quality_score=quality,
+                processing_time_ms=preview.get("processing_time_ms", 0),
+                pros=[],
+                cons=[],
+            )
+            comparisons.append(comparison)
+
+        # Build recommendation
+        if best_strategy:
+            recommendation = StrategyRecommendation(
+                recommended_strategy=ChunkingStrategy(best_strategy),
+                confidence=(best_quality if best_quality >= 0 else best_conf),
+                reasoning="Selected strategy with higher quality score",
+                alternative_strategies=[ChunkingStrategy(s) for s in strategies if s != best_strategy],
+                suggested_config=ChunkingConfigBase(strategy=ChunkingStrategy(best_strategy)),
+            )
+        else:
+            recommendation = StrategyRecommendation(
+                recommended_strategy=ChunkingStrategy(strategies[0]) if strategies else ChunkingStrategy.FIXED_SIZE,
+                confidence=0.5,
+                reasoning="Default recommendation",
+                alternative_strategies=[],
+                suggested_config=ChunkingConfigBase(strategy=ChunkingStrategy.FIXED_SIZE),
+            )
+
+        return {
+            "comparison_id": str(uuid.uuid4()),
+            "comparisons": comparisons,
+            "recommendation": recommendation,
+            "processing_time_ms": 0,
+        }
 
     async def compare_strategies(
         self,
@@ -1239,6 +1509,107 @@ class ChunkingService:
 
         return metrics
 
+    async def get_collection_chunk_stats(self, collection_id: str) -> dict[str, Any]:
+        """Get chunk-level statistics for a collection.
+
+        This method returns chunk-level metrics suitable for ChunkingStats schema.
+
+        Args:
+            collection_id: ID of the collection
+
+        Returns:
+            Chunk statistics suitable for the API response
+        """
+        try:
+            # Get collection
+            collection = await self.collection_repo.get_by_uuid(collection_id)
+            if not collection:
+                from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
+
+                raise ResourceNotFoundError(f"Collection {collection_id} not found")
+
+            # Get chunk statistics from database
+            from packages.shared.database.models import Chunk
+
+            chunk_stats_query = select(
+                func.count(Chunk.id).label("total_chunks"),
+                func.avg(Chunk.size).label("avg_chunk_size"),
+                func.min(Chunk.size).label("min_chunk_size"),
+                func.max(Chunk.size).label("max_chunk_size"),
+                func.var_pop(Chunk.size).label("size_variance"),
+            ).where(Chunk.collection_id == collection.id)
+
+            result = await self.db_session.execute(chunk_stats_query)
+            stats = result.one()
+
+            # Count documents
+            from packages.shared.database.models import Document
+
+            doc_count_query = select(func.count(Document.id)).where(Document.collection_id == collection.id)
+            doc_result = await self.db_session.execute(doc_count_query)
+            total_documents = doc_result.scalar() or 0
+
+            # Get the latest operation to find processing time and strategy
+            from packages.shared.database.models import Operation, OperationType
+
+            latest_op_query = (
+                select(Operation)
+                .where(
+                    and_(
+                        Operation.collection_id == collection.id,
+                        Operation.type == OperationType.INDEX,
+                        Operation.status == "completed",
+                    )
+                )
+                .order_by(Operation.completed_at.desc())
+                .limit(1)
+            )
+            latest_op_result = await self.db_session.execute(latest_op_query)
+            latest_operation = latest_op_result.scalar_one_or_none()
+
+            processing_time = 0.0
+            strategy = collection.chunking_strategy or "fixed_size"
+            last_updated = collection.updated_at
+
+            if latest_operation:
+                if latest_operation.started_at and latest_operation.completed_at:
+                    processing_time = (latest_operation.completed_at - latest_operation.started_at).total_seconds()
+                if latest_operation.config and "strategy" in latest_operation.config:
+                    strategy = latest_operation.config["strategy"]
+                last_updated = latest_operation.completed_at or collection.updated_at
+
+            return {
+                "total_chunks": stats.total_chunks or 0,
+                "total_documents": total_documents,
+                "average_chunk_size": float(stats.avg_chunk_size) if stats.avg_chunk_size else 0,
+                "min_chunk_size": stats.min_chunk_size or 0,
+                "max_chunk_size": stats.max_chunk_size or 0,
+                "size_variance": float(stats.size_variance) if stats.size_variance else 0.0,
+                "strategy": strategy,
+                "last_updated": last_updated,
+                "processing_time": processing_time,
+                "performance_metrics": {
+                    "quality_score": 0.85,  # Placeholder
+                    "overlap_ratio": 0.2,  # Placeholder
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get chunk statistics: {e}")
+            # Return empty stats on error
+            return {
+                "total_chunks": 0,
+                "total_documents": 0,
+                "average_chunk_size": 0,
+                "min_chunk_size": 0,
+                "max_chunk_size": 0,
+                "size_variance": 0.0,
+                "strategy": "fixed_size",
+                "last_updated": datetime.now(UTC),
+                "processing_time": 0.0,
+                "performance_metrics": {},
+            }
+
     @QueryMonitor.monitor("get_chunking_statistics")
     async def get_chunking_statistics(self, collection_id: str) -> dict[str, Any]:
         """Get chunking statistics for a collection with optimized queries.
@@ -1473,6 +1844,22 @@ class ChunkingService:
             )
         except Exception as e:
             logger.warning(f"Failed to cache preview: {e}")
+
+    async def get_cached_preview_by_id(
+        self, preview_id: str, user_id: int | None = None  # noqa: ARG002
+    ) -> dict[str, Any] | None:
+        """Get cached preview by ID.
+
+        Public method for retrieving cached preview results.
+
+        Args:
+            preview_id: Preview ID (cache key)
+            user_id: Optional user ID for access control
+
+        Returns:
+            Cached preview data or None if not found
+        """
+        return await self._get_cached_preview_by_key(preview_id)
 
     async def _get_cached_preview_by_key(self, cache_key: str) -> dict[str, Any] | None:
         """Get cached preview by key.

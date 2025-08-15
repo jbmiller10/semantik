@@ -267,15 +267,22 @@ class TestTTLManagement:
         initial_ttl = await redis_client.ttl(instance_key)
         assert 0 < initial_ttl <= 60
 
-        # Wait a bit
+        # Wait a bit to let TTL decrease
         await asyncio.sleep(2)
+
+        # Check TTL has decreased
+        ttl_after_wait = await redis_client.ttl(instance_key)
+        assert ttl_after_wait < initial_ttl, "TTL should decrease over time"
 
         # Manually refresh TTL (simulating heartbeat)
         await redis_client.expire(instance_key, 60)
 
-        # TTL should be refreshed
+        # TTL should be refreshed to approximately 60
         new_ttl = await redis_client.ttl(instance_key)
-        assert new_ttl > initial_ttl - 2  # Account for time passed
+        # The new TTL should be greater than what it was after waiting
+        assert new_ttl > ttl_after_wait, "TTL should be refreshed to a higher value"
+        # And it should be close to 60 (allow for small timing variations)
+        assert 55 <= new_ttl <= 60, f"TTL should be refreshed to ~60, got {new_ttl}"
 
     @pytest.mark.asyncio()
     async def test_user_set_ttl(self, manager, redis_client) -> None:
