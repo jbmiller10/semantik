@@ -16,6 +16,7 @@ from packages.webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("db_isolation")
 class TestCollectionDeletion:
     """Test suite for collection deletion functionality."""
 

@@ -383,12 +383,18 @@ def unauthenticated_client():
         mock_ws.startup = AsyncMock()
         mock_ws.shutdown = AsyncMock()
 
-        # Make get_db_session return a proper async generator that yields nothing
-        # This prevents errors when code tries to iterate over it
+        # Make get_db_session return an async generator that yields a mock session
+        # This allows the auth code to execute and properly return 401 errors
         async def mock_db_session_generator():
-            # Don't yield anything - just make it a valid async generator
-            if False:  # This ensures it's a generator but never yields
-                yield
+            # Yield a mock session so the auth code can run
+            mock_session = AsyncMock()
+            # Mock the user repository to return None (user not found)
+            mock_user_repo = AsyncMock()
+            mock_user_repo.get_user_by_username.return_value = None
+            
+            # Patch the repository creation to return our mock
+            with patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo):
+                yield mock_session
 
         mock_get_db_session.return_value = mock_db_session_generator()
 

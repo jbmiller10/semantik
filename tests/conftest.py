@@ -496,6 +496,12 @@ def websocket_test_client(test_client) -> None:
 
 
 # Additional fixtures for collection deletion tests
+@pytest.fixture()
+def db_isolation():
+    """Marker fixture to indicate tests that require database isolation."""
+    pass
+
+
 @pytest_asyncio.fixture
 async def db_session() -> None:
     """Create a new database session for testing."""
@@ -568,16 +574,24 @@ async def db_session() -> None:
         # Now drop all tables
         await conn.run_sync(Base.metadata.drop_all)
 
-    # Drop all views and tables, then recreate for each test to ensure isolation
+    # Create tables once for the test run
     async with engine.begin() as conn:
-        await drop_views_and_tables(conn)
-        await conn.run_sync(Base.metadata.create_all)
+        # Only drop and recreate if running in CI or explicitly requested
+        if os.environ.get("CI") or os.environ.get("RECREATE_TEST_DB"):
+            await drop_views_and_tables(conn)
+            await conn.run_sync(Base.metadata.create_all)
+        else:
+            # Just ensure tables exist
+            await conn.run_sync(Base.metadata.create_all)
 
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # Use a transaction that rolls back after each test
     async with async_session() as session:
-        yield session
-        await session.rollback()
+        # Start a savepoint for nested transaction support
+        async with session.begin():
+            yield session
+            # Rollback happens automatically when exiting the context
 
     await engine.dispose()
 
@@ -635,9 +649,10 @@ async def collection_factory(db_session) -> None:
         if "owner_id" not in kwargs:
             raise ValueError("owner_id must be provided when creating a collection")
 
+        collection_uuid = str(uuid4())
         defaults = {
-            "id": str(uuid4()),  # Changed from "uuid" to "id"
-            "name": f"Test Collection {len(created_collections)}",
+            "id": collection_uuid,  # Changed from "uuid" to "id"
+            "name": f"Test Collection {collection_uuid[:8]}",  # Use UUID to ensure uniqueness
             "description": "Test collection description",
             "vector_store_name": f"col_{uuid4().hex[:16]}",
             "embedding_model": "test-model",
