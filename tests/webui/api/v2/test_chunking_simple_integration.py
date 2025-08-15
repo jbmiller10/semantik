@@ -368,9 +368,7 @@ def unauthenticated_client():
     app.dependency_overrides.clear()
 
     # Override get_current_user to always raise 401 with the appropriate message
-    async def mock_get_current_user(
-        credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
-    ):
+    async def mock_get_current_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))):
         # Check if any credentials were provided
         if not credentials:
             raise HTTPException(
