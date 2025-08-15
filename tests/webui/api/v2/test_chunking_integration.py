@@ -237,8 +237,8 @@ class TestChunkingPreviewEndpoints:
             "content": "This is a test document with some content for chunking.",
             "config": {
                 "strategy": "fixed_size",
-                "chunk_size": 10,
-                "chunk_overlap": 2,
+                "chunk_size": 100,
+                "chunk_overlap": 10,
             },
         }
 
@@ -304,7 +304,7 @@ class TestChunkingPreviewEndpoints:
             }
 
             # Act
-            response = client_with_auth.post(
+            response = await async_client.post(
                 "/api/v2/chunking/preview",
                 headers=auth_headers,
                 json=preview_request,
@@ -331,7 +331,7 @@ class TestChunkingPreviewEndpoints:
                 "content": "Test content",
                 "config": {
                     "strategy": "fixed_size",
-                    "chunk_size": -1,
+                    "chunk_size": 50,  # Below minimum of 100 - should trigger validation error
                 },
             }
 
@@ -382,13 +382,13 @@ class TestChunkingPreviewEndpoints:
             "configs": {
                 "fixed_size": {
                     "strategy": "fixed_size",
-                    "chunk_size": 20,
-                    "chunk_overlap": 5,
+                    "chunk_size": 200,
+                    "chunk_overlap": 50,
                 },
                 "recursive": {
                     "strategy": "recursive",
-                    "chunk_size": 30,
-                    "chunk_overlap": 10,
+                    "chunk_size": 300,
+                    "chunk_overlap": 100,
                 },
             },
         }
@@ -835,7 +835,7 @@ class TestChunkingAnalyticsEndpoints:
 
         # Should have metrics for all primary strategies
         strategy_names = [m["strategy"] for m in metrics]
-        expected_strategies = ["FIXED_SIZE", "RECURSIVE", "MARKDOWN", "SEMANTIC", "HIERARCHICAL", "HYBRID"]
+        expected_strategies = ["fixed_size", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
         for expected in expected_strategies:
             assert expected in strategy_names
 

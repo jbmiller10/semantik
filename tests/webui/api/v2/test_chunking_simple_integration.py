@@ -7,7 +7,7 @@ to improve coverage of the actual endpoint code.
 
 import os
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -140,7 +140,7 @@ def mock_chunking_service():
     service.preview_chunking.return_value = {
         "preview_id": str(uuid.uuid4()),
         "strategy": "fixed_size",
-        "config": {"strategy": "fixed_size", "chunk_size": 10, "chunk_overlap": 2},
+        "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
         "chunks": [
             {
                 "index": 0,
@@ -160,9 +160,10 @@ def mock_chunking_service():
             },
         ],
         "total_chunks": 2,
-        "metrics": {"avg_chunk_size": 10},
+        "metrics": {"avg_chunk_size": 100},
         "processing_time_ms": 50,
         "cached": False,
+        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
     }
 
     # Mock validate_preview_content
@@ -174,20 +175,55 @@ def mock_chunking_service():
         "comparisons": [
             {
                 "strategy": "fixed_size",
-                "chunk_count": 5,
+                "config": {"strategy": "fixed_size", "chunk_size": 200, "chunk_overlap": 50},
+                "sample_chunks": [
+                    {
+                        "index": 0,
+                        "content": "Sample chunk 1",
+                        "text": "Sample chunk 1",
+                        "token_count": 3,
+                        "char_count": 14,
+                        "metadata": {},
+                        "quality_score": 0.75,
+                    }
+                ],
+                "total_chunks": 5,
                 "avg_chunk_size": 20,
+                "size_variance": 2.5,
                 "quality_score": 0.75,
+                "processing_time_ms": 50,
+                "pros": ["Fast", "Predictable"],
+                "cons": ["May break context"],
             },
             {
                 "strategy": "recursive",
-                "chunk_count": 4,
+                "config": {"strategy": "recursive", "chunk_size": 300, "chunk_overlap": 100},
+                "sample_chunks": [
+                    {
+                        "index": 0,
+                        "content": "Sample chunk 2",
+                        "text": "Sample chunk 2",
+                        "token_count": 3,
+                        "char_count": 14,
+                        "metadata": {},
+                        "quality_score": 0.85,
+                    }
+                ],
+                "total_chunks": 4,
                 "avg_chunk_size": 25,
+                "size_variance": 3.0,
                 "quality_score": 0.85,
+                "processing_time_ms": 50,
+                "pros": ["Preserves structure"],
+                "cons": ["More complex"],
             },
         ],
         "recommendation": {
-            "strategy": "recursive",
-            "reason": "Better quality score with fewer chunks",
+            "recommended_strategy": "recursive",
+            "confidence": 0.85,
+            "reasoning": "Better quality score with fewer chunks",
+            "alternative_strategies": ["fixed_size"],
+            "suggested_config": {"strategy": "recursive", "chunk_size": 300, "chunk_overlap": 100},
         },
         "processing_time_ms": 100,
     }
@@ -255,7 +291,7 @@ def mock_collection_service():
         "uuid": str(uuid.uuid4()),
         "collection_id": str(uuid.uuid4()),
         "type": "chunking",
-        "status": "PENDING",
+        "status": "pending",  # Use lowercase to match the enum
     }
 
     # Mock update_collection
@@ -389,8 +425,8 @@ class TestPreviewEndpoints:
             "content": "This is a test document with some content for chunking.",
             "config": {
                 "strategy": "fixed_size",
-                "chunk_size": 10,
-                "chunk_overlap": 2,
+                "chunk_size": 100,
+                "chunk_overlap": 10,
             },
         }
 
@@ -402,6 +438,8 @@ class TestPreviewEndpoints:
         )
 
         # Assert
+        if response.status_code != 200:
+            print(f"Error response: {response.json()}")
         assert response.status_code == 200
         preview = response.json()
         assert "preview_id" in preview
@@ -416,7 +454,7 @@ class TestPreviewEndpoints:
         """Test preview generation with validation error."""
         # Arrange
         mock_chunking_service.validate_preview_content.side_effect = ChunkingValidationError(
-            "Invalid configuration: chunk_size must be positive"
+            field="content", value="", reason="Content cannot be empty"
         )
 
         preview_request = {
@@ -424,7 +462,8 @@ class TestPreviewEndpoints:
             "content": "Test content",
             "config": {
                 "strategy": "fixed_size",
-                "chunk_size": -1,
+                "chunk_size": 100,  # Valid chunk size
+                "chunk_overlap": 10,
             },
         }
 
@@ -437,7 +476,7 @@ class TestPreviewEndpoints:
 
         # Assert
         assert response.status_code == 400
-        assert "chunk_size must be positive" in response.json()["detail"]
+        assert "Content cannot be empty" in response.json()["detail"]
 
     def test_compare_strategies(self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]) -> None:
         """Test strategy comparison."""
@@ -448,13 +487,13 @@ class TestPreviewEndpoints:
             "configs": {
                 "fixed_size": {
                     "strategy": "fixed_size",
-                    "chunk_size": 20,
-                    "chunk_overlap": 5,
+                    "chunk_size": 200,
+                    "chunk_overlap": 50,
                 },
                 "recursive": {
                     "strategy": "recursive",
-                    "chunk_size": 30,
-                    "chunk_overlap": 10,
+                    "chunk_size": 300,
+                    "chunk_overlap": 100,
                 },
             },
         }
@@ -507,7 +546,7 @@ class TestOperationEndpoints:
             operation = response.json()
             assert "operation_id" in operation
             assert operation["collection_id"] == collection_id
-            assert operation["status"] == "PENDING"
+            assert operation["status"] == "pending"
             assert operation["strategy"] == "fixed_size"
 
     def test_start_chunking_invalid_config(
@@ -637,7 +676,7 @@ class TestErrorHandling:
         """Test handling of content too large error."""
         # Arrange
         mock_chunking_service.validate_preview_content.side_effect = DocumentTooLargeError(
-            "Content exceeds maximum size of 1MB"
+            size=2_000_000, max_size=1_000_000
         )
 
         preview_request = {

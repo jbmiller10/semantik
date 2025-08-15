@@ -375,7 +375,8 @@ async def compare_strategies(
         if compare_request.configs:
             configs_dict = {}
             for strategy, config in compare_request.configs.items():
-                configs_dict[strategy.value] = config.model_dump()
+                # strategy is already a string key from the dict, not an enum
+                configs_dict[strategy] = config.model_dump()
 
         # Delegate all comparison logic to service
         result = await service.compare_strategies_for_api(
