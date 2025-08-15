@@ -33,6 +33,7 @@ from packages.webui.api.v2.chunking_schemas import (
     ChunkingStrategy,
     ChunkingStrategyUpdate,
     ChunkListResponse,
+    ChunkPreview,
     CompareRequest,
     CompareResponse,
     CreateConfigurationRequest,
@@ -43,7 +44,6 @@ from packages.webui.api.v2.chunking_schemas import (
     PreviewResponse,
     QualityAnalysis,
     SavedConfiguration,
-    StrategyComparison,
     StrategyInfo,
     StrategyMetrics,
     StrategyRecommendation,
@@ -93,42 +93,23 @@ async def list_strategies(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Delegate to service
-        strategies_data = await service.get_available_strategies()
+        # Delegate all transformation logic to service
+        strategies = await service.get_available_strategies_for_api()
 
-        # Transform to response models
-        strategies = []
-        for strategy_data in strategies_data:
-            # Build config object from dict
-            config_dict = strategy_data.get("default_config", {})
-            if "strategy" not in config_dict:
-                # Find strategy enum from ID
-                try:
-                    # Map internal identifiers to public API enum where needed
-                    public_id = strategy_data["id"]
-                    alias_map = {"character": "fixed_size", "markdown": "markdown", "hierarchical": "hierarchical"}
-                    public_id = alias_map.get(public_id, public_id)
-                    strategy_enum = ChunkingStrategy(public_id)
-                    config_dict["strategy"] = strategy_enum
-                except ValueError:
-                    continue  # Skip invalid strategies
-
-            default_config = ChunkingConfigBase(**config_dict)
-
-            strategies.append(
-                StrategyInfo(
-                    id=public_id,
-                    name=strategy_data["name"],
-                    description=strategy_data["description"],
-                    best_for=strategy_data.get("best_for", []),
-                    pros=strategy_data.get("pros", []),
-                    cons=strategy_data.get("cons", []),
-                    default_config=default_config,
-                    performance_characteristics=strategy_data.get("performance_characteristics", {}),
-                )
+        # Convert to response models
+        return [
+            StrategyInfo(
+                id=s["id"],
+                name=s["name"],
+                description=s["description"],
+                best_for=s.get("best_for", []),
+                pros=s.get("pros", []),
+                cons=s.get("cons", []),
+                default_config=s["default_config"],
+                performance_characteristics=s.get("performance_characteristics", {}),
             )
-
-        return strategies
+            for s in strategies
+        ]
 
     except Exception as e:
         logger.error(f"Failed to list strategies: {e}")
@@ -155,36 +136,8 @@ async def get_strategy_details(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Get all strategies from service
-        strategies_data = await service.get_available_strategies()
-        # Fallback if service returns unexpected type
-        if not isinstance(strategies_data, list) or not strategies_data:
-            strategies_data = [
-                {
-                    "id": "character",
-                    "name": "Fixed Size Chunking",
-                    "description": "Simple fixed-size chunking with consistent chunk sizes",
-                    "best_for": ["txt"],
-                    "pros": ["Predictable"],
-                    "cons": ["May split sentences"],
-                    "default_config": {"strategy": "fixed_size", "chunk_size": 1000, "chunk_overlap": 200},
-                    "performance_characteristics": {"speed": "fast"},
-                }
-            ]
-
-        # Find the requested strategy
-        strategy_data = None
-        # Map public ID to internal ID for lookup
-        alias_to_internal = {
-            "fixed_size": "character",
-            "document_structure": "markdown",
-            "sliding_window": "character",
-        }
-        internal_id = alias_to_internal.get(strategy_id, strategy_id)
-        for s in strategies_data:
-            if s["id"] == internal_id:
-                strategy_data = s
-                break
+        # Delegate all lookup and transformation logic to service
+        strategy_data = await service.get_strategy_details(strategy_id)
 
         if not strategy_data:
             raise HTTPException(
@@ -192,25 +145,15 @@ async def get_strategy_details(
                 detail=f"Strategy '{strategy_id}' not found",
             )
 
-        # Build response model
-        public_id = strategy_id
-        if public_id == "character":
-            public_id = "fixed_size"
-        strategy_enum = ChunkingStrategy(public_id)
-        config_dict = strategy_data.get("default_config", {})
-        if "strategy" not in config_dict:
-            config_dict["strategy"] = strategy_enum
-
-        default_config = ChunkingConfigBase(**config_dict)
-
+        # Convert to response model
         return StrategyInfo(
-            id=public_id,
+            id=strategy_data["id"],
             name=strategy_data["name"],
             description=strategy_data["description"],
             best_for=strategy_data.get("best_for", []),
             pros=strategy_data.get("pros", []),
             cons=strategy_data.get("cons", []),
-            default_config=default_config,
+            default_config=strategy_data["default_config"],
             performance_characteristics=strategy_data.get("performance_characteristics", {}),
         )
 
@@ -303,17 +246,24 @@ async def generate_preview(
     check_circuit_breaker(request)
 
     try:
-        # Basic validation to align with tests
-        if not (preview_request.content or preview_request.document_id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="document_id or content must be provided"
+        # Delegate validation to service
+        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+
+        try:
+            await service.validate_preview_content(
+                content=preview_request.content,
+                document_id=preview_request.document_id,
             )
-        if preview_request.content is not None:
-            if "\x00" in preview_request.content:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Content contains null bytes")
-            # Enforce ~10MB limit (tests expect 507 on oversize)
-            if len(preview_request.content) > 10 * 1024 * 1024:
-                raise HTTPException(status_code=status.HTTP_507_INSUFFICIENT_STORAGE, detail="Content too large")
+        except DocumentTooLargeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=str(e) if str(e) else "Content too large",
+            ) from e
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
 
         # Delegate to service using the method name expected by tests
         result = await service.preview_chunking(
@@ -330,11 +280,32 @@ async def generate_preview(
         if "strategy" not in config_data:
             config_data["strategy"] = result["strategy"]
 
+        # Transform service chunks to ChunkPreview objects
+        chunks = []
+        for chunk in result.get("chunks", []):
+            # Handle both 'content' and 'text' keys for chunk content
+            content = chunk.get("content") or chunk.get("text", "")
+            char_count = len(content)
+            # Approximate token count (rough estimate: ~4 chars per token)
+            token_count = chunk.get("token_count", char_count // 4)
+
+            chunks.append(
+                ChunkPreview(
+                    index=chunk.get("index", 0),
+                    content=content,
+                    token_count=token_count,
+                    char_count=char_count,
+                    metadata=chunk.get("metadata", {}),
+                    quality_score=chunk.get("quality_score", 0.8),
+                    overlap_info=chunk.get("overlap_info"),
+                )
+            )
+
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
             config=ChunkingConfigBase(**config_data),
-            chunks=result["chunks"],
+            chunks=chunks,
             total_chunks=result["total_chunks"],
             metrics=result.get("metrics"),
             processing_time_ms=result["processing_time_ms"],
@@ -396,67 +367,31 @@ async def compare_strategies(
     check_circuit_breaker(request)
 
     try:
-        # Build comparisons using preview_chunking repeatedly (matches tests' side_effect setup)
-        comparisons: list[StrategyComparison] = []
-        best_strategy = None
-        best_quality = -1.0
-        best_conf = 0.8
+        # Convert strategy enums to strings for service
+        strategy_names = [s.value for s in compare_request.strategies]
 
-        for strategy in compare_request.strategies:
-            # Get config for this strategy if provided
-            config = None
-            if compare_request.configs and strategy in compare_request.configs:
-                strategy_config = compare_request.configs.get(strategy)
-                if strategy_config:
-                    config = strategy_config.model_dump()
+        # Convert configs if provided
+        configs_dict = None
+        if compare_request.configs:
+            configs_dict = {}
+            for strategy, config in compare_request.configs.items():
+                # strategy is already a string key from the dict, not an enum
+                configs_dict[strategy] = config.model_dump()
 
-            preview = await service.preview_chunking(
-                strategy=strategy,
-                content=compare_request.content or "",
-                config=config,
-            )
-
-            config_dict = preview.get("config", {})
-            if "strategy" not in config_dict:
-                config_dict["strategy"] = preview["strategy"]
-
-            metrics = preview.get("metrics", {})
-            quality = float(metrics.get("quality_score", 0.0))
-            if quality > best_quality:
-                best_quality = quality
-                best_strategy = preview["strategy"]
-
-            comparisons.append(
-                StrategyComparison(
-                    strategy=preview["strategy"],
-                    config=ChunkingConfigBase(**config_dict),
-                    sample_chunks=preview.get("chunks", []),
-                    total_chunks=preview.get("total_chunks", 0),
-                    avg_chunk_size=metrics.get("avg_chunk_size", 0),
-                    size_variance=metrics.get("size_variance", 0.0),
-                    quality_score=quality,
-                    processing_time_ms=preview.get("processing_time_ms", 0),
-                    pros=[],
-                    cons=[],
-                )
-            )
-
-        # Confidence mirrors the best quality score when available
-        recommendation = StrategyRecommendation(
-            recommended_strategy=best_strategy or compare_request.strategies[0],
-            confidence=(best_quality if best_quality >= 0 else best_conf),
-            reasoning="Selected strategy with higher quality score",
-            alternative_strategies=[
-                s for s in compare_request.strategies if s != (best_strategy or compare_request.strategies[0])
-            ],
-            suggested_config=ChunkingConfigBase(strategy=(best_strategy or compare_request.strategies[0])),
+        # Delegate all comparison logic to service
+        result = await service.compare_strategies_for_api(
+            content=compare_request.content or "",
+            strategies=strategy_names,
+            configs=configs_dict,
+            max_chunks_per_strategy=5,
         )
 
+        # Convert to response model
         return CompareResponse(
-            comparison_id=str(uuid.uuid4()),
-            comparisons=comparisons,
-            recommendation=recommendation,
-            processing_time_ms=0,
+            comparison_id=result["comparison_id"],
+            comparisons=result["comparisons"],
+            recommendation=result["recommendation"],
+            processing_time_ms=result["processing_time_ms"],
         )
 
     except HTTPException:
@@ -491,16 +426,11 @@ async def get_cached_preview(
     check_circuit_breaker(request)
 
     try:
-        # Tests expect using the private cache getter by key
-        if hasattr(service, "_get_cached_preview_by_key"):
-            result = await service._get_cached_preview_by_key(preview_id)
-        elif hasattr(service, "get_cached_preview"):
-            result = await service.get_cached_preview(
-                preview_id=preview_id,
-                user_id=_current_user.get("id") if _current_user else None,
-            )
-        else:
-            result = None
+        # Use public service method for cache retrieval
+        result = await service.get_cached_preview_by_id(
+            preview_id=preview_id,
+            user_id=_current_user.get("id") if _current_user else None,
+        )
 
         if not result:
             raise HTTPException(
@@ -513,11 +443,32 @@ async def get_cached_preview(
         if "strategy" not in config_data:
             config_data["strategy"] = result["strategy"]
 
+        # Transform service chunks to ChunkPreview objects
+        chunks = []
+        for chunk in result.get("chunks", []):
+            # Handle both 'content' and 'text' keys for chunk content
+            content = chunk.get("content") or chunk.get("text", "")
+            char_count = len(content)
+            # Approximate token count (rough estimate: ~4 chars per token)
+            token_count = chunk.get("token_count", char_count // 4)
+
+            chunks.append(
+                ChunkPreview(
+                    index=chunk.get("index", 0),
+                    content=content,
+                    token_count=token_count,
+                    char_count=char_count,
+                    metadata=chunk.get("metadata", {}),
+                    quality_score=chunk.get("quality_score", 0.8),
+                    overlap_info=chunk.get("overlap_info"),
+                )
+            )
+
         return PreviewResponse(
             preview_id=result["preview_id"],
             strategy=result["strategy"],
             config=ChunkingConfigBase(**config_data),
-            chunks=result["chunks"],
+            chunks=chunks,
             total_chunks=result["total_chunks"],
             metrics=result.get("metrics"),
             processing_time_ms=result["processing_time_ms"],
@@ -557,7 +508,7 @@ async def clear_preview_cache(
 
 # Collection Processing
 @router.post(
-    "/collections/{collection_id}/chunk",
+    "/collections/{collection_uuid}/chunk",
     response_model=ChunkingOperationResponse,
     summary="Start chunking operation on collection",
     status_code=status.HTTP_202_ACCEPTED,
@@ -570,7 +521,7 @@ async def clear_preview_cache(
 @limiter.limit(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
-    collection_id: str,
+    collection_uuid: str,  # Changed from collection_id to match dependency
     chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
@@ -591,22 +542,24 @@ async def start_chunking_operation(
     try:
         # First validate the configuration
         validation_result = await service.validate_config_for_collection(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else {},
         )
 
         # Check if configuration is valid
-        if not validation_result.get("is_valid", True):
+        if not validation_result.get("valid", True):
             # Return 400 for invalid configuration
+            errors = validation_result.get("errors", [])
+            error_msg = "; ".join(errors) if errors else "Configuration validation failed"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid configuration: {validation_result.get('reason', 'Configuration validation failed')}",
+                detail=f"Invalid configuration: {error_msg}",
             )
 
         # Create operation record
         operation = await collection_service.create_operation(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             operation_type="chunking",
             config={
                 "strategy": chunking_request.strategy.value,
@@ -619,7 +572,7 @@ async def start_chunking_operation(
 
         # Start chunking operation and get WebSocket channel
         websocket_channel, _ = await service.start_chunking_operation(
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             strategy=chunking_request.strategy.value,
             config=chunking_request.config.model_dump() if chunking_request.config else {},
             user_id=_current_user["id"],
@@ -629,7 +582,7 @@ async def start_chunking_operation(
         background_tasks.add_task(
             process_chunking_operation,
             operation["uuid"],
-            collection_id,
+            collection_uuid,
             chunking_request.strategy,
             chunking_request.config,
             chunking_request.document_ids,
@@ -640,7 +593,7 @@ async def start_chunking_operation(
 
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
-            collection_id=collection_id,
+            collection_id=collection_uuid,
             status=ChunkingStatus.PENDING,
             strategy=chunking_request.strategy,
             estimated_time_seconds=validation_result.get("estimated_time"),
@@ -749,14 +702,14 @@ async def update_chunking_strategy(
 
 
 @router.get(
-    "/collections/{collection_id}/chunks",
+    "/collections/{collection_uuid}/chunks",
     response_model=ChunkListResponse,
     summary="Get chunks with pagination",
 )
 @limiter.limit(RateLimitConfig.READ_RATE)
 async def get_collection_chunks(
     request: Request,  # Required for rate limiting
-    collection_id: str,  # noqa: ARG001
+    collection_uuid: str,  # Changed from collection_id to match dependency # noqa: ARG001
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
@@ -811,7 +764,8 @@ async def get_chunking_stats(
     Get detailed chunking statistics and metrics for a collection.
     """
     try:
-        stats = await service.get_chunking_statistics(
+        # Use the new method that returns chunk-level statistics
+        stats = await service.get_collection_chunk_stats(
             collection_id=collection_id,
         )
 

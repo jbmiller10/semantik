@@ -136,7 +136,7 @@ logs/
 data/
 images/
 models/
-repopackpy-output.txt
+repomixpy-output.txt
 
 # Logging
 *.pid
@@ -242,3 +242,7 @@ htmlcov/
 
 # Config examples
 nginx.conf.example
+
+# Project summaries
+/summaries/
+/summary/

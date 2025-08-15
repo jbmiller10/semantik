@@ -127,6 +127,9 @@ class TestStrategyManagement:
 
     def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
+        # Import the config class
+        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase
+
         # Set up mock return value
         mock_strategies = [
             {
@@ -136,7 +139,9 @@ class TestStrategyManagement:
                 "best_for": ["Quick processing", "Consistent chunk sizes"],
                 "pros": ["Fast", "Predictable"],
                 "cons": ["May break mid-sentence"],
-                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
+                ),
                 "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
             },
             {
@@ -146,7 +151,9 @@ class TestStrategyManagement:
                 "best_for": ["General documents", "Maintaining context"],
                 "pros": ["Respects sentence boundaries"],
                 "cons": ["Variable chunk sizes"],
-                "default_config": {"chunk_size": 1000, "chunk_overlap": 200},
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.RECURSIVE, chunk_size=1000, chunk_overlap=200
+                ),
                 "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
@@ -156,7 +163,9 @@ class TestStrategyManagement:
                 "best_for": ["Markdown documents", "Technical documentation"],
                 "pros": ["Preserves structure"],
                 "cons": ["Only for markdown"],
-                "default_config": {"chunk_size": 1000, "chunk_overlap": 0},
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.MARKDOWN, chunk_size=1000, chunk_overlap=0
+                ),
                 "performance_characteristics": {"speed": "medium", "accuracy": "high"},
             },
             {
@@ -166,7 +175,9 @@ class TestStrategyManagement:
                 "best_for": ["Complex documents", "Academic papers"],
                 "pros": ["Best context preservation"],
                 "cons": ["Slower", "Requires embeddings"],
-                "default_config": {"buffer_size": 1, "breakpoint_threshold": 95},
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.SEMANTIC, buffer_size=1, breakpoint_threshold=95
+                ),
                 "performance_characteristics": {"speed": "slow", "accuracy": "very_high"},
             },
             {
@@ -176,7 +187,9 @@ class TestStrategyManagement:
                 "best_for": ["Large documents", "Multi-level analysis"],
                 "pros": ["Multiple granularities"],
                 "cons": ["Complex", "More storage"],
-                "default_config": {"chunk_sizes": [2048, 512, 128]},
+                "default_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.HIERARCHICAL, chunk_sizes=[2048, 512, 128]
+                ),
                 "performance_characteristics": {"speed": "slow", "accuracy": "high"},
             },
             {
@@ -186,12 +199,12 @@ class TestStrategyManagement:
                 "best_for": ["Mixed content", "Unknown document types"],
                 "pros": ["Adaptive", "Best overall"],
                 "cons": ["Overhead from analysis"],
-                "default_config": {},
+                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.HYBRID),
                 "performance_characteristics": {"speed": "variable", "accuracy": "high"},
             },
         ]
 
-        mock_chunking_service.get_available_strategies.return_value = mock_strategies
+        mock_chunking_service.get_available_strategies_for_api.return_value = mock_strategies
 
         response = client.get("/api/v2/chunking/strategies")
 
@@ -214,6 +227,8 @@ class TestStrategyManagement:
 
     def test_list_strategies_unauthenticated(self) -> None:
         """Test that listing strategies requires authentication."""
+        # Import app for this test
+        from packages.webui.main import app
 
         # Ensure auth is enabled for this test
         original_disable_auth = settings.DISABLE_AUTH
@@ -244,8 +259,25 @@ class TestStrategyManagement:
             # Restore original setting
             settings.DISABLE_AUTH = original_disable_auth
 
-    def test_get_strategy_details_success(self, client: TestClient) -> None:
+    def test_get_strategy_details_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for a specific strategy."""
+        # Import the config class
+        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+
+        # Setup mock
+        mock_chunking_service.get_strategy_details.return_value = {
+            "id": "fixed_size",
+            "name": "Fixed Size Chunking",
+            "description": "Simple fixed-size character-based chunking",
+            "best_for": ["Quick processing", "Consistent chunk sizes"],
+            "pros": ["Fast", "Predictable"],
+            "cons": ["May break mid-sentence"],
+            "default_config": ChunkingConfigBase(
+                strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
+            ),
+            "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
+        }
+
         response = client.get("/api/v2/chunking/strategies/fixed_size")
 
         assert response.status_code == status.HTTP_200_OK
@@ -258,8 +290,11 @@ class TestStrategyManagement:
         assert isinstance(strategy["pros"], list)
         assert isinstance(strategy["cons"], list)
 
-    def test_get_strategy_details_not_found(self, client: TestClient) -> None:
+    def test_get_strategy_details_not_found(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for non-existent strategy."""
+        # Setup mock to return None for invalid strategy
+        mock_chunking_service.get_strategy_details.return_value = None
+
         response = client.get("/api/v2/chunking/strategies/invalid_strategy")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -392,8 +427,15 @@ class TestPreviewOperations:
         assert preview["preview_id"] == preview_id
         assert preview["cached"] is True
 
-    def test_generate_preview_missing_input(self, client: TestClient) -> None:
+    def test_generate_preview_missing_input(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation without content or document_id."""
+        # Setup mock to raise ValidationError
+        from packages.shared.chunking.infrastructure.exceptions import ValidationError
+
+        mock_chunking_service.validate_preview_content.side_effect = ValidationError(
+            field="input", value=None, reason="document_id or content must be provided"
+        )
+
         request_data = {
             "strategy": "fixed_size",
         }
@@ -403,10 +445,17 @@ class TestPreviewOperations:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "document_id or content must be provided" in response.json()["detail"]
 
-    def test_generate_preview_content_too_large(self, client: TestClient) -> None:
+    def test_generate_preview_content_too_large(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation with content exceeding size limit."""
+        # Setup mock to raise DocumentTooLargeError
+        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError
+
         # Create content larger than 10MB
         large_content = "x" * (11 * 1024 * 1024)
+
+        mock_chunking_service.validate_preview_content.side_effect = DocumentTooLargeError(
+            size=len(large_content), max_size=10 * 1024 * 1024, correlation_id="test-correlation-id"
+        )
 
         request_data = {
             "content": large_content,
@@ -418,8 +467,15 @@ class TestPreviewOperations:
         # ChunkingMemoryError returns 507 (Insufficient Storage)
         assert response.status_code == status.HTTP_507_INSUFFICIENT_STORAGE
 
-    def test_generate_preview_with_null_bytes(self, client: TestClient) -> None:
+    def test_generate_preview_with_null_bytes(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation with invalid content containing null bytes."""
+        # Setup mock to raise ValidationError
+        from packages.shared.chunking.infrastructure.exceptions import ValidationError
+
+        mock_chunking_service.validate_preview_content.side_effect = ValidationError(
+            field="content", value="test\x00content", reason="Content contains null bytes"
+        )
+
         request_data = {
             "content": "test\x00content",
             "strategy": "fixed_size",
@@ -460,50 +516,77 @@ class TestPreviewOperations:
 
     def test_compare_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy comparison."""
-        # Setup mock
-        mock_chunking_service.preview_chunking.side_effect = [
-            {
-                "preview_id": str(uuid.uuid4()),
-                "strategy": ChunkingStrategy.FIXED_SIZE,
-                "config": {
+        # Import the config class
+        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+
+        # Setup mock for compare_strategies_for_api
+        comparison_id = str(uuid.uuid4())
+        mock_chunking_service.compare_strategies_for_api.return_value = {
+            "comparison_id": comparison_id,
+            "comparisons": [
+                {
                     "strategy": "fixed_size",
-                    "chunk_size": 512,
-                    "chunk_overlap": 50,
-                    "preserve_sentences": True,
+                    "config": ChunkingConfigBase(
+                        strategy=ChunkingStrategy.FIXED_SIZE,
+                        chunk_size=512,
+                        chunk_overlap=50,
+                        preserve_sentences=True,
+                    ),
+                    "sample_chunks": [
+                        {
+                            "index": 0,
+                            "content": "chunk1",
+                            "token_count": 5,
+                            "char_count": 6,
+                            "metadata": {},
+                            "quality_score": 0.7,
+                            "overlap_info": None,
+                        }
+                    ],
+                    "total_chunks": 10,
+                    "avg_chunk_size": 500.0,
+                    "size_variance": 10.0,
+                    "quality_score": 0.7,
+                    "processing_time_ms": 100,
+                    "pros": ["Fast processing", "Consistent chunk sizes"],
+                    "cons": ["May break semantic units"],
                 },
-                "chunks": [
-                    {
-                        "index": 0,
-                        "content": "chunk1",
-                        "token_count": 5,
-                        "char_count": 6,
-                        "metadata": {},
-                        "quality_score": 0.7,
-                    }
-                ],
-                "total_chunks": 10,
-                "metrics": {"avg_chunk_size": 500, "size_variance": 10.0, "quality_score": 0.7},
-                "processing_time_ms": 100,
+                {
+                    "strategy": "semantic",
+                    "config": ChunkingConfigBase(
+                        strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
+                    ),
+                    "sample_chunks": [
+                        {
+                            "index": 0,
+                            "content": "chunk1",
+                            "token_count": 8,
+                            "char_count": 10,
+                            "metadata": {},
+                            "quality_score": 0.85,
+                            "overlap_info": None,
+                        }
+                    ],
+                    "total_chunks": 8,
+                    "avg_chunk_size": 600.0,
+                    "size_variance": 20.0,
+                    "quality_score": 0.85,
+                    "processing_time_ms": 200,
+                    "pros": ["Better semantic coherence", "Preserves context"],
+                    "cons": ["Slower processing"],
+                },
+            ],
+            "recommendation": {
+                "recommended_strategy": "semantic",
+                "confidence": 0.85,
+                "reasoning": "Higher quality score",
+                "alternative_strategies": ["fixed_size"],
+                "suggested_config": ChunkingConfigBase(
+                    strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
+                ),
             },
-            {
-                "preview_id": str(uuid.uuid4()),
-                "strategy": ChunkingStrategy.SEMANTIC,
-                "config": {"strategy": "semantic", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-                "chunks": [
-                    {
-                        "index": 0,
-                        "content": "chunk1",
-                        "token_count": 8,
-                        "char_count": 10,
-                        "metadata": {},
-                        "quality_score": 0.85,
-                    }
-                ],
-                "total_chunks": 8,
-                "metrics": {"avg_chunk_size": 600, "size_variance": 20.0, "quality_score": 0.85},
-                "processing_time_ms": 200,
-            },
-        ]
+            "processing_time_ms": 300,
+        }
 
         request_data = {
             "content": "Test document for comparison",
@@ -512,6 +595,11 @@ class TestPreviewOperations:
         }
 
         response = client.post("/api/v2/chunking/compare", json=request_data)
+
+        # Debug output if test fails
+        if response.status_code != status.HTTP_200_OK:
+            print(f"Response status: {response.status_code}")
+            print(f"Response body: {response.text}")
 
         assert response.status_code == status.HTTP_200_OK
         comparison = response.json()
@@ -524,7 +612,7 @@ class TestPreviewOperations:
     def test_get_cached_preview_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test retrieving cached preview results."""
         preview_id = str(uuid.uuid4())
-        mock_chunking_service._get_cached_preview_by_key.return_value = {
+        mock_chunking_service.get_cached_preview_by_id.return_value = {
             "preview_id": preview_id,
             "strategy": "fixed_size",
             "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
@@ -543,7 +631,7 @@ class TestPreviewOperations:
 
     def test_get_cached_preview_not_found(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test retrieving non-existent preview."""
-        mock_chunking_service._get_cached_preview_by_key.return_value = None
+        mock_chunking_service.get_cached_preview_by_id.return_value = None
 
         response = client.get(f"/api/v2/chunking/preview/{uuid.uuid4()}")
 
@@ -619,8 +707,8 @@ class TestCollectionProcessing:
     ) -> None:
         """Test starting operation with invalid configuration."""
         mock_chunking_service.validate_config_for_collection.return_value = {
-            "is_valid": False,
-            "reason": "Invalid chunk size for this collection",
+            "valid": False,
+            "errors": ["Invalid chunk size for this collection"],
         }
 
         request_data = {
@@ -723,7 +811,7 @@ class TestCollectionProcessing:
             "performance_metrics": {"coherence": 0.8, "completeness": 0.9},
         }
 
-        mock_chunking_service.get_chunking_statistics.return_value = mock_stats
+        mock_chunking_service.get_collection_chunk_stats.return_value = mock_stats
 
         response = client.get("/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats")
 
@@ -905,6 +993,8 @@ class TestSecurityAndValidation:
     @patch("packages.webui.auth.settings")
     def test_authorization_checks(self, mock_settings: MagicMock) -> None:
         """Test that all endpoints require authentication."""
+        # Import app for this test
+        from packages.webui.main import app
 
         # Configure mock settings to ensure auth is enabled
         mock_settings.DISABLE_AUTH = False

@@ -15,9 +15,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from packages.shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+)
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-from packages.webui.services.chunking_security import ValidationError
 from packages.webui.services.chunking_service import ChunkingService
 
 
@@ -545,7 +547,7 @@ class TestErrorHandling:
         # Use actual limit from constants
         large_content = "x" * (MAX_PREVIEW_CONTENT_SIZE + 1)
 
-        with pytest.raises(ValidationError):
+        with pytest.raises(DocumentTooLargeError):
             await chunking_service.preview_chunking(content=large_content, strategy=ChunkingStrategy.SEMANTIC)
 
     @pytest.mark.asyncio()

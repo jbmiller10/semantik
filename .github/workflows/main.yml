@@ -3,8 +3,22 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.vscode/**'
+      - '.idea/**'
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.vscode/**'
+      - '.idea/**'
   workflow_dispatch:
 
 # Cancel in-progress runs for PRs
@@ -24,58 +38,114 @@ env:
   JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'test-secret-key-for-ci' }}
   USE_MOCK_EMBEDDINGS: "true"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
+  # Performance optimizations
+  POETRY_VIRTUALENVS_IN_PROJECT: true
+  PIP_CACHE_DIR: ~/.cache/pip
 
 jobs:
-  # Single job for all linting and formatting checks
-  quality-checks:
-    name: Code Quality
+  # Python formatting check
+  python-format:
+    name: Python Formatting
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # For proper diff in PR checks
 
-      # Python setup with caching
-      - name: Setup Python
+      - name: Setup Python with cache
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-      - name: Cache Poetry
+      - name: Install Poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Cache dependencies
+        id: cache-deps
         uses: actions/cache@v4
         with:
           path: |
-            ~/.local
-            ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION }}
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Cache Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
+            .venv
+            ~/.cache/pip
           key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
           restore-keys: |
             venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
-      - name: Install Python dependencies
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --with dev
 
-      # Node.js setup with caching
-      - name: Setup Node.js
+      - name: Verify dependencies
+        if: steps.cache-deps.outputs.cache-hit == 'true'
+        run: poetry install --with dev --no-root
+
+      - name: Run Black formatting check
+        run: poetry run black --check --diff .
+
+  # Python linting check
+  python-lint:
+    name: Python Linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python with cache
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install Poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Cache dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/pip
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: poetry install --with dev
+
+      - name: Verify dependencies
+        if: steps.cache-deps.outputs.cache-hit == 'true'
+        run: poetry install --with dev --no-root
+
+      - name: Run Ruff linting
+        run: poetry run ruff check .
+
+      - name: Run Mypy type checking
+        run: poetry run mypy packages/ --ignore-missing-imports
+        continue-on-error: true  # TODO: Remove when type issues are fixed
+
+  # Frontend linting check
+  frontend-lint:
+    name: Frontend Linting
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js with cache
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
 
-      - name: Cache Node modules
+      - name: Cache node modules
+        id: cache-node
         uses: actions/cache@v4
         with:
           path: |
@@ -85,23 +155,19 @@ jobs:
           restore-keys: |
             node-${{ runner.os }}-
 
-      - name: Install Node dependencies
+      - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
         run: |
           npm ci
           cd apps/webui-react && npm ci
 
-      # Run all quality checks in parallel
-      - name: Python formatting (Black)
-        run: poetry run black --check .
+      - name: Verify dependencies
+        if: steps.cache-node.outputs.cache-hit == 'true'
+        run: |
+          npm ls || npm ci
+          cd apps/webui-react && npm ls || npm ci
 
-      - name: Python linting (Ruff)
-        run: poetry run ruff check .
-
-      - name: Python type checking (Mypy)
-        run: poetry run mypy packages/ --ignore-missing-imports
-        continue-on-error: true  # TODO: Remove when type issues are fixed
-
-      - name: Frontend linting
+      - name: Run ESLint
         working-directory: ./apps/webui-react
         run: npm run lint
 
@@ -109,6 +175,7 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       security-events: write
     steps:
@@ -137,8 +204,13 @@ jobs:
 
   # Backend tests with proper service management
   backend-tests:
-    name: Backend Tests
+    name: Backend Tests - ${{ matrix.group }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [unit, webui, integration, other]
     env:
       TESTING: "true"
       ENV: "test"
@@ -176,81 +248,128 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Setup Python with cache
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
 
-      - name: Restore Poetry cache
+      - name: Install Poetry
+        run: |
+          pip install --upgrade pip
+          pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Cache dependencies
+        id: cache-deps
         uses: actions/cache@v4
         with:
           path: |
-            ~/.local
-            ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ env.POETRY_VERSION }}
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-
-      - name: Restore Python dependencies
-        uses: actions/cache@v4
-        with:
-          path: .venv
+            .venv
+            ~/.cache/pip
           key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: poetry install --with dev
+
+      - name: Verify dependencies
+        if: steps.cache-deps.outputs.cache-hit == 'true'
+        run: poetry install --with dev --no-root
 
       - name: Run database migrations
         run: poetry run alembic upgrade head
 
-      - name: Run backend tests
+      - name: Run backend tests in parallel
         run: |
-          poetry run pytest tests/ -v \
-            --ignore=tests/e2e \
-            --cov=packages \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            -m "not e2e"
+          if [ "${{ matrix.group }}" = "unit" ]; then
+            # Run all unit tests
+            poetry run pytest tests/unit/ -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "webui" ]; then
+            # Run all webui tests
+            poetry run pytest tests/webui/ -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "integration" ]; then
+            # Run integration tests
+            poetry run pytest tests/integration/ -v \
+              -n auto \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing
+          elif [ "${{ matrix.group }}" = "other" ]; then
+            # Run all other test directories
+            poetry run pytest \
+              tests/domain/ \
+              tests/application/ \
+              tests/streaming/ \
+              tests/websocket/ \
+              tests/database/ \
+              tests/security/ \
+              tests/api/ \
+              tests/chunking/ \
+              -v \
+              -n auto \
+              --ignore=tests/e2e \
+              --cov=packages \
+              --cov-report=xml \
+              --cov-report=term-missing \
+              -m "not e2e"
+          fi
 
       - name: Upload backend coverage
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           file: ./coverage.xml
-          flags: backend
+          flags: backend-${{ matrix.group }}
           fail_ci_if_error: false
 
   # Frontend tests - simplified without matrix
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js with cache
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
 
-      - name: Restore Node modules
+      - name: Cache node modules
+        id: cache-node
         uses: actions/cache@v4
         with:
           path: |
             node_modules
             apps/webui-react/node_modules
           key: node-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            node-${{ runner.os }}-
 
       - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
         run: |
           npm ci
           cd apps/webui-react && npm ci
+
+      - name: Verify dependencies
+        if: steps.cache-node.outputs.cache-hit == 'true'
+        run: |
+          npm ls || npm ci
+          cd apps/webui-react && npm ls || npm ci
 
       - name: Run all frontend tests
         working-directory: ./apps/webui-react
@@ -261,6 +380,7 @@ jobs:
         run: npm run test:coverage -- --run
 
       - name: Upload frontend coverage
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -272,29 +392,40 @@ jobs:
   build-validation:
     name: Build Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [backend-tests, frontend-tests]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js with cache
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: '**/package-lock.json'
 
-      - name: Restore Node modules
+      - name: Cache node modules
+        id: cache-node
         uses: actions/cache@v4
         with:
           path: |
             node_modules
             apps/webui-react/node_modules
           key: node-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            node-${{ runner.os }}-
 
       - name: Install dependencies
+        if: steps.cache-node.outputs.cache-hit != 'true'
         run: |
           npm ci
           cd apps/webui-react && npm ci
+
+      - name: Verify dependencies
+        if: steps.cache-node.outputs.cache-hit == 'true'
+        run: |
+          npm ls || npm ci
+          cd apps/webui-react && npm ls || npm ci
 
       - name: Build frontend
         working-directory: ./apps/webui-react
@@ -339,12 +470,15 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [quality-checks, security-scan, backend-tests, frontend-tests, build-validation]
+    needs: [python-format, python-lint, frontend-lint, security-scan, backend-tests, frontend-tests, build-validation]
     if: always()
+    timeout-minutes: 2
     steps:
       - name: Check CI Status
         run: |
-          if [[ "${{ needs.quality-checks.result }}" != "success" ]] || 
+          if [[ "${{ needs.python-format.result }}" != "success" ]] || 
+             [[ "${{ needs.python-lint.result }}" != "success" ]] || 
+             [[ "${{ needs.frontend-lint.result }}" != "success" ]] || 
              [[ "${{ needs.backend-tests.result }}" != "success" ]] || 
              [[ "${{ needs.frontend-tests.result }}" != "success" ]] || 
              [[ "${{ needs.build-validation.result }}" != "success" ]]; then

@@ -1,5 +1,6 @@
 """Shared test configuration and fixtures."""
 
+import contextlib
 import os
 import random
 import sys
@@ -27,7 +28,6 @@ from dotenv import load_dotenv  # noqa: E402
 from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
 import packages.webui.celery_app as celery_module  # noqa: E402
@@ -297,9 +297,22 @@ def mock_embedding_service() -> None:
 @pytest.fixture(autouse=True)
 def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
-    # This helps ensure test isolation
-    return
-    # Cleanup code here if needed
+    # Clear Prometheus metrics registry to avoid duplicate metric registration
+    from prometheus_client import REGISTRY
+
+    from packages.shared.metrics.prometheus import registry
+
+    # Clear all collectors from the custom registry
+    collectors_to_remove = list(registry._collector_to_names.keys())
+    for collector in collectors_to_remove:
+        with contextlib.suppress(Exception):
+            registry.unregister(collector)
+
+    # Also clear the default registry if needed
+    collectors_to_remove = list(REGISTRY._collector_to_names.keys())
+    for collector in collectors_to_remove:
+        with contextlib.suppress(Exception):
+            REGISTRY.unregister(collector)
 
 
 def create_async_mock(return_value=None) -> None:
@@ -480,11 +493,14 @@ def websocket_test_client(test_client) -> None:
 
 
 # Additional fixtures for collection deletion tests
-@pytest_asyncio.fixture
-async def db_session() -> None:
-    """Create a new database session for testing."""
-    # Check if we have a test database available
+@pytest.fixture()
+def _db_isolation():
+    """Marker fixture to indicate tests that require database isolation."""
 
+
+@pytest_asyncio.fixture
+async def db_session():
+    """Create a new database session for testing."""
     # Get database URL from environment, prioritizing DATABASE_URL
     database_url = os.environ.get("DATABASE_URL")
 
@@ -530,39 +546,30 @@ async def db_session() -> None:
         pytest.skip(f"PostgreSQL test database not available: {e}")
         return
 
-    engine = create_async_engine(async_database_url, echo=False)
+    # Create engine with isolation level for better concurrency
+    engine = create_async_engine(
+        async_database_url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=1,  # Small pool size per test
+        max_overflow=0,  # No overflow connections
+    )
 
-    # Helper function to drop views before tables
-    async def drop_views_and_tables(conn) -> None:
-        # Drop views first (in dependency order)
-        views_to_drop = [
-            "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
-            "DROP VIEW IF EXISTS partition_health_summary CASCADE",
-            "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_health CASCADE",
-            "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
-            "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
-        ]
-
-        for view_sql in views_to_drop:
-            await conn.execute(text(view_sql))
-
-        # Now drop all tables
-        await conn.run_sync(Base.metadata.drop_all)
-
-    # Drop all views and tables, then recreate for each test to ensure isolation
+    # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
-        await drop_views_and_tables(conn)
         await conn.run_sync(Base.metadata.create_all)
 
+    # Create session for this test
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
         yield session
-        await session.rollback()
+        # Rollback any uncommitted changes
+        if session.in_transaction():
+            await session.rollback()
+        await session.close()
 
+    # Dispose of the engine to close all connections
     await engine.dispose()
 
 
@@ -619,9 +626,10 @@ async def collection_factory(db_session) -> None:
         if "owner_id" not in kwargs:
             raise ValueError("owner_id must be provided when creating a collection")
 
+        collection_uuid = str(uuid4())
         defaults = {
-            "id": str(uuid4()),  # Changed from "uuid" to "id"
-            "name": f"Test Collection {len(created_collections)}",
+            "id": collection_uuid,  # Changed from "uuid" to "id"
+            "name": f"Test Collection {collection_uuid[:8]}",  # Use UUID to ensure uniqueness
             "description": "Test collection description",
             "vector_store_name": f"col_{uuid4().hex[:16]}",
             "embedding_model": "test-model",
