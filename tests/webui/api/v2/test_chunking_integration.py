@@ -331,59 +331,47 @@ def client_with_auth(mock_user, mock_chunking_service):
 @pytest.fixture()
 def unauthenticated_client():
     """Create a test client without authentication."""
-    from packages.shared.database import get_db
-
+    from packages.webui.auth import get_current_user
+    from fastapi import HTTPException, Depends
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+    
     app.dependency_overrides.clear()
 
-    # Mock the database to prevent real connections in auth checks
-    async def mock_get_db():
-        # Return a mock that will cause auth to fail properly
-        return AsyncMock()
+    # Override get_current_user to always raise 401 with the appropriate message
+    async def mock_get_current_user(
+        credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
+    ):
+        # Check if any credentials were provided
+        if not credentials:
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # If credentials provided but invalid
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    app.dependency_overrides[get_current_user] = mock_get_current_user
 
-    # Override the database dependency to prevent 500 errors
-    app.dependency_overrides[get_db] = mock_get_db
+    # Mock the lifespan events to prevent real database connections
+    with (
+        patch("packages.webui.main.pg_connection_manager") as mock_pg,
+        patch("packages.webui.main.ws_manager") as mock_ws,
+    ):
+        # Mock the async methods
+        mock_pg.initialize = AsyncMock()
+        mock_ws.startup = AsyncMock()
+        mock_ws.shutdown = AsyncMock()
 
-    # Create patches that will persist for the test duration
-    patches = []
-    
-    # Mock the lifespan events to prevent real database connections  
-    patches.append(patch("packages.webui.main.pg_connection_manager"))
-    patches.append(patch("packages.webui.main.ws_manager"))
-    patches.append(patch("packages.shared.database.get_db_session"))
-    
-    # Mock the user repository creation to return None for user lookups
-    mock_user_repo = AsyncMock()
-    mock_user_repo.get_user_by_username.return_value = None
-    patches.append(patch("packages.webui.auth.create_user_repository", return_value=mock_user_repo))
-    
-    # Start all patches
-    mocked_objects = []
-    for p in patches:
-        mock = p.start()
-        mocked_objects.append(mock)
-        if hasattr(mock, 'initialize'):
-            mock.initialize = AsyncMock()
-        if hasattr(mock, 'startup'):
-            mock.startup = AsyncMock()
-        if hasattr(mock, 'shutdown'):
-            mock.shutdown = AsyncMock()
-    
-    # Set up get_db_session mock (it's the third patch)
-    mock_get_db_session = mocked_objects[2]
-    async def mock_db_session_generator():
-        yield AsyncMock()
-    mock_get_db_session.return_value = mock_db_session_generator()
-
-    try:
         with TestClient(app) as client:
             yield client
-    finally:
-        # Stop all patches
-        for p in patches:
-            p.stop()
-        
-        # Clean up overrides
-        app.dependency_overrides.clear()
+
+    # Clean up overrides
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture()
