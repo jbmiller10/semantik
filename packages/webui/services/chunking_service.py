@@ -828,7 +828,7 @@ class ChunkingService:
         content: str,
         strategy: str | None = None,
         config: dict[str, Any] | None = None,
-        file_type: str | None = None,
+        file_type: str | None = None,  # noqa: ARG002 - Reserved for future file-type-specific strategy selection
         max_chunks: int | None = None,
         cache_result: bool = True,
     ) -> ServicePreviewResponse:

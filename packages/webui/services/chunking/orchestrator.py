@@ -347,7 +347,7 @@ class ChunkingOrchestrator:
             confidence=rec_data["confidence"],
             reasoning="\n".join(rec_data["reasoning"]) if isinstance(rec_data["reasoning"], list) else rec_data["reasoning"],
             alternatives=[
-                alt.get("strategy", alt) if isinstance(alt, dict) else alt 
+                alt.get("strategy", alt) if isinstance(alt, dict) else alt
                 for alt in rec_data.get("alternatives", [])
             ],
         )
