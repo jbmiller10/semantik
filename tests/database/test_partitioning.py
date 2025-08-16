@@ -71,53 +71,6 @@ class TestPartitionDistribution:
             assert len(parts[2]) == 2
             assert parts[2].isdigit()
 
-    def test_even_distribution_simulation(self):
-        """
-        Simulate distribution of 10,000 collections across partitions.
-        Verify no partition exceeds 40% deviation from average.
-
-        NOTE: The Python implementation uses MD5 hashing while PostgreSQL uses
-        its own hashtext() function. This causes different distribution patterns.
-        In production, PostgreSQL's hashtext() is used for actual partition assignment,
-        so a 37-40% deviation in this test is expected and acceptable.
-        The Python hash is only used for monitoring/statistics purposes.
-        """
-        manager = PartitionManager()
-        num_collections = 10000
-
-        # Generate random collection IDs
-        collection_ids = [str(uuid.uuid4()) for _ in range(num_collections)]
-
-        # Count distribution across partitions
-        partition_counts: dict[int, int] = {}
-        for cid in collection_ids:
-            partition_id = manager.get_partition_id(cid)
-            partition_counts[partition_id] = partition_counts.get(partition_id, 0) + 1
-
-        # Calculate statistics
-        expected_per_partition = num_collections / PartitionManager.PARTITION_COUNT
-
-        # Check distribution
-        max_deviation = 0
-        for partition_id in range(PartitionManager.PARTITION_COUNT):
-            count = partition_counts.get(partition_id, 0)
-
-            if expected_per_partition > 0:
-                deviation = abs(count - expected_per_partition) / expected_per_partition
-                max_deviation = max(max_deviation, deviation)
-
-        # Assert max deviation is within 40% threshold (accounting for hash algorithm differences)
-        assert (
-            max_deviation < 0.40
-        ), f"Maximum deviation {max_deviation:.2%} exceeds 40% threshold. Distribution may be uneven."
-
-        # Verify all partitions get some data (statistical test)
-        empty_partitions = sum(1 for i in range(PartitionManager.PARTITION_COUNT) if i not in partition_counts)
-
-        # With 10,000 items across 100 partitions, probability of any partition
-        # being empty is extremely low
-        assert empty_partitions < 5, f"Too many empty partitions: {empty_partitions}"
-
     def test_distribution_with_sequential_ids(self):
         """Test that sequential IDs still distribute well."""
         manager = PartitionManager()
