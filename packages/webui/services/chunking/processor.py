@@ -80,7 +80,10 @@ class ChunkingProcessor:
                     str(e),
                 )
                 return self._apply_simple_fallback(content, config)
-            raise ChunkingStrategyError(f"Chunking failed: {str(e)}") from e
+            raise ChunkingStrategyError(
+                strategy=strategy,
+                reason=f"Chunking failed: {str(e)}"
+            ) from e
 
     async def _execute_strategy(
         self,
@@ -98,7 +101,10 @@ class ChunkingProcessor:
         # Get strategy from domain layer
         strategy_impl = get_strategy(factory_name)
         if not strategy_impl:
-            raise ChunkingStrategyError(f"Strategy '{factory_name}' not found")
+            raise ChunkingStrategyError(
+                strategy=factory_name,
+                reason=f"Strategy '{factory_name}' not found"
+            )
 
         # Execute chunking
         if factory_name in ["character", "semantic", "recursive", "markdown"]:

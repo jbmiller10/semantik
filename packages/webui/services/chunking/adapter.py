@@ -138,15 +138,19 @@ class ChunkingServiceAdapter:
                 for comp in result.comparisons
             ],
             "recommendation": {
-                "recommended_strategy": result.recommendation.recommended_strategy,
+                "recommended_strategy": result.recommendation.strategy,
                 "confidence": result.recommendation.confidence,
                 "reasoning": result.recommendation.reasoning,
-                "alternative_strategies": result.recommendation.alternative_strategies,
-                "suggested_config": result.recommendation.suggested_config,
+                "alternative_strategies": result.recommendation.alternatives,
+                "suggested_config": {},
             }
             if result.recommendation
             else None,
-            "metadata": result.metadata,
+            "metadata": {
+                "comparison_id": result.comparison_id,
+                "processing_time_ms": result.processing_time_ms,
+                "strategies_compared": len(result.comparisons),
+            },
         }
 
     async def compare_strategies_for_api(
@@ -242,11 +246,11 @@ class ChunkingServiceAdapter:
         )
 
         return {
-            "recommended_strategy": result.recommended_strategy,
+            "recommended_strategy": result.strategy,
             "confidence": result.confidence,
             "reasoning": result.reasoning,
-            "alternative_strategies": result.alternative_strategies,
-            "suggested_config": result.suggested_config,
+            "alternative_strategies": result.alternatives,
+            "suggested_config": {},
         }
 
     async def get_collection_chunk_stats(

@@ -206,7 +206,7 @@ class ChunkingOrchestrator:
                     avg_chunk_size=stats["avg_chunk_size"],
                     size_variance=self._calculate_variance(stats),
                     quality_score=self._calculate_quality_score(stats),
-                    processing_time_ms=int(context.get("duration", 0) * 1000) if "duration" in context else 0,
+                    processing_time_ms=0,  # Will be set from context after
                 )
                 comparisons.append(comparison)
 
@@ -229,12 +229,10 @@ class ChunkingOrchestrator:
         recommendation = self._get_recommendation(comparisons, content)
 
         return ServiceCompareResponse(
+            comparison_id=str(uuid.uuid4()),
             comparisons=comparisons,
             recommendation=recommendation,
-            metadata={
-                "content_length": len(content),
-                "strategies_compared": len(strategies),
-            },
+            processing_time_ms=0,  # Could track actual time if needed
         )
 
     async def execute_ingestion_chunking(
@@ -302,6 +300,7 @@ class ChunkingOrchestrator:
                 pros=strategy_data.get("pros", []),
                 cons=strategy_data.get("cons", []),
                 default_config=strategy_data.get("default_config", {}),
+                supported_file_types=strategy_data.get("supported_file_types", []),
             )
             strategies.append(info)
 
@@ -344,11 +343,13 @@ class ChunkingOrchestrator:
 
         # Build recommendation object
         return ServiceStrategyRecommendation(
-            recommended_strategy=rec_data["strategy"],
+            strategy=rec_data["strategy"],
             confidence=rec_data["confidence"],
-            reasoning=rec_data["reasoning"],
-            alternative_strategies=[alt.get("strategy", alt) for alt in rec_data.get("alternatives", [])],
-            suggested_config=rec_data.get("suggested_config", {}),
+            reasoning="\n".join(rec_data["reasoning"]) if isinstance(rec_data["reasoning"], list) else rec_data["reasoning"],
+            alternatives=[
+                alt.get("strategy", alt) if isinstance(alt, dict) else alt 
+                for alt in rec_data.get("alternatives", [])
+            ],
         )
 
     async def get_collection_statistics(
@@ -498,20 +499,16 @@ class ChunkingOrchestrator:
         best_score = 0
 
         for comp in comparisons:
-            if comp.metrics and comp.metrics.quality_score > best_score:
-                best_score = comp.metrics.quality_score
+            if comp.quality_score > best_score:
+                best_score = comp.quality_score
                 best_strategy = comp.strategy
 
         if not best_strategy:
             best_strategy = "recursive"  # Fallback
 
         return ServiceStrategyRecommendation(
-            recommended_strategy=best_strategy,
+            strategy=best_strategy,
             confidence=min(0.9, best_score),
-            reasoning=[
-                f"Best quality score: {best_score:.2f}",
-                f"Analyzed {len(comparisons)} strategies",
-            ],
-            alternative_strategies=[c.strategy for c in comparisons if c.strategy != best_strategy][:2],
-            suggested_config=self.config_manager.get_default_config(best_strategy),
+            reasoning=f"Best quality score: {best_score:.2f}. Analyzed {len(comparisons)} strategies.",
+            alternatives=[c.strategy for c in comparisons if c.strategy != best_strategy][:2],
         )

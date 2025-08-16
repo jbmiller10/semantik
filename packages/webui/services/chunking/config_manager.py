@@ -70,6 +70,7 @@ class ChunkingConfigManager:
             "best_for": ["General text", "Consistent chunk sizes", "Simple documents"],
             "pros": ["Fast processing", "Predictable output", "Simple to configure"],
             "cons": ["May split sentences", "Ignores document structure"],
+            "supported_file_types": [],  # All file types supported
         },
         "sliding_window": {
             "name": "Sliding Window",
@@ -77,6 +78,7 @@ class ChunkingConfigManager:
             "best_for": ["Sequential analysis", "Context preservation", "Time series text"],
             "pros": ["Better context preservation", "Smooth transitions"],
             "cons": ["More chunks produced", "Higher storage requirements"],
+            "supported_file_types": [],  # All file types supported
         },
         "semantic": {
             "name": "Semantic",
@@ -84,6 +86,7 @@ class ChunkingConfigManager:
             "best_for": ["Technical documents", "Research papers", "Complex topics"],
             "pros": ["Preserves meaning", "Better for search", "Topic coherence"],
             "cons": ["Slower processing", "Requires embeddings", "Variable chunk sizes"],
+            "supported_file_types": [],  # All file types supported
         },
         "recursive": {
             "name": "Recursive",
@@ -91,6 +94,15 @@ class ChunkingConfigManager:
             "best_for": ["Mixed content", "Code files", "Structured documents"],
             "pros": ["Respects structure", "Flexible", "Good default choice"],
             "cons": ["May produce small chunks", "Configuration dependent"],
+            "supported_file_types": [],  # All file types supported
+        },
+        "document_structure": {
+            "name": "Document Structure",
+            "description": "Splits documents based on structural elements",
+            "best_for": ["Structured documents", "Reports", "Articles"],
+            "pros": ["Preserves document structure", "Clean boundaries"],
+            "cons": ["Requires structured input", "May miss context"],
+            "supported_file_types": [],  # All file types supported
         },
         "markdown": {
             "name": "Markdown",
@@ -98,6 +110,7 @@ class ChunkingConfigManager:
             "best_for": ["Markdown files", "Documentation", "README files"],
             "pros": ["Preserves formatting", "Header-aware", "Clean splits"],
             "cons": ["Only for markdown", "May create large chunks"],
+            "supported_file_types": [],  # All file types supported - especially good for markdown
         },
         "hierarchical": {
             "name": "Hierarchical",
@@ -105,6 +118,7 @@ class ChunkingConfigManager:
             "best_for": ["Books", "Long documents", "Hierarchical content"],
             "pros": ["Multi-level context", "Good for navigation", "Preserves hierarchy"],
             "cons": ["Complex output", "More storage", "Harder to search"],
+            "supported_file_types": [],  # All file types supported
         },
         "hybrid": {
             "name": "Hybrid",
@@ -112,6 +126,7 @@ class ChunkingConfigManager:
             "best_for": ["Mixed content types", "Uncertain document structure"],
             "pros": ["Adaptable", "Best of both worlds", "Robust"],
             "cons": ["Slower", "Complex configuration", "Unpredictable behavior"],
+            "supported_file_types": [],  # All file types supported
         },
     }
 

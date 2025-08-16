@@ -39,6 +39,7 @@ class ServiceStrategyInfo:
     pros: list[str] = field(default_factory=list)
     cons: list[str] = field(default_factory=list)
     default_config: dict[str, Any] = field(default_factory=dict)
+    supported_file_types: list[str] = field(default_factory=list)
     performance_characteristics: dict[str, Any] = field(default_factory=dict)
 
     def to_api_model(self) -> StrategyInfo:
