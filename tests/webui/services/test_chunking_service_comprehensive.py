@@ -254,16 +254,18 @@ class TestPreviewFunctionality:
         assert result1.preview_id is not None
 
         # Setup cache hit with proper format
-        cached_data = json.dumps({
-            "preview_id": result1.preview_id,
-            "strategy": "fixed_size",
-            "config": {},
-            "chunks": [],
-            "total_chunks": 0,
-            "performance_metrics": {},
-            "processing_time_ms": 0,
-            "expires_at": datetime.now(UTC).isoformat()
-        })
+        cached_data = json.dumps(
+            {
+                "preview_id": result1.preview_id,
+                "strategy": "fixed_size",
+                "config": {},
+                "chunks": [],
+                "total_chunks": 0,
+                "performance_metrics": {},
+                "processing_time_ms": 0,
+                "expires_at": datetime.now(UTC).isoformat(),
+            }
+        )
         mock_redis.get.return_value = cached_data
 
         # Second call - should be cached
@@ -326,7 +328,9 @@ class TestStrategyRecommendation:
             ChunkingStrategy.SEMANTIC,
             ChunkingStrategy.DOCUMENT_STRUCTURE,
             ChunkingStrategy.RECURSIVE,  # Actually returns RECURSIVE for PDFs
-            "semantic", "document_structure", "recursive"  # Allow string values too
+            "semantic",
+            "document_structure",
+            "recursive",  # Allow string values too
         ]
         assert result.reasoning is not None and len(result.reasoning) > 0
         assert result.alternatives is not None
@@ -340,7 +344,8 @@ class TestStrategyRecommendation:
         assert result.strategy in [
             ChunkingStrategy.RECURSIVE,
             ChunkingStrategy.FIXED_SIZE,
-            "recursive", "fixed_size"  # Allow string values too
+            "recursive",
+            "fixed_size",  # Allow string values too
         ]
         assert "code" in result.reasoning.lower() or "programming" in result.reasoning.lower()
 
@@ -353,7 +358,8 @@ class TestStrategyRecommendation:
         assert result.strategy in [
             ChunkingStrategy.HYBRID,
             ChunkingStrategy.RECURSIVE,
-            "hybrid", "recursive"  # Allow string values too
+            "hybrid",
+            "recursive",  # Allow string values too
         ]
         assert result.alternatives is not None and len(result.alternatives) > 0
 
@@ -812,7 +818,7 @@ class TestConcurrency:
                 "performance_metrics": {},
                 "processing_time_ms": 0,
                 "cached": True,
-                "expires_at": datetime.now(UTC).isoformat()
+                "expires_at": datetime.now(UTC).isoformat(),
             }
         )
 
