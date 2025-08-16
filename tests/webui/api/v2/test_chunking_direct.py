@@ -16,6 +16,16 @@ from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
     ValidationError,
 )
+from packages.webui.services.dtos.chunking_dtos import (
+    ServiceChunkPreview,
+    ServiceChunkingStats,
+    ServiceCompareResponse,
+    ServicePreviewResponse,
+    ServiceStrategyComparison,
+    ServiceStrategyInfo,
+    ServiceStrategyMetrics,
+    ServiceStrategyRecommendation,
+)
 from packages.webui.api.v2.chunking import (
     compare_strategies,
     generate_preview,
@@ -52,114 +62,111 @@ def mock_chunking_service() -> AsyncMock:
 
     # Setup default responses
     service.get_available_strategies_for_api.return_value = [
-        {
-            "id": "recursive",
-            "name": "Recursive",
-            "description": "Recursively splits text",
-            "default_config": {
+        ServiceStrategyInfo(
+            id="recursive",
+            name="Recursive",
+            description="Recursively splits text",
+            default_config={
                 "strategy": ChunkingStrategy.RECURSIVE,
                 "chunk_size": 1000,
                 "chunk_overlap": 100,
                 "preserve_sentences": True,
             },
-            "best_for": ["text", "markdown", "code"],
-            "pros": ["Good for structured text"],
-            "cons": ["May split sentences"],
-            "performance_characteristics": {"speed": "fast", "quality": "good"},
-        }
+            best_for=["text", "markdown", "code"],
+            pros=["Good for structured text"],
+            cons=["May split sentences"],
+            performance_characteristics={"speed": "fast", "quality": "good"},
+        )
     ]
 
-    service.get_strategy_details.return_value = {
-        "id": "recursive",
-        "name": "Recursive",
-        "description": "Recursively splits text",
-        "default_config": {
+    service.get_strategy_details.return_value = ServiceStrategyInfo(
+        id="recursive",
+        name="Recursive",
+        description="Recursively splits text",
+        default_config={
             "strategy": ChunkingStrategy.RECURSIVE,
             "chunk_size": 1000,
             "chunk_overlap": 100,
             "preserve_sentences": True,
         },
-        "best_for": ["text", "markdown", "code"],
-        "pros": ["Good for structured text"],
-        "cons": ["May split sentences"],
-        "performance_characteristics": {"speed": "fast", "quality": "good"},
-    }
+        best_for=["text", "markdown", "code"],
+        pros=["Good for structured text"],
+        cons=["May split sentences"],
+        performance_characteristics={"speed": "fast", "quality": "good"},
+    )
 
-    service.recommend_strategy.return_value = {
-        "strategy": ChunkingStrategy.RECURSIVE,
-        "reasoning": "Best for mixed content",
-        "confidence": 0.85,
-        "chunk_size": 1000,
-        "chunk_overlap": 100,
-        "alternatives": [],
-    }
+    service.recommend_strategy.return_value = ServiceStrategyRecommendation(
+        strategy=ChunkingStrategy.RECURSIVE,
+        reasoning="Best for mixed content",
+        confidence=0.85,
+        chunk_size=1000,
+        chunk_overlap=100,
+        alternatives=[],
+    )
 
-    service.preview_chunking.return_value = {
-        "preview_id": "test-preview-id",
-        "strategy": ChunkingStrategy.RECURSIVE,
-        "config": {
+    service.preview_chunking.return_value = ServicePreviewResponse(
+        preview_id="test-preview-id",
+        strategy=ChunkingStrategy.RECURSIVE,
+        config={
             "strategy": ChunkingStrategy.RECURSIVE,
             "chunk_size": 1000,
             "chunk_overlap": 100,
         },
-        "chunks": [
-            {"content": "Test chunk 1", "metadata": {"index": 0}},
-            {"content": "Test chunk 2", "metadata": {"index": 1}},
+        chunks=[
+            ServiceChunkPreview(index=0, content="Test chunk 1", metadata={}),
+            ServiceChunkPreview(index=1, content="Test chunk 2", metadata={}),
         ],
-        "total_chunks": 2,
-        "processing_time_ms": 50,
-        "cached": False,
-        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
-    }
+        total_chunks=2,
+        processing_time_ms=50,
+        cached=False,
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+    )
 
-    service.get_cached_preview_by_id.return_value = {
-        "preview_id": "cached-preview-id",
-        "strategy": ChunkingStrategy.RECURSIVE,
-        "config": {
+    service.get_cached_preview_by_id.return_value = ServicePreviewResponse(
+        preview_id="cached-preview-id",
+        strategy=ChunkingStrategy.RECURSIVE,
+        config={
             "strategy": ChunkingStrategy.RECURSIVE,
             "chunk_size": 1000,
             "chunk_overlap": 100,
         },
-        "chunks": [{"content": "Cached chunk", "metadata": {}}],
-        "total_chunks": 1,
-        "processing_time_ms": 50,
-        "cached": True,
-        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
-    }
+        chunks=[ServiceChunkPreview(index=0, content="Cached chunk", metadata={})],
+        total_chunks=1,
+        processing_time_ms=50,
+        cached=True,
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+    )
 
-    service.compare_strategies_for_api.return_value = {
-        "comparison_id": "comp-123",
-        "comparisons": [
-            {
-                "strategy": ChunkingStrategy.RECURSIVE,
-                "config": {
+    service.compare_strategies_for_api.return_value = ServiceCompareResponse(
+        comparison_id="comp-123",
+        comparisons=[
+            ServiceStrategyComparison(
+                strategy=ChunkingStrategy.RECURSIVE,
+                config={
                     "strategy": ChunkingStrategy.RECURSIVE,
                     "chunk_size": 1000,
                     "chunk_overlap": 100,
                 },
-                "sample_chunks": [],
-                "total_chunks": 10,
-                "avg_chunk_size": 500.0,
-                "size_variance": 0.1,
-                "quality_score": 0.85,
-                "processing_time_ms": 100,
-                "pros": ["Good for structured text"],
-                "cons": ["May split sentences"],
-            }
+                sample_chunks=[],
+                total_chunks=10,
+                avg_chunk_size=500.0,
+                size_variance=0.1,
+                quality_score=0.85,
+                processing_time_ms=100,
+                pros=["Good for structured text"],
+                cons=["May split sentences"],
+            )
         ],
-        "recommendation": {
-            "recommended_strategy": ChunkingStrategy.RECURSIVE,
-            "confidence": 0.9,
-            "reasoning": "Best balance of chunk size and count",
-            "alternative_strategies": [],
-            "suggested_config": {
-                "strategy": ChunkingStrategy.RECURSIVE,
-                "chunk_size": 1000,
-                "chunk_overlap": 100,
-            },
-        },
-        "processing_time_ms": 100,
-    }
+        recommendation=ServiceStrategyRecommendation(
+            strategy=ChunkingStrategy.RECURSIVE,
+            confidence=0.9,
+            reasoning="Best balance of chunk size and count",
+            alternatives=[],
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        processing_time_ms=100,
+    )
 
     service.start_chunking_operation.return_value = (
         "chunking:coll-123:op-123",  # websocket_channel
@@ -178,18 +185,18 @@ def mock_chunking_service() -> AsyncMock:
         "errors": [],
     }
 
-    service.get_collection_chunk_stats.return_value = {
-        "total_chunks": 100,
-        "total_documents": 10,
-        "average_chunk_size": 500,
-        "min_chunk_size": 100,
-        "max_chunk_size": 1000,
-        "size_variance": 0.2,
-        "strategy": "fixed_size",
-        "last_updated": datetime.now(UTC),
-        "processing_time": 120.0,
-        "performance_metrics": {"quality": 0.85},
-    }
+    service.get_collection_chunk_stats.return_value = ServiceChunkingStats(
+        total_chunks=100,
+        total_documents=10,
+        avg_chunk_size=500,
+        min_chunk_size=100,
+        max_chunk_size=1000,
+        size_variance=0.2,
+        strategy_used="fixed_size",
+        last_updated=datetime.now(UTC),
+        processing_time_seconds=120.0,
+        quality_metrics={"quality": 0.85},
+    )
 
     return service
 
