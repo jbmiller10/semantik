@@ -106,9 +106,7 @@ class TestChunkingProcessor:
         config = {}
 
         # Should use fallback without raising error
-        chunks = await processor.process_document(
-            content, strategy, config, use_fallback=True
-        )
+        chunks = await processor.process_document(content, strategy, config, use_fallback=True)
 
         assert len(chunks) > 0
         assert chunks[0]["strategy"] == "fallback"
@@ -140,9 +138,7 @@ class TestChunkingCache:
         preview_data = {"chunks": ["chunk1", "chunk2"], "statistics": {}}
 
         # Cache the preview
-        cache_key = await cache.cache_preview(
-            content_hash, strategy, config, preview_data
-        )
+        cache_key = await cache.cache_preview(content_hash, strategy, config, preview_data)
         assert cache_key
 
         # Mock Redis to return cached data
@@ -155,6 +151,7 @@ class TestChunkingCache:
 
     async def test_clear_cache(self, cache):
         """Test cache clearing."""
+
         # Create an async iterator for scan_iter
         async def async_iterator():
             for key in ["key1", "key2"]:
@@ -332,7 +329,7 @@ class TestChunkingOrchestrator:
 
         assert len(result.comparisons) == 2
         assert result.recommendation is not None
-        assert all(hasattr(comp, 'total_chunks') for comp in result.comparisons)
+        assert all(hasattr(comp, "total_chunks") for comp in result.comparisons)
 
     async def test_execute_ingestion_chunking(self, orchestrator):
         """Test chunking for ingestion."""
