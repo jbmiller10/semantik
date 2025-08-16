@@ -33,9 +33,11 @@ async def test_preview_success() -> None:
     mock_strategy = Mock()
     mock_chunk = Mock()
     mock_chunk.content = "This is test"
-    mock_chunk.start_offset = 0
-    mock_chunk.end_offset = 12
-    mock_chunk.token_count = 3
+    # Add metadata attribute with proper structure
+    mock_chunk.metadata = Mock()
+    mock_chunk.metadata.start_offset = 0
+    mock_chunk.metadata.end_offset = 12
+    mock_chunk.metadata.token_count = 3
     mock_strategy.chunk = Mock(return_value=[mock_chunk] * 10)
     mock_strategy_factory.create_strategy.return_value = mock_strategy
 
@@ -45,6 +47,7 @@ async def test_preview_success() -> None:
     mock_notification_service.notify_operation_completed = AsyncMock()
     mock_notification_service.notify_operation_failed = AsyncMock()
     mock_notification_service.notify_error = AsyncMock()
+    mock_notification_service.notify_preview_generated = AsyncMock()
 
     # Create use case
     use_case = PreviewChunkingUseCase(
@@ -91,6 +94,7 @@ async def test_preview_validation_error() -> None:
     mock_notification_service = Mock()
     mock_notification_service.notify_operation_failed = AsyncMock()
     mock_notification_service.notify_error = AsyncMock()
+    mock_notification_service.notify_preview_generated = AsyncMock()
 
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
@@ -125,6 +129,7 @@ async def test_preview_file_not_found() -> None:
     mock_notification_service.notify_operation_started = AsyncMock()
     mock_notification_service.notify_operation_failed = AsyncMock()
     mock_notification_service.notify_error = AsyncMock()
+    mock_notification_service.notify_preview_generated = AsyncMock()
 
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
@@ -158,9 +163,11 @@ async def test_preview_with_metrics_service() -> None:
     mock_strategy = Mock()
     mock_chunk = Mock()
     mock_chunk.content = "Test"
-    mock_chunk.start_offset = 0
-    mock_chunk.end_offset = 4
-    mock_chunk.token_count = 1
+    # Add metadata attribute with proper structure
+    mock_chunk.metadata = Mock()
+    mock_chunk.metadata.start_offset = 0
+    mock_chunk.metadata.end_offset = 4
+    mock_chunk.metadata.token_count = 1
     mock_strategy.chunk = Mock(return_value=[mock_chunk] * 3)
     mock_strategy_factory.create_strategy.return_value = mock_strategy
 
@@ -169,6 +176,7 @@ async def test_preview_with_metrics_service() -> None:
     mock_notification_service.notify_operation_completed = AsyncMock()
     mock_notification_service.notify_operation_failed = AsyncMock()
     mock_notification_service.notify_error = AsyncMock()
+    mock_notification_service.notify_preview_generated = AsyncMock()
 
     # Mock metrics service
     mock_metrics_service = Mock()
