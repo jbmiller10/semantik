@@ -128,7 +128,6 @@ class TestStrategyManagement:
     def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
         # Import the config class and DTOs
-        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase
         from packages.webui.services.dtos import ServiceStrategyInfo
 
         # Set up mock return value with DTOs
@@ -272,7 +271,7 @@ class TestStrategyManagement:
     def test_get_strategy_details_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for a specific strategy."""
         # Import the config class and DTOs
-        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+        from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
         from packages.webui.services.dtos import ServiceStrategyInfo
 
         # Setup mock with DTO
@@ -547,7 +546,6 @@ class TestPreviewOperations:
     def test_compare_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy comparison."""
         # Import the config class and DTOs
-        from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
         from packages.webui.services.dtos import (
             ServiceChunkPreview,
             ServiceCompareResponse,
