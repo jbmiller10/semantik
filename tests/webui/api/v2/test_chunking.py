@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient  # noqa: E402
 import packages.webui.background_tasks as bg_tasks  # noqa: E402
 from packages.shared.config import settings  # noqa: E402
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy  # noqa: E402
-from packages.webui.auth import get_current_user  # noqa: E402
 from packages.webui.dependencies import get_collection_for_user  # noqa: E402
 from packages.webui.services.chunking_service import ChunkingService  # noqa: E402
 from packages.webui.services.collection_service import CollectionService  # noqa: E402
@@ -81,14 +80,14 @@ def mock_ws_manager() -> AsyncMock:
 
 
 @pytest.fixture()
-def client(
-    mock_user: dict[str, Any],
+def client_with_services(
+    authenticated_client_v2: TestClient,
     mock_chunking_service: AsyncMock,
     mock_collection_service: AsyncMock,
     mock_collection: dict[str, Any],
     mock_ws_manager: AsyncMock,
 ) -> TestClient:
-    """Create a test client with mocked dependencies."""
+    """Create a test client with mocked dependencies and authentication."""
     global app, chunking_module, get_chunking_service, get_collection_service
 
     # Check if already imported
@@ -104,8 +103,7 @@ def client(
         get_chunking_service = _get_chunking_service
         get_collection_service = _get_collection_service
 
-    # Override dependencies
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    # Override service dependencies (auth is already handled by authenticated_client_v2)
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
     app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
     app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
@@ -113,19 +111,21 @@ def client(
     # Replace ws_manager
     chunking_module.ws_manager = mock_ws_manager
 
-    # Create test client
-    client = TestClient(app)
+    yield authenticated_client_v2
 
-    yield client
-
-    # Clean up
-    app.dependency_overrides.clear()
+    # Clean up service overrides (but not auth overrides from authenticated_client_v2)
+    if get_chunking_service in app.dependency_overrides:
+        del app.dependency_overrides[get_chunking_service]
+    if get_collection_service in app.dependency_overrides:
+        del app.dependency_overrides[get_collection_service]
+    if get_collection_for_user in app.dependency_overrides:
+        del app.dependency_overrides[get_collection_for_user]
 
 
 class TestStrategyManagement:
     """Test strategy management endpoints."""
 
-    def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_list_strategies_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
         # Import the config class
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase
@@ -206,7 +206,7 @@ class TestStrategyManagement:
 
         mock_chunking_service.get_available_strategies_for_api.return_value = mock_strategies
 
-        response = client.get("/api/v2/chunking/strategies")
+        response = client_with_services.get("/api/v2/chunking/strategies")
 
         assert response.status_code == status.HTTP_200_OK
         strategies = response.json()
@@ -240,17 +240,8 @@ class TestStrategyManagement:
         # Clear any existing dependency overrides
         app.dependency_overrides.clear()
 
-        # Mock the auth to always raise 401
-        def mock_get_current_user() -> None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Not authenticated",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        app.dependency_overrides[get_current_user] = mock_get_current_user
-
         try:
+            # Without authentication, this should return 401
             response = client.get("/api/v2/chunking/strategies")
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
         finally:
@@ -259,7 +250,7 @@ class TestStrategyManagement:
             # Restore original setting
             settings.DISABLE_AUTH = original_disable_auth
 
-    def test_get_strategy_details_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_strategy_details_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for a specific strategy."""
         # Import the config class
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
@@ -278,7 +269,7 @@ class TestStrategyManagement:
             "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
         }
 
-        response = client.get("/api/v2/chunking/strategies/fixed_size")
+        response = client_with_services.get("/api/v2/chunking/strategies/fixed_size")
 
         assert response.status_code == status.HTTP_200_OK
         strategy = response.json()
@@ -290,17 +281,17 @@ class TestStrategyManagement:
         assert isinstance(strategy["pros"], list)
         assert isinstance(strategy["cons"], list)
 
-    def test_get_strategy_details_not_found(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_strategy_details_not_found(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for non-existent strategy."""
         # Setup mock to return None for invalid strategy
         mock_chunking_service.get_strategy_details.return_value = None
 
-        response = client.get("/api/v2/chunking/strategies/invalid_strategy")
+        response = client_with_services.get("/api/v2/chunking/strategies/invalid_strategy")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
         assert "not found" in response.json()["detail"].lower()
 
-    def test_recommend_strategy_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_recommend_strategy_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy recommendation."""
         # Setup mock
         mock_chunking_service.recommend_strategy.return_value = {
@@ -312,7 +303,7 @@ class TestStrategyManagement:
             "chunk_overlap": 50,
         }
 
-        response = client.post("/api/v2/chunking/strategies/recommend", params={"file_types": ["pdf", "docx"]})
+        response = client_with_services.post("/api/v2/chunking/strategies/recommend", params={"file_types": ["pdf", "docx"]})
 
         assert response.status_code == status.HTTP_200_OK
         recommendation = response.json()
@@ -323,11 +314,11 @@ class TestStrategyManagement:
         assert len(recommendation["alternative_strategies"]) == 1
         assert "suggested_config" in recommendation
 
-    def test_recommend_strategy_error(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_recommend_strategy_error(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test strategy recommendation when service fails."""
         mock_chunking_service.recommend_strategy.side_effect = Exception("Service error")
 
-        response = client.post("/api/v2/chunking/strategies/recommend", params={"file_types": ["txt"]})
+        response = client_with_services.post("/api/v2/chunking/strategies/recommend", params={"file_types": ["txt"]})
 
         assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -335,7 +326,7 @@ class TestStrategyManagement:
 class TestPreviewOperations:
     """Test preview operation endpoints."""
 
-    def test_generate_preview_with_content(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_generate_preview_with_content(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test generating preview with provided content."""
         # Setup mock
         preview_id = str(uuid.uuid4())
@@ -382,7 +373,7 @@ class TestPreviewOperations:
             "include_metrics": True,
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
@@ -394,7 +385,7 @@ class TestPreviewOperations:
         assert "metrics" in preview
         assert preview["processing_time_ms"] == 100
 
-    def test_generate_preview_with_document_id(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_generate_preview_with_document_id(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test generating preview with document ID."""
         # Setup mock
         preview_id = str(uuid.uuid4())
@@ -419,7 +410,7 @@ class TestPreviewOperations:
             "strategy": "semantic",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
@@ -427,7 +418,7 @@ class TestPreviewOperations:
         assert preview["preview_id"] == preview_id
         assert preview["cached"] is True
 
-    def test_generate_preview_missing_input(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_generate_preview_missing_input(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation without content or document_id."""
         # Setup mock to raise ValidationError
         from packages.shared.chunking.infrastructure.exceptions import ValidationError
@@ -440,12 +431,12 @@ class TestPreviewOperations:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "document_id or content must be provided" in response.json()["detail"]
 
-    def test_generate_preview_content_too_large(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_generate_preview_content_too_large(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation with content exceeding size limit."""
         # Setup mock to raise DocumentTooLargeError
         from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError
@@ -462,12 +453,12 @@ class TestPreviewOperations:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         # ChunkingMemoryError returns 507 (Insufficient Storage)
         assert response.status_code == status.HTTP_507_INSUFFICIENT_STORAGE
 
-    def test_generate_preview_with_null_bytes(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_generate_preview_with_null_bytes(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview generation with invalid content containing null bytes."""
         # Setup mock to raise ValidationError
         from packages.shared.chunking.infrastructure.exceptions import ValidationError
@@ -481,14 +472,14 @@ class TestPreviewOperations:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "null bytes" in response.json()["detail"].lower()
 
     @patch("packages.webui.api.v2.chunking.limiter")
     def test_generate_preview_rate_limiting(
-        self, mock_limiter: MagicMock, client: TestClient, mock_chunking_service: AsyncMock
+        self, mock_limiter: MagicMock, client_with_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test that preview generation is rate limited."""
         # Mock rate limiter to simulate rate limit exceeded
@@ -511,10 +502,10 @@ class TestPreviewOperations:
             "processing_time_ms": 100,
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
         assert response.status_code == status.HTTP_200_OK
 
-    def test_compare_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_compare_strategies_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy comparison."""
         # Import the config class
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
@@ -594,7 +585,7 @@ class TestPreviewOperations:
             "max_chunks_per_strategy": 5,
         }
 
-        response = client.post("/api/v2/chunking/compare", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/compare", json=request_data)
 
         # Debug output if test fails
         if response.status_code != status.HTTP_200_OK:
@@ -609,7 +600,7 @@ class TestPreviewOperations:
         assert comparison["recommendation"]["recommended_strategy"] == "semantic"  # Higher quality score
         assert comparison["recommendation"]["confidence"] == 0.85
 
-    def test_get_cached_preview_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_cached_preview_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test retrieving cached preview results."""
         preview_id = str(uuid.uuid4())
         mock_chunking_service.get_cached_preview_by_id.return_value = {
@@ -623,26 +614,26 @@ class TestPreviewOperations:
             "expires_at": (datetime.now(tz=UTC) + timedelta(minutes=15)).isoformat(),
         }
 
-        response = client.get(f"/api/v2/chunking/preview/{preview_id}")
+        response = client_with_services.get(f"/api/v2/chunking/preview/{preview_id}")
 
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
         assert preview["preview_id"] == preview_id
 
-    def test_get_cached_preview_not_found(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_cached_preview_not_found(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test retrieving non-existent preview."""
         mock_chunking_service.get_cached_preview_by_id.return_value = None
 
-        response = client.get(f"/api/v2/chunking/preview/{uuid.uuid4()}")
+        response = client_with_services.get(f"/api/v2/chunking/preview/{uuid.uuid4()}")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_clear_preview_cache_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_clear_preview_cache_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test clearing preview cache."""
         preview_id = str(uuid.uuid4())
         mock_chunking_service.clear_preview_cache.return_value = None
 
-        response = client.delete(f"/api/v2/chunking/preview/{preview_id}")
+        response = client_with_services.delete(f"/api/v2/chunking/preview/{preview_id}")
 
         assert response.status_code == status.HTTP_204_NO_CONTENT
 
@@ -690,7 +681,7 @@ class TestCollectionProcessing:
             "priority": 8,
         }
 
-        response = client.post(
+        response = client_with_services.post(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk", json=request_data
         )
 
@@ -703,7 +694,7 @@ class TestCollectionProcessing:
         assert "websocket_channel" in operation_response
 
     def test_start_chunking_operation_invalid_config(
-        self, client: TestClient, mock_chunking_service: AsyncMock
+        self, client_with_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test starting operation with invalid configuration."""
         mock_chunking_service.validate_config_for_collection.return_value = {
@@ -721,7 +712,7 @@ class TestCollectionProcessing:
             },
         }
 
-        response = client.post(
+        response = client_with_services.post(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk", json=request_data
         )
 
@@ -729,7 +720,7 @@ class TestCollectionProcessing:
         assert "Invalid configuration" in response.json()["detail"]
 
     def test_update_chunking_strategy_with_reprocess(
-        self, client: TestClient, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection_service: AsyncMock
     ) -> None:
         """Test updating chunking strategy with reprocessing."""
         operation_id = str(uuid.uuid4())
@@ -752,7 +743,7 @@ class TestCollectionProcessing:
             "reprocess_existing": True,
         }
 
-        response = client.patch(
+        response = client_with_services.patch(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-strategy", json=request_data
         )
 
@@ -762,7 +753,7 @@ class TestCollectionProcessing:
         assert operation_response["status"] == "pending"
 
     def test_update_chunking_strategy_without_reprocess(
-        self, client: TestClient, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection_service: AsyncMock
     ) -> None:
         """Test updating chunking strategy without reprocessing."""
         mock_collection_service.update_collection.return_value = None
@@ -772,7 +763,7 @@ class TestCollectionProcessing:
             "reprocess_existing": False,
         }
 
-        response = client.patch(
+        response = client_with_services.patch(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-strategy", json=request_data
         )
 
@@ -780,9 +771,9 @@ class TestCollectionProcessing:
         operation_response = response.json()
         assert operation_response["status"] == "completed"
 
-    def test_get_collection_chunks_paginated(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_collection_chunks_paginated(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting paginated chunks for a collection."""
-        response = client.get(
+        response = client_with_services.get(
             "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunks",
             params={"page": 1, "page_size": 20},
         )
@@ -795,7 +786,7 @@ class TestCollectionProcessing:
         assert chunk_list["page"] == 1
         assert chunk_list["page_size"] == 20
 
-    def test_get_chunking_stats_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_chunking_stats_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
         # Return a dictionary as expected by the endpoint
         mock_stats = {
@@ -813,7 +804,7 @@ class TestCollectionProcessing:
 
         mock_chunking_service.get_collection_chunk_stats.return_value = mock_stats
 
-        response = client.get("/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats")
+        response = client_with_services.get("/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunking-stats")
 
         assert response.status_code == status.HTTP_200_OK
         stats = response.json()
@@ -827,9 +818,9 @@ class TestCollectionProcessing:
 class TestAnalyticsEndpoints:
     """Test analytics and metrics endpoints."""
 
-    def test_get_global_metrics_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_global_metrics_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting global chunking metrics."""
-        response = client.get("/api/v2/chunking/metrics", params={"period_days": 30})
+        response = client_with_services.get("/api/v2/chunking/metrics", params={"period_days": 30})
 
         assert response.status_code == status.HTTP_200_OK
         metrics = response.json()
@@ -841,9 +832,9 @@ class TestAnalyticsEndpoints:
         assert "most_used_strategy" in metrics
         assert "success_rate" in metrics
 
-    def test_get_metrics_by_strategy_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_metrics_by_strategy_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting metrics grouped by strategy."""
-        response = client.get("/api/v2/chunking/metrics/by-strategy", params={"period_days": 30})
+        response = client_with_services.get("/api/v2/chunking/metrics/by-strategy", params={"period_days": 30})
 
         assert response.status_code == status.HTTP_200_OK
         metrics_list = response.json()
@@ -858,9 +849,9 @@ class TestAnalyticsEndpoints:
         assert "avg_processing_time" in first_metric
         assert "success_rate" in first_metric
 
-    def test_get_quality_scores_for_collection(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_quality_scores_for_collection(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting quality analysis for a specific collection."""
-        response = client.get(
+        response = client_with_services.get(
             "/api/v2/chunking/quality-scores", params={"collection_id": "123e4567-e89b-12d3-a456-426614174000"}
         )
 
@@ -874,7 +865,7 @@ class TestAnalyticsEndpoints:
         assert "recommendations" in quality
         assert isinstance(quality["recommendations"], list)
 
-    def test_analyze_document_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_analyze_document_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test document analysis for strategy recommendation."""
         mock_chunking_service.recommend_strategy.return_value = {
             "strategy": ChunkingStrategy.DOCUMENT_STRUCTURE,
@@ -889,7 +880,7 @@ class TestAnalyticsEndpoints:
             "content_sample": "# Heading 1\nContent...\n## Heading 2\nMore content...",
         }
 
-        response = client.post("/api/v2/chunking/analyze", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/analyze", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
         analysis = response.json()
@@ -904,7 +895,7 @@ class TestAnalyticsEndpoints:
 class TestConfigurationManagement:
     """Test configuration management endpoints."""
 
-    def test_save_configuration_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_save_configuration_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test saving a custom chunking configuration."""
         request_data = {
             "name": "My Custom Config",
@@ -920,7 +911,7 @@ class TestConfigurationManagement:
             "tags": ["technical", "documentation"],
         }
 
-        response = client.post("/api/v2/chunking/configs", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/configs", json=request_data)
 
         assert response.status_code == status.HTTP_201_CREATED
         saved_config = response.json()
@@ -931,19 +922,19 @@ class TestConfigurationManagement:
         assert saved_config["is_default"] is False
         assert len(saved_config["tags"]) == 2
 
-    def test_list_configurations_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_list_configurations_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test listing saved configurations."""
-        response = client.get("/api/v2/chunking/configs")
+        response = client_with_services.get("/api/v2/chunking/configs")
 
         assert response.status_code == status.HTTP_200_OK
         configs = response.json()
         assert isinstance(configs, list)
 
     def test_list_configurations_filtered_by_strategy(
-        self, client: TestClient, mock_chunking_service: AsyncMock
+        self, client_with_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test listing configurations filtered by strategy."""
-        response = client.get("/api/v2/chunking/configs", params={"strategy": "semantic"})
+        response = client_with_services.get("/api/v2/chunking/configs", params={"strategy": "semantic"})
 
         assert response.status_code == status.HTTP_200_OK
         configs = response.json()
@@ -953,7 +944,7 @@ class TestConfigurationManagement:
 class TestProgressTracking:
     """Test operation progress tracking."""
 
-    def test_get_operation_progress_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_operation_progress_success(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting progress of a chunking operation."""
         operation_id = str(uuid.uuid4())
         mock_chunking_service.get_chunking_progress.return_value = {
@@ -967,7 +958,7 @@ class TestProgressTracking:
             "errors": [],
         }
 
-        response = client.get(f"/api/v2/chunking/operations/{operation_id}/progress")
+        response = client_with_services.get(f"/api/v2/chunking/operations/{operation_id}/progress")
 
         assert response.status_code == status.HTTP_200_OK
         progress = response.json()
@@ -978,11 +969,11 @@ class TestProgressTracking:
         assert progress["documents_processed"] == 5
         assert progress["total_documents"] == 11
 
-    def test_get_operation_progress_not_found(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_get_operation_progress_not_found(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting progress for non-existent operation."""
         mock_chunking_service.get_chunking_progress.return_value = None
 
-        response = client.get(f"/api/v2/chunking/operations/{uuid.uuid4()}/progress")
+        response = client_with_services.get(f"/api/v2/chunking/operations/{uuid.uuid4()}/progress")
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -1042,7 +1033,7 @@ class TestSecurityAndValidation:
             },
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         # Should fail validation due to chunk_size being below minimum (100)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
@@ -1060,12 +1051,12 @@ class TestSecurityAndValidation:
             },
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         # Should fail validation due to overlap being greater than chunk size
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
-    def test_sql_injection_attempt(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_sql_injection_attempt(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test that SQL injection attempts are properly handled."""
         # Setup mock to return a valid response if validation passes
         mock_chunking_service.track_preview_usage.return_value = None
@@ -1091,7 +1082,7 @@ class TestSecurityAndValidation:
                 "strategy": "fixed_size",
             }
 
-            response = client.post("/api/v2/chunking/preview", json=request_data)
+            response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
             # Should process normally without executing SQL
             assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
@@ -1105,7 +1096,7 @@ class TestSecurityAndValidation:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         # Should process without executing script
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
@@ -1115,7 +1106,7 @@ class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
     @pytest.mark.skipif(os.getenv("CI", "false").lower() == "true", reason="Requires full application context")
-    def test_empty_content_preview(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_empty_content_preview(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview with empty content."""
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = {
@@ -1132,13 +1123,13 @@ class TestEdgeCases:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
         preview = response.json()
         assert preview["total_chunks"] == 0
 
-    def test_unicode_content_handling(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_unicode_content_handling(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test handling of unicode content."""
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = {
@@ -1164,7 +1155,7 @@ class TestEdgeCases:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
 
@@ -1205,7 +1196,7 @@ class TestEdgeCases:
                 "document_ids": [f"doc{i}"],
             }
 
-            response = client.post(
+            response = client_with_services.post(
                 "/api/v2/chunking/collections/123e4567-e89b-12d3-a456-426614174000/chunk", json=request_data
             )
 
@@ -1218,7 +1209,7 @@ class TestEdgeCases:
             "strategy": "invalid_strategy_name",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
@@ -1226,7 +1217,7 @@ class TestEdgeCases:
 class TestPerformance:
     """Test performance-related aspects."""
 
-    def test_large_document_handling(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_large_document_handling(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test handling of large documents."""
         # Create a large but valid document (under 10MB limit)
         large_content = "Lorem ipsum " * 100000  # Approximately 1.2MB
@@ -1246,12 +1237,12 @@ class TestPerformance:
             "strategy": "fixed_size",
         }
 
-        response = client.post("/api/v2/chunking/preview", json=request_data)
+        response = client_with_services.post("/api/v2/chunking/preview", json=request_data)
 
         assert response.status_code == status.HTTP_200_OK
 
     @pytest.mark.skipif(os.getenv("CI", "false").lower() == "true", reason="Requires full application context")
-    def test_preview_caching_behavior(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
+    def test_preview_caching_behavior(self, client_with_services: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test that preview results are cached properly."""
         preview_id = str(uuid.uuid4())
 

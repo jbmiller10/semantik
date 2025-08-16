@@ -20,7 +20,8 @@ from packages.shared.chunking.infrastructure.exceptions import (
 from packages.shared.chunking.infrastructure.exceptions import (
     ValidationError as ChunkingValidationError,
 )
-from packages.webui.auth import create_access_token, get_current_user
+# Import the authenticated_client_v2 fixture from integration conftest
+# It's available automatically from tests/integration/conftest.py
 from packages.webui.dependencies import get_collection_for_user
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
@@ -36,13 +37,6 @@ os.environ["TESTING"] = "true"
 def mock_user():
     """Create a mock authenticated user."""
     return {"id": 1, "username": "testuser", "email": "test@example.com"}
-
-
-@pytest.fixture()
-def auth_headers(mock_user):
-    """Create authorization headers with a test JWT token."""
-    token = create_access_token(data={"sub": mock_user["username"]})
-    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture()
@@ -322,13 +316,10 @@ def mock_collection():
 
 
 @pytest.fixture()
-def client_with_mocked_services(mock_user, mock_chunking_service, mock_collection_service, mock_collection):
+def client_with_mocked_services(authenticated_client_v2, mock_chunking_service, mock_collection_service, mock_collection):
     """Create a test client with mocked services."""
 
-    # Override dependencies
-    async def override_get_current_user():
-        return mock_user
-
+    # Override service dependencies (auth is already handled by authenticated_client_v2)
     async def override_get_collection_for_user(
         collection_uuid: str = None,  # noqa: ARG001
         current_user: dict = None,  # noqa: ARG001
@@ -336,54 +327,25 @@ def client_with_mocked_services(mock_user, mock_chunking_service, mock_collectio
     ):
         return mock_collection
 
-    app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
     app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
 
-    # Mock the lifespan events to prevent real database connections
-    with (
-        patch("packages.webui.main.pg_connection_manager") as mock_pg,
-        patch("packages.webui.main.ws_manager") as mock_ws,
-    ):
-        # Mock the async methods
-        mock_pg.initialize = AsyncMock()
-        mock_ws.startup = AsyncMock()
-        mock_ws.shutdown = AsyncMock()
+    yield authenticated_client_v2
 
-        with TestClient(app) as client:
-            yield client
-
-    app.dependency_overrides.clear()
+    # Clean up service overrides (but not auth overrides from authenticated_client_v2)
+    if get_collection_for_user in app.dependency_overrides:
+        del app.dependency_overrides[get_collection_for_user]
+    if get_chunking_service in app.dependency_overrides:
+        del app.dependency_overrides[get_chunking_service]
+    if get_collection_service in app.dependency_overrides:
+        del app.dependency_overrides[get_collection_service]
 
 
 @pytest.fixture()
 def unauthenticated_client():
     """Create a test client without authentication."""
-    from fastapi import Depends, HTTPException
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-    from packages.webui.auth import get_current_user
-
     app.dependency_overrides.clear()
-
-    # Override get_current_user to always raise 401 with the appropriate message
-    async def mock_get_current_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))):
-        # Check if any credentials were provided
-        if not credentials:
-            raise HTTPException(
-                status_code=401,
-                detail="Not authenticated",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        # If credentials provided but invalid
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    app.dependency_overrides[get_current_user] = mock_get_current_user
 
     # Mock the lifespan events to prevent real database connections
     with (
@@ -406,13 +368,13 @@ class TestStrategyEndpoints:
     """Test strategy management endpoints."""
 
     def test_list_strategies_success(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]
+        self, client_with_mocked_services: TestClient
     ) -> None:
         """Test successful listing of available chunking strategies."""
         # Act
         response = client_with_mocked_services.get(
             "/api/v2/chunking/strategies",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -443,12 +405,12 @@ class TestStrategyEndpoints:
         assert response.status_code == 401
         assert "Not authenticated" in response.json()["detail"]
 
-    def test_get_strategy_details(self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_strategy_details(self, client_with_mocked_services: TestClient) -> None:
         """Test getting strategy details."""
         # Act
         response = client_with_mocked_services.get(
             "/api/v2/chunking/strategies/recursive",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -457,12 +419,12 @@ class TestStrategyEndpoints:
         assert strategy["id"] == "recursive"
         assert strategy["name"] == "Recursive"
 
-    def test_recommend_strategy(self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_recommend_strategy(self, client_with_mocked_services: TestClient) -> None:
         """Test strategy recommendation."""
         # Act
         response = client_with_mocked_services.post(
             "/api/v2/chunking/strategies/recommend",
-            headers=auth_headers,
+            
             params={"file_types": ["markdown", "md"]},
         )
 
@@ -477,7 +439,7 @@ class TestPreviewEndpoints:
     """Test preview endpoints."""
 
     def test_generate_preview_success(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]
+        self, client_with_mocked_services: TestClient
     ) -> None:
         """Test successful preview generation."""
         # Arrange
@@ -494,7 +456,7 @@ class TestPreviewEndpoints:
         # Act
         response = client_with_mocked_services.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json=preview_request,
         )
 
@@ -510,7 +472,7 @@ class TestPreviewEndpoints:
         assert preview["total_chunks"] == 2
 
     def test_generate_preview_validation_error(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_mocked_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test preview generation with validation error."""
         # Arrange
@@ -531,7 +493,7 @@ class TestPreviewEndpoints:
         # Act
         response = client_with_mocked_services.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json=preview_request,
         )
 
@@ -539,7 +501,7 @@ class TestPreviewEndpoints:
         assert response.status_code == 400
         assert "Content cannot be empty" in response.json()["detail"]
 
-    def test_compare_strategies(self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_compare_strategies(self, client_with_mocked_services: TestClient) -> None:
         """Test strategy comparison."""
         # Arrange
         compare_request = {
@@ -562,7 +524,7 @@ class TestPreviewEndpoints:
         # Act
         response = client_with_mocked_services.post(
             "/api/v2/chunking/compare",
-            headers=auth_headers,
+            
             json=compare_request,
         )
 
@@ -579,7 +541,7 @@ class TestOperationEndpoints:
     """Test chunking operation endpoints."""
 
     def test_start_chunking_operation(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_collection: dict[str, Any]
+        self, client_with_mocked_services: TestClient, mock_collection: dict[str, Any]
     ) -> None:
         """Test starting a chunking operation."""
         # Arrange
@@ -598,7 +560,7 @@ class TestOperationEndpoints:
             # Act
             response = client_with_mocked_services.post(
                 f"/api/v2/chunking/collections/{collection_id}/chunk",
-                headers=auth_headers,
+                
                 json=chunking_request,
             )
 
@@ -637,7 +599,7 @@ class TestOperationEndpoints:
         # Act
         response = client_with_mocked_services.post(
             f"/api/v2/chunking/collections/{collection_id}/chunk",
-            headers=auth_headers,
+            
             json=chunking_request,
         )
 
@@ -649,7 +611,7 @@ class TestOperationEndpoints:
         # The validation error will be about chunk_size being out of range
 
     def test_get_operation_progress(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str]
+        self, client_with_mocked_services: TestClient
     ) -> None:
         """Test getting operation progress."""
         # Arrange
@@ -658,7 +620,7 @@ class TestOperationEndpoints:
         # Act
         response = client_with_mocked_services.get(
             f"/api/v2/chunking/operations/{operation_id}/progress",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -670,7 +632,7 @@ class TestOperationEndpoints:
         assert progress["documents_processed"] == 5
 
     def test_get_operation_progress_not_found(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_mocked_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test getting progress for non-existent operation."""
         # Arrange
@@ -680,7 +642,7 @@ class TestOperationEndpoints:
         # Act
         response = client_with_mocked_services.get(
             f"/api/v2/chunking/operations/{operation_id}/progress",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -692,7 +654,7 @@ class TestStatsEndpoints:
     """Test statistics endpoints."""
 
     def test_get_chunking_stats(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_collection: dict[str, Any]
+        self, client_with_mocked_services: TestClient, mock_collection: dict[str, Any]
     ) -> None:
         """Test getting chunking statistics."""
         # Arrange
@@ -701,7 +663,7 @@ class TestStatsEndpoints:
         # Act
         response = client_with_mocked_services.get(
             f"/api/v2/chunking/collections/{collection_id}/chunking-stats",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -717,7 +679,7 @@ class TestErrorHandling:
     """Test error handling across endpoints."""
 
     def test_service_error_handling(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_mocked_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of service errors."""
         # Arrange
@@ -726,7 +688,7 @@ class TestErrorHandling:
         # Act
         response = client_with_mocked_services.get(
             "/api/v2/chunking/strategies",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -737,7 +699,7 @@ class TestErrorHandling:
         reason="Test passes in isolation but fails when run with other tests due to fixture state pollution"
     )
     def test_content_too_large_error(
-        self, client_with_mocked_services: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_mocked_services: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of content too large error."""
         from unittest.mock import patch
@@ -756,7 +718,7 @@ class TestErrorHandling:
             # Act
             response = client_with_mocked_services.post(
                 "/api/v2/chunking/preview",
-                headers=auth_headers,
+                
                 json=preview_request,
             )
 

@@ -5,8 +5,11 @@ Configuration for webui tests.
 import asyncio
 import contextlib
 from collections.abc import AsyncGenerator
+from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)
@@ -39,3 +42,38 @@ async def _cleanup_pending_tasks() -> AsyncGenerator[None, None]:
         for task in tasks_to_cancel:
             with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                 await asyncio.wait_for(task, timeout=0.1)
+
+
+@pytest.fixture()
+def authenticated_client_v2() -> TestClient:
+    """
+    Create a test client with authentication mocked.
+    
+    This fixture provides a TestClient with get_current_user dependency overridden
+    to return a consistent test user without requiring actual JWT authentication.
+    """
+    from packages.webui.auth import get_current_user
+    from packages.webui.main import app
+    
+    # Create a test user that will be returned by the mocked get_current_user
+    test_user = {
+        "id": 1,
+        "username": "testuser",
+        "email": "test@example.com",
+        "full_name": "Test User",
+        "is_active": True,
+        "is_superuser": False,
+    }
+    
+    # Override the get_current_user dependency to return our test user
+    async def override_get_current_user() -> dict[str, Any]:
+        return test_user
+    
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    
+    with TestClient(app) as client:
+        yield client
+    
+    # Clean up the override after the test
+    if get_current_user in app.dependency_overrides:
+        del app.dependency_overrides[get_current_user]

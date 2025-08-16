@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.webui.api.v2 import search as search_api
-from packages.webui.auth import get_current_user
 from packages.webui.services.factory import get_search_service
 from packages.webui.services.search_service import SearchService
 
@@ -56,18 +55,15 @@ def app() -> FastAPI:
 
 
 @pytest.fixture()
-def client(app: FastAPI, mock_user: dict[str, Any]) -> TestClient:
-    """Create test client with mocked dependencies."""
-    # Override authentication dependency
-    app.dependency_overrides[get_current_user] = lambda: mock_user
-
+def client(app: FastAPI) -> TestClient:
+    """Create test client."""
     return TestClient(app)
 
 
 class TestSearchRerankingIntegration:
     """Integration tests for search reranking."""
 
-    def test_search_api_with_reranking_disabled(self, client: TestClient, mock_collections: list[MagicMock]) -> None:
+    def test_search_api_with_reranking_disabled(self, authenticated_client_v2: TestClient, mock_collections: list[MagicMock]) -> None:
         """Test search API with reranking disabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
@@ -104,10 +100,10 @@ class TestSearchRerankingIntegration:
         mock_search_service.multi_collection_search = mock_multi_search
 
         # Override the service factory
-        client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
+        authenticated_client_v2.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
         # Make request
-        response = client.post(
+        response = authenticated_client_v2.post(
             "/api/v2/search",
             json={
                 "collection_uuids": [mock_collections[0].id],
@@ -128,7 +124,7 @@ class TestSearchRerankingIntegration:
         assert data["results"][0]["score"] == 0.85
         assert data["results"][0]["reranked_score"] is None
 
-    def test_search_api_with_reranking_enabled(self, client: TestClient, mock_collections: list[MagicMock]) -> None:
+    def test_search_api_with_reranking_enabled(self, authenticated_client_v2: TestClient, mock_collections: list[MagicMock]) -> None:
         """Test search API with reranking enabled."""
         # Mock the search service
         mock_search_service = MagicMock(spec=SearchService)
@@ -170,10 +166,10 @@ class TestSearchRerankingIntegration:
         mock_search_service.multi_collection_search = mock_multi_search
 
         # Override the service factory
-        client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
+        authenticated_client_v2.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
         # Make request
-        response = client.post(
+        response = authenticated_client_v2.post(
             "/api/v2/search",
             json={
                 "collection_uuids": [mock_collections[0].id],
@@ -196,7 +192,7 @@ class TestSearchRerankingIntegration:
         assert data["results"][0]["reranked_score"] == 0.95
 
     def test_search_api_reranking_with_multiple_collections(
-        self, client: TestClient, mock_collections: list[MagicMock]
+        self, authenticated_client_v2: TestClient, mock_collections: list[MagicMock]
     ) -> None:
         """Test search API with reranking across multiple collections."""
         # Mock the search service
@@ -252,10 +248,10 @@ class TestSearchRerankingIntegration:
         mock_search_service.multi_collection_search = mock_multi_search
 
         # Override the service factory
-        client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
+        authenticated_client_v2.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
         # Make request
-        response = client.post(
+        response = authenticated_client_v2.post(
             "/api/v2/search",
             json={
                 "collection_uuids": [c.id for c in mock_collections],
@@ -280,7 +276,7 @@ class TestSearchRerankingIntegration:
         assert data["results"][1]["collection_id"] == str(mock_collections[1].id)
 
     def test_search_api_reranking_with_hybrid_search(
-        self, client: TestClient, mock_collections: list[MagicMock]
+        self, authenticated_client_v2: TestClient, mock_collections: list[MagicMock]
     ) -> None:
         """Test search API with reranking and hybrid search."""
         # Mock the search service
@@ -325,10 +321,10 @@ class TestSearchRerankingIntegration:
         mock_search_service.multi_collection_search = mock_multi_search
 
         # Override the service factory
-        client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
+        authenticated_client_v2.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
         # Make request
-        response = client.post(
+        response = authenticated_client_v2.post(
             "/api/v2/search",
             json={
                 "collection_uuids": [mock_collections[0].id],
@@ -349,7 +345,7 @@ class TestSearchRerankingIntegration:
         assert len(data["results"]) == 1
 
     def test_single_collection_search_with_reranking(
-        self, client: TestClient, mock_collections: list[MagicMock]
+        self, authenticated_client_v2: TestClient, mock_collections: list[MagicMock]
     ) -> None:
         """Test single collection search endpoint with reranking."""
         # Mock the search service
@@ -377,10 +373,10 @@ class TestSearchRerankingIntegration:
         mock_search_service.single_collection_search = mock_single_search
 
         # Override the service factory
-        client.app.dependency_overrides[get_search_service] = lambda: mock_search_service
+        authenticated_client_v2.app.dependency_overrides[get_search_service] = lambda: mock_search_service
 
         # Make request
-        response = client.post(
+        response = authenticated_client_v2.post(
             "/api/v2/search/single",
             json={
                 "collection_id": mock_collections[0].id,
