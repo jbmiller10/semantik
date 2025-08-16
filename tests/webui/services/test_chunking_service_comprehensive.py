@@ -23,8 +23,8 @@ from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.dtos.chunking_dtos import (
-    ServicePreviewResponse,
     ServiceChunkPreview,
+    ServicePreviewResponse,
     ServiceStrategyRecommendation,
 )
 
@@ -332,7 +332,8 @@ class TestStrategyRecommendation:
             "document_structure",
             "recursive",  # Allow string values too
         ]
-        assert result.reasoning is not None and len(result.reasoning) > 0
+        assert result.reasoning is not None
+        assert len(result.reasoning) > 0
         assert result.alternatives is not None
 
     @pytest.mark.asyncio()
@@ -361,7 +362,8 @@ class TestStrategyRecommendation:
             "hybrid",
             "recursive",  # Allow string values too
         ]
-        assert result.alternatives is not None and len(result.alternatives) > 0
+        assert result.alternatives is not None
+        assert len(result.alternatives) > 0
 
     @pytest.mark.asyncio()
     async def test_recommend_strategy_with_no_file_types(self, chunking_service: ChunkingService) -> None:
