@@ -60,14 +60,30 @@
     </critical-methods>
   </service>
   
-  <service name="ChunkingService">
-    <responsibility>Document chunking orchestration</responsibility>
-    <location>services/chunking_service.py</location>
+  <service name="ChunkingOrchestrator">
+    <responsibility>Coordinates chunking operations across specialized services</responsibility>
+    <location>services/chunking/orchestrator.py</location>
+    <architecture>
+      Focused services architecture with single responsibilities:
+      - ChunkingProcessor: Core chunking algorithms
+      - ChunkingCache: Redis-based caching operations
+      - ChunkingMetrics: Performance tracking and statistics
+      - ChunkingValidator: Input validation and security checks
+      - ChunkingConfigManager: Strategy configuration management
+      - ChunkingOrchestrator: Main coordinator for all services
+    </architecture>
     <critical-methods>
       - preview_chunks: Preview with caching
       - execute_ingestion_chunking: Production chunking with fallback
       - compare_strategies: Multi-strategy comparison
+      - recommend_strategy: ML-based strategy recommendation
+      - get_collection_statistics: Collection-level metrics
     </critical-methods>
+    <usage>
+      from webui.services.factory import get_chunking_orchestrator
+      orchestrator = await get_chunking_orchestrator(db)
+      result = await orchestrator.preview_chunks(content, strategy, config)
+    </usage>
   </service>
   
   <service name="SearchService">

@@ -5,21 +5,23 @@ This test suite validates the new focused services and ensures
 backward compatibility through the adapter.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock
+from unittest.mock import AsyncMock
 
+import pytest
+
+from packages.shared.chunking.infrastructure.exceptions import ValidationError
 from packages.webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,
     ChunkingMetrics,
     ChunkingOrchestrator,
     ChunkingProcessor,
-    ChunkingValidator,
     ChunkingServiceAdapter,
+    ChunkingValidator,
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_redis():
     """Create a mock Redis client."""
     redis = AsyncMock()
@@ -33,37 +35,37 @@ def mock_redis():
     return redis
 
 
-@pytest.fixture
+@pytest.fixture()
 def processor():
     """Create a ChunkingProcessor instance."""
     return ChunkingProcessor()
 
 
-@pytest.fixture
+@pytest.fixture()
 def cache(mock_redis):
     """Create a ChunkingCache instance."""
     return ChunkingCache(redis_client=mock_redis)
 
 
-@pytest.fixture
+@pytest.fixture()
 def metrics():
     """Create a ChunkingMetrics instance."""
     return ChunkingMetrics()
 
 
-@pytest.fixture
+@pytest.fixture()
 def validator():
     """Create a ChunkingValidator instance."""
     return ChunkingValidator()
 
 
-@pytest.fixture
+@pytest.fixture()
 def config_manager():
     """Create a ChunkingConfigManager instance."""
     return ChunkingConfigManager()
 
 
-@pytest.fixture
+@pytest.fixture()
 def orchestrator(processor, cache, metrics, validator, config_manager):
     """Create a ChunkingOrchestrator instance."""
     return ChunkingOrchestrator(
@@ -75,7 +77,7 @@ def orchestrator(processor, cache, metrics, validator, config_manager):
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def adapter(orchestrator):
     """Create a ChunkingServiceAdapter instance."""
     return ChunkingServiceAdapter(orchestrator=orchestrator)
@@ -157,8 +159,8 @@ class TestChunkingCache:
         async def async_iterator():
             for key in ["key1", "key2"]:
                 yield key
-        
-        cache.redis.scan_iter = lambda **kwargs: async_iterator()
+
+        cache.redis.scan_iter = lambda **_kwargs: async_iterator()
         cache.redis.delete = AsyncMock(return_value=2)
 
         deleted = await cache.clear_cache()
@@ -192,8 +194,8 @@ class TestChunkingMetrics:
         """Test operation measurement for failed operation."""
         strategy = "semantic"
 
-        with pytest.raises(ValueError):
-            async with metrics.measure_operation(strategy) as context:
+        with pytest.raises(ValueError, match="Test error"):
+            async with metrics.measure_operation(strategy) as _context:
                 raise ValueError("Test error")
 
         stats = metrics.get_statistics()
@@ -228,7 +230,7 @@ class TestChunkingValidator:
     async def test_validate_preview_request_invalid(self, validator):
         """Test validation of invalid preview request."""
         # No content or document_id
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             await validator.validate_preview_request(
                 content=None,
                 document_id=None,
@@ -242,7 +244,7 @@ class TestChunkingValidator:
         validator.validate_strategy("recursive")
 
         # Invalid strategy
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             validator.validate_strategy("invalid_strategy")
 
     def test_validate_config(self, validator):
@@ -254,7 +256,7 @@ class TestChunkingValidator:
         )
 
         # Invalid chunk size
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             validator.validate_config(
                 "recursive",
                 {"chunk_size": 10},  # Too small

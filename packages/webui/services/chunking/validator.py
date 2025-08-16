@@ -249,11 +249,10 @@ class ChunkingValidator:
                 if config["embedding_model"] not in valid_models:
                     raise ValidationError(f"Invalid embedding_model. Valid options: {', '.join(valid_models)}")
 
-        elif strategy == "hierarchical":
-            if "max_level" in config:
-                max_level = config["max_level"]
-                if not isinstance(max_level, int) or max_level < 1 or max_level > 5:
-                    raise ValidationError("max_level must be an integer between 1 and 5")
+        elif strategy == "hierarchical" and "max_level" in config:
+            max_level = config["max_level"]
+            if not isinstance(max_level, int) or max_level < 1 or max_level > 5:
+                raise ValidationError("max_level must be an integer between 1 and 5")
 
     async def validate_document_access(
         self,
@@ -280,9 +279,8 @@ class ChunkingValidator:
             raise ValidationError(f"Document {document_id} not found")
 
         # Check if user owns the collection containing the document
-        if document.collection:
-            if document.collection.owner_id != user_id:
-                raise PermissionDeniedError(f"User {user_id} does not have access to document {document_id}")
+        if document.collection and document.collection.owner_id != user_id:
+            raise PermissionDeniedError(f"User {user_id} does not have access to document {document_id}")
 
     async def validate_collection_access(
         self,
@@ -367,16 +365,14 @@ class ChunkingValidator:
                 f"Invalid operation type '{operation_type}'. Valid types: {', '.join(valid_operations)}"
             )
 
-        if operation_type == "process":
-            if "collection_id" not in params:
-                raise ValidationError(
-                    field="collection_id",
-                    value=None,
-                    reason="Required for process operation"
-                )
+        if operation_type == "process" and "collection_id" not in params:
+            raise ValidationError(
+                field="collection_id",
+                value=None,
+                reason="Required for process operation"
+            )
 
-        if operation_type == "reprocess":
-            if "collection_id" not in params:
-                raise ValidationError("collection_id is required for reprocess operation")
-            if "strategy" not in params:
-                raise ValidationError("strategy is required for reprocess operation")
+        if operation_type == "reprocess" and "collection_id" not in params:
+            raise ValidationError("collection_id is required for reprocess operation")
+        if operation_type == "reprocess" and "strategy" not in params:
+            raise ValidationError("strategy is required for reprocess operation")

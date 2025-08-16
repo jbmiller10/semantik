@@ -5,12 +5,8 @@ Tests all DTO classes and their to_api_model() conversion methods,
 including error handling and edge cases.
 """
 
-import logging
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
-
-import pytest
-from pydantic import ValidationError
+from unittest.mock import patch
 
 from packages.webui.services.dtos.api_models import (
     ChunkingConfigBase,
@@ -19,9 +15,7 @@ from packages.webui.services.dtos.api_models import (
     ChunkPreview,
     CompareResponse,
     PreviewResponse,
-    StrategyComparison,
     StrategyInfo,
-    StrategyMetrics,
     StrategyRecommendation,
 )
 from packages.webui.services.dtos.chunking_dtos import (

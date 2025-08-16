@@ -12,16 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.config import settings
 from packages.shared.database import get_db
 
-from .chunking_service import ChunkingService
-from .collection_service import CollectionService
-from .directory_scan_service import DirectoryScanService
-from .document_scanning_service import DocumentScanningService
-from .operation_service import OperationService
-from .redis_manager import RedisConfig, RedisManager
-from .resource_manager import ResourceManager
-from .search_service import SearchService
-from .type_guards import ensure_async_redis
-
 # Import new chunking services
 from .chunking import (
     ChunkingCache,
@@ -31,7 +21,15 @@ from .chunking import (
     ChunkingProcessor,
     ChunkingValidator,
 )
-from .chunking.adapter import ChunkingServiceAdapter
+from .chunking_service import ChunkingService
+from .collection_service import CollectionService
+from .directory_scan_service import DirectoryScanService
+from .document_scanning_service import DocumentScanningService
+from .operation_service import OperationService
+from .redis_manager import RedisConfig, RedisManager
+from .resource_manager import ResourceManager
+from .search_service import SearchService
+from .type_guards import ensure_async_redis
 
 logger = logging.getLogger(__name__)
 
