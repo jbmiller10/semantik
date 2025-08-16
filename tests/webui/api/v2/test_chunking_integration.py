@@ -21,7 +21,8 @@ from httpx import ASGITransport, AsyncClient
 from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
 )
-from packages.webui.auth import create_access_token, get_current_user
+# Import the authenticated_client_v2 fixture from integration conftest
+# It's available automatically from tests/integration/conftest.py
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
 
@@ -34,13 +35,6 @@ os.environ["TESTING"] = "true"
 def mock_user():
     """Create a mock authenticated user."""
     return {"id": 1, "username": "testuser", "email": "test@example.com"}
-
-
-@pytest.fixture()
-def auth_headers(mock_user):
-    """Create authorization headers with a test JWT token."""
-    token = create_access_token(data={"sub": mock_user["username"]})
-    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture()
@@ -301,15 +295,11 @@ def mock_chunking_service():
 
 
 @pytest.fixture()
-def client_with_auth(mock_user, mock_chunking_service):
+def client_with_auth(authenticated_client_v2, mock_chunking_service):
     """Create a test client with authentication and services mocked."""
     from packages.webui.services.factory import get_chunking_service
 
-    # Override dependencies
-    async def override_get_current_user():
-        return mock_user
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    # Override service dependencies (auth is already handled by authenticated_client_v2)
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
 
     # Mock the lifespan events to prevent real database connections
@@ -322,39 +312,17 @@ def client_with_auth(mock_user, mock_chunking_service):
         mock_ws.startup = AsyncMock()
         mock_ws.shutdown = AsyncMock()
 
-        with TestClient(app) as client:
-            yield client
+        yield authenticated_client_v2
 
-    app.dependency_overrides.clear()
+    # Clean up service overrides (but not auth overrides from authenticated_client_v2)
+    if get_chunking_service in app.dependency_overrides:
+        del app.dependency_overrides[get_chunking_service]
 
 
 @pytest.fixture()
 def unauthenticated_client():
     """Create a test client without authentication."""
-    from fastapi import Depends, HTTPException
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-    from packages.webui.auth import get_current_user
-
     app.dependency_overrides.clear()
-
-    # Override get_current_user to always raise 401 with the appropriate message
-    async def mock_get_current_user(credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))):
-        # Check if any credentials were provided
-        if not credentials:
-            raise HTTPException(
-                status_code=401,
-                detail="Not authenticated",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        # If credentials provided but invalid
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    app.dependency_overrides[get_current_user] = mock_get_current_user
 
     # Mock the lifespan events to prevent real database connections
     with (
@@ -390,15 +358,11 @@ def test_collection_with_user(mock_user):
 
 
 @pytest_asyncio.fixture()
-async def async_client(mock_user, mock_chunking_service):
+async def async_client(authenticated_client_v2, mock_chunking_service):
     """Create an async test client with all dependencies mocked."""
     from packages.webui.services.factory import get_chunking_service
 
-    # Override dependencies
-    async def override_get_current_user():
-        return mock_user
-
-    app.dependency_overrides[get_current_user] = override_get_current_user
+    # Override service dependencies (auth is already handled by authenticated_client_v2)
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
 
     # Mock the database connection manager to prevent real DB connections
@@ -428,12 +392,11 @@ async def async_client(mock_user, mock_chunking_service):
 class TestChunkingStrategyEndpoints:
     """Integration tests for strategy management endpoints."""
 
-    def test_list_strategies_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_list_strategies_success(self, client_with_auth: TestClient) -> None:
         """Test successful listing of available chunking strategies."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/strategies",
-            headers=auth_headers,
         )
 
         # Assert
@@ -468,7 +431,7 @@ class TestChunkingStrategyEndpoints:
         assert "Not authenticated" in response.json()["detail"]
 
     def test_list_strategies_service_error(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of service errors when listing strategies."""
         # Arrange - Configure the existing mock to raise an error
@@ -477,7 +440,7 @@ class TestChunkingStrategyEndpoints:
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/strategies",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -487,12 +450,12 @@ class TestChunkingStrategyEndpoints:
         # Reset the side effect for other tests
         mock_chunking_service.get_available_strategies_for_api.side_effect = None
 
-    def test_get_strategy_details_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_strategy_details_success(self, client_with_auth: TestClient) -> None:
         """Test successful retrieval of strategy details."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/strategies/recursive",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -506,7 +469,7 @@ class TestChunkingStrategyEndpoints:
         assert isinstance(strategy.get("performance_characteristics", {}), dict)
 
     def test_get_strategy_details_not_found(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test retrieval of non-existent strategy."""
         # Arrange - Configure the mock to return None for non-existent strategy
@@ -515,7 +478,7 @@ class TestChunkingStrategyEndpoints:
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/strategies/non_existent",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -534,12 +497,12 @@ class TestChunkingStrategyEndpoints:
             "performance_characteristics": {"speed": "medium"},
         }
 
-    def test_recommend_strategy_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_recommend_strategy_success(self, client_with_auth: TestClient) -> None:
         """Test successful strategy recommendation."""
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/strategies/recommend",
-            headers=auth_headers,
+            
             params={"file_types": ["markdown", "md"]},
         )
 
@@ -554,12 +517,12 @@ class TestChunkingStrategyEndpoints:
         assert recommendation["confidence"] >= 0.0
         assert recommendation["confidence"] <= 1.0
 
-    def test_recommend_strategy_no_file_types(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_recommend_strategy_no_file_types(self, client_with_auth: TestClient) -> None:
         """Test strategy recommendation without file types."""
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/strategies/recommend",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -571,7 +534,7 @@ class TestChunkingPreviewEndpoints:
     """Integration tests for preview operations."""
 
     def test_generate_preview_success(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test successful preview generation."""
         preview_request = {
@@ -587,7 +550,7 @@ class TestChunkingPreviewEndpoints:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json=preview_request,
         )
 
@@ -603,12 +566,12 @@ class TestChunkingPreviewEndpoints:
         assert "correlation_id" in preview
 
     def test_generate_preview_with_correlation_id(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str]
+        self, client_with_auth: TestClient
     ) -> None:
         """Test preview generation with custom correlation ID."""
         # Arrange
         correlation_id = str(uuid.uuid4())
-        headers = {**auth_headers, "X-Correlation-ID": correlation_id}
+        headers = {"X-Correlation-ID": correlation_id}
         preview_request = {
             "strategy": "fixed_size",
             "content": "Test content",
@@ -627,7 +590,7 @@ class TestChunkingPreviewEndpoints:
         assert preview["correlation_id"] == correlation_id
 
     def test_generate_preview_content_too_large(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test preview generation with content that's too large."""
         # Arrange
@@ -643,7 +606,7 @@ class TestChunkingPreviewEndpoints:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json=preview_request,
         )
 
@@ -657,7 +620,7 @@ class TestChunkingPreviewEndpoints:
         mock_chunking_service.validate_preview_content.side_effect = None
 
     def test_generate_preview_validation_error(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str]
+        self, client_with_auth: TestClient
     ) -> None:
         """Test preview generation with validation errors."""
         # Test with invalid chunk_size (negative value)
@@ -674,7 +637,7 @@ class TestChunkingPreviewEndpoints:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json=preview_request,
         )
 
@@ -682,7 +645,7 @@ class TestChunkingPreviewEndpoints:
         assert response.status_code == 422
         assert "detail" in response.json()
 
-    def test_generate_preview_rate_limited(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_generate_preview_rate_limited(self, client_with_auth: TestClient) -> None:
         """Test preview generation rate limiting."""
         # Note: Rate limiting is disabled in test environment by default
         # This test verifies the endpoint structure supports rate limiting
@@ -697,7 +660,7 @@ class TestChunkingPreviewEndpoints:
         for _ in range(3):
             response = client_with_auth.post(
                 "/api/v2/chunking/preview",
-                headers=auth_headers,
+                
                 json=preview_request,
             )
             responses.append(response)
@@ -707,7 +670,7 @@ class TestChunkingPreviewEndpoints:
         for response in responses:
             assert response.status_code == 200
 
-    def test_compare_strategies_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_compare_strategies_success(self, client_with_auth: TestClient) -> None:
         """Test successful strategy comparison."""
         # Arrange
         compare_request = {
@@ -730,7 +693,7 @@ class TestChunkingPreviewEndpoints:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/compare",
-            headers=auth_headers,
+            
             json=compare_request,
         )
 
@@ -742,12 +705,12 @@ class TestChunkingPreviewEndpoints:
         assert "recommendation" in comparison
         assert "processing_time_ms" in comparison
 
-    def test_get_cached_preview_not_found(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_cached_preview_not_found(self, client_with_auth: TestClient) -> None:
         """Test retrieval of non-existent cached preview."""
         # Act
         response = client_with_auth.get(
             f"/api/v2/chunking/preview/{uuid.uuid4()}",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -807,7 +770,7 @@ class TestChunkingOperationEndpoints:
             # Act
             response = client_with_auth.post(
                 f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunk",
-                headers=auth_headers,
+                
                 json=chunking_request,
             )
 
@@ -866,7 +829,7 @@ class TestChunkingOperationEndpoints:
         # Act
         response = client_with_auth.post(
             f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunk",
-            headers=auth_headers,
+            
             json=chunking_request,
         )
 
@@ -913,7 +876,7 @@ class TestChunkingOperationEndpoints:
         # Act
         response = client_with_auth.post(
             f"/api/v2/chunking/collections/{non_existent_id}/chunk",
-            headers=auth_headers,
+            
             json=chunking_request,
         )
 
@@ -956,7 +919,7 @@ class TestChunkingOperationEndpoints:
         # Act
         response = client_with_auth.post(
             f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunk",
-            headers=auth_headers,
+            
             json=chunking_request,
         )
 
@@ -1010,7 +973,7 @@ class TestChunkingOperationEndpoints:
         # Act
         response = client_with_auth.patch(
             f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunking-strategy",
-            headers=auth_headers,
+            
             json=update_request,
         )
 
@@ -1074,7 +1037,7 @@ class TestChunkingOperationEndpoints:
             # Act
             response = client_with_auth.patch(
                 f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunking-strategy",
-                headers=auth_headers,
+                
                 json=update_request,
             )
 
@@ -1094,7 +1057,7 @@ class TestChunkingProgressEndpoints:
     """Integration tests for progress tracking endpoints."""
 
     def test_get_operation_progress_success(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test successful retrieval of operation progress."""
         # Arrange
@@ -1115,7 +1078,7 @@ class TestChunkingProgressEndpoints:
         # Act
         response = client_with_auth.get(
             f"/api/v2/chunking/operations/{operation_id}/progress",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -1130,7 +1093,7 @@ class TestChunkingProgressEndpoints:
         assert progress["current_document"] == "document_6.pdf"
 
     def test_get_operation_progress_not_found(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test retrieval of progress for non-existent operation."""
         # Arrange
@@ -1140,7 +1103,7 @@ class TestChunkingProgressEndpoints:
         # Act
         response = client_with_auth.get(
             f"/api/v2/chunking/operations/{operation_id}/progress",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -1175,7 +1138,7 @@ class TestChunkingStatsEndpoints:
         # Act
         response = client_with_auth.get(
             f"/api/v2/chunking/collections/{test_collection_with_user['id']}/chunking-stats",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -1205,12 +1168,12 @@ class TestChunkingStatsEndpoints:
 class TestChunkingAnalyticsEndpoints:
     """Integration tests for chunking analytics endpoints."""
 
-    def test_get_global_metrics_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_global_metrics_success(self, client_with_auth: TestClient) -> None:
         """Test successful retrieval of global chunking metrics."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/metrics",
-            headers=auth_headers,
+            
             params={"period_days": 30},
         )
 
@@ -1226,12 +1189,12 @@ class TestChunkingAnalyticsEndpoints:
         assert "period_start" in metrics
         assert "period_end" in metrics
 
-    def test_get_metrics_by_strategy_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_metrics_by_strategy_success(self, client_with_auth: TestClient) -> None:
         """Test successful retrieval of metrics grouped by strategy."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/metrics/by-strategy",
-            headers=auth_headers,
+            
             params={"period_days": 30},
         )
 
@@ -1255,12 +1218,12 @@ class TestChunkingAnalyticsEndpoints:
             assert "success_rate" in metric
             assert "avg_quality_score" in metric
 
-    def test_get_quality_scores_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_get_quality_scores_success(self, client_with_auth: TestClient) -> None:
         """Test successful retrieval of chunk quality analysis."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/quality-scores",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -1280,7 +1243,7 @@ class TestChunkingAnalyticsEndpoints:
 class TestChunkingConfigurationEndpoints:
     """Integration tests for configuration management endpoints."""
 
-    def test_save_configuration_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_save_configuration_success(self, client_with_auth: TestClient) -> None:
         """Test successful saving of custom configuration."""
         # Arrange
         config_request = {
@@ -1300,7 +1263,7 @@ class TestChunkingConfigurationEndpoints:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/configs",
-            headers=auth_headers,
+            
             json=config_request,
         )
 
@@ -1313,12 +1276,12 @@ class TestChunkingConfigurationEndpoints:
         assert saved["is_default"] is False
         assert saved["tags"] == ["technical", "documentation"]
 
-    def test_list_configurations_success(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_list_configurations_success(self, client_with_auth: TestClient) -> None:
         """Test successful listing of saved configurations."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/configs",
-            headers=auth_headers,
+            
         )
 
         # Assert
@@ -1327,13 +1290,13 @@ class TestChunkingConfigurationEndpoints:
         assert isinstance(configs, list)
 
     def test_list_configurations_filtered_by_strategy(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str]
+        self, client_with_auth: TestClient
     ) -> None:
         """Test listing configurations filtered by strategy."""
         # Act
         response = client_with_auth.get(
             "/api/v2/chunking/configs",
-            headers=auth_headers,
+            
             params={"strategy": "recursive"},
         )
 
@@ -1350,7 +1313,7 @@ class TestChunkingConfigurationEndpoints:
 class TestChunkingErrorHandling:
     """Integration tests for error handling across all endpoints."""
 
-    def test_circuit_breaker_triggered(self, client_with_auth: TestClient, auth_headers: dict[str, str]) -> None:
+    def test_circuit_breaker_triggered(self, client_with_auth: TestClient) -> None:
         """Test circuit breaker activation after multiple failures."""
         # Note: Circuit breaker is typically disabled in test environment
         # This test verifies the endpoint structure supports circuit breaking
@@ -1377,7 +1340,7 @@ class TestChunkingErrorHandling:
                 # Act
                 response = client_with_auth.post(
                     "/api/v2/chunking/preview",
-                    headers=auth_headers,
+                    
                     json={"strategy": "fixed_size", "content": "test"},
                 )
 
@@ -1393,7 +1356,7 @@ class TestChunkingErrorHandling:
                 del circuit_breaker.failure_counts[test_key]
 
     def test_unexpected_error_handling(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str], mock_chunking_service: AsyncMock
+        self, client_with_auth: TestClient, mock_chunking_service: AsyncMock
     ) -> None:
         """Test handling of unexpected errors with proper error response."""
         # Arrange - Clear the return value and set side_effect to raise an error
@@ -1403,7 +1366,7 @@ class TestChunkingErrorHandling:
         # Act
         response = client_with_auth.post(
             "/api/v2/chunking/preview",
-            headers=auth_headers,
+            
             json={
                 "strategy": "fixed_size",
                 "content": "test",

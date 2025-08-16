@@ -20,7 +20,6 @@ from packages.shared.database.exceptions import (
     InvalidStateError,
 )
 from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.auth import get_current_user
 from packages.webui.dependencies import get_collection_for_user
 from packages.webui.main import app
 from packages.webui.services.collection_service import CollectionService
@@ -64,26 +63,22 @@ def mock_collection_service() -> AsyncMock:
 
 
 @pytest.fixture()
-def client(mock_user: dict[str, Any], mock_collection_service: AsyncMock) -> TestClient:
-    """Create a test client with mocked dependencies."""
-
-    # Override dependencies
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+def client_with_services(authenticated_client_v2: TestClient, mock_collection_service: AsyncMock) -> TestClient:
+    """Create a test client with mocked dependencies and authentication."""
+    # Override service dependencies (auth is already handled by authenticated_client_v2)
     app.dependency_overrides[get_collection_service] = lambda: mock_collection_service
 
-    # Create test client
-    client = TestClient(app)
+    yield authenticated_client_v2
 
-    yield client
-
-    # Clean up
-    app.dependency_overrides.clear()
+    # Clean up service overrides
+    if get_collection_service in app.dependency_overrides:
+        del app.dependency_overrides[get_collection_service]
 
 
 class TestCreateCollection:
     """Test create_collection endpoint."""
 
-    def test_create_collection_success(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_create_collection_success(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test successful collection creation."""
         # Setup
         create_request = {
@@ -129,7 +124,7 @@ class TestCreateCollection:
         mock_collection_service.create_collection.return_value = (collection_data, operation_data)
 
         # Execute
-        response = client.post("/api/v2/collections", json=create_request)
+        response = client_with_services.post("/api/v2/collections", json=create_request)
 
         # Verify
         assert response.status_code == 201
@@ -155,7 +150,7 @@ class TestCreateCollection:
             },
         )
 
-    def test_create_collection_duplicate_name(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_create_collection_duplicate_name(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 409 error when collection name already exists."""
         create_request = {"name": "Existing Collection"}
 
@@ -163,35 +158,35 @@ class TestCreateCollection:
             "Collection", "Existing Collection"
         )
 
-        response = client.post("/api/v2/collections", json=create_request)
+        response = client_with_services.post("/api/v2/collections", json=create_request)
 
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
 
-    def test_create_collection_invalid_data(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_create_collection_invalid_data(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 400 error for invalid collection data."""
         create_request = {"name": "Invalid Collection", "chunk_size": 10000}
 
         mock_collection_service.create_collection.side_effect = ValueError("Invalid chunk size")
 
-        response = client.post("/api/v2/collections", json=create_request)
+        response = client_with_services.post("/api/v2/collections", json=create_request)
 
         assert response.status_code == 400
         assert "Invalid chunk size" in response.json()["detail"]
 
-    def test_create_collection_service_error(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_create_collection_service_error(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 500 error for service failures."""
         create_request = {"name": "Test Collection"}
 
         mock_collection_service.create_collection.side_effect = Exception("Database error")
 
-        response = client.post("/api/v2/collections", json=create_request)
+        response = client_with_services.post("/api/v2/collections", json=create_request)
 
         assert response.status_code == 500
         assert "Failed to create collection" in response.json()["detail"]
 
     def test_create_collection_omits_null_chunk_fields(
-        self, client: TestClient, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection_service: AsyncMock
     ) -> None:
         """When chunk fields are null, API should omit them in config."""
         # Setup request with explicit nulls
@@ -239,7 +234,7 @@ class TestCreateCollection:
         mock_collection_service.create_collection.return_value = (collection_data, operation_data)
 
         # Execute
-        response = client.post("/api/v2/collections", json=create_request)
+        response = client_with_services.post("/api/v2/collections", json=create_request)
 
         # Verify
         assert response.status_code == 201
@@ -261,7 +256,7 @@ class TestListCollections:
     """Test list_collections endpoint."""
 
     def test_list_collections_success(
-        self, client: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
     ) -> None:
         """Test successful collection listing."""
         collections = [mock_collection]
@@ -269,7 +264,7 @@ class TestListCollections:
 
         mock_collection_service.list_for_user.return_value = (collections, total)
 
-        response = client.get("/api/v2/collections?page=1&per_page=50&include_public=true")
+        response = client_with_services.get("/api/v2/collections?page=1&per_page=50&include_public=true")
 
         assert response.status_code == 200
         result = response.json()
@@ -282,11 +277,11 @@ class TestListCollections:
             user_id=1, offset=0, limit=50, include_public=True
         )
 
-    def test_list_collections_pagination(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_list_collections_pagination(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test collection listing with pagination."""
         mock_collection_service.list_for_user.return_value = ([], 0)
 
-        response = client.get("/api/v2/collections?page=3&per_page=20&include_public=false")
+        response = client_with_services.get("/api/v2/collections?page=3&per_page=20&include_public=false")
 
         assert response.status_code == 200
 
@@ -295,11 +290,11 @@ class TestListCollections:
             user_id=1, offset=40, limit=20, include_public=False  # (page-1) * per_page = 2 * 20
         )
 
-    def test_list_collections_service_error(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_list_collections_service_error(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 500 error for service failures."""
         mock_collection_service.list_for_user.side_effect = Exception("Database error")
 
-        response = client.get("/api/v2/collections")
+        response = client_with_services.get("/api/v2/collections")
 
         assert response.status_code == 500
         assert "Failed to list collections" in response.json()["detail"]
@@ -308,13 +303,13 @@ class TestListCollections:
 class TestGetCollection:
     """Test get_collection endpoint."""
 
-    def test_get_collection_success(self, client: TestClient, mock_collection: MagicMock) -> None:
+    def test_get_collection_success(self, client_with_services: TestClient, mock_collection: MagicMock) -> None:
         """Test successful collection retrieval."""
 
         app.dependency_overrides[get_collection_for_user] = lambda: mock_collection
 
         collection_uuid = mock_collection.id
-        response = client.get(f"/api/v2/collections/{collection_uuid}")
+        response = client_with_services.get(f"/api/v2/collections/{collection_uuid}")
 
         assert response.status_code == 200
         result = response.json()
@@ -327,7 +322,7 @@ class TestUpdateCollection:
     """Test update_collection endpoint."""
 
     def test_update_collection_success(
-        self, client: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
     ) -> None:
         """Test successful collection update."""
         collection_uuid = str(uuid.uuid4())
@@ -340,7 +335,7 @@ class TestUpdateCollection:
 
         mock_collection_service.update.return_value = mock_collection
 
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 200
 
@@ -356,7 +351,7 @@ class TestUpdateCollection:
         )
 
     def test_update_collection_partial_update(
-        self, client: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection: MagicMock, mock_collection_service: AsyncMock
     ) -> None:
         """Test partial collection update with only some fields."""
         collection_uuid = str(uuid.uuid4())
@@ -364,7 +359,7 @@ class TestUpdateCollection:
 
         mock_collection_service.update.return_value = mock_collection
 
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 200
 
@@ -373,49 +368,49 @@ class TestUpdateCollection:
             collection_id=collection_uuid, user_id=1, updates={"name": "New Name Only"}
         )
 
-    def test_update_collection_not_found(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_update_collection_not_found(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 404 error when collection not found."""
         collection_uuid = str(uuid.uuid4())
         update_request = {"name": "Updated Name"}
 
         mock_collection_service.update.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
 
-    def test_update_collection_access_denied(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_update_collection_access_denied(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 403 error when user lacks permission."""
         collection_uuid = str(uuid.uuid4())
         update_request = {"name": "Updated Name"}
 
         mock_collection_service.update.side_effect = AccessDeniedError("1", "Collection", collection_uuid)
 
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 403
         assert "Only the collection owner" in response.json()["detail"]
 
-    def test_update_collection_duplicate_name(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_update_collection_duplicate_name(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 409 error when new name already exists."""
         collection_uuid = str(uuid.uuid4())
         update_request = {"name": "Existing Name"}
 
         mock_collection_service.update.side_effect = EntityAlreadyExistsError("Collection", "Existing Name")
 
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
 
-    def test_update_collection_validation_error(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_update_collection_validation_error(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 422 error for pydantic validation failures."""
         collection_uuid = str(uuid.uuid4())
         update_request = {"name": "Invalid/Name"}
 
         # No need to mock service - Pydantic validation happens first
-        response = client.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
+        response = client_with_services.put(f"/api/v2/collections/{collection_uuid}", json=update_request)
 
         assert response.status_code == 422
         # Pydantic validation errors have a specific structure
@@ -425,42 +420,42 @@ class TestUpdateCollection:
 class TestDeleteCollection:
     """Test delete_collection endpoint."""
 
-    def test_delete_collection_success(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_delete_collection_success(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test successful collection deletion."""
         collection_uuid = str(uuid.uuid4())
 
         mock_collection_service.delete_collection.return_value = None
 
-        response = client.delete(f"/api/v2/collections/{collection_uuid}")
+        response = client_with_services.delete(f"/api/v2/collections/{collection_uuid}")
 
         assert response.status_code == 204
 
         mock_collection_service.delete_collection.assert_called_once_with(collection_id=collection_uuid, user_id=1)
 
-    def test_delete_collection_not_found(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_delete_collection_not_found(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 404 error when collection not found."""
         collection_uuid = str(uuid.uuid4())
 
         mock_collection_service.delete_collection.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
-        response = client.delete(f"/api/v2/collections/{collection_uuid}")
+        response = client_with_services.delete(f"/api/v2/collections/{collection_uuid}")
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
 
-    def test_delete_collection_access_denied(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_delete_collection_access_denied(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 403 error when user lacks permission."""
         collection_uuid = str(uuid.uuid4())
 
         mock_collection_service.delete_collection.side_effect = AccessDeniedError("1", "Collection", collection_uuid)
 
-        response = client.delete(f"/api/v2/collections/{collection_uuid}")
+        response = client_with_services.delete(f"/api/v2/collections/{collection_uuid}")
 
         assert response.status_code == 403
         assert "Only the collection owner" in response.json()["detail"]
 
     def test_delete_collection_operation_in_progress(
-        self, client: TestClient, mock_collection_service: AsyncMock
+        self, client_with_services: TestClient, mock_collection_service: AsyncMock
     ) -> None:
         """Test 409 error when operation is in progress."""
         collection_uuid = str(uuid.uuid4())
@@ -469,7 +464,7 @@ class TestDeleteCollection:
             "Cannot delete collection with active operations"
         )
 
-        response = client.delete(f"/api/v2/collections/{collection_uuid}")
+        response = client_with_services.delete(f"/api/v2/collections/{collection_uuid}")
 
         assert response.status_code == 409
         assert "Cannot delete collection" in response.json()["detail"]
@@ -478,7 +473,7 @@ class TestDeleteCollection:
 class TestAddSource:
     """Test add_source endpoint."""
 
-    def test_add_source_success(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_add_source_success(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test successful source addition."""
         collection_uuid = str(uuid.uuid4())
         add_source_request = {
@@ -500,7 +495,7 @@ class TestAddSource:
 
         mock_collection_service.add_source.return_value = operation_data
 
-        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
+        response = client_with_services.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
 
         assert response.status_code == 202
         result = response.json()
@@ -514,26 +509,26 @@ class TestAddSource:
             source_config=add_source_request["config"],
         )
 
-    def test_add_source_collection_not_found(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_add_source_collection_not_found(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 404 error when collection not found."""
         collection_uuid = str(uuid.uuid4())
         add_source_request = {"source_path": "/data/documents"}
 
         mock_collection_service.add_source.side_effect = EntityNotFoundError("Collection", collection_uuid)
 
-        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
+        response = client_with_services.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"]
 
-    def test_add_source_invalid_state(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_add_source_invalid_state(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test 409 error when collection is in invalid state."""
         collection_uuid = str(uuid.uuid4())
         add_source_request = {"source_path": "/data/documents"}
 
         mock_collection_service.add_source.side_effect = InvalidStateError("Collection is currently being reindexed")
 
-        response = client.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
+        response = client_with_services.post(f"/api/v2/collections/{collection_uuid}/sources", json=add_source_request)
 
         assert response.status_code == 409
         assert "Collection is currently being reindexed" in response.json()["detail"]
@@ -542,7 +537,7 @@ class TestAddSource:
 class TestRemoveSource:
     """Test remove_source endpoint."""
 
-    def test_remove_source_success(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_remove_source_success(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test successful source removal."""
         collection_uuid = str(uuid.uuid4())
         source_path = "/data/documents"
@@ -558,7 +553,7 @@ class TestRemoveSource:
 
         mock_collection_service.remove_source.return_value = operation_data
 
-        response = client.delete(f"/api/v2/collections/{collection_uuid}/sources?source_path={source_path}")
+        response = client_with_services.delete(f"/api/v2/collections/{collection_uuid}/sources?source_path={source_path}")
 
         assert response.status_code == 202
         result = response.json()
@@ -573,7 +568,7 @@ class TestRemoveSource:
 class TestReindexCollection:
     """Test reindex_collection endpoint."""
 
-    def test_reindex_collection_success(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_reindex_collection_success(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test successful collection reindexing."""
         collection_uuid = str(uuid.uuid4())
         config_updates = {
@@ -592,7 +587,7 @@ class TestReindexCollection:
 
         mock_collection_service.reindex_collection.return_value = operation_data
 
-        response = client.post(f"/api/v2/collections/{collection_uuid}/reindex", json=config_updates)
+        response = client_with_services.post(f"/api/v2/collections/{collection_uuid}/reindex", json=config_updates)
 
         assert response.status_code == 202
         result = response.json()
@@ -603,7 +598,7 @@ class TestReindexCollection:
             collection_id=collection_uuid, user_id=1, config_updates=config_updates
         )
 
-    def test_reindex_collection_without_updates(self, client: TestClient, mock_collection_service: AsyncMock) -> None:
+    def test_reindex_collection_without_updates(self, client_with_services: TestClient, mock_collection_service: AsyncMock) -> None:
         """Test reindexing without configuration updates."""
         collection_uuid = str(uuid.uuid4())
 
@@ -618,7 +613,7 @@ class TestReindexCollection:
 
         mock_collection_service.reindex_collection.return_value = operation_data
 
-        response = client.post(f"/api/v2/collections/{collection_uuid}/reindex")
+        response = client_with_services.post(f"/api/v2/collections/{collection_uuid}/reindex")
 
         assert response.status_code == 202
         result = response.json()
