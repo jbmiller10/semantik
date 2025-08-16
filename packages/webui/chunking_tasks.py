@@ -459,6 +459,22 @@ class ChunkingTask(Task):
         # Circuit is open - reject request
         return False
 
+    def _increment_failure_count(self, operation_id: str) -> None:
+        """Increment the failure count for an operation.
+        
+        Args:
+            operation_id: Operation identifier
+        """
+        if not self._redis_client:
+            return
+            
+        try:
+            key = f"operation:{operation_id}:failure_count"
+            self._redis_client.incr(key)
+            self._redis_client.expire(key, 86400)  # Expire after 24 hours
+        except Exception as e:
+            logger.warning(f"Failed to increment failure count: {e}")
+
     def _send_to_dead_letter_queue(
         self,
         task_id: str,

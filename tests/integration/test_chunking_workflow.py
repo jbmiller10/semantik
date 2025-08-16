@@ -749,7 +749,7 @@ class TestCompleteChunkingWorkflow:
         if operation:
             operation.status = "completed"
             operation.completed_at = datetime.now(UTC)
-            operation.progress_percentage = 100.0
+            operation.meta = {"progress_percentage": 100.0}
             await session.commit()
 
     async def _search_chunks(

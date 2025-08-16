@@ -506,8 +506,8 @@ async def db_session():
 
     if not database_url:
         # Construct from individual components if DATABASE_URL not set
-        postgres_user = os.environ.get("POSTGRES_USER", "postgres")
-        postgres_password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+        postgres_user = os.environ.get("POSTGRES_USER", "semantik")
+        postgres_password = os.environ.get("POSTGRES_PASSWORD", "1a206f9f65f0ab85f05a8fc2d07139bce44497bcec88d78ff85ebfcd228216f7")
         postgres_db = os.environ.get("POSTGRES_DB", "semantik_test")
         postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
         postgres_port = os.environ.get("POSTGRES_PORT", "5432")

@@ -68,16 +68,28 @@ type-check:
 	poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
-	poetry run pytest tests -v
+	@if [ -f .env.test ]; then \
+		export $$(cat .env.test | grep -v '^#' | xargs) && poetry run pytest tests -v; \
+	else \
+		poetry run pytest tests -v; \
+	fi
 
 test-ci:
-	poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"
+	@if [ -f .env.test ]; then \
+		export $$(cat .env.test | grep -v '^#' | xargs) && poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"; \
+	else \
+		poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"; \
+	fi
 
 test-e2e:
 	poetry run pytest tests -v -m e2e
 
 test-coverage:
-	poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
+	@if [ -f .env.test ]; then \
+		export $$(cat .env.test | grep -v '^#' | xargs) && poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term; \
+	else \
+		poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term; \
+	fi
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

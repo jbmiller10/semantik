@@ -86,7 +86,7 @@ class ChunkingTestHelper:
         if operation:
             operation.status = "completed"
             operation.completed_at = datetime.now(UTC)
-            operation.progress_percentage = 100.0
+            operation.meta = {"progress_percentage": 100.0}
             await session.commit()
 
         return total_chunks_created
