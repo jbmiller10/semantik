@@ -5,11 +5,11 @@ This module provides security-focused validation for all chunking inputs
 to prevent injection attacks, resource exhaustion, and other vulnerabilities.
 """
 
-import re
 from typing import Any
 
 from packages.shared.chunking.infrastructure.exceptions import ValidationError
 from packages.shared.chunks.metadata_sanitizer import MetadataSanitizer
+from packages.shared.utils.regex_safety import safe_regex_search, search_with_fallback
 
 
 class ChunkingInputValidator:
@@ -36,23 +36,34 @@ class ChunkingInputValidator:
         r"require\s*\(",  # CommonJS require (context dependent)
     ]
 
-    # SQL injection patterns
+    # SQL injection patterns - simplified to avoid ReDoS
     SQL_INJECTION_PATTERNS = [
-        r"\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b.*\b(from|into|where|table|database)\b",
-        r"(;|\||&&)\s*(shutdown|drop|delete|truncate)",
-        r'(\'|")\s*or\s+[\'"]*\d+[\'"]*\s*=\s*[\'"]*\d+',
-        r'(\'|")\s*or\s+(\'|").*\1\s*=\s*\1',
-        r'(\'|");?\s*(drop|delete|truncate|alter|create|insert|update|union|select)',
+        # Simplified pattern without .* between keywords - bounded to 50 chars
+        r"\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b.{0,50}\b(from|into|where|table|database)\b",
+        # Command sequences with bounded whitespace
+        r"(;|\||&&)\s{0,10}(shutdown|drop|delete|truncate)",
+        # SQL injection OR patterns - simplified without nested quantifiers
+        r'(\'|")\s{0,10}or\s{1,10}\d+\s{0,10}=\s{0,10}\d+',
+        # Backreference pattern simplified with bounded content
+        r'(\'|")\s{0,10}or\s{1,10}(\'|")[^\'\"]{0,50}\2\s{0,10}=\s{0,10}\2',
+        # SQL command injection - simplified with bounded whitespace
+        r'(\'|");?\s{0,10}(drop|delete|truncate|alter|create|insert|update|union|select)\b',
     ]
 
-    # Command injection patterns
+    # Command injection patterns - simplified to avoid ReDoS
     COMMAND_INJECTION_PATTERNS = [
-        r"[;&|]\s*(ls|cat|grep|find|curl|wget|bash|sh|python|perl|ruby|php)",
-        r"`[^`]*`",  # Backticks
-        r"\$\([^)]+\)",  # Command substitution
-        r"\$\{[^}]+\}",  # Variable substitution
-        r">\s*/dev/null",  # Output redirection
-        r"2>&1",  # Error redirection
+        # Command sequences with bounded whitespace
+        r"[;&|]\s{0,10}(ls|cat|grep|find|curl|wget|bash|sh|python|perl|ruby|php)\b",
+        # Backticks - bounded to 100 chars
+        r"`[^`]{0,100}`",
+        # Command substitution - bounded to 100 chars
+        r"\$\([^)]{0,100}\)",
+        # Variable substitution - bounded to 100 chars
+        r"\$\{[^}]{0,100}\}",
+        # Output redirection with bounded whitespace
+        r">\s{0,10}/dev/null",
+        # Error redirection
+        r"2>&1",
     ]
 
     @classmethod
@@ -116,10 +127,12 @@ class ChunkingInputValidator:
                 correlation_id=correlation_id,
             )
 
-        # Check for dangerous HTML/JS patterns
+        # Check for dangerous HTML/JS patterns with timeout protection
         content_lower = content.lower()
         for pattern in cls.DANGEROUS_PATTERNS:
-            if re.search(pattern, content_lower, re.IGNORECASE | re.DOTALL):
+            # Use safe regex with 1 second timeout
+            match = safe_regex_search(pattern, content_lower, timeout=1.0, flags=0)
+            if match:
                 raise ValidationError(
                     field="content",
                     value=f"<content matching pattern: {pattern}>",
@@ -127,9 +140,11 @@ class ChunkingInputValidator:
                     correlation_id=correlation_id,
                 )
 
-        # Check for SQL injection patterns
+        # Check for SQL injection patterns with timeout protection
         for pattern in cls.SQL_INJECTION_PATTERNS:
-            if re.search(pattern, content_lower, re.IGNORECASE):
+            # Use search with fallback for better resilience
+            match = search_with_fallback(pattern, content_lower, timeout=1.0, flags=0)
+            if match:
                 raise ValidationError(
                     field="content",
                     value=f"<content with SQL pattern: {pattern}>",
@@ -139,7 +154,8 @@ class ChunkingInputValidator:
 
         # Check for command injection patterns (be careful with code files)
         for pattern in cls.COMMAND_INJECTION_PATTERNS:
-            if re.search(pattern, content, re.MULTILINE):
+            match = safe_regex_search(pattern, content, timeout=1.0, flags=0)
+            if match:
                 # For now, just log a warning - code files may contain these
                 pass  # Consider context before rejecting
 
