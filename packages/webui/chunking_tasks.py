@@ -114,16 +114,24 @@ except ValueError:
     from prometheus_client import REGISTRY
     chunking_task_duration = REGISTRY._names_to_collectors["chunking_task_duration_seconds"]
 
-chunking_operation_memory_usage = Gauge(
-    "chunking_operation_memory_usage_bytes",
-    "Current memory usage by specific chunking operation",
-    ["operation_id"],
-)
+try:
+    chunking_operation_memory_usage = Gauge(
+        "chunking_operation_memory_usage_bytes",
+        "Current memory usage by specific chunking operation",
+        ["operation_id"],
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+    chunking_operation_memory_usage = REGISTRY._names_to_collectors["chunking_operation_memory_usage_bytes"]
 
-chunking_active_operations = Gauge(
-    "chunking_active_operations",
-    "Number of currently active chunking operations",
-)
+try:
+    chunking_active_operations = Gauge(
+        "chunking_active_operations",
+        "Number of currently active chunking operations",
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+    chunking_active_operations = REGISTRY._names_to_collectors["chunking_active_operations"]
 
 # Task configuration
 CHUNKING_SOFT_TIME_LIMIT = 3600  # 1 hour

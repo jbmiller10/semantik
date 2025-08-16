@@ -16,8 +16,6 @@ from httpx import AsyncClient
 from shared.database.models import Chunk, Collection, Document, Operation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from webui.auth import create_access_token
-
 fake = Faker()
 
 
@@ -244,13 +242,13 @@ Final content.
 
 
 @pytest.fixture()
-async def test_collection(async_session: AsyncSession, test_user: dict) -> Collection:
+async def test_collection(async_session: AsyncSession) -> Collection:
     """Create a test collection for chunking tests."""
     collection = Collection(
         id=str(uuid.uuid4()),
         name=f"Test Collection {fake.word()}",
         description="Collection for end-to-end chunking tests",
-        owner_id=test_user["id"],
+        owner_id=100,  # Match the user ID used by authenticated_client_v2
         status="ready",
         vector_store_name=f"test_chunks_{uuid.uuid4().hex[:8]}",
         embedding_model="test-embedding-model",
@@ -265,11 +263,7 @@ async def test_collection(async_session: AsyncSession, test_user: dict) -> Colle
     return collection
 
 
-@pytest.fixture()
-async def auth_headers(test_user: dict) -> dict[str, str]:
-    """Create authorization headers for API requests."""
-    token = create_access_token(data={"sub": test_user["username"], "user_id": test_user["id"]})
-    return {"Authorization": f"Bearer {token}"}
+# Note: We now use authenticated_client_v2 fixture from conftest instead of auth_headers
 
 
 class TestCompleteChunkingWorkflow:
@@ -278,11 +272,10 @@ class TestCompleteChunkingWorkflow:
     @pytest.mark.asyncio()
     async def test_single_document_chunking_workflow(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[dict],
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test complete workflow for a single document."""
@@ -312,9 +305,8 @@ class TestCompleteChunkingWorkflow:
             },
         }
 
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json=chunking_config,
         )
 
@@ -375,11 +367,10 @@ class TestCompleteChunkingWorkflow:
     @pytest.mark.asyncio()
     async def test_multi_document_batch_processing(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[dict],
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test processing multiple documents with different strategies."""
@@ -414,9 +405,8 @@ class TestCompleteChunkingWorkflow:
             },
         }
 
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json=chunking_config,
         )
 
@@ -455,11 +445,10 @@ class TestCompleteChunkingWorkflow:
     @pytest.mark.asyncio()
     async def test_chunking_strategy_switching(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[dict],
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test changing chunking strategy on existing collection."""
@@ -489,9 +478,8 @@ class TestCompleteChunkingWorkflow:
             },
         }
 
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json=initial_config,
         )
 
@@ -519,9 +507,8 @@ class TestCompleteChunkingWorkflow:
             "reprocess_existing": True,
         }
 
-        response = await async_client.patch(
+        response = await authenticated_client_v2.patch(
             f"/api/v2/chunking/collections/{test_collection.id}/chunking-strategy",
-            headers=auth_headers,
             json=new_config,
         )
 
@@ -553,10 +540,9 @@ class TestCompleteChunkingWorkflow:
     @pytest.mark.asyncio()
     async def test_partition_distribution(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test that chunks are distributed across partitions correctly."""
@@ -588,9 +574,8 @@ class TestCompleteChunkingWorkflow:
         await async_session.commit()
 
         # Start chunking operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {
@@ -777,10 +762,9 @@ class TestEdgeCases:
     @pytest.mark.asyncio()
     async def test_empty_document_handling(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
     ) -> None:
         """Test handling of empty documents."""
         empty_doc = Document(
@@ -797,9 +781,8 @@ class TestEdgeCases:
         async_session.add(empty_doc)
         await async_session.commit()
 
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
@@ -820,10 +803,9 @@ class TestEdgeCases:
     @pytest.mark.asyncio()
     async def test_very_large_document_handling(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test handling of very large documents."""
@@ -843,9 +825,8 @@ class TestEdgeCases:
         async_session.add(large_doc)
         await async_session.commit()
 
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {"strategy": "fixed_size", "chunk_size": 1000, "chunk_overlap": 200},

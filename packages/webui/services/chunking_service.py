@@ -45,7 +45,7 @@ from packages.shared.chunking.infrastructure.exceptions import (
 from packages.shared.chunking.infrastructure.exceptions import (
     PermissionDeniedError as InfraPermissionDeniedError,
 )
-from packages.shared.database.models import Operation
+from packages.shared.database.models import Operation, OperationType
 from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
@@ -1392,7 +1392,7 @@ class ChunkingService:
             operation = Operation(
                 uuid=operation_id,
                 collection_id=collection_id,
-                type="chunking",
+                type=OperationType.INDEX,
                 status="pending",
                 user_id=user_id,
                 config={
@@ -1660,7 +1660,7 @@ class ChunkingService:
                 ).label("avg_processing_time"),
                 func.max(Operation.created_at).label("last_operation_at"),
                 func.min(Operation.created_at).label("first_operation_at"),
-            ).where(and_(Operation.collection_id == collection_id, Operation.type == "chunking"))
+            ).where(and_(Operation.collection_id == collection_id, Operation.type == OperationType.INDEX))
 
             stats_result = await self.db_session.execute(stats_query)
             stats = stats_result.one()
@@ -1671,7 +1671,7 @@ class ChunkingService:
                 .where(
                     and_(
                         Operation.collection_id == collection_id,
-                        Operation.type == "chunking",
+                        Operation.type == OperationType.INDEX,
                         Operation.config.isnot(None),
                     )
                 )
@@ -2940,7 +2940,7 @@ class ChunkingService:
 
         This is an alias for start_chunking_operation for compatibility.
         """
-        if operation_type == "chunking":
+        if operation_type == "chunking" or operation_type == OperationType.INDEX:
             return await self.start_chunking_operation(
                 collection_id=collection_id,
                 strategy=config.get("strategy", "recursive"),
