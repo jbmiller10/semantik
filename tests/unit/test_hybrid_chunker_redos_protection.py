@@ -20,6 +20,7 @@ import pytest
 # Import regex module for pattern type checking
 try:
     import regex
+
     HAS_REGEX = True
 except ImportError:
     HAS_REGEX = False
@@ -151,6 +152,7 @@ class TestHybridChunkerReDoSProtection:
             # Add re2._Regexp if available
             try:
                 import re2
+
                 valid_pattern_types.append(re2._Regexp)
             except ImportError:
                 pass
