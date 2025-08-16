@@ -26,6 +26,9 @@ from sqlalchemy.pool import NullPool
 from webui.auth import create_access_token, get_password_hash
 from webui.main import app
 
+# Import auth mocking utilities
+from tests.integration.auth_mock import AuthMocker, TestUser, create_test_user, create_admin_user
+
 fake = Faker()
 
 # Test database configuration
@@ -278,7 +281,7 @@ async def authenticated_async_client(
     to return the authenticated_user, ensuring consistency between
     resource ownership and API access.
     """
-    from webui.auth import get_current_user
+    from packages.webui.auth import get_current_user
 
     # Override database dependency
     async def override_get_db():
@@ -316,7 +319,7 @@ def authenticated_client(
     resource ownership and API access.
     """
     from fastapi.testclient import TestClient
-    from webui.auth import get_current_user
+    from packages.webui.auth import get_current_user
     
     # Override database dependency
     def override_get_db():
@@ -520,6 +523,115 @@ def test_data_factory():
 
 
 # Environment setup check
+@pytest.fixture()
+def auth_mocker() -> AuthMocker:
+    """Provide an AuthMocker instance for authentication mocking.
+    
+    This fixture creates an AuthMocker that can be used to override
+    authentication dependencies in tests.
+    """
+    return AuthMocker(app)
+
+
+@pytest_asyncio.fixture()
+async def mock_user(async_session: AsyncSession) -> TestUser:
+    """Create a mock test user with consistent data.
+    
+    This fixture creates a TestUser instance and adds it to the database,
+    ensuring consistency between database records and auth context.
+    """
+    # Create test user with specific ID to avoid conflicts
+    test_user = await create_test_user(async_session, user_id=100)
+    return test_user
+
+
+@pytest_asyncio.fixture()
+async def mock_admin_user(async_session: AsyncSession) -> TestUser:
+    """Create a mock admin user with consistent data.
+    
+    This fixture creates an admin TestUser instance and adds it to the database.
+    """
+    admin_user = await create_admin_user(async_session)
+    return admin_user
+
+
+@pytest_asyncio.fixture()
+async def authenticated_client_v2(
+    async_session: AsyncSession,
+    redis_client: Any,
+    mock_user: TestUser,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create an authenticated async HTTP client using the new auth mock system.
+    
+    This client uses the AuthMocker to properly override authentication,
+    ensuring consistency between resource ownership and API access.
+    """
+    from packages.webui.auth import get_current_user
+    
+    # Override database dependency
+    async def override_get_db():
+        yield async_session
+    
+    # Override authentication dependency with the mock user
+    # This needs to accept the credentials parameter even though we ignore it
+    async def override_get_current_user(credentials=None):
+        return mock_user.to_auth_dict()
+    
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    
+    # Create client with a dummy Bearer token to satisfy the HTTPBearer dependency
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+        headers={"Authorization": "Bearer test-token-for-mock"},
+    ) as client:
+        yield client
+    
+    # Clean up
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture()
+async def admin_client_v2(
+    async_session: AsyncSession,
+    redis_client: Any,
+    mock_admin_user: TestUser,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create an authenticated admin client using the new auth mock system.
+    
+    This client has admin privileges for testing admin-only endpoints.
+    """
+    from packages.webui.auth import get_current_user
+    
+    # Override database dependency
+    async def override_get_db():
+        yield async_session
+    
+    # Override authentication dependency with the admin user
+    # This needs to accept the credentials parameter even though we ignore it
+    async def override_get_current_user(credentials=None):
+        return mock_admin_user.to_auth_dict()
+    
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    
+    # Create client with a dummy Bearer token to satisfy the HTTPBearer dependency
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+        headers={"Authorization": "Bearer test-admin-token-for-mock"},
+    ) as client:
+        yield client
+    
+    # Clean up
+    app.dependency_overrides.clear()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _check_test_environment():
     """Check that test environment is properly configured."""
