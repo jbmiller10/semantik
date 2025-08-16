@@ -2,21 +2,29 @@
 """Safe regex operations with ReDoS protection."""
 
 import logging
-import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from re import Match, Pattern
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Try to import RE2, fall back to standard re if not available
+# Try to import regex module for native timeout support
+try:
+    import regex
+
+    HAS_REGEX = True
+except ImportError:
+    import re as regex
+
+    HAS_REGEX = False
+    logger.warning("regex module not available. Using standard re without native timeout support.")
+
+# Try to import RE2 as secondary option
 try:
     import re2
 
     HAS_RE2 = True
 except ImportError:
     HAS_RE2 = False
-    logger.warning("RE2 not available. Using standard regex with timeout protection only.")
 
 
 class RegexTimeoutError(Exception):
@@ -48,7 +56,6 @@ class SafeRegex:
             timeout: Maximum time allowed for regex operations (seconds)
         """
         self.timeout = timeout
-        self.executor = ThreadPoolExecutor(max_workers=1)
         self._pattern_cache: dict[tuple[str, bool, int], Pattern[str] | Any] = {}
 
     def compile_safe(self, pattern: str, use_re2: bool = True, flags: int = 0) -> Pattern[str] | Any:
@@ -79,11 +86,11 @@ class SafeRegex:
                 # RE2 doesn't support all Python regex features but is safe
                 compiled = re2.compile(pattern, flags=flags)
             except Exception:
-                # Fall back to Python re with timeout protection
-                logger.debug(f"RE2 compilation failed for pattern: {pattern}. Using standard re.")
-                compiled = re.compile(pattern, flags=flags)
+                # Fall back to regex module with timeout protection
+                logger.debug(f"RE2 compilation failed for pattern: {pattern}. Using regex module.")
+                compiled = regex.compile(pattern, flags=flags)
         else:
-            compiled = re.compile(pattern, flags=flags)
+            compiled = regex.compile(pattern, flags=flags)
 
         # Cache the compiled pattern (limit cache size)
         if len(self._pattern_cache) < 100:
@@ -107,15 +114,21 @@ class SafeRegex:
         """
         timeout = timeout or self.timeout
 
-        def _match() -> Match[str] | None:
-            compiled = self.compile_safe(pattern)
-            return compiled.match(text)
-
         try:
-            future = self.executor.submit(_match)
-            return future.result(timeout=timeout)
-        except TimeoutError:
-            raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
+            compiled = self.compile_safe(pattern)
+            if HAS_REGEX:
+                # Use native timeout support
+                return compiled.match(text, timeout=timeout)
+            else:
+                # No timeout available with standard re
+                return compiled.match(text)
+        except regex.error as e:
+            if HAS_REGEX and "timeout" in str(e).lower():
+                raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
+            raise
+        except Exception as e:
+            logger.error(f"Match failed: {e}")
+            return None
 
     def findall_safe(self, pattern: str, text: str, max_matches: int = 1000, flags: int = 0) -> list[str]:
         """Find all matches with safety limits.
@@ -124,20 +137,36 @@ class SafeRegex:
             pattern: Regex pattern
             text: Text to search
             max_matches: Maximum matches to return
-            flags: Regex compilation flags (e.g., re.MULTILINE)
+            flags: Regex compilation flags (e.g., regex.MULTILINE)
 
         Returns:
             List of matches (limited)
         """
-        compiled = self.compile_safe(pattern, flags=flags)
-        matches = []
+        try:
+            compiled = self.compile_safe(pattern, flags=flags)
+            matches = []
 
-        for match in compiled.finditer(text):
-            matches.append(match.group())
-            if len(matches) >= max_matches:
-                break
+            if HAS_REGEX:
+                # Use finditer with timeout
+                for match in compiled.finditer(text, timeout=self.timeout):
+                    matches.append(match.group())
+                    if len(matches) >= max_matches:
+                        break
+            else:
+                # No timeout available
+                for match in compiled.finditer(text):
+                    matches.append(match.group())
+                    if len(matches) >= max_matches:
+                        break
 
-        return matches
+            return matches
+        except regex.error as e:
+            if HAS_REGEX and "timeout" in str(e).lower():
+                raise RegexTimeoutError(f"Regex timeout after {self.timeout}s. Pattern: {pattern[:50]}...") from None
+            raise
+        except Exception as e:
+            logger.error(f"Findall failed: {e}")
+            return []
 
     def search_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
         """Search for pattern with timeout protection.
@@ -155,15 +184,21 @@ class SafeRegex:
         """
         timeout = timeout or self.timeout
 
-        def _search() -> Match[str] | None:
-            compiled = self.compile_safe(pattern)
-            return compiled.search(text)
-
         try:
-            future = self.executor.submit(_search)
-            return future.result(timeout=timeout)
-        except TimeoutError:
-            raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
+            compiled = self.compile_safe(pattern)
+            if HAS_REGEX:
+                # Use native timeout support
+                return compiled.search(text, timeout=timeout)
+            else:
+                # No timeout available with standard re
+                return compiled.search(text)
+        except regex.error as e:
+            if HAS_REGEX and "timeout" in str(e).lower():
+                raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
+            raise
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            return None
 
     def _is_pattern_dangerous(self, pattern: str) -> bool:
         """Check if pattern might cause ReDoS.
@@ -240,8 +275,3 @@ class SafeRegex:
                         return True
 
         return False
-
-    def __del__(self) -> None:
-        """Clean up executor on deletion."""
-        if hasattr(self, "executor"):
-            self.executor.shutdown(wait=False)
