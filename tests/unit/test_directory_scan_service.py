@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/directory_scan_service.py
 Tests path validation, permission checking, file discovery logic, and error scenarios
@@ -6,7 +7,9 @@ Tests path validation, permission checking, file discovery logic, and error scen
 
 import asyncio
 import hashlib
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,12 +28,12 @@ class TestDirectoryScanService:
     """Test DirectoryScanService implementation"""
 
     @pytest.fixture()
-    def service(self):
+    def service(self) -> None:
         """Create DirectoryScanService instance"""
         return DirectoryScanService()
 
     @pytest.fixture()
-    def fake_fs(self):
+    def fake_fs(self) -> Generator[Any, None, None]:
         """Create fake filesystem for testing"""
         with Patcher() as patcher:
             # Create test directory structure
@@ -45,14 +48,15 @@ class TestDirectoryScanService:
             yield patcher.fs
 
     @pytest.fixture()
-    def mock_ws_manager(self):
+    def mock_ws_manager(self) -> Generator[Any, None, None]:
         """Mock WebSocket manager"""
         with patch("packages.webui.services.directory_scan_service.ws_manager") as mock:
             mock._broadcast = AsyncMock()
+            mock.send_to_operation = AsyncMock()
             yield mock
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_preview_success(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_directory_preview_success(self, service, fake_fs, mock_ws_manager) -> None:
         """Test successful directory scan with recursive option"""
         # Test scan
         result = await service.scan_directory_preview(
@@ -81,10 +85,10 @@ class TestDirectoryScanService:
         assert file_paths == expected_paths
 
         # Verify WebSocket messages were sent
-        assert mock_ws_manager._broadcast.call_count > 0
+        assert mock_ws_manager.send_to_operation.call_count > 0
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_non_recursive(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_directory_non_recursive(self, service, fake_fs, mock_ws_manager) -> None:
         """Test non-recursive directory scan"""
         # Test scan
         result = await service.scan_directory_preview(
@@ -105,7 +109,7 @@ class TestDirectoryScanService:
         assert file_paths == expected_paths
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_with_patterns(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_directory_with_patterns(self, service, fake_fs, mock_ws_manager) -> None:
         """Test directory scan with include/exclude patterns"""
         # Test with include pattern
         result = await service.scan_directory_preview(
@@ -135,7 +139,7 @@ class TestDirectoryScanService:
         assert "/test_dir/subdir/nested.md" not in file_paths
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_path_not_exists(self, service):
+    async def test_scan_directory_path_not_exists(self, service) -> None:
         """Test scanning non-existent path"""
         with pytest.raises(FileNotFoundError, match="Path does not exist"):
             await service.scan_directory_preview(
@@ -145,7 +149,7 @@ class TestDirectoryScanService:
             )
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_not_a_directory(self, service, fake_fs):
+    async def test_scan_directory_not_a_directory(self, service, fake_fs) -> None:
         """Test scanning a file instead of directory"""
         with pytest.raises(ValueError, match="Path is not a directory"):
             await service.scan_directory_preview(
@@ -155,7 +159,7 @@ class TestDirectoryScanService:
             )
 
     @pytest.mark.asyncio()
-    async def test_scan_directory_permission_denied(self, service, fake_fs):
+    async def test_scan_directory_permission_denied(self, service, fake_fs) -> None:
         """Test scanning directory without permissions"""
         # Create directory without read permissions
         fake_fs.create_dir("/restricted", perm_bits=0o000)
@@ -168,7 +172,7 @@ class TestDirectoryScanService:
             )
 
     @pytest.mark.asyncio()
-    async def test_scan_file_size_limit(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_file_size_limit(self, service, fake_fs, mock_ws_manager) -> None:
         """Test that files exceeding size limit are warned about"""
         # Scan should complete but large file should generate warning
         result = await service.scan_directory_preview(
@@ -186,7 +190,7 @@ class TestDirectoryScanService:
         assert any("File too large" in warning for warning in result.warnings)
 
     @pytest.mark.asyncio()
-    async def test_file_hash_calculation(self, service, fake_fs):
+    async def test_file_hash_calculation(self, service, fake_fs) -> None:
         """Test SHA-256 hash calculation for files"""
         # Create file with known content
         test_content = b"test content for hash"
@@ -202,7 +206,7 @@ class TestDirectoryScanService:
         assert calculated_hash == expected_hash
 
     @pytest.mark.asyncio()
-    async def test_mime_type_detection(self, service):
+    async def test_mime_type_detection(self, service) -> None:
         """Test MIME type detection for various file types"""
         test_cases = [
             ("document.pdf", "application/pdf"),
@@ -222,7 +226,7 @@ class TestDirectoryScanService:
             assert mime_type == expected_mime
 
     @pytest.mark.asyncio()
-    async def test_progress_updates(self, service, fake_fs, mock_ws_manager):
+    async def test_progress_updates(self, service, fake_fs, mock_ws_manager) -> None:
         """Test WebSocket progress updates during scan"""
         # Create more files to trigger progress updates
         for i in range(PROGRESS_UPDATE_INTERVAL + 5):
@@ -236,11 +240,11 @@ class TestDirectoryScanService:
         )
 
         # Verify progress messages were sent
-        broadcast_calls = mock_ws_manager._broadcast.call_args_list
+        send_calls = mock_ws_manager.send_to_operation.call_args_list
         progress_messages = []
 
-        for call in broadcast_calls:
-            channel_id, message = call[0]
+        for call in send_calls:
+            scan_id, message = call[0]
             if isinstance(message, dict) and message.get("type") == "progress":
                 progress_messages.append(message)
 
@@ -255,7 +259,7 @@ class TestDirectoryScanService:
             assert "percentage" in msg["data"]
 
     @pytest.mark.asyncio()
-    async def test_scan_error_handling(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_error_handling(self, service, fake_fs, mock_ws_manager) -> None:
         """Test error handling during scan"""
         # Mock an error during file scanning
         with patch.object(service, "_scan_file", side_effect=Exception("Scan error")):
@@ -269,12 +273,12 @@ class TestDirectoryScanService:
 
             # Verify error message was sent via WebSocket before raising
             error_calls = [
-                call for call in mock_ws_manager._broadcast.call_args_list if call[0][1].get("type") == "error"
+                call for call in mock_ws_manager.send_to_operation.call_args_list if call[0][1].get("type") == "error"
             ]
             assert len(error_calls) > 0
 
     @pytest.mark.asyncio()
-    async def test_format_size(self, service):
+    async def test_format_size(self, service) -> None:
         """Test human-readable size formatting"""
         test_cases = [
             (0, "0.0 B"),
@@ -292,7 +296,7 @@ class TestDirectoryScanService:
             assert formatted == expected
 
     @pytest.mark.asyncio()
-    async def test_should_include_file(self, service):
+    async def test_should_include_file(self, service) -> None:
         """Test file inclusion logic"""
         # Test supported extensions
         for ext in SUPPORTED_EXTENSIONS:
@@ -315,7 +319,7 @@ class TestDirectoryScanService:
         assert service._should_include_file(file_path, ["*.pdf"], ["test/*"]) is False
 
     @pytest.mark.asyncio()
-    async def test_websocket_message_format(self, service, fake_fs, mock_ws_manager):
+    async def test_websocket_message_format(self, service, fake_fs, mock_ws_manager) -> None:
         """Test WebSocket message format and types"""
         await service.scan_directory_preview(
             path="/test_dir",
@@ -324,14 +328,14 @@ class TestDirectoryScanService:
             recursive=False,
         )
 
-        # Collect all broadcast calls
-        broadcast_calls = mock_ws_manager._broadcast.call_args_list
+        # Collect all send_to_operation calls
+        send_calls = mock_ws_manager.send_to_operation.call_args_list
 
         # Verify different message types
         message_types = set()
-        for call in broadcast_calls:
-            channel_id, message = call[0]
-            assert channel_id == "directory-scan:scan-ws-test"
+        for call in send_calls:
+            scan_id, message = call[0]
+            assert scan_id == "scan-ws-test"
             assert "type" in message
             assert "scan_id" in message
             assert "data" in message
@@ -342,7 +346,7 @@ class TestDirectoryScanService:
         assert expected_types.issubset(message_types)
 
     @pytest.mark.asyncio()
-    async def test_scan_empty_directory(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_empty_directory(self, service, fake_fs, mock_ws_manager) -> None:
         """Test scanning empty directory"""
         fake_fs.create_dir("/empty_dir")
 
@@ -358,7 +362,7 @@ class TestDirectoryScanService:
         assert len(result.warnings) == 0
 
     @pytest.mark.asyncio()
-    async def test_file_permission_errors(self, service, fake_fs, mock_ws_manager):
+    async def test_file_permission_errors(self, service, fake_fs, mock_ws_manager) -> None:
         """Test handling files with permission errors"""
         # Create file without read permissions
         fake_fs.create_file("/test_dir/restricted.pdf", contents=b"restricted" * 100, st_mode=0o000)
@@ -378,7 +382,7 @@ class TestDirectoryScanService:
         assert "/test_dir/restricted.pdf" not in file_paths
 
     @pytest.mark.asyncio()
-    async def test_concurrent_scans(self, service, fake_fs, mock_ws_manager):
+    async def test_concurrent_scans(self, service, fake_fs, mock_ws_manager) -> None:
         """Test multiple concurrent scans"""
         # Create multiple scan tasks
         scan_tasks = []
@@ -401,7 +405,7 @@ class TestDirectoryScanService:
             assert result.total_files == 4
 
     @pytest.mark.asyncio()
-    async def test_scan_with_symlinks(self, service, fake_fs, mock_ws_manager):
+    async def test_scan_with_symlinks(self, service, fake_fs, mock_ws_manager) -> None:
         """Test scanning directories with symbolic links"""
         # Create symlink
         fake_fs.create_symlink("/test_dir/link_to_doc", "/test_dir/document1.pdf")
@@ -422,11 +426,11 @@ class TestDirectoryScanServiceEdgeCases:
     """Test edge cases and error scenarios"""
 
     @pytest.fixture()
-    def service(self):
+    def service(self) -> None:
         return DirectoryScanService()
 
     @pytest.mark.asyncio()
-    async def test_scan_file_with_invalid_hash(self, service, fs):
+    async def test_scan_file_with_invalid_hash(self, service, fs) -> None:
         """Test handling files that fail hash calculation"""
         # Create a file that will fail to hash
         with patch.object(service, "_calculate_file_hash", side_effect=OSError("Hash calculation failed")):
@@ -441,7 +445,7 @@ class TestDirectoryScanServiceEdgeCases:
             assert "Error scanning file" in warning
 
     @pytest.mark.asyncio()
-    async def test_count_files_error_handling(self, service, fs):
+    async def test_count_files_error_handling(self, service, fs) -> None:
         """Test file counting with errors"""
         fs.create_dir("/test_count")
         fs.create_file("/test_count/file1.pdf", contents=b"x" * 100)
@@ -460,14 +464,14 @@ class TestDirectoryScanServiceEdgeCases:
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.directory_scan_service.ws_manager")
-    async def test_websocket_broadcast_failure(self, mock_ws_manager, service, fs):
+    async def test_websocket_broadcast_failure(self, mock_ws_manager, service, fs) -> None:
         """Test handling WebSocket broadcast failures"""
         # Create test directory
         fs.create_dir("/test_dir")
         fs.create_file("/test_dir/test.pdf", contents=b"test" * 100)
 
-        # Make broadcast fail
-        mock_ws_manager._broadcast.side_effect = Exception("WebSocket error")
+        # Make send_to_operation fail
+        mock_ws_manager.send_to_operation = AsyncMock(side_effect=Exception("WebSocket error"))
 
         # Should still complete scan despite WebSocket errors
         result = await service.scan_directory_preview(
@@ -480,7 +484,7 @@ class TestDirectoryScanServiceEdgeCases:
         assert isinstance(result, DirectoryScanResponse)
 
     @pytest.mark.asyncio()
-    async def test_scan_recursive_error_handling(self, service, fs):
+    async def test_scan_recursive_error_handling(self, service, fs) -> Generator[Any, None, None]:
         """Test error handling in recursive scan"""
         fs.create_dir("/test_recursive")
         fs.create_file("/test_recursive/file.pdf", contents=b"x" * 100)
@@ -502,13 +506,15 @@ class TestDirectoryScanProgress:
     """Test progress tracking and reporting"""
 
     @pytest.fixture()
-    def service(self):
+    def service(self) -> None:
         return DirectoryScanService()
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.directory_scan_service.ws_manager")
-    async def test_progress_message_structure(self, mock_ws_manager, service):
+    async def test_progress_message_structure(self, mock_ws_manager, service) -> None:
         """Test progress message data structure"""
+        mock_ws_manager.send_to_operation = AsyncMock()
+
         await service._send_progress(
             channel_id="test-channel",
             scan_id="test-scan",
@@ -521,19 +527,19 @@ class TestDirectoryScanProgress:
             },
         )
 
-        # Verify broadcast was called
-        mock_ws_manager._broadcast.assert_called_once()
+        # Verify send_to_operation was called
+        mock_ws_manager.send_to_operation.assert_called_once()
 
         # Verify message structure
-        channel_id, message = mock_ws_manager._broadcast.call_args[0]
-        assert channel_id == "test-channel"
+        scan_id, message = mock_ws_manager.send_to_operation.call_args[0]
+        assert scan_id == "test-scan"
         assert message["type"] == "progress"
         assert message["scan_id"] == "test-scan"
         assert message["data"]["files_scanned"] == 50
         assert message["data"]["percentage"] == 50.0
 
     @pytest.mark.asyncio()
-    async def test_progress_update_intervals(self, service, fs):
+    async def test_progress_update_intervals(self, service, fs) -> None:
         """Test that progress updates happen at correct intervals"""
         # Create test directory first
         fs.create_dir("/test_progress")

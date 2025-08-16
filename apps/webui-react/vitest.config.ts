@@ -9,6 +9,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './vitest.setup.ts',
     css: true,
+    // Test timeouts to prevent hanging
+    testTimeout: 10000, // 10 second timeout per test
+    hookTimeout: 10000, // 10 second timeout for hooks
     // Explicitly include test files pattern - more flexible for CI
     include: [
       'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',

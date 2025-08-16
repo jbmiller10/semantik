@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/repositories/postgres/api_key_repository.py
 Tests API key repository with mocked database operations
@@ -19,7 +20,7 @@ class TestPostgreSQLApiKeyRepository:
     """Test PostgreSQL API key repository implementation"""
 
     @pytest.fixture()
-    def mock_session(self):
+    def mock_session(self) -> None:
         """Create a mock AsyncSession"""
         session = AsyncMock()
         session.add = Mock()
@@ -31,11 +32,11 @@ class TestPostgreSQLApiKeyRepository:
         return session
 
     @pytest.fixture()
-    def api_key_repo(self, mock_session):
+    def api_key_repo(self, mock_session) -> None:
         """Create API key repository with mocked session"""
         return PostgreSQLApiKeyRepository(mock_session)
 
-    def test_initialization(self, mock_session):
+    def test_initialization(self, mock_session) -> None:
         """Test repository initialization"""
         repo = PostgreSQLApiKeyRepository(mock_session)
         assert repo.session == mock_session
@@ -44,7 +45,7 @@ class TestPostgreSQLApiKeyRepository:
     @pytest.mark.asyncio()
     @patch("secrets.token_urlsafe")
     @patch("uuid.uuid4")
-    async def test_create_api_key_success(self, mock_uuid, mock_token, api_key_repo, mock_session):
+    async def test_create_api_key_success(self, mock_uuid, mock_token, api_key_repo, mock_session) -> None:
         """Test successful API key creation"""
         # Setup mocks
         mock_uuid.return_value = "test-uuid"
@@ -85,13 +86,13 @@ class TestPostgreSQLApiKeyRepository:
         assert result["api_key"] == "test_api_key_token"
 
     @pytest.mark.asyncio()
-    async def test_create_api_key_invalid_user_id(self, api_key_repo):
+    async def test_create_api_key_invalid_user_id(self, api_key_repo) -> None:
         """Test creating API key with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await api_key_repo.create_api_key("invalid", "Test Key")
 
     @pytest.mark.asyncio()
-    async def test_create_api_key_user_not_found(self, api_key_repo, mock_session):
+    async def test_create_api_key_user_not_found(self, api_key_repo, mock_session) -> None:
         """Test creating API key for non-existent user"""
         mock_session.scalar.return_value = None  # User doesn't exist
 
@@ -102,7 +103,7 @@ class TestPostgreSQLApiKeyRepository:
         assert exc_info.value.entity_id == "123"
 
     @pytest.mark.asyncio()
-    async def test_create_api_key_integrity_error(self, api_key_repo, mock_session):
+    async def test_create_api_key_integrity_error(self, api_key_repo, mock_session) -> None:
         """Test creating API key with database integrity error"""
         mock_session.scalar.return_value = 123  # User exists
         mock_session.flush.side_effect = IntegrityError("statement", "params", "orig")
@@ -111,7 +112,7 @@ class TestPostgreSQLApiKeyRepository:
             await api_key_repo.create_api_key("123", "Test Key")
 
     @pytest.mark.asyncio()
-    async def test_get_api_key_success(self, api_key_repo, mock_session):
+    async def test_get_api_key_success(self, api_key_repo, mock_session) -> None:
         """Test getting API key by ID"""
         # Mock API key with user
         mock_user = Mock(spec=User)
@@ -143,7 +144,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result["user"]["username"] == "testuser"
 
     @pytest.mark.asyncio()
-    async def test_get_api_key_not_found(self, api_key_repo, mock_session):
+    async def test_get_api_key_not_found(self, api_key_repo, mock_session) -> None:
         """Test getting non-existent API key"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -153,7 +154,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_get_api_key_by_hash_success(self, api_key_repo, mock_session):
+    async def test_get_api_key_by_hash_success(self, api_key_repo, mock_session) -> None:
         """Test getting API key by hash"""
         mock_api_key = Mock(spec=ApiKey)
         mock_api_key.id = "test-uuid"
@@ -176,7 +177,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result["id"] == "test-uuid"
 
     @pytest.mark.asyncio()
-    async def test_list_user_api_keys_success(self, api_key_repo, mock_session):
+    async def test_list_user_api_keys_success(self, api_key_repo, mock_session) -> None:
         """Test listing user's API keys"""
         # Mock multiple API keys
         mock_keys = []
@@ -204,13 +205,13 @@ class TestPostgreSQLApiKeyRepository:
         assert result[2]["id"] == "key-2"
 
     @pytest.mark.asyncio()
-    async def test_list_user_api_keys_invalid_user_id(self, api_key_repo):
+    async def test_list_user_api_keys_invalid_user_id(self, api_key_repo) -> None:
         """Test listing API keys with invalid user ID"""
         with pytest.raises(InvalidUserIdError):
             await api_key_repo.list_user_api_keys("invalid")
 
     @pytest.mark.asyncio()
-    async def test_update_api_key_success(self, api_key_repo, mock_session):
+    async def test_update_api_key_success(self, api_key_repo, mock_session) -> None:
         """Test updating API key"""
         mock_api_key = Mock(spec=ApiKey)
         mock_api_key.id = "test-uuid"
@@ -235,7 +236,7 @@ class TestPostgreSQLApiKeyRepository:
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_api_key_not_found(self, api_key_repo, mock_session):
+    async def test_update_api_key_not_found(self, api_key_repo, mock_session) -> None:
         """Test updating non-existent API key"""
         mock_session.get.return_value = None
 
@@ -243,7 +244,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_update_api_key_ignores_invalid_fields(self, api_key_repo, mock_session):
+    async def test_update_api_key_ignores_invalid_fields(self, api_key_repo, mock_session) -> None:
         """Test that update ignores non-allowed fields"""
         mock_api_key = Mock(spec=ApiKey)
         mock_api_key.id = "test-uuid"
@@ -274,7 +275,7 @@ class TestPostgreSQLApiKeyRepository:
         assert mock_api_key.key_hash == "original_hash"  # Unchanged
 
     @pytest.mark.asyncio()
-    async def test_delete_api_key_success(self, api_key_repo, mock_session):
+    async def test_delete_api_key_success(self, api_key_repo, mock_session) -> None:
         """Test successful API key deletion"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = "test-uuid"
@@ -286,7 +287,7 @@ class TestPostgreSQLApiKeyRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_delete_api_key_not_found(self, api_key_repo, mock_session):
+    async def test_delete_api_key_not_found(self, api_key_repo, mock_session) -> None:
         """Test deleting non-existent API key"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -297,7 +298,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is False
 
     @pytest.mark.asyncio()
-    async def test_verify_api_key_success(self, api_key_repo, mock_session):
+    async def test_verify_api_key_success(self, api_key_repo, mock_session) -> None:
         """Test successful API key verification"""
         api_key = "test_api_key_token"
         key_hash = hashlib.sha256(api_key.encode()).hexdigest()
@@ -335,7 +336,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result["user"]["username"] == "testuser"
 
     @pytest.mark.asyncio()
-    async def test_verify_api_key_not_found(self, api_key_repo, mock_session):
+    async def test_verify_api_key_not_found(self, api_key_repo, mock_session) -> None:
         """Test verifying non-existent API key"""
         mock_result = Mock()
         mock_result.scalar_one_or_none.return_value = None
@@ -345,7 +346,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_verify_api_key_expired(self, api_key_repo, mock_session):
+    async def test_verify_api_key_expired(self, api_key_repo, mock_session) -> None:
         """Test verifying expired API key"""
         api_key = "test_api_key_token"
 
@@ -362,7 +363,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_verify_api_key_inactive_user(self, api_key_repo, mock_session):
+    async def test_verify_api_key_inactive_user(self, api_key_repo, mock_session) -> None:
         """Test verifying API key for inactive user"""
         # Mock inactive user
         mock_user = Mock(spec=User)
@@ -383,7 +384,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result is None
 
     @pytest.mark.asyncio()
-    async def test_update_last_used(self, api_key_repo, mock_session):
+    async def test_update_last_used(self, api_key_repo, mock_session) -> None:
         """Test updating last used timestamp"""
         await api_key_repo.update_last_used("test-uuid")
 
@@ -391,7 +392,7 @@ class TestPostgreSQLApiKeyRepository:
         # Should not flush (as per implementation)
 
     @pytest.mark.asyncio()
-    async def test_update_last_used_error_handled(self, api_key_repo, mock_session):
+    async def test_update_last_used_error_handled(self, api_key_repo, mock_session) -> None:
         """Test update_last_used handles errors gracefully"""
         mock_session.execute.side_effect = Exception("Database error")
 
@@ -399,7 +400,7 @@ class TestPostgreSQLApiKeyRepository:
         await api_key_repo.update_last_used("test-uuid")
 
     @pytest.mark.asyncio()
-    async def test_cleanup_expired_keys_success(self, api_key_repo, mock_session):
+    async def test_cleanup_expired_keys_success(self, api_key_repo, mock_session) -> None:
         """Test successful cleanup of expired keys"""
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = ["key1", "key2", "key3"]
@@ -411,7 +412,7 @@ class TestPostgreSQLApiKeyRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_cleanup_expired_keys_none_found(self, api_key_repo, mock_session):
+    async def test_cleanup_expired_keys_none_found(self, api_key_repo, mock_session) -> None:
         """Test cleanup when no expired keys exist"""
         mock_result = Mock()
         mock_result.scalars.return_value.all.return_value = []
@@ -423,7 +424,7 @@ class TestPostgreSQLApiKeyRepository:
 
     @pytest.mark.asyncio()
     @patch("secrets.token_urlsafe")
-    async def test_create_api_key_with_expiration(self, mock_token, api_key_repo, mock_session):
+    async def test_create_api_key_with_expiration(self, mock_token, api_key_repo, mock_session) -> None:
         """Test creating API key with automatic expiration"""
         mock_token.return_value = "test_api_key_token"
         mock_session.scalar.return_value = 123  # User exists
@@ -444,7 +445,7 @@ class TestPostgreSQLApiKeyRepository:
         assert "expires_at" in result
         assert result["api_key"] == "test_api_key_token"
 
-    def test_hash_api_key(self, api_key_repo):
+    def test_hash_api_key(self, api_key_repo) -> None:
         """Test API key hashing"""
         api_key = "test_api_key_token"
         expected_hash = hashlib.sha256(api_key.encode()).hexdigest()
@@ -454,12 +455,12 @@ class TestPostgreSQLApiKeyRepository:
         assert result == expected_hash
         assert len(result) == 64  # SHA-256 produces 64 hex characters
 
-    def test_api_key_to_dict_none(self, api_key_repo):
+    def test_api_key_to_dict_none(self, api_key_repo) -> None:
         """Test converting None to dict"""
         result = api_key_repo._api_key_to_dict(None)
         assert result is None
 
-    def test_api_key_to_dict_with_user(self, api_key_repo):
+    def test_api_key_to_dict_with_user(self, api_key_repo) -> None:
         """Test converting API key with user to dict"""
         mock_user = Mock(spec=User)
         mock_user.id = 123
@@ -484,7 +485,7 @@ class TestPostgreSQLApiKeyRepository:
         assert result["name"] == "Test Key"
         assert result["user"]["username"] == "testuser"
 
-    def test_api_key_to_dict_without_user(self, api_key_repo):
+    def test_api_key_to_dict_without_user(self, api_key_repo) -> None:
         """Test converting API key without user to dict"""
         mock_api_key = Mock(spec=ApiKey)
         mock_api_key.id = "test-uuid"
@@ -509,12 +510,12 @@ class TestApiKeyRepositoryEdgeCases:
     """Test edge cases and error scenarios"""
 
     @pytest.fixture()
-    def api_key_repo(self):
+    def api_key_repo(self) -> None:
         mock_session = AsyncMock()
         return PostgreSQLApiKeyRepository(mock_session)
 
     @pytest.mark.asyncio()
-    async def test_create_api_key_empty_permissions(self, api_key_repo):
+    async def test_create_api_key_empty_permissions(self, api_key_repo) -> None:
         """Test creating API key with empty permissions"""
         api_key_repo.session.scalar = AsyncMock(return_value=123)
         api_key_repo.session.flush = AsyncMock()
@@ -528,7 +529,7 @@ class TestApiKeyRepositoryEdgeCases:
         assert api_key_obj.permissions == {}
 
     @pytest.mark.asyncio()
-    async def test_verify_api_key_with_future_expiration(self, api_key_repo):
+    async def test_verify_api_key_with_future_expiration(self, api_key_repo) -> None:
         """Test verifying API key with future expiration date"""
         mock_user = Mock(spec=User)
         mock_user.is_active = True
@@ -553,7 +554,7 @@ class TestApiKeyRepositoryEdgeCases:
 
         assert result is not None  # Should be valid
 
-    def test_datetime_to_str_edge_cases(self, api_key_repo):
+    def test_datetime_to_str_edge_cases(self, api_key_repo) -> None:
         """Test datetime conversion edge cases in _api_key_to_dict"""
         mock_api_key = Mock(spec=ApiKey)
         mock_api_key.id = "test"

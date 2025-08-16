@@ -109,3 +109,28 @@ class InvalidStateError(RepositoryError):
         self.current_state = current_state
         self.allowed_states = allowed_states
         super().__init__(message)
+
+
+class DimensionMismatchError(RepositoryError):
+    """Raised when vector dimensions do not match between embeddings and Qdrant collection."""
+
+    def __init__(
+        self,
+        expected_dimension: int,
+        actual_dimension: int,
+        collection_name: str | None = None,
+        model_name: str | None = None,
+    ) -> None:
+        """Initialize with dimension mismatch details."""
+        self.expected_dimension = expected_dimension
+        self.actual_dimension = actual_dimension
+        self.collection_name = collection_name
+        self.model_name = model_name
+
+        message = f"Dimension mismatch: expected {expected_dimension}, got {actual_dimension}"
+        if collection_name:
+            message += f" for collection '{collection_name}'"
+        if model_name:
+            message += f" (model: {model_name})"
+
+        super().__init__(message)

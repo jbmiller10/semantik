@@ -14,10 +14,15 @@ verifying the correct code paths are executed.
 """
 
 import os
-from unittest.mock import AsyncMock, patch
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+from packages.shared.config import settings
+from packages.vecpipe.search_api import app
 
 # NOTE: This test verifies that generate_embedding_async is called correctly,
 # but due to settings being loaded at module import time, it may use mock embeddings
@@ -28,7 +33,7 @@ class TestSearchAPIIntegration:
     """Test the integration between search_api and embedding_service."""
 
     @pytest.fixture(autouse=True)
-    def _setup_env(self) -> None:
+    def _setup_env(self) -> Generator[Any, None, None]:
         """Set up environment variables for the test."""
         # Save original values
         original_values = {}
@@ -73,8 +78,6 @@ class TestSearchAPIIntegration:
         """Test that the /search endpoint correctly uses the embedding service."""
         # Import settings to check which mode we're in
 
-        from packages.shared.config import settings
-
         # Set up mocks
         # Mock the embedding service instance
         mock_embedding_instance = mock_embedding_service_class.return_value
@@ -87,7 +90,7 @@ class TestSearchAPIIntegration:
             mock_generate_mock_embedding.return_value = [0.1] * 1024
         else:
             # If not using mock embeddings, mock generate_embedding_async
-            async def mock_embedding_async_func(text, model_name, quantization, instruction=None):
+            async def mock_embedding_async_func(text, model_name, quantization, instruction=None) -> None:
                 # This simulates the model_manager calling the embedding service
                 return mock_embedding_instance.generate_single_embedding(text, model_name, quantization, instruction)
 
@@ -138,7 +141,6 @@ class TestSearchAPIIntegration:
         mock_qdrant_instance = mock_qdrant_client_class.return_value
 
         # Create mock search results
-        from unittest.mock import MagicMock
 
         mock_result_1 = MagicMock()
         mock_result_1.id = "test-id-1"
@@ -163,7 +165,6 @@ class TestSearchAPIIntegration:
         mock_qdrant_instance.search = AsyncMock(return_value=[mock_result_1, mock_result_2])
 
         # Import and create test client
-        from packages.vecpipe.search_api import app
 
         client = TestClient(app)
 
@@ -229,8 +230,6 @@ class TestSearchAPIIntegration:
         """Test search with custom model name and quantization parameters."""
         # Import settings to check which mode we're in
 
-        from packages.shared.config import settings
-
         # Set up mocks
         mock_embedding_instance = mock_embedding_service_class.return_value
         mock_embedding_instance.mock_mode = False
@@ -242,7 +241,7 @@ class TestSearchAPIIntegration:
             mock_generate_mock_embedding.return_value = [0.2] * 768
         else:
             # If not using mock embeddings, mock generate_embedding_async
-            async def mock_embedding_async_func(text, model_name, quantization, instruction=None):
+            async def mock_embedding_async_func(text, model_name, quantization, instruction=None) -> None:
                 # This simulates the model_manager calling the embedding service
                 return mock_embedding_instance.generate_single_embedding(text, model_name, quantization, instruction)
 
@@ -271,7 +270,6 @@ class TestSearchAPIIntegration:
         mock_qdrant_instance.search = AsyncMock(return_value=[])
 
         # Import and create test client
-        from packages.vecpipe.search_api import app
 
         client = TestClient(app)
 

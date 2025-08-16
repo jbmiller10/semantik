@@ -1,9 +1,8 @@
 """Performance and message validation tests for WebSocket integration."""
 
-# mypy: ignore-errors
-
 import json
 import os
+import threading
 import time
 from collections import defaultdict
 from collections.abc import Iterator
@@ -13,6 +12,8 @@ from typing import Any
 import pytest
 import requests
 import websocket
+
+# mypy: ignore-errors
 
 
 def service_available(url: str) -> bool:
@@ -115,7 +116,6 @@ class TestWebSocketPerformanceAndValidation:
             ws = websocket.WebSocketApp(ws_url, on_message=on_message)
 
             # Run WebSocket
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -207,7 +207,6 @@ class TestWebSocketPerformanceAndValidation:
             ws = websocket.WebSocketApp(ws_url, on_message=on_message)
 
             # Run WebSocket
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -295,8 +294,6 @@ class TestWebSocketPerformanceAndValidation:
 
             ws1 = websocket.WebSocketApp(ws_url, on_message=on_message_first)
 
-            import threading
-
             ws1_thread = threading.Thread(target=ws1.run_forever)
             ws1_thread.daemon = True
             ws1_thread.start()
@@ -373,8 +370,6 @@ class TestWebSocketPerformanceAndValidation:
             # Rapidly connect and disconnect multiple times
             for _ in range(10):
                 ws = websocket.WebSocketApp(ws_url)
-
-                import threading
 
                 ws_thread = threading.Thread(target=ws.run_forever)
                 ws_thread.daemon = True

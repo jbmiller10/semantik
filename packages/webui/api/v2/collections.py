@@ -62,18 +62,30 @@ async def create_collection(
     be automatically triggered.
     """
     try:
+        # Build config, omitting fields that are None so the service can apply
+        # sensible defaults instead of passing explicit nulls downstream.
+        cfg: dict[str, Any] = {
+            "embedding_model": create_request.embedding_model,
+            "quantization": create_request.quantization,
+            "is_public": create_request.is_public,
+        }
+        if create_request.chunk_size is not None:
+            cfg["chunk_size"] = create_request.chunk_size
+        if create_request.chunk_overlap is not None:
+            cfg["chunk_overlap"] = create_request.chunk_overlap
+
+        # Always include chunking_strategy and chunking_config for consistency with tests
+        cfg["chunking_strategy"] = create_request.chunking_strategy
+        cfg["chunking_config"] = create_request.chunking_config
+
+        if create_request.metadata is not None:
+            cfg["metadata"] = create_request.metadata
+
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
             name=create_request.name,
             description=create_request.description,
-            config={
-                "embedding_model": create_request.embedding_model,
-                "quantization": create_request.quantization,
-                "chunk_size": create_request.chunk_size,
-                "chunk_overlap": create_request.chunk_overlap,
-                "is_public": create_request.is_public,
-                "metadata": create_request.metadata,
-            },
+            config=cfg,
         )
 
         # Convert to response model and add operation uuid
@@ -85,8 +97,10 @@ async def create_collection(
             vector_store_name=collection["vector_store_name"],
             embedding_model=collection["embedding_model"],
             quantization=collection["quantization"],
-            chunk_size=collection["chunk_size"],
-            chunk_overlap=collection["chunk_overlap"],
+            chunk_size=collection.get("chunk_size"),
+            chunk_overlap=collection.get("chunk_overlap"),
+            chunking_strategy=collection.get("chunking_strategy"),
+            chunking_config=collection.get("chunking_config"),
             is_public=collection["is_public"],
             metadata=collection["metadata"],
             created_at=collection["created_at"],
@@ -528,52 +542,18 @@ async def list_collection_operations(
     Returns a paginated list of operations performed on the collection,
     ordered by creation date (newest first).
     """
-    # Validate filters before processing
-    from packages.shared.database.models import OperationStatus, OperationType
-
-    if status:
-        try:
-            OperationStatus(status)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in OperationStatus]}",
-            ) from None
-
-    if operation_type:
-        try:
-            OperationType(operation_type)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}",
-            ) from None
-
     try:
         offset = (page - 1) * per_page
 
-        # Note: We'll handle status/type filtering at the API level for now
-        # since the service method doesn't support filtering yet
-        operations, total = await service.list_operations(
+        # Delegate all filtering logic to service
+        operations, total = await service.list_operations_filtered(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
+            status=status,
+            operation_type=operation_type,
             offset=offset,
             limit=per_page,
         )
-
-        # Filter operations if status or type specified
-        if status or operation_type:
-            filtered_operations = operations
-
-            if status:
-                status_enum = OperationStatus(status)
-                filtered_operations = [op for op in filtered_operations if op.status == status_enum]
-
-            if operation_type:
-                type_enum = OperationType(operation_type)
-                filtered_operations = [op for op in filtered_operations if op.type == type_enum]
-
-            operations = filtered_operations
 
         # Convert ORM objects to response models
         return [
@@ -591,6 +571,12 @@ async def list_collection_operations(
             for op in operations
         ]
 
+    except ValueError as e:
+        # Service method raises ValueError for invalid filters
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=404,
@@ -629,34 +615,17 @@ async def list_collection_documents(
 
     Returns a paginated list of documents in the collection.
     """
-    # Validate status filter before processing
-    from packages.shared.database.models import DocumentStatus
-
-    if status:
-        try:
-            DocumentStatus(status)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid status: {status}. Valid values are: {[st.value for st in DocumentStatus]}",
-            ) from None
-
     try:
         offset = (page - 1) * per_page
 
-        # Get documents through service
-        documents, total = await service.list_documents(
+        # Delegate all filtering logic to service
+        documents, total = await service.list_documents_filtered(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
+            status=status,
             offset=offset,
             limit=per_page,
         )
-
-        # Filter by status if provided
-        if status:
-            status_enum = DocumentStatus(status)
-            documents = [doc for doc in documents if doc.status == status_enum]
-            total = len(documents)  # Update total after filtering
 
         # Convert ORM objects to response models
         from packages.webui.api.schemas import DocumentResponse
@@ -687,6 +656,12 @@ async def list_collection_documents(
             per_page=per_page,
         )
 
+    except ValueError as e:
+        # Service method raises ValueError for invalid filters
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=404,

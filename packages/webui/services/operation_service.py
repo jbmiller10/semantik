@@ -76,6 +76,62 @@ class OperationService:
 
         return operation
 
+    async def parse_status_filter(self, status: str | None) -> list[OperationStatus] | None:
+        """Parse and validate status filter string.
+
+        This method contains the parsing logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            status: Comma-separated status string or None
+
+        Returns:
+            List of OperationStatus enums or None
+
+        Raises:
+            ValueError: If invalid status value provided
+        """
+        if not status:
+            return None
+
+        status_list = []
+        # Split comma-separated statuses
+        for s in status.split(","):
+            s = s.strip()
+            try:
+                status_list.append(OperationStatus(s))
+            except ValueError:
+                raise ValueError(
+                    f"Invalid status: {s}. Valid values are: {[st.value for st in OperationStatus]}"
+                ) from None
+
+        return status_list
+
+    async def parse_type_filter(self, operation_type: str | None) -> OperationType | None:
+        """Parse and validate operation type filter.
+
+        This method contains the parsing logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            operation_type: Operation type string or None
+
+        Returns:
+            OperationType enum or None
+
+        Raises:
+            ValueError: If invalid operation type provided
+        """
+        if not operation_type:
+            return None
+
+        try:
+            return OperationType(operation_type)
+        except ValueError:
+            raise ValueError(
+                f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}"
+            ) from None
+
     async def list_operations(
         self,
         user_id: int,
@@ -100,6 +156,45 @@ class OperationService:
             user_id=user_id,
             status_list=status_list,
             operation_type=operation_type,
+            offset=offset,
+            limit=limit,
+        )
+
+    async def list_operations_with_filters(
+        self,
+        user_id: int,
+        status: str | None = None,
+        operation_type: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Operation], int]:
+        """List operations with string-based filters.
+
+        This method combines filter parsing and listing, handling
+        all business logic that was previously in the router.
+
+        Args:
+            user_id: ID of the user
+            status: Comma-separated status string
+            operation_type: Operation type string
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (operations list, total count)
+
+        Raises:
+            ValueError: If invalid filter values provided
+        """
+        # Parse filters
+        status_list = await self.parse_status_filter(status)
+        type_enum = await self.parse_type_filter(operation_type)
+
+        # List with parsed filters
+        return await self.list_operations(
+            user_id=user_id,
+            status_list=status_list,
+            operation_type=type_enum,
             offset=offset,
             limit=limit,
         )

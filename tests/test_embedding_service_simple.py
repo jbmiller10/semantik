@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
+
 """
 Simplified unit tests for EmbeddingService that work with the new architecture
 """
-# Mock the metrics module before importing
+
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
+
+from packages.shared.config.vecpipe import VecpipeConfig
+from packages.shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO, EmbeddingService
+
+# Mock the metrics module before importing
 
 sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
 
@@ -17,8 +23,6 @@ class TestEmbeddingService(unittest.TestCase):
     def test_basic_functionality(self, mock_cuda) -> None:
         """Test basic embedding service functionality"""
         mock_cuda.return_value = False  # Use CPU for simplicity
-
-        from packages.shared.embedding import EmbeddingService
 
         # Create service
         service = EmbeddingService()
@@ -34,8 +38,6 @@ class TestEmbeddingService(unittest.TestCase):
         """Test quantization fallback can be configured"""
         mock_cuda.return_value = False
 
-        from packages.shared.embedding import EmbeddingService
-
         service = EmbeddingService()
 
         # Default should allow fallback
@@ -47,7 +49,6 @@ class TestEmbeddingService(unittest.TestCase):
 
     def test_model_info_export(self) -> None:
         """Test that model info is exported"""
-        from packages.shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO
 
         # Should have model info
         assert len(QUANTIZED_MODEL_INFO) > 0
@@ -61,9 +62,6 @@ class TestEmbeddingService(unittest.TestCase):
     def test_adaptive_batch_size_configuration(self, mock_cuda) -> None:
         """Test adaptive batch size configuration"""
         mock_cuda.return_value = True
-
-        from packages.shared.config.vecpipe import VecpipeConfig
-        from packages.shared.embedding import EmbeddingService
 
         # Test with config
         config = VecpipeConfig()

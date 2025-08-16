@@ -1,9 +1,8 @@
 """End-to-end tests for WebSocket integration during reindex operations."""
 
-# mypy: ignore-errors
-
 import json
 import os
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,6 +10,8 @@ from pathlib import Path
 import pytest
 import requests
 import websocket
+
+# mypy: ignore-errors
 
 
 def service_available(url: str) -> bool:
@@ -155,7 +156,6 @@ class TestWebSocketReindexOperation:
             )
 
             # Run WebSocket in a separate thread
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True
@@ -331,8 +331,6 @@ class TestWebSocketReindexOperation:
                 print(f"Remove source WebSocket: {data}")
 
             ws = websocket.WebSocketApp(ws_url, on_message=on_message)
-
-            import threading
 
             ws_thread = threading.Thread(target=ws.run_forever)
             ws_thread.daemon = True

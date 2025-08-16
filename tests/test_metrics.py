@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
+
 """
 Simple test script to check the /api/metrics endpoint
 """
+
 import json
+import subprocess
 from datetime import UTC, datetime
 
 import requests
@@ -68,7 +71,6 @@ def test_metrics_endpoint() -> None:
 
 def test_with_curl() -> None:
     """Also test with curl for comparison"""
-    import subprocess
 
     print("\n" + "=" * 60)
     print("Testing with curl:")

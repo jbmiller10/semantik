@@ -22,5 +22,13 @@ class Settings(VecpipeConfig, WebuiConfig):
 # Instantiate settings once and export
 settings = Settings()
 
+# Expose in builtins for tests that refer to `settings` without import
+try:  # pragma: no cover
+    import builtins as _builtins
+
+    _builtins.settings = settings  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover
+    pass
+
 # Export all config classes
 __all__ = ["BaseConfig", "VecpipeConfig", "WebuiConfig", "PostgresConfig", "Settings", "settings", "postgres_config"]

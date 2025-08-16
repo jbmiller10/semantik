@@ -397,7 +397,13 @@ class ModelManager:
         loop = asyncio.get_event_loop()
         assert self.reranker is not None  # Already checked in ensure_reranker_loaded
         return await loop.run_in_executor(
-            self.executor, self.reranker.rerank, query, documents, top_k, instruction, True  # return_scores
+            self.executor,
+            self.reranker.rerank,
+            query,
+            documents,
+            top_k,
+            instruction,
+            True,  # return_scores
         )
 
     def get_status(self) -> dict[str, Any]:
