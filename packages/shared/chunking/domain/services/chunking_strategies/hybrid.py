@@ -14,14 +14,11 @@ from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
 )
-from packages.shared.chunking.domain.services.chunking_strategies.character import (
-    CharacterChunkingStrategy,
+from packages.shared.chunking.unified.factory import (
+    UnifiedChunkingFactory,
 )
 from packages.shared.chunking.domain.services.chunking_strategies.markdown import (
     MarkdownChunkingStrategy,
-)
-from packages.shared.chunking.domain.services.chunking_strategies.recursive import (
-    RecursiveChunkingStrategy,
 )
 from packages.shared.chunking.domain.services.chunking_strategies.semantic import (
     SemanticChunkingStrategy,
@@ -57,8 +54,8 @@ class HybridChunkingStrategy(ChunkingStrategy):
         super().__init__("hybrid")
 
         # Initialize component strategies
-        self._character_strategy = CharacterChunkingStrategy()
-        self._recursive_strategy = RecursiveChunkingStrategy()
+        self._character_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=False)
+        self._recursive_strategy = UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=False)
         self._semantic_strategy = SemanticChunkingStrategy()
         self._markdown_strategy = MarkdownChunkingStrategy()
 
