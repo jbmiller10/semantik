@@ -1526,17 +1526,20 @@ class ChunkingService:
             if not collection:
                 from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
-                raise ResourceNotFoundError(f"Collection {collection_id} not found")
+                raise ResourceNotFoundError(
+                    resource_type="Collection",
+                    resource_id=collection_id
+                )
 
             # Get chunk statistics from database
             from packages.shared.database.models import Chunk
 
             chunk_stats_query = select(
                 func.count(Chunk.id).label("total_chunks"),
-                func.avg(Chunk.size).label("avg_chunk_size"),
-                func.min(Chunk.size).label("min_chunk_size"),
-                func.max(Chunk.size).label("max_chunk_size"),
-                func.var_pop(Chunk.size).label("size_variance"),
+                func.avg(Chunk.token_count).label("avg_chunk_size"),
+                func.min(Chunk.token_count).label("min_chunk_size"),
+                func.max(Chunk.token_count).label("max_chunk_size"),
+                func.var_pop(Chunk.token_count).label("size_variance"),
             ).where(Chunk.collection_id == collection.id)
 
             result = await self.db_session.execute(chunk_stats_query)
