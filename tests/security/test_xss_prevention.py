@@ -155,8 +155,9 @@ class TestXSSPrevention:
         # XSS content should fail
         # Note: Some vectors in XSS_VECTORS are already HTML-encoded, which won't match dangerous patterns
         dangerous_vectors = [
-            vector for vector in self.XSS_VECTORS 
-            if not vector.startswith('&lt;') and not vector.startswith('&#') and not vector.startswith('%3C')
+            vector
+            for vector in self.XSS_VECTORS
+            if not vector.startswith("&lt;") and not vector.startswith("&#") and not vector.startswith("%3C")
         ]
         for vector in dangerous_vectors:
             assert MetadataSanitizer.validate_no_xss(vector) is False, f"XSS vector passed validation: {vector}"

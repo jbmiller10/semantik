@@ -5,6 +5,8 @@ This middleware adds CSP headers to all responses, particularly
 important for chunking endpoints that handle user-provided metadata.
 """
 
+from typing import Any
+
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
@@ -45,7 +47,7 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "form-action 'none'"
     )
 
-    def __init__(self, app, strict_mode: bool = False):
+    def __init__(self, app: Any, strict_mode: bool = False) -> None:
         """
         Initialize CSP middleware.
 

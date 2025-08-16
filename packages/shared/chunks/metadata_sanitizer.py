@@ -104,24 +104,26 @@ class MetadataSanitizer:
 
             # Sanitize the value based on type
             if isinstance(value, str):
-                sanitized[safe_key] = cls.sanitize_string(value)
+                safe_value: Any = cls.sanitize_string(value)
             elif isinstance(value, int | float | bool):
                 # Numeric and boolean values are safe
-                sanitized[safe_key] = value
+                safe_value = value
             elif isinstance(value, dict):
                 # Recursively sanitize nested dictionaries
-                sanitized[safe_key] = cls.sanitize_metadata(value, max_key_length)
+                safe_value = cls.sanitize_metadata(value, max_key_length)
             elif isinstance(value, list):
                 # Sanitize list items
-                sanitized[safe_key] = cls._sanitize_list(value)
+                safe_value = cls._sanitize_list(value)
             else:
                 # Convert other types to string and sanitize
-                sanitized[safe_key] = cls.sanitize_string(str(value))
+                safe_value = cls.sanitize_string(str(value))
+
+            sanitized[safe_key] = safe_value
 
         return sanitized
 
     @classmethod
-    def _sanitize_list(cls, items: list) -> list:
+    def _sanitize_list(cls, items: list) -> list[Any]:
         """
         Sanitize a list of items.
 
@@ -131,7 +133,7 @@ class MetadataSanitizer:
         Returns:
             Sanitized list
         """
-        sanitized = []
+        sanitized: list[Any] = []
         for item in items[:100]:  # Limit list size to prevent DOS
             if isinstance(item, str):
                 sanitized.append(cls.sanitize_string(item))
