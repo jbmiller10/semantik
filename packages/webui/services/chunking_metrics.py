@@ -5,7 +5,7 @@ This module provides observability into chunking performance,
 strategy usage, and fallback scenarios.
 """
 
-from typing import Any, Type
+from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
@@ -13,7 +13,7 @@ from packages.shared.metrics.prometheus import registry
 
 
 def _get_or_create_metric(
-    metric_class: Type[Any], name: str, description: str, registry: CollectorRegistry, **kwargs: Any
+    metric_class: type[Any], name: str, description: str, registry: CollectorRegistry, **kwargs: Any
 ) -> Any:
     """Get existing metric or create a new one if it doesn't exist."""
     # Check if metric already exists in registry by checking the names
