@@ -25,6 +25,15 @@ from packages.webui.dependencies import get_collection_for_user
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
+from packages.webui.services.dtos.chunking_dtos import (
+    ServiceChunkPreview,
+    ServiceChunkingStats,
+    ServiceCompareResponse,
+    ServicePreviewResponse,
+    ServiceStrategyComparison,
+    ServiceStrategyInfo,
+    ServiceStrategyRecommendation,
+)
 from packages.webui.services.factory import get_chunking_service, get_collection_service
 
 # Disable rate limiting for tests
@@ -52,181 +61,182 @@ def mock_chunking_service():
 
     # Mock get_available_strategies_for_api
     service.get_available_strategies_for_api.return_value = [
-        {
-            "id": "fixed_size",
-            "name": "Fixed Size",
-            "description": "Splits text into fixed-size chunks",
-            "best_for": ["general text"],
-            "pros": ["Simple", "Predictable"],
-            "cons": ["May break sentences"],
-            "default_config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50},
-            "performance_characteristics": {"speed": "fast"},
-        },
-        {
-            "id": "recursive",
-            "name": "Recursive",
-            "description": "Recursively splits text",
-            "best_for": ["structured documents"],
-            "pros": ["Preserves structure"],
-            "cons": ["More complex"],
-            "default_config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
-            "performance_characteristics": {"speed": "medium"},
-        },
-        {
-            "id": "markdown",
-            "name": "Markdown",
-            "description": "Splits markdown documents",
-            "best_for": ["markdown files"],
-            "pros": ["Preserves markdown structure"],
-            "cons": ["Only for markdown"],
-            "default_config": {"strategy": "markdown", "chunk_size": 800, "chunk_overlap": 100},
-            "performance_characteristics": {"speed": "fast"},
-        },
-        {
-            "id": "semantic",
-            "name": "Semantic",
-            "description": "Semantic chunking",
-            "best_for": ["complex documents"],
-            "pros": ["Better context"],
-            "cons": ["Slower"],
-            "default_config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50},
-            "performance_characteristics": {"speed": "slow"},
-        },
-        {
-            "id": "hierarchical",
-            "name": "Hierarchical",
-            "description": "Hierarchical chunking",
-            "best_for": ["nested documents"],
-            "pros": ["Preserves hierarchy"],
-            "cons": ["Complex"],
-            "default_config": {"strategy": "hierarchical", "chunk_size": 1000, "chunk_overlap": 200},
-            "performance_characteristics": {"speed": "medium"},
-        },
-        {
-            "id": "hybrid",
-            "name": "Hybrid",
-            "description": "Hybrid chunking approach",
-            "best_for": ["mixed content"],
-            "pros": ["Flexible"],
-            "cons": ["Requires tuning"],
-            "default_config": {"strategy": "hybrid", "chunk_size": 750, "chunk_overlap": 150},
-            "performance_characteristics": {"speed": "medium"},
-        },
+        ServiceStrategyInfo(
+            id="fixed_size",
+            name="Fixed Size",
+            description="Splits text into fixed-size chunks",
+            best_for=["general text"],
+            pros=["Simple", "Predictable"],
+            cons=["May break sentences"],
+            default_config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50},
+            performance_characteristics={"speed": "fast"},
+        ),
+        ServiceStrategyInfo(
+            id="recursive",
+            name="Recursive",
+            description="Recursively splits text",
+            best_for=["structured documents"],
+            pros=["Preserves structure"],
+            cons=["More complex"],
+            default_config={"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
+            performance_characteristics={"speed": "medium"},
+        ),
+        ServiceStrategyInfo(
+            id="markdown",
+            name="Markdown",
+            description="Splits markdown documents",
+            best_for=["markdown files"],
+            pros=["Preserves markdown structure"],
+            cons=["Only for markdown"],
+            default_config={"strategy": "markdown", "chunk_size": 800, "chunk_overlap": 100},
+            performance_characteristics={"speed": "fast"},
+        ),
+        ServiceStrategyInfo(
+            id="semantic",
+            name="Semantic",
+            description="Semantic chunking",
+            best_for=["complex documents"],
+            pros=["Better context"],
+            cons=["Slower"],
+            default_config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50},
+            performance_characteristics={"speed": "slow"},
+        ),
+        ServiceStrategyInfo(
+            id="hierarchical",
+            name="Hierarchical",
+            description="Hierarchical chunking",
+            best_for=["nested documents"],
+            pros=["Preserves hierarchy"],
+            cons=["Complex"],
+            default_config={"strategy": "hierarchical", "chunk_size": 1000, "chunk_overlap": 200},
+            performance_characteristics={"speed": "medium"},
+        ),
+        ServiceStrategyInfo(
+            id="hybrid",
+            name="Hybrid",
+            description="Hybrid chunking approach",
+            best_for=["mixed content"],
+            pros=["Flexible"],
+            cons=["Requires tuning"],
+            default_config={"strategy": "hybrid", "chunk_size": 750, "chunk_overlap": 150},
+            performance_characteristics={"speed": "medium"},
+        ),
     ]
 
     # Mock get_strategy_details
-    service.get_strategy_details.return_value = {
-        "id": "recursive",
-        "name": "Recursive",
-        "description": "Recursively splits text",
-        "best_for": ["structured documents"],
-        "pros": ["Preserves structure"],
-        "cons": ["More complex"],
-        "default_config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
-        "performance_characteristics": {"speed": "medium"},
-    }
+    service.get_strategy_details.return_value = ServiceStrategyInfo(
+        id="recursive",
+        name="Recursive",
+        description="Recursively splits text",
+        best_for=["structured documents"],
+        pros=["Preserves structure"],
+        cons=["More complex"],
+        default_config={"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
+        performance_characteristics={"speed": "medium"},
+    )
 
     # Mock recommend_strategy
-    service.recommend_strategy.return_value = {
-        "strategy": "markdown",
-        "confidence": 0.95,
-        "reasoning": "Markdown files are best handled with markdown-specific chunking",
-        "alternatives": ["recursive", "fixed_size"],
-        "chunk_size": 800,
-        "chunk_overlap": 100,
-    }
+    service.recommend_strategy.return_value = ServiceStrategyRecommendation(
+        strategy="markdown",
+        confidence=0.95,
+        reasoning="Markdown files are best handled with markdown-specific chunking",
+        alternatives=["recursive", "fixed_size"],
+        chunk_size=800,
+        chunk_overlap=100,
+    )
 
     # Mock preview_chunking
-    service.preview_chunking.return_value = {
-        "preview_id": str(uuid.uuid4()),
-        "strategy": "fixed_size",
-        "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
-        "chunks": [
-            {
-                "index": 0,
-                "content": "This is a ",
-                "text": "This is a ",
-                "token_count": 3,
-                "metadata": {},
-                "quality_score": 0.8,
-            },
-            {
-                "index": 1,
-                "content": "a test doc",
-                "text": "a test doc",
-                "token_count": 3,
-                "metadata": {},
-                "quality_score": 0.8,
-            },
+    service.preview_chunking.return_value = ServicePreviewResponse(
+        preview_id=str(uuid.uuid4()),
+        strategy="fixed_size",
+        config={"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
+        chunks=[
+            ServiceChunkPreview(
+                index=0,
+                content="This is a ",
+                text="This is a ",
+                token_count=3,
+                metadata={},
+                quality_score=0.8,
+            ),
+            ServiceChunkPreview(
+                index=1,
+                content="a test doc",
+                text="a test doc",
+                token_count=3,
+                metadata={},
+                quality_score=0.8,
+            ),
         ],
-        "total_chunks": 2,
-        "metrics": {"avg_chunk_size": 100},
-        "processing_time_ms": 50,
-        "cached": False,
-        "expires_at": datetime.now(UTC) + timedelta(minutes=15),
-    }
+        total_chunks=2,
+        metrics={"avg_chunk_size": 100},
+        processing_time_ms=50,
+        cached=False,
+        expires_at=datetime.now(UTC) + timedelta(minutes=15),
+    )
 
     # Mock validate_preview_content
     service.validate_preview_content.return_value = None
 
     # Mock compare_strategies_for_api
-    service.compare_strategies_for_api.return_value = {
-        "comparison_id": str(uuid.uuid4()),
-        "comparisons": [
-            {
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size", "chunk_size": 200, "chunk_overlap": 50},
-                "sample_chunks": [
-                    {
-                        "index": 0,
-                        "content": "Sample chunk 1",
-                        "text": "Sample chunk 1",
-                        "token_count": 3,
-                        "char_count": 14,
-                        "metadata": {},
-                        "quality_score": 0.75,
-                    }
+    service.compare_strategies_for_api.return_value = ServiceCompareResponse(
+        comparison_id=str(uuid.uuid4()),
+        comparisons=[
+            ServiceStrategyComparison(
+                strategy="fixed_size",
+                config={"strategy": "fixed_size", "chunk_size": 200, "chunk_overlap": 50},
+                sample_chunks=[
+                    ServiceChunkPreview(
+                        index=0,
+                        content="Sample chunk 1",
+                        text="Sample chunk 1",
+                        token_count=3,
+                        char_count=14,
+                        metadata={},
+                        quality_score=0.75,
+                    )
                 ],
-                "total_chunks": 5,
-                "avg_chunk_size": 20,
-                "size_variance": 2.5,
-                "quality_score": 0.75,
-                "processing_time_ms": 50,
-                "pros": ["Fast", "Predictable"],
-                "cons": ["May break context"],
-            },
-            {
-                "strategy": "recursive",
-                "config": {"strategy": "recursive", "chunk_size": 300, "chunk_overlap": 100},
-                "sample_chunks": [
-                    {
-                        "index": 0,
-                        "content": "Sample chunk 2",
-                        "text": "Sample chunk 2",
-                        "token_count": 3,
-                        "char_count": 14,
-                        "metadata": {},
-                        "quality_score": 0.85,
-                    }
+                total_chunks=5,
+                avg_chunk_size=20,
+                size_variance=2.5,
+                quality_score=0.75,
+                processing_time_ms=50,
+                pros=["Fast", "Predictable"],
+                cons=["May break context"],
+            ),
+            ServiceStrategyComparison(
+                strategy="recursive",
+                config={"strategy": "recursive", "chunk_size": 300, "chunk_overlap": 100},
+                sample_chunks=[
+                    ServiceChunkPreview(
+                        index=0,
+                        content="Sample chunk 2",
+                        text="Sample chunk 2",
+                        token_count=3,
+                        char_count=14,
+                        metadata={},
+                        quality_score=0.85,
+                    )
                 ],
-                "total_chunks": 4,
-                "avg_chunk_size": 25,
-                "size_variance": 3.0,
-                "quality_score": 0.85,
-                "processing_time_ms": 50,
-                "pros": ["Preserves structure"],
-                "cons": ["More complex"],
-            },
+                total_chunks=4,
+                avg_chunk_size=25,
+                size_variance=3.0,
+                quality_score=0.85,
+                processing_time_ms=50,
+                pros=["Preserves structure"],
+                cons=["More complex"],
+            ),
         ],
-        "recommendation": {
-            "recommended_strategy": "recursive",
-            "confidence": 0.85,
-            "reasoning": "Better quality score with fewer chunks",
-            "alternative_strategies": ["fixed_size"],
-            "suggested_config": {"strategy": "recursive", "chunk_size": 300, "chunk_overlap": 100},
-        },
-        "processing_time_ms": 100,
-    }
+        recommendation=ServiceStrategyRecommendation(
+            strategy="recursive",
+            confidence=0.85,
+            reasoning="Better quality score with fewer chunks",
+            alternatives=["fixed_size"],
+            chunk_size=300,
+            chunk_overlap=100,
+        ),
+        processing_time_ms=100,
+    )
 
     # Mock get_cached_preview_by_id
     service.get_cached_preview_by_id.return_value = None
@@ -247,21 +257,21 @@ def mock_chunking_service():
     )
 
     # Mock get_collection_chunk_stats
-    service.get_collection_chunk_stats.return_value = {
-        "total_chunks": 1500,
-        "total_documents": 25,
-        "average_chunk_size": 512,
-        "min_chunk_size": 100,
-        "max_chunk_size": 1024,
-        "size_variance": 156.25,
-        "strategy": "recursive",
-        "last_updated": datetime.now(UTC),
-        "processing_time": 45.3,
-        "performance_metrics": {
+    service.get_collection_chunk_stats.return_value = ServiceChunkingStats(
+        total_chunks=1500,
+        total_documents=25,
+        avg_chunk_size=512,
+        min_chunk_size=100,
+        max_chunk_size=1024,
+        size_variance=156.25,
+        strategy_used="recursive",
+        last_updated=datetime.now(UTC),
+        processing_time_seconds=45.3,
+        quality_metrics={
             "avg_processing_speed": 33.1,
             "memory_usage_mb": 256,
         },
-    }
+    )
 
     # Mock get_chunking_progress
     service.get_chunking_progress.return_value = {
