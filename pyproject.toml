@@ -68,6 +68,7 @@ fakeredis = "^2.31.0"
 faker = "^37.5.3"
 locust = "^2.38.1"
 memory-profiler = "^0.61.0"
+pytest-dotenv = "^0.5.2"
 
 [tool.poetry.group.e2e]
 optional = true
@@ -147,6 +148,7 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+env_files = [".env.test"]
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
 ]

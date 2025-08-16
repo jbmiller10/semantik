@@ -30,7 +30,7 @@ fake = Faker()
 
 # Test database configuration
 TEST_DATABASE_URL = os.getenv(
-    "TEST_DATABASE_URL", "postgresql+asyncpg://semantik:semantik@localhost:5432/semantik_test"
+    "TEST_DATABASE_URL", "postgresql+asyncpg://semantik:1a206f9f65f0ab85f05a8fc2d07139bce44497bcec88d78ff85ebfcd228216f7@localhost:5432/semantik_test"
 )
 TEST_DATABASE_URL_SYNC = TEST_DATABASE_URL.replace("+asyncpg", "")
 
@@ -216,6 +216,25 @@ def auth_token(test_user: dict[str, Any]) -> str:
 
 
 @pytest.fixture()
+def authenticated_user(test_user: dict[str, Any]) -> dict[str, Any]:
+    """Provide a properly authenticated user for dependency overrides.
+    
+    This fixture ensures consistency between the user creating resources
+    and the user making API calls.
+    """
+    return {
+        "id": test_user["id"],
+        "username": test_user["username"],
+        "email": test_user["email"],
+        "full_name": "Test User",
+        "is_active": True,
+        "is_superuser": False,
+        "created_at": datetime.now(UTC).isoformat(),
+        "last_login": datetime.now(UTC).isoformat(),
+    }
+
+
+@pytest.fixture()
 def auth_headers(auth_token: str) -> dict[str, str]:
     """Create authorization headers for API requests."""
     return {"Authorization": f"Bearer {auth_token}"}
@@ -245,6 +264,117 @@ async def async_client(
 
     # Clean up
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def authenticated_async_client(
+    async_session: AsyncSession,
+    redis_client: Any,
+    authenticated_user: dict[str, Any],
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create an authenticated async HTTP client for testing.
+    
+    This client automatically overrides the get_current_user dependency
+    to return the authenticated_user, ensuring consistency between
+    resource ownership and API access.
+    """
+    from webui.auth import get_current_user
+
+    # Override database dependency
+    async def override_get_db():
+        yield async_session
+
+    # Override authentication dependency
+    async def override_get_current_user():
+        return authenticated_user
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    # Create client
+    transport = ASGITransport(app=app)
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        timeout=30.0,
+    ) as client:
+        yield client
+
+    # Clean up
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def authenticated_client(
+    sync_session: Session,
+    authenticated_user: dict[str, Any],
+) -> Generator[Any, None, None]:
+    """Create an authenticated test client using TestClient.
+    
+    This client automatically overrides the get_current_user dependency
+    to return the authenticated_user, ensuring consistency between
+    resource ownership and API access.
+    """
+    from fastapi.testclient import TestClient
+    from webui.auth import get_current_user
+    
+    # Override database dependency
+    def override_get_db():
+        yield sync_session
+    
+    # Override authentication dependency  
+    async def override_get_current_user():
+        return authenticated_user
+    
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    
+    with TestClient(app) as client:
+        yield client
+    
+    # Clean up
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def authenticated_collection(
+    async_session: AsyncSession,
+    authenticated_user: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a collection owned by the authenticated user.
+    
+    This fixture ensures that the collection's owner_id matches
+    the authenticated user's id, preventing AccessDeniedError.
+    """
+    from shared.database.models import Collection
+    
+    collection = Collection(
+        id=str(uuid.uuid4()),
+        name=f"test_collection_{uuid.uuid4().hex[:8]}",
+        description="Test collection for integration tests",
+        owner_id=authenticated_user["id"],
+        status="ready",
+        vector_store_name=f"test_collection_{uuid.uuid4().hex[:8]}",
+        embedding_model="test-model",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    
+    async_session.add(collection)
+    await async_session.commit()
+    await async_session.refresh(collection)
+    
+    return {
+        "id": str(collection.id),
+        "name": collection.name,
+        "description": collection.description,
+        "owner_id": collection.owner_id,
+        "status": collection.status,
+        "vector_store_name": collection.vector_store_name,
+        "embedding_model": collection.embedding_model,
+        "created_at": collection.created_at.isoformat(),
+        "updated_at": collection.updated_at.isoformat(),
+    }
 
 
 @pytest.fixture()

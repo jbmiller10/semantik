@@ -7,21 +7,27 @@ under various failure scenarios.
 
 import contextlib
 import json
+import os
 import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+# Must set environment variables BEFORE imports that use settings
+os.environ["TESTING"] = "true"
+os.environ["DISABLE_AUTH"] = "false"  # Enable auth to test proper user validation
+
 import pytest
 from faker import Faker
 from httpx import AsyncClient
 from redis.exceptions import ConnectionError as RedisConnectionError
-from shared.database.models import Chunk, Collection, Document, Operation
+from shared.database.models import Chunk, Collection, Document, Operation, OperationStatus, OperationType
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from webui.auth import create_access_token
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
 from webui.chunking_tasks import ChunkingTask
 from webui.services.chunking_service import ChunkingService
 
@@ -118,11 +124,8 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     return documents
 
 
-@pytest.fixture()
-async def auth_headers(test_user: dict) -> dict[str, str]:
-    """Create authorization headers."""
-    token = create_access_token(data={"sub": test_user["username"], "user_id": test_user["id"]})
-    return {"Authorization": f"Bearer {token}"}
+
+
 
 
 class TestChunkingOperationInterruption:
@@ -135,77 +138,88 @@ class TestChunkingOperationInterruption:
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
+        test_user: dict,
         redis_client: Any,
     ) -> None:
         """Test recovery from chunking operation interruption."""
-        # Start chunking operation
-        response = await async_client.post(
-            f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
-            json={
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
-            },
-        )
+        # Override get_current_user to return our test user
+        from packages.webui.auth import get_current_user
+        from packages.webui.main import app
+        
+        async def mock_get_current_user(credentials=None):
+            return test_user
+        
+        app.dependency_overrides[get_current_user] = mock_get_current_user
+        
+        try:
+            # Start chunking operation
+            response = await async_client.post(
+                f"/api/v2/chunking/collections/{test_collection.id}/chunk",
+                json={
+                    "strategy": "fixed_size",
+                    "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
+                },
+            )
 
-        assert response.status_code == 202
-        operation_id = response.json()["operation_id"]
+            assert response.status_code == 202
+            operation_id = response.json()["operation_id"]
 
-        # Simulate partial processing
-        docs_to_process = test_documents[:2]
-        for doc in docs_to_process:
-            # Create some chunks
-            for i in range(3):
-                chunk = Chunk(
-                    collection_id=test_collection.id,
-                    document_id=doc.id,
-                    content=f"Partial chunk {i}",
-                    chunk_index=i,
-                    start_offset=i * 100,
-                    end_offset=(i + 1) * 100,
-                    token_count=10,
-                    created_at=datetime.now(UTC),
-                )
-                async_session.add(chunk)
+            # Simulate partial processing
+            docs_to_process = test_documents[:2]
+            for doc in docs_to_process:
+                # Create some chunks
+                for i in range(3):
+                    chunk = Chunk(
+                        collection_id=test_collection.id,
+                        document_id=doc.id,
+                        content=f"Partial chunk {i}",
+                        chunk_index=i,
+                        start_offset=i * 100,
+                        end_offset=(i + 1) * 100,
+                        token_count=10,
+                        created_at=datetime.now(UTC),
+                    )
+                    async_session.add(chunk)
 
-        await async_session.commit()
+            await async_session.commit()
 
-        # Simulate interruption - mark operation as failed
-        operation = await async_session.get(Operation, operation_id)
-        operation.status = "failed"
-        operation.error_message = "Process interrupted"
-        operation.progress_percentage = 50.0
-        await async_session.commit()
+            # Simulate interruption - mark operation as failed
+            operation = await async_session.get(Operation, operation_id)
+            operation.status = "failed"
+            operation.error_message = "Process interrupted"
+            operation.meta = {"progress_percentage": 50.0}
+            await async_session.commit()
 
-        # Store progress in Redis for recovery
-        redis_client.hset(
-            f"operation:{operation_id}",
-            mapping={
-                "status": "failed",
-                "documents_processed": "2",
-                "total_documents": str(len(test_documents)),
-                "last_processed_doc": test_documents[1].id,
-            },
-        )
+            # Store progress in Redis for recovery
+            redis_client.hset(
+                f"operation:{operation_id}",
+                mapping={
+                    "status": "failed",
+                    "documents_processed": "2",
+                    "total_documents": str(len(test_documents)),
+                    "last_processed_doc": test_documents[1].id,
+                },
+            )
 
-        # Attempt to resume operation
-        response = await async_client.post(
-            f"/api/v2/chunking/operations/{operation_id}/resume",
-            headers=auth_headers,
-        )
+            # Attempt to resume operation
+            response = await async_client.post(
+                f"/api/v2/chunking/operations/{operation_id}/resume",
+            )
 
-        # Should either resume or indicate how to retry
-        assert response.status_code in [200, 202, 409]
+            # Should either resume or indicate how to retry
+            assert response.status_code in [200, 202, 409]
 
-        if response.status_code == 202:
-            # Operation resumed
-            result = response.json()
-            assert "operation_id" in result
+            if response.status_code == 202:
+                # Operation resumed
+                result = response.json()
+                assert "operation_id" in result
 
-            # Verify it continues from where it left off
-            resumed_state = redis_client.hgetall(f"operation:{operation_id}")
-            assert int(resumed_state.get(b"documents_processed", 0)) >= 2
+                # Verify it continues from where it left off
+                resumed_state = redis_client.hgetall(f"operation:{operation_id}")
+                assert int(resumed_state.get(b"documents_processed", 0)) >= 2
+        finally:
+            # Clean up dependency override
+            app.dependency_overrides.clear()
 
     @pytest.mark.asyncio()
     async def test_graceful_shutdown_handling(
@@ -214,13 +228,11 @@ class TestChunkingOperationInterruption:
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
     ) -> None:
         """Test graceful shutdown during chunking operation."""
         # Start operation
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "recursive",
                 "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
@@ -269,13 +281,11 @@ class TestDatabaseFailures:
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
     ) -> None:
         """Test handling of database connection loss during chunking."""
         # Start chunking operation
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {"strategy": "fixed_size", "chunk_size": 200, "chunk_overlap": 20},
@@ -289,9 +299,6 @@ class TestDatabaseFailures:
             mock_session.side_effect = OperationalError("Database connection lost", "", "")
 
             # Service should handle the error gracefully
-            from packages.shared.database.repositories.collection_repository import CollectionRepository
-            from packages.shared.database.repositories.document_repository import DocumentRepository
-            
             collection_repo = CollectionRepository(async_session)
             document_repo = DocumentRepository(async_session)
             service = ChunkingService(async_session, collection_repo, document_repo)
@@ -378,7 +385,6 @@ class TestRedisFailures:
         self,
         async_client: AsyncClient,
         test_collection: Collection,
-        auth_headers: dict[str, str],
     ) -> None:
         """Test handling of Redis connection failure."""
         with patch("webui.services.chunking_service.redis_client") as mock_redis:
@@ -389,8 +395,7 @@ class TestRedisFailures:
             # Operation should still be created in database
             response = await async_client.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                headers=auth_headers,
-                json={
+                    json={
                     "strategy": "fixed_size",
                     "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                 },
@@ -410,15 +415,14 @@ class TestRedisFailures:
     async def test_redis_stream_failure(
         self,
         async_client: AsyncClient,
+        async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test handling of Redis stream failures for progress updates."""
         # Start operation
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "semantic",
                 "config": {"strategy": "semantic", "chunk_size": 300, "chunk_overlap": 50},
@@ -430,9 +434,6 @@ class TestRedisFailures:
         # Simulate Redis stream failure
         with patch.object(redis_client, "xadd", side_effect=RedisConnectionError("Stream error")):
             # Progress updates should fail but not crash the operation
-            from packages.shared.database.repositories.collection_repository import CollectionRepository
-            from packages.shared.database.repositories.document_repository import DocumentRepository
-            
             collection_repo = CollectionRepository(async_session)
             document_repo = DocumentRepository(async_session)
             service = ChunkingService(async_session, collection_repo, document_repo)
@@ -458,7 +459,6 @@ class TestResourceExhaustion:
         async_client: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
     ) -> None:
         """Test handling of memory exhaustion during chunking."""
         # Create a very large document
@@ -479,7 +479,6 @@ class TestResourceExhaustion:
         # Start chunking with memory monitoring
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {"strategy": "fixed_size", "chunk_size": 100, "chunk_overlap": 10},
@@ -515,13 +514,11 @@ class TestResourceExhaustion:
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
     ) -> None:
         """Test handling of disk space exhaustion."""
         # Start chunking operation
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "hierarchical",
                 "config": {"strategy": "hierarchical", "chunk_size": 1000, "chunk_overlap": 200},
@@ -534,9 +531,6 @@ class TestResourceExhaustion:
         with patch("webui.services.chunking_service.AsyncSession.commit") as mock_commit:
             mock_commit.side_effect = OperationalError("No space left on device", "", "")
 
-            from packages.shared.database.repositories.collection_repository import CollectionRepository
-            from packages.shared.database.repositories.document_repository import DocumentRepository
-            
             collection_repo = CollectionRepository(async_session)
             document_repo = DocumentRepository(async_session)
             service = ChunkingService(async_session, collection_repo, document_repo)
@@ -562,7 +556,6 @@ class TestResourceExhaustion:
         async_client: AsyncClient,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
     ) -> None:
         """Test CPU time limit enforcement."""
         # Create documents that require intensive processing
@@ -584,7 +577,6 @@ class TestResourceExhaustion:
         # Start CPU-intensive chunking operation
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "semantic",  # Most CPU-intensive
                 "config": {"strategy": "semantic", "chunk_size": 100, "chunk_overlap": 50},
@@ -615,7 +607,6 @@ class TestCircuitBreaker:
         self,
         async_client: AsyncClient,
         test_collection: Collection,
-        auth_headers: dict[str, str],
     ) -> None:
         """Test circuit breaker activation after multiple failures."""
         # Simulate multiple consecutive failures
@@ -629,8 +620,7 @@ class TestCircuitBreaker:
             for _i in range(3):
                 response = await async_client.post(
                     f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                    headers=auth_headers,
-                    json={
+                            json={
                         "strategy": "fixed_size",
                         "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                     },
@@ -643,8 +633,7 @@ class TestCircuitBreaker:
             # Next attempt should be rejected by circuit breaker
             response = await async_client.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                headers=auth_headers,
-                json={
+                    json={
                     "strategy": "fixed_size",
                     "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                 },
@@ -662,7 +651,6 @@ class TestCircuitBreaker:
         self,
         async_client: AsyncClient,
         test_collection: Collection,
-        auth_headers: dict[str, str],
     ) -> None:
         """Test circuit breaker recovery after timeout."""
         with (
@@ -676,8 +664,7 @@ class TestCircuitBreaker:
             # Attempt should fail
             response = await async_client.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                headers=auth_headers,
-                json={
+                    json={
                     "strategy": "recursive",
                     "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
                 },
@@ -693,8 +680,7 @@ class TestCircuitBreaker:
             # Should work again
             response = await async_client.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                headers=auth_headers,
-                json={
+                    json={
                     "strategy": "recursive",
                     "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
                 },
@@ -713,7 +699,6 @@ class TestPartialFailures:
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test handling when some documents fail but others succeed."""
@@ -737,7 +722,6 @@ class TestPartialFailures:
         # Start chunking
         response = await async_client.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-            headers=auth_headers,
             json={
                 "strategy": "fixed_size",
                 "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
@@ -824,7 +808,6 @@ class TestPartialFailures:
         async_client: AsyncClient,
         async_session: AsyncSession,
         test_collection: Collection,
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test retry mechanism for failed documents."""
@@ -832,9 +815,11 @@ class TestPartialFailures:
         operation = Operation(
             uuid=str(uuid.uuid4()),
             collection_id=test_collection.id,
-            type="chunking",
-            status="partial_success",
-            progress_percentage=80.0,
+            user_id=test_collection.owner_id,  # Add required user_id
+            type=OperationType.INDEX,  # Use proper enum value
+            status=OperationStatus.COMPLETED,  # Use proper enum value
+            config={},  # Add required config field
+            meta={"progress_percentage": 80.0},  # Store progress in meta field
             created_at=datetime.now(UTC),
             completed_at=datetime.now(UTC),
             error_message="2 documents failed",
@@ -854,7 +839,6 @@ class TestPartialFailures:
         # Retry failed documents
         response = await async_client.post(
             f"/api/v2/chunking/operations/{operation.uuid}/retry-failed",
-            headers=auth_headers,
         )
 
         # Should create a new operation for retry
@@ -904,7 +888,6 @@ class TestDeadLetterQueue:
     async def test_manual_dlq_recovery(
         self,
         async_client: AsyncClient,
-        auth_headers: dict[str, str],
         redis_client: Any,
     ) -> None:
         """Test manual recovery from dead letter queue."""
@@ -925,7 +908,6 @@ class TestDeadLetterQueue:
         # Admin endpoint to review DLQ
         response = await async_client.get(
             "/api/v2/admin/dead-letter-queue/chunking",
-            headers=auth_headers,
         )
 
         # Should list DLQ entries (if endpoint exists)
