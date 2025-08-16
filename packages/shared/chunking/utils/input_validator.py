@@ -2,7 +2,8 @@
 """Input validation for chunking operations to prevent ReDoS attacks."""
 
 import logging
-import re
+
+from packages.shared.utils.regex_safety import RegexTimeout, safe_regex_findall
 
 logger = logging.getLogger(__name__)
 
@@ -71,17 +72,39 @@ class ChunkingInputValidator:
         Returns:
             Sanitized text
         """
-        # Remove excessive whitespace
-        text = re.sub(r"\s{100,}", " " * 99, text)
+        try:
+            # Remove excessive whitespace with timeout protection
+            matches = safe_regex_findall(r"\s{100,}", text, timeout=0.5, max_matches=100)
+            for match in matches:
+                text = text.replace(match, " " * 99)
 
-        # Remove excessive punctuation
-        text = re.sub(r"[.!?]{10,}", "...", text)
+            # Remove excessive punctuation
+            matches = safe_regex_findall(r"[.!?]{10,}", text, timeout=0.5, max_matches=100)
+            for match in matches:
+                text = text.replace(match, "...")
 
-        # Remove excessive special characters
-        text = re.sub(r"[*#\-]{20,}", "*" * 19, text)
+            # Remove excessive special characters
+            matches = safe_regex_findall(r"[*#\-]{20,}", text, timeout=0.5, max_matches=100)
+            for match in matches:
+                text = text.replace(match, match[0] * 19)
 
-        # Remove excessive repeated characters
-        return re.sub(r"(.)\1{99,}", r"\1" * 99, text)
+            # Remove excessive repeated characters - simplified pattern
+            # Use a simpler approach to avoid complex backreferences
+            import re
+
+            for char in set(text):
+                if char.isalnum():  # Only process alphanumeric to avoid special char issues
+                    # Replace 100+ repeated chars with 99 of them
+                    pattern = re.escape(char) + "{100,}"
+                    text = re.sub(pattern, char * 99, text)
+
+            return text
+        except RegexTimeout:
+            logger.warning("Regex timeout during text sanitization, returning original text")
+            return text
+        except Exception as e:
+            logger.error(f"Error during text sanitization: {e}")
+            return text
 
     @classmethod
     def _contains_redos_triggers(cls, text: str) -> bool:

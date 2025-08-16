@@ -473,7 +473,8 @@ class HierarchicalChunker(BaseChunker):
                 # Get offsets from pre-calculated map
                 content = leaf_node.get_content()
                 start_offset, end_offset = offset_map.get(
-                    leaf_node.node_id, (0, len(content))  # Fallback if not in map
+                    leaf_node.node_id,
+                    (0, len(content)),  # Fallback if not in map
                 )
 
                 # Prepare chunk metadata
@@ -510,7 +511,8 @@ class HierarchicalChunker(BaseChunker):
 
                     # Get offsets from pre-calculated map
                     start_offset, end_offset = offset_map.get(
-                        parent_node.node_id, (0, len(content))  # Fallback if not in map
+                        parent_node.node_id,
+                        (0, len(content)),  # Fallback if not in map
                     )
 
                     chunk_metadata = metadata.copy() if metadata else {}

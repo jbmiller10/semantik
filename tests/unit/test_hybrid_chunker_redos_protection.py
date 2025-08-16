@@ -12,10 +12,18 @@ implemented in the HybridChunker to ensure:
 import re
 import signal
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from unittest.mock import patch
 
 import pytest
+
+# Import regex module for pattern type checking
+try:
+    import regex
+
+    HAS_REGEX = True
+except ImportError:
+    HAS_REGEX = False
 
 from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
 from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
@@ -129,14 +137,27 @@ class TestHybridChunkerReDoSProtection:
         for pattern_str in expected_patterns:
             assert pattern_str in chunker._compiled_patterns
             compiled_pattern, weight = chunker._compiled_patterns[pattern_str]
-            # Handle both standard re.Pattern and re2._Regexp types
+            # Handle standard re.Pattern, regex.Pattern, and re2._Regexp types
+            valid_pattern_types = [re.Pattern]
+
+            # Add regex.Pattern if available
+            if HAS_REGEX:
+                # The regex module may use _regex.Pattern internally
+                try:
+                    regex_pattern = regex.compile("test")
+                    valid_pattern_types.append(type(regex_pattern))
+                except Exception:
+                    pass
+
+            # Add re2._Regexp if available
             try:
                 import re2
 
-                valid_pattern_types = (re.Pattern, re2._Regexp)
+                valid_pattern_types.append(re2._Regexp)
             except ImportError:
-                valid_pattern_types = (re.Pattern,)
-            assert isinstance(compiled_pattern, valid_pattern_types)
+                pass
+
+            assert isinstance(compiled_pattern, tuple(valid_pattern_types))
             assert isinstance(weight, float)
             assert weight > 0
 
@@ -299,7 +320,15 @@ class TestHybridChunkerReDoSProtection:
     def test_safe_regex_findall_with_malformed_pattern(self) -> None:
         """Test safe_regex_findall handles malformed patterns gracefully."""
         # Test with invalid regex pattern
-        with pytest.raises(re.error):
+        # Handle both re.error and regex.error depending on which module is used
+        error_types = [re.error]
+        if HAS_REGEX:
+            # regex module has its own error type
+            with suppress(AttributeError):
+                # Some versions might use a different error type
+                error_types.append(regex.error)
+
+        with pytest.raises(tuple(error_types)):
             safe_regex_findall(r"[", "test text")  # Unclosed bracket
 
     def test_timeout_context_manager(self) -> None:

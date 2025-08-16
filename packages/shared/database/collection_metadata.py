@@ -22,7 +22,8 @@ def ensure_metadata_collection(qdrant: QdrantClient) -> None:
             qdrant.create_collection(
                 collection_name=METADATA_COLLECTION,
                 vectors_config=VectorParams(
-                    size=4, distance=Distance.COSINE  # Small vector size, we're not using it for search
+                    size=4,
+                    distance=Distance.COSINE,  # Small vector size, we're not using it for search
                 ),
             )
             logger.info(f"Created metadata collection: {METADATA_COLLECTION}")
