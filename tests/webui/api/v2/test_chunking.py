@@ -127,81 +127,91 @@ class TestStrategyManagement:
 
     def test_list_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful listing of all strategies."""
-        # Import the config class
+        # Import the config class and DTOs
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase
+        from packages.webui.services.dtos import ServiceStrategyInfo
 
-        # Set up mock return value
+        # Set up mock return value with DTOs
         mock_strategies = [
-            {
-                "id": ChunkingStrategy.FIXED_SIZE,
-                "name": "fixed_size",
-                "description": "Simple fixed-size character-based chunking",
-                "best_for": ["Quick processing", "Consistent chunk sizes"],
-                "pros": ["Fast", "Predictable"],
-                "cons": ["May break mid-sentence"],
-                "default_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
-                ),
-                "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
-            },
-            {
-                "id": ChunkingStrategy.RECURSIVE,
-                "name": "recursive",
-                "description": "Smart sentence-aware splitting",
-                "best_for": ["General documents", "Maintaining context"],
-                "pros": ["Respects sentence boundaries"],
-                "cons": ["Variable chunk sizes"],
-                "default_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.RECURSIVE, chunk_size=1000, chunk_overlap=200
-                ),
-                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
-            },
-            {
-                "id": ChunkingStrategy.MARKDOWN,
-                "name": "markdown",
-                "description": "Respects markdown structure",
-                "best_for": ["Markdown documents", "Technical documentation"],
-                "pros": ["Preserves structure"],
-                "cons": ["Only for markdown"],
-                "default_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.MARKDOWN, chunk_size=1000, chunk_overlap=0
-                ),
-                "performance_characteristics": {"speed": "medium", "accuracy": "high"},
-            },
-            {
-                "id": ChunkingStrategy.SEMANTIC,
-                "name": "semantic",
-                "description": "Uses AI embeddings to find natural boundaries",
-                "best_for": ["Complex documents", "Academic papers"],
-                "pros": ["Best context preservation"],
-                "cons": ["Slower", "Requires embeddings"],
-                "default_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.SEMANTIC, buffer_size=1, breakpoint_threshold=95
-                ),
-                "performance_characteristics": {"speed": "slow", "accuracy": "very_high"},
-            },
-            {
-                "id": ChunkingStrategy.HIERARCHICAL,
-                "name": "hierarchical",
-                "description": "Creates parent-child chunks",
-                "best_for": ["Large documents", "Multi-level analysis"],
-                "pros": ["Multiple granularities"],
-                "cons": ["Complex", "More storage"],
-                "default_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.HIERARCHICAL, chunk_sizes=[2048, 512, 128]
-                ),
-                "performance_characteristics": {"speed": "slow", "accuracy": "high"},
-            },
-            {
-                "id": ChunkingStrategy.HYBRID,
-                "name": "hybrid",
-                "description": "Automatically selects strategy based on content",
-                "best_for": ["Mixed content", "Unknown document types"],
-                "pros": ["Adaptive", "Best overall"],
-                "cons": ["Overhead from analysis"],
-                "default_config": ChunkingConfigBase(strategy=ChunkingStrategy.HYBRID),
-                "performance_characteristics": {"speed": "variable", "accuracy": "high"},
-            },
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.FIXED_SIZE.value,
+                name="fixed_size",
+                description="Simple fixed-size character-based chunking",
+                best_for=["Quick processing", "Consistent chunk sizes"],
+                pros=["Fast", "Predictable"],
+                cons=["May break mid-sentence"],
+                default_config={
+                    "strategy": ChunkingStrategy.FIXED_SIZE.value,
+                    "chunk_size": 1000,
+                    "chunk_overlap": 200,
+                },
+                performance_characteristics={"speed": "fast", "accuracy": "medium"},
+            ),
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.RECURSIVE.value,
+                name="recursive",
+                description="Smart sentence-aware splitting",
+                best_for=["General documents", "Maintaining context"],
+                pros=["Respects sentence boundaries"],
+                cons=["Variable chunk sizes"],
+                default_config={
+                    "strategy": ChunkingStrategy.RECURSIVE.value,
+                    "chunk_size": 1000,
+                    "chunk_overlap": 200,
+                },
+                performance_characteristics={"speed": "medium", "accuracy": "high"},
+            ),
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.MARKDOWN.value,
+                name="markdown",
+                description="Respects markdown structure",
+                best_for=["Markdown documents", "Technical documentation"],
+                pros=["Preserves structure"],
+                cons=["Only for markdown"],
+                default_config={
+                    "strategy": ChunkingStrategy.MARKDOWN.value,
+                    "chunk_size": 1000,
+                    "chunk_overlap": 0,
+                },
+                performance_characteristics={"speed": "medium", "accuracy": "high"},
+            ),
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.SEMANTIC.value,
+                name="semantic",
+                description="Uses AI embeddings to find natural boundaries",
+                best_for=["Complex documents", "Academic papers"],
+                pros=["Best context preservation"],
+                cons=["Slower", "Requires embeddings"],
+                default_config={
+                    "strategy": ChunkingStrategy.SEMANTIC.value,
+                    "buffer_size": 1,
+                    "breakpoint_threshold": 95,
+                },
+                performance_characteristics={"speed": "slow", "accuracy": "very_high"},
+            ),
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.HIERARCHICAL.value,
+                name="hierarchical",
+                description="Creates parent-child chunks",
+                best_for=["Large documents", "Multi-level analysis"],
+                pros=["Multiple granularities"],
+                cons=["Complex", "More storage"],
+                default_config={
+                    "strategy": ChunkingStrategy.HIERARCHICAL.value,
+                    "chunk_sizes": [2048, 512, 128],
+                },
+                performance_characteristics={"speed": "slow", "accuracy": "high"},
+            ),
+            ServiceStrategyInfo(
+                id=ChunkingStrategy.HYBRID.value,
+                name="hybrid",
+                description="Automatically selects strategy based on content",
+                best_for=["Mixed content", "Unknown document types"],
+                pros=["Adaptive", "Best overall"],
+                cons=["Overhead from analysis"],
+                default_config={"strategy": ChunkingStrategy.HYBRID.value},
+                performance_characteristics={"speed": "variable", "accuracy": "high"},
+            ),
         ]
 
         mock_chunking_service.get_available_strategies_for_api.return_value = mock_strategies
@@ -261,22 +271,25 @@ class TestStrategyManagement:
 
     def test_get_strategy_details_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting details for a specific strategy."""
-        # Import the config class
+        # Import the config class and DTOs
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+        from packages.webui.services.dtos import ServiceStrategyInfo
 
-        # Setup mock
-        mock_chunking_service.get_strategy_details.return_value = {
-            "id": "fixed_size",
-            "name": "Fixed Size Chunking",
-            "description": "Simple fixed-size character-based chunking",
-            "best_for": ["Quick processing", "Consistent chunk sizes"],
-            "pros": ["Fast", "Predictable"],
-            "cons": ["May break mid-sentence"],
-            "default_config": ChunkingConfigBase(
-                strategy=ChunkingStrategy.FIXED_SIZE, chunk_size=1000, chunk_overlap=200
-            ),
-            "performance_characteristics": {"speed": "fast", "accuracy": "medium"},
-        }
+        # Setup mock with DTO
+        mock_chunking_service.get_strategy_details.return_value = ServiceStrategyInfo(
+            id="fixed_size",
+            name="Fixed Size Chunking",
+            description="Simple fixed-size character-based chunking",
+            best_for=["Quick processing", "Consistent chunk sizes"],
+            pros=["Fast", "Predictable"],
+            cons=["May break mid-sentence"],
+            default_config={
+                "strategy": ChunkingStrategy.FIXED_SIZE.value,
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+            },
+            performance_characteristics={"speed": "fast", "accuracy": "medium"},
+        )
 
         response = client.get("/api/v2/chunking/strategies/fixed_size")
 
@@ -302,15 +315,19 @@ class TestStrategyManagement:
 
     def test_recommend_strategy_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy recommendation."""
-        # Setup mock
-        mock_chunking_service.recommend_strategy.return_value = {
-            "strategy": ChunkingStrategy.SEMANTIC,
-            "confidence": 0.85,
-            "reasoning": "PDF files work best with semantic chunking",
-            "alternatives": [ChunkingStrategy.DOCUMENT_STRUCTURE],
-            "chunk_size": 512,
-            "chunk_overlap": 50,
-        }
+        # Import DTOs
+        from packages.webui.services.dtos import ServiceStrategyRecommendation
+        
+        # Setup mock with DTO
+        mock_chunking_service.recommend_strategy.return_value = ServiceStrategyRecommendation(
+            strategy=ChunkingStrategy.SEMANTIC.value,
+            confidence=0.85,
+            reasoning="PDF files work best with semantic chunking",
+            alternatives=[ChunkingStrategy.DOCUMENT_STRUCTURE.value],
+            chunk_size=512,
+            chunk_overlap=50,
+            preserve_sentences=True,
+        )
 
         response = client.post("/api/v2/chunking/strategies/recommend", params={"file_types": ["pdf", "docx"]})
 
@@ -337,37 +354,42 @@ class TestPreviewOperations:
 
     def test_generate_preview_with_content(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test generating preview with provided content."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServiceChunkPreview, ServicePreviewResponse
+        
         # Setup mock
         preview_id = str(uuid.uuid4())
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": preview_id,
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {
+        
+        # Return a ServicePreviewResponse DTO as expected by the updated endpoint
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=preview_id,
+            strategy="fixed_size",
+            config={
                 "strategy": "fixed_size",
                 "chunk_size": 512,
                 "chunk_overlap": 50,
                 "preserve_sentences": True,
             },
-            "chunks": [
-                {
-                    "index": 0,
-                    "content": "This is chunk 1",
-                    "token_count": 4,
-                    "char_count": 15,
-                    "metadata": {},
-                    "quality_score": 0.8,
-                }
+            chunks=[
+                ServiceChunkPreview(
+                    index=0,
+                    content="This is chunk 1",
+                    token_count=4,
+                    char_count=15,
+                    metadata={},
+                    quality_score=0.8,
+                )
             ],
-            "total_chunks": 1,
-            "metrics": {
+            total_chunks=1,
+            metrics={
                 "avg_chunk_size": 15,
                 "size_variance": 0.0,
                 "quality_score": 0.8,
             },
-            "processing_time_ms": 100,
-            "cached": False,
-        }
+            processing_time_ms=100,
+            cached=False,
+        )
 
         request_data = {
             "content": "This is a test document for chunking preview.",
@@ -396,23 +418,28 @@ class TestPreviewOperations:
 
     def test_generate_preview_with_document_id(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test generating preview with document ID."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         # Setup mock
         preview_id = str(uuid.uuid4())
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": preview_id,
-            "strategy": ChunkingStrategy.SEMANTIC,
-            "config": {
+        
+        # Return a ServicePreviewResponse DTO
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=preview_id,
+            strategy="semantic",
+            config={
                 "strategy": "semantic",
                 "chunk_size": 512,
                 "chunk_overlap": 50,
                 "preserve_sentences": True,
             },
-            "chunks": [],
-            "total_chunks": 5,
-            "processing_time_ms": 200,
-            "cached": True,
-        }
+            chunks=[],
+            total_chunks=5,
+            processing_time_ms=200,
+            cached=True,
+        )
 
         request_data = {
             "document_id": "doc-123",
@@ -501,92 +528,104 @@ class TestPreviewOperations:
             "strategy": "fixed_size",
         }
 
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": str(uuid.uuid4()),
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 100,
-        }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=100,
+        )
 
         response = client.post("/api/v2/chunking/preview", json=request_data)
         assert response.status_code == status.HTTP_200_OK
 
     def test_compare_strategies_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test successful strategy comparison."""
-        # Import the config class
+        # Import the config class and DTOs
         from packages.webui.api.v2.chunking_schemas import ChunkingConfigBase, ChunkingStrategy
+        from packages.webui.services.dtos import (
+            ServiceChunkPreview,
+            ServiceCompareResponse,
+            ServiceStrategyComparison,
+            ServiceStrategyRecommendation,
+        )
 
         # Setup mock for compare_strategies_for_api
         comparison_id = str(uuid.uuid4())
-        mock_chunking_service.compare_strategies_for_api.return_value = {
-            "comparison_id": comparison_id,
-            "comparisons": [
-                {
-                    "strategy": "fixed_size",
-                    "config": ChunkingConfigBase(
-                        strategy=ChunkingStrategy.FIXED_SIZE,
-                        chunk_size=512,
-                        chunk_overlap=50,
-                        preserve_sentences=True,
-                    ),
-                    "sample_chunks": [
-                        {
-                            "index": 0,
-                            "content": "chunk1",
-                            "token_count": 5,
-                            "char_count": 6,
-                            "metadata": {},
-                            "quality_score": 0.7,
-                            "overlap_info": None,
-                        }
+        mock_chunking_service.compare_strategies_for_api.return_value = ServiceCompareResponse(
+            comparison_id=comparison_id,
+            comparisons=[
+                ServiceStrategyComparison(
+                    strategy="fixed_size",
+                    config={
+                        "strategy": "fixed_size",
+                        "chunk_size": 512,
+                        "chunk_overlap": 50,
+                        "preserve_sentences": True,
+                    },
+                    sample_chunks=[
+                        ServiceChunkPreview(
+                            index=0,
+                            content="chunk1",
+                            token_count=5,
+                            char_count=6,
+                            metadata={},
+                            quality_score=0.7,
+                            overlap_info=None,
+                        )
                     ],
-                    "total_chunks": 10,
-                    "avg_chunk_size": 500.0,
-                    "size_variance": 10.0,
-                    "quality_score": 0.7,
-                    "processing_time_ms": 100,
-                    "pros": ["Fast processing", "Consistent chunk sizes"],
-                    "cons": ["May break semantic units"],
-                },
-                {
-                    "strategy": "semantic",
-                    "config": ChunkingConfigBase(
-                        strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
-                    ),
-                    "sample_chunks": [
-                        {
-                            "index": 0,
-                            "content": "chunk1",
-                            "token_count": 8,
-                            "char_count": 10,
-                            "metadata": {},
-                            "quality_score": 0.85,
-                            "overlap_info": None,
-                        }
-                    ],
-                    "total_chunks": 8,
-                    "avg_chunk_size": 600.0,
-                    "size_variance": 20.0,
-                    "quality_score": 0.85,
-                    "processing_time_ms": 200,
-                    "pros": ["Better semantic coherence", "Preserves context"],
-                    "cons": ["Slower processing"],
-                },
-            ],
-            "recommendation": {
-                "recommended_strategy": "semantic",
-                "confidence": 0.85,
-                "reasoning": "Higher quality score",
-                "alternative_strategies": ["fixed_size"],
-                "suggested_config": ChunkingConfigBase(
-                    strategy=ChunkingStrategy.SEMANTIC, chunk_size=512, chunk_overlap=50, preserve_sentences=True
+                    total_chunks=10,
+                    avg_chunk_size=500.0,
+                    size_variance=10.0,
+                    quality_score=0.7,
+                    processing_time_ms=100,
+                    pros=["Fast processing", "Consistent chunk sizes"],
+                    cons=["May break semantic units"],
                 ),
-            },
-            "processing_time_ms": 300,
-        }
+                ServiceStrategyComparison(
+                    strategy="semantic",
+                    config={
+                        "strategy": "semantic", 
+                        "chunk_size": 512, 
+                        "chunk_overlap": 50, 
+                        "preserve_sentences": True
+                    },
+                    sample_chunks=[
+                        ServiceChunkPreview(
+                            index=0,
+                            content="chunk1",
+                            token_count=8,
+                            char_count=10,
+                            metadata={},
+                            quality_score=0.85,
+                            overlap_info=None,
+                        )
+                    ],
+                    total_chunks=8,
+                    avg_chunk_size=600.0,
+                    size_variance=20.0,
+                    quality_score=0.85,
+                    processing_time_ms=200,
+                    pros=["Better semantic coherence", "Preserves context"],
+                    cons=["Slower processing"],
+                ),
+            ],
+            recommendation=ServiceStrategyRecommendation(
+                strategy="semantic",
+                confidence=0.85,
+                reasoning="Higher quality score",
+                alternatives=["fixed_size"],
+                chunk_size=512,
+                chunk_overlap=50,
+                preserve_sentences=True,
+            ),
+            processing_time_ms=300,
+        )
 
         request_data = {
             "content": "Test document for comparison",
@@ -611,17 +650,20 @@ class TestPreviewOperations:
 
     def test_get_cached_preview_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test retrieving cached preview results."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         preview_id = str(uuid.uuid4())
-        mock_chunking_service.get_cached_preview_by_id.return_value = {
-            "preview_id": preview_id,
-            "strategy": "fixed_size",
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 5,
-            "processing_time_ms": 100,
-            "cached": True,
-            "expires_at": (datetime.now(tz=UTC) + timedelta(minutes=15)).isoformat(),
-        }
+        mock_chunking_service.get_cached_preview_by_id.return_value = ServicePreviewResponse(
+            preview_id=preview_id,
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=5,
+            processing_time_ms=100,
+            cached=True,
+            expires_at=(datetime.now(tz=UTC) + timedelta(minutes=15)).isoformat(),
+        )
 
         response = client.get(f"/api/v2/chunking/preview/{preview_id}")
 
@@ -797,19 +839,22 @@ class TestCollectionProcessing:
 
     def test_get_chunking_stats_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting chunking statistics for a collection."""
-        # Return a dictionary as expected by the endpoint
-        mock_stats = {
-            "total_documents": 10,
-            "total_chunks": 100,
-            "average_chunk_size": 512,
-            "min_chunk_size": 100,
-            "max_chunk_size": 1024,
-            "size_variance": 50.0,
-            "strategy": "semantic",
-            "last_updated": datetime.now(UTC),
-            "processing_time": 120,
-            "performance_metrics": {"coherence": 0.8, "completeness": 0.9},
-        }
+        # Import the DTO
+        from packages.webui.services.dtos import ServiceChunkingStats
+        
+        # Return a ServiceChunkingStats DTO as expected by the updated endpoint
+        mock_stats = ServiceChunkingStats(
+            total_documents=10,
+            total_chunks=100,
+            avg_chunk_size=512.0,
+            min_chunk_size=100,
+            max_chunk_size=1024,
+            size_variance=50.0,
+            strategy_used="semantic",
+            last_updated=datetime.now(UTC),
+            processing_time_seconds=120.0,
+            quality_metrics={"coherence": 0.8, "completeness": 0.9},
+        )
 
         mock_chunking_service.get_collection_chunk_stats.return_value = mock_stats
 
@@ -843,6 +888,12 @@ class TestAnalyticsEndpoints:
 
     def test_get_metrics_by_strategy_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test getting metrics grouped by strategy."""
+        # Import the DTO and create default metrics
+        from packages.webui.services.dtos import ServiceStrategyMetrics
+        
+        # Mock the service to return default metrics
+        mock_chunking_service.get_metrics_by_strategy.return_value = ServiceStrategyMetrics.create_default_metrics()
+        
         response = client.get("/api/v2/chunking/metrics/by-strategy", params={"period_days": 30})
 
         assert response.status_code == status.HTTP_200_OK
@@ -1067,16 +1118,19 @@ class TestSecurityAndValidation:
 
     def test_sql_injection_attempt(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test that SQL injection attempts are properly handled."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         # Setup mock to return a valid response if validation passes
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": str(uuid.uuid4()),
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 10,
-        }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=10,
+        )
 
         # Attempt SQL injection in various parameters
         malicious_inputs = [
@@ -1096,9 +1150,23 @@ class TestSecurityAndValidation:
             # Should process normally without executing SQL
             assert response.status_code in [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST]
 
-    def test_xss_prevention(self, client: TestClient) -> None:
+    def test_xss_prevention(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test that XSS attempts are properly sanitized."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         xss_payload = "<script>alert('XSS')</script>"
+        
+        # Mock the service to handle XSS content
+        mock_chunking_service.track_preview_usage.return_value = None
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=10,
+        )
 
         request_data = {
             "content": xss_payload,
@@ -1117,15 +1185,18 @@ class TestEdgeCases:
     @pytest.mark.skipif(os.getenv("CI", "false").lower() == "true", reason="Requires full application context")
     def test_empty_content_preview(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test preview with empty content."""
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": str(uuid.uuid4()),
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 10,
-        }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=10,
+        )
 
         request_data = {
             "content": "",
@@ -1140,24 +1211,27 @@ class TestEdgeCases:
 
     def test_unicode_content_handling(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test handling of unicode content."""
+        # Import the DTOs
+        from packages.webui.services.dtos import ServiceChunkPreview, ServicePreviewResponse
+        
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": str(uuid.uuid4()),
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [
-                {
-                    "index": 0,
-                    "content": "你好世界",
-                    "token_count": 2,
-                    "char_count": 4,
-                    "metadata": {},
-                    "quality_score": 0.8,
-                }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[
+                ServiceChunkPreview(
+                    index=0,
+                    content="你好世界",
+                    token_count=2,
+                    char_count=4,
+                    metadata={},
+                    quality_score=0.8,
+                )
             ],
-            "total_chunks": 1,
-            "processing_time_ms": 50,
-        }
+            total_chunks=1,
+            processing_time_ms=50,
+        )
 
         request_data = {
             "content": "你好世界 Hello World مرحبا بالعالم",
@@ -1231,15 +1305,18 @@ class TestPerformance:
         # Create a large but valid document (under 10MB limit)
         large_content = "Lorem ipsum " * 100000  # Approximately 1.2MB
 
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": str(uuid.uuid4()),
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 1000,
-            "processing_time_ms": 5000,
-        }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=str(uuid.uuid4()),
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=1000,
+            processing_time_ms=5000,
+        )
 
         request_data = {
             "content": large_content,
@@ -1255,17 +1332,20 @@ class TestPerformance:
         """Test that preview results are cached properly."""
         preview_id = str(uuid.uuid4())
 
+        # Import the DTO
+        from packages.webui.services.dtos import ServicePreviewResponse
+        
         # First call - not cached
         mock_chunking_service.track_preview_usage.return_value = None
-        mock_chunking_service.preview_chunking.return_value = {
-            "preview_id": preview_id,
-            "strategy": ChunkingStrategy.FIXED_SIZE,
-            "config": {"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
-            "chunks": [],
-            "total_chunks": 10,
-            "processing_time_ms": 200,
-            "cached": False,
-        }
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=preview_id,
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=10,
+            processing_time_ms=200,
+            cached=False,
+        )
 
         request_data = {
             "content": "Test content for caching",
@@ -1277,8 +1357,16 @@ class TestPerformance:
         assert response1.json()["cached"] is False
 
         # Second call - should be cached
-        mock_chunking_service.preview_chunking.return_value["cached"] = True
-        mock_chunking_service.preview_chunking.return_value["processing_time_ms"] = 10
+        # Create a new DTO for the cached response
+        mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
+            preview_id=preview_id,
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
+            chunks=[],
+            total_chunks=10,
+            processing_time_ms=10,  # Faster for cached
+            cached=True,  # Now cached
+        )
 
         response2 = client.post("/api/v2/chunking/preview", json=request_data)
         assert response2.status_code == status.HTTP_200_OK

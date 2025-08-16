@@ -33,7 +33,6 @@ from packages.webui.api.v2.chunking_schemas import (
     ChunkingStrategy,
     ChunkingStrategyUpdate,
     ChunkListResponse,
-    ChunkPreview,
     CompareRequest,
     CompareResponse,
     CreateConfigurationRequest,
@@ -93,23 +92,11 @@ async def list_strategies(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Delegate all transformation logic to service
-        strategies = await service.get_available_strategies_for_api()
+        # Get DTOs from service and convert to API models
+        strategy_dtos = await service.get_available_strategies_for_api()
 
-        # Convert to response models
-        return [
-            StrategyInfo(
-                id=s["id"],
-                name=s["name"],
-                description=s["description"],
-                best_for=s.get("best_for", []),
-                pros=s.get("pros", []),
-                cons=s.get("cons", []),
-                default_config=s["default_config"],
-                performance_characteristics=s.get("performance_characteristics", {}),
-            )
-            for s in strategies
-        ]
+        # Convert DTOs to API response models
+        return [dto.to_api_model() for dto in strategy_dtos]
 
     except Exception as e:
         logger.error(f"Failed to list strategies: {e}")
@@ -136,26 +123,17 @@ async def get_strategy_details(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Delegate all lookup and transformation logic to service
-        strategy_data = await service.get_strategy_details(strategy_id)
+        # Get DTO from service
+        strategy_dto = await service.get_strategy_details(strategy_id)
 
-        if not strategy_data:
+        if not strategy_dto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Strategy '{strategy_id}' not found",
             )
 
-        # Convert to response model
-        return StrategyInfo(
-            id=strategy_data["id"],
-            name=strategy_data["name"],
-            description=strategy_data["description"],
-            best_for=strategy_data.get("best_for", []),
-            pros=strategy_data.get("pros", []),
-            cons=strategy_data.get("cons", []),
-            default_config=strategy_data["default_config"],
-            performance_characteristics=strategy_data.get("performance_characteristics", {}),
-        )
+        # Convert DTO to API response model
+        return strategy_dto.to_api_model()
 
     except HTTPException:
         raise
@@ -184,24 +162,13 @@ async def recommend_strategy(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Simply delegate to service
-        recommendation = await service.recommend_strategy(
+        # Get DTO from service
+        recommendation_dto = await service.recommend_strategy(
             file_types=file_types,
         )
 
-        # Transform to response model
-        return StrategyRecommendation(
-            recommended_strategy=recommendation["strategy"],
-            confidence=recommendation.get("confidence", 0.8),
-            reasoning=recommendation["reasoning"],
-            alternative_strategies=recommendation.get("alternatives", []),
-            suggested_config=ChunkingConfigBase(
-                strategy=recommendation["strategy"],
-                chunk_size=recommendation.get("chunk_size", 512),
-                chunk_overlap=recommendation.get("chunk_overlap", 50),
-                preserve_sentences=True,
-            ),
-        )
+        # Convert DTO to API response model
+        return recommendation_dto.to_api_model()
 
     except Exception as e:
         logger.error(f"Failed to get strategy recommendation: {e}")
@@ -265,54 +232,17 @@ async def generate_preview(
                 detail=str(e),
             ) from e
 
-        # Delegate to service using the method name expected by tests
-        result = await service.preview_chunking(
+        # Get DTO from service
+        preview_dto = await service.preview_chunking(
             strategy=preview_request.strategy,
             content=preview_request.content or "",  # Provide empty string if content is None
             config=preview_request.config.model_dump() if preview_request.config else None,
         )
 
-        if not isinstance(result, dict):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid preview response")
-
-        # Transform to response model
-        config_data = result.get("config", {}).copy()
-        if "strategy" not in config_data:
-            config_data["strategy"] = result["strategy"]
-
-        # Transform service chunks to ChunkPreview objects
-        chunks = []
-        for chunk in result.get("chunks", []):
-            # Handle both 'content' and 'text' keys for chunk content
-            content = chunk.get("content") or chunk.get("text", "")
-            char_count = len(content)
-            # Approximate token count (rough estimate: ~4 chars per token)
-            token_count = chunk.get("token_count", char_count // 4)
-
-            chunks.append(
-                ChunkPreview(
-                    index=chunk.get("index", 0),
-                    content=content,
-                    token_count=token_count,
-                    char_count=char_count,
-                    metadata=chunk.get("metadata", {}),
-                    quality_score=chunk.get("quality_score", 0.8),
-                    overlap_info=chunk.get("overlap_info"),
-                )
-            )
-
-        return PreviewResponse(
-            preview_id=result["preview_id"],
-            strategy=result["strategy"],
-            config=ChunkingConfigBase(**config_data),
-            chunks=chunks,
-            total_chunks=result["total_chunks"],
-            metrics=result.get("metrics"),
-            processing_time_ms=result["processing_time_ms"],
-            cached=result.get("cached", False),
-            expires_at=result.get("expires_at", datetime.now(UTC) + timedelta(minutes=15)),
-            correlation_id=correlation_id,
-        )
+        # Convert DTO to API response model and add correlation ID
+        response = preview_dto.to_api_model()
+        response.correlation_id = correlation_id
+        return response
 
     except ApplicationError as e:
         # Translate to HTTP exception
@@ -378,21 +308,16 @@ async def compare_strategies(
                 # strategy is already a string key from the dict, not an enum
                 configs_dict[strategy] = config.model_dump()
 
-        # Delegate all comparison logic to service
-        result = await service.compare_strategies_for_api(
+        # Get DTO from service
+        compare_dto = await service.compare_strategies_for_api(
             content=compare_request.content or "",
             strategies=strategy_names,
             configs=configs_dict,
             max_chunks_per_strategy=5,
         )
 
-        # Convert to response model
-        return CompareResponse(
-            comparison_id=result["comparison_id"],
-            comparisons=result["comparisons"],
-            recommendation=result["recommendation"],
-            processing_time_ms=result["processing_time_ms"],
-        )
+        # Convert DTO to API response model
+        return compare_dto.to_api_model()
 
     except HTTPException:
         raise
@@ -426,55 +351,20 @@ async def get_cached_preview(
     check_circuit_breaker(request)
 
     try:
-        # Use public service method for cache retrieval
-        result = await service.get_cached_preview_by_id(
+        # Get DTO from service
+        preview_dto = await service.get_cached_preview_by_id(
             preview_id=preview_id,
             user_id=_current_user.get("id") if _current_user else None,
         )
 
-        if not result:
+        if not preview_dto:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Preview not found or expired",
             )
 
-        # Transform service result to response model
-        config_data = result.get("config", {}).copy()
-        if "strategy" not in config_data:
-            config_data["strategy"] = result["strategy"]
-
-        # Transform service chunks to ChunkPreview objects
-        chunks = []
-        for chunk in result.get("chunks", []):
-            # Handle both 'content' and 'text' keys for chunk content
-            content = chunk.get("content") or chunk.get("text", "")
-            char_count = len(content)
-            # Approximate token count (rough estimate: ~4 chars per token)
-            token_count = chunk.get("token_count", char_count // 4)
-
-            chunks.append(
-                ChunkPreview(
-                    index=chunk.get("index", 0),
-                    content=content,
-                    token_count=token_count,
-                    char_count=char_count,
-                    metadata=chunk.get("metadata", {}),
-                    quality_score=chunk.get("quality_score", 0.8),
-                    overlap_info=chunk.get("overlap_info"),
-                )
-            )
-
-        return PreviewResponse(
-            preview_id=result["preview_id"],
-            strategy=result["strategy"],
-            config=ChunkingConfigBase(**config_data),
-            chunks=chunks,
-            total_chunks=result["total_chunks"],
-            metrics=result.get("metrics"),
-            processing_time_ms=result["processing_time_ms"],
-            cached=result.get("cached", False),
-            expires_at=result.get("expires_at", datetime.now(UTC) + timedelta(minutes=15)),
-        )
+        # Convert DTO to API response model
+        return preview_dto.to_api_model()
 
     except HTTPException:
         raise
@@ -721,15 +611,26 @@ async def get_collection_chunks(
     Get paginated list of chunks for a collection.
     Optionally filter by document ID.
     Rate limited to 60 requests per minute per user.
+
+    TODO: Implement service layer method for get_collection_chunks
+    This endpoint currently returns mock data and needs proper implementation
+    in the ChunkingService with a corresponding DTO.
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
 
     try:
-        # This would typically query the chunk storage
-        # For now, returning mock data structure
-        offset = (page - 1) * page_size
+        # TODO: Replace with actual service call once implemented
+        # Expected: chunks_dto = await service.get_collection_chunks(
+        #     collection_id=collection_uuid,
+        #     page=page,
+        #     page_size=page_size,
+        #     document_id=document_id
+        # )
+        # return chunks_dto.to_api_model()
 
+        # Mock implementation - to be replaced
+        offset = (page - 1) * page_size
         chunks: list[dict[str, Any]] = []  # Would fetch from database/storage
         total = 0  # Would get total count
 
@@ -758,30 +659,27 @@ async def get_chunking_stats(
     collection_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),
 ) -> ChunkingStats:
     """
     Get detailed chunking statistics and metrics for a collection.
+
+    Router is now a thin controller - all logic in service!
     """
     try:
-        # Use the new method that returns chunk-level statistics
-        stats = await service.get_collection_chunk_stats(
+        # Get DTO from service
+        stats_dto = await service.get_collection_chunk_stats(
             collection_id=collection_id,
         )
 
-        return ChunkingStats(
-            total_chunks=stats.get("total_chunks", 0),
-            total_documents=stats.get("total_documents", 0),
-            avg_chunk_size=stats.get("average_chunk_size", 0),
-            min_chunk_size=stats.get("min_chunk_size", 0),
-            max_chunk_size=stats.get("max_chunk_size", 0),
-            size_variance=stats.get("size_variance", 0.0),
-            strategy_used=ChunkingStrategy(stats.get("strategy", "fixed_size")),
-            last_updated=stats.get("last_updated", datetime.now(UTC)),
-            processing_time_seconds=stats.get("processing_time", 0.0),
-            quality_metrics=stats.get("performance_metrics", {}),
-        )
+        # Convert DTO to API response model
+        return stats_dto.to_api_model()
 
+    except ApplicationError as e:
+        # Translate to HTTP exception
+        raise exception_translator.translate_application_to_api(e) from e
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to fetch chunking stats: {e}")
         raise HTTPException(
@@ -806,13 +704,23 @@ async def get_global_metrics(
     """
     Get global chunking metrics across all collections for the specified period.
     Rate limited to 30 requests per minute per user.
+
+    TODO: Implement service layer method for get_global_metrics
+    This endpoint currently returns mock data and needs proper implementation
+    in the ChunkingService with a corresponding DTO.
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
 
     try:
-        # This would aggregate metrics from database
-        # For now, returning mock structure
+        # TODO: Replace with actual service call once implemented
+        # Expected: metrics_dto = await service.get_global_metrics(
+        #     period_days=period_days,
+        #     user_id=_current_user["id"]
+        # )
+        # return metrics_dto.to_api_model()
+
+        # Mock implementation - to be replaced
         period_end = datetime.now(UTC)
         period_start = period_end - timedelta(days=period_days)
 
@@ -852,56 +760,14 @@ async def get_metrics_by_strategy(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Delegate to service for all business logic
-        metrics_data = None
-        if hasattr(service, "get_metrics_by_strategy"):
-            try:
-                metrics_data = await service.get_metrics_by_strategy(
-                    _period_days=period_days,
-                    _user_id=_current_user.get("id") if _current_user else None,
-                )
-            except Exception:
-                metrics_data = None
+        # Get DTOs from service (method always returns a list)
+        metrics_dtos = await service.get_metrics_by_strategy(
+            _period_days=period_days,
+            _user_id=_current_user.get("id") if _current_user else None,
+        )
 
-        # Transform service result to response models
-        metrics = []
-        if not isinstance(metrics_data, list) or not metrics_data:
-            # Provide default placeholder metrics for all six primary strategies
-            strategies = [
-                ChunkingStrategy.FIXED_SIZE,
-                ChunkingStrategy.RECURSIVE,
-                ChunkingStrategy.MARKDOWN,
-                ChunkingStrategy.SEMANTIC,
-                ChunkingStrategy.HIERARCHICAL,
-                ChunkingStrategy.HYBRID,
-            ]
-            for s in strategies:
-                metrics.append(
-                    StrategyMetrics(
-                        strategy=s,
-                        usage_count=0,
-                        avg_chunk_size=0,
-                        avg_processing_time=0.0,
-                        success_rate=0.0,
-                        avg_quality_score=0.0,
-                        best_for_types=[],
-                    )
-                )
-        else:
-            for metric_data in metrics_data:
-                metrics.append(
-                    StrategyMetrics(
-                        strategy=metric_data["strategy"],
-                        usage_count=metric_data["usage_count"],
-                        avg_chunk_size=metric_data["avg_chunk_size"],
-                        avg_processing_time=metric_data["avg_processing_time"],
-                        success_rate=metric_data["success_rate"],
-                        avg_quality_score=metric_data["avg_quality_score"],
-                        best_for_types=metric_data.get("best_for_types", []),
-                    )
-                )
-
-        return metrics
+        # Convert DTOs to API response models
+        return [dto.to_api_model() for dto in metrics_dtos]
 
     except Exception as e:
         logger.error(f"Failed to fetch strategy metrics: {e}")
@@ -923,9 +789,20 @@ async def get_quality_scores(
 ) -> QualityAnalysis:
     """
     Analyze chunk quality across collections or for a specific collection.
+
+    TODO: Implement service layer method for get_quality_scores
+    This endpoint currently returns mock data and needs proper implementation
+    in the ChunkingService with a corresponding DTO.
     """
     try:
-        # Would perform actual quality analysis
+        # TODO: Replace with actual service call once implemented
+        # Expected: quality_dto = await service.get_quality_scores(
+        #     collection_id=collection_id,
+        #     user_id=_current_user["id"]
+        # )
+        # return quality_dto.to_api_model()
+
+        # Mock implementation - to be replaced
         return QualityAnalysis(
             overall_quality="good",
             quality_score=0.75,
@@ -958,18 +835,32 @@ async def get_quality_scores(
 async def analyze_document(
     analysis_request: DocumentAnalysisRequest,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),
 ) -> DocumentAnalysisResponse:
     """
     Analyze a document to recommend the best chunking strategy.
     Provides detailed analysis of document structure and complexity.
+
+    TODO: Implement full service layer method for analyze_document
+    This endpoint partially uses the service (recommend_strategy) but builds
+    the response manually with mock data. Needs a proper service method
+    that returns a DocumentAnalysisDTO.
     """
     try:
-        # Would perform actual document analysis
+        # TODO: Replace with actual service call once implemented
+        # Expected: analysis_dto = await service.analyze_document(
+        #     content=analysis_request.content,
+        #     file_type=analysis_request.file_type,
+        #     user_id=_current_user["id"]
+        # )
+        # return analysis_dto.to_api_model()
+
+        # Partial implementation - uses service for recommendation only
         recommendation = await service.recommend_strategy(
             file_types=[analysis_request.file_type] if analysis_request.file_type else [],
         )
 
+        # Mock data for the rest of the response - to be replaced
         return DocumentAnalysisResponse(
             document_type=analysis_request.file_type or "unknown",
             content_structure={
@@ -1025,11 +916,27 @@ async def save_configuration(
     """
     Save a custom chunking configuration for reuse.
     Configurations are user-specific and can be set as defaults.
+
+    TODO: Implement service layer method for save_configuration
+    This endpoint currently returns mock data and needs proper implementation
+    in the ChunkingService with a corresponding DTO.
     """
     try:
+        # TODO: Replace with actual service call once implemented
+        # Expected: config_dto = await service.save_configuration(
+        #     name=config_request.name,
+        #     description=config_request.description,
+        #     strategy=config_request.strategy,
+        #     config=config_request.config,
+        #     is_default=config_request.is_default,
+        #     tags=config_request.tags,
+        #     user_id=_current_user["id"]
+        # )
+        # return config_dto.to_api_model()
+
+        # Mock implementation - to be replaced
         config_id = str(uuid.uuid4())
 
-        # Would save to database
         return SavedConfiguration(
             id=config_id,
             name=config_request.name,
@@ -1066,9 +973,21 @@ async def list_configurations(
     """
     List all saved chunking configurations for the current user.
     Can filter by strategy or default status.
+
+    TODO: Implement service layer method for list_configurations
+    This endpoint currently returns empty list and needs proper implementation
+    in the ChunkingService with corresponding DTOs.
     """
     try:
-        # Would fetch from database
+        # TODO: Replace with actual service call once implemented
+        # Expected: configs_dto = await service.list_configurations(
+        #     strategy=strategy,
+        #     is_default=is_default,
+        #     user_id=_current_user["id"]
+        # )
+        # return [dto.to_api_model() for dto in configs_dto]
+
+        # Mock implementation - to be replaced
         configs: list[SavedConfiguration] = []
 
         return configs
