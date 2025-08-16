@@ -1846,7 +1846,9 @@ class ChunkingService:
             logger.warning(f"Failed to cache preview: {e}")
 
     async def get_cached_preview_by_id(
-        self, preview_id: str, user_id: int | None = None  # noqa: ARG002
+        self,
+        preview_id: str,
+        user_id: int | None = None,  # noqa: ARG002
     ) -> dict[str, Any] | None:
         """Get cached preview by ID.
 

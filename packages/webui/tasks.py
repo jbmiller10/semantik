@@ -885,7 +885,12 @@ async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) ->
 
 
 def _handle_task_failure(
-    self: Any, exc: Exception, task_id: str, args: tuple, kwargs: dict, einfo: Any  # noqa: ARG001
+    self: Any,  # noqa: ARG001
+    exc: Exception,
+    task_id: str,
+    args: tuple,
+    kwargs: dict,
+    einfo: Any,  # noqa: ARG001
 ) -> None:
     """Handle task failure by updating operation and collection status appropriately.
 

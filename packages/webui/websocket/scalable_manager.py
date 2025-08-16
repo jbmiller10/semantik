@@ -441,7 +441,9 @@ class ScalableWebSocketManager:
 
         if self.redis_client:
             await self.redis_client.setex(
-                f"websocket:instance:{self.instance_id}", 60, json.dumps(instance_data)  # 60 second TTL
+                f"websocket:instance:{self.instance_id}",
+                60,
+                json.dumps(instance_data),  # 60 second TTL
             )
 
         logger.info(f"Registered instance {self.instance_id} in Redis")

@@ -119,9 +119,8 @@ class SafeRegex:
             if HAS_REGEX:
                 # Use native timeout support
                 return compiled.match(text, timeout=timeout)
-            else:
-                # No timeout available with standard re
-                return compiled.match(text)
+            # No timeout available with standard re
+            return compiled.match(text)
         except regex.error as e:
             if HAS_REGEX and "timeout" in str(e).lower():
                 raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
@@ -189,9 +188,8 @@ class SafeRegex:
             if HAS_REGEX:
                 # Use native timeout support
                 return compiled.search(text, timeout=timeout)
-            else:
-                # No timeout available with standard re
-                return compiled.search(text)
+            # No timeout available with standard re
+            return compiled.search(text)
         except regex.error as e:
             if HAS_REGEX and "timeout" in str(e).lower():
                 raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None

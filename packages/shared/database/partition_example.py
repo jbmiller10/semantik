@@ -87,7 +87,9 @@ class ChunkingServiceExample:
         # GOOD: Query with collection_id for partition pruning
         if document_id:
             chunks = await self.chunk_repo.get_chunks_by_document(
-                document_id=document_id, collection_id=collection_id, limit=10  # Always include!
+                document_id=document_id,
+                collection_id=collection_id,
+                limit=10,  # Always include!
             )
             print(f"Found {len(chunks)} chunks for document {document_id}")
         else:

@@ -54,10 +54,9 @@ def safe_regex_search(pattern: str, text: str, timeout: float = 1.0, flags: int 
         if HAS_REGEX:
             compiled = regex.compile(pattern, flags)
             return compiled.search(text, timeout=timeout)
-        else:
-            # Fallback to standard re without timeout
-            compiled = regex.compile(pattern, flags)
-            return compiled.search(text)
+        # Fallback to standard re without timeout
+        compiled = regex.compile(pattern, flags)
+        return compiled.search(text)
     except regex.error as e:
         if HAS_REGEX and "timeout" in str(e).lower():
             raise RegexTimeoutError(f"Pattern timed out after {timeout}s: {pattern[:50]}...") from e
@@ -92,9 +91,8 @@ def safe_regex_match(pattern: str, text: str, timeout: float = 1.0, flags: int =
         if HAS_REGEX:
             compiled = regex.compile(pattern, flags)
             return compiled.match(text, timeout=timeout)
-        else:
-            compiled = regex.compile(pattern, flags)
-            return compiled.match(text)
+        compiled = regex.compile(pattern, flags)
+        return compiled.match(text)
     except regex.error as e:
         if HAS_REGEX and "timeout" in str(e).lower():
             raise RegexTimeoutError(f"Pattern timed out after {timeout}s: {pattern[:50]}...") from e
@@ -137,11 +135,10 @@ def safe_regex_findall(
                 if len(matches) >= max_matches:
                     break
             return matches
-        else:
-            # Fallback without timeout
-            compiled = regex.compile(pattern, flags)
-            matches = compiled.findall(text)
-            return matches[:max_matches]
+        # Fallback without timeout
+        compiled = regex.compile(pattern, flags)
+        matches = compiled.findall(text)
+        return matches[:max_matches]
     except regex.error as e:
         if HAS_REGEX and "timeout" in str(e).lower():
             raise RegexTimeoutError(f"Pattern timed out after {timeout}s: {pattern[:50]}...") from e
@@ -329,8 +326,7 @@ def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Pattern:
             compiled = regex.compile(pattern, flags)
             compiled._timeout = timeout
             return compiled
-        else:
-            return regex.compile(pattern, flags)
+        return regex.compile(pattern, flags)
     except Exception as e:
         logger.error(f"Failed to compile pattern: {e}")
         raise
