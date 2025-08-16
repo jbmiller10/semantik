@@ -7,6 +7,7 @@ Uses the shared.embedding.EmbeddingService for all embedding operations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import uuid
 from pathlib import Path

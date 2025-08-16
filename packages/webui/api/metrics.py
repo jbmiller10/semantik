@@ -3,6 +3,7 @@ Metrics and monitoring routes for the Web UI
 """
 
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -34,8 +35,6 @@ def update_metrics_loop() -> None:
             logger.warning(f"Error in metrics update loop: {e}")
         time.sleep(1)
 
-
-import os
 
 # Only start metrics server if not in testing mode and port is configured
 is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
