@@ -1,7 +1,6 @@
 """Integration tests for chunking validation through the API layer."""
 
-from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import FastAPI, status
@@ -9,30 +8,8 @@ from httpx import AsyncClient
 
 from packages.shared.database.models import Collection
 
-
-@pytest.fixture()
-def test_app() -> FastAPI:
-    """Create a test FastAPI app with mocked dependencies."""
-    from packages.webui.api.v2.collections import router as collections_router
-    from packages.webui.auth import get_current_user
-
-    app = FastAPI()
-    
-    # Override authentication dependency
-    async def override_get_current_user():
-        return {"id": 1, "username": "testuser"}
-    
-    app.dependency_overrides[get_current_user] = override_get_current_user
-    app.include_router(collections_router)  # Router already has prefix
-
-    return app
-
-
-@pytest.fixture()
-async def authenticated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
-    """Create an authenticated test client."""
-    async with AsyncClient(app=test_app, base_url="http://test") as client:
-        yield client
+# The test_app and authenticated_client fixtures are now provided by conftest.py
+# which uses the centralized auth mocking infrastructure
 
 
 @pytest.mark.asyncio()
@@ -134,7 +111,7 @@ async def test_update_collection_with_invalid_chunking_strategy(test_app: FastAP
     
     # Mock service to raise ValueError
     mock_service = MagicMock()
-    mock_service.update_collection = AsyncMock(
+    mock_service.update = AsyncMock(
         side_effect=ValueError(
             "Invalid chunking_strategy: Strategy bad_strategy failed: "
             "Unknown strategy: bad_strategy. Available: fixed_size, semantic, recursive"
@@ -144,7 +121,7 @@ async def test_update_collection_with_invalid_chunking_strategy(test_app: FastAP
     # Override the service dependency for this test
     test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
-    response = await authenticated_client.patch(
+    response = await authenticated_client.put(
         f"/api/v2/collections/{collection_id}", json={"chunking_strategy": "bad_strategy"}
     )
     
@@ -162,7 +139,7 @@ async def test_update_collection_with_invalid_config_for_strategy(test_app: Fast
     
     # Mock service to raise ValueError
     mock_service = MagicMock()
-    mock_service.update_collection = AsyncMock(
+    mock_service.update = AsyncMock(
         side_effect=ValueError(
             "Invalid chunking_config for strategy 'semantic': similarity_threshold must be between 0 and 1"
         )
@@ -171,7 +148,7 @@ async def test_update_collection_with_invalid_config_for_strategy(test_app: Fast
     # Override the service dependency for this test
     test_app.dependency_overrides[get_collection_service] = lambda: mock_service
 
-    response = await authenticated_client.patch(
+    response = await authenticated_client.put(
         f"/api/v2/collections/{collection_id}",
         json={"chunking_strategy": "semantic", "chunking_config": {"similarity_threshold": 2.0}},
     )
@@ -187,33 +164,42 @@ async def test_successful_collection_creation_with_valid_chunking(test_app: Fast
     """Test that valid chunking configuration is accepted."""
     from packages.webui.services.factory import get_collection_service
     
-    # Mock successful creation
-    mock_collection = MagicMock(spec=Collection)
-    mock_collection.uuid = "new-uuid-123"
-    mock_collection.name = "Test Collection"
-    mock_collection.chunking_strategy = "recursive"
-    mock_collection.chunking_config = {"chunk_size": 500, "chunk_overlap": 50}
+    # Mock successful creation - return complete collection dict
+    mock_collection = {
+        "id": "new-uuid-123",  # CollectionResponse expects 'id' not 'uuid'
+        "uuid": "new-uuid-123",
+        "name": "Test Collection",
+        "description": "Test",
+        "owner_id": 1,
+        "vector_store_name": "test_vector_store",
+        "embedding_model": "text-embedding-ada-002",
+        "quantization": "scalar",
+        "chunk_size": 500,
+        "chunk_overlap": 50,
+        "chunking_strategy": "recursive",
+        "chunking_config": {"chunk_size": 500, "chunk_overlap": 50},
+        "is_public": False,
+        "metadata": {},
+        "created_at": "2024-01-01T00:00:00",
+        "updated_at": "2024-01-01T00:00:00",
+        "document_count": 0,
+        "vector_count": 0,
+        "status": "pending",
+        "status_message": None,
+    }
     
     mock_operation = {
         "uuid": "op-uuid-123",
         "collection_id": "new-uuid-123",
         "type": "index",
         "status": "pending",
-        "meta": None,
+        "config": {},
         "created_at": "2024-01-01T00:00:00",
     }
     
     mock_service = MagicMock()
     mock_service.create_collection = AsyncMock(
-        return_value=(
-            {
-                "uuid": mock_collection.uuid,
-                "name": mock_collection.name,
-                "chunking_strategy": mock_collection.chunking_strategy,
-                "chunking_config": mock_collection.chunking_config,
-            },
-            mock_operation,
-        )
+        return_value=(mock_collection, mock_operation)
     )
     
     # Override the service dependency for this test
@@ -231,5 +217,5 @@ async def test_successful_collection_creation_with_valid_chunking(test_app: Fast
     
     assert response.status_code == status.HTTP_201_CREATED
     data = response.json()
-    assert data["collection"]["chunking_strategy"] == "recursive"
-    assert data["collection"]["chunking_config"]["chunk_size"] == 500
+    assert data["chunking_strategy"] == "recursive"
+    assert data["chunking_config"]["chunk_size"] == 500

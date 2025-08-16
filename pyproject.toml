@@ -151,6 +151,7 @@ asyncio_mode = "auto"
 env_files = [".env.test"]
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
+    "skip_ci: Tests that should be skipped in CI environments due to resource constraints or async issues",
 ]
 
 [build-system]
