@@ -213,7 +213,8 @@ class TestSearchAPI:
 
             async with lifespan(test_app):
                 # Verify initialization
-                mock_start_metrics.assert_called_once()
+                # Metrics server should NOT be started when TESTING=true
+                mock_start_metrics.assert_not_called()
                 # The actual call will be with the real METRICS_PORT constant, not mock_settings.METRICS_PORT
                 mock_httpx.assert_called_once()
                 mock_get_service.assert_called_once()

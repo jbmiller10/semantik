@@ -1,9 +1,11 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocketService, ChunkingMessageType, WebSocketState } from '../websocket';
-import { MockChunkingWebSocket } from '@/tests/utils/chunkingTestUtils';
 import type { WebSocketMessage } from '../websocket';
 
-// Mock localStorage
+// Mock localStorage - initialize immediately
 const mockLocalStorage = {
   getItem: vi.fn(),
   setItem: vi.fn(),
@@ -13,10 +15,13 @@ const mockLocalStorage = {
   key: vi.fn()
 };
 
-Object.defineProperty(window, 'localStorage', {
-  value: mockLocalStorage,
-  writable: true
-});
+// Setup global mocks after environment is ready
+if (typeof window !== 'undefined') {
+  Object.defineProperty(window, 'localStorage', {
+    value: mockLocalStorage,
+    writable: true
+  });
+}
 
 // Enhanced Mock WebSocket for testing
 class TestMockWebSocket {
@@ -129,7 +134,7 @@ class TestMockWebSocket {
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
     if (this.onopen) {
-      this.onopen({ type: 'open' } as Event);
+      this.onopen(new Event('open'));
     }
   }
   
@@ -143,7 +148,7 @@ class TestMockWebSocket {
   
   simulateError() {
     if (this.onerror) {
-      this.onerror({ type: 'error' } as Event);
+      this.onerror(new Event('error'));
     }
   }
   
@@ -475,7 +480,7 @@ describe('WebSocketService', () => {
       
       // Override to not authenticate
       MockWebSocketConstructor.mockImplementationOnce((url: string) => {
-        const ws = new MockChunkingWebSocket(url);
+        const ws = new TestMockWebSocket(url);
         ws.send = vi.fn(); // Don't authenticate
         return ws as unknown as WebSocket;
       });
