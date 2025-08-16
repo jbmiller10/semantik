@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""
+Factory and adapter patterns for unified chunking strategies.
+
+This module provides factories and adapters to make the unified strategies
+compatible with both the domain-based and text_processing interfaces.
+"""
+
+import logging
+from enum import Enum
+from typing import Any
+
+from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
+from packages.shared.chunking.unified.character_strategy import (
+    CharacterChunkingStrategy,
+)
+from packages.shared.chunking.unified.hierarchical_strategy import (
+    HierarchicalChunkingStrategy,
+)
+from packages.shared.chunking.unified.hybrid_strategy import (
+    HybridChunkingStrategy,
+)
+from packages.shared.chunking.unified.markdown_strategy import (
+    MarkdownChunkingStrategy,
+)
+from packages.shared.chunking.unified.recursive_strategy import (
+    RecursiveChunkingStrategy,
+)
+from packages.shared.chunking.unified.semantic_strategy import (
+    SemanticChunkingStrategy,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ChunkingStrategyType(str, Enum):
+    """Enumeration of available chunking strategies."""
+
+    CHARACTER = "character"
+    RECURSIVE = "recursive"
+    SEMANTIC = "semantic"
+    HIERARCHICAL = "hierarchical"
+    MARKDOWN = "markdown"
+    HYBRID = "hybrid"
+
+
+class UnifiedChunkingFactory:
+    """
+    Factory for creating unified chunking strategies.
+
+    This factory creates the appropriate unified strategy based on the requested type,
+    with optional LlamaIndex support.
+    """
+
+    @staticmethod
+    def create_strategy(
+        strategy_type: str | ChunkingStrategyType,
+        use_llama_index: bool = False,
+        **kwargs: Any,
+    ) -> UnifiedChunkingStrategy:
+        """
+        Create a unified chunking strategy.
+
+        Args:
+            strategy_type: Type of strategy to create
+            use_llama_index: Whether to enable LlamaIndex support
+            **kwargs: Additional strategy-specific parameters
+
+        Returns:
+            Unified chunking strategy instance
+
+        Raises:
+            ValueError: If strategy type is not supported
+        """
+        strategy_type = ChunkingStrategyType(strategy_type.lower())
+
+        logger.info(f"Creating unified {strategy_type} strategy (LlamaIndex: {use_llama_index})")
+
+        if strategy_type == ChunkingStrategyType.CHARACTER:
+            return CharacterChunkingStrategy(use_llama_index=use_llama_index)
+        elif strategy_type == ChunkingStrategyType.RECURSIVE:
+            return RecursiveChunkingStrategy(use_llama_index=use_llama_index)
+        elif strategy_type == ChunkingStrategyType.SEMANTIC:
+            # Note: Semantic strategy may need embed_model
+            embed_model = kwargs.get("embed_model")
+            return SemanticChunkingStrategy(use_llama_index=use_llama_index, embed_model=embed_model)
+        elif strategy_type == ChunkingStrategyType.HIERARCHICAL:
+            return HierarchicalChunkingStrategy(use_llama_index=use_llama_index)
+        elif strategy_type == ChunkingStrategyType.MARKDOWN:
+            return MarkdownChunkingStrategy(use_llama_index=use_llama_index)
+        elif strategy_type == ChunkingStrategyType.HYBRID:
+            # Note: Hybrid strategy may need embed_model for semantic component
+            embed_model = kwargs.get("embed_model")
+            return HybridChunkingStrategy(use_llama_index=use_llama_index, embed_model=embed_model)
+        else:
+            raise ValueError(f"Unsupported strategy type: {strategy_type}")
+
+    @staticmethod
+    def get_available_strategies() -> list[str]:
+        """
+        Get list of available strategy types.
+
+        Returns:
+            List of strategy type names
+        """
+        return [s.value for s in ChunkingStrategyType]
+
+    @staticmethod
+    def create_from_config(
+        config: ChunkConfig,
+        use_llama_index: bool = False,
+    ) -> UnifiedChunkingStrategy:
+        """
+        Create strategy from a ChunkConfig object.
+
+        Args:
+            config: Chunk configuration
+            use_llama_index: Whether to enable LlamaIndex support
+
+        Returns:
+            Unified chunking strategy instance
+        """
+        return UnifiedChunkingFactory.create_strategy(
+            strategy_type=config.strategy_name,
+            use_llama_index=use_llama_index,
+        )
+
+
+class DomainStrategyAdapter:
+    """
+    Adapter to make unified strategies compatible with the domain interface.
+
+    This adapter wraps a unified strategy and provides the exact interface
+    expected by the domain-based chunking system.
+    """
+
+    def __init__(self, unified_strategy: UnifiedChunkingStrategy) -> None:
+        """
+        Initialize the adapter.
+
+        Args:
+            unified_strategy: The unified strategy to adapt
+        """
+        self.strategy = unified_strategy
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to the wrapped strategy."""
+        return getattr(self.strategy, name)
+
+
+class TextProcessingStrategyAdapter:
+    """
+    Adapter to make unified strategies compatible with the text_processing interface.
+
+    This adapter wraps a unified strategy and provides the exact interface
+    expected by the text_processing chunking system.
+    """
+
+    def __init__(self, unified_strategy: UnifiedChunkingStrategy) -> None:
+        """
+        Initialize the adapter.
+
+        Args:
+            unified_strategy: The unified strategy to adapt
+        """
+        self.strategy = unified_strategy
+        self.strategy_name = unified_strategy.name
+
+    def chunk_text(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Adapt unified chunking to text_processing interface.
+
+        Args:
+            text: Text to chunk
+            doc_id: Document ID
+            metadata: Optional metadata
+
+        Returns:
+            List of chunk dictionaries
+        """
+        from packages.shared.chunking.domain.value_objects.chunk_config import (
+            ChunkConfig,
+        )
+
+        # Create a default config for text_processing compatibility
+        config = ChunkConfig(
+            max_tokens=1000,
+            min_tokens=100,
+            overlap_tokens=50,  # Must be less than min_tokens
+            strategy_name=self.strategy.name,
+        )
+
+        # Use unified strategy to chunk
+        chunks = self.strategy.chunk(text, config)
+
+        # Convert to text_processing format
+        results = []
+        for chunk in chunks:
+            result = {
+                "chunk_id": chunk.metadata.chunk_id,
+                "text": chunk.content,
+                "start_offset": chunk.metadata.start_offset,
+                "end_offset": chunk.metadata.end_offset,
+                "metadata": {
+                    "strategy": self.strategy.name,
+                    "chunk_index": chunk.metadata.chunk_index,
+                    "token_count": chunk.metadata.token_count,
+                    **(metadata or {}),
+                },
+            }
+            results.append(result)
+
+        return results
+
+    async def chunk_text_async(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Async adapter for text_processing interface.
+
+        Args:
+            text: Text to chunk
+            doc_id: Document ID
+            metadata: Optional metadata
+
+        Returns:
+            List of chunk dictionaries
+        """
+        from packages.shared.chunking.domain.value_objects.chunk_config import (
+            ChunkConfig,
+        )
+
+        # Create a default config for text_processing compatibility
+        config = ChunkConfig(
+            max_tokens=1000,
+            min_tokens=100,
+            overlap_tokens=50,  # Must be less than min_tokens
+            strategy_name=self.strategy.name,
+        )
+
+        # Use unified strategy to chunk
+        chunks = await self.strategy.chunk_async(text, config)
+
+        # Convert to text_processing format
+        results = []
+        for chunk in chunks:
+            result = {
+                "chunk_id": chunk.metadata.chunk_id,
+                "text": chunk.content,
+                "start_offset": chunk.metadata.start_offset,
+                "end_offset": chunk.metadata.end_offset,
+                "metadata": {
+                    "strategy": self.strategy.name,
+                    "chunk_index": chunk.metadata.chunk_index,
+                    "token_count": chunk.metadata.token_count,
+                    **(metadata or {}),
+                },
+            }
+            results.append(result)
+
+        return results
+
+    def validate_config(self, config: dict[str, Any]) -> bool:
+        """
+        Validate configuration for text_processing interface.
+
+        Args:
+            config: Configuration dictionary
+
+        Returns:
+            True if valid
+        """
+        # Convert to domain config for validation
+        try:
+            from packages.shared.chunking.domain.value_objects.chunk_config import (
+                ChunkConfig,
+            )
+
+            ChunkConfig(
+                max_tokens=config.get("chunk_size", 1000),
+                min_tokens=config.get("min_chunk_size", 100),
+                overlap_tokens=min(config.get("chunk_overlap", 50), 99),  # Ensure < min_tokens
+                strategy_name=self.strategy.name,
+            )
+            return True
+        except Exception:
+            return False
+
+    def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:
+        """
+        Estimate chunks for text_processing interface.
+
+        Args:
+            text_length: Length of text
+            config: Configuration dictionary
+
+        Returns:
+            Estimated number of chunks
+        """
+        from packages.shared.chunking.domain.value_objects.chunk_config import (
+            ChunkConfig,
+        )
+
+        domain_config = ChunkConfig(
+            max_tokens=config.get("chunk_size", 1000),
+            min_tokens=config.get("min_chunk_size", 100),
+            overlap_tokens=config.get("chunk_overlap", 200),
+            strategy_name=self.strategy.name,
+        )
+
+        return self.strategy.estimate_chunks(text_length, domain_config)

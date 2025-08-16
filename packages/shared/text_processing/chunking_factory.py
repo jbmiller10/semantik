@@ -83,20 +83,59 @@ class ChunkingFactory:
     @classmethod
     def _initialize_strategies(cls) -> None:
         """Initialize the strategy registry with available strategies."""
-        # Import strategies here to avoid circular imports
-        from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
-        from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
-        from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
-        from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
+        # Use unified strategies with LlamaIndex support via adapters
+        from packages.shared.chunking.unified.factory import (
+            TextProcessingStrategyAdapter,
+            UnifiedChunkingFactory,
+        )
 
-        cls.register_strategy("character", CharacterChunker)
-        cls.register_strategy("recursive", RecursiveChunker)
-        cls.register_strategy("markdown", MarkdownChunker)
-        cls.register_strategy("semantic", SemanticChunker)
-        cls.register_strategy("hierarchical", HierarchicalChunker)
-        cls.register_strategy("hybrid", HybridChunker)
+        # Register all unified strategies with LlamaIndex support
+        cls.register_strategy(
+            "character",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy("character", use_llama_index=True, **kwargs)
+            ),
+        )
+        cls.register_strategy(
+            "recursive",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=True, **kwargs)
+            ),
+        )
+        cls.register_strategy(
+            "semantic",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy(
+                    "semantic", 
+                    use_llama_index=True,
+                    embed_model=kwargs.get("embed_model"),
+                    **kwargs
+                )
+            ),
+        )
+        cls.register_strategy(
+            "markdown",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy("markdown", use_llama_index=True, **kwargs)
+            ),
+        )
+        cls.register_strategy(
+            "hierarchical",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=True, **kwargs)
+            ),
+        )
+        cls.register_strategy(
+            "hybrid",
+            lambda **kwargs: TextProcessingStrategyAdapter(
+                UnifiedChunkingFactory.create_strategy(
+                    "hybrid",
+                    use_llama_index=True,
+                    embed_model=kwargs.get("embed_model"),
+                    **kwargs
+                )
+            ),
+        )
 
     @classmethod
     def get_available_strategies(cls) -> list[str]:

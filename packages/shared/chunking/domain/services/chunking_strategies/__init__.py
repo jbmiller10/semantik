@@ -2,30 +2,36 @@
 """
 Chunking strategies for different text processing approaches.
 
+This module now uses the unified chunking strategies to eliminate duplication.
 Each strategy implements a specific algorithm for breaking text into chunks.
 """
-
 
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
 )
-from packages.shared.chunking.domain.services.chunking_strategies.character import (
-    CharacterChunkingStrategy,
+from packages.shared.chunking.unified.factory import (
+    DomainStrategyAdapter,
+    UnifiedChunkingFactory,
 )
-from packages.shared.chunking.domain.services.chunking_strategies.hierarchical import (
-    HierarchicalChunkingStrategy,
+
+# Create adapted unified strategies (all strategies now unified)
+CharacterChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("character", use_llama_index=False)
 )
-from packages.shared.chunking.domain.services.chunking_strategies.hybrid import (
-    HybridChunkingStrategy,
+RecursiveChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=False)
 )
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import (
-    MarkdownChunkingStrategy,
+SemanticChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("semantic", use_llama_index=False)
 )
-from packages.shared.chunking.domain.services.chunking_strategies.recursive import (
-    RecursiveChunkingStrategy,
+MarkdownChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("markdown", use_llama_index=False)
 )
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import (
-    SemanticChunkingStrategy,
+HierarchicalChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=False)
+)
+HybridChunkingStrategy = lambda: DomainStrategyAdapter(
+    UnifiedChunkingFactory.create_strategy("hybrid", use_llama_index=False)
 )
 
 __all__ = [
@@ -39,13 +45,14 @@ __all__ = [
 ]
 
 # Strategy registry for easy lookup
+# Using lambda functions to create instances on demand
 STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
-    "character": CharacterChunkingStrategy,
-    "recursive": RecursiveChunkingStrategy,
-    "semantic": SemanticChunkingStrategy,
-    "markdown": MarkdownChunkingStrategy,
-    "hierarchical": HierarchicalChunkingStrategy,
-    "hybrid": HybridChunkingStrategy,
+    "character": CharacterChunkingStrategy,      # Unified
+    "recursive": RecursiveChunkingStrategy,      # Unified
+    "semantic": SemanticChunkingStrategy,        # Unified
+    "markdown": MarkdownChunkingStrategy,        # Unified
+    "hierarchical": HierarchicalChunkingStrategy,  # Unified
+    "hybrid": HybridChunkingStrategy,            # Unified
 }
 
 

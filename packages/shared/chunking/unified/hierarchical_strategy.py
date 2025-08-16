@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+"""
+Unified hierarchical chunking strategy.
+
+This module merges the domain-based and LlamaIndex-based hierarchical chunking 
+implementations into a single unified strategy.
+"""
+
+import asyncio
+import logging
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
+from packages.shared.chunking.domain.entities.chunk import Chunk
+from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
+
+logger = logging.getLogger(__name__)
+
+
+class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
+    """
+    Unified hierarchical chunking strategy.
+
+    Creates multi-level chunks where larger parent chunks contain
+    references to smaller child chunks, maintaining context at
+    different levels of detail. Can optionally use LlamaIndex for
+    enhanced hierarchical parsing.
+    """
+
+    def __init__(self, use_llama_index: bool = False) -> None:
+        """
+        Initialize the hierarchical chunking strategy.
+
+        Args:
+            use_llama_index: Whether to use LlamaIndex implementation
+        """
+        super().__init__("hierarchical")
+        self._use_llama_index = use_llama_index
+        self._llama_splitter = None
+
+        if use_llama_index:
+            try:
+                from llama_index.core.node_parser import HierarchicalNodeParser
+
+                self._llama_available = True
+            except ImportError:
+                logger.warning("LlamaIndex not available, falling back to domain implementation")
+                self._llama_available = False
+                self._use_llama_index = False
+        else:
+            self._llama_available = False
+
+    def _init_llama_splitter(self, config: ChunkConfig) -> Any:
+        """Initialize LlamaIndex splitter if needed."""
+        if not self._use_llama_index or not self._llama_available:
+            return None
+
+        try:
+            from llama_index.core.node_parser import HierarchicalNodeParser
+
+            # Calculate chunk sizes for hierarchy levels
+            # Default: 3 levels with sizes [2048, 512, 128]
+            levels = min(config.hierarchy_levels, 3)
+
+            # Create chunk sizes from largest to smallest
+            chunk_sizes = []
+            base_size = config.max_tokens
+            for i in range(levels):
+                chunk_sizes.append(base_size // (2**i))
+
+            return HierarchicalNodeParser.from_defaults(
+                chunk_sizes=chunk_sizes,
+                chunk_overlap=config.overlap_tokens,
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize LlamaIndex hierarchical splitter: {e}")
+            return None
+
+    def chunk(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> list[Chunk]:
+        """
+        Create hierarchical chunks at multiple levels.
+
+        Args:
+            content: The text content to chunk
+            config: Configuration parameters
+            progress_callback: Optional progress callback
+
+        Returns:
+            List of chunks at all hierarchy levels
+        """
+        if not content:
+            return []
+
+        # Try LlamaIndex implementation if enabled
+        if self._use_llama_index and self._llama_available:
+            chunks = self._chunk_with_llama_index(content, config, progress_callback)
+            if chunks is not None:
+                return chunks
+
+        # Fall back to domain implementation
+        return self._chunk_with_domain(content, config, progress_callback)
+
+    async def chunk_async(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> list[Chunk]:
+        """
+        Asynchronous chunking.
+
+        Args:
+            content: The text content to chunk
+            config: Configuration parameters
+            progress_callback: Optional progress callback
+
+        Returns:
+            List of chunks
+        """
+        if not content:
+            return []
+
+        # Run synchronous method in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            self.chunk,
+            content,
+            config,
+            progress_callback,
+        )
+
+    def _chunk_with_llama_index(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> list[Chunk] | None:
+        """
+        Chunk using LlamaIndex HierarchicalNodeParser.
+
+        Returns None if LlamaIndex is not available or fails.
+        """
+        try:
+            from llama_index.core import Document
+            from llama_index.core.node_parser import get_leaf_nodes
+            from llama_index.core.schema import NodeRelationship
+
+            # Initialize splitter
+            splitter = self._init_llama_splitter(config)
+            if not splitter:
+                return None
+
+            # Create a temporary document
+            doc = Document(text=content)
+
+            # Get nodes using hierarchical parser
+            nodes = splitter.get_nodes_from_documents([doc])
+
+            if not nodes:
+                return []
+
+            # Get leaf nodes (smallest chunks) for accurate count
+            leaf_nodes = get_leaf_nodes(nodes)
+
+            chunks = []
+            total_chars = len(content)
+            chunk_index = 0
+
+            # Process all nodes (including parent nodes)
+            for idx, node in enumerate(nodes):
+                chunk_text = node.get_content()
+
+                # Determine hierarchy level based on relationships
+                level = 0
+                if hasattr(node, "relationships"):
+                    if NodeRelationship.PARENT in node.relationships:
+                        level = 1  # Has parent, so it's a child
+                    if NodeRelationship.CHILD in node.relationships:
+                        level = 0  # Has children, so it's a parent
+
+                # Calculate offsets
+                if idx == 0:
+                    start_offset = 0
+                else:
+                    # Find the chunk text in the original content
+                    prev_end = chunks[-1].metadata.end_offset if chunks else 0
+                    start_offset = content.find(chunk_text, max(0, prev_end - 100))
+                    if start_offset == -1:
+                        start_offset = prev_end
+
+                end_offset = min(start_offset + len(chunk_text), total_chars)
+
+                # Create chunk metadata
+                token_count = self.count_tokens(chunk_text)
+
+                # Get parent/child references
+                parent_id = None
+                child_ids = []
+
+                if hasattr(node, "relationships"):
+                    if NodeRelationship.PARENT in node.relationships:
+                        parent_node = node.relationships[NodeRelationship.PARENT]
+                        parent_id = parent_node.node_id if hasattr(parent_node, "node_id") else None
+
+                    if NodeRelationship.CHILD in node.relationships:
+                        children = node.relationships[NodeRelationship.CHILD]
+                        if isinstance(children, list):
+                            child_ids = [c.node_id for c in children if hasattr(c, "node_id")]
+
+                metadata = ChunkMetadata(
+                    chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                    document_id="doc",
+                    chunk_index=chunk_index,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                    token_count=token_count,
+                    strategy_name=self.name,
+                    hierarchy_level=level,
+                    parent_chunk_id=parent_id,
+                    child_chunk_ids=child_ids,
+                    semantic_density=0.75,  # Good for hierarchical structure
+                    confidence_score=0.95,  # Higher confidence with LlamaIndex
+                    created_at=datetime.now(tz=UTC),
+                )
+
+                # Create chunk entity
+                effective_min_tokens = min(config.min_tokens, token_count, 1)
+
+                chunk = Chunk(
+                    content=chunk_text,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens * (2**level),  # Larger max for parent chunks
+                )
+
+                chunks.append(chunk)
+                chunk_index += 1
+
+                # Report progress
+                if progress_callback:
+                    progress = ((idx + 1) / len(nodes)) * 100
+                    progress_callback(min(progress, 100.0))
+
+            return chunks
+
+        except Exception as e:
+            logger.warning(f"LlamaIndex hierarchical chunking failed, falling back to domain: {e}")
+            return None
+
+    def _chunk_with_domain(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> list[Chunk]:
+        """
+        Chunk using domain implementation (multi-level chunking).
+        """
+        all_chunks = []
+
+        # Calculate chunk sizes for each level
+        levels = min(config.hierarchy_levels, 3)  # Max 3 levels for practicality
+        level_configs = self._create_level_configs(config, levels)
+
+        # Process each level
+        total_operations = levels
+        parent_chunks: list[Chunk] = []
+
+        for level in range(levels):
+            level_config = level_configs[level]
+
+            # Create chunks for this level
+            level_chunks = self._create_level_chunks(
+                content,
+                level,
+                level_config,
+                config.strategy_name,
+                parent_chunks if level > 0 else None,
+            )
+
+            # Store chunks from level 0 as parent chunks for next level
+            if level == 0:
+                parent_chunks = level_chunks
+
+            all_chunks.extend(level_chunks)
+
+            # Report progress
+            if progress_callback:
+                progress = ((level + 1) / total_operations) * 100
+                progress_callback(min(progress, 100.0))
+
+        return all_chunks
+
+    def _create_level_configs(self, base_config: ChunkConfig, levels: int) -> list[dict[str, Any]]:
+        """
+        Create configuration for each hierarchy level.
+
+        Args:
+            base_config: Base configuration
+            levels: Number of hierarchy levels
+
+        Returns:
+            List of level configurations
+        """
+        configs = []
+
+        for level in range(levels):
+            # Each level has progressively smaller chunks
+            divisor = 2**level
+
+            level_config = {
+                "max_tokens": base_config.max_tokens // divisor,
+                "min_tokens": base_config.min_tokens // divisor,
+                "overlap_tokens": base_config.overlap_tokens // max(1, divisor),
+                "level": level,
+            }
+
+            # Ensure reasonable minimums
+            level_config["max_tokens"] = max(50, level_config["max_tokens"])
+            level_config["min_tokens"] = max(10, level_config["min_tokens"])
+            level_config["overlap_tokens"] = max(5, level_config["overlap_tokens"])
+
+            configs.append(level_config)
+
+        return configs
+
+    def _create_level_chunks(
+        self,
+        content: str,
+        level: int,
+        level_config: dict[str, Any],
+        strategy_name: str,
+        parent_chunks: list[Chunk] | None = None,
+    ) -> list[Chunk]:
+        """
+        Create chunks for a specific hierarchy level.
+
+        Args:
+            content: Content to chunk
+            level: Hierarchy level (0=top)
+            level_config: Configuration for this level
+            strategy_name: Strategy name for chunk IDs
+            parent_chunks: Parent chunks from previous level
+
+        Returns:
+            List of chunks for this level
+        """
+        chunks = []
+
+        if level == 0:
+            # Top level - chunk entire content
+            chunks = self._create_base_chunks(
+                content,
+                level_config["max_tokens"],
+                level_config["min_tokens"],
+                level_config["overlap_tokens"],
+                strategy_name,
+                level,
+            )
+        else:
+            # Child level - chunk within parent boundaries
+            for parent in parent_chunks or []:
+                parent_content = parent.content
+                child_chunks = self._create_base_chunks(
+                    parent_content,
+                    level_config["max_tokens"],
+                    level_config["min_tokens"],
+                    level_config["overlap_tokens"],
+                    strategy_name,
+                    level,
+                    parent_id=parent.metadata.chunk_id,
+                    parent_offset=parent.metadata.start_offset,
+                )
+
+                # Update parent with child references
+                parent.metadata.child_chunk_ids = [c.metadata.chunk_id for c in child_chunks]
+
+                chunks.extend(child_chunks)
+
+        return chunks
+
+    def _create_base_chunks(
+        self,
+        content: str,
+        max_tokens: int,
+        min_tokens: int,
+        overlap_tokens: int,
+        strategy_name: str,
+        level: int,
+        parent_id: str | None = None,
+        parent_offset: int = 0,
+    ) -> list[Chunk]:
+        """
+        Create basic chunks with size constraints.
+
+        Args:
+            content: Content to chunk
+            max_tokens: Maximum tokens per chunk
+            min_tokens: Minimum tokens per chunk
+            overlap_tokens: Overlap between chunks
+            strategy_name: Strategy name for chunk IDs
+            level: Hierarchy level
+            parent_id: Parent chunk ID if applicable
+            parent_offset: Offset of parent in original document
+
+        Returns:
+            List of chunks
+        """
+        if not content:
+            return []
+
+        chunks = []
+        chars_per_token = 4
+        chunk_size_chars = max_tokens * chars_per_token
+        overlap_chars = overlap_tokens * chars_per_token
+
+        position = 0
+        chunk_index = 0
+
+        while position < len(content):
+            # Calculate chunk boundaries
+            start = position
+            end = min(position + chunk_size_chars, len(content))
+
+            # Adjust to word boundaries
+            if end < len(content):
+                end = self.find_word_boundary(content, end, prefer_before=True)
+
+            # Extract chunk
+            chunk_text = content[start:end]
+            chunk_text = self.clean_chunk_text(chunk_text)
+
+            if not chunk_text:
+                position = end
+                continue
+
+            # Calculate token count
+            token_count = self.count_tokens(chunk_text)
+
+            # Skip if too small (unless it's the last chunk)
+            if token_count < min_tokens and end < len(content):
+                position = end
+                continue
+
+            # Create metadata
+            metadata = ChunkMetadata(
+                chunk_id=f"{strategy_name}_L{level}_{chunk_index:04d}",
+                document_id="doc",
+                chunk_index=chunk_index,
+                start_offset=parent_offset + start,
+                end_offset=parent_offset + end,
+                token_count=token_count,
+                strategy_name="hierarchical",
+                hierarchy_level=level,
+                parent_chunk_id=parent_id,
+                child_chunk_ids=[],
+                semantic_density=0.75,
+                confidence_score=0.85,
+                created_at=datetime.now(tz=UTC),
+            )
+
+            # Create chunk
+            chunk = Chunk(
+                content=chunk_text,
+                metadata=metadata,
+                min_tokens=min(min_tokens, token_count, 1),
+                max_tokens=max_tokens,
+            )
+
+            chunks.append(chunk)
+            chunk_index += 1
+
+            # Move position with overlap
+            position = end - overlap_chars if overlap_chars > 0 else end
+
+            # Ensure progress
+            if position <= start:
+                position = end
+
+        return chunks
+
+    def validate_content(self, content: str) -> tuple[bool, str | None]:
+        """
+        Validate content for hierarchical chunking.
+
+        Args:
+            content: Content to validate
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not content:
+            return False, "Content cannot be empty"
+
+        if len(content) > 50_000_000:  # 50MB limit
+            return False, f"Content too large: {len(content)} characters"
+
+        # Hierarchical chunking needs reasonable amount of content
+        if len(content) < 100:
+            return False, "Content too short for hierarchical chunking"
+
+        return True, None
+
+    def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:
+        """
+        Estimate the number of chunks.
+
+        Args:
+            content_length: Length of content in characters
+            config: Chunking configuration
+
+        Returns:
+            Estimated chunk count
+        """
+        if content_length == 0:
+            return 0
+
+        # Convert character length to estimated tokens
+        estimated_tokens = content_length // 4
+
+        # Hierarchical creates multiple levels
+        levels = min(config.hierarchy_levels, 3)
+        total_chunks = 0
+
+        for level in range(levels):
+            divisor = 2**level
+            level_tokens = config.max_tokens // divisor
+            level_chunks = estimated_tokens // level_tokens
+            total_chunks += max(1, level_chunks)
+
+        return total_chunks
