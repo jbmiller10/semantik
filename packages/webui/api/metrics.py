@@ -35,7 +35,12 @@ def update_metrics_loop() -> None:
         time.sleep(1)
 
 
-if METRICS_PORT:
+import os
+
+# Only start metrics server if not in testing mode and port is configured
+is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+
+if METRICS_PORT and not is_testing:
     try:
         from prometheus_client import generate_latest as _generate_latest
         from shared.metrics.prometheus import registry as _registry

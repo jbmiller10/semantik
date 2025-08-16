@@ -10,7 +10,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from shared.database.models import Chunk, Collection, Document
-from test_helpers import ChunkingTestHelper, TestDataGenerator
+from tests.integration.test_helpers import ChunkingTestHelper, TestDataGenerator
 
 
 class TestFixedExample:

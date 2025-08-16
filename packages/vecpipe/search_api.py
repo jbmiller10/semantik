@@ -7,6 +7,7 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -181,9 +182,11 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     """Manage application lifecycle"""
     global qdrant_client, model_manager, embedding_service, executor
     # Startup
-    # Start metrics server
-    start_metrics_server(METRICS_PORT)
-    logger.info(f"Metrics server started on port {METRICS_PORT}")
+    # Only start metrics server if not in testing mode
+    is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+    if not is_testing:
+        start_metrics_server(METRICS_PORT)
+        logger.info(f"Metrics server started on port {METRICS_PORT}")
 
     qdrant_client = httpx.AsyncClient(
         base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)

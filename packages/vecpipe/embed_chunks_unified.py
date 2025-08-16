@@ -190,8 +190,9 @@ async def process_documents_parallel(
 
 async def main_async(args: argparse.Namespace) -> None:
     """Main async function"""
-    # Start metrics server if requested
-    if args.metrics_port:
+    # Start metrics server if requested and not in testing mode
+    is_testing = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
+    if args.metrics_port and not is_testing:
         try:
             start_metrics_server(args.metrics_port)
             logger.info(f"Metrics server started on port {args.metrics_port}")
