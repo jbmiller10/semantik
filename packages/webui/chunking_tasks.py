@@ -72,30 +72,47 @@ def get_redis_client() -> Redis:
     return ensure_sync_redis(client)
 
 
-# Metrics
-chunking_tasks_started = Counter(
-    "chunking_tasks_started_total",
-    "Total number of chunking tasks started",
-    ["operation_type"],
-)
+# Metrics - Handle re-registration gracefully for tests
+try:
+    chunking_tasks_started = Counter(
+        "chunking_tasks_started_total",
+        "Total number of chunking tasks started",
+        ["operation_type"],
+    )
+except ValueError:
+    # Metric already registered (happens in tests)
+    from prometheus_client import REGISTRY
+    chunking_tasks_started = REGISTRY._names_to_collectors["chunking_tasks_started_total"]
 
-chunking_tasks_completed = Counter(
-    "chunking_tasks_completed_total",
-    "Total number of chunking tasks completed",
-    ["operation_type", "status"],
-)
+try:
+    chunking_tasks_completed = Counter(
+        "chunking_tasks_completed_total",
+        "Total number of chunking tasks completed",
+        ["operation_type", "status"],
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+    chunking_tasks_completed = REGISTRY._names_to_collectors["chunking_tasks_completed_total"]
 
-chunking_tasks_failed = Counter(
-    "chunking_tasks_failed_total",
-    "Total number of chunking tasks failed",
-    ["operation_type", "error_type"],
-)
+try:
+    chunking_tasks_failed = Counter(
+        "chunking_tasks_failed_total",
+        "Total number of chunking tasks failed",
+        ["operation_type", "error_type"],
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+    chunking_tasks_failed = REGISTRY._names_to_collectors["chunking_tasks_failed_total"]
 
-chunking_task_duration = Histogram(
-    "chunking_task_duration_seconds",
-    "Duration of chunking tasks in seconds",
-    ["operation_type"],
-)
+try:
+    chunking_task_duration = Histogram(
+        "chunking_task_duration_seconds",
+        "Duration of chunking tasks in seconds",
+        ["operation_type"],
+    )
+except ValueError:
+    from prometheus_client import REGISTRY
+    chunking_task_duration = REGISTRY._names_to_collectors["chunking_task_duration_seconds"]
 
 chunking_operation_memory_usage = Gauge(
     "chunking_operation_memory_usage_bytes",
