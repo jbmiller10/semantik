@@ -5,6 +5,7 @@ Main coordinator that orchestrates chunking operations across all specialized se
 """
 
 import logging
+import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -191,12 +192,21 @@ class ChunkingOrchestrator:
                 # Build comparison entry
                 comparison = ServiceStrategyComparison(
                     strategy=strategy,
-                    chunk_count=len(chunks),
+                    config=config,
+                    sample_chunks=[
+                        ServiceChunkPreview(
+                            content=chunk.get("content", ""),
+                            index=chunk.get("index", i),
+                            char_count=len(chunk.get("content", "")),
+                            metadata=chunk.get("metadata", {}),
+                        )
+                        for i, chunk in enumerate(chunks[:3])
+                    ],
+                    total_chunks=len(chunks),
                     avg_chunk_size=stats["avg_chunk_size"],
-                    min_chunk_size=stats["min_chunk_size"],
-                    max_chunk_size=stats["max_chunk_size"],
-                    preview_chunks=chunks[:3],  # First 3 chunks as preview
-                    metrics=self._build_strategy_metrics(strategy, stats),
+                    size_variance=self._calculate_variance(stats),
+                    quality_score=self._calculate_quality_score(stats),
+                    processing_time_ms=int(context.get("duration", 0) * 1000) if "duration" in context else 0,
                 )
                 comparisons.append(comparison)
 
@@ -205,17 +215,13 @@ class ChunkingOrchestrator:
                 # Add failed comparison
                 comparison = ServiceStrategyComparison(
                     strategy=strategy,
-                    chunk_count=0,
+                    config=base_config or {},
+                    sample_chunks=[],
+                    total_chunks=0,
                     avg_chunk_size=0,
-                    min_chunk_size=0,
-                    max_chunk_size=0,
-                    preview_chunks=[],
-                    metrics=ServiceStrategyMetrics(
-                        processing_time=0,
-                        memory_usage=0,
-                        quality_score=0,
-                        error=str(e),
-                    ),
+                    size_variance=0,
+                    quality_score=0,
+                    processing_time_ms=0,
                 )
                 comparisons.append(comparison)
 
@@ -296,7 +302,6 @@ class ChunkingOrchestrator:
                 pros=strategy_data.get("pros", []),
                 cons=strategy_data.get("cons", []),
                 default_config=strategy_data.get("default_config", {}),
-                supported_file_types=strategy_data.get("supported_file_types", []),
             )
             strategies.append(info)
 
@@ -395,11 +400,19 @@ class ChunkingOrchestrator:
     async def _load_document_content(self, document_id: str) -> str:
         """Load document content from repository."""
         if not self.document_repo:
-            raise ValidationError("Document repository not available")
+            raise ValidationError(
+                field="document_repo",
+                value=None,
+                reason="Document repository not available"
+            )
 
         document = await self.document_repo.get(document_id)
         if not document:
-            raise ValidationError(f"Document {document_id} not found")
+            raise ValidationError(
+                field="document_id",
+                value=document_id,
+                reason="Document not found"
+            )
 
         return document.content or ""
 
@@ -413,19 +426,20 @@ class ChunkingOrchestrator:
             ServiceChunkPreview(
                 content=chunk.get("content", ""),
                 index=chunk.get("index", i),
-                size=len(chunk.get("content", "")),
+                char_count=len(chunk.get("content", "")),
                 metadata=chunk.get("metadata", {}),
             )
             for i, chunk in enumerate(chunks[:10])  # Limit to 10 for preview
         ]
 
         return ServicePreviewResponse(
+            preview_id=data.get("cache_key", str(uuid.uuid4())),
             chunks=preview_chunks,
             total_chunks=len(chunks),
-            statistics=stats,
+            metrics=stats,
             strategy=data.get("strategy", "unknown"),
             config=data.get("config", {}),
-            cache_key=data.get("cache_key"),
+            cached=bool(data.get("cache_key")),
         )
 
     def _build_strategy_metrics(
@@ -438,10 +452,11 @@ class ChunkingOrchestrator:
         strategy_metrics = self.metrics.get_strategy_metrics(strategy)
 
         return ServiceStrategyMetrics(
-            processing_time=strategy_metrics.get("average_duration", 0),
-            memory_usage=0,  # Would need actual memory tracking
-            quality_score=self._calculate_quality_score(stats),
-            chunk_variance=self._calculate_variance(stats),
+            strategy=strategy,
+            avg_processing_time=strategy_metrics.get("average_duration", 0),
+            avg_chunk_size=stats.get("avg_chunk_size", 0),
+            success_rate=strategy_metrics.get("success_rate", 1.0),
+            avg_quality_score=self._calculate_quality_score(stats),
         )
 
     def _calculate_quality_score(self, stats: dict[str, Any]) -> float:

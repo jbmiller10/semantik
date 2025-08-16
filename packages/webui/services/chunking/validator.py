@@ -83,10 +83,18 @@ class ChunkingValidator:
         """
         # Must have either content or document_id
         if not content and not document_id:
-            raise ValidationError("Either content or document_id must be provided")
+            raise ValidationError(
+                field="content/document_id",
+                value=None,
+                reason="Either content or document_id must be provided"
+            )
 
         if content and document_id:
-            raise ValidationError("Cannot provide both content and document_id")
+            raise ValidationError(
+                field="content/document_id",
+                value="both provided",
+                reason="Cannot provide both content and document_id"
+            )
 
         # Validate content size
         if content:
@@ -110,10 +118,18 @@ class ChunkingValidator:
             ValidationError: If content is invalid
         """
         if not content:
-            raise ValidationError("Content cannot be empty")
+            raise ValidationError(
+                field="content",
+                value=None,
+                reason="Content cannot be empty"
+            )
 
         if len(content) > self.MAX_CONTENT_SIZE:
-            raise ValidationError(f"Content size {len(content)} exceeds maximum {self.MAX_CONTENT_SIZE}")
+            raise ValidationError(
+                field="content",
+                value=f"{len(content)} bytes",
+                reason=f"Content size exceeds maximum {self.MAX_CONTENT_SIZE}"
+            )
 
         # Check for suspicious patterns (basic security check)
         if "<script" in content.lower() or "javascript:" in content.lower():
@@ -131,11 +147,17 @@ class ChunkingValidator:
             ValidationError: If strategy is invalid
         """
         if not strategy:
-            raise ValidationError("Strategy is required")
+            raise ValidationError(
+                field="strategy",
+                value=None,
+                reason="Strategy is required"
+            )
 
         if strategy not in self.VALID_STRATEGIES:
             raise ValidationError(
-                f"Invalid strategy '{strategy}'. Valid strategies: {', '.join(self.VALID_STRATEGIES)}"
+                field="strategy",
+                value=strategy,
+                reason=f"Invalid strategy. Valid strategies: {', '.join(self.VALID_STRATEGIES)}"
             )
 
     def validate_config(self, strategy: str, config: dict[str, Any]) -> None:
@@ -150,7 +172,11 @@ class ChunkingValidator:
             ValidationError: If configuration is invalid
         """
         if not isinstance(config, dict):
-            raise ValidationError("Configuration must be a dictionary")
+            raise ValidationError(
+                field="config",
+                value=type(config).__name__,
+                reason="Configuration must be a dictionary"
+            )
 
         # Validate common parameters
         if "chunk_size" in config:
@@ -159,13 +185,25 @@ class ChunkingValidator:
                 try:
                     chunk_size = int(chunk_size)
                 except (ValueError, TypeError) as e:
-                    raise ValidationError(f"chunk_size must be an integer: {e}") from e
+                    raise ValidationError(
+                        field="chunk_size",
+                        value=chunk_size,
+                        reason=f"Must be an integer: {e}"
+                    ) from e
 
             if chunk_size < self.MIN_CHUNK_SIZE:
-                raise ValidationError(f"chunk_size {chunk_size} is below minimum {self.MIN_CHUNK_SIZE}")
+                raise ValidationError(
+                    field="chunk_size",
+                    value=chunk_size,
+                    reason=f"Below minimum {self.MIN_CHUNK_SIZE}"
+                )
 
             if chunk_size > self.MAX_CHUNK_SIZE:
-                raise ValidationError(f"chunk_size {chunk_size} exceeds maximum {self.MAX_CHUNK_SIZE}")
+                raise ValidationError(
+                    field="chunk_size",
+                    value=chunk_size,
+                    reason=f"Exceeds maximum {self.MAX_CHUNK_SIZE}"
+                )
 
         if "chunk_overlap" in config:
             overlap = config["chunk_overlap"]
@@ -173,17 +211,27 @@ class ChunkingValidator:
                 try:
                     overlap = int(overlap)
                 except (ValueError, TypeError) as e:
-                    raise ValidationError(f"chunk_overlap must be an integer: {e}") from e
+                    raise ValidationError(
+                        field="chunk_overlap",
+                        value=overlap,
+                        reason=f"Must be an integer: {e}"
+                    ) from e
 
             if overlap < self.MIN_OVERLAP:
-                raise ValidationError("chunk_overlap cannot be negative")
+                raise ValidationError(
+                    field="chunk_overlap",
+                    value=overlap,
+                    reason="Cannot be negative"
+                )
 
             # Check overlap ratio if chunk_size is present
             if "chunk_size" in config:
                 chunk_size = int(config["chunk_size"])
                 if overlap > chunk_size * self.MAX_OVERLAP_RATIO:
                     raise ValidationError(
-                        f"chunk_overlap {overlap} exceeds {self.MAX_OVERLAP_RATIO * 100}% of chunk_size"
+                        field="chunk_overlap",
+                        value=overlap,
+                        reason=f"Exceeds {self.MAX_OVERLAP_RATIO * 100}% of chunk_size"
                     )
 
         # Strategy-specific validation
@@ -321,7 +369,11 @@ class ChunkingValidator:
 
         if operation_type == "process":
             if "collection_id" not in params:
-                raise ValidationError("collection_id is required for process operation")
+                raise ValidationError(
+                    field="collection_id",
+                    value=None,
+                    reason="Required for process operation"
+                )
 
         if operation_type == "reprocess":
             if "collection_id" not in params:

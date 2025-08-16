@@ -153,7 +153,12 @@ class TestChunkingCache:
 
     async def test_clear_cache(self, cache):
         """Test cache clearing."""
-        cache.redis.scan_iter = AsyncMock(return_value=["key1", "key2"])
+        # Create an async iterator for scan_iter
+        async def async_iterator():
+            for key in ["key1", "key2"]:
+                yield key
+        
+        cache.redis.scan_iter = lambda **kwargs: async_iterator()
         cache.redis.delete = AsyncMock(return_value=2)
 
         deleted = await cache.clear_cache()
@@ -299,7 +304,7 @@ class TestChunkingOrchestrator:
         """Test preview chunks operation."""
         content = "This is test content for chunking preview."
         strategy = "fixed_size"
-        config = {"chunk_size": 20}
+        config = {"chunk_size": 100}  # Use valid size >= 50
 
         result = await orchestrator.preview_chunks(
             content=content,
@@ -311,6 +316,7 @@ class TestChunkingOrchestrator:
         assert result.total_chunks > 0
         assert len(result.chunks) > 0
         assert result.strategy == strategy
+        assert result.metrics is not None
 
     async def test_compare_strategies(self, orchestrator):
         """Test strategy comparison."""
@@ -324,6 +330,7 @@ class TestChunkingOrchestrator:
 
         assert len(result.comparisons) == 2
         assert result.recommendation is not None
+        assert all(hasattr(comp, 'total_chunks') for comp in result.comparisons)
 
     async def test_execute_ingestion_chunking(self, orchestrator):
         """Test chunking for ingestion."""

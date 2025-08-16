@@ -65,16 +65,16 @@ class ChunkingServiceAdapter:
                 {
                     "content": chunk.content,
                     "index": chunk.index,
-                    "size": chunk.size,
+                    "size": chunk.char_count if hasattr(chunk, 'char_count') else len(chunk.content),
                     "metadata": chunk.metadata,
                 }
                 for chunk in result.chunks
             ],
             "total_chunks": result.total_chunks,
-            "statistics": result.statistics,
+            "statistics": result.metrics,
             "strategy": result.strategy,
             "config": result.config,
-            "cache_key": result.cache_key,
+            "cache_key": result.preview_id,
         }
 
     async def preview_chunking(
@@ -114,28 +114,26 @@ class ChunkingServiceAdapter:
             "comparisons": [
                 {
                     "strategy": comp.strategy,
-                    "chunk_count": comp.chunk_count,
+                    "chunk_count": comp.total_chunks,
                     "avg_chunk_size": comp.avg_chunk_size,
-                    "min_chunk_size": comp.min_chunk_size,
-                    "max_chunk_size": comp.max_chunk_size,
+                    "min_chunk_size": 0,  # Not available in ServiceStrategyComparison
+                    "max_chunk_size": 0,  # Not available in ServiceStrategyComparison
                     "preview_chunks": [
                         {
                             "content": chunk.content,
                             "index": chunk.index,
-                            "size": chunk.size,
+                            "size": chunk.char_count if hasattr(chunk, 'char_count') else len(chunk.content),
                             "metadata": chunk.metadata,
                         }
-                        for chunk in comp.preview_chunks
+                        for chunk in comp.sample_chunks
                     ],
                     "metrics": {
-                        "processing_time": comp.metrics.processing_time,
-                        "memory_usage": comp.metrics.memory_usage,
-                        "quality_score": comp.metrics.quality_score,
-                        "chunk_variance": comp.metrics.chunk_variance,
-                        "error": getattr(comp.metrics, "error", None),
-                    }
-                    if comp.metrics
-                    else None,
+                        "processing_time": comp.processing_time_ms / 1000.0,
+                        "memory_usage": 0,
+                        "quality_score": comp.quality_score,
+                        "chunk_variance": comp.size_variance,
+                        "error": None,
+                    },
                 }
                 for comp in result.comparisons
             ],
