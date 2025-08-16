@@ -12,7 +12,9 @@ from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 from packages.shared.metrics.prometheus import registry
 
 
-def _get_or_create_metric(metric_class, name: str, description: str, registry: CollectorRegistry, **kwargs) -> Any:
+def _get_or_create_metric(
+    metric_class: type[Any], name: str, description: str, registry: CollectorRegistry, **kwargs: Any
+) -> Any:
     """Get existing metric or create a new one if it doesn't exist."""
     # Check if metric already exists in registry by checking the names
     if hasattr(registry, "_collector_to_names"):
@@ -50,19 +52,19 @@ def _get_or_create_metric(metric_class, name: str, description: str, registry: C
 
             # Create a simple mock that has the basic interface
             class MockMetric:
-                def __init__(self):
+                def __init__(self) -> None:
                     self._name = name
 
-                def labels(self, **_kwargs):
+                def labels(self, **_kwargs: Any) -> "MockMetric":
                     return self
 
-                def observe(self, value):
+                def observe(self, value: float) -> None:
                     pass
 
-                def inc(self, amount=1):
+                def inc(self, amount: int = 1) -> None:
                     pass
 
-                def set(self, value):
+                def set(self, value: float) -> None:
                     pass
 
             return MockMetric()

@@ -6,40 +6,41 @@ to prevent XSS attacks in metadata fields throughout the application.
 """
 
 import html
-import re
 from typing import Any
+
+from packages.shared.utils.regex_safety import safe_regex_search
 
 
 class MetadataSanitizer:
     """Provides comprehensive sanitization for metadata to prevent XSS attacks."""
 
-    # Patterns that indicate potential XSS attempts
+    # Patterns that indicate potential XSS attempts - simplified to avoid ReDoS
     DANGEROUS_PATTERNS = [
         # JavaScript event handlers
-        re.compile(r"\bon\w+\s*=", re.IGNORECASE),
+        r"\bon\w+\s*=",
         # JavaScript protocols
-        re.compile(r"javascript:", re.IGNORECASE),
-        re.compile(r"vbscript:", re.IGNORECASE),
-        re.compile(r"data:text/html", re.IGNORECASE),
-        # Script tags (even encoded)
-        re.compile(r"<\s*script", re.IGNORECASE),
-        re.compile(r"<\s*/\s*script", re.IGNORECASE),
-        # Other dangerous tags
-        re.compile(r"<\s*iframe", re.IGNORECASE),
-        re.compile(r"<\s*object", re.IGNORECASE),
-        re.compile(r"<\s*embed", re.IGNORECASE),
-        re.compile(r"<\s*applet", re.IGNORECASE),
-        re.compile(r"<\s*meta", re.IGNORECASE),
-        re.compile(r"<\s*link", re.IGNORECASE),
-        re.compile(r"<\s*style", re.IGNORECASE),
-        re.compile(r"<\s*svg", re.IGNORECASE),
-        re.compile(r"<\s*marquee", re.IGNORECASE),
-        re.compile(r"<\s*form", re.IGNORECASE),
-        # CSS expressions
-        re.compile(r"expression\s*\(", re.IGNORECASE),
-        # Import/require statements (context dependent)
-        re.compile(r"import\s+.*from", re.IGNORECASE),
-        re.compile(r"require\s*\(", re.IGNORECASE),
+        r"javascript:",
+        r"vbscript:",
+        r"data:text/html",
+        # Script tags (even encoded) - bounded whitespace
+        r"<\s{0,5}script",
+        r"<\s{0,5}/\s{0,5}script",
+        # Other dangerous tags - bounded whitespace
+        r"<\s{0,5}iframe",
+        r"<\s{0,5}object",
+        r"<\s{0,5}embed",
+        r"<\s{0,5}applet",
+        r"<\s{0,5}meta",
+        r"<\s{0,5}link",
+        r"<\s{0,5}style",
+        r"<\s{0,5}svg",
+        r"<\s{0,5}marquee",
+        r"<\s{0,5}form",
+        # CSS expressions - bounded whitespace
+        r"expression\s{0,5}\(",
+        # Import/require statements - simplified and bounded
+        r"import\s{0,10}.{1,100}from",
+        r"require\s{0,5}\(",
     ]
 
     @classmethod
@@ -64,9 +65,11 @@ class MetadataSanitizer:
         if len(value) > max_length:
             value = value[:max_length]
 
-        # Check for dangerous patterns and reject if found
+        # Check for dangerous patterns with timeout protection
+        value_lower = value.lower()
         for pattern in cls.DANGEROUS_PATTERNS:
-            if pattern.search(value):
+            # Use safe regex with 0.5 second timeout for each pattern
+            if safe_regex_search(pattern, value_lower, timeout=0.5):
                 # Return empty string for dangerous content
                 # In production, you might want to log this
                 return "[Content removed for security]"
@@ -161,8 +164,9 @@ class MetadataSanitizer:
         if not value:
             return True
 
-        # Check for dangerous patterns
-        return all(not pattern.search(value) for pattern in cls.DANGEROUS_PATTERNS)
+        # Check for dangerous patterns using safe regex search
+        value_lower = value.lower()
+        return all(not safe_regex_search(pattern, value_lower, timeout=0.5) for pattern in cls.DANGEROUS_PATTERNS)
 
     @classmethod
     def escape_for_json(cls, value: str) -> str:

@@ -265,7 +265,10 @@ class ChunkingConfigBuilder:
         return self.DEFAULT_CONFIGS.get(strategy, {}).copy()
 
     def validate_parameter(
-        self, param_name: str, param_value: Any, strategy: ChunkingStrategyEnum  # noqa: ARG002
+        self,
+        param_name: str,
+        param_value: Any,
+        strategy: ChunkingStrategyEnum,  # noqa: ARG002
     ) -> str | None:
         """Validate a single parameter.
 
