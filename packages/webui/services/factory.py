@@ -22,6 +22,17 @@ from .resource_manager import ResourceManager
 from .search_service import SearchService
 from .type_guards import ensure_async_redis
 
+# Import new chunking services
+from .chunking import (
+    ChunkingCache,
+    ChunkingConfigManager,
+    ChunkingMetrics,
+    ChunkingOrchestrator,
+    ChunkingProcessor,
+    ChunkingValidator,
+)
+from .chunking.adapter import ChunkingServiceAdapter
+
 logger = logging.getLogger(__name__)
 
 # Singleton Redis manager
@@ -264,8 +275,51 @@ async def get_directory_scan_service() -> DirectoryScanService:
     return DirectoryScanService()
 
 
+async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
+    """Create a ChunkingOrchestrator instance with all required services.
+
+    This factory function creates the new orchestrator-based chunking architecture.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured ChunkingOrchestrator instance
+    """
+    # Create repository instances
+    collection_repo = CollectionRepository(db)
+    document_repo = DocumentRepository(db)
+
+    # Get async Redis client from manager
+    redis_manager = get_redis_manager()
+    redis_client = await redis_manager.async_client()
+    redis_client = ensure_async_redis(redis_client)
+
+    # Create individual services
+    processor = ChunkingProcessor()
+    cache = ChunkingCache(redis_client)
+    metrics = ChunkingMetrics()
+    validator = ChunkingValidator(db, collection_repo, document_repo)
+    config_manager = ChunkingConfigManager()
+
+    # Create and return orchestrator
+    return ChunkingOrchestrator(
+        processor=processor,
+        cache=cache,
+        metrics=metrics,
+        validator=validator,
+        config_manager=config_manager,
+        db_session=db,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
+
+
 async def create_chunking_service(db: AsyncSession) -> ChunkingService:
     """Create a ChunkingService instance with required dependencies.
+
+    DEPRECATED: This function maintains backward compatibility.
+    New code should use create_chunking_orchestrator instead.
 
     This factory function creates a chunking service for managing document
     chunking strategies and operations.
@@ -391,8 +445,13 @@ def create_celery_chunking_service_with_repos(
     )
 
 
+async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
+    """FastAPI dependency for ChunkingOrchestrator injection (new architecture)."""
+    return await create_chunking_orchestrator(db)
+
+
 async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
-    """FastAPI dependency for ChunkingService injection."""
+    """FastAPI dependency for ChunkingService injection (backward compatibility)."""
     return await create_chunking_service(db)
 
 
