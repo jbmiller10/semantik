@@ -6,6 +6,7 @@ This module tests rate limiting, circuit breaker pattern, and admin bypass funct
 
 import os
 from collections.abc import Generator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -17,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.main import app
 from packages.webui.rate_limiter import circuit_breaker
+from packages.webui.services.dtos import ServicePreviewResponse
 from packages.webui.services.factory import get_chunking_service
 
 
@@ -66,14 +68,16 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
-        return_value={
-            "preview_id": "test-preview",
-            "strategy": "fixed_size",
-            "config": {"strategy": "fixed_size", "chunk_size": 512},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 100,
-        }
+        return_value=ServicePreviewResponse(
+            preview_id="test-preview",
+            strategy="fixed_size",
+            config={"strategy": "fixed_size", "chunk_size": 512},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=100,
+            cached=False,
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        )
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
 
@@ -124,21 +128,39 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
     from packages.webui.main import app
     from packages.webui.services.factory import get_chunking_service
 
+    from packages.webui.services.dtos import (
+        ServiceCompareResponse,
+        ServiceStrategyComparison,
+        ServiceStrategyRecommendation,
+    )
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
-    mock_chunking_service.preview_chunking = AsyncMock(
-        return_value={
-            "strategy": "fixed_size",
-            "config": {"strategy": "fixed_size"},
-            "chunks": [],
-            "total_chunks": 0,
-            "metrics": {
-                "avg_chunk_size": 100,
-                "size_variance": 10,
-                "quality_score": 0.8,
-            },
-            "processing_time_ms": 100,
-        }
+    mock_chunking_service.compare_strategies_for_api = AsyncMock(
+        return_value=ServiceCompareResponse(
+            comparison_id="test-comparison",
+            comparisons=[
+                ServiceStrategyComparison(
+                    strategy="fixed_size",
+                    config={"strategy": "fixed_size"},
+                    sample_chunks=[],
+                    total_chunks=10,
+                    avg_chunk_size=500.0,
+                    size_variance=10.0,
+                    quality_score=0.8,
+                    processing_time_ms=100,
+                    pros=["Fast"],
+                    cons=["May break semantic units"],
+                )
+            ],
+            recommendation=ServiceStrategyRecommendation(
+                strategy="fixed_size",
+                confidence=0.85,
+                reasoning="Best for test content",
+                alternatives=[],
+            ),
+            processing_time_ms=200,
+        )
     )
 
     # Override the dependency at the app level
@@ -182,14 +204,16 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
-        return_value={
-            "preview_id": "test-preview",
-            "strategy": "fixed_size",
-            "config": {"strategy": "fixed_size"},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 100,
-        }
+        return_value=ServicePreviewResponse(
+            preview_id="test-preview",
+            strategy="fixed_size",
+            config={"strategy": "fixed_size"},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=100,
+            cached=False,
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        )
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
 
@@ -369,14 +393,16 @@ async def test_different_users_have_separate_limits(
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
-        return_value={
-            "preview_id": "test-preview",
-            "strategy": "fixed_size",
-            "config": {"strategy": "fixed_size"},
-            "chunks": [],
-            "total_chunks": 0,
-            "processing_time_ms": 100,
-        }
+        return_value=ServicePreviewResponse(
+            preview_id="test-preview",
+            strategy="fixed_size",
+            config={"strategy": "fixed_size"},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=100,
+            cached=False,
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
+        )
     )
     mock_chunking_service.track_preview_usage = AsyncMock()
 
@@ -435,14 +461,16 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
         # Create a mock chunking service
         mock_chunking_service = AsyncMock()
         mock_chunking_service.preview_chunking = AsyncMock(
-            return_value={
-                "preview_id": "test-preview",
-                "strategy": "fixed_size",
-                "config": {"strategy": "fixed_size"},
-                "chunks": [],
-                "total_chunks": 0,
-                "processing_time_ms": 100,
-            }
+            return_value=ServicePreviewResponse(
+                preview_id="test-preview",
+                strategy="fixed_size",
+                config={"strategy": "fixed_size"},
+                chunks=[],
+                total_chunks=0,
+                processing_time_ms=100,
+                cached=False,
+                expires_at=datetime.now(UTC) + timedelta(minutes=15),
+            )
         )
         mock_chunking_service.track_preview_usage = AsyncMock()
 
