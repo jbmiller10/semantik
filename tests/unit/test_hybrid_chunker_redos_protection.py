@@ -12,7 +12,7 @@ implemented in the HybridChunker to ensure:
 import re
 import signal
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from unittest.mock import patch
 
 import pytest
@@ -138,23 +138,23 @@ class TestHybridChunkerReDoSProtection:
             compiled_pattern, weight = chunker._compiled_patterns[pattern_str]
             # Handle standard re.Pattern, regex.Pattern, and re2._Regexp types
             valid_pattern_types = [re.Pattern]
-            
+
             # Add regex.Pattern if available
             if HAS_REGEX:
                 # The regex module may use _regex.Pattern internally
                 try:
                     regex_pattern = regex.compile("test")
                     valid_pattern_types.append(type(regex_pattern))
-                except:
+                except Exception:
                     pass
-            
+
             # Add re2._Regexp if available
             try:
                 import re2
                 valid_pattern_types.append(re2._Regexp)
             except ImportError:
                 pass
-                
+
             assert isinstance(compiled_pattern, tuple(valid_pattern_types))
             assert isinstance(weight, float)
             assert weight > 0
@@ -322,12 +322,10 @@ class TestHybridChunkerReDoSProtection:
         error_types = [re.error]
         if HAS_REGEX:
             # regex module has its own error type
-            try:
-                error_types.append(regex.error)
-            except AttributeError:
+            with suppress(AttributeError):
                 # Some versions might use a different error type
-                pass
-        
+                error_types.append(regex.error)
+
         with pytest.raises(tuple(error_types)):
             safe_regex_findall(r"[", "test text")  # Unclosed bracket
 
