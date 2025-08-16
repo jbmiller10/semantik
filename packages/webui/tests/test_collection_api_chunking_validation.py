@@ -16,7 +16,7 @@ def test_app() -> FastAPI:
     from packages.webui.api.v2.collections import router as collections_router
 
     app = FastAPI()
-    app.include_router(collections_router, prefix="/api/v2")
+    app.include_router(collections_router)  # Router already has prefix
 
     return app
 

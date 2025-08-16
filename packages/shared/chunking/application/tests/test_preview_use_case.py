@@ -43,6 +43,8 @@ async def test_preview_success() -> None:
     mock_notification_service = Mock()
     mock_notification_service.notify_operation_started = AsyncMock()
     mock_notification_service.notify_operation_completed = AsyncMock()
+    mock_notification_service.notify_operation_failed = AsyncMock()
+    mock_notification_service.notify_error = AsyncMock()
 
     # Create use case
     use_case = PreviewChunkingUseCase(
@@ -88,6 +90,7 @@ async def test_preview_validation_error() -> None:
     mock_strategy_factory = Mock()
     mock_notification_service = Mock()
     mock_notification_service.notify_operation_failed = AsyncMock()
+    mock_notification_service.notify_error = AsyncMock()
 
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
@@ -121,6 +124,7 @@ async def test_preview_file_not_found() -> None:
     mock_notification_service = Mock()
     mock_notification_service.notify_operation_started = AsyncMock()
     mock_notification_service.notify_operation_failed = AsyncMock()
+    mock_notification_service.notify_error = AsyncMock()
 
     use_case = PreviewChunkingUseCase(
         document_service=mock_doc_service,
@@ -163,6 +167,8 @@ async def test_preview_with_metrics_service() -> None:
     mock_notification_service = Mock()
     mock_notification_service.notify_operation_started = AsyncMock()
     mock_notification_service.notify_operation_completed = AsyncMock()
+    mock_notification_service.notify_operation_failed = AsyncMock()
+    mock_notification_service.notify_error = AsyncMock()
 
     # Mock metrics service
     mock_metrics_service = Mock()

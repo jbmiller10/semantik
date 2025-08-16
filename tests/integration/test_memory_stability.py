@@ -155,7 +155,12 @@ class TestChunkingMemoryStability:
         memory_monitor.start()
 
         # Create chunking service
-        _service = ChunkingService()
+        from packages.shared.database.repositories.collection_repository import CollectionRepository
+        from packages.shared.database.repositories.document_repository import DocumentRepository
+        
+        collection_repo = CollectionRepository(async_session)
+        document_repo = DocumentRepository(async_session)
+        _service = ChunkingService(async_session, collection_repo, document_repo)
         operation_id = str(uuid.uuid4())
 
         # Process documents in batches
@@ -167,15 +172,18 @@ class TestChunkingMemoryStability:
 
             # Process batch
             for doc in batch:
+                # Generate mock content based on file size
+                mock_content = "x" * doc.file_size  # Generate content based on file_size
+                
                 # Create chunks
                 chunk_size = 500
                 overlap = 50
                 step = chunk_size - overlap
 
                 chunks_to_insert = []
-                for chunk_idx, start in enumerate(range(0, len(doc.content), step)):
-                    end = min(start + chunk_size, len(doc.content))
-                    chunk_content = doc.content[start:end]
+                for chunk_idx, start in enumerate(range(0, len(mock_content), step)):
+                    end = min(start + chunk_size, len(mock_content))
+                    chunk_content = mock_content[start:end]
 
                     if chunk_content.strip():
                         chunk = Chunk(
@@ -242,7 +250,12 @@ class TestChunkingMemoryStability:
         """Test memory management of chunk preview cache."""
         memory_monitor.start()
 
-        _service = ChunkingService()
+        from packages.shared.database.repositories.collection_repository import CollectionRepository
+        from packages.shared.database.repositories.document_repository import DocumentRepository
+        
+        collection_repo = CollectionRepository(async_session)
+        document_repo = DocumentRepository(async_session)
+        _service = ChunkingService(async_session, collection_repo, document_repo)
         cache_entries = []
 
         # Create many cache entries
@@ -320,10 +333,13 @@ class TestChunkingMemoryStability:
             # Process in small chunks
             chunk_size = 100
             chunks_created = 0
+            
+            # Generate mock content based on file size
+            mock_content = "Sample text " * (doc.file_size // 12)  # Generate content based on file_size
 
-            for start in range(0, len(doc.content), chunk_size):
-                end = min(start + chunk_size, len(doc.content))
-                chunk_content = doc.content[start:end]
+            for start in range(0, len(mock_content), chunk_size):
+                end = min(start + chunk_size, len(mock_content))
+                chunk_content = mock_content[start:end]
 
                 # Simulate chunk processing
                 if chunk_content.strip():
@@ -576,7 +592,12 @@ class TestConcurrentOperationMemory:
             memory_hog.append(bytearray(1024 * 1024))
 
         # System should adapt
-        _service = ChunkingService()
+        from packages.shared.database.repositories.collection_repository import CollectionRepository
+        from packages.shared.database.repositories.document_repository import DocumentRepository
+        
+        collection_repo = CollectionRepository(async_session)
+        document_repo = DocumentRepository(async_session)
+        _service = ChunkingService(async_session, collection_repo, document_repo)
 
         # Simulate batch size adaptation
         original_batch_size = 100

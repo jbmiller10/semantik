@@ -289,7 +289,12 @@ class TestDatabaseFailures:
             mock_session.side_effect = OperationalError("Database connection lost", "", "")
 
             # Service should handle the error gracefully
-            service = ChunkingService()
+            from packages.shared.database.repositories.collection_repository import CollectionRepository
+            from packages.shared.database.repositories.document_repository import DocumentRepository
+            
+            collection_repo = CollectionRepository(async_session)
+            document_repo = DocumentRepository(async_session)
+            service = ChunkingService(async_session, collection_repo, document_repo)
 
             with pytest.raises(OperationalError):
                 # This should fail but be handled
@@ -425,7 +430,12 @@ class TestRedisFailures:
         # Simulate Redis stream failure
         with patch.object(redis_client, "xadd", side_effect=RedisConnectionError("Stream error")):
             # Progress updates should fail but not crash the operation
-            service = ChunkingService()
+            from packages.shared.database.repositories.collection_repository import CollectionRepository
+            from packages.shared.database.repositories.document_repository import DocumentRepository
+            
+            collection_repo = CollectionRepository(async_session)
+            document_repo = DocumentRepository(async_session)
+            service = ChunkingService(async_session, collection_repo, document_repo)
 
             # This should continue despite Redis stream errors
             with contextlib.suppress(RedisConnectionError):
@@ -524,7 +534,12 @@ class TestResourceExhaustion:
         with patch("webui.services.chunking_service.AsyncSession.commit") as mock_commit:
             mock_commit.side_effect = OperationalError("No space left on device", "", "")
 
-            service = ChunkingService()
+            from packages.shared.database.repositories.collection_repository import CollectionRepository
+            from packages.shared.database.repositories.document_repository import DocumentRepository
+            
+            collection_repo = CollectionRepository(async_session)
+            document_repo = DocumentRepository(async_session)
+            service = ChunkingService(async_session, collection_repo, document_repo)
 
             # Should handle disk space error
             with pytest.raises(OperationalError):
@@ -736,7 +751,7 @@ class TestPartialFailures:
         failed_docs = []
 
         for doc in all_docs:
-            if doc.content:
+            if doc.file_size > 0:  # Documents with content should succeed
                 # Process successfully
                 successful_docs.append(doc.id)
 
