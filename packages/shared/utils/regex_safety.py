@@ -8,8 +8,9 @@ import logging
 from typing import Any
 
 try:
-    import regex
     from re import Pattern as RePattern
+
+    import regex
     from regex import Pattern as RegexPattern
 
     HAS_REGEX = True
@@ -17,7 +18,7 @@ try:
 except ImportError:
     import re as regex  # noqa: F401
     from re import Pattern as RePattern
-    
+
     PatternType = RePattern
 
     HAS_REGEX = False
@@ -172,7 +173,7 @@ def analyze_pattern_complexity(pattern: str) -> bool:
     # Fast path for known safe patterns
     if pattern in [r"\d+", r"\w+", r"[a-z]+", r"[A-Z]+", r"[0-9]+", r"\s+", r"[a-zA-Z]+", r"[^a-z]+", r"[^\d]+"]:
         return False
-    
+
     # Check pattern length
     if len(pattern) > 500:
         logger.warning(f"Pattern too long ({len(pattern)} chars), may cause issues")
@@ -319,7 +320,7 @@ def simplify_pattern(pattern: str) -> str:
     return simplified
 
 
-def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Any:
+def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Any:  # noqa: ARG001
     """Compile a regex pattern with safety checks.
 
     Args:
@@ -340,6 +341,7 @@ def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Any:
 
     try:
         # Just compile the pattern, timeout is used at execution time
+        # The timeout parameter is kept for API consistency but not used during compilation
         return regex.compile(pattern, flags)
     except Exception as e:
         logger.error(f"Failed to compile pattern: {e}")

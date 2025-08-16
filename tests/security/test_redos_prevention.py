@@ -130,7 +130,7 @@ class TestRegexSafetyModule:
         # This pattern gets simplified rather than rejected
         result = safe_regex_search(r"(a+)+b", "test", timeout=1.0)
         assert result is None  # Pattern doesn't match "test"
-        
+
         # This pattern should also be simplified
         pattern = compile_safe(r"(.*)*", timeout=1.0)
         assert pattern is not None  # Pattern gets compiled after simplification
