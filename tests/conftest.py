@@ -555,14 +555,8 @@ async def db_session():
         max_overflow=0,  # No overflow connections
     )
 
-    # Import helper to safely create enum types
-    from tests.database.enum_helper import create_enum_types_if_not_exist
-
-    # Create enum types first, then tables (idempotent operation)
+    # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
-        # Create enum types if they don't exist (handles concurrent creation)
-        await create_enum_types_if_not_exist(conn)
-        # Now create tables
         await conn.run_sync(Base.metadata.create_all)
 
     # Create session for this test
