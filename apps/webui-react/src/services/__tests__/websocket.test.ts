@@ -134,7 +134,12 @@ class TestMockWebSocket {
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
     if (this.onopen) {
-      this.onopen(new Event('open'));
+      // Create event using a method that works with jsdom
+      const event = new window.Event('open', { 
+        bubbles: false, 
+        cancelable: false 
+      });
+      this.onopen(event);
     }
   }
   
@@ -148,7 +153,12 @@ class TestMockWebSocket {
   
   simulateError() {
     if (this.onerror) {
-      this.onerror(new Event('error'));
+      // Create event using a method that works with jsdom
+      const event = new window.Event('error', {
+        bubbles: false,
+        cancelable: false
+      });
+      this.onerror(event);
     }
   }
   
@@ -893,7 +903,7 @@ describe('WebSocketService', () => {
       service.connect();
       await vi.advanceTimersByTimeAsync(20);
       
-      mockWebSocketInstance?.simulateError('Connection error');
+      mockWebSocketInstance?.simulateError();
       
       expect(errorListener).toHaveBeenCalled();
     });
