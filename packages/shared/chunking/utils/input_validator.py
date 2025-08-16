@@ -90,11 +90,12 @@ class ChunkingInputValidator:
 
             # Remove excessive repeated characters - simplified pattern
             # Use a simpler approach to avoid complex backreferences
+            import re
             for char in set(text):
                 if char.isalnum():  # Only process alphanumeric to avoid special char issues
-                    excessive = char * 100
-                    if excessive in text:
-                        text = text.replace(excessive, char * 99)
+                    # Replace 100+ repeated chars with 99 of them
+                    pattern = re.escape(char) + '{100,}'
+                    text = re.sub(pattern, char * 99, text)
 
             return text
         except RegexTimeout:
