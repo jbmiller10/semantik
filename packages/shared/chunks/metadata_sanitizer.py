@@ -39,7 +39,7 @@ class MetadataSanitizer:
         # CSS expressions - bounded whitespace
         r"expression\s{0,5}\(",
         # Import/require statements - simplified and bounded
-        r"import\s{1,10}[^\s]{1,50}\s{1,10}from",
+        r"import\s{0,10}.{1,100}from",
         r"require\s{0,5}\(",
     ]
 
@@ -166,10 +166,7 @@ class MetadataSanitizer:
 
         # Check for dangerous patterns using safe regex search
         value_lower = value.lower()
-        for pattern in cls.DANGEROUS_PATTERNS:
-            if safe_regex_search(pattern, value_lower, timeout=0.5):
-                return False
-        return True
+        return all(not safe_regex_search(pattern, value_lower, timeout=0.5) for pattern in cls.DANGEROUS_PATTERNS)
 
     @classmethod
     def escape_for_json(cls, value: str) -> str:
