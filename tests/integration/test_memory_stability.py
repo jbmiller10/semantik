@@ -113,10 +113,12 @@ async def large_collection_dataset(async_session: AsyncSession, test_user: dict)
         doc = Document(
             id=str(uuid.uuid4()),
             collection_id=collection.id,
-            name=f"doc_{i}.txt",
-            content=fake.text(max_nb_chars=10000),  # 10KB each
-            file_type="text",
+            file_name=f"doc_{i}.txt",
+            file_path=f"/test/doc_{i}.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=10000,
+            status="pending",
             created_at=datetime.now(UTC),
         )
         documents.append(doc)
@@ -504,10 +506,12 @@ class TestConcurrentOperationMemory:
                 doc = Document(
                     id=str(uuid.uuid4()),
                     collection_id=collection.id,
-                    name=f"doc_{j}.txt",
-                    content=fake.text(max_nb_chars=5000),
-                    file_type="text",
+                    file_name=f"doc_{j}.txt",
+                    file_path=f"/test/doc_{j}.txt",
+                    mime_type="text/plain",
+                    content_hash=str(uuid.uuid4()),
                     file_size=5000,
+                    status="pending",
                     created_at=datetime.now(UTC),
                 )
                 all_documents.append(doc)

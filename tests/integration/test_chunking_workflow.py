@@ -291,10 +291,12 @@ class TestCompleteChunkingWorkflow:
         doc_record = Document(
             id=document["id"],
             collection_id=test_collection.id,
-            name=document["name"],
-            content=document["content"],
-            file_type=document["type"],
+            file_name=document["name"],
+            file_path=f"/test/{document['name']}",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=document["size"],
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(doc_record)
@@ -386,10 +388,12 @@ class TestCompleteChunkingWorkflow:
             doc_record = Document(
                 id=doc["id"],
                 collection_id=test_collection.id,
-                name=doc["name"],
-                content=doc["content"],
-                file_type=doc["type"],
+                file_name=doc["name"],
+                file_path=f"/test/{doc['name']}",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=doc["size"],
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             async_session.add(doc_record)
@@ -464,10 +468,12 @@ class TestCompleteChunkingWorkflow:
         doc_record = Document(
             id=document["id"],
             collection_id=test_collection.id,
-            name=document["name"],
-            content=document["content"],
-            file_type=document["type"],
+            file_name=document["name"],
+            file_path=f"/test/{document['name']}",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=document["size"],
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(doc_record)
@@ -569,10 +575,12 @@ class TestCompleteChunkingWorkflow:
             doc_record = Document(
                 id=doc["id"],
                 collection_id=test_collection.id,
-                name=doc["name"],
-                content=doc["content"],
-                file_type=doc["type"],
+                file_name=doc["name"],
+                file_path=f"/test/{doc['name']}",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=doc["size"],
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             async_session.add(doc_record)
@@ -636,10 +644,12 @@ class TestCompleteChunkingWorkflow:
             doc_record = Document(
                 id=doc["id"],
                 collection_id=test_collection.id,
-                name=doc["name"],
-                content=doc["content"],
-                file_type=doc["type"],
+                file_name=doc["name"],
+                file_path=f"/test/{doc['name']}",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=doc["size"],
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             async_session.add(doc_record)
@@ -776,10 +786,12 @@ class TestEdgeCases:
         empty_doc = Document(
             id=str(uuid.uuid4()),
             collection_id=test_collection.id,
-            name="empty.txt",
-            content="",
-            file_type="text",
+            file_name="empty.txt",
+            file_path="/test/empty.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=0,
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(empty_doc)
@@ -820,10 +832,12 @@ class TestEdgeCases:
         large_doc = Document(
             id=str(uuid.uuid4()),
             collection_id=test_collection.id,
-            name="large_document.txt",
-            content=large_content,
-            file_type="text",
+            file_name="large_document.txt",
+            file_path="/test/large_document.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=len(large_content),
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(large_doc)

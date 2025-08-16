@@ -74,10 +74,12 @@ async def large_dataset(
             doc = Document(
                 id=str(uuid.uuid4()),
                 collection_id=collection.id,
-                name=f"doc_{collection.name}_{doc_idx}.txt",
-                content=fake.text(max_nb_chars=5000),
-                file_type="text",
+                file_name=f"doc_{collection.name}_{doc_idx}.txt",
+                file_path=f"/test/doc_{collection.name}_{doc_idx}.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=5000,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             documents.append(doc)
@@ -143,10 +145,12 @@ class TestPartitionDistribution:
             doc = Document(
                 id=doc_id,
                 collection_id=collection.id,
-                name="test.txt",
-                content="test content",
-                file_type="text",
+                file_name="test.txt",
+                file_path="/test/test.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=100,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             async_session.add(doc)
@@ -248,10 +252,12 @@ class TestPartitionDistribution:
             doc = Document(
                 id=doc_id,
                 collection_id=skewed_collection.id,
-                name=f"skewed_{i}.txt",
-                content="content",
-                file_type="text",
+                file_name=f"skewed_{i}.txt",
+                file_path=f"/test/skewed_{i}.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=100,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             async_session.add(doc)
@@ -294,10 +300,12 @@ class TestPartitionDistribution:
             doc = Document(
                 id=str(uuid.uuid4()),
                 collection_id=collection.id,
-                name=f"doc_{i}.txt",
-                content="content",
-                file_type="text",
+                file_name=f"doc_{i}.txt",
+                file_path=f"/test/doc_{i}.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=100,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             doc_ids.append(doc.id)
@@ -684,10 +692,12 @@ class TestPartitionBulkOperations:
             doc = Document(
                 id=str(uuid.uuid4()),
                 collection_id=collection.id,
-                name=f"bulk_doc_{i}.txt",
-                content=fake.text(max_nb_chars=1000),
-                file_type="text",
+                file_name=f"bulk_doc_{i}.txt",
+                file_path=f"/test/bulk_doc_{i}.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=1000,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             documents.append(doc)
@@ -751,10 +761,12 @@ class TestPartitionBulkOperations:
         doc = Document(
             id=doc_id,
             collection_id=collection.id,
-            name="to_delete.txt",
-            content="content",
-            file_type="text",
+            file_name="to_delete.txt",
+            file_path="/test/to_delete.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=100,
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(doc)

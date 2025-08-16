@@ -55,8 +55,15 @@ async def async_engine():
         echo=False,
     )
 
-    # Create tables
+    # Create tables - check if they already exist to avoid conflicts
     async with engine.begin() as conn:
+        # Check for and drop any existing views first
+        await conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
+        
+        # Create tables if they don't exist
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
@@ -270,15 +277,32 @@ async def _cleanup_after_test(async_session: AsyncSession, redis_client: Any):
     """Automatically clean up after each test."""
     yield
 
-    # Clean up database
-    await async_session.execute(text("TRUNCATE TABLE chunks CASCADE"))
-    await async_session.execute(text("TRUNCATE TABLE operations CASCADE"))
-    await async_session.execute(text("TRUNCATE TABLE documents CASCADE"))
-    await async_session.execute(text("TRUNCATE TABLE collections CASCADE"))
-    await async_session.commit()
+    try:
+        # Clean up database - check if tables exist first
+        result = await async_session.execute(text(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('chunks', 'operations', 'documents', 'collections')"
+        ))
+        existing_tables = [row[0] for row in result]
+        
+        if 'chunks' in existing_tables:
+            await async_session.execute(text("TRUNCATE TABLE chunks CASCADE"))
+        if 'operations' in existing_tables:
+            await async_session.execute(text("TRUNCATE TABLE operations CASCADE"))
+        if 'documents' in existing_tables:
+            await async_session.execute(text("TRUNCATE TABLE documents CASCADE"))
+        if 'collections' in existing_tables:
+            await async_session.execute(text("TRUNCATE TABLE collections CASCADE"))
+        
+        await async_session.commit()
+    except Exception:
+        # If cleanup fails, rollback and continue
+        await async_session.rollback()
 
     # Clean up Redis
-    await redis_client.flushdb()
+    try:
+        await redis_client.flushdb()
+    except Exception:
+        pass  # Redis cleanup is best-effort
 
 
 @pytest.fixture()
