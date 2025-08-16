@@ -59,10 +59,12 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     doc1 = Document(
         id=str(uuid.uuid4()),
         collection_id=test_collection.id,
-        name="normal.txt",
-        content=fake.text(max_nb_chars=1000),
-        file_type="text",
+        file_name="normal.txt",
+        file_path="/test/normal.txt",
+        mime_type="text/plain",
+        content_hash=str(uuid.uuid4()),
         file_size=1000,
+        status="pending",
         created_at=datetime.now(UTC),
     )
     documents.append(doc1)
@@ -71,10 +73,12 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     doc2 = Document(
         id=str(uuid.uuid4()),
         collection_id=test_collection.id,
-        name="large.txt",
-        content=fake.text(max_nb_chars=10000000),  # 10MB
-        file_type="text",
+        file_name="large.txt",
+        file_path="/test/large.txt",
+        mime_type="text/plain",
+        content_hash=str(uuid.uuid4()),
         file_size=10000000,
+        status="pending",
         created_at=datetime.now(UTC),
     )
     documents.append(doc2)
@@ -83,10 +87,12 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     doc3 = Document(
         id=str(uuid.uuid4()),
         collection_id=test_collection.id,
-        name="special.txt",
-        content="Special chars: \x00\x01\x02 ñáéíóú 中文 🚀 " + fake.text(max_nb_chars=500),
-        file_type="text",
+        file_name="special.txt",
+        file_path="/test/special.txt",
+        mime_type="text/plain",
+        content_hash=str(uuid.uuid4()),
         file_size=600,
+        status="pending",
         created_at=datetime.now(UTC),
     )
     documents.append(doc3)
@@ -95,10 +101,12 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     doc4 = Document(
         id=str(uuid.uuid4()),
         collection_id=test_collection.id,
-        name="empty.txt",
-        content="",
-        file_type="text",
+        file_name="empty.txt",
+        file_path="/test/empty.txt",
+        mime_type="text/plain",
+        content_hash=str(uuid.uuid4()),
         file_size=0,
+        status="pending",
         created_at=datetime.now(UTC),
     )
     documents.append(doc4)
@@ -447,10 +455,12 @@ class TestResourceExhaustion:
         huge_doc = Document(
             id=str(uuid.uuid4()),
             collection_id=test_collection.id,
-            name="huge.txt",
-            content="x" * 100000000,  # 100MB of text
-            file_type="text",
+            file_name="huge.txt",
+            file_path="/test/huge.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=100000000,
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(huge_doc)
@@ -546,10 +556,12 @@ class TestResourceExhaustion:
             doc = Document(
                 id=str(uuid.uuid4()),
                 collection_id=test_collection.id,
-                name=f"complex_{i}.txt",
-                content=fake.text(max_nb_chars=50000),
-                file_type="text",
+                file_name=f"complex_{i}.txt",
+                file_path=f"/test/complex_{i}.txt",
+                mime_type="text/plain",
+                content_hash=str(uuid.uuid4()),
                 file_size=50000,
+                status="pending",
                 created_at=datetime.now(UTC),
             )
             complex_docs.append(doc)
@@ -694,10 +706,12 @@ class TestPartialFailures:
         problem_doc = Document(
             id=str(uuid.uuid4()),
             collection_id=test_collection.id,
-            name="problem.txt",
-            content=None,  # Null content should cause issues
-            file_type="text",
+            file_name="problem.txt",
+            file_path="/test/problem.txt",
+            mime_type="text/plain",
+            content_hash=str(uuid.uuid4()),
             file_size=0,
+            status="pending",
             created_at=datetime.now(UTC),
         )
         async_session.add(problem_doc)
