@@ -31,17 +31,20 @@ from shared.database.repositories.document_repository import DocumentRepository
 from webui.chunking_tasks import ChunkingTask
 from webui.services.chunking_service import ChunkingService
 
+# Import auth mocking utilities
+from tests.integration.auth_mock import TestUser
+
 fake = Faker()
 
 
 @pytest.fixture()
-async def test_collection(async_session: AsyncSession, test_user: dict) -> Collection:
-    """Create a test collection for error recovery tests."""
+async def test_collection(async_session: AsyncSession, mock_user: TestUser) -> Collection:
+    """Create a test collection for error recovery tests using TestUser."""
     collection = Collection(
         id=str(uuid.uuid4()),
         name=f"Error Test Collection {fake.word()}",
         description="Collection for error recovery testing",
-        owner_id=test_user["id"],
+        owner_id=mock_user.id,  # Use mock_user from auth_mock
         status="ready",
         vector_store_name=f"test_error_{uuid.uuid4().hex[:8]}",
         embedding_model="test-model",
@@ -124,114 +127,99 @@ async def test_documents(async_session: AsyncSession, test_collection: Collectio
     return documents
 
 
-
-
-
-
 class TestChunkingOperationInterruption:
     """Test handling of chunking operation interruptions."""
 
     @pytest.mark.asyncio()
     async def test_operation_interruption_recovery(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
-        test_user: dict,
+        mock_user: TestUser,  # Use TestUser instead of dict
         redis_client: Any,
     ) -> None:
         """Test recovery from chunking operation interruption."""
-        # Override get_current_user to return our test user
-        from packages.webui.auth import get_current_user
-        from packages.webui.main import app
+        # The authenticated_client_v2 already has auth properly configured
         
-        async def mock_get_current_user(credentials=None):
-            return test_user
-        
-        app.dependency_overrides[get_current_user] = mock_get_current_user
-        
-        try:
-            # Start chunking operation
-            response = await async_client.post(
-                f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                json={
-                    "strategy": "fixed_size",
-                    "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
-                },
-            )
+        # Start chunking operation
+        response = await authenticated_client_v2.post(
+            f"/api/v2/chunking/collections/{test_collection.id}/chunk",
+            json={
+                "strategy": "fixed_size",
+                "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
+            },
+        )
 
-            assert response.status_code == 202
-            operation_id = response.json()["operation_id"]
+        assert response.status_code == 202
+        operation_id = response.json()["operation_id"]
 
-            # Simulate partial processing
-            docs_to_process = test_documents[:2]
-            for doc in docs_to_process:
-                # Create some chunks
-                for i in range(3):
-                    chunk = Chunk(
-                        collection_id=test_collection.id,
-                        document_id=doc.id,
-                        content=f"Partial chunk {i}",
-                        chunk_index=i,
-                        start_offset=i * 100,
-                        end_offset=(i + 1) * 100,
-                        token_count=10,
-                        created_at=datetime.now(UTC),
-                    )
-                    async_session.add(chunk)
+        # Simulate partial processing
+        docs_to_process = test_documents[:2]
+        for doc in docs_to_process:
+            # Create some chunks
+            for i in range(3):
+                chunk = Chunk(
+                    collection_id=test_collection.id,
+                    document_id=doc.id,
+                    content=f"Partial chunk {i}",
+                    chunk_index=i,
+                    start_offset=i * 100,
+                    end_offset=(i + 1) * 100,
+                    token_count=10,
+                    created_at=datetime.now(UTC),
+                )
+                async_session.add(chunk)
 
-            await async_session.commit()
+        await async_session.commit()
 
-            # Simulate interruption - mark operation as failed
-            operation = await async_session.get(Operation, operation_id)
-            operation.status = "failed"
-            operation.error_message = "Process interrupted"
-            operation.meta = {"progress_percentage": 50.0}
-            await async_session.commit()
+        # Simulate interruption - mark operation as failed
+        operation = await async_session.get(Operation, operation_id)
+        operation.status = "failed"
+        operation.error_message = "Process interrupted"
+        operation.meta = {"progress_percentage": 50.0}
+        await async_session.commit()
 
-            # Store progress in Redis for recovery
-            redis_client.hset(
-                f"operation:{operation_id}",
-                mapping={
-                    "status": "failed",
-                    "documents_processed": "2",
-                    "total_documents": str(len(test_documents)),
-                    "last_processed_doc": test_documents[1].id,
-                },
-            )
+        # Store progress in Redis for recovery
+        redis_client.hset(
+            f"operation:{operation_id}",
+            mapping={
+                "status": "failed",
+                "documents_processed": "2",
+                "total_documents": str(len(test_documents)),
+                "last_processed_doc": test_documents[1].id,
+            },
+        )
 
-            # Attempt to resume operation
-            response = await async_client.post(
-                f"/api/v2/chunking/operations/{operation_id}/resume",
-            )
+        # Attempt to resume operation
+        response = await authenticated_client_v2.post(
+            f"/api/v2/chunking/operations/{operation_id}/resume",
+        )
 
-            # Should either resume or indicate how to retry
-            assert response.status_code in [200, 202, 409]
+        # Should either resume or indicate how to retry
+        assert response.status_code in [200, 202, 409]
 
-            if response.status_code == 202:
-                # Operation resumed
-                result = response.json()
-                assert "operation_id" in result
+        if response.status_code == 202:
+            # Operation resumed
+            result = response.json()
+            assert "operation_id" in result
 
-                # Verify it continues from where it left off
-                resumed_state = redis_client.hgetall(f"operation:{operation_id}")
-                assert int(resumed_state.get(b"documents_processed", 0)) >= 2
-        finally:
-            # Clean up dependency override
-            app.dependency_overrides.clear()
+            # Verify it continues from where it left off
+            resumed_state = redis_client.hgetall(f"operation:{operation_id}")
+            assert int(resumed_state.get(b"documents_processed", 0)) >= 2
 
     @pytest.mark.asyncio()
     async def test_graceful_shutdown_handling(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
     ) -> None:
         """Test graceful shutdown during chunking operation."""
         # Start operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "recursive",
@@ -277,14 +265,14 @@ class TestDatabaseFailures:
     @pytest.mark.asyncio()
     async def test_database_connection_loss(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
     ) -> None:
         """Test handling of database connection loss during chunking."""
         # Start chunking operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "fixed_size",
@@ -383,7 +371,7 @@ class TestRedisFailures:
     @pytest.mark.asyncio()
     async def test_redis_connection_failure(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         test_collection: Collection,
     ) -> None:
         """Test handling of Redis connection failure."""
@@ -393,9 +381,9 @@ class TestRedisFailures:
             mock_redis.hset.side_effect = RedisConnectionError("Connection refused")
 
             # Operation should still be created in database
-            response = await async_client.post(
+            response = await authenticated_client_v2.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                    json={
+                json={
                     "strategy": "fixed_size",
                     "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                 },
@@ -414,14 +402,14 @@ class TestRedisFailures:
     @pytest.mark.asyncio()
     async def test_redis_stream_failure(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         redis_client: Any,
     ) -> None:
         """Test handling of Redis stream failures for progress updates."""
         # Start operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "semantic",
@@ -456,7 +444,7 @@ class TestResourceExhaustion:
     @pytest.mark.asyncio()
     async def test_memory_exhaustion_handling(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
     ) -> None:
@@ -477,7 +465,7 @@ class TestResourceExhaustion:
         await async_session.commit()
 
         # Start chunking with memory monitoring
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "fixed_size",
@@ -510,14 +498,14 @@ class TestResourceExhaustion:
     @pytest.mark.asyncio()
     async def test_disk_space_exhaustion(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
     ) -> None:
         """Test handling of disk space exhaustion."""
         # Start chunking operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "hierarchical",
@@ -553,7 +541,7 @@ class TestResourceExhaustion:
     @pytest.mark.asyncio()
     async def test_cpu_time_limit(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         test_collection: Collection,
         test_documents: list[Document],
     ) -> None:
@@ -575,7 +563,7 @@ class TestResourceExhaustion:
             complex_docs.append(doc)
 
         # Start CPU-intensive chunking operation
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "semantic",  # Most CPU-intensive
@@ -605,7 +593,7 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio()
     async def test_circuit_breaker_activation(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         test_collection: Collection,
     ) -> None:
         """Test circuit breaker activation after multiple failures."""
@@ -618,9 +606,9 @@ class TestCircuitBreaker:
             mock_check.return_value = True
 
             for _i in range(3):
-                response = await async_client.post(
+                response = await authenticated_client_v2.post(
                     f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                            json={
+                    json={
                         "strategy": "fixed_size",
                         "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                     },
@@ -631,9 +619,9 @@ class TestCircuitBreaker:
             mock_check.return_value = False
 
             # Next attempt should be rejected by circuit breaker
-            response = await async_client.post(
+            response = await authenticated_client_v2.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                    json={
+                json={
                     "strategy": "fixed_size",
                     "config": {"strategy": "fixed_size", "chunk_size": 500, "chunk_overlap": 50},
                 },
@@ -649,7 +637,7 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio()
     async def test_circuit_breaker_recovery(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         test_collection: Collection,
     ) -> None:
         """Test circuit breaker recovery after timeout."""
@@ -662,9 +650,9 @@ class TestCircuitBreaker:
             mock_time.return_value = 1000
 
             # Attempt should fail
-            response = await async_client.post(
+            response = await authenticated_client_v2.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                    json={
+                json={
                     "strategy": "recursive",
                     "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
                 },
@@ -678,9 +666,9 @@ class TestCircuitBreaker:
             mock_check.return_value = True  # Circuit breaker closes
 
             # Should work again
-            response = await async_client.post(
+            response = await authenticated_client_v2.post(
                 f"/api/v2/chunking/collections/{test_collection.id}/chunk",
-                    json={
+                json={
                     "strategy": "recursive",
                     "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
                 },
@@ -695,7 +683,7 @@ class TestPartialFailures:
     @pytest.mark.asyncio()
     async def test_partial_document_failure(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         test_documents: list[Document],
@@ -720,7 +708,7 @@ class TestPartialFailures:
         all_docs = test_documents + [problem_doc]
 
         # Start chunking
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/collections/{test_collection.id}/chunk",
             json={
                 "strategy": "fixed_size",
@@ -805,7 +793,7 @@ class TestPartialFailures:
     @pytest.mark.asyncio()
     async def test_retry_failed_documents(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         async_session: AsyncSession,
         test_collection: Collection,
         redis_client: Any,
@@ -837,7 +825,7 @@ class TestPartialFailures:
         )
 
         # Retry failed documents
-        response = await async_client.post(
+        response = await authenticated_client_v2.post(
             f"/api/v2/chunking/operations/{operation.uuid}/retry-failed",
         )
 
@@ -887,7 +875,7 @@ class TestDeadLetterQueue:
     @pytest.mark.asyncio()
     async def test_manual_dlq_recovery(
         self,
-        async_client: AsyncClient,
+        authenticated_client_v2: AsyncClient,  # Use the new authenticated client
         redis_client: Any,
     ) -> None:
         """Test manual recovery from dead letter queue."""
@@ -906,7 +894,7 @@ class TestDeadLetterQueue:
         )
 
         # Admin endpoint to review DLQ
-        response = await async_client.get(
+        response = await authenticated_client_v2.get(
             "/api/v2/admin/dead-letter-queue/chunking",
         )
 
