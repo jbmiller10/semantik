@@ -3,6 +3,9 @@ Shared fixtures for integration tests.
 
 Provides database sessions, Redis clients, test users, and other
 common fixtures needed for integration testing.
+
+This module implements worker isolation for parallel test execution using pytest-xdist.
+Each test worker gets its own database schema to prevent deadlocks and conflicts.
 """
 
 import asyncio
@@ -11,6 +14,8 @@ import uuid
 from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
 from typing import Any
+import time
+import random
 
 import pytest
 import pytest_asyncio
@@ -19,10 +24,11 @@ from faker import Faker
 from httpx import ASGITransport, AsyncClient
 from shared.database import get_db
 from shared.database.models import Base, User
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import OperationalError, DatabaseError
 from webui.auth import create_access_token, get_password_hash
 from webui.main import app
 
@@ -37,6 +43,50 @@ TEST_DATABASE_URL_SYNC = TEST_DATABASE_URL.replace("+asyncpg", "")
 # Redis configuration
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6379/1")
 
+# Get worker ID from pytest-xdist (will be "master" if not running in parallel)
+WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER", "master")
+WORKER_SCHEMA = f"test_{WORKER_ID}" if WORKER_ID != "master" else "public"
+
+# Maximum retries for database operations
+MAX_DB_RETRIES = 5
+DB_RETRY_DELAY = 0.5  # Base delay in seconds
+
+
+async def retry_database_operation(operation, max_retries=MAX_DB_RETRIES, base_delay=DB_RETRY_DELAY):
+    """Retry a database operation with exponential backoff on deadlock."""
+    for attempt in range(max_retries):
+        try:
+            return await operation()
+        except (OperationalError, DatabaseError) as e:
+            error_msg = str(e)
+            # Check for deadlock or lock timeout errors
+            if "deadlock" in error_msg.lower() or "lock" in error_msg.lower():
+                if attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                    await asyncio.sleep(delay)
+                    continue
+            raise
+    raise Exception(f"Database operation failed after {max_retries} retries")
+
+
+def sync_retry_database_operation(operation, max_retries=MAX_DB_RETRIES, base_delay=DB_RETRY_DELAY):
+    """Retry a synchronous database operation with exponential backoff on deadlock."""
+    for attempt in range(max_retries):
+        try:
+            return operation()
+        except (OperationalError, DatabaseError) as e:
+            error_msg = str(e)
+            # Check for deadlock or lock timeout errors
+            if "deadlock" in error_msg.lower() or "lock" in error_msg.lower():
+                if attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                    time.sleep(delay)
+                    continue
+            raise
+    raise Exception(f"Database operation failed after {max_retries} retries")
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -48,36 +98,80 @@ def event_loop():
 
 @pytest_asyncio.fixture(scope="function")
 async def async_engine():
-    """Create an async database engine for testing."""
+    """Create an async database engine for testing with worker isolation."""
+    # Create engine with worker-specific schema if running in parallel
     engine = create_async_engine(
         TEST_DATABASE_URL,
         poolclass=NullPool,  # Disable connection pooling for tests
         echo=False,
+        connect_args={
+            "server_settings": {"jit": "off"},  # Disable JIT for tests
+            "command_timeout": 60,
+            "options": f"-c search_path={WORKER_SCHEMA},public" if WORKER_ID != "master" else ""
+        }
     )
 
-    # Create tables - check if they already exist to avoid conflicts
-    async with engine.begin() as conn:
-        # Check for and drop any existing views first
-        await conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
-        
-        # Create tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
-
+    async def setup_schema():
+        """Set up the test schema with proper isolation."""
+        async with engine.begin() as conn:
+            # Create worker-specific schema if needed
+            if WORKER_ID != "master":
+                await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {WORKER_SCHEMA}"))
+                await conn.execute(text(f"SET search_path TO {WORKER_SCHEMA}, public"))
+            
+            # Use advisory lock to prevent concurrent schema operations
+            # Lock ID is based on schema name hash to ensure uniqueness
+            lock_id = hash(WORKER_SCHEMA) % 2147483647  # PostgreSQL int4 max
+            
+            # Try to acquire advisory lock
+            await conn.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
+            
+            try:
+                # Drop any existing views first
+                await conn.execute(text(f"DROP MATERIALIZED VIEW IF EXISTS {WORKER_SCHEMA}.collection_chunking_stats CASCADE"))
+                await conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.partition_distribution CASCADE"))
+                await conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.active_chunking_configs CASCADE"))
+                await conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.partition_health CASCADE"))
+                
+                # Create tables with schema prefix
+                if WORKER_ID != "master":
+                    # Override the schema for table creation
+                    Base.metadata.schema = WORKER_SCHEMA
+                    
+                await conn.run_sync(Base.metadata.create_all)
+            finally:
+                # Always release the advisory lock
+                await conn.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+    
+    # Setup schema with retry logic
+    await retry_database_operation(setup_schema)
+    
     yield engine
 
-    # Clean up tables - DROP CASCADE to handle dependent views
-    async with engine.begin() as conn:
-        # Drop dependent views first
-        await conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
-        await conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
-        # Now drop tables
-        await conn.run_sync(Base.metadata.drop_all)
-
+    async def cleanup_schema():
+        """Clean up the test schema."""
+        async with engine.begin() as conn:
+            if WORKER_ID != "master":
+                # Drop entire schema for worker
+                await conn.execute(text(f"DROP SCHEMA IF EXISTS {WORKER_SCHEMA} CASCADE"))
+            else:
+                # Clean up public schema tables
+                lock_id = hash(WORKER_SCHEMA) % 2147483647
+                await conn.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
+                
+                try:
+                    # Drop dependent views first
+                    await conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+                    await conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
+                    await conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
+                    await conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
+                    # Now drop tables
+                    await conn.run_sync(Base.metadata.drop_all)
+                finally:
+                    await conn.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+    
+    # Cleanup with retry logic
+    await retry_database_operation(cleanup_schema)
     await engine.dispose()
 
 
@@ -97,27 +191,74 @@ async def async_session(async_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest.fixture()
 def sync_engine():
-    """Create a sync database engine for testing."""
+    """Create a sync database engine for testing with worker isolation."""
+    # Configure connection args based on worker
+    connect_args = {"options": f"-c search_path={WORKER_SCHEMA},public"} if WORKER_ID != "master" else {}
+    
     engine = create_engine(
         TEST_DATABASE_URL_SYNC,
         poolclass=NullPool,
         echo=False,
+        connect_args=connect_args
     )
 
-    # Create tables
-    Base.metadata.create_all(bind=engine)
-
+    def setup_schema():
+        """Set up the test schema with proper isolation."""
+        with engine.begin() as conn:
+            # Create worker-specific schema if needed
+            if WORKER_ID != "master":
+                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {WORKER_SCHEMA}"))
+                conn.execute(text(f"SET search_path TO {WORKER_SCHEMA}, public"))
+            
+            # Use advisory lock to prevent concurrent schema operations
+            lock_id = hash(WORKER_SCHEMA) % 2147483647
+            conn.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
+            
+            try:
+                # Drop any existing views first
+                conn.execute(text(f"DROP MATERIALIZED VIEW IF EXISTS {WORKER_SCHEMA}.collection_chunking_stats CASCADE"))
+                conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.partition_distribution CASCADE"))
+                conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.active_chunking_configs CASCADE"))
+                conn.execute(text(f"DROP VIEW IF EXISTS {WORKER_SCHEMA}.partition_health CASCADE"))
+                
+                # Create tables with schema prefix
+                if WORKER_ID != "master":
+                    Base.metadata.schema = WORKER_SCHEMA
+                    
+                Base.metadata.create_all(bind=engine)
+            finally:
+                # Always release the advisory lock
+                conn.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+    
+    # Setup schema with retry logic
+    sync_retry_database_operation(setup_schema)
+    
     yield engine
 
-    # Clean up tables - handle dependent views
-    with engine.begin() as conn:
-        # Drop dependent views first
-        conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
-        conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
-        conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
-        conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
-    # Now drop tables
-    Base.metadata.drop_all(bind=engine)
+    def cleanup_schema():
+        """Clean up the test schema."""
+        with engine.begin() as conn:
+            if WORKER_ID != "master":
+                # Drop entire schema for worker
+                conn.execute(text(f"DROP SCHEMA IF EXISTS {WORKER_SCHEMA} CASCADE"))
+            else:
+                # Clean up public schema tables
+                lock_id = hash(WORKER_SCHEMA) % 2147483647
+                conn.execute(text(f"SELECT pg_advisory_lock({lock_id})"))
+                
+                try:
+                    # Drop dependent views first
+                    conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+                    conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
+                    conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
+                    conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
+                    # Now drop tables
+                    Base.metadata.drop_all(bind=engine)
+                finally:
+                    conn.execute(text(f"SELECT pg_advisory_unlock({lock_id})"))
+    
+    # Cleanup with retry logic
+    sync_retry_database_operation(cleanup_schema)
     engine.dispose()
 
 
@@ -135,9 +276,13 @@ def sync_session(sync_engine) -> Generator[Session, None, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def redis_client() -> AsyncGenerator[Any, None]:
-    """Create a Redis client for testing."""
+    """Create a Redis client for testing with worker isolation."""
+    # Use different Redis database for each worker if possible
+    redis_db = 1 if WORKER_ID == "master" else (hash(WORKER_ID) % 14) + 2  # Use databases 2-15 for workers
+    redis_url = TEST_REDIS_URL.rsplit("/", 1)[0] + f"/{redis_db}"
+    
     client = await redis_async.from_url(
-        TEST_REDIS_URL,
+        redis_url,
         encoding="utf-8",
         decode_responses=True,
     )
@@ -274,29 +419,41 @@ async def test_websocket_server():
 
 @pytest.fixture(autouse=True)
 async def _cleanup_after_test(async_session: AsyncSession, redis_client: Any):
-    """Automatically clean up after each test."""
+    """Automatically clean up after each test with proper isolation."""
     yield
 
-    try:
-        # Clean up database - check if tables exist first
-        result = await async_session.execute(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('chunks', 'operations', 'documents', 'collections')"
-        ))
-        existing_tables = [row[0] for row in result]
-        
-        if 'chunks' in existing_tables:
-            await async_session.execute(text("TRUNCATE TABLE chunks CASCADE"))
-        if 'operations' in existing_tables:
-            await async_session.execute(text("TRUNCATE TABLE operations CASCADE"))
-        if 'documents' in existing_tables:
-            await async_session.execute(text("TRUNCATE TABLE documents CASCADE"))
-        if 'collections' in existing_tables:
-            await async_session.execute(text("TRUNCATE TABLE collections CASCADE"))
-        
-        await async_session.commit()
-    except Exception:
-        # If cleanup fails, rollback and continue
-        await async_session.rollback()
+    async def cleanup_tables():
+        """Clean up tables with retry logic."""
+        try:
+            # Use the correct schema for cleanup
+            schema = WORKER_SCHEMA if WORKER_ID != "master" else "public"
+            
+            # Check if tables exist first
+            result = await async_session.execute(text(
+                f"SELECT tablename FROM pg_tables WHERE schemaname = '{schema}' "
+                f"AND tablename IN ('chunks', 'operations', 'documents', 'collections')"
+            ))
+            existing_tables = [row[0] for row in result]
+            
+            # TRUNCATE with proper schema qualification
+            if 'chunks' in existing_tables:
+                await async_session.execute(text(f"TRUNCATE TABLE {schema}.chunks CASCADE"))
+            if 'operations' in existing_tables:
+                await async_session.execute(text(f"TRUNCATE TABLE {schema}.operations CASCADE"))
+            if 'documents' in existing_tables:
+                await async_session.execute(text(f"TRUNCATE TABLE {schema}.documents CASCADE"))
+            if 'collections' in existing_tables:
+                await async_session.execute(text(f"TRUNCATE TABLE {schema}.collections CASCADE"))
+            
+            await async_session.commit()
+        except Exception as e:
+            # If cleanup fails, rollback and continue
+            await async_session.rollback()
+            # Log the error for debugging but don't fail the test
+            print(f"Warning: Cleanup failed for worker {WORKER_ID}: {e}")
+    
+    # Cleanup with retry logic
+    await retry_database_operation(cleanup_tables)
 
     # Clean up Redis
     try:
@@ -405,6 +562,15 @@ def _check_test_environment():
         import psycopg2
 
         conn = psycopg2.connect(TEST_DATABASE_URL_SYNC.replace("+asyncpg", ""))
+        
+        # Log worker information for debugging
+        cursor = conn.cursor()
+        cursor.execute("SELECT version()")
+        db_version = cursor.fetchone()[0]
+        print(f"\n[Worker {WORKER_ID}] Connected to PostgreSQL: {db_version.split(',')[0]}")
+        print(f"[Worker {WORKER_ID}] Using schema: {WORKER_SCHEMA}")
+        
+        cursor.close()
         conn.close()
     except Exception as e:
         pytest.skip(f"Cannot connect to test database: {e}")

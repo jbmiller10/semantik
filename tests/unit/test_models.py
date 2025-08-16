@@ -65,9 +65,14 @@ def db_session() -> Generator[Session, None, None]:
         # Now drop all tables
         Base.metadata.drop_all(connection)
 
+    # Import helper to safely create enum types
+    from tests.database.enum_helper import create_enum_types_if_not_exist_sync
+
     # Drop all views and tables, then recreate for test isolation
     with engine.begin() as conn:
         drop_views_and_tables(conn)
+        # Create enum types if they don't exist (handles concurrent creation)
+        create_enum_types_if_not_exist_sync(conn)
         Base.metadata.create_all(conn)
 
     session_factory = sessionmaker(bind=engine)
