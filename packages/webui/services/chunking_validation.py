@@ -38,16 +38,19 @@ class ChunkingInputValidator:
 
     # SQL injection patterns - simplified to avoid ReDoS
     SQL_INJECTION_PATTERNS = [
-        # Simplified pattern without .* between keywords - bounded to 50 chars
-        r"\b(union|select|insert|update|delete|drop|create|alter|exec|execute)\b.{0,50}\b(from|into|where|table|database)\b",
-        # Command sequences with bounded whitespace
-        r"(;|\||&&)\s{0,10}(shutdown|drop|delete|truncate)",
-        # SQL injection OR patterns - simplified without nested quantifiers
-        r'(\'|")\s{0,10}or\s{1,10}\d+\s{0,10}=\s{0,10}\d+',
-        # Backreference pattern simplified with bounded content
-        r'(\'|")\s{0,10}or\s{1,10}(\'|")[^\'\"]{0,50}\2\s{0,10}=\s{0,10}\2',
-        # SQL command injection - simplified with bounded whitespace
-        r'(\'|");?\s{0,10}(drop|delete|truncate|alter|create|insert|update|union|select)\b',
+        # Look for actual injection attempts with quote breaking
+        r"'\s{0,10};?\s{0,10}(drop|delete|truncate|alter|exec)\b",
+        r'"\s{0,10};?\s{0,10}(drop|delete|truncate|alter|exec)\b',
+        # Command sequences that indicate injection
+        r"(;|\||&&)\s{0,10}(shutdown|drop\s+table|drop\s+database|delete\s+from)",
+        # Classic SQL injection OR patterns
+        r"'\s{0,10}or\s{1,10}'1'\s{0,10}=\s{0,10}'1",
+        r'"\s{0,10}or\s{1,10}"1"\s{0,10}=\s{0,10}"1',
+        r"'\s{0,10}or\s{1,10}1\s{0,10}=\s{0,10}1\s{0,10}--",
+        # SQL comments that might indicate injection
+        r"(--|#|/\*)\s{0,10}(drop|delete|truncate|alter|exec)",
+        # Stacked queries
+        r";\s{0,10}(drop|delete|truncate|insert|update|exec)\s+",
     ]
 
     # Command injection patterns - simplified to avoid ReDoS

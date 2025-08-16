@@ -164,8 +164,12 @@ class MetadataSanitizer:
         if not value:
             return True
 
-        # Check for dangerous patterns
-        return all(not pattern.search(value) for pattern in cls.DANGEROUS_PATTERNS)
+        # Check for dangerous patterns using safe regex search
+        value_lower = value.lower()
+        for pattern in cls.DANGEROUS_PATTERNS:
+            if safe_regex_search(pattern, value_lower, timeout=0.5):
+                return False
+        return True
 
     @classmethod
     def escape_for_json(cls, value: str) -> str:

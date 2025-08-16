@@ -2,7 +2,6 @@
 """Safe regex operations with ReDoS protection."""
 
 import logging
-from re import Match, Pattern
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -10,10 +9,12 @@ logger = logging.getLogger(__name__)
 # Try to import regex module for native timeout support
 try:
     import regex
+    from regex import Match, Pattern  # Use regex types when available
 
     HAS_REGEX = True
 except ImportError:
     import re as regex
+    from re import Match, Pattern  # Fall back to standard re types
 
     HAS_REGEX = False
     logger.warning("regex module not available. Using standard re without native timeout support.")
@@ -98,7 +99,7 @@ class SafeRegex:
 
         return compiled
 
-    def match_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
+    def match_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match[str] | None:
         """Match pattern with timeout protection.
 
         Args:
@@ -167,7 +168,7 @@ class SafeRegex:
             logger.error(f"Findall failed: {e}")
             return []
 
-    def search_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match | None:
+    def search_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match[str] | None:
         """Search for pattern with timeout protection.
 
         Args:

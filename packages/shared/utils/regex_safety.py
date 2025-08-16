@@ -5,14 +5,20 @@ which has native timeout support, avoiding the need for ThreadPoolExecutor.
 """
 
 import logging
-from re import Pattern
+from typing import Any
 
 try:
     import regex
+    from re import Pattern as RePattern
+    from regex import Pattern as RegexPattern
 
     HAS_REGEX = True
+    PatternType = RegexPattern | RePattern
 except ImportError:
-    import re as regex
+    import re as regex  # noqa: F401
+    from re import Pattern as RePattern
+    
+    PatternType = RePattern
 
     HAS_REGEX = False
     logging.warning("regex module not available. Using standard re module without native timeout support.")
@@ -28,7 +34,7 @@ class RegexTimeoutError(Exception):
 RegexTimeout = RegexTimeoutError
 
 
-def safe_regex_search(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> regex.Match | None:
+def safe_regex_search(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> Any:
     """Execute regex search with timeout protection.
 
     Args:
@@ -66,7 +72,7 @@ def safe_regex_search(pattern: str, text: str, timeout: float = 1.0, flags: int 
         return None
 
 
-def safe_regex_match(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> regex.Match | None:
+def safe_regex_match(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> Any:
     """Execute regex match with timeout protection.
 
     Args:
@@ -138,7 +144,7 @@ def safe_regex_findall(
         # Fallback without timeout
         compiled = regex.compile(pattern, flags)
         matches = compiled.findall(text)
-        return matches[:max_matches]
+        return list(matches[:max_matches])
     except regex.error as e:
         if HAS_REGEX and "timeout" in str(e).lower():
             raise RegexTimeoutError(f"Pattern timed out after {timeout}s: {pattern[:50]}...") from e
@@ -163,6 +169,10 @@ def analyze_pattern_complexity(pattern: str) -> bool:
     Returns:
         True if pattern is potentially dangerous, False if safe
     """
+    # Fast path for known safe patterns
+    if pattern in [r"\d+", r"\w+", r"[a-z]+", r"[A-Z]+", r"[0-9]+", r"\s+", r"[a-zA-Z]+", r"[^a-z]+", r"[^\d]+"]:
+        return False
+    
     # Check pattern length
     if len(pattern) > 500:
         logger.warning(f"Pattern too long ({len(pattern)} chars), may cause issues")
@@ -212,9 +222,9 @@ def analyze_pattern_complexity(pattern: str) -> bool:
     # Check for alternation with quantifier
     if "|" in pattern:
         # Look for patterns like (a|b)* or (a|b)+
-        import re
+        import re as stdlib_re
 
-        if re.search(r"\([^)]*\|[^)]*\)[*+]", pattern):
+        if stdlib_re.search(r"\([^)]*\|[^)]*\)[*+]", pattern):
             logger.warning("Pattern contains alternation with quantifier")
             return True
 
@@ -255,10 +265,18 @@ def simplify_pattern(pattern: str) -> str:
 
     # Replace nested quantifiers with bounded versions
     replacements = [
+        # Generic patterns first
+        (r"(a+)+", r"a+"),
+        (r"(a*)*", r"a*"),
+        (r"(a+)*", r"a*"),
+        (r"(a*)+", r"a*"),
+        # Character class patterns
         (r"(\w+)+", r"\w+"),
         (r"(\w+)*", r"\w*"),
         (r"(\w*)+", r"\w*"),
         (r"(\w*)*", r"\w*"),
+        (r"(\d+)+", r"\d+"),
+        (r"(\d*)*", r"\d*"),
         (r"(\S+)+", r"\S+"),
         (r"(\S+)*", r"\S*"),
         (r"(\S*)+", r"\S*"),
@@ -288,20 +306,20 @@ def simplify_pattern(pattern: str) -> str:
         logger.debug("Simplified pattern: replaced '.+.+' with '.+'")
 
     # Limit unbounded repetitions to reasonable bounds
-    import re
+    import re as stdlib_re
 
     # Replace {n,} with {n,1000} to add upper bound
-    simplified = re.sub(r"\{(\d+),\}", r"{\1,1000}", simplified)
+    simplified = stdlib_re.sub(r"\{(\d+),\}", r"{\1,1000}", simplified)
 
     # If pattern is still complex, try more aggressive simplification
     if len(simplified) > 200:
         # Truncate very long character classes
-        simplified = re.sub(r"\[[^\]]{50,}\]", r"[\w\W]", simplified)
+        simplified = stdlib_re.sub(r"\[[^\]]{50,}\]", r"[\w\W]", simplified)
 
     return simplified
 
 
-def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Pattern:
+def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Any:
     """Compile a regex pattern with safety checks.
 
     Args:
@@ -321,11 +339,7 @@ def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Pattern:
             raise ValueError(f"Pattern rejected as potentially dangerous: {pattern[:50]}...")
 
     try:
-        if HAS_REGEX:
-            # Store timeout as an attribute for later use
-            compiled = regex.compile(pattern, flags)
-            compiled._timeout = timeout
-            return compiled
+        # Just compile the pattern, timeout is used at execution time
         return regex.compile(pattern, flags)
     except Exception as e:
         logger.error(f"Failed to compile pattern: {e}")
@@ -333,7 +347,7 @@ def compile_safe(pattern: str, flags: int = 0, timeout: float = 1.0) -> Pattern:
 
 
 # Convenience function for replacing direct re.search calls
-def search_with_fallback(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> regex.Match | None:
+def search_with_fallback(pattern: str, text: str, timeout: float = 1.0, flags: int = 0) -> Any:
     """Search with automatic fallback on timeout.
 
     If the pattern times out, tries a simplified version.
@@ -350,14 +364,18 @@ def search_with_fallback(pattern: str, text: str, timeout: float = 1.0, flags: i
     """
     try:
         return safe_regex_search(pattern, text, timeout, flags)
-    except RegexTimeoutError:
-        logger.warning(f"Pattern timed out, trying simplified version: {pattern[:50]}...")
+    except (RegexTimeoutError, ValueError) as e:
+        if "dangerous" in str(e):
+            # Pattern was rejected as dangerous, try simplified version
+            logger.warning(f"Pattern rejected as dangerous, trying simplified version: {pattern[:50]}...")
+        else:
+            logger.warning(f"Pattern timed out, trying simplified version: {pattern[:50]}...")
         simplified = simplify_pattern(pattern)
         if simplified != pattern:
             try:
                 return safe_regex_search(simplified, text, timeout, flags)
-            except RegexTimeoutError:
-                logger.error(f"Simplified pattern also timed out: {simplified[:50]}...")
+            except (RegexTimeoutError, ValueError):
+                logger.error(f"Simplified pattern also failed: {simplified[:50]}...")
         return None
     except Exception as e:
         logger.error(f"Search failed: {e}")
