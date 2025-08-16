@@ -61,8 +61,14 @@ async def async_engine():
 
     yield engine
 
-    # Clean up tables
+    # Clean up tables - DROP CASCADE to handle dependent views
     async with engine.begin() as conn:
+        # Drop dependent views first
+        await conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
+        await conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
+        # Now drop tables
         await conn.run_sync(Base.metadata.drop_all)
 
     await engine.dispose()
@@ -96,7 +102,14 @@ def sync_engine():
 
     yield engine
 
-    # Clean up tables
+    # Clean up tables - handle dependent views
+    with engine.begin() as conn:
+        # Drop dependent views first
+        conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS partition_distribution CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS active_chunking_configs CASCADE"))
+        conn.execute(text("DROP VIEW IF EXISTS partition_health CASCADE"))
+    # Now drop tables
     Base.metadata.drop_all(bind=engine)
     engine.dispose()
 
@@ -204,7 +217,7 @@ def auth_headers(auth_token: str) -> dict[str, str]:
 @pytest_asyncio.fixture(scope="function")
 async def async_client(
     async_session: AsyncSession,
-    _redis_client: Any,
+    redis_client: Any,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Create an async HTTP client for testing."""
 

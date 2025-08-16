@@ -264,7 +264,7 @@ class TestChunkingMemoryStability:
 
             # Store in cache
             cache_key = f"preview:{preview_id}"
-            redis_client.setex(
+            await redis_client.setex(
                 cache_key,
                 900,  # 15 minutes TTL
                 str(preview_data),
@@ -279,12 +279,12 @@ class TestChunkingMemoryStability:
                 if i > 50:
                     # Delete old entries
                     for key in cache_entries[:10]:
-                        redis_client.delete(key)
+                        await redis_client.delete(key)
                     cache_entries = cache_entries[10:]
 
         # Force cleanup
         for key in cache_entries:
-            redis_client.delete(key)
+            await redis_client.delete(key)
 
         gc.collect()
         stats = memory_monitor.stop()
@@ -458,7 +458,7 @@ class TestWebSocketMemoryStability:
 
         # Clear Redis streams
         for _, operation_id in connections:
-            redis_client.delete(f"stream:chunking:{operation_id}")
+            await redis_client.delete(f"stream:chunking:{operation_id}")
 
         gc.collect()
         stats = memory_monitor.stop()
