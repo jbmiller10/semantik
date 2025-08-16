@@ -42,6 +42,7 @@ from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
 from .api.v2.operations import operation_websocket  # noqa: E402
 from .background_tasks import start_background_tasks, stop_background_tasks  # noqa: E402
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
+from .middleware.csp import CSPMiddleware  # noqa: E402
 from .middleware.rate_limit import RateLimitMiddleware  # noqa: E402
 from .rate_limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
 
@@ -236,6 +237,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
 
     # Add correlation middleware BEFORE other middleware for proper context propagation
     app.add_middleware(CorrelationMiddleware)
+
+    # Add CSP middleware for XSS prevention
+    app.add_middleware(CSPMiddleware)
 
     # Add rate limit middleware to set user in request.state
     app.add_middleware(RateLimitMiddleware)
