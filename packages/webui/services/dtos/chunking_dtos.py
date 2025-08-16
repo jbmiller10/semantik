@@ -445,7 +445,9 @@ class ServiceChunkingStats:
         """Convert to API response model."""
         # Handle strategy conversion
         try:
-            strategy = ChunkingStrategy(self.strategy_used) if isinstance(self.strategy_used, str) else self.strategy_used
+            strategy = (
+                ChunkingStrategy(self.strategy_used) if isinstance(self.strategy_used, str) else self.strategy_used
+            )
         except ValueError as e:
             logger.warning(f"Invalid strategy value {self.strategy_used}: {e}")
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback

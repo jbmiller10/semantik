@@ -252,7 +252,7 @@ class TestChunkingServiceErrorHandling:
         except ConnectionError:
             # If Redis failure is treated as fatal, that's also acceptable
             pass
-        
+
         # Verify Redis was called
         assert mock_dependencies["redis_client"].get.called
 

@@ -317,7 +317,7 @@ class TestStrategyManagement:
         """Test successful strategy recommendation."""
         # Import DTOs
         from packages.webui.services.dtos import ServiceStrategyRecommendation
-        
+
         # Setup mock with DTO
         mock_chunking_service.recommend_strategy.return_value = ServiceStrategyRecommendation(
             strategy=ChunkingStrategy.SEMANTIC.value,
@@ -356,11 +356,11 @@ class TestPreviewOperations:
         """Test generating preview with provided content."""
         # Import the DTO
         from packages.webui.services.dtos import ServiceChunkPreview, ServicePreviewResponse
-        
+
         # Setup mock
         preview_id = str(uuid.uuid4())
         mock_chunking_service.track_preview_usage.return_value = None
-        
+
         # Return a ServicePreviewResponse DTO as expected by the updated endpoint
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=preview_id,
@@ -420,11 +420,11 @@ class TestPreviewOperations:
         """Test generating preview with document ID."""
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         # Setup mock
         preview_id = str(uuid.uuid4())
         mock_chunking_service.track_preview_usage.return_value = None
-        
+
         # Return a ServicePreviewResponse DTO
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=preview_id,
@@ -530,7 +530,7 @@ class TestPreviewOperations:
 
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=str(uuid.uuid4()),
@@ -589,12 +589,7 @@ class TestPreviewOperations:
                 ),
                 ServiceStrategyComparison(
                     strategy="semantic",
-                    config={
-                        "strategy": "semantic", 
-                        "chunk_size": 512, 
-                        "chunk_overlap": 50, 
-                        "preserve_sentences": True
-                    },
+                    config={"strategy": "semantic", "chunk_size": 512, "chunk_overlap": 50, "preserve_sentences": True},
                     sample_chunks=[
                         ServiceChunkPreview(
                             index=0,
@@ -652,7 +647,7 @@ class TestPreviewOperations:
         """Test retrieving cached preview results."""
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         preview_id = str(uuid.uuid4())
         mock_chunking_service.get_cached_preview_by_id.return_value = ServicePreviewResponse(
             preview_id=preview_id,
@@ -841,7 +836,7 @@ class TestCollectionProcessing:
         """Test getting chunking statistics for a collection."""
         # Import the DTO
         from packages.webui.services.dtos import ServiceChunkingStats
-        
+
         # Return a ServiceChunkingStats DTO as expected by the updated endpoint
         mock_stats = ServiceChunkingStats(
             total_documents=10,
@@ -890,10 +885,10 @@ class TestAnalyticsEndpoints:
         """Test getting metrics grouped by strategy."""
         # Import the DTO and create default metrics
         from packages.webui.services.dtos import ServiceStrategyMetrics
-        
+
         # Mock the service to return default metrics
         mock_chunking_service.get_metrics_by_strategy.return_value = ServiceStrategyMetrics.create_default_metrics()
-        
+
         response = client.get("/api/v2/chunking/metrics/by-strategy", params={"period_days": 30})
 
         assert response.status_code == status.HTTP_200_OK
@@ -1120,7 +1115,7 @@ class TestSecurityAndValidation:
         """Test that SQL injection attempts are properly handled."""
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         # Setup mock to return a valid response if validation passes
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
@@ -1154,9 +1149,9 @@ class TestSecurityAndValidation:
         """Test that XSS attempts are properly sanitized."""
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         xss_payload = "<script>alert('XSS')</script>"
-        
+
         # Mock the service to handle XSS content
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
@@ -1187,7 +1182,7 @@ class TestEdgeCases:
         """Test preview with empty content."""
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=str(uuid.uuid4()),
@@ -1213,7 +1208,7 @@ class TestEdgeCases:
         """Test handling of unicode content."""
         # Import the DTOs
         from packages.webui.services.dtos import ServiceChunkPreview, ServicePreviewResponse
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=str(uuid.uuid4()),
@@ -1307,7 +1302,7 @@ class TestPerformance:
 
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(
             preview_id=str(uuid.uuid4()),
@@ -1334,7 +1329,7 @@ class TestPerformance:
 
         # Import the DTO
         from packages.webui.services.dtos import ServicePreviewResponse
-        
+
         # First call - not cached
         mock_chunking_service.track_preview_usage.return_value = None
         mock_chunking_service.preview_chunking.return_value = ServicePreviewResponse(

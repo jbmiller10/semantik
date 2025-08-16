@@ -96,7 +96,7 @@ class TestChunkingService:
         assert result.total_chunks >= 1  # At least one chunk
         assert len(result.chunks) <= 3  # Respects max_chunks
         assert isinstance(result.processing_time_ms, int)
-        
+
         # Convert to API model to check additional fields if needed
         api_model = result.to_api_model()
         assert api_model.strategy == ChunkingStrategy.RECURSIVE
@@ -126,7 +126,7 @@ class Test:
         # Verify result is a DTO
         assert isinstance(result, ServicePreviewResponse)
         assert result.strategy == ChunkingStrategy.RECURSIVE
-        
+
         # Check metadata in config for code file detection
         # The 'is_code_file' flag is typically stored in the config or metadata
         # Based on the service implementation, code detection affects the chunking strategy

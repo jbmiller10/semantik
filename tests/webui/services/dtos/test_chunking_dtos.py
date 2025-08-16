@@ -64,9 +64,7 @@ class TestServiceChunkPreview:
 
     def test_to_api_model_calculates_char_count(self):
         """Test that char_count is always calculated from content length."""
-        dto = ServiceChunkPreview(
-            index=0, content="Test", char_count=999  # char_count should be ignored
-        )
+        dto = ServiceChunkPreview(index=0, content="Test", char_count=999)  # char_count should be ignored
 
         result = dto.to_api_model()
 
@@ -310,9 +308,7 @@ class TestServiceStrategyRecommendation:
 
     def test_to_api_model_default_values(self):
         """Test default values for optional fields."""
-        dto = ServiceStrategyRecommendation(
-            strategy="fixed_size", confidence=0.7, reasoning="Simple text"
-        )
+        dto = ServiceStrategyRecommendation(strategy="fixed_size", confidence=0.7, reasoning="Simple text")
 
         result = dto.to_api_model()
 
@@ -401,9 +397,7 @@ class TestServiceCompareResponse:
             comparison_id="compare-123",
             comparisons=[comparison1, comparison2],
             recommendation=ServiceStrategyRecommendation(
-                strategy="semantic",
-                confidence=0.9,
-                reasoning="Best for this document type"
+                strategy="semantic", confidence=0.9, reasoning="Best for this document type"
             ),
             processing_time_ms=250,
         )
@@ -420,26 +414,26 @@ class TestServiceCompareResponse:
         """Test conversion with dict comparisons from service layer."""
         dto = ServiceCompareResponse(
             comparison_id="dict-test",
-            comparisons=[{
-                "strategy": "fixed_size",
-                "config": {"chunk_size": 512},
-                "sample_chunks": [],
-                "total_chunks": 10,
-                "avg_chunk_size": 500.0,
-                "size_variance": 20.0,
-                "quality_score": 0.8,
-                "processing_time_ms": 100
-            }],
-            recommendation=ServiceStrategyRecommendation(
-                strategy="fixed_size", confidence=0.9, reasoning="Test"
-            ),
-            processing_time_ms=100
+            comparisons=[
+                {
+                    "strategy": "fixed_size",
+                    "config": {"chunk_size": 512},
+                    "sample_chunks": [],
+                    "total_chunks": 10,
+                    "avg_chunk_size": 500.0,
+                    "size_variance": 20.0,
+                    "quality_score": 0.8,
+                    "processing_time_ms": 100,
+                }
+            ],
+            recommendation=ServiceStrategyRecommendation(strategy="fixed_size", confidence=0.9, reasoning="Test"),
+            processing_time_ms=100,
         )
-        
+
         result = dto.to_api_model()
         assert len(result.comparisons) == 1
         assert result.comparisons[0].strategy == ChunkingStrategy.FIXED_SIZE
-   
+
     def test_to_api_model_with_dict_recommendation(self):
         """Test conversion with dict recommendation from service layer."""
         dto = ServiceCompareResponse(
@@ -451,24 +445,24 @@ class TestServiceCompareResponse:
                 "reasoning": "Best for document",
                 "alternatives": ["recursive"],
                 "chunk_size": 1024,
-                "chunk_overlap": 100
+                "chunk_overlap": 100,
             },
-            processing_time_ms=150
+            processing_time_ms=150,
         )
-        
+
         result = dto.to_api_model()
         assert result.recommendation.recommended_strategy == ChunkingStrategy.SEMANTIC
         assert result.recommendation.confidence == 0.85
-   
+
     def test_to_api_model_with_invalid_recommendation(self):
         """Test fallback when recommendation is neither DTO nor dict."""
         dto = ServiceCompareResponse(
             comparison_id="fallback-test",
             comparisons=[],
             recommendation="invalid_type",  # Invalid type
-            processing_time_ms=100
+            processing_time_ms=100,
         )
-        
+
         result = dto.to_api_model()
         # Should use fallback recommendation
         assert result.recommendation.recommended_strategy == ChunkingStrategy.FIXED_SIZE
@@ -576,7 +570,7 @@ class TestErrorHandling:
         # Create DTO with invalid config that will cause ValidationError
         dto = ServicePreviewResponse(
             preview_id="test",
-            strategy="fixed_size",  # Valid strategy 
+            strategy="fixed_size",  # Valid strategy
             config={"chunk_size": "not_an_int"},  # Invalid config - chunk_size should be int
             chunks=[],
             total_chunks=0,
@@ -585,7 +579,7 @@ class TestErrorHandling:
 
         # Should not raise, but log warning for invalid config
         result = dto.to_api_model()
-        
+
         # Check that a warning was logged about invalid config
         mock_logger.warning.assert_called()
         assert result.config.strategy == ChunkingStrategy.FIXED_SIZE
@@ -597,24 +591,20 @@ class TestErrorHandling:
         dto1 = ServicePreviewResponse(
             preview_id="invalid-strategy",
             strategy="invalid_strategy_name",
-            config={}, 
-            chunks=[], 
-            total_chunks=0, 
-            processing_time_ms=100
+            config={},
+            chunks=[],
+            total_chunks=0,
+            processing_time_ms=100,
         )
         result1 = dto1.to_api_model()
         mock_logger.warning.assert_called()
         assert result1.strategy == ChunkingStrategy.FIXED_SIZE  # Fallback
-        
+
         # Reset mock
         mock_logger.reset_mock()
-        
+
         # Test ServiceStrategyMetrics with invalid strategy
-        dto2 = ServiceStrategyMetrics(
-            strategy="non_existent_strategy",
-            usage_count=10,
-            avg_chunk_size=500
-        )
+        dto2 = ServiceStrategyMetrics(strategy="non_existent_strategy", usage_count=10, avg_chunk_size=500)
         result2 = dto2.to_api_model()
         mock_logger.warning.assert_called()
         assert result2.strategy == ChunkingStrategy.FIXED_SIZE  # Fallback
@@ -626,13 +616,13 @@ class TestErrorHandling:
             strategy="semantic",
             confidence=0.8,
             reasoning="Test",
-            alternatives=["recursive", "invalid_strategy", "markdown", "another_invalid"]
+            alternatives=["recursive", "invalid_strategy", "markdown", "another_invalid"],
         )
         result = dto.to_api_model()
-        
+
         # Should have logged warnings for invalid strategies
         assert mock_logger.warning.call_count >= 2  # At least 2 warnings for invalid alternatives
-        
+
         # Should only include valid alternatives
         assert ChunkingStrategy.RECURSIVE in result.alternative_strategies
         assert ChunkingStrategy.MARKDOWN in result.alternative_strategies
