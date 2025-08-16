@@ -961,21 +961,11 @@ class ChunkingService:
                         chunks.append(chunk_content)
 
             processing_time_ms = (time.time() - start_time) * 1000
-            avg_chunk_size = sum(len(c) for c in chunks) / len(chunks) if chunks else 0
-
-            # Determine if it's a code file
-            is_code_file = False
-            if file_type:
-                code_extensions = [".py", ".js", ".ts", ".cpp", ".c", ".java", ".go", ".rs"]
-                is_code_file = file_type in code_extensions
 
             # Limit chunks if max_chunks specified
             preview_chunks = chunks
             if max_chunks:
                 preview_chunks = chunks[:max_chunks]
-
-            # Get recommendations
-            recommendations = self._get_recommendations(chunks, file_type)
 
             # Build chunk preview DTOs
             chunk_previews = []

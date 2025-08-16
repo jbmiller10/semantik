@@ -25,8 +25,8 @@ from packages.webui.auth import create_access_token, get_current_user
 from packages.webui.main import app
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.dtos.chunking_dtos import (
-    ServiceChunkPreview,
     ServiceChunkingStats,
+    ServiceChunkPreview,
     ServiceCompareResponse,
     ServicePreviewResponse,
     ServiceStrategyComparison,

@@ -16,16 +16,6 @@ from packages.shared.chunking.infrastructure.exceptions import (
     DocumentTooLargeError,
     ValidationError,
 )
-from packages.webui.services.dtos.chunking_dtos import (
-    ServiceChunkPreview,
-    ServiceChunkingStats,
-    ServiceCompareResponse,
-    ServicePreviewResponse,
-    ServiceStrategyComparison,
-    ServiceStrategyInfo,
-    ServiceStrategyMetrics,
-    ServiceStrategyRecommendation,
-)
 from packages.webui.api.v2.chunking import (
     compare_strategies,
     generate_preview,
@@ -47,6 +37,15 @@ from packages.webui.api.v2.chunking_schemas import (
 )
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
+from packages.webui.services.dtos.chunking_dtos import (
+    ServiceChunkingStats,
+    ServiceChunkPreview,
+    ServiceCompareResponse,
+    ServicePreviewResponse,
+    ServiceStrategyComparison,
+    ServiceStrategyInfo,
+    ServiceStrategyRecommendation,
+)
 
 
 @pytest.fixture()

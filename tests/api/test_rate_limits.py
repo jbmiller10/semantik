@@ -126,13 +126,12 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
 async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that compare endpoint enforces stricter rate limits."""
     from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service
-
     from packages.webui.services.dtos import (
         ServiceCompareResponse,
         ServiceStrategyComparison,
         ServiceStrategyRecommendation,
     )
+    from packages.webui.services.factory import get_chunking_service
 
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
