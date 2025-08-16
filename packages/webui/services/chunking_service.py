@@ -1526,10 +1526,7 @@ class ChunkingService:
             if not collection:
                 from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
-                raise ResourceNotFoundError(
-                    resource_type="Collection",
-                    resource_id=collection_id
-                )
+                raise ResourceNotFoundError(resource_type="Collection", resource_id=collection_id)
 
             # Get chunk statistics from database
             from packages.shared.database.models import Chunk
