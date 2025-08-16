@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class ChunkingMetrics:
     """Service responsible for chunking metrics collection."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize metrics collectors."""
         # Operation metrics
         self.operation_counter = Counter(
@@ -157,7 +157,9 @@ class ChunkingMetrics:
             self.chunk_sizes.labels(strategy=strategy).observe(size)
 
         # Update total chunks in statistics
-        self.statistics["total_chunks_produced"] += chunk_count
+        total_chunks = self.statistics.get("total_chunks_produced", 0)
+        if isinstance(total_chunks, (int, float)):
+            self.statistics["total_chunks_produced"] = total_chunks + chunk_count
 
     def record_fallback(self, original_strategy: str) -> None:
         """
@@ -209,9 +211,10 @@ class ChunkingMetrics:
         stats = self.statistics.copy()
 
         # Calculate success rate
-        total = stats["total_operations"]
-        if total > 0:
-            stats["success_rate"] = (stats["successful_operations"] / total) * 100
+        total = stats.get("total_operations", 0)
+        successful = stats.get("successful_operations", 0)
+        if isinstance(total, (int, float)) and isinstance(successful, (int, float)) and total > 0:
+            stats["success_rate"] = (successful / total) * 100
         else:
             stats["success_rate"] = 0
 
@@ -227,7 +230,8 @@ class ChunkingMetrics:
         Returns:
             Dictionary of strategy-specific metrics
         """
-        usage = self.statistics["strategy_usage"].get(strategy, {})
+        strategy_usage = self.statistics.get("strategy_usage", {})
+        usage = strategy_usage.get(strategy, {}) if isinstance(strategy_usage, dict) else {}
 
         return {
             "strategy": strategy,
@@ -261,16 +265,28 @@ class ChunkingMetrics:
         duration: float,
     ) -> None:
         """Update internal statistics."""
-        self.statistics["total_operations"] += 1
+        # Update total operations
+        total_ops = self.statistics.get("total_operations", 0)
+        if isinstance(total_ops, int):
+            self.statistics["total_operations"] = total_ops + 1
 
         if context["success"]:
-            self.statistics["successful_operations"] += 1
+            success_ops = self.statistics.get("successful_operations", 0)
+            if isinstance(success_ops, int):
+                self.statistics["successful_operations"] = success_ops + 1
         else:
-            self.statistics["failed_operations"] += 1
+            failed_ops = self.statistics.get("failed_operations", 0)
+            if isinstance(failed_ops, int):
+                self.statistics["failed_operations"] = failed_ops + 1
 
         # Update strategy-specific stats
-        if strategy not in self.statistics["strategy_usage"]:
-            self.statistics["strategy_usage"][strategy] = {
+        strategy_usage = self.statistics.get("strategy_usage", {})
+        if not isinstance(strategy_usage, dict):
+            strategy_usage = {}
+            self.statistics["strategy_usage"] = strategy_usage
+            
+        if strategy not in strategy_usage:
+            strategy_usage[strategy] = {
                 "count": 0,
                 "success": 0,
                 "failure": 0,
@@ -279,7 +295,7 @@ class ChunkingMetrics:
                 "total_chunks": 0,
             }
 
-        strategy_stats = self.statistics["strategy_usage"][strategy]
+        strategy_stats = strategy_usage[strategy]
         strategy_stats["count"] += 1
 
         if context["success"]:
@@ -292,10 +308,11 @@ class ChunkingMetrics:
         strategy_stats["total_chunks"] += context.get("chunks_produced", 0)
 
         # Update overall average duration
-        total_ops = self.statistics["total_operations"]
-        if total_ops > 0:
-            current_avg = self.statistics["average_duration"]
-            self.statistics["average_duration"] = (current_avg * (total_ops - 1) + duration) / total_ops
+        total_ops = self.statistics.get("total_operations", 0)
+        if isinstance(total_ops, int) and total_ops > 0:
+            current_avg = self.statistics.get("average_duration", 0)
+            if isinstance(current_avg, (int, float)):
+                self.statistics["average_duration"] = (current_avg * (total_ops - 1) + duration) / total_ops
 
         self.statistics["last_operation"] = {
             "strategy": strategy,

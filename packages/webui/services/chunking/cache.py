@@ -23,7 +23,7 @@ class ChunkingCache:
     PREVIEW_CACHE_PREFIX = "chunking:preview"
     METRICS_CACHE_PREFIX = "chunking:metrics"
 
-    def __init__(self, redis_client: aioredis.Redis | None = None):
+    def __init__(self, redis_client: aioredis.Redis | None = None) -> None:
         """
         Initialize the chunking cache service.
 
@@ -56,10 +56,12 @@ class ChunkingCache:
         cache_key = self._generate_preview_key(content_hash, strategy, config)
 
         try:
-            cached_data = await self.redis.get(cache_key)
-            if cached_data:
-                logger.debug("Cache hit for preview: %s", cache_key)
-                return json.loads(cached_data)
+            if self.redis is not None:
+                cached_data = await self.redis.get(cache_key)
+                if cached_data:
+                    logger.debug("Cache hit for preview: %s", cache_key)
+                    data: dict[str, Any] = json.loads(cached_data)
+                    return data
         except Exception as e:
             logger.error("Error retrieving cached preview: %s", str(e))
 
@@ -97,11 +99,12 @@ class ChunkingCache:
             preview_data["cached_at"] = datetime.now(UTC).isoformat()
             preview_data["cache_key"] = cache_key
 
-            await self.redis.setex(
-                cache_key,
-                ttl,
-                json.dumps(preview_data),
-            )
+            if self.redis is not None:
+                await self.redis.setex(
+                    cache_key,
+                    ttl,
+                    json.dumps(preview_data),
+                )
             logger.debug("Cached preview with key: %s (TTL: %ds)", cache_key, ttl)
             return cache_key
         except Exception as e:
@@ -124,9 +127,11 @@ class ChunkingCache:
         cache_key = f"{self.PREVIEW_CACHE_PREFIX}:id:{cache_id}"
 
         try:
-            cached_data = await self.redis.get(cache_key)
-            if cached_data:
-                return json.loads(cached_data)
+            if self.redis is not None:
+                cached_data = await self.redis.get(cache_key)
+                if cached_data:
+                    data: dict[str, Any] = json.loads(cached_data)
+                    return data
         except Exception as e:
             logger.error("Error retrieving cached data by ID: %s", str(e))
 
@@ -158,11 +163,12 @@ class ChunkingCache:
             data["cache_id"] = cache_id
             data["cached_at"] = datetime.now(UTC).isoformat()
 
-            await self.redis.setex(
-                cache_key,
-                ttl,
-                json.dumps(data),
-            )
+            if self.redis is not None:
+                await self.redis.setex(
+                    cache_key,
+                    ttl,
+                    json.dumps(data),
+                )
             return cache_id
         except Exception as e:
             logger.error("Error caching with ID: %s", str(e))
@@ -185,11 +191,12 @@ class ChunkingCache:
 
         try:
             keys = []
-            async for key in self.redis.scan_iter(match=pattern):
-                keys.append(key)
+            if self.redis is not None:
+                async for key in self.redis.scan_iter(match=pattern):
+                    keys.append(key)
 
-            if keys:
-                deleted = await self.redis.delete(*keys)
+                if keys:
+                    deleted = await self.redis.delete(*keys)
                 logger.info("Cleared %d cache entries matching pattern: %s", deleted, pattern)
                 return deleted
         except Exception as e:
@@ -216,17 +223,18 @@ class ChunkingCache:
 
         try:
             # Track overall metrics
-            metric_key = f"{self.METRICS_CACHE_PREFIX}:{strategy}"
-            field = "hits" if cache_hit else "misses"
-            await self.redis.hincrby(metric_key, field, 1)
+            if self.redis is not None:
+                metric_key = f"{self.METRICS_CACHE_PREFIX}:{strategy}"
+                field = "hits" if cache_hit else "misses"
+                await self.redis.hincrby(metric_key, field, 1)
 
-            # Track user-specific metrics
-            user_key = f"{self.METRICS_CACHE_PREFIX}:user:{user_id}"
-            await self.redis.hincrby(user_key, strategy, 1)
+                # Track user-specific metrics
+                user_key = f"{self.METRICS_CACHE_PREFIX}:user:{user_id}"
+                await self.redis.hincrby(user_key, strategy, 1)
 
-            # Set expiry for metrics (7 days)
-            await self.redis.expire(metric_key, 604800)
-            await self.redis.expire(user_key, 604800)
+                # Set expiry for metrics (7 days)
+                await self.redis.expire(metric_key, 604800)
+                await self.redis.expire(user_key, 604800)
         except Exception as e:
             logger.error("Error tracking cache usage: %s", str(e))
 
@@ -246,19 +254,20 @@ class ChunkingCache:
         metrics = {}
 
         try:
-            if strategy:
-                metric_key = f"{self.METRICS_CACHE_PREFIX}:{strategy}"
-                data = await self.redis.hgetall(metric_key)
-                metrics[strategy] = {
-                    "hits": int(data.get("hits", 0)),
-                    "misses": int(data.get("misses", 0)),
-                }
-            else:
-                # Get all strategy metrics
-                async for key in self.redis.scan_iter(match=f"{self.METRICS_CACHE_PREFIX}:*"):
-                    if ":user:" not in key:  # Skip user metrics
-                        strategy_name = key.split(":")[-1]
-                        data = await self.redis.hgetall(key)
+            if self.redis is not None:
+                if strategy:
+                    metric_key = f"{self.METRICS_CACHE_PREFIX}:{strategy}"
+                    data = await self.redis.hgetall(metric_key)
+                    metrics[strategy] = {
+                        "hits": int(data.get("hits", 0)),
+                        "misses": int(data.get("misses", 0)),
+                    }
+                else:
+                    # Get all strategy metrics
+                    async for key in self.redis.scan_iter(match=f"{self.METRICS_CACHE_PREFIX}:*"):
+                        if ":user:" not in key:  # Skip user metrics
+                            strategy_name = key.split(":")[-1]
+                            data = await self.redis.hgetall(key)
                         metrics[strategy_name] = {
                             "hits": int(data.get("hits", 0)),
                             "misses": int(data.get("misses", 0)),

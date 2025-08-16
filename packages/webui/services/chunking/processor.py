@@ -28,7 +28,7 @@ class ChunkingProcessor:
     DEFAULT_MIN_TOKEN_THRESHOLD = 100
     MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10MB
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the chunking processor."""
         self.strategy_mapping = {
             "fixed_size": "character",
@@ -66,7 +66,10 @@ class ChunkingProcessor:
         """
         # Validate document size
         if len(content) > self.MAX_DOCUMENT_SIZE:
-            raise DocumentTooLargeError(f"Document size {len(content)} exceeds maximum {self.MAX_DOCUMENT_SIZE}")
+            raise DocumentTooLargeError(
+                size=len(content),
+                max_size=self.MAX_DOCUMENT_SIZE
+            )
 
         config = config or {}
 
@@ -107,15 +110,18 @@ class ChunkingProcessor:
             )
 
         # Execute chunking
-        if factory_name in ["character", "semantic", "recursive", "markdown"]:
-            chunks = strategy_impl.chunk(
-                content,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-        else:
-            # For strategies with different signatures
-            chunks = strategy_impl.chunk(content, config)
+        # Create a ChunkConfig object for strategies that need it
+        from packages.shared.chunking.domain.value_objects import ChunkConfig
+        
+        chunk_config = ChunkConfig(
+            strategy_name=factory_name,
+            max_tokens=chunk_size,
+            overlap_tokens=chunk_overlap,
+            separator=config.get("separator", " "),
+        )
+        
+        # All strategies should accept content and ChunkConfig
+        chunks = strategy_impl.chunk(content, chunk_config)
 
         # Convert to standardized format
         return self._format_chunks(chunks, strategy)

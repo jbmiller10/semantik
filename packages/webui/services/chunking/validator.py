@@ -49,7 +49,7 @@ class ChunkingValidator:
         db_session: AsyncSession | None = None,
         collection_repo: CollectionRepository | None = None,
         document_repo: DocumentRepository | None = None,
-    ):
+    ) -> None:
         """
         Initialize the validator service.
 
@@ -247,12 +247,20 @@ class ChunkingValidator:
             if "embedding_model" in config:
                 valid_models = ["sentence-transformers", "openai", "cohere"]
                 if config["embedding_model"] not in valid_models:
-                    raise ValidationError(f"Invalid embedding_model. Valid options: {', '.join(valid_models)}")
+                    raise ValidationError(
+                        field="embedding_model",
+                        value=config["embedding_model"],
+                        reason=f"Invalid embedding_model. Valid options: {', '.join(valid_models)}"
+                    )
 
         elif strategy == "hierarchical" and "max_level" in config:
             max_level = config["max_level"]
             if not isinstance(max_level, int) or max_level < 1 or max_level > 5:
-                raise ValidationError("max_level must be an integer between 1 and 5")
+                raise ValidationError(
+                    field="max_level",
+                    value=max_level,
+                    reason="max_level must be an integer between 1 and 5"
+                )
 
     async def validate_document_access(
         self,
@@ -274,13 +282,21 @@ class ChunkingValidator:
             logger.warning("Document repository not available for access check")
             return
 
-        document = await self.document_repo.get(document_id)
+        document = await self.document_repo.get_by_id(document_id)
         if not document:
-            raise ValidationError(f"Document {document_id} not found")
+            raise ValidationError(
+                field="document_id",
+                value=document_id,
+                reason=f"Document {document_id} not found"
+            )
 
         # Check if user owns the collection containing the document
         if document.collection and document.collection.owner_id != user_id:
-            raise PermissionDeniedError(f"User {user_id} does not have access to document {document_id}")
+            raise PermissionDeniedError(
+                user_id=str(user_id),
+                resource=f"document:{document_id}",
+                action="read"
+            )
 
     async def validate_collection_access(
         self,
@@ -302,12 +318,20 @@ class ChunkingValidator:
             logger.warning("Collection repository not available for access check")
             return
 
-        collection = await self.collection_repo.get(collection_id)
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
-            raise ValidationError(f"Collection {collection_id} not found")
+            raise ValidationError(
+                field="collection_id",
+                value=collection_id,
+                reason=f"Collection {collection_id} not found"
+            )
 
         if collection.owner_id != user_id:
-            raise PermissionDeniedError(f"User {user_id} does not have access to collection {collection_id}")
+            raise PermissionDeniedError(
+                user_id=str(user_id),
+                resource=f"collection:{collection_id}",
+                action="read"
+            )
 
     def validate_collection_config(
         self,
@@ -329,7 +353,11 @@ class ChunkingValidator:
             return {}
 
         if not isinstance(config, dict):
-            raise ValidationError("Collection config must be a dictionary")
+            raise ValidationError(
+                field="config",
+                value=type(config).__name__,
+                reason="Collection config must be a dictionary"
+            )
 
         # Validate strategy if present
         if "strategy" in config:
@@ -338,7 +366,11 @@ class ChunkingValidator:
         # Validate strategy config if present
         if "strategy_config" in config:
             if "strategy" not in config:
-                raise ValidationError("strategy_config requires strategy to be specified")
+                raise ValidationError(
+                    field="strategy_config",
+                    value=config.get("strategy_config"),
+                    reason="strategy_config requires strategy to be specified"
+                )
 
             self.validate_config(config["strategy"], config["strategy_config"])
 
@@ -362,7 +394,9 @@ class ChunkingValidator:
         valid_operations = ["preview", "process", "reprocess"]
         if operation_type not in valid_operations:
             raise ValidationError(
-                f"Invalid operation type '{operation_type}'. Valid types: {', '.join(valid_operations)}"
+                field="operation_type",
+                value=operation_type,
+                reason=f"Invalid operation type '{operation_type}'. Valid types: {', '.join(valid_operations)}"
             )
 
         if operation_type == "process" and "collection_id" not in params:
@@ -373,6 +407,14 @@ class ChunkingValidator:
             )
 
         if operation_type == "reprocess" and "collection_id" not in params:
-            raise ValidationError("collection_id is required for reprocess operation")
+            raise ValidationError(
+                field="collection_id",
+                value=None,
+                reason="collection_id is required for reprocess operation"
+            )
         if operation_type == "reprocess" and "strategy" not in params:
-            raise ValidationError("strategy is required for reprocess operation")
+            raise ValidationError(
+                field="strategy",
+                value=None,
+                reason="strategy is required for reprocess operation"
+            )

@@ -14,7 +14,7 @@ class ChunkingConfigManager:
     """Service responsible for chunking configuration management."""
 
     # Default configurations for each strategy
-    DEFAULT_CONFIGS = {
+    DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
         "fixed_size": {
             "chunk_size": 1000,
             "chunk_overlap": 200,
@@ -63,7 +63,7 @@ class ChunkingConfigManager:
     }
 
     # Strategy metadata
-    STRATEGY_INFO = {
+    STRATEGY_INFO: dict[str, dict[str, Any]] = {
         "fixed_size": {
             "name": "Fixed Size",
             "description": "Splits text into fixed-size chunks with optional overlap",
@@ -130,9 +130,9 @@ class ChunkingConfigManager:
         },
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the configuration manager."""
-        self.custom_configs = {}
+        self.custom_configs: dict[str, dict[str, Any]] = {}
 
     def get_default_config(self, strategy: str) -> dict[str, Any]:
         """
@@ -144,7 +144,9 @@ class ChunkingConfigManager:
         Returns:
             Default configuration dictionary
         """
-        return self.DEFAULT_CONFIGS.get(strategy, {}).copy()
+        if strategy in self.DEFAULT_CONFIGS:
+            return self.DEFAULT_CONFIGS[strategy].copy()
+        return {}
 
     def get_strategy_info(self, strategy: str) -> dict[str, Any]:
         """
@@ -156,7 +158,8 @@ class ChunkingConfigManager:
         Returns:
             Strategy information dictionary
         """
-        info = self.STRATEGY_INFO.get(strategy, {}).copy()
+        strategy_info = self.STRATEGY_INFO.get(strategy, {})
+        info: dict[str, Any] = strategy_info.copy() if strategy_info else {}
         info["id"] = strategy
         info["default_config"] = self.get_default_config(strategy)
         return info
@@ -216,7 +219,7 @@ class ChunkingConfigManager:
         Returns:
             Recommendation with strategy and reasoning
         """
-        recommendation = {
+        recommendation: dict[str, Any] = {
             "strategy": "recursive",  # Safe default
             "confidence": 0.5,
             "reasoning": [],
@@ -229,27 +232,43 @@ class ChunkingConfigManager:
             if file_type in [".md", "markdown", "text/markdown"]:
                 recommendation["strategy"] = "markdown"
                 recommendation["confidence"] = 0.9
-                recommendation["reasoning"].append("Markdown file detected")
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Markdown file detected")
             elif file_type in [".py", ".js", ".java", ".cpp", ".c", ".go"]:
                 recommendation["strategy"] = "recursive"
                 recommendation["confidence"] = 0.8
-                recommendation["reasoning"].append("Code file detected")
-                recommendation["alternatives"].append("fixed_size")
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Code file detected")
+                alternatives_list = recommendation["alternatives"]
+                if isinstance(alternatives_list, list):
+                    alternatives_list.append("fixed_size")
             elif file_type in [".pdf", ".docx", ".doc"]:
                 recommendation["strategy"] = "document_structure"
                 recommendation["confidence"] = 0.7
-                recommendation["reasoning"].append("Structured document format")
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Structured document format")
 
         # Content length based adjustments
         if content_length:
             if content_length < 1000:
                 recommendation["strategy"] = "fixed_size"
-                recommendation["confidence"] = max(recommendation["confidence"], 0.6)
-                recommendation["reasoning"].append("Short content - simple chunking sufficient")
+                confidence = recommendation.get("confidence", 0.5)
+                if isinstance(confidence, (int, float)):
+                    recommendation["confidence"] = max(confidence, 0.6)
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Short content - simple chunking sufficient")
             elif content_length > 100000:
                 if recommendation["strategy"] == "recursive":
-                    recommendation["alternatives"].append("hierarchical")
-                    recommendation["reasoning"].append("Large document - consider hierarchical")
+                    alternatives_list = recommendation["alternatives"]
+                    if isinstance(alternatives_list, list):
+                        alternatives_list.append("hierarchical")
+                    reasoning_list = recommendation["reasoning"]
+                    if isinstance(reasoning_list, list):
+                        reasoning_list.append("Large document - consider hierarchical")
 
         # Document type based adjustments
         if document_type:
@@ -257,19 +276,27 @@ class ChunkingConfigManager:
             if document_type in ["technical", "research", "academic"]:
                 recommendation["strategy"] = "semantic"
                 recommendation["confidence"] = 0.8
-                recommendation["reasoning"].append("Technical content benefits from semantic chunking")
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Technical content benefits from semantic chunking")
             elif document_type == "narrative":
                 recommendation["strategy"] = "recursive"
                 recommendation["confidence"] = 0.7
-                recommendation["reasoning"].append("Narrative text works well with recursive splitting")
+                reasoning_list = recommendation["reasoning"]
+                if isinstance(reasoning_list, list):
+                    reasoning_list.append("Narrative text works well with recursive splitting")
 
         # Add configuration suggestion
-        recommendation["suggested_config"] = self.get_default_config(recommendation["strategy"])
+        strategy_str = recommendation.get("strategy", "recursive")
+        if isinstance(strategy_str, str):
+            recommendation["suggested_config"] = self.get_default_config(strategy_str)
 
         # Adjust chunk size based on content length
         if content_length and content_length < 5000:
-            recommendation["suggested_config"]["chunk_size"] = 500
-            recommendation["suggested_config"]["chunk_overlap"] = 100
+            suggested_config = recommendation.get("suggested_config")
+            if isinstance(suggested_config, dict):
+                suggested_config["chunk_size"] = 500
+                suggested_config["chunk_overlap"] = 100
 
         return recommendation
 

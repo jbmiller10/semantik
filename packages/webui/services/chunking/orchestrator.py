@@ -50,7 +50,7 @@ class ChunkingOrchestrator:
         db_session: AsyncSession | None = None,
         collection_repo: CollectionRepository | None = None,
         document_repo: DocumentRepository | None = None,
-    ):
+    ) -> None:
         """
         Initialize the orchestrator with all required services.
 
@@ -108,6 +108,12 @@ class ChunkingOrchestrator:
             content = await self._load_document_content(document_id)
 
         # Generate content hash for caching
+        if content is None:
+            raise ValidationError(
+                field="content",
+                value=None,
+                reason="Content is required for preview"
+            )
         content_hash = self.cache.generate_content_hash(content)
 
         # Check cache
@@ -123,7 +129,12 @@ class ChunkingOrchestrator:
 
         # Execute chunking with metrics tracking
         async with self.metrics.measure_operation(strategy) as context:
-            chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=True)
+            chunks = await self.processor.process_document(
+                content,  # content is guaranteed non-None here
+                strategy,
+                merged_config,
+                use_fallback=True
+            )
             context["chunks_produced"] = len(chunks)
             self.metrics.record_chunks_produced(strategy, chunks)
 
@@ -168,8 +179,8 @@ class ChunkingOrchestrator:
 
         # Use all strategies if none specified
         if not strategies:
-            strategies = self.config_manager.get_all_strategies()
-            strategies = [s["id"] for s in strategies]
+            all_strategies = self.config_manager.get_all_strategies()
+            strategies = [s["id"] for s in all_strategies]
 
         comparisons = []
 
@@ -228,9 +239,13 @@ class ChunkingOrchestrator:
         # Get recommendation
         recommendation = self._get_recommendation(comparisons, content)
 
+        # Convert to proper type for ServiceCompareResponse
+        from typing import cast
+        comparisons_typed = cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons)
+        
         return ServiceCompareResponse(
             comparison_id=str(uuid.uuid4()),
-            comparisons=comparisons,
+            comparisons=comparisons_typed,
             recommendation=recommendation,
             processing_time_ms=0,  # Could track actual time if needed
         )
@@ -270,7 +285,12 @@ class ChunkingOrchestrator:
             except Exception as e:
                 logger.warning("Strategy %s failed, using fallback: %s", strategy, str(e))
                 self.metrics.record_fallback(strategy)
-                chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=True)
+                chunks = await self.processor.process_document(
+                    content,
+                    strategy,
+                    merged_config,
+                    use_fallback=True
+                )
 
             context["chunks_produced"] = len(chunks)
             self.metrics.record_chunks_produced(strategy, chunks)
@@ -372,12 +392,13 @@ class ChunkingOrchestrator:
 
         # Get documents in collection
         if self.document_repo:
-            documents = await self.document_repo.get_by_collection(collection_id)
+            documents_tuple = await self.document_repo.list_by_collection(collection_id)
+            documents = documents_tuple[0]  # Extract the list from the tuple
             total_documents = len(documents)
             total_chunks = sum(doc.chunk_count or 0 for doc in documents)
 
             # Calculate strategy breakdown
-            strategy_breakdown = {}
+            strategy_breakdown: dict[str, int] = {}
             for doc in documents:
                 strategy = doc.chunking_strategy or "unknown"
                 strategy_breakdown[strategy] = strategy_breakdown.get(strategy, 0) + 1
@@ -393,8 +414,8 @@ class ChunkingOrchestrator:
         return ServiceChunkingStats(
             total_documents=total_documents,
             total_chunks=total_chunks,
-            average_chunk_size=metrics_data.get("average_chunk_size", 0),
-            strategy_breakdown=strategy_breakdown,
+            avg_chunk_size=metrics_data.get("average_chunk_size", 0),
+            strategy_used="mixed",  # Collection has mixed strategies
             last_updated=metrics_data.get("last_operation", {}).get("timestamp"),
         )
 
@@ -407,7 +428,7 @@ class ChunkingOrchestrator:
                 reason="Document repository not available"
             )
 
-        document = await self.document_repo.get(document_id)
+        document = await self.document_repo.get_by_id(document_id)
         if not document:
             raise ValidationError(
                 field="document_id",
@@ -433,9 +454,13 @@ class ChunkingOrchestrator:
             for i, chunk in enumerate(chunks[:10])  # Limit to 10 for preview
         ]
 
+        # Convert to proper type for ServicePreviewResponse
+        from typing import cast
+        preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], preview_chunks)
+        
         return ServicePreviewResponse(
             preview_id=data.get("cache_key", str(uuid.uuid4())),
-            chunks=preview_chunks,
+            chunks=preview_chunks_typed,
             total_chunks=len(chunks),
             metrics=stats,
             strategy=data.get("strategy", "unknown"),
@@ -496,11 +521,11 @@ class ChunkingOrchestrator:
         """Get strategy recommendation based on comparisons."""
         # Find best strategy based on quality score
         best_strategy = None
-        best_score = 0
+        best_score = 0.0
 
         for comp in comparisons:
             if comp.quality_score > best_score:
-                best_score = comp.quality_score
+                best_score = float(comp.quality_score)
                 best_strategy = comp.strategy
 
         if not best_strategy:
