@@ -23,9 +23,9 @@ class TestAdaptiveBatchSizeManager:
         assert manager._default_safety_margin == 0.3
 
         # Invalid safety margin
-        with pytest.raises(ValueError, match="Safety margin must be between 0 and 0.5"):
+        with pytest.raises(ValueError, match="Safety margin must be between 0.0 and 0.5"):
             AdaptiveBatchSizeManager(default_safety_margin=0.6)
-        with pytest.raises(ValueError, match="Safety margin must be between 0 and 0.5"):
+        with pytest.raises(ValueError, match="Safety margin must be between 0.0 and 0.5"):
             AdaptiveBatchSizeManager(default_safety_margin=-0.1)
 
     def test_batch_size_operations(self) -> None:

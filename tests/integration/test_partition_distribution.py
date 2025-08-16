@@ -712,7 +712,7 @@ class TestPartitionBulkOperations:
                 chunk = Chunk(
                     collection_id=collection.id,
                     document_id=doc.id,
-                    content=f"Bulk chunk {chunk_idx} for {doc.name}",
+                    content=f"Bulk chunk {chunk_idx} for {doc.file_name}",
                     chunk_index=chunk_idx,
                     start_offset=chunk_idx * 100,
                     end_offset=(chunk_idx + 1) * 100,
