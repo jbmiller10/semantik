@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from packages.shared.chunking.infrastructure.exceptions import ValidationError
+from packages.shared.chunks.metadata_sanitizer import MetadataSanitizer
 
 
 class ChunkingInputValidator:
@@ -252,28 +253,8 @@ class ChunkingInputValidator:
         Returns:
             Sanitized metadata dictionary
         """
-        if not metadata:
-            return {}
-
-        sanitized = {}
-        for key, value in metadata.items():
-            # Limit key length
-            if len(str(key)) > 100:
-                continue
-
-            # Sanitize string values
-            if isinstance(value, str):
-                # Remove null bytes
-                value = value.replace("\x00", "")
-                # Limit string length
-                if len(value) > 1000:
-                    value = value[:1000]
-                # Basic HTML escape
-                value = value.replace("<", "&lt;").replace(">", "&gt;")
-
-            sanitized[key] = value
-
-        return sanitized
+        # Delegate to the centralized sanitizer for comprehensive XSS protection
+        return MetadataSanitizer.sanitize_metadata(metadata)
 
     @classmethod
     def validate_priority(cls, priority: int, correlation_id: str) -> None:
