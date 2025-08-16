@@ -63,13 +63,14 @@ class ChunkingServiceAdapter:
         return {
             "chunks": [
                 {
-                    "content": chunk.content if hasattr(chunk, 'content') else chunk.get('content', ''),
-                    "index": chunk.index if hasattr(chunk, 'index') else chunk.get('index', 0),
+                    "content": chunk.content if hasattr(chunk, "content") else chunk.get("content", ""),
+                    "index": chunk.index if hasattr(chunk, "index") else chunk.get("index", 0),
                     "size": (
-                        chunk.char_count if hasattr(chunk, 'char_count')
-                        else len(chunk.content if hasattr(chunk, 'content') else chunk.get('content', ''))
+                        chunk.char_count
+                        if hasattr(chunk, "char_count")
+                        else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
                     ),
-                    "metadata": chunk.metadata if hasattr(chunk, 'metadata') else chunk.get('metadata', {}),
+                    "metadata": chunk.metadata if hasattr(chunk, "metadata") else chunk.get("metadata", {}),
                 }
                 for chunk in result.chunks
             ],
@@ -116,31 +117,41 @@ class ChunkingServiceAdapter:
         return {
             "comparisons": [
                 {
-                    "strategy": comp.strategy if hasattr(comp, 'strategy') else comp.get('strategy', ''),
-                    "chunk_count": comp.total_chunks if hasattr(comp, 'total_chunks') else comp.get('total_chunks', 0),
-                    "avg_chunk_size": comp.avg_chunk_size if hasattr(comp, 'avg_chunk_size') else comp.get('avg_chunk_size', 0),
+                    "strategy": comp.strategy if hasattr(comp, "strategy") else comp.get("strategy", ""),
+                    "chunk_count": comp.total_chunks if hasattr(comp, "total_chunks") else comp.get("total_chunks", 0),
+                    "avg_chunk_size": (
+                        comp.avg_chunk_size if hasattr(comp, "avg_chunk_size") else comp.get("avg_chunk_size", 0)
+                    ),
                     "min_chunk_size": 0,  # Not available in ServiceStrategyComparison
                     "max_chunk_size": 0,  # Not available in ServiceStrategyComparison
                     "preview_chunks": [
                         {
-                            "content": chunk.content if hasattr(chunk, 'content') else chunk.get('content', ''),
-                            "index": chunk.index if hasattr(chunk, 'index') else chunk.get('index', 0),
+                            "content": chunk.content if hasattr(chunk, "content") else chunk.get("content", ""),
+                            "index": chunk.index if hasattr(chunk, "index") else chunk.get("index", 0),
                             "size": (
-                                chunk.char_count if hasattr(chunk, 'char_count')
-                                else len(chunk.content if hasattr(chunk, 'content') else chunk.get('content', ''))
+                                chunk.char_count
+                                if hasattr(chunk, "char_count")
+                                else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
                             ),
-                            "metadata": chunk.metadata if hasattr(chunk, 'metadata') else chunk.get('metadata', {}),
+                            "metadata": chunk.metadata if hasattr(chunk, "metadata") else chunk.get("metadata", {}),
                         }
-                        for chunk in (comp.sample_chunks if hasattr(comp, 'sample_chunks') else comp.get('sample_chunks', []))
+                        for chunk in (
+                            comp.sample_chunks if hasattr(comp, "sample_chunks") else comp.get("sample_chunks", [])
+                        )
                     ],
                     "metrics": {
                         "processing_time": (
-                            comp.processing_time_ms / 1000.0 if hasattr(comp, 'processing_time_ms')
-                            else comp.get('processing_time_ms', 0) / 1000.0
+                            comp.processing_time_ms / 1000.0
+                            if hasattr(comp, "processing_time_ms")
+                            else comp.get("processing_time_ms", 0) / 1000.0
                         ),
                         "memory_usage": 0,
-                        "quality_score": comp.quality_score if hasattr(comp, 'quality_score') else comp.get('quality_score', 0),
-                        "chunk_variance": comp.size_variance if hasattr(comp, 'size_variance') else comp.get('size_variance', 0),
+                        "quality_score": (
+                            comp.quality_score if hasattr(comp, "quality_score") else comp.get("quality_score", 0)
+                        ),
+                        "chunk_variance": (
+                            comp.size_variance if hasattr(comp, "size_variance") else comp.get("size_variance", 0)
+                        ),
                         "error": None,
                     },
                 }
@@ -150,23 +161,23 @@ class ChunkingServiceAdapter:
                 {
                     "recommended_strategy": (
                         result.recommendation.strategy
-                        if hasattr(result.recommendation, 'strategy')
-                        else result.recommendation.get('strategy', '')
+                        if hasattr(result.recommendation, "strategy")
+                        else result.recommendation.get("strategy", "")
                     ),
                     "confidence": (
                         result.recommendation.confidence
-                        if hasattr(result.recommendation, 'confidence')
-                        else result.recommendation.get('confidence', 0)
+                        if hasattr(result.recommendation, "confidence")
+                        else result.recommendation.get("confidence", 0)
                     ),
                     "reasoning": (
                         result.recommendation.reasoning
-                        if hasattr(result.recommendation, 'reasoning')
-                        else result.recommendation.get('reasoning', '')
+                        if hasattr(result.recommendation, "reasoning")
+                        else result.recommendation.get("reasoning", "")
                     ),
                     "alternative_strategies": (
                         result.recommendation.alternatives
-                        if hasattr(result.recommendation, 'alternatives')
-                        else result.recommendation.get('alternatives', [])
+                        if hasattr(result.recommendation, "alternatives")
+                        else result.recommendation.get("alternatives", [])
                     ),
                     "suggested_config": {},
                 }

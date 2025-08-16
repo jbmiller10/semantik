@@ -109,11 +109,7 @@ class ChunkingOrchestrator:
 
         # Generate content hash for caching
         if content is None:
-            raise ValidationError(
-                field="content",
-                value=None,
-                reason="Content is required for preview"
-            )
+            raise ValidationError(field="content", value=None, reason="Content is required for preview")
         content_hash = self.cache.generate_content_hash(content)
 
         # Check cache
@@ -130,10 +126,7 @@ class ChunkingOrchestrator:
         # Execute chunking with metrics tracking
         async with self.metrics.measure_operation(strategy) as context:
             chunks = await self.processor.process_document(
-                content,  # content is guaranteed non-None here
-                strategy,
-                merged_config,
-                use_fallback=True
+                content, strategy, merged_config, use_fallback=True  # content is guaranteed non-None here
             )
             context["chunks_produced"] = len(chunks)
             self.metrics.record_chunks_produced(strategy, chunks)
@@ -241,8 +234,9 @@ class ChunkingOrchestrator:
 
         # Convert to proper type for ServiceCompareResponse
         from typing import cast
+
         comparisons_typed = cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons)
-        
+
         return ServiceCompareResponse(
             comparison_id=str(uuid.uuid4()),
             comparisons=comparisons_typed,
@@ -285,12 +279,7 @@ class ChunkingOrchestrator:
             except Exception as e:
                 logger.warning("Strategy %s failed, using fallback: %s", strategy, str(e))
                 self.metrics.record_fallback(strategy)
-                chunks = await self.processor.process_document(
-                    content,
-                    strategy,
-                    merged_config,
-                    use_fallback=True
-                )
+                chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=True)
 
             context["chunks_produced"] = len(chunks)
             self.metrics.record_chunks_produced(strategy, chunks)
@@ -365,10 +354,11 @@ class ChunkingOrchestrator:
         return ServiceStrategyRecommendation(
             strategy=rec_data["strategy"],
             confidence=rec_data["confidence"],
-            reasoning="\n".join(rec_data["reasoning"]) if isinstance(rec_data["reasoning"], list) else rec_data["reasoning"],
+            reasoning=(
+                "\n".join(rec_data["reasoning"]) if isinstance(rec_data["reasoning"], list) else rec_data["reasoning"]
+            ),
             alternatives=[
-                alt.get("strategy", alt) if isinstance(alt, dict) else alt
-                for alt in rec_data.get("alternatives", [])
+                alt.get("strategy", alt) if isinstance(alt, dict) else alt for alt in rec_data.get("alternatives", [])
             ],
         )
 
@@ -422,19 +412,11 @@ class ChunkingOrchestrator:
     async def _load_document_content(self, document_id: str) -> str:
         """Load document content from repository."""
         if not self.document_repo:
-            raise ValidationError(
-                field="document_repo",
-                value=None,
-                reason="Document repository not available"
-            )
+            raise ValidationError(field="document_repo", value=None, reason="Document repository not available")
 
         document = await self.document_repo.get_by_id(document_id)
         if not document:
-            raise ValidationError(
-                field="document_id",
-                value=document_id,
-                reason="Document not found"
-            )
+            raise ValidationError(field="document_id", value=document_id, reason="Document not found")
 
         return document.content or ""
 
@@ -456,8 +438,9 @@ class ChunkingOrchestrator:
 
         # Convert to proper type for ServicePreviewResponse
         from typing import cast
+
         preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], preview_chunks)
-        
+
         return ServicePreviewResponse(
             preview_id=data.get("cache_key", str(uuid.uuid4())),
             chunks=preview_chunks_typed,

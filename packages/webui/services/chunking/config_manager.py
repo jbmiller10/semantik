@@ -256,7 +256,7 @@ class ChunkingConfigManager:
             if content_length < 1000:
                 recommendation["strategy"] = "fixed_size"
                 confidence = recommendation.get("confidence", 0.5)
-                if isinstance(confidence, (int, float)):
+                if isinstance(confidence, int | float):
                     recommendation["confidence"] = max(confidence, 0.6)
                 reasoning_list = recommendation["reasoning"]
                 if isinstance(reasoning_list, list):

@@ -66,10 +66,7 @@ class ChunkingProcessor:
         """
         # Validate document size
         if len(content) > self.MAX_DOCUMENT_SIZE:
-            raise DocumentTooLargeError(
-                size=len(content),
-                max_size=self.MAX_DOCUMENT_SIZE
-            )
+            raise DocumentTooLargeError(size=len(content), max_size=self.MAX_DOCUMENT_SIZE)
 
         config = config or {}
 
@@ -83,10 +80,7 @@ class ChunkingProcessor:
                     str(e),
                 )
                 return self._apply_simple_fallback(content, config)
-            raise ChunkingStrategyError(
-                strategy=strategy,
-                reason=f"Chunking failed: {str(e)}"
-            ) from e
+            raise ChunkingStrategyError(strategy=strategy, reason=f"Chunking failed: {str(e)}") from e
 
     async def _execute_strategy(
         self,
@@ -104,22 +98,19 @@ class ChunkingProcessor:
         # Get strategy from domain layer
         strategy_impl = get_strategy(factory_name)
         if not strategy_impl:
-            raise ChunkingStrategyError(
-                strategy=factory_name,
-                reason=f"Strategy '{factory_name}' not found"
-            )
+            raise ChunkingStrategyError(strategy=factory_name, reason=f"Strategy '{factory_name}' not found")
 
         # Execute chunking
         # Create a ChunkConfig object for strategies that need it
         from packages.shared.chunking.domain.value_objects import ChunkConfig
-        
+
         chunk_config = ChunkConfig(
             strategy_name=factory_name,
             max_tokens=chunk_size,
             overlap_tokens=chunk_overlap,
             separator=config.get("separator", " "),
         )
-        
+
         # All strategies should accept content and ChunkConfig
         chunks = strategy_impl.chunk(content, chunk_config)
 

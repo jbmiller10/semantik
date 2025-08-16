@@ -84,16 +84,12 @@ class ChunkingValidator:
         # Must have either content or document_id
         if not content and not document_id:
             raise ValidationError(
-                field="content/document_id",
-                value=None,
-                reason="Either content or document_id must be provided"
+                field="content/document_id", value=None, reason="Either content or document_id must be provided"
             )
 
         if content and document_id:
             raise ValidationError(
-                field="content/document_id",
-                value="both provided",
-                reason="Cannot provide both content and document_id"
+                field="content/document_id", value="both provided", reason="Cannot provide both content and document_id"
             )
 
         # Validate content size
@@ -118,17 +114,13 @@ class ChunkingValidator:
             ValidationError: If content is invalid
         """
         if not content:
-            raise ValidationError(
-                field="content",
-                value=None,
-                reason="Content cannot be empty"
-            )
+            raise ValidationError(field="content", value=None, reason="Content cannot be empty")
 
         if len(content) > self.MAX_CONTENT_SIZE:
             raise ValidationError(
                 field="content",
                 value=f"{len(content)} bytes",
-                reason=f"Content size exceeds maximum {self.MAX_CONTENT_SIZE}"
+                reason=f"Content size exceeds maximum {self.MAX_CONTENT_SIZE}",
             )
 
         # Check for suspicious patterns (basic security check)
@@ -147,17 +139,13 @@ class ChunkingValidator:
             ValidationError: If strategy is invalid
         """
         if not strategy:
-            raise ValidationError(
-                field="strategy",
-                value=None,
-                reason="Strategy is required"
-            )
+            raise ValidationError(field="strategy", value=None, reason="Strategy is required")
 
         if strategy not in self.VALID_STRATEGIES:
             raise ValidationError(
                 field="strategy",
                 value=strategy,
-                reason=f"Invalid strategy. Valid strategies: {', '.join(self.VALID_STRATEGIES)}"
+                reason=f"Invalid strategy. Valid strategies: {', '.join(self.VALID_STRATEGIES)}",
             )
 
     def validate_config(self, strategy: str, config: dict[str, Any]) -> None:
@@ -173,9 +161,7 @@ class ChunkingValidator:
         """
         if not isinstance(config, dict):
             raise ValidationError(
-                field="config",
-                value=type(config).__name__,
-                reason="Configuration must be a dictionary"
+                field="config", value=type(config).__name__, reason="Configuration must be a dictionary"
             )
 
         # Validate common parameters
@@ -186,23 +172,17 @@ class ChunkingValidator:
                     chunk_size = int(chunk_size)
                 except (ValueError, TypeError) as e:
                     raise ValidationError(
-                        field="chunk_size",
-                        value=chunk_size,
-                        reason=f"Must be an integer: {e}"
+                        field="chunk_size", value=chunk_size, reason=f"Must be an integer: {e}"
                     ) from e
 
             if chunk_size < self.MIN_CHUNK_SIZE:
                 raise ValidationError(
-                    field="chunk_size",
-                    value=chunk_size,
-                    reason=f"Below minimum {self.MIN_CHUNK_SIZE}"
+                    field="chunk_size", value=chunk_size, reason=f"Below minimum {self.MIN_CHUNK_SIZE}"
                 )
 
             if chunk_size > self.MAX_CHUNK_SIZE:
                 raise ValidationError(
-                    field="chunk_size",
-                    value=chunk_size,
-                    reason=f"Exceeds maximum {self.MAX_CHUNK_SIZE}"
+                    field="chunk_size", value=chunk_size, reason=f"Exceeds maximum {self.MAX_CHUNK_SIZE}"
                 )
 
         if "chunk_overlap" in config:
@@ -212,17 +192,11 @@ class ChunkingValidator:
                     overlap = int(overlap)
                 except (ValueError, TypeError) as e:
                     raise ValidationError(
-                        field="chunk_overlap",
-                        value=overlap,
-                        reason=f"Must be an integer: {e}"
+                        field="chunk_overlap", value=overlap, reason=f"Must be an integer: {e}"
                     ) from e
 
             if overlap < self.MIN_OVERLAP:
-                raise ValidationError(
-                    field="chunk_overlap",
-                    value=overlap,
-                    reason="Cannot be negative"
-                )
+                raise ValidationError(field="chunk_overlap", value=overlap, reason="Cannot be negative")
 
             # Check overlap ratio if chunk_size is present
             if "chunk_size" in config:
@@ -231,7 +205,7 @@ class ChunkingValidator:
                     raise ValidationError(
                         field="chunk_overlap",
                         value=overlap,
-                        reason=f"Exceeds {self.MAX_OVERLAP_RATIO * 100}% of chunk_size"
+                        reason=f"Exceeds {self.MAX_OVERLAP_RATIO * 100}% of chunk_size",
                     )
 
         # Strategy-specific validation
@@ -250,16 +224,14 @@ class ChunkingValidator:
                     raise ValidationError(
                         field="embedding_model",
                         value=config["embedding_model"],
-                        reason=f"Invalid embedding_model. Valid options: {', '.join(valid_models)}"
+                        reason=f"Invalid embedding_model. Valid options: {', '.join(valid_models)}",
                     )
 
         elif strategy == "hierarchical" and "max_level" in config:
             max_level = config["max_level"]
             if not isinstance(max_level, int) or max_level < 1 or max_level > 5:
                 raise ValidationError(
-                    field="max_level",
-                    value=max_level,
-                    reason="max_level must be an integer between 1 and 5"
+                    field="max_level", value=max_level, reason="max_level must be an integer between 1 and 5"
                 )
 
     async def validate_document_access(
@@ -284,19 +256,11 @@ class ChunkingValidator:
 
         document = await self.document_repo.get_by_id(document_id)
         if not document:
-            raise ValidationError(
-                field="document_id",
-                value=document_id,
-                reason=f"Document {document_id} not found"
-            )
+            raise ValidationError(field="document_id", value=document_id, reason=f"Document {document_id} not found")
 
         # Check if user owns the collection containing the document
         if document.collection and document.collection.owner_id != user_id:
-            raise PermissionDeniedError(
-                user_id=str(user_id),
-                resource=f"document:{document_id}",
-                action="read"
-            )
+            raise PermissionDeniedError(user_id=str(user_id), resource=f"document:{document_id}", action="read")
 
     async def validate_collection_access(
         self,
@@ -321,17 +285,11 @@ class ChunkingValidator:
         collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise ValidationError(
-                field="collection_id",
-                value=collection_id,
-                reason=f"Collection {collection_id} not found"
+                field="collection_id", value=collection_id, reason=f"Collection {collection_id} not found"
             )
 
         if collection.owner_id != user_id:
-            raise PermissionDeniedError(
-                user_id=str(user_id),
-                resource=f"collection:{collection_id}",
-                action="read"
-            )
+            raise PermissionDeniedError(user_id=str(user_id), resource=f"collection:{collection_id}", action="read")
 
     def validate_collection_config(
         self,
@@ -354,9 +312,7 @@ class ChunkingValidator:
 
         if not isinstance(config, dict):
             raise ValidationError(
-                field="config",
-                value=type(config).__name__,
-                reason="Collection config must be a dictionary"
+                field="config", value=type(config).__name__, reason="Collection config must be a dictionary"
             )
 
         # Validate strategy if present
@@ -369,7 +325,7 @@ class ChunkingValidator:
                 raise ValidationError(
                     field="strategy_config",
                     value=config.get("strategy_config"),
-                    reason="strategy_config requires strategy to be specified"
+                    reason="strategy_config requires strategy to be specified",
                 )
 
             self.validate_config(config["strategy"], config["strategy_config"])
@@ -396,25 +352,15 @@ class ChunkingValidator:
             raise ValidationError(
                 field="operation_type",
                 value=operation_type,
-                reason=f"Invalid operation type '{operation_type}'. Valid types: {', '.join(valid_operations)}"
+                reason=f"Invalid operation type '{operation_type}'. Valid types: {', '.join(valid_operations)}",
             )
 
         if operation_type == "process" and "collection_id" not in params:
-            raise ValidationError(
-                field="collection_id",
-                value=None,
-                reason="Required for process operation"
-            )
+            raise ValidationError(field="collection_id", value=None, reason="Required for process operation")
 
         if operation_type == "reprocess" and "collection_id" not in params:
             raise ValidationError(
-                field="collection_id",
-                value=None,
-                reason="collection_id is required for reprocess operation"
+                field="collection_id", value=None, reason="collection_id is required for reprocess operation"
             )
         if operation_type == "reprocess" and "strategy" not in params:
-            raise ValidationError(
-                field="strategy",
-                value=None,
-                reason="strategy is required for reprocess operation"
-            )
+            raise ValidationError(field="strategy", value=None, reason="strategy is required for reprocess operation")

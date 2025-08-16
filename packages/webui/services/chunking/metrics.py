@@ -158,7 +158,7 @@ class ChunkingMetrics:
 
         # Update total chunks in statistics
         total_chunks = self.statistics.get("total_chunks_produced", 0)
-        if isinstance(total_chunks, (int, float)):
+        if isinstance(total_chunks, int | float):
             self.statistics["total_chunks_produced"] = total_chunks + chunk_count
 
     def record_fallback(self, original_strategy: str) -> None:
@@ -213,7 +213,7 @@ class ChunkingMetrics:
         # Calculate success rate
         total = stats.get("total_operations", 0)
         successful = stats.get("successful_operations", 0)
-        if isinstance(total, (int, float)) and isinstance(successful, (int, float)) and total > 0:
+        if isinstance(total, int | float) and isinstance(successful, int | float) and total > 0:
             stats["success_rate"] = (successful / total) * 100
         else:
             stats["success_rate"] = 0
@@ -284,7 +284,7 @@ class ChunkingMetrics:
         if not isinstance(strategy_usage, dict):
             strategy_usage = {}
             self.statistics["strategy_usage"] = strategy_usage
-            
+
         if strategy not in strategy_usage:
             strategy_usage[strategy] = {
                 "count": 0,
@@ -311,7 +311,7 @@ class ChunkingMetrics:
         total_ops = self.statistics.get("total_operations", 0)
         if isinstance(total_ops, int) and total_ops > 0:
             current_avg = self.statistics.get("average_duration", 0)
-            if isinstance(current_avg, (int, float)):
+            if isinstance(current_avg, int | float):
                 self.statistics["average_duration"] = (current_avg * (total_ops - 1) + duration) / total_ops
 
         self.statistics["last_operation"] = {
