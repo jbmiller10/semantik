@@ -93,13 +93,15 @@ class ChunkingFactory:
         cls.register_strategy(
             "character",
             lambda **kwargs: TextProcessingStrategyAdapter(
-                UnifiedChunkingFactory.create_strategy("character", use_llama_index=True, **kwargs)
+                UnifiedChunkingFactory.create_strategy("character", use_llama_index=True),
+                **kwargs
             ),
         )
         cls.register_strategy(
             "recursive",
             lambda **kwargs: TextProcessingStrategyAdapter(
-                UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=True, **kwargs)
+                UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=True),
+                **kwargs
             ),
         )
         cls.register_strategy(
@@ -108,20 +110,23 @@ class ChunkingFactory:
                 UnifiedChunkingFactory.create_strategy(
                     "semantic", 
                     use_llama_index=True,
-                    **kwargs
-                )
+                    embed_model=kwargs.get("embed_model")
+                ),
+                **kwargs
             ),
         )
         cls.register_strategy(
             "markdown",
             lambda **kwargs: TextProcessingStrategyAdapter(
-                UnifiedChunkingFactory.create_strategy("markdown", use_llama_index=True, **kwargs)
+                UnifiedChunkingFactory.create_strategy("markdown", use_llama_index=True),
+                **kwargs
             ),
         )
         cls.register_strategy(
             "hierarchical",
             lambda **kwargs: TextProcessingStrategyAdapter(
-                UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=True, **kwargs)
+                UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=True),
+                **kwargs
             ),
         )
         cls.register_strategy(
@@ -130,8 +135,9 @@ class ChunkingFactory:
                 UnifiedChunkingFactory.create_strategy(
                     "hybrid",
                     use_llama_index=True,
-                    **kwargs
-                )
+                    embed_model=kwargs.get("embed_model")
+                ),
+                **kwargs
             ),
         )
 
