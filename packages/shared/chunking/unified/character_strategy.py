@@ -231,7 +231,7 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
 
         # For very small text that's smaller than the min_tokens requirement,
         # return it as a single chunk
-        estimated_tokens = total_chars // 4  # Approximate token count
+        estimated_tokens = max(1, total_chars // 4)  # Approximate token count, at least 1
         if estimated_tokens < config.min_tokens:
             metadata = ChunkMetadata(
                 chunk_id=f"{config.strategy_name}_0000",

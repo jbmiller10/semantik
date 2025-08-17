@@ -108,7 +108,6 @@ class ChunkingFactory:
                 UnifiedChunkingFactory.create_strategy(
                     "semantic", 
                     use_llama_index=True,
-                    embed_model=kwargs.get("embed_model"),
                     **kwargs
                 )
             ),
@@ -131,7 +130,6 @@ class ChunkingFactory:
                 UnifiedChunkingFactory.create_strategy(
                     "hybrid",
                     use_llama_index=True,
-                    embed_model=kwargs.get("embed_model"),
                     **kwargs
                 )
             ),
