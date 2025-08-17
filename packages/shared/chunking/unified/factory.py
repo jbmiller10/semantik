@@ -329,14 +329,16 @@ class TextProcessingStrategyAdapter:
             # Reject if overlap >= chunk_size (for character/recursive compatibility)
             if chunk_overlap >= chunk_size:
                 return False
+                
+            # Reject if overlap >= min_chunk_size (for domain compatibility)
+            if chunk_overlap >= min_chunk_size:
+                return False
             
-            # Ensure overlap < min_tokens for domain validation
-            overlap_tokens = min(chunk_overlap, min_chunk_size - 1)
-
+            # Now create config with valid parameters
             ChunkConfig(
                 max_tokens=chunk_size,
                 min_tokens=min_chunk_size,
-                overlap_tokens=overlap_tokens,
+                overlap_tokens=chunk_overlap,
                 strategy_name=self.strategy.name,
             )
             return True
@@ -358,12 +360,14 @@ class TextProcessingStrategyAdapter:
             ChunkConfig,
         )
 
-        # Ensure overlap is less than min_tokens
+        # Get config values
+        chunk_size = config.get("chunk_size", 1000)
         min_tokens = config.get("min_chunk_size", 100)
-        overlap_tokens = min(config.get("chunk_overlap", 50), min_tokens - 1)
+        overlap_tokens = config.get("chunk_overlap", 50)
         
+        # Don't try to fix invalid configs - let ChunkConfig validate
         domain_config = ChunkConfig(
-            max_tokens=config.get("chunk_size", 1000),
+            max_tokens=chunk_size,
             min_tokens=min_tokens,
             overlap_tokens=overlap_tokens,
             strategy_name=self.strategy.name,
