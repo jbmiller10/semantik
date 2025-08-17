@@ -2457,6 +2457,7 @@ class ChunkingService:
         collection: dict[str, Any],
         metadata: dict[str, Any] | None = None,
         file_type: str | None = None,  # noqa: ARG002 - Reserved for future file-type-specific optimizations
+        _from_segment: bool = False,  # Internal flag to prevent recursive segmentation
     ) -> dict[str, Any]:
         """Execute chunking for document ingestion with strategy resolution and fallback.
 
@@ -2487,50 +2488,51 @@ class ChunkingService:
 
         from packages.webui.services.chunking_constants import SEGMENT_SIZE_THRESHOLD, STRATEGY_SEGMENT_THRESHOLDS
 
-        # Check if document requires segmentation
-        text_size = len(text.encode("utf-8"))
-        chunking_strategy = collection.get("chunking_strategy")
+        # Check if document requires segmentation (skip if called from segment processing)
+        if not _from_segment:
+            text_size = len(text.encode("utf-8"))
+            chunking_strategy = collection.get("chunking_strategy")
 
-        # Get the threshold for this strategy - normalize the strategy name
-        if chunking_strategy:
-            # Use simple lowercase normalization
-            strategy_key = chunking_strategy.lower().replace("_", "").replace("-", "")
-            # Map common variations
-            strategy_mapping = {
-                "fixedsize": "character",
-                "tokenchunker": "character",
-                "documentstructure": "markdown",
-                "slidingwindow": "sliding",
-            }
-            strategy_key = strategy_mapping.get(strategy_key, strategy_key)
-        else:
-            strategy_key = ""
-        threshold = STRATEGY_SEGMENT_THRESHOLDS.get(strategy_key, SEGMENT_SIZE_THRESHOLD)
+            # Get the threshold for this strategy - normalize the strategy name
+            if chunking_strategy:
+                # Use simple lowercase normalization
+                strategy_key = chunking_strategy.lower().replace("_", "").replace("-", "")
+                # Map common variations
+                strategy_mapping = {
+                    "fixedsize": "character",
+                    "tokenchunker": "character",
+                    "documentstructure": "markdown",
+                    "slidingwindow": "sliding",
+                }
+                strategy_key = strategy_mapping.get(strategy_key, strategy_key)
+            else:
+                strategy_key = ""
+            threshold = STRATEGY_SEGMENT_THRESHOLDS.get(strategy_key, SEGMENT_SIZE_THRESHOLD)
 
-        if text_size > threshold:
-            logger.info(
-                "Document exceeds size threshold, using progressive segmentation",
-                extra={
-                    "document_id": document_id,
-                    "text_size": text_size,
-                    "threshold": threshold,
-                    "strategy": strategy_key,
-                },
-            )
-            # Generate correlation ID for tracking
-            correlation_id = str(uuid.uuid4())
-            # Use segmented processing for large documents
-            return await self.execute_ingestion_chunking_segmented(
-                text=text,
-                document_id=document_id,
-                collection=collection,
-                metadata=metadata,
-                file_type=file_type,
-                chunking_strategy=chunking_strategy or "recursive",
-                chunk_size=int(collection.get("chunk_size", 512)),
-                chunk_overlap=int(collection.get("chunk_overlap", 50)),
-                correlation_id=correlation_id,
-            )
+            if text_size > threshold:
+                logger.info(
+                    "Document exceeds size threshold, using progressive segmentation",
+                    extra={
+                        "document_id": document_id,
+                        "text_size": text_size,
+                        "threshold": threshold,
+                        "strategy": strategy_key,
+                    },
+                )
+                # Generate correlation ID for tracking
+                correlation_id = str(uuid.uuid4())
+                # Use segmented processing for large documents
+                return await self.execute_ingestion_chunking_segmented(
+                    text=text,
+                    document_id=document_id,
+                    collection=collection,
+                    metadata=metadata,
+                    file_type=file_type,
+                    chunking_strategy=chunking_strategy or "recursive",
+                    chunk_size=int(collection.get("chunk_size", 512)),
+                    chunk_overlap=int(collection.get("chunk_overlap", 50)),
+                    correlation_id=correlation_id,
+                )
 
         start_time = time.time()
         strategy_used = None
@@ -3057,7 +3059,8 @@ class ChunkingService:
             Dictionary containing chunks from this segment
         """
         # Use the regular chunking logic but adjust chunk IDs
-        result = await self.execute_ingestion_chunking(text, document_id, collection, metadata, file_type)
+        # Pass _from_segment=True to prevent recursive segmentation
+        result = await self.execute_ingestion_chunking(text, document_id, collection, metadata, file_type, _from_segment=True)
 
         # Adjust chunk IDs to maintain continuity
         for idx, chunk in enumerate(result["chunks"]):
