@@ -5,7 +5,7 @@ Compatibility wrapper for RecursiveChunker.
 This module provides backward compatibility for tests that import RecursiveChunker directly.
 """
 
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 class RecursiveChunker:
@@ -25,10 +25,9 @@ class RecursiveChunker:
             **kwargs
         }
         
-        self._chunker = ChunkingFactory.create_chunker({
-            "strategy": "recursive",
-            "params": params
-        })
+        # Create unified strategy directly
+        unified_strategy = UnifiedChunkingFactory.create_strategy("recursive", use_llama_index=True)
+        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
         
     def __getattr__(self, name):
         """Delegate all attributes to the actual chunker."""

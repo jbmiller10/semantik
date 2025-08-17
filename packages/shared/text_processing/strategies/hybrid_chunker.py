@@ -7,7 +7,7 @@ This module provides backward compatibility for tests that import HybridChunker 
 
 from enum import Enum
 import re
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 # Mock functions for ReDoS protection tests
 def safe_regex_findall(pattern, text, flags=0):
@@ -60,10 +60,9 @@ class HybridChunker:
             params["weights"] = weights
         params.update(kwargs)
         
-        self._chunker = ChunkingFactory.create_chunker({
-            "strategy": "hybrid",
-            "params": params
-        })
+        # Create unified strategy directly
+        unified_strategy = UnifiedChunkingFactory.create_strategy("hybrid", use_llama_index=True, embed_model=embed_model)
+        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
         
         # Add mock attributes for test compatibility
         self._compiled_patterns = self._compile_test_patterns()
@@ -168,11 +167,10 @@ class HybridChunker:
         
         cache_key = f"{strategy}_{str(params)}"
         if cache_key not in self._chunker_cache:
-            from packages.shared.text_processing.chunking_factory import ChunkingFactory
-            self._chunker_cache[cache_key] = ChunkingFactory.create_chunker({
-                "strategy": strategy,
-                "params": params or {}
-            })
+            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+            # Create unified strategy directly
+            unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
+            self._chunker_cache[cache_key] = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))
         return self._chunker_cache[cache_key]
     
     def validate_config(self, config):
@@ -234,20 +232,67 @@ class HybridChunker:
         
         # Select strategy
         strategy, params, reasoning = self._select_strategy(text, metadata)
+        original_strategy = strategy
         
-        # Get chunks from underlying implementation
-        chunks = self._chunker.chunk_text(text, doc_id, metadata)
-        
-        # Add hybrid-specific metadata
-        for i, chunk in enumerate(chunks):
-            if hasattr(chunk, 'metadata'):
-                chunk.metadata["hybrid_chunker"] = True
-                chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
-                if i == 0:
-                    chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
-                    chunk.metadata["hybrid_strategy_reasoning"] = reasoning
-        
-        return chunks
+        try:
+            # Try to get the selected chunker
+            selected_chunker = self._get_chunker(strategy.value if hasattr(strategy, 'value') else str(strategy), params)
+            
+            # Try to chunk with the selected strategy
+            chunks = selected_chunker.chunk_text(text, doc_id, metadata)
+            
+            # Add hybrid-specific metadata
+            for i, chunk in enumerate(chunks):
+                if hasattr(chunk, 'metadata'):
+                    chunk.metadata["hybrid_chunker"] = True
+                    chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                    if i == 0:
+                        chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                        chunk.metadata["hybrid_strategy_reasoning"] = reasoning
+            
+            return chunks
+            
+        except Exception as e:
+            # Strategy failed, use fallback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Strategy {original_strategy} failed: {e}, falling back to {self.fallback_strategy}")
+            
+            try:
+                # Try fallback strategy
+                fallback_chunker = self._get_chunker(self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy))
+                chunks = fallback_chunker.chunk_text(text, doc_id, metadata)
+                
+                # Add fallback metadata
+                for chunk in chunks:
+                    if hasattr(chunk, 'metadata'):
+                        chunk.metadata["hybrid_chunker"] = True
+                        chunk.metadata["selected_strategy"] = self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                        chunk.metadata["fallback_used"] = True
+                        chunk.metadata["original_strategy_failed"] = original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy)
+                
+                return chunks
+                
+            except Exception as fallback_error:
+                # Emergency: create single chunk
+                logger.error(f"Fallback strategy also failed: {fallback_error}, creating emergency single chunk")
+                from packages.shared.text_processing.base_chunker import ChunkResult
+                
+                emergency_chunk = ChunkResult(
+                    chunk_id=f"{doc_id}_0000",
+                    text=text,
+                    start_offset=0,
+                    end_offset=len(text),
+                    metadata={
+                        "hybrid_chunker": True,
+                        "emergency_chunk": True,
+                        "selected_strategy": "emergency_single_chunk",
+                        "all_strategies_failed": True,
+                        "original_strategy_failed": original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy),
+                        "fallback_strategy_failed": self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                    }
+                )
+                return [emergency_chunk]
     
     async def chunk_text_async(self, text, doc_id, metadata=None):
         """Override to add hybrid-specific metadata."""
@@ -256,20 +301,67 @@ class HybridChunker:
         
         # Select strategy
         strategy, params, reasoning = self._select_strategy(text, metadata)
+        original_strategy = strategy
         
-        # Get chunks from underlying implementation
-        chunks = await self._chunker.chunk_text_async(text, doc_id, metadata)
-        
-        # Add hybrid-specific metadata
-        for i, chunk in enumerate(chunks):
-            if hasattr(chunk, 'metadata'):
-                chunk.metadata["hybrid_chunker"] = True
-                chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
-                if i == 0:
-                    chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
-                    chunk.metadata["hybrid_strategy_reasoning"] = reasoning
-        
-        return chunks
+        try:
+            # Try to get the selected chunker
+            selected_chunker = self._get_chunker(strategy.value if hasattr(strategy, 'value') else str(strategy), params)
+            
+            # Try to chunk with the selected strategy
+            chunks = await selected_chunker.chunk_text_async(text, doc_id, metadata)
+            
+            # Add hybrid-specific metadata
+            for i, chunk in enumerate(chunks):
+                if hasattr(chunk, 'metadata'):
+                    chunk.metadata["hybrid_chunker"] = True
+                    chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                    if i == 0:
+                        chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                        chunk.metadata["hybrid_strategy_reasoning"] = reasoning
+            
+            return chunks
+            
+        except Exception as e:
+            # Strategy failed, use fallback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Strategy {original_strategy} failed: {e}, falling back to {self.fallback_strategy}")
+            
+            try:
+                # Try fallback strategy
+                fallback_chunker = self._get_chunker(self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy))
+                chunks = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+                
+                # Add fallback metadata
+                for chunk in chunks:
+                    if hasattr(chunk, 'metadata'):
+                        chunk.metadata["hybrid_chunker"] = True
+                        chunk.metadata["selected_strategy"] = self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                        chunk.metadata["fallback_used"] = True
+                        chunk.metadata["original_strategy_failed"] = original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy)
+                
+                return chunks
+                
+            except Exception as fallback_error:
+                # Emergency: create single chunk
+                logger.error(f"Fallback strategy also failed: {fallback_error}, creating emergency single chunk")
+                from packages.shared.text_processing.base_chunker import ChunkResult
+                
+                emergency_chunk = ChunkResult(
+                    chunk_id=f"{doc_id}_0000",
+                    text=text,
+                    start_offset=0,
+                    end_offset=len(text),
+                    metadata={
+                        "hybrid_chunker": True,
+                        "emergency_chunk": True,
+                        "selected_strategy": "emergency_single_chunk",
+                        "all_strategies_failed": True,
+                        "original_strategy_failed": original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy),
+                        "fallback_strategy_failed": self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                    }
+                )
+                return [emergency_chunk]
     
     def __getattr__(self, name):
         """Delegate all other attributes to the actual chunker."""
