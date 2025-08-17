@@ -116,19 +116,38 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
             strategy = self._get_weighted_strategy(config)
 
         # Log strategy selection
-        logger.info(
-            f"Hybrid chunking selected {strategy.name} strategy for " f"{analysis['content_type'].value} content"
-        )
+        logger.info(f"Hybrid chunking selected {strategy.name} strategy for {analysis['content_type'].value} content")
 
         # Apply selected strategy
         chunks = strategy.chunk(content, config, progress_callback)
 
-        # Add hybrid metadata
+        # Add hybrid metadata by creating new chunks with updated metadata
+        updated_chunks = []
         for chunk in chunks:
-            chunk.metadata.hybrid_strategy = strategy.name
-            chunk.metadata.content_type = analysis["content_type"].value
+            # Create new metadata with hybrid-specific attributes
+            from dataclasses import replace
 
-        return chunks
+            updated_metadata = replace(
+                chunk.metadata,
+                custom_attributes={
+                    **chunk.metadata.custom_attributes,
+                    "hybrid_strategy": strategy.name,
+                    "content_type": analysis["content_type"].value,
+                },
+            )
+
+            # Create new chunk with updated metadata
+            from packages.shared.chunking.domain.entities.chunk import Chunk
+
+            updated_chunk = Chunk(
+                content=chunk.content,
+                metadata=updated_metadata,
+                min_tokens=chunk.min_tokens,
+                max_tokens=chunk.max_tokens,
+            )
+            updated_chunks.append(updated_chunk)
+
+        return updated_chunks
 
     async def chunk_async(
         self,

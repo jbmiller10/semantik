@@ -236,12 +236,14 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
 
                 # Create chunk entity
                 effective_min_tokens = min(config.min_tokens, token_count, 1)
+                # For markdown sections that exceed max_tokens, adjust the limit
+                effective_max_tokens = max(config.max_tokens, token_count)
 
                 chunk = Chunk(
                     content=chunk_text,
                     metadata=metadata,
                     min_tokens=effective_min_tokens,
-                    max_tokens=config.max_tokens,
+                    max_tokens=effective_max_tokens,
                 )
 
                 chunks.append(chunk)
@@ -300,20 +302,24 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                 end_offset=end_offset,
                 token_count=token_count,
                 strategy_name=self.name,
-                section_type=group.get("type", "mixed"),
                 semantic_density=0.7,  # Good for structured content
                 confidence_score=0.85,
                 created_at=datetime.now(tz=UTC),
+                custom_attributes={
+                    "section_type": group.get("type", "mixed"),
+                },
             )
 
             # Create chunk entity
             effective_min_tokens = min(config.min_tokens, token_count, 1)
+            # For markdown sections that exceed max_tokens, adjust the limit
+            effective_max_tokens = max(config.max_tokens, token_count)
 
             chunk = Chunk(
                 content=group_text,
                 metadata=metadata,
                 min_tokens=effective_min_tokens,
-                max_tokens=config.max_tokens,
+                max_tokens=effective_max_tokens,
             )
 
             chunks.append(chunk)
