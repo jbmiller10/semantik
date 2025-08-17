@@ -150,7 +150,9 @@ class UnifiedChunkingStrategy(ABC):
         char_based_estimate = char_count / 4
 
         # Weight character-based estimate more heavily for consistency
-        return int(0.3 * word_based_estimate + 0.7 * char_based_estimate)
+        # Ensure at least 1 token for any non-empty text
+        token_count = int(0.3 * word_based_estimate + 0.7 * char_based_estimate)
+        return max(1, token_count) if text else 0
 
     def calculate_overlap_size(self, chunk_size: int, overlap_percentage: float) -> int:
         """

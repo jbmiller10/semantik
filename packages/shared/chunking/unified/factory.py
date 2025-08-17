@@ -199,21 +199,23 @@ class TextProcessingStrategyAdapter:
         # Use unified strategy to chunk
         chunks = self.strategy.chunk(text, config)
 
-        # Convert to text_processing format
+        # Convert to text_processing format with ChunkResult objects
+        from packages.shared.text_processing.base_chunker import ChunkResult
+        
         results = []
         for chunk in chunks:
-            result = {
-                "chunk_id": chunk.metadata.chunk_id,
-                "text": chunk.content,
-                "start_offset": chunk.metadata.start_offset,
-                "end_offset": chunk.metadata.end_offset,
-                "metadata": {
+            result = ChunkResult(
+                chunk_id=chunk.metadata.chunk_id,
+                text=chunk.content,
+                start_offset=chunk.metadata.start_offset,
+                end_offset=chunk.metadata.end_offset,
+                metadata={
                     "strategy": self.strategy.name,
                     "chunk_index": chunk.metadata.chunk_index,
                     "token_count": chunk.metadata.token_count,
                     **(metadata or {}),
                 },
-            }
+            )
             results.append(result)
 
         return results
@@ -250,21 +252,23 @@ class TextProcessingStrategyAdapter:
         # Use unified strategy to chunk
         chunks = await self.strategy.chunk_async(text, config)
 
-        # Convert to text_processing format
+        # Convert to text_processing format with ChunkResult objects
+        from packages.shared.text_processing.base_chunker import ChunkResult
+        
         results = []
         for chunk in chunks:
-            result = {
-                "chunk_id": chunk.metadata.chunk_id,
-                "text": chunk.content,
-                "start_offset": chunk.metadata.start_offset,
-                "end_offset": chunk.metadata.end_offset,
-                "metadata": {
+            result = ChunkResult(
+                chunk_id=chunk.metadata.chunk_id,
+                text=chunk.content,
+                start_offset=chunk.metadata.start_offset,
+                end_offset=chunk.metadata.end_offset,
+                metadata={
                     "strategy": self.strategy.name,
                     "chunk_index": chunk.metadata.chunk_index,
                     "token_count": chunk.metadata.token_count,
                     **(metadata or {}),
                 },
-            }
+            )
             results.append(result)
 
         return results
