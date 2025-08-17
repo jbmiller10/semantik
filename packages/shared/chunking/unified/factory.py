@@ -157,15 +157,23 @@ class TextProcessingStrategyAdapter:
     expected by the text_processing chunking system.
     """
 
-    def __init__(self, unified_strategy: UnifiedChunkingStrategy) -> None:
+    def __init__(self, unified_strategy: UnifiedChunkingStrategy, **params) -> None:
         """
         Initialize the adapter.
 
         Args:
             unified_strategy: The unified strategy to adapt
+            **params: Additional parameters for configuration
         """
         self.strategy = unified_strategy
         self.strategy_name = unified_strategy.name
+        
+        # Filter out known token-based parameters, ignore strategy-specific ones
+        self.params = {}
+        for key in ["max_tokens", "min_tokens", "overlap_tokens", "chunk_size", 
+                    "chunk_overlap", "min_chunk_size", "custom_attributes"]:
+            if key in params:
+                self.params[key] = params[key]
 
     def chunk_text(
         self,
@@ -188,13 +196,30 @@ class TextProcessingStrategyAdapter:
             ChunkConfig,
         )
 
-        # Create a default config for text_processing compatibility
-        config = ChunkConfig(
-            max_tokens=1000,
-            min_tokens=100,
-            overlap_tokens=50,  # Must be less than min_tokens
-            strategy_name=self.strategy.name,
-        )
+        # Use parameters passed from factory or defaults
+        max_tokens = self.params.get("max_tokens", 1000)
+        min_tokens = self.params.get("min_tokens", 100)
+        overlap_tokens = self.params.get("overlap_tokens", 50)
+        
+        # Ensure overlap is valid
+        if overlap_tokens >= min_tokens:
+            overlap_tokens = min(overlap_tokens, min_tokens - 1)
+        if overlap_tokens >= max_tokens:
+            overlap_tokens = min(overlap_tokens, max_tokens - 1)
+            
+        # Create config using passed parameters
+        config_params = {
+            "max_tokens": max_tokens,
+            "min_tokens": min_tokens,
+            "overlap_tokens": overlap_tokens,
+            "strategy_name": self.strategy.name,
+        }
+        
+        # Only add custom_attributes if present
+        if "custom_attributes" in self.params:
+            config_params["custom_attributes"] = self.params["custom_attributes"]
+            
+        config = ChunkConfig(**config_params)
 
         # Use unified strategy to chunk
         chunks = self.strategy.chunk(text, config)
@@ -257,13 +282,30 @@ class TextProcessingStrategyAdapter:
             ChunkConfig,
         )
 
-        # Create a default config for text_processing compatibility
-        config = ChunkConfig(
-            max_tokens=1000,
-            min_tokens=100,
-            overlap_tokens=50,  # Must be less than min_tokens
-            strategy_name=self.strategy.name,
-        )
+        # Use parameters passed from factory or defaults
+        max_tokens = self.params.get("max_tokens", 1000)
+        min_tokens = self.params.get("min_tokens", 100)
+        overlap_tokens = self.params.get("overlap_tokens", 50)
+        
+        # Ensure overlap is valid
+        if overlap_tokens >= min_tokens:
+            overlap_tokens = min(overlap_tokens, min_tokens - 1)
+        if overlap_tokens >= max_tokens:
+            overlap_tokens = min(overlap_tokens, max_tokens - 1)
+            
+        # Create config using passed parameters
+        config_params = {
+            "max_tokens": max_tokens,
+            "min_tokens": min_tokens,
+            "overlap_tokens": overlap_tokens,
+            "strategy_name": self.strategy.name,
+        }
+        
+        # Only add custom_attributes if present
+        if "custom_attributes" in self.params:
+            config_params["custom_attributes"] = self.params["custom_attributes"]
+            
+        config = ChunkConfig(**config_params)
 
         # Use unified strategy to chunk
         chunks = await self.strategy.chunk_async(text, config)
@@ -321,24 +363,31 @@ class TextProcessingStrategyAdapter:
                 ChunkConfig,
             )
             
-            # Check for invalid overlap first
-            chunk_size = config.get("chunk_size", 1000)
-            min_chunk_size = config.get("min_chunk_size", 100)
-            chunk_overlap = config.get("chunk_overlap", 50)
+            # Handle both token-based and character-based parameters
+            if "max_tokens" in config:
+                # Token-based parameters
+                max_tokens = config.get("max_tokens", 1000)
+                min_tokens = config.get("min_tokens", 100)
+                overlap_tokens = config.get("overlap_tokens", 50)
+            else:
+                # Character-based parameters (legacy)
+                max_tokens = config.get("chunk_size", 1000)
+                min_tokens = config.get("min_chunk_size", 100)
+                overlap_tokens = config.get("chunk_overlap", 50)
             
-            # Reject if overlap >= chunk_size (for character/recursive compatibility)
-            if chunk_overlap >= chunk_size:
+            # Reject if overlap >= min_tokens
+            if overlap_tokens >= min_tokens:
                 return False
                 
-            # Reject if overlap >= min_chunk_size (for domain compatibility)
-            if chunk_overlap >= min_chunk_size:
+            # Reject if overlap >= max_tokens
+            if overlap_tokens >= max_tokens:
                 return False
             
             # Now create config with valid parameters
             ChunkConfig(
-                max_tokens=chunk_size,
-                min_tokens=min_chunk_size,
-                overlap_tokens=chunk_overlap,
+                max_tokens=max_tokens,
+                min_tokens=min_tokens,
+                overlap_tokens=overlap_tokens,
                 strategy_name=self.strategy.name,
             )
             return True
