@@ -71,9 +71,13 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             for i in range(levels):
                 chunk_sizes.append(base_size // (2**i))
 
+            # Ensure overlap is smaller than the smallest chunk size
+            smallest_chunk = min(chunk_sizes)
+            safe_overlap = min(config.overlap_tokens, smallest_chunk // 2)
+
             return HierarchicalNodeParser.from_defaults(
                 chunk_sizes=chunk_sizes,
-                chunk_overlap=config.overlap_tokens,
+                chunk_overlap=safe_overlap,
             )
         except Exception as e:
             logger.error(f"Failed to initialize LlamaIndex hierarchical splitter: {e}")
@@ -173,19 +177,31 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
             chunks = []
             total_chars = len(content)
-            chunk_index = 0
+            global_chunk_index = 0
+
+            # Build a map to track node depths
+            node_depths = {}
+            
+            # First pass: calculate depths for all nodes
+            for node in nodes:
+                if hasattr(node, "node_id"):
+                    depth = self._calculate_node_depth(node, nodes)
+                    node_depths[node.node_id] = depth
+            
+            # Find max depth to invert levels (0 should be top level)
+            max_depth = max(node_depths.values()) if node_depths else 0
 
             # Process all nodes (including parent nodes)
             for idx, node in enumerate(nodes):
                 chunk_text = node.get_content()
 
-                # Determine hierarchy level based on relationships
-                level = 0
-                if hasattr(node, "relationships"):
-                    if NodeRelationship.PARENT in node.relationships:
-                        level = 1  # Has parent, so it's a child
-                    if NodeRelationship.CHILD in node.relationships:
-                        level = 0  # Has children, so it's a parent
+                # Determine hierarchy level (0 = top level, higher = deeper)
+                # Invert the depth so that top-level nodes have level 0
+                node_id = getattr(node, "node_id", None)
+                if node_id and node_id in node_depths:
+                    level = max_depth - node_depths[node_id]
+                else:
+                    level = 0
 
                 # Calculate offsets
                 if idx == 0:
@@ -217,9 +233,9 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                             child_ids = [c.node_id for c in children if hasattr(c, "node_id")]
 
                 metadata = ChunkMetadata(
-                    chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                    chunk_id=f"{config.strategy_name}_{global_chunk_index:04d}",
                     document_id="doc",
-                    chunk_index=chunk_index,
+                    chunk_index=global_chunk_index,
                     start_offset=start_offset,
                     end_offset=end_offset,
                     token_count=token_count,
@@ -245,7 +261,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 )
 
                 chunks.append(chunk)
-                chunk_index += 1
+                global_chunk_index += 1
 
                 # Report progress
                 if progress_callback:
@@ -278,6 +294,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         total_operations = levels
         parent_chunks: list[Chunk] = []
         level_chunks_map: dict[int, list[Chunk]] = {}
+        global_chunk_index = 0  # Global index across all levels
 
         for level in range(levels):
             level_config = level_configs[level]
@@ -285,22 +302,24 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             # Create chunks for this level
             if level == 0:
                 # Top level - chunk entire content
-                level_chunks = self._create_level_chunks(
+                level_chunks, global_chunk_index = self._create_level_chunks(
                     content,
                     level,
                     level_config,
                     config.strategy_name,
                     None,
+                    global_chunk_index,
                 )
                 parent_chunks = level_chunks
                 level_chunks_map[level] = level_chunks
             else:
                 # Child level - create child chunks and update parents
-                level_chunks, updated_parents = self._create_child_level_chunks(
+                level_chunks, updated_parents, global_chunk_index = self._create_child_level_chunks(
                     parent_chunks,
                     level,
                     level_config,
                     config.strategy_name,
+                    global_chunk_index,
                 )
                 # Update parent chunks with child references
                 level_chunks_map[level - 1] = updated_parents
@@ -359,7 +378,8 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         level_config: dict[str, Any],
         strategy_name: str,
         parent_chunks: list[Chunk] | None = None,
-    ) -> list[Chunk]:
+        global_chunk_index: int = 0,
+    ) -> tuple[list[Chunk], int]:
         """
         Create chunks for a specific hierarchy level (level 0 only).
 
@@ -374,15 +394,16 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             List of chunks for this level
         """
         # This method now only handles level 0 (top level)
-        chunks = self._create_base_chunks(
+        chunks, new_global_index = self._create_base_chunks(
             content,
             level_config["max_tokens"],
             level_config["min_tokens"],
             level_config["overlap_tokens"],
             strategy_name,
             level,
+            global_chunk_index=global_chunk_index,
         )
-        return chunks
+        return chunks, new_global_index
 
     def _create_child_level_chunks(
         self,
@@ -390,7 +411,8 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         level: int,
         level_config: dict[str, Any],
         strategy_name: str,
-    ) -> tuple[list[Chunk], list[Chunk]]:
+        global_chunk_index: int = 0,
+    ) -> tuple[list[Chunk], list[Chunk], int]:
         """
         Create child chunks from parent chunks and update parent references.
 
@@ -405,10 +427,11 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         """
         all_child_chunks = []
         updated_parents = []
+        current_global_index = global_chunk_index
 
         for parent in parent_chunks:
             parent_content = parent.content
-            child_chunks = self._create_base_chunks(
+            child_chunks, current_global_index = self._create_base_chunks(
                 parent_content,
                 level_config["max_tokens"],
                 level_config["min_tokens"],
@@ -417,6 +440,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 level,
                 parent_id=parent.metadata.chunk_id,
                 parent_offset=parent.metadata.start_offset,
+                global_chunk_index=current_global_index,
             )
 
             # Update parent with child references by creating a new chunk
@@ -441,7 +465,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             updated_parents.append(updated_parent)
             all_child_chunks.extend(child_chunks)
 
-        return all_child_chunks, updated_parents
+        return all_child_chunks, updated_parents, current_global_index
 
     def _create_base_chunks(
         self,
@@ -453,7 +477,8 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         level: int,
         parent_id: str | None = None,
         parent_offset: int = 0,
-    ) -> list[Chunk]:
+        global_chunk_index: int = 0,
+    ) -> tuple[list[Chunk], int]:
         """
         Create basic chunks with size constraints.
 
@@ -471,7 +496,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             List of chunks
         """
         if not content:
-            return []
+            return [], global_chunk_index
 
         chunks = []
         chars_per_token = 4
@@ -479,7 +504,6 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         overlap_chars = overlap_tokens * chars_per_token
 
         position = 0
-        chunk_index = 0
 
         while position < len(content):
             # Calculate chunk boundaries
@@ -510,15 +534,15 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             token_count = self.count_tokens(chunk_text)
 
             # Skip if too small (unless it's the last chunk or the only chunk)
-            if token_count < min_tokens and end < len(content) and chunk_index > 0:
+            if token_count < min_tokens and end < len(content) and len(chunks) > 0:
                 position = end
                 continue
 
             # Create metadata
             metadata = ChunkMetadata(
-                chunk_id=f"{strategy_name}_L{level}_{chunk_index:04d}",
+                chunk_id=f"{strategy_name}_L{level}_{global_chunk_index:04d}",
                 document_id="doc",
-                chunk_index=chunk_index,
+                chunk_index=global_chunk_index,
                 start_offset=parent_offset + start,
                 end_offset=parent_offset + end,
                 token_count=token_count,
@@ -542,7 +566,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             )
 
             chunks.append(chunk)
-            chunk_index += 1
+            global_chunk_index += 1
 
             # Move position with overlap
             position = end - overlap_chars if overlap_chars > 0 else end
@@ -555,7 +579,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     logger.warning(f"Breaking potential infinite loop: position={position}, start={start}, end={end}")
                     break
 
-        return chunks
+        return chunks, global_chunk_index
 
     def validate_content(self, content: str) -> tuple[bool, str | None]:
         """
@@ -578,6 +602,30 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             return False, "Content too short for hierarchical chunking"
 
         return True, None
+    
+    def _calculate_node_depth(self, node: Any, all_nodes: list[Any]) -> int:
+        """Calculate the depth of a node in the hierarchy (0 = root)."""
+        try:
+            from llama_index.core.schema import NodeRelationship
+        except ImportError:
+            return 0
+        
+        if not hasattr(node, "relationships"):
+            return 0
+        
+        # If node has a parent, calculate depth recursively
+        if NodeRelationship.PARENT in node.relationships:
+            parent_rel = node.relationships[NodeRelationship.PARENT]
+            parent_id = getattr(parent_rel, "node_id", None)
+            
+            if parent_id:
+                # Find parent node
+                for pnode in all_nodes:
+                    if hasattr(pnode, "node_id") and pnode.node_id == parent_id:
+                        return self._calculate_node_depth(pnode, all_nodes) + 1
+        
+        # No parent means this is a root node
+        return 0
 
     def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:
         """

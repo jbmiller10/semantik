@@ -167,11 +167,11 @@ class TextProcessingStrategyAdapter:
         """
         self.strategy = unified_strategy
         self.strategy_name = unified_strategy.name
-        
+
         # Filter out known token-based parameters, ignore strategy-specific ones
         self.params = {}
-        for key in ["max_tokens", "min_tokens", "overlap_tokens", "chunk_size", 
-                    "chunk_overlap", "min_chunk_size", "custom_attributes"]:
+        for key in ["max_tokens", "min_tokens", "overlap_tokens", "chunk_size",
+                    "chunk_overlap", "min_chunk_size", "custom_attributes", "hierarchy_levels"]:
             if key in params:
                 self.params[key] = params[key]
 
@@ -200,13 +200,13 @@ class TextProcessingStrategyAdapter:
         max_tokens = self.params.get("max_tokens", 1000)
         min_tokens = self.params.get("min_tokens", 100)
         overlap_tokens = self.params.get("overlap_tokens", 50)
-        
+
         # Ensure overlap is valid
         if overlap_tokens >= min_tokens:
             overlap_tokens = min(overlap_tokens, min_tokens - 1)
         if overlap_tokens >= max_tokens:
             overlap_tokens = min(overlap_tokens, max_tokens - 1)
-            
+
         # Create config using passed parameters
         config_params = {
             "max_tokens": max_tokens,
@@ -214,15 +214,15 @@ class TextProcessingStrategyAdapter:
             "overlap_tokens": overlap_tokens,
             "strategy_name": self.strategy.name,
         }
-        
+
         # Add hierarchy levels for hierarchical strategy
         if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
             config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
-        
+
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
             config_params["custom_attributes"] = self.params["custom_attributes"]
-            
+
         config = ChunkConfig(**config_params)
 
         # Use unified strategy to chunk
@@ -230,14 +230,14 @@ class TextProcessingStrategyAdapter:
 
         # Convert to text_processing format with ChunkResult objects
         from packages.shared.text_processing.base_chunker import ChunkResult
-        
+
         results = []
         for i, chunk in enumerate(chunks):
             # Generate chunk ID with doc_id prefix if needed
             chunk_id = chunk.metadata.chunk_id
             if doc_id and not chunk_id.startswith(doc_id):
                 chunk_id = f"{doc_id}_{chunk.metadata.chunk_index:04d}"
-            
+
             # Build metadata with all expected fields
             chunk_metadata = {
                 "strategy": self.strategy.name,
@@ -247,14 +247,29 @@ class TextProcessingStrategyAdapter:
                 "custom_attributes": chunk.metadata.custom_attributes,
                 **(metadata or {}),
             }
-            
+
+            # Extract hierarchical metadata from custom_attributes if present
+            if chunk.metadata.custom_attributes:
+                custom_attrs = chunk.metadata.custom_attributes
+                # Extract hierarchical fields to top level
+                if "is_leaf" in custom_attrs:
+                    chunk_metadata["is_leaf"] = custom_attrs["is_leaf"]
+                if "parent_chunk_id" in custom_attrs:
+                    chunk_metadata["parent_chunk_id"] = custom_attrs["parent_chunk_id"]
+                if "child_chunk_ids" in custom_attrs:
+                    chunk_metadata["child_chunk_ids"] = custom_attrs["child_chunk_ids"]
+                if "node_id" in custom_attrs:
+                    chunk_metadata["node_id"] = custom_attrs["node_id"]
+                if "chunk_sizes" in custom_attrs:
+                    chunk_metadata["chunk_sizes"] = custom_attrs["chunk_sizes"]
+
             # Add code file detection for recursive strategy
             if self.strategy.name == "recursive" and metadata:
                 file_type = metadata.get("file_type", "")
                 code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".rb", ".php"]
                 if file_type in code_extensions:
                     chunk_metadata["is_code_file"] = True
-            
+
             # Add hybrid-specific metadata if using hybrid strategy
             if self.strategy.name == "hybrid":
                 chunk_metadata["hybrid_chunker"] = True
@@ -262,7 +277,7 @@ class TextProcessingStrategyAdapter:
                 if i == 0:  # Add reasoning to first chunk
                     chunk_metadata["hybrid_strategy_used"] = "hybrid"
                     chunk_metadata["hybrid_strategy_reasoning"] = "Hybrid strategy selected"
-            
+
             result = ChunkResult(
                 chunk_id=chunk_id,
                 text=chunk.content,
@@ -299,13 +314,13 @@ class TextProcessingStrategyAdapter:
         max_tokens = self.params.get("max_tokens", 1000)
         min_tokens = self.params.get("min_tokens", 100)
         overlap_tokens = self.params.get("overlap_tokens", 50)
-        
+
         # Ensure overlap is valid
         if overlap_tokens >= min_tokens:
             overlap_tokens = min(overlap_tokens, min_tokens - 1)
         if overlap_tokens >= max_tokens:
             overlap_tokens = min(overlap_tokens, max_tokens - 1)
-            
+
         # Create config using passed parameters
         config_params = {
             "max_tokens": max_tokens,
@@ -313,15 +328,15 @@ class TextProcessingStrategyAdapter:
             "overlap_tokens": overlap_tokens,
             "strategy_name": self.strategy.name,
         }
-        
+
         # Add hierarchy levels for hierarchical strategy
         if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
             config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
-        
+
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
             config_params["custom_attributes"] = self.params["custom_attributes"]
-            
+
         config = ChunkConfig(**config_params)
 
         # Use unified strategy to chunk
@@ -329,14 +344,14 @@ class TextProcessingStrategyAdapter:
 
         # Convert to text_processing format with ChunkResult objects
         from packages.shared.text_processing.base_chunker import ChunkResult
-        
+
         results = []
         for i, chunk in enumerate(chunks):
             # Generate chunk ID with doc_id prefix if needed
             chunk_id = chunk.metadata.chunk_id
             if doc_id and not chunk_id.startswith(doc_id):
                 chunk_id = f"{doc_id}_{chunk.metadata.chunk_index:04d}"
-            
+
             # Build metadata with all expected fields
             chunk_metadata = {
                 "strategy": self.strategy.name,
@@ -346,14 +361,29 @@ class TextProcessingStrategyAdapter:
                 "custom_attributes": chunk.metadata.custom_attributes,
                 **(metadata or {}),
             }
-            
+
+            # Extract hierarchical metadata from custom_attributes if present
+            if chunk.metadata.custom_attributes:
+                custom_attrs = chunk.metadata.custom_attributes
+                # Extract hierarchical fields to top level
+                if "is_leaf" in custom_attrs:
+                    chunk_metadata["is_leaf"] = custom_attrs["is_leaf"]
+                if "parent_chunk_id" in custom_attrs:
+                    chunk_metadata["parent_chunk_id"] = custom_attrs["parent_chunk_id"]
+                if "child_chunk_ids" in custom_attrs:
+                    chunk_metadata["child_chunk_ids"] = custom_attrs["child_chunk_ids"]
+                if "node_id" in custom_attrs:
+                    chunk_metadata["node_id"] = custom_attrs["node_id"]
+                if "chunk_sizes" in custom_attrs:
+                    chunk_metadata["chunk_sizes"] = custom_attrs["chunk_sizes"]
+
             # Add code file detection for recursive strategy
             if self.strategy.name == "recursive" and metadata:
                 file_type = metadata.get("file_type", "")
                 code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".rb", ".php"]
                 if file_type in code_extensions:
                     chunk_metadata["is_code_file"] = True
-            
+
             # Add hybrid-specific metadata if using hybrid strategy
             if self.strategy.name == "hybrid":
                 chunk_metadata["hybrid_chunker"] = True
@@ -361,7 +391,7 @@ class TextProcessingStrategyAdapter:
                 if i == 0:  # Add reasoning to first chunk
                     chunk_metadata["hybrid_strategy_used"] = "hybrid"
                     chunk_metadata["hybrid_strategy_reasoning"] = "Hybrid strategy selected"
-            
+
             result = ChunkResult(
                 chunk_id=chunk_id,
                 text=chunk.content,
@@ -390,19 +420,19 @@ class TextProcessingStrategyAdapter:
             if buffer_size is not None:
                 if not isinstance(buffer_size, int) or buffer_size <= 0:
                     return False
-            
+
             # Validate breakpoint_percentile_threshold
             percentile = config.get("breakpoint_percentile_threshold")
             if percentile is not None:
                 if not isinstance(percentile, (int, float)) or percentile < 0 or percentile > 100:
                     return False
-        
+
         # Convert to domain config for validation
         try:
             from packages.shared.chunking.domain.value_objects.chunk_config import (
                 ChunkConfig,
             )
-            
+
             # Handle both token-based and character-based parameters
             if "max_tokens" in config or "overlap_tokens" in config:
                 # Token-based parameters (new style)
@@ -414,15 +444,15 @@ class TextProcessingStrategyAdapter:
                 max_tokens = config.get("chunk_size", 1000)
                 min_tokens = config.get("min_chunk_size", 100)
                 overlap_tokens = config.get("chunk_overlap", 50)
-            
+
             # Reject if overlap >= min_tokens
             if overlap_tokens >= min_tokens:
                 return False
-                
+
             # Reject if overlap >= max_tokens
             if overlap_tokens >= max_tokens:
                 return False
-            
+
             # Now create config with valid parameters
             ChunkConfig(
                 max_tokens=max_tokens,
@@ -460,13 +490,13 @@ class TextProcessingStrategyAdapter:
             max_tokens = config.get("chunk_size", 1000)
             min_tokens = config.get("min_chunk_size", 100)
             overlap_tokens = config.get("chunk_overlap", 50)
-        
+
         # Ensure overlap is valid
         if overlap_tokens >= min_tokens:
             overlap_tokens = min(overlap_tokens, min_tokens - 1)
         if overlap_tokens >= max_tokens:
             overlap_tokens = min(overlap_tokens, max_tokens - 1)
-        
+
         # Create config with proper parameters
         domain_config = ChunkConfig(
             max_tokens=max_tokens,

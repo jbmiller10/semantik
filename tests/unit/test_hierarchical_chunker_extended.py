@@ -267,8 +267,18 @@ class TestHierarchicalChunkerExtended:
         """Test config validation exception handling."""
         chunker = HierarchicalChunker()
 
-        # Invalid config that will cause exception
-        config = {"chunk_sizes": None}  # This will cause an exception
+        # Create a config that will cause an exception during validation
+        # Use a mock list that raises an exception when we try to iterate over it
+        from unittest.mock import Mock
+        
+        class BadList(list):
+            def __init__(self):
+                super().__init__([1000, 500])
+            
+            def __iter__(self):
+                raise Exception("Test exception during iteration")
+        
+        config = {"chunk_sizes": BadList()}
 
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
             result = chunker.validate_config(config)
@@ -466,9 +476,16 @@ class TestHierarchicalChunkerExtended:
         nodes = [bad_node, good_node]
         text = "Good content"
 
-        # Should handle gracefully
-        with pytest.raises(AttributeError):
-            chunker._build_offset_map(text, nodes)
+        # Should handle gracefully (no error raised)
+        offset_map = chunker._build_offset_map(text, nodes)
+        
+        # Bad node should get zero offsets
+        assert "bad_node" in offset_map
+        assert offset_map["bad_node"] == (0, 0)
+        
+        # Good node should have proper offsets
+        assert "good_node" in offset_map
+        assert offset_map["good_node"][0] >= 0
 
     def test_streaming_error_handling_fallback(self) -> None:
         """Test streaming fallback when hierarchical parsing fails."""

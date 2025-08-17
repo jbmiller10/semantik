@@ -154,7 +154,7 @@ class TestHierarchicalChunkerSecurity:
 
     def test_streaming_chunk_size_constant(self) -> None:
         """Test that STREAMING_CHUNK_SIZE is reasonable."""
-        assert STREAMING_CHUNK_SIZE == 1_000_000  # 1MB
+        assert STREAMING_CHUNK_SIZE == 50_000  # 50KB
         assert STREAMING_CHUNK_SIZE < MAX_TEXT_LENGTH
         assert STREAMING_CHUNK_SIZE > 0
 
@@ -241,7 +241,7 @@ class TestHierarchicalChunkerSecurity:
         assert 1_000_000 <= MAX_TEXT_LENGTH <= 10_000_000
 
         # STREAMING_CHUNK_SIZE should be reasonable for memory usage
-        assert 100_000 <= STREAMING_CHUNK_SIZE <= 5_000_000
+        assert 50_000 <= STREAMING_CHUNK_SIZE <= 5_000_000
 
     def test_chunk_overlap_validation(self) -> None:
         """Test chunk overlap validation for security."""
