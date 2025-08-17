@@ -171,46 +171,126 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
             # Convert LlamaIndex nodes to domain chunks
             for idx, node in enumerate(nodes):
                 chunk_text = node.get_content()
-
-                # Calculate offsets
-                if idx == 0:
-                    start_offset = 0
-                else:
-                    # Find the chunk text in the original content
-                    prev_end = chunks[-1].metadata.end_offset
-                    start_offset = content.find(chunk_text, prev_end - 100)  # Look near previous end
-                    if start_offset == -1:
-                        start_offset = prev_end
-
-                end_offset = min(start_offset + len(chunk_text), total_chars)
-
-                # Create chunk metadata
                 token_count = self.count_tokens(chunk_text)
 
-                metadata = ChunkMetadata(
-                    chunk_id=f"{config.strategy_name}_{idx:04d}",
-                    document_id="doc",
-                    chunk_index=idx,
-                    start_offset=start_offset,
-                    end_offset=end_offset,
-                    token_count=token_count,
-                    strategy_name=self.name,
-                    semantic_density=0.8,  # High for semantic chunking
-                    confidence_score=0.95,  # Higher confidence with LlamaIndex
-                    created_at=datetime.now(tz=UTC),
-                )
+                # If chunk exceeds max_tokens, split it
+                if token_count > config.max_tokens:
+                    # Split the chunk into smaller pieces
+                    words = chunk_text.split()
+                    current_words = []
+                    current_token_count = 0
+                    
+                    # Calculate initial offset
+                    if idx == 0 and len(chunks) == 0:
+                        chunk_start_offset = 0
+                    else:
+                        prev_end = chunks[-1].metadata.end_offset if chunks else 0
+                        chunk_start_offset = content.find(chunk_text, prev_end - 100)
+                        if chunk_start_offset == -1:
+                            chunk_start_offset = prev_end
+                    
+                    for word in words:
+                        word_tokens = self.count_tokens(word + " ")
+                        
+                        if current_token_count + word_tokens > config.max_tokens and current_words:
+                            # Create a chunk from accumulated words
+                            sub_chunk_text = " ".join(current_words)
+                            sub_token_count = self.count_tokens(sub_chunk_text)
+                            
+                            metadata = ChunkMetadata(
+                                chunk_id=f"{config.strategy_name}_{len(chunks):04d}",
+                                document_id="doc",
+                                chunk_index=len(chunks),
+                                start_offset=chunk_start_offset,
+                                end_offset=min(chunk_start_offset + len(sub_chunk_text), total_chars),
+                                token_count=sub_token_count,
+                                strategy_name=self.name,
+                                semantic_density=0.8,
+                                confidence_score=0.95,
+                                created_at=datetime.now(tz=UTC),
+                            )
+                            
+                            effective_min_tokens = min(config.min_tokens, sub_token_count, 1)
+                            chunk = Chunk(
+                                content=sub_chunk_text,
+                                metadata=metadata,
+                                min_tokens=effective_min_tokens,
+                                max_tokens=config.max_tokens,
+                            )
+                            chunks.append(chunk)
+                            
+                            chunk_start_offset += len(sub_chunk_text) + 1
+                            current_words = [word]
+                            current_token_count = word_tokens
+                        else:
+                            current_words.append(word)
+                            current_token_count += word_tokens
+                    
+                    # Add remaining words if any
+                    if current_words:
+                        sub_chunk_text = " ".join(current_words)
+                        sub_token_count = self.count_tokens(sub_chunk_text)
+                        
+                        metadata = ChunkMetadata(
+                            chunk_id=f"{config.strategy_name}_{len(chunks):04d}",
+                            document_id="doc",
+                            chunk_index=len(chunks),
+                            start_offset=chunk_start_offset,
+                            end_offset=min(chunk_start_offset + len(sub_chunk_text), total_chars),
+                            token_count=sub_token_count,
+                            strategy_name=self.name,
+                            semantic_density=0.8,
+                            confidence_score=0.95,
+                            created_at=datetime.now(tz=UTC),
+                        )
+                        
+                        effective_min_tokens = min(config.min_tokens, sub_token_count, 1)
+                        chunk = Chunk(
+                            content=sub_chunk_text,
+                            metadata=metadata,
+                            min_tokens=effective_min_tokens,
+                            max_tokens=config.max_tokens,
+                        )
+                        chunks.append(chunk)
+                else:
+                    # Regular processing for chunks within limits
+                    # Calculate offsets
+                    if idx == 0 and len(chunks) == 0:
+                        start_offset = 0
+                    else:
+                        # Find the chunk text in the original content
+                        prev_end = chunks[-1].metadata.end_offset if chunks else 0
+                        start_offset = content.find(chunk_text, prev_end - 100)  # Look near previous end
+                        if start_offset == -1:
+                            start_offset = prev_end
 
-                # Create chunk entity
-                effective_min_tokens = min(config.min_tokens, token_count, 1)
+                    end_offset = min(start_offset + len(chunk_text), total_chars)
 
-                chunk = Chunk(
-                    content=chunk_text,
-                    metadata=metadata,
-                    min_tokens=effective_min_tokens,
-                    max_tokens=config.max_tokens,
-                )
+                    # Create chunk metadata
+                    metadata = ChunkMetadata(
+                        chunk_id=f"{config.strategy_name}_{len(chunks):04d}",
+                        document_id="doc",
+                        chunk_index=len(chunks),
+                        start_offset=start_offset,
+                        end_offset=end_offset,
+                        token_count=token_count,
+                        strategy_name=self.name,
+                        semantic_density=0.8,  # High for semantic chunking
+                        confidence_score=0.95,  # Higher confidence with LlamaIndex
+                        created_at=datetime.now(tz=UTC),
+                    )
 
-                chunks.append(chunk)
+                    # Create chunk entity
+                    effective_min_tokens = min(config.min_tokens, token_count, 1)
+
+                    chunk = Chunk(
+                        content=chunk_text,
+                        metadata=metadata,
+                        min_tokens=effective_min_tokens,
+                        max_tokens=config.max_tokens,
+                    )
+
+                    chunks.append(chunk)
 
                 # Report progress
                 if progress_callback:
@@ -244,8 +324,8 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
             config.semantic_threshold,
         )
 
-        # Merge small clusters to meet min_tokens requirement
-        clusters = self._merge_small_clusters(clusters, config.min_tokens)
+        # Merge small clusters to meet min_tokens requirement while respecting max_tokens
+        clusters = self._merge_small_clusters(clusters, config.min_tokens, config.max_tokens)
 
         # Convert clusters to chunks
         chunks = []
@@ -266,36 +346,140 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
             end_offset = cluster["end_offset"]
             token_count = self.count_tokens(cluster_text)
 
-            # Calculate semantic density (higher for more semantically cohesive clusters)
-            semantic_density = cluster.get("similarity_score", 0.5)
+            # If cluster still exceeds max_tokens, split it further
+            if token_count > config.max_tokens:
+                # Split the cluster text into smaller chunks
+                words = cluster_text.split()
+                current_words = []
+                current_token_count = 0
+                word_start_offset = start_offset
+                
+                for word in words:
+                    word_tokens = self.count_tokens(word + " ")
+                    
+                    if current_token_count + word_tokens > config.max_tokens and current_words:
+                        # Create a chunk from accumulated words
+                        sub_chunk_text = " ".join(current_words)
+                        sub_token_count = self.count_tokens(sub_chunk_text)
+                        
+                        metadata = ChunkMetadata(
+                            chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                            document_id="doc",
+                            chunk_index=chunk_index,
+                            start_offset=word_start_offset,
+                            end_offset=min(word_start_offset + len(sub_chunk_text), end_offset),
+                            token_count=sub_token_count,
+                            strategy_name=self.name,
+                            semantic_score=cluster.get("similarity_score"),
+                            semantic_density=cluster.get("similarity_score", 0.5),
+                            confidence_score=0.8,
+                            created_at=datetime.now(tz=UTC),
+                        )
+                        
+                        effective_min_tokens = min(config.min_tokens, sub_token_count, 1)
+                        chunk = Chunk(
+                            content=sub_chunk_text,
+                            metadata=metadata,
+                            min_tokens=effective_min_tokens,
+                            max_tokens=config.max_tokens,
+                        )
+                        chunks.append(chunk)
+                        chunk_index += 1
+                        
+                        word_start_offset += len(sub_chunk_text) + 1
+                        current_words = [word]
+                        current_token_count = word_tokens
+                    else:
+                        current_words.append(word)
+                        current_token_count += word_tokens
+                
+                # Add remaining words if any
+                if current_words:
+                    sub_chunk_text = " ".join(current_words)
+                    sub_token_count = self.count_tokens(sub_chunk_text)
+                    
+                    # Final check: if still too large, truncate to fit
+                    if sub_token_count > config.max_tokens:
+                        # Truncate words to fit within max_tokens
+                        truncated_words = []
+                        truncated_token_count = 0
+                        for word in current_words:
+                            temp_text = " ".join(truncated_words + [word])
+                            temp_tokens = self.count_tokens(temp_text)
+                            if temp_tokens <= config.max_tokens:
+                                truncated_words.append(word)
+                                truncated_token_count = temp_tokens
+                            else:
+                                break
+                        if truncated_words:
+                            sub_chunk_text = " ".join(truncated_words)
+                            sub_token_count = truncated_token_count
+                            # Final safety check
+                            if sub_token_count > config.max_tokens:
+                                logger.warning(f"Chunk still exceeds max after truncation: {sub_token_count} > {config.max_tokens}")
+                                # Force truncation to character limit as last resort
+                                max_chars = config.max_tokens * 4  # Approximate 4 chars per token
+                                sub_chunk_text = sub_chunk_text[:max_chars]
+                                sub_token_count = self.count_tokens(sub_chunk_text)
+                        else:
+                            # Skip if no words fit
+                            continue
+                    
+                    metadata = ChunkMetadata(
+                        chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                        document_id="doc",
+                        chunk_index=chunk_index,
+                        start_offset=word_start_offset,
+                        end_offset=end_offset,
+                        token_count=sub_token_count,
+                        strategy_name=self.name,
+                        semantic_score=cluster.get("similarity_score"),
+                        semantic_density=cluster.get("similarity_score", 0.5),
+                        confidence_score=0.8,
+                        created_at=datetime.now(tz=UTC),
+                    )
+                    
+                    effective_min_tokens = min(config.min_tokens, sub_token_count, 1)
+                    chunk = Chunk(
+                        content=sub_chunk_text,
+                        metadata=metadata,
+                        min_tokens=effective_min_tokens,
+                        max_tokens=config.max_tokens,
+                    )
+                    chunks.append(chunk)
+                    chunk_index += 1
+            else:
+                # Regular processing for clusters within limits
+                # Calculate semantic density (higher for more semantically cohesive clusters)
+                semantic_density = cluster.get("similarity_score", 0.5)
 
-            # Create metadata
-            metadata = ChunkMetadata(
-                chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
-                document_id="doc",
-                chunk_index=chunk_index,
-                start_offset=start_offset,
-                end_offset=end_offset,
-                token_count=token_count,
-                strategy_name=self.name,
-                semantic_score=cluster.get("similarity_score"),
-                semantic_density=semantic_density,
-                confidence_score=0.8,  # Good confidence for semantic strategy
-                created_at=datetime.now(tz=UTC),
-            )
+                # Create metadata
+                metadata = ChunkMetadata(
+                    chunk_id=f"{config.strategy_name}_{chunk_index:04d}",
+                    document_id="doc",
+                    chunk_index=chunk_index,
+                    start_offset=start_offset,
+                    end_offset=end_offset,
+                    token_count=token_count,
+                    strategy_name=self.name,
+                    semantic_score=cluster.get("similarity_score"),
+                    semantic_density=semantic_density,
+                    confidence_score=0.8,  # Good confidence for semantic strategy
+                    created_at=datetime.now(tz=UTC),
+                )
 
-            # Create chunk entity with adjusted min_tokens
-            effective_min_tokens = min(config.min_tokens, token_count, 1)
+                # Create chunk entity with adjusted min_tokens
+                effective_min_tokens = min(config.min_tokens, token_count, 1)
 
-            chunk = Chunk(
-                content=cluster_text,
-                metadata=metadata,
-                min_tokens=effective_min_tokens,
-                max_tokens=config.max_tokens,
-            )
+                chunk = Chunk(
+                    content=cluster_text,
+                    metadata=metadata,
+                    min_tokens=effective_min_tokens,
+                    max_tokens=config.max_tokens,
+                )
 
-            chunks.append(chunk)
-            chunk_index += 1
+                chunks.append(chunk)
+                chunk_index += 1
 
             # Report progress
             if progress_callback:
@@ -386,6 +570,60 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
 
         for sentence in sentences:
             sentence_tokens = self.count_tokens(sentence["text"])
+            
+            # If a single sentence exceeds max_tokens, split it
+            if sentence_tokens > max_tokens:
+                # Save current cluster if it has content
+                if current_cluster["sentences"]:
+                    clusters.append(current_cluster)
+                
+                # Split the sentence into smaller chunks
+                sentence_text = sentence["text"]
+                words = sentence_text.split()
+                current_words = []
+                current_token_count = 0
+                sentence_start = sentence["start_offset"]
+                
+                for word in words:
+                    word_tokens = self.count_tokens(word + " ")
+                    if current_token_count + word_tokens > max_tokens and current_words:
+                        # Create a cluster from accumulated words
+                        chunk_text = " ".join(current_words)
+                        chunk_end = sentence_start + len(chunk_text)
+                        clusters.append({
+                            "sentences": [chunk_text],
+                            "start_offset": sentence_start,
+                            "end_offset": chunk_end,
+                            "token_count": current_token_count,
+                            "similarity_score": 0.9,
+                        })
+                        sentence_start = chunk_end + 1
+                        current_words = [word]
+                        current_token_count = word_tokens
+                    else:
+                        current_words.append(word)
+                        current_token_count += word_tokens
+                
+                # Add remaining words as new cluster
+                if current_words:
+                    chunk_text = " ".join(current_words)
+                    current_cluster = {
+                        "sentences": [chunk_text],
+                        "start_offset": sentence_start,
+                        "end_offset": sentence["end_offset"],
+                        "token_count": current_token_count,
+                        "similarity_score": 0.9,
+                    }
+                else:
+                    # Start fresh cluster for next sentence
+                    current_cluster = {
+                        "sentences": [],
+                        "start_offset": sentence["end_offset"],
+                        "end_offset": sentence["end_offset"],
+                        "token_count": 0,
+                        "similarity_score": 1.0,
+                    }
+                continue
 
             # Check if adding this sentence would exceed max_tokens
             if current_cluster["token_count"] + sentence_tokens > max_tokens:
@@ -416,13 +654,14 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
 
         return clusters
 
-    def _merge_small_clusters(self, clusters: list[dict[str, Any]], min_tokens: int) -> list[dict[str, Any]]:
+    def _merge_small_clusters(self, clusters: list[dict[str, Any]], min_tokens: int, max_tokens: int) -> list[dict[str, Any]]:
         """
-        Merge small clusters to meet minimum token requirements.
+        Merge small clusters to meet minimum token requirements while respecting maximum.
 
         Args:
             clusters: List of cluster dictionaries
             min_tokens: Minimum tokens per cluster
+            max_tokens: Maximum tokens per cluster
 
         Returns:
             List of merged clusters
@@ -441,20 +680,27 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
                     current_merge = None
                 merged.append(cluster)
             else:
-                # Cluster is too small, merge with current or start new merge
+                # Cluster is too small, try to merge with current
                 if current_merge:
-                    # Merge with current
-                    current_merge["sentences"].extend(cluster["sentences"])
-                    current_merge["end_offset"] = cluster["end_offset"]
-                    current_merge["token_count"] += cluster["token_count"]
-                    current_merge["similarity_score"] = min(
-                        current_merge["similarity_score"], cluster["similarity_score"]
-                    )
+                    # Check if merging would exceed max_tokens
+                    combined_tokens = current_merge["token_count"] + cluster["token_count"]
+                    if combined_tokens <= max_tokens:
+                        # Safe to merge
+                        current_merge["sentences"].extend(cluster["sentences"])
+                        current_merge["end_offset"] = cluster["end_offset"]
+                        current_merge["token_count"] = combined_tokens
+                        current_merge["similarity_score"] = min(
+                            current_merge["similarity_score"], cluster["similarity_score"]
+                        )
 
-                    # Check if merged is now large enough
-                    if current_merge["token_count"] >= min_tokens:
+                        # Check if merged is now large enough
+                        if current_merge["token_count"] >= min_tokens:
+                            merged.append(current_merge)
+                            current_merge = None
+                    else:
+                        # Would exceed max_tokens, save current and start new
                         merged.append(current_merge)
-                        current_merge = None
+                        current_merge = cluster.copy()
                 else:
                     # Start new merge
                     current_merge = cluster.copy()

@@ -357,6 +357,20 @@ class TextProcessingStrategyAdapter:
         Returns:
             True if valid
         """
+        # Validate semantic-specific parameters
+        if self.strategy.name == "semantic":
+            # Validate buffer_size (must be positive integer)
+            buffer_size = config.get("buffer_size")
+            if buffer_size is not None:
+                if not isinstance(buffer_size, int) or buffer_size <= 0:
+                    return False
+            
+            # Validate breakpoint_percentile_threshold
+            percentile = config.get("breakpoint_percentile_threshold")
+            if percentile is not None:
+                if not isinstance(percentile, (int, float)) or percentile < 0 or percentile > 100:
+                    return False
+        
         # Convert to domain config for validation
         try:
             from packages.shared.chunking.domain.value_objects.chunk_config import (
@@ -364,13 +378,13 @@ class TextProcessingStrategyAdapter:
             )
             
             # Handle both token-based and character-based parameters
-            if "max_tokens" in config:
-                # Token-based parameters
+            if "max_tokens" in config or "overlap_tokens" in config:
+                # Token-based parameters (new style)
                 max_tokens = config.get("max_tokens", 1000)
                 min_tokens = config.get("min_tokens", 100)
                 overlap_tokens = config.get("overlap_tokens", 50)
             else:
-                # Character-based parameters (legacy)
+                # Character-based parameters (legacy style)
                 max_tokens = config.get("chunk_size", 1000)
                 min_tokens = config.get("min_chunk_size", 100)
                 overlap_tokens = config.get("chunk_overlap", 50)
@@ -409,14 +423,27 @@ class TextProcessingStrategyAdapter:
             ChunkConfig,
         )
 
-        # Get config values
-        chunk_size = config.get("chunk_size", 1000)
-        min_tokens = config.get("min_chunk_size", 100)
-        overlap_tokens = config.get("chunk_overlap", 50)
+        # Handle both token-based and character-based parameter names
+        if "max_tokens" in config:
+            # Token-based parameters (new style)
+            max_tokens = config.get("max_tokens", 1000)
+            min_tokens = config.get("min_tokens", 100)
+            overlap_tokens = config.get("overlap_tokens", 50)
+        else:
+            # Character-based parameters (legacy style)
+            max_tokens = config.get("chunk_size", 1000)
+            min_tokens = config.get("min_chunk_size", 100)
+            overlap_tokens = config.get("chunk_overlap", 50)
         
-        # Don't try to fix invalid configs - let ChunkConfig validate
+        # Ensure overlap is valid
+        if overlap_tokens >= min_tokens:
+            overlap_tokens = min(overlap_tokens, min_tokens - 1)
+        if overlap_tokens >= max_tokens:
+            overlap_tokens = min(overlap_tokens, max_tokens - 1)
+        
+        # Create config with proper parameters
         domain_config = ChunkConfig(
-            max_tokens=chunk_size,
+            max_tokens=max_tokens,
             min_tokens=min_tokens,
             overlap_tokens=overlap_tokens,
             strategy_name=self.strategy.name,
