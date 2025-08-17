@@ -24,6 +24,13 @@ class HybridChunker:
     
     def __init__(self, strategies=None, weights=None, embed_model=None, **kwargs):
         """Initialize using the factory."""
+        # Store test-expected attributes
+        self.markdown_threshold = kwargs.pop('markdown_threshold', 0.15)
+        self.semantic_coherence_threshold = kwargs.pop('semantic_coherence_threshold', 0.7)
+        self.large_doc_threshold = kwargs.pop('large_doc_threshold', 50000)
+        self.enable_strategy_override = kwargs.pop('enable_strategy_override', True)
+        self.fallback_strategy = kwargs.pop('fallback_strategy', ChunkingStrategy.RECURSIVE)
+        
         params = {"embed_model": embed_model}
         if strategies:
             params["strategies"] = strategies
