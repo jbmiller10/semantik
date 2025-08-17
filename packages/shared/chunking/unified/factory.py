@@ -442,14 +442,16 @@ class TextProcessingStrategyAdapter:
             else:
                 # Character-based parameters (legacy style)
                 max_tokens = config.get("chunk_size", 1000)
-                min_tokens = config.get("min_chunk_size", 100)
                 overlap_tokens = config.get("chunk_overlap", 50)
+                # For character-based chunking, min_chunk_size should be larger than overlap
+                # Default to max of 20% of chunk_size or 2x overlap if not provided
+                default_min = max(max_tokens // 5, overlap_tokens * 2, 10)
+                min_tokens = config.get("min_chunk_size", default_min)
 
-            # Reject if overlap >= min_tokens
+            # Validate overlap constraints
+            # Overlap must be less than both min and max tokens
             if overlap_tokens >= min_tokens:
                 return False
-
-            # Reject if overlap >= max_tokens
             if overlap_tokens >= max_tokens:
                 return False
 
@@ -488,8 +490,11 @@ class TextProcessingStrategyAdapter:
         else:
             # Character-based parameters (legacy style)
             max_tokens = config.get("chunk_size", 1000)
-            min_tokens = config.get("min_chunk_size", 100)
             overlap_tokens = config.get("chunk_overlap", 50)
+            # For character-based chunking, min_chunk_size should be larger than overlap
+            # Default to max of 20% of chunk_size or 2x overlap if not provided
+            default_min = max(max_tokens // 5, overlap_tokens * 2, 10)
+            min_tokens = config.get("min_chunk_size", default_min)
 
         # Ensure overlap is valid
         if overlap_tokens >= min_tokens:
