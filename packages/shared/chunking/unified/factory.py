@@ -215,6 +215,10 @@ class TextProcessingStrategyAdapter:
             "strategy_name": self.strategy.name,
         }
         
+        # Add hierarchy levels for hierarchical strategy
+        if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
+            config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
+        
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
             config_params["custom_attributes"] = self.params["custom_attributes"]
@@ -307,6 +311,10 @@ class TextProcessingStrategyAdapter:
             "overlap_tokens": overlap_tokens,
             "strategy_name": self.strategy.name,
         }
+        
+        # Add hierarchy levels for hierarchical strategy
+        if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
+            config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
         
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
