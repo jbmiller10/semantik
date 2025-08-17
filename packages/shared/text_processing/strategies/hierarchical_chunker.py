@@ -73,6 +73,8 @@ class HierarchicalChunker:
         if len(text) > MAX_TEXT_LENGTH:
             raise ValueError(f"Text too large to process: {len(text)} exceeds maximum of {MAX_TEXT_LENGTH}")
         # Delegate to regular async chunk_text since unified doesn't have streaming
+        # Get all results first, then yield them one by one to simulate streaming
         results = await self._chunker.chunk_text_async(text, doc_id, metadata)
         for result in results:
+            # Use async yield to properly implement async generator
             yield result
