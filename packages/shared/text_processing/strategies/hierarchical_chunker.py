@@ -30,7 +30,7 @@ class HierarchicalChunker:
                 raise ValueError("chunk_sizes must be a list")
             
             if len(chunk_sizes) == 0:
-                raise ValueError("chunk_sizes cannot be empty")
+                raise ValueError("chunk_sizes must contain at least one size")
             
             if len(chunk_sizes) > MAX_HIERARCHY_DEPTH:
                 raise ValueError(f"Too many hierarchy levels: {len(chunk_sizes)} exceeds maximum of {MAX_HIERARCHY_DEPTH}")
