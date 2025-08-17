@@ -8,12 +8,14 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.character import CharacterChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.hierarchical import HierarchicalChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.hybrid import HybridChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.recursive import RecursiveChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
+from packages.shared.chunking.domain.services.chunking_strategies import (
+    CharacterChunkingStrategy,
+    HierarchicalChunkingStrategy,
+    HybridChunkingStrategy,
+    MarkdownChunkingStrategy,
+    RecursiveChunkingStrategy,
+    SemanticChunkingStrategy,
+)
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
