@@ -219,6 +219,13 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                 is_heading = node.metadata.get("is_heading", False) if hasattr(node, "metadata") else False
                 heading_level = node.metadata.get("heading_level", 0) if hasattr(node, "metadata") else 0
 
+                # Build custom attributes for markdown-specific metadata
+                custom_attrs = {}
+                if is_heading:
+                    custom_attrs["is_heading"] = is_heading
+                if heading_level > 0:
+                    custom_attrs["heading_level"] = heading_level
+
                 metadata = ChunkMetadata(
                     chunk_id=f"{config.strategy_name}_{idx:04d}",
                     document_id="doc",
@@ -229,8 +236,8 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                     strategy_name=self.name,
                     semantic_density=0.7,  # Good for structured content
                     confidence_score=0.95,  # Higher confidence with LlamaIndex
-                    is_heading=is_heading,
-                    heading_level=heading_level,
+                    hierarchy_level=heading_level if heading_level > 0 else None,
+                    custom_attributes=custom_attrs,
                     created_at=datetime.now(tz=UTC),
                 )
 

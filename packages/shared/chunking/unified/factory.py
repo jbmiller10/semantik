@@ -242,6 +242,13 @@ class TextProcessingStrategyAdapter:
                 **(metadata or {}),
             }
             
+            # Add code file detection for recursive strategy
+            if self.strategy.name == "recursive" and metadata:
+                file_type = metadata.get("file_type", "")
+                code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".rb", ".php"]
+                if file_type in code_extensions:
+                    chunk_metadata["is_code_file"] = True
+            
             # Add hybrid-specific metadata if using hybrid strategy
             if self.strategy.name == "hybrid":
                 chunk_metadata["hybrid_chunker"] = True
@@ -327,6 +334,13 @@ class TextProcessingStrategyAdapter:
                 "token_count": chunk.metadata.token_count,
                 **(metadata or {}),
             }
+            
+            # Add code file detection for recursive strategy
+            if self.strategy.name == "recursive" and metadata:
+                file_type = metadata.get("file_type", "")
+                code_extensions = [".py", ".js", ".ts", ".java", ".cpp", ".c", ".go", ".rs", ".rb", ".php"]
+                if file_type in code_extensions:
+                    chunk_metadata["is_code_file"] = True
             
             # Add hybrid-specific metadata if using hybrid strategy
             if self.strategy.name == "hybrid":

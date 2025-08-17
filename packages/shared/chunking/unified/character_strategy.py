@@ -162,21 +162,36 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
             chunks = []
             total_chars = len(content)
 
+            # For LlamaIndex chunks, we need to calculate offsets based on the chunking pattern
+            # Since LlamaIndex handles the overlap internally, we calculate offsets accordingly
+            
+            # Calculate approximate characters per token (LlamaIndex uses its own tokenizer)
+            chars_per_token = 4
+            chunk_size_chars = config.max_tokens * chars_per_token
+            overlap_chars = config.overlap_tokens * chars_per_token
+            
+            # Track the expected position based on chunk size and overlap
+            current_position = 0
+            
             # Convert LlamaIndex nodes to domain chunks
             for idx, node in enumerate(nodes):
                 chunk_text = node.get_content()
+                chunk_length = len(chunk_text)
 
-                # Calculate offsets
+                # Calculate offsets based on the chunking pattern
                 if idx == 0:
+                    # First chunk starts at the beginning
                     start_offset = 0
+                    end_offset = min(chunk_length, total_chars)
                 else:
-                    # Find the chunk text in the original content
-                    prev_end = chunks[-1].metadata.end_offset
-                    start_offset = content.find(chunk_text, prev_end - 100)  # Look near previous end
-                    if start_offset == -1:
-                        start_offset = prev_end
+                    # Subsequent chunks start with overlap from previous chunk
+                    # The overlap means the new chunk starts before the previous ended
+                    start_offset = current_position - overlap_chars
+                    start_offset = max(0, start_offset)  # Ensure not negative
+                    end_offset = min(start_offset + chunk_length, total_chars)
 
-                end_offset = min(start_offset + len(chunk_text), total_chars)
+                # Update position for next chunk
+                current_position = end_offset
 
                 # Create chunk metadata
                 token_count = self.count_tokens(chunk_text)
