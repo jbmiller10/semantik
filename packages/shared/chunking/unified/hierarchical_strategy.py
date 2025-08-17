@@ -456,13 +456,21 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
             # Adjust to word boundaries
             if end < len(content):
-                end = self.find_word_boundary(content, end, prefer_before=True)
+                word_boundary = self.find_word_boundary(content, end, prefer_before=True)
+                # Ensure we don't go backwards
+                if word_boundary > start:
+                    end = word_boundary
+                # If word boundary is at or before start, keep original end
 
             # Extract chunk
             chunk_text = content[start:end]
             chunk_text = self.clean_chunk_text(chunk_text)
 
             if not chunk_text:
+                # Prevent infinite loop: if we're not making progress, break
+                if end <= position:
+                    logger.warning(f"Breaking potential infinite loop at position={position}, end={end}")
+                    break
                 position = end
                 continue
 
@@ -507,9 +515,13 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             # Move position with overlap
             position = end - overlap_chars if overlap_chars > 0 else end
 
-            # Ensure progress
+            # Ensure progress (prevent infinite loop)
             if position <= start:
                 position = end
+                # Double-check we're making progress
+                if position <= start:
+                    logger.warning(f"Breaking potential infinite loop: position={position}, start={start}, end={end}")
+                    break
 
         return chunks
 
