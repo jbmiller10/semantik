@@ -12,7 +12,7 @@ Tests verify:
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.character import (
+from packages.shared.chunking.domain.services.chunking_strategies import (
     CharacterChunkingStrategy,
 )
 from packages.shared.chunking.domain.services.streaming_strategies import (
