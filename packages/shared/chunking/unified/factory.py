@@ -203,18 +203,34 @@ class TextProcessingStrategyAdapter:
         from packages.shared.text_processing.base_chunker import ChunkResult
         
         results = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            # Generate chunk ID with doc_id prefix if needed
+            chunk_id = chunk.metadata.chunk_id
+            if doc_id and not chunk_id.startswith(doc_id):
+                chunk_id = f"{doc_id}_{chunk.metadata.chunk_index:04d}"
+            
+            # Build metadata with all expected fields
+            chunk_metadata = {
+                "strategy": self.strategy.name,
+                "chunk_index": chunk.metadata.chunk_index,
+                "token_count": chunk.metadata.token_count,
+                **(metadata or {}),
+            }
+            
+            # Add hybrid-specific metadata if using hybrid strategy
+            if self.strategy.name == "hybrid":
+                chunk_metadata["hybrid_chunker"] = True
+                chunk_metadata["selected_strategy"] = "hybrid"
+                if i == 0:  # Add reasoning to first chunk
+                    chunk_metadata["hybrid_strategy_used"] = "hybrid"
+                    chunk_metadata["hybrid_strategy_reasoning"] = "Hybrid strategy selected"
+            
             result = ChunkResult(
-                chunk_id=chunk.metadata.chunk_id,
+                chunk_id=chunk_id,
                 text=chunk.content,
                 start_offset=chunk.metadata.start_offset,
                 end_offset=chunk.metadata.end_offset,
-                metadata={
-                    "strategy": self.strategy.name,
-                    "chunk_index": chunk.metadata.chunk_index,
-                    "token_count": chunk.metadata.token_count,
-                    **(metadata or {}),
-                },
+                metadata=chunk_metadata,
             )
             results.append(result)
 
@@ -256,18 +272,34 @@ class TextProcessingStrategyAdapter:
         from packages.shared.text_processing.base_chunker import ChunkResult
         
         results = []
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
+            # Generate chunk ID with doc_id prefix if needed
+            chunk_id = chunk.metadata.chunk_id
+            if doc_id and not chunk_id.startswith(doc_id):
+                chunk_id = f"{doc_id}_{chunk.metadata.chunk_index:04d}"
+            
+            # Build metadata with all expected fields
+            chunk_metadata = {
+                "strategy": self.strategy.name,
+                "chunk_index": chunk.metadata.chunk_index,
+                "token_count": chunk.metadata.token_count,
+                **(metadata or {}),
+            }
+            
+            # Add hybrid-specific metadata if using hybrid strategy
+            if self.strategy.name == "hybrid":
+                chunk_metadata["hybrid_chunker"] = True
+                chunk_metadata["selected_strategy"] = "hybrid"
+                if i == 0:  # Add reasoning to first chunk
+                    chunk_metadata["hybrid_strategy_used"] = "hybrid"
+                    chunk_metadata["hybrid_strategy_reasoning"] = "Hybrid strategy selected"
+            
             result = ChunkResult(
-                chunk_id=chunk.metadata.chunk_id,
+                chunk_id=chunk_id,
                 text=chunk.content,
                 start_offset=chunk.metadata.start_offset,
                 end_offset=chunk.metadata.end_offset,
-                metadata={
-                    "strategy": self.strategy.name,
-                    "chunk_index": chunk.metadata.chunk_index,
-                    "token_count": chunk.metadata.token_count,
-                    **(metadata or {}),
-                },
+                metadata=chunk_metadata,
             )
             results.append(result)
 
