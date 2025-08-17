@@ -225,11 +225,13 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     token_count=token_count,
                     strategy_name=self.name,
                     hierarchy_level=level,
-                    parent_chunk_id=parent_id,
-                    child_chunk_ids=child_ids,
                     semantic_density=0.75,  # Good for hierarchical structure
                     confidence_score=0.95,  # Higher confidence with LlamaIndex
                     created_at=datetime.now(tz=UTC),
+                    custom_attributes={
+                        "parent_chunk_id": parent_id,
+                        "child_chunk_ids": child_ids,
+                    },
                 )
 
                 # Create chunk entity
@@ -368,6 +370,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             )
         else:
             # Child level - chunk within parent boundaries
+            updated_parents = []
             for parent in parent_chunks or []:
                 parent_content = parent.content
                 child_chunks = self._create_base_chunks(
@@ -381,10 +384,30 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     parent_offset=parent.metadata.start_offset,
                 )
 
-                # Update parent with child references
-                parent.metadata.child_chunk_ids = [c.metadata.chunk_id for c in child_chunks]
+                # Update parent with child references by creating a new chunk
+                from dataclasses import replace
 
+                updated_parent_metadata = replace(
+                    parent.metadata,
+                    custom_attributes={
+                        **parent.metadata.custom_attributes,
+                        "child_chunk_ids": [c.metadata.chunk_id for c in child_chunks],
+                    },
+                )
+
+                # Create updated parent chunk
+                updated_parent = Chunk(
+                    content=parent.content,
+                    metadata=updated_parent_metadata,
+                    min_tokens=parent.min_tokens,
+                    max_tokens=parent.max_tokens,
+                )
+
+                updated_parents.append(updated_parent)
                 chunks.extend(child_chunks)
+
+            # Add updated parents to the result
+            chunks = updated_parents + chunks
 
         return chunks
 
@@ -461,11 +484,13 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 token_count=token_count,
                 strategy_name="hierarchical",
                 hierarchy_level=level,
-                parent_chunk_id=parent_id,
-                child_chunk_ids=[],
                 semantic_density=0.75,
                 confidence_score=0.85,
                 created_at=datetime.now(tz=UTC),
+                custom_attributes={
+                    "parent_chunk_id": parent_id,
+                    "child_chunk_ids": [],
+                },
             )
 
             # Create chunk
