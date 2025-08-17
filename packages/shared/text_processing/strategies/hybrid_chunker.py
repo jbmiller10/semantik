@@ -137,7 +137,7 @@ class HybridChunker:
         # Check for manual override
         if self.enable_strategy_override and metadata and 'chunking_strategy' in metadata:
             strategy = metadata['chunking_strategy']
-            return ChunkingStrategy.CHARACTER, {}, "Manually specified strategy"
+            return ChunkingStrategy(strategy), {}, f"Strategy manually specified: {strategy}"
         
         # Check for large coherent document
         if len(text) > self.large_doc_threshold:

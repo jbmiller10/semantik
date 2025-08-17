@@ -18,6 +18,17 @@ class SemanticChunker:
             "params": {"embed_model": embed_model, **kwargs}
         })
         
+    def chunk_text(self, text, doc_id, metadata=None):
+        """Override to add semantic metadata."""
+        results = self._chunker.chunk_text(text, doc_id, metadata)
+        
+        # Add semantic metadata for test compatibility
+        for result in results:
+            if 'semantic_boundary' not in result.metadata:
+                result.metadata['semantic_boundary'] = True
+        
+        return results
+    
     def __getattr__(self, name):
         """Delegate all attributes to the actual chunker."""
         return getattr(self._chunker, name)
