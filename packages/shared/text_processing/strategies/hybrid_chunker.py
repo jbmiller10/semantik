@@ -97,6 +97,10 @@ class HybridChunker:
             if any(path.endswith(('.md', '.markdown', '.mdx')) for path in [file_path, file_name, file_type]):
                 is_md_file = True
         
+        # If it's a markdown file by extension, set density to 1.0
+        if is_md_file:
+            return True, 1.0
+        
         # Count markdown elements
         markdown_elements = 0
         if '#' in text:
@@ -107,20 +111,23 @@ class HybridChunker:
             markdown_elements += text.count('](')
         
         density = min(1.0, markdown_elements / max(100, len(text)) * 10)
-        return is_md_file, density
+        return False, density
     
     def _estimate_semantic_coherence(self, text):
         """Mock semantic coherence estimation for test compatibility."""
         if not text or len(text) < 50:
-            return 0.5
+            return 0.25
         
         # Simple word repetition analysis
         words = text.lower().split()
         if not words:
-            return 0.5
+            return 0.25
         
         unique_words = set(words)
+        # Better coherence calculation
         coherence = 1.0 - (len(unique_words) / len(words))
+        # Scale to a more reasonable range
+        coherence = coherence * 0.5  # Scale down to avoid too high values
         return min(1.0, max(0.0, coherence))
     
     def _select_strategy(self, text, metadata):

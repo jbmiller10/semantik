@@ -232,6 +232,9 @@ class HierarchicalChunker:
         # Build node map for hierarchy
         node_map = {}
         
+        # Find the max hierarchy level to determine leaf nodes
+        max_level = max((r.metadata.get('hierarchy_level', 0) for r in results), default=0)
+        
         for i, result in enumerate(results):
             # Get or set node_id
             if 'node_id' not in result.metadata:
@@ -240,15 +243,17 @@ class HierarchicalChunker:
             node_map[result.metadata['node_id']] = result
             
             # Determine if it's a leaf or parent based on hierarchy level
-            # Lower levels (0) are parents, higher levels are leaves
+            # The highest level (or level 0 if only one level) are leaves
             hierarchy_level = result.metadata.get('hierarchy_level', 0)
             
-            if hierarchy_level == 0:
-                parent_chunks.append(result)
-                result.metadata['is_leaf'] = False
-            else:
+            # If there's only one hierarchy level (max_level == 0), all chunks are leaves
+            # Otherwise, only the highest level chunks are leaves
+            if max_level == 0 or hierarchy_level == max_level:
                 leaf_chunks.append(result)
                 result.metadata['is_leaf'] = True
+            else:
+                parent_chunks.append(result)
+                result.metadata['is_leaf'] = False
         
         # Fix chunk IDs for parent chunks
         parent_index = 0

@@ -271,6 +271,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
         # Calculate chunk sizes for each level
         levels = min(config.hierarchy_levels, 3)  # Max 3 levels for practicality
+        logger.debug(f"Hierarchical chunking with {levels} levels (from config.hierarchy_levels={config.hierarchy_levels})")
         level_configs = self._create_level_configs(config, levels)
 
         # Process each level
@@ -477,8 +478,8 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             # Calculate token count
             token_count = self.count_tokens(chunk_text)
 
-            # Skip if too small (unless it's the last chunk)
-            if token_count < min_tokens and end < len(content):
+            # Skip if too small (unless it's the last chunk or the only chunk)
+            if token_count < min_tokens and end < len(content) and chunk_index > 0:
                 position = end
                 continue
 
