@@ -5,14 +5,14 @@ Compatibility wrapper for SemanticChunker.
 This module provides backward compatibility for tests that import SemanticChunker directly.
 """
 
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 class SemanticChunker:
     """Wrapper class for backward compatibility."""
     
     def __init__(self, embed_model=None, **kwargs):
-        """Initialize using the factory."""
+        """Initialize using the unified strategy directly."""
         # Store parameters for test compatibility
         self.max_chunk_size = kwargs.pop('max_chunk_size', 1000)
         self.breakpoint_percentile_threshold = kwargs.pop('breakpoint_percentile_threshold', 95)
@@ -28,10 +28,9 @@ class SemanticChunker:
             **kwargs
         }
         
-        self._chunker = ChunkingFactory.create_chunker({
-            "strategy": "semantic",
-            "params": params
-        })
+        # Create unified strategy directly
+        unified_strategy = UnifiedChunkingFactory.create_strategy("semantic", use_llama_index=True, embed_model=embed_model)
+        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
         
     def chunk_text(self, text, doc_id, metadata=None):
         """Override to add semantic metadata."""

@@ -5,14 +5,14 @@ Compatibility wrapper for CharacterChunker.
 This module provides backward compatibility for tests that import CharacterChunker directly.
 """
 
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
 
 class CharacterChunker:
     """Wrapper class for backward compatibility."""
     
     def __init__(self, chunk_size=1000, chunk_overlap=200, **kwargs):
-        """Initialize using the factory."""
+        """Initialize using the unified strategy directly."""
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         
@@ -26,10 +26,9 @@ class CharacterChunker:
             **kwargs
         }
         
-        self._chunker = ChunkingFactory.create_chunker({
-            "strategy": "character",
-            "params": params
-        })
+        # Create unified strategy directly
+        unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)
+        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
         
     def __getattr__(self, name):
         """Delegate all attributes to the actual chunker."""

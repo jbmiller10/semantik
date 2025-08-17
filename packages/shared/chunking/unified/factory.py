@@ -243,6 +243,8 @@ class TextProcessingStrategyAdapter:
                 "strategy": self.strategy.name,
                 "chunk_index": chunk.metadata.chunk_index,
                 "token_count": chunk.metadata.token_count,
+                "hierarchy_level": chunk.metadata.hierarchy_level,
+                "custom_attributes": chunk.metadata.custom_attributes,
                 **(metadata or {}),
             }
             
@@ -340,6 +342,8 @@ class TextProcessingStrategyAdapter:
                 "strategy": self.strategy.name,
                 "chunk_index": chunk.metadata.chunk_index,
                 "token_count": chunk.metadata.token_count,
+                "hierarchy_level": chunk.metadata.hierarchy_level,
+                "custom_attributes": chunk.metadata.custom_attributes,
                 **(metadata or {}),
             }
             

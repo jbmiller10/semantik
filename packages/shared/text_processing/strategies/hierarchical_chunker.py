@@ -7,7 +7,7 @@ This module provides backward compatibility for tests that import HierarchicalCh
 
 import logging
 from typing import Any
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from packages.shared.text_processing.base_chunker import ChunkResult
 
 # Mock logger for test compatibility
@@ -81,10 +81,9 @@ class HierarchicalChunker:
             kwargs['min_tokens'] = min_tokens
             kwargs['hierarchy_levels'] = hierarchy_levels
         
-        self._chunker = ChunkingFactory.create_chunker({
-            "strategy": "hierarchical",
-            "params": kwargs
-        })
+        # Create unified strategy directly
+        unified_strategy = UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=True)
+        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **kwargs)
         
         # Add mock attributes for test compatibility
         self._compiled_patterns = {}  # Mock compiled patterns for tests
@@ -165,17 +164,15 @@ class HierarchicalChunker:
             except Exception as e:
                 # Parser will fail, fallback to character
                 logger.warning(f"Hierarchical chunking failed (mocked parser), falling back to character: {e}")
-                from packages.shared.text_processing.chunking_factory import ChunkingFactory
+                from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
                 
                 # Create character chunker with similar config
-                fallback_chunker = ChunkingFactory.create_chunker({
-                    "strategy": "character",
-                    "params": {
-                        "max_tokens": max(self.chunk_sizes) // 4,
-                        "min_tokens": min(self.chunk_sizes) // 8,
-                        "overlap_tokens": self.chunk_overlap // 4
-                    }
-                })
+                unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)
+                fallback_chunker = TextProcessingStrategyAdapter(unified_strategy, 
+                    max_tokens=max(self.chunk_sizes) // 4,
+                    min_tokens=min(self.chunk_sizes) // 8,
+                    overlap_tokens=self.chunk_overlap // 4
+                )
                 
                 results = fallback_chunker.chunk_text(text, doc_id, metadata)
                 
@@ -191,7 +188,7 @@ class HierarchicalChunker:
         except Exception as e:
             # On error, fallback to character chunking
             logger.warning(f"Hierarchical chunking failed, falling back to character: {e}")
-            from packages.shared.text_processing.chunking_factory import ChunkingFactory
+            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
             
             # Create character chunker with similar config
             fallback_chunker = ChunkingFactory.create_chunker({
@@ -225,63 +222,62 @@ class HierarchicalChunker:
         if not results:
             return
         
-        # Separate parent and leaf chunks based on hierarchy level in metadata
-        parent_chunks = []
-        leaf_chunks = []
-        
-        # Build node map for hierarchy
-        node_map = {}
-        
         # Find the max hierarchy level to determine leaf nodes
         max_level = max((r.metadata.get('hierarchy_level', 0) for r in results), default=0)
         
-        for i, result in enumerate(results):
-            # Get or set node_id
-            if 'node_id' not in result.metadata:
-                result.metadata['node_id'] = f"{doc_id}_node_{i:04d}"
-            
-            node_map[result.metadata['node_id']] = result
-            
-            # Determine if it's a leaf or parent based on hierarchy level
-            # The highest level (or level 0 if only one level) are leaves
-            hierarchy_level = result.metadata.get('hierarchy_level', 0)
-            
-            # If there's only one hierarchy level (max_level == 0), all chunks are leaves
-            # Otherwise, only the highest level chunks are leaves
-            if max_level == 0 or hierarchy_level == max_level:
-                leaf_chunks.append(result)
-                result.metadata['is_leaf'] = True
-            else:
-                parent_chunks.append(result)
-                result.metadata['is_leaf'] = False
+        # Group chunks by hierarchy level
+        chunks_by_level = {}
+        for result in results:
+            level = result.metadata.get('hierarchy_level', 0)
+            if level not in chunks_by_level:
+                chunks_by_level[level] = []
+            chunks_by_level[level].append(result)
         
-        # Fix chunk IDs for parent chunks
+        # Process chunks to set parent/leaf status and fix IDs
         parent_index = 0
         leaf_index = 0
         
         for result in results:
-            if result.metadata.get('is_leaf', False):
-                # Leaf chunk - use standard format
+            hierarchy_level = result.metadata.get('hierarchy_level', 0)
+            
+            # In a multi-level hierarchy:
+            # - Level 0 = top-level parent chunks (largest)
+            # - Level 1 = middle-level chunks
+            # - Level 2 (max_level) = leaf chunks (smallest)
+            # The highest level are the leaves
+            if hierarchy_level == max_level:
+                # This is a leaf chunk
+                result.metadata['is_leaf'] = True
                 result.chunk_id = f"{doc_id}_{leaf_index:04d}"
                 leaf_index += 1
             else:
-                # Parent chunk - use special format
+                # This is a parent chunk
+                result.metadata['is_leaf'] = False
                 result.chunk_id = f"{doc_id}_parent_{parent_index:04d}"
                 parent_index += 1
             
-            # Ensure all expected fields are present
-            if 'parent_chunk_id' not in result.metadata:
+            # Extract parent/child relationships from custom_attributes if present
+            custom_attrs = result.metadata.get('custom_attributes', {})
+            
+            # Set parent_chunk_id from custom attributes or default to None
+            if 'parent_chunk_id' in custom_attrs:
+                result.metadata['parent_chunk_id'] = custom_attrs['parent_chunk_id']
+            elif 'parent_chunk_id' not in result.metadata:
                 result.metadata['parent_chunk_id'] = None
             
-            if 'child_chunk_ids' not in result.metadata:
+            # Set child_chunk_ids from custom attributes or default to empty list
+            if 'child_chunk_ids' in custom_attrs:
+                result.metadata['child_chunk_ids'] = custom_attrs['child_chunk_ids']
+            elif 'child_chunk_ids' not in result.metadata:
                 result.metadata['child_chunk_ids'] = []
             
+            # Add chunk_sizes metadata
             if 'chunk_sizes' not in result.metadata:
                 result.metadata['chunk_sizes'] = self.chunk_sizes
             
-            # Ensure hierarchy_level is set
-            if 'hierarchy_level' not in result.metadata:
-                result.metadata['hierarchy_level'] = 0
+            # Ensure node_id is set for compatibility
+            if 'node_id' not in result.metadata:
+                result.metadata['node_id'] = result.chunk_id
     
     def chunk_text_stream(self, text, doc_id, metadata=None, include_parents=True):
         """Override to add text length validation for streaming."""
@@ -304,17 +300,15 @@ class HierarchicalChunker:
             except Exception as e:
                 # Parser will fail, fallback to character
                 logger.warning(f"Hierarchical chunking failed (mocked parser), falling back to character: {e}")
-                from packages.shared.text_processing.chunking_factory import ChunkingFactory
+                from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
                 
                 # Create character chunker with similar config
-                fallback_chunker = ChunkingFactory.create_chunker({
-                    "strategy": "character",
-                    "params": {
-                        "max_tokens": max(self.chunk_sizes) // 4,
-                        "min_tokens": min(self.chunk_sizes) // 8,
-                        "overlap_tokens": self.chunk_overlap // 4
-                    }
-                })
+                unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)
+                fallback_chunker = TextProcessingStrategyAdapter(unified_strategy, 
+                    max_tokens=max(self.chunk_sizes) // 4,
+                    min_tokens=min(self.chunk_sizes) // 8,
+                    overlap_tokens=self.chunk_overlap // 4
+                )
                 
                 results = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
                 
@@ -330,7 +324,7 @@ class HierarchicalChunker:
         except Exception as e:
             # On error, fallback to character chunking
             logger.warning(f"Hierarchical chunking failed, falling back to character: {e}")
-            from packages.shared.text_processing.chunking_factory import ChunkingFactory
+            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
             
             # Create character chunker with similar config
             fallback_chunker = ChunkingFactory.create_chunker({

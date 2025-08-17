@@ -277,29 +277,45 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         # Process each level
         total_operations = levels
         parent_chunks: list[Chunk] = []
+        level_chunks_map: dict[int, list[Chunk]] = {}
 
         for level in range(levels):
             level_config = level_configs[level]
 
             # Create chunks for this level
-            level_chunks = self._create_level_chunks(
-                content,
-                level,
-                level_config,
-                config.strategy_name,
-                parent_chunks if level > 0 else None,
-            )
-
-            # Store chunks from level 0 as parent chunks for next level
             if level == 0:
+                # Top level - chunk entire content
+                level_chunks = self._create_level_chunks(
+                    content,
+                    level,
+                    level_config,
+                    config.strategy_name,
+                    None,
+                )
                 parent_chunks = level_chunks
-
-            all_chunks.extend(level_chunks)
+                level_chunks_map[level] = level_chunks
+            else:
+                # Child level - create child chunks and update parents
+                level_chunks, updated_parents = self._create_child_level_chunks(
+                    parent_chunks,
+                    level,
+                    level_config,
+                    config.strategy_name,
+                )
+                # Update parent chunks with child references
+                level_chunks_map[level - 1] = updated_parents
+                level_chunks_map[level] = level_chunks
+                # Use the child chunks as parents for next level
+                parent_chunks = level_chunks
 
             # Report progress
             if progress_callback:
                 progress = ((level + 1) / total_operations) * 100
                 progress_callback(min(progress, 100.0))
+
+        # Collect all chunks from all levels
+        for level in range(levels):
+            all_chunks.extend(level_chunks_map[level])
 
         return all_chunks
 
@@ -345,72 +361,87 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         parent_chunks: list[Chunk] | None = None,
     ) -> list[Chunk]:
         """
-        Create chunks for a specific hierarchy level.
+        Create chunks for a specific hierarchy level (level 0 only).
 
         Args:
             content: Content to chunk
             level: Hierarchy level (0=top)
             level_config: Configuration for this level
             strategy_name: Strategy name for chunk IDs
-            parent_chunks: Parent chunks from previous level
+            parent_chunks: Parent chunks from previous level (unused for level 0)
 
         Returns:
             List of chunks for this level
         """
-        chunks = []
+        # This method now only handles level 0 (top level)
+        chunks = self._create_base_chunks(
+            content,
+            level_config["max_tokens"],
+            level_config["min_tokens"],
+            level_config["overlap_tokens"],
+            strategy_name,
+            level,
+        )
+        return chunks
 
-        if level == 0:
-            # Top level - chunk entire content
-            chunks = self._create_base_chunks(
-                content,
+    def _create_child_level_chunks(
+        self,
+        parent_chunks: list[Chunk],
+        level: int,
+        level_config: dict[str, Any],
+        strategy_name: str,
+    ) -> tuple[list[Chunk], list[Chunk]]:
+        """
+        Create child chunks from parent chunks and update parent references.
+
+        Args:
+            parent_chunks: Parent chunks to subdivide
+            level: Hierarchy level for child chunks
+            level_config: Configuration for this level
+            strategy_name: Strategy name for chunk IDs
+
+        Returns:
+            Tuple of (child_chunks, updated_parent_chunks)
+        """
+        all_child_chunks = []
+        updated_parents = []
+
+        for parent in parent_chunks:
+            parent_content = parent.content
+            child_chunks = self._create_base_chunks(
+                parent_content,
                 level_config["max_tokens"],
                 level_config["min_tokens"],
                 level_config["overlap_tokens"],
                 strategy_name,
                 level,
+                parent_id=parent.metadata.chunk_id,
+                parent_offset=parent.metadata.start_offset,
             )
-        else:
-            # Child level - chunk within parent boundaries
-            updated_parents = []
-            for parent in parent_chunks or []:
-                parent_content = parent.content
-                child_chunks = self._create_base_chunks(
-                    parent_content,
-                    level_config["max_tokens"],
-                    level_config["min_tokens"],
-                    level_config["overlap_tokens"],
-                    strategy_name,
-                    level,
-                    parent_id=parent.metadata.chunk_id,
-                    parent_offset=parent.metadata.start_offset,
-                )
 
-                # Update parent with child references by creating a new chunk
-                from dataclasses import replace
+            # Update parent with child references by creating a new chunk
+            from dataclasses import replace
 
-                updated_parent_metadata = replace(
-                    parent.metadata,
-                    custom_attributes={
-                        **parent.metadata.custom_attributes,
-                        "child_chunk_ids": [c.metadata.chunk_id for c in child_chunks],
-                    },
-                )
+            updated_parent_metadata = replace(
+                parent.metadata,
+                custom_attributes={
+                    **parent.metadata.custom_attributes,
+                    "child_chunk_ids": [c.metadata.chunk_id for c in child_chunks],
+                },
+            )
 
-                # Create updated parent chunk
-                updated_parent = Chunk(
-                    content=parent.content,
-                    metadata=updated_parent_metadata,
-                    min_tokens=parent.min_tokens,
-                    max_tokens=parent.max_tokens,
-                )
+            # Create updated parent chunk
+            updated_parent = Chunk(
+                content=parent.content,
+                metadata=updated_parent_metadata,
+                min_tokens=parent.min_tokens,
+                max_tokens=parent.max_tokens,
+            )
 
-                updated_parents.append(updated_parent)
-                chunks.extend(child_chunks)
+            updated_parents.append(updated_parent)
+            all_child_chunks.extend(child_chunks)
 
-            # Add updated parents to the result
-            chunks = updated_parents + chunks
-
-        return chunks
+        return all_child_chunks, updated_parents
 
     def _create_base_chunks(
         self,
