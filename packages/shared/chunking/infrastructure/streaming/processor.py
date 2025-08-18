@@ -11,7 +11,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -442,7 +442,7 @@ class StreamingDocumentProcessor:
         bytes_processed: int,
         total_bytes: int,
         chunks_processed: int,
-        callback: Callable | None = None,
+        callback: Callable[[dict[str, Any]], None | Awaitable[None]] | None = None,
         is_complete: bool = False,
     ) -> None:
         """

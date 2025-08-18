@@ -298,6 +298,10 @@ class ScalableWebSocketManager:
                 # Remove from user set
                 if user_id:
                     await self.redis_client.srem(f"websocket:user:{user_id}", connection_id)
+                    # Clean up empty user set
+                    remaining = await self.redis_client.scard(f"websocket:user:{user_id}")
+                    if remaining == 0:
+                        await self.redis_client.delete(f"websocket:user:{user_id}")
 
                 # Check if user has any remaining connections on this instance
                 remaining_local = any(m.get("user_id") == user_id for m in self.connection_metadata.values())
@@ -341,8 +345,17 @@ class ScalableWebSocketManager:
             # Check if user has connections on other instances
             all_connections = await self.redis_client.smembers(f"websocket:user:{user_id}")
 
-            # Filter out local connections
-            remote_connections = [conn_id for conn_id in all_connections if conn_id not in self.local_connections]
+            # Filter out local connections and verify remote connections actually exist
+            remote_connections = []
+            for conn_id in all_connections:
+                if conn_id not in self.local_connections:
+                    # Verify this connection still exists in the registry
+                    conn_data = await self.redis_client.hget("websocket:connections", conn_id)
+                    if conn_data:
+                        data = json.loads(conn_data)
+                        # Only count as remote if it's from a different instance
+                        if data.get("instance_id") != self.instance_id:
+                            remote_connections.append(conn_id)
 
             if remote_connections:
                 # Publish to Redis for other instances

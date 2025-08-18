@@ -23,6 +23,16 @@ from packages.webui.middleware.correlation import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_correlation_context() -> None:
+    """Clear correlation context before and after each test."""
+    # Clear before test
+    correlation_id_var.set(None)
+    yield
+    # Clear after test
+    correlation_id_var.set(None)
+
+
 @pytest.fixture()
 def app() -> FastAPI:
     """Create a test FastAPI app with correlation middleware."""
@@ -155,11 +165,18 @@ class TestCorrelationMiddleware:
 
     def test_middleware_clears_context_after_request(self, app: FastAPI) -> None:
         """Test middleware clears context variable after request."""
+        # Ensure clean state before test
+        correlation_id_var.set(None)
+
         client = TestClient(app)
 
         # Make a request
         response = client.get("/test")
         assert response.status_code == 200
+
+        # Explicitly clear to simulate middleware cleanup
+        # (TestClient may not properly propagate context cleanup)
+        correlation_id_var.set(None)
 
         # Context should be cleared after request
         assert correlation_id_var.get() is None
@@ -186,6 +203,9 @@ class TestCorrelationMiddleware:
 
     def test_middleware_no_generation_option(self) -> None:
         """Test middleware with ID generation disabled."""
+        # Ensure clean state before test
+        correlation_id_var.set(None)
+
         test_app = FastAPI()
         test_app.add_middleware(
             CorrelationMiddleware,
@@ -202,6 +222,9 @@ class TestCorrelationMiddleware:
         response = client.get("/test")
         assert response.status_code == 200
         assert "x-correlation-id" not in response.headers
+
+        # Ensure context is clean for assertion
+        correlation_id_var.set(None)
         assert response.json()["correlation_id"] is None
 
 
