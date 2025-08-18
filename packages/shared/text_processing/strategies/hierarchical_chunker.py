@@ -84,6 +84,10 @@ class HierarchicalChunker:
             kwargs['min_tokens'] = min_tokens
             kwargs['hierarchy_levels'] = hierarchy_levels
             kwargs['overlap_tokens'] = overlap_tokens
+            # Pass the original chunk sizes for hierarchy creation
+            kwargs['chunk_sizes'] = chunk_sizes
+            # Pass the original chunk sizes in custom_attributes for metadata
+            kwargs['custom_attributes'] = {'chunk_sizes': chunk_sizes}
 
         # Create unified strategy directly
         unified_strategy = UnifiedChunkingFactory.create_strategy("hierarchical", use_llama_index=True)
