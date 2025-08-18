@@ -37,6 +37,8 @@ class ChunkConfig:
         "strategies",  # List of strategies for hybrid chunking
         "weights",  # Weights for hybrid chunking strategies
         "adaptive_weights",  # Enable adaptive weight adjustment for hybrid chunking
+        "chunk_sizes",  # Hierarchy sizes for hierarchical chunking
+        "custom_attributes",  # Custom attributes to pass through to chunks
     }
 
     def __init__(

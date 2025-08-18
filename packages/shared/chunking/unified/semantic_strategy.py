@@ -639,14 +639,34 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
                     "similarity_score": 1.0,
                 }
             else:
-                # Add sentence to current cluster
-                current_cluster["sentences"].append(sentence["text"])
-                current_cluster["end_offset"] = sentence["end_offset"]
-                current_cluster["token_count"] += sentence_tokens
-
-                # Simple similarity: sentences close together are similar
-                # (In production, use actual embeddings for similarity)
-                current_cluster["similarity_score"] *= 0.95
+                # Check semantic similarity before adding
+                if current_cluster["sentences"]:
+                    # Calculate similarity between current cluster and new sentence
+                    cluster_text = " ".join(current_cluster["sentences"])
+                    similarity = self._calculate_similarity(cluster_text, sentence["text"])
+                    
+                    # If similarity is below threshold, start new cluster
+                    if similarity < similarity_threshold:
+                        # Save current cluster and start new one
+                        clusters.append(current_cluster)
+                        current_cluster = {
+                            "sentences": [sentence["text"]],
+                            "start_offset": sentence["start_offset"],
+                            "end_offset": sentence["end_offset"],
+                            "token_count": sentence_tokens,
+                            "similarity_score": 1.0,
+                        }
+                    else:
+                        # Add sentence to current cluster
+                        current_cluster["sentences"].append(sentence["text"])
+                        current_cluster["end_offset"] = sentence["end_offset"]
+                        current_cluster["token_count"] += sentence_tokens
+                        current_cluster["similarity_score"] = similarity
+                else:
+                    # First sentence in cluster
+                    current_cluster["sentences"].append(sentence["text"])
+                    current_cluster["end_offset"] = sentence["end_offset"]
+                    current_cluster["token_count"] += sentence_tokens
 
         # Add final cluster
         if current_cluster["sentences"]:
@@ -654,6 +674,33 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
 
         return clusters
 
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """
+        Calculate semantic similarity between two texts.
+        
+        This is a simple placeholder implementation. In production, this would
+        use embeddings or other NLP techniques to calculate actual semantic similarity.
+        
+        Args:
+            text1: First text
+            text2: Second text
+            
+        Returns:
+            Similarity score between 0 and 1
+        """
+        # Simple heuristic: check for common words
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        
+        if not words1 or not words2:
+            return 0.0
+            
+        intersection = words1 & words2
+        union = words1 | words2
+        
+        # Jaccard similarity
+        return len(intersection) / len(union) if union else 0.0
+    
     def _merge_small_clusters(self, clusters: list[dict[str, Any]], min_tokens: int, max_tokens: int) -> list[dict[str, Any]]:
         """
         Merge small clusters to meet minimum token requirements while respecting maximum.

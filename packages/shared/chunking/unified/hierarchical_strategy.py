@@ -61,15 +61,22 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         try:
             from llama_index.core.node_parser import HierarchicalNodeParser
 
-            # Calculate chunk sizes for hierarchy levels
-            # Default: 3 levels with sizes [2048, 512, 128]
-            levels = min(config.hierarchy_levels, 3)
+            # Check if chunk_sizes are provided in config
+            if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
+                # Use provided chunk sizes (character-based)
+                char_sizes = config.additional_params['chunk_sizes']
+                # Convert character sizes to approximate token sizes (divide by 4)
+                chunk_sizes = [size // 4 for size in char_sizes]
+            else:
+                # Calculate chunk sizes for hierarchy levels
+                # Default: 3 levels with sizes [2048, 512, 128]
+                levels = min(config.hierarchy_levels, 3)
 
-            # Create chunk sizes from largest to smallest
-            chunk_sizes = []
-            base_size = config.max_tokens
-            for i in range(levels):
-                chunk_sizes.append(base_size // (2**i))
+                # Create chunk sizes from largest to smallest
+                chunk_sizes = []
+                base_size = config.max_tokens
+                for i in range(levels):
+                    chunk_sizes.append(base_size // (2**i))
 
             # Ensure overlap is smaller than the smallest chunk size
             smallest_chunk = min(chunk_sizes)
@@ -232,11 +239,23 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                         if isinstance(children, list):
                             child_ids = [c.node_id for c in children if hasattr(c, "node_id")]
 
+                # Determine if this is a leaf node
+                is_leaf = node in leaf_nodes
+                
+                # Get chunk sizes - prefer original character sizes if available
+                if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
+                    chunk_sizes_list = config.additional_params['chunk_sizes']
+                elif hasattr(splitter, 'chunk_sizes'):
+                    # Convert token sizes back to character sizes (multiply by 4)
+                    chunk_sizes_list = [size * 4 for size in splitter.chunk_sizes]
+                else:
+                    chunk_sizes_list = [config.max_tokens * 4]
+                
                 # Add hierarchy metadata to custom_attributes
                 custom_attrs = {
                     "hierarchy_level": level,
                     "is_leaf": is_leaf,
-                    "chunk_sizes": chunk_sizes,
+                    "chunk_sizes": chunk_sizes_list,
                 }
                 if parent_id:
                     custom_attrs["parent_chunk_id"] = parent_id
@@ -297,6 +316,13 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         levels = min(config.hierarchy_levels, 3)  # Max 3 levels for practicality
         logger.debug(f"Hierarchical chunking with {levels} levels (from config.hierarchy_levels={config.hierarchy_levels})")
         level_configs = self._create_level_configs(config, levels)
+        
+        # Get all chunk sizes (in characters) - either from config or calculate them
+        if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
+            all_chunk_sizes = config.additional_params['chunk_sizes']
+        else:
+            # Calculate chunk sizes in characters from level configs
+            all_chunk_sizes = [cfg['max_tokens'] * 4 for cfg in level_configs]
 
         # Process each level
         total_operations = levels
@@ -317,6 +343,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     config.strategy_name,
                     None,
                     global_chunk_index,
+                    all_chunk_sizes,
                 )
                 parent_chunks = level_chunks
                 level_chunks_map[level] = level_chunks
@@ -328,6 +355,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     level_config,
                     config.strategy_name,
                     global_chunk_index,
+                    all_chunk_sizes,
                 )
                 # Update parent chunks with child references
                 level_chunks_map[level - 1] = updated_parents
@@ -387,6 +415,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         strategy_name: str,
         parent_chunks: list[Chunk] | None = None,
         global_chunk_index: int = 0,
+        all_chunk_sizes: list[int] | None = None,
     ) -> tuple[list[Chunk], int]:
         """
         Create chunks for a specific hierarchy level (level 0 only).
@@ -410,6 +439,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             strategy_name,
             level,
             global_chunk_index=global_chunk_index,
+            all_chunk_sizes=all_chunk_sizes,
         )
         return chunks, new_global_index
 
@@ -420,6 +450,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         level_config: dict[str, Any],
         strategy_name: str,
         global_chunk_index: int = 0,
+        all_chunk_sizes: list[int] | None = None,
     ) -> tuple[list[Chunk], list[Chunk], int]:
         """
         Create child chunks from parent chunks and update parent references.
@@ -449,6 +480,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 parent_id=parent.metadata.chunk_id,
                 parent_offset=parent.metadata.start_offset,
                 global_chunk_index=current_global_index,
+                all_chunk_sizes=all_chunk_sizes,
             )
 
             # Update parent with child references by creating a new chunk
@@ -486,6 +518,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         parent_id: str | None = None,
         parent_offset: int = 0,
         global_chunk_index: int = 0,
+        all_chunk_sizes: list[int] | None = None,
     ) -> tuple[list[Chunk], int]:
         """
         Create basic chunks with size constraints.
@@ -552,7 +585,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 "hierarchy_level": level,
                 "chunk_id": f"{strategy_name}_L{level}_{global_chunk_index:04d}",
                 "is_leaf": level > 0,  # Non-zero levels are leaf chunks
-                "chunk_sizes": [chunk_size_chars],  # Add chunk sizes for compatibility
+                "chunk_sizes": all_chunk_sizes if all_chunk_sizes else [chunk_size_chars],  # Use full list if available
                 "parent_chunk_id": parent_id,
                 "child_chunk_ids": [],
             }

@@ -171,7 +171,8 @@ class TextProcessingStrategyAdapter:
         # Filter out known token-based parameters, ignore strategy-specific ones
         self.params = {}
         for key in ["max_tokens", "min_tokens", "overlap_tokens", "chunk_size",
-                    "chunk_overlap", "min_chunk_size", "custom_attributes", "hierarchy_levels"]:
+                    "chunk_overlap", "min_chunk_size", "custom_attributes", "hierarchy_levels",
+                    "chunk_sizes"]:
             if key in params:
                 self.params[key] = params[key]
 
@@ -216,8 +217,13 @@ class TextProcessingStrategyAdapter:
         }
 
         # Add hierarchy levels for hierarchical strategy
-        if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
-            config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
+        if self.strategy.name == "hierarchical":
+            if "hierarchy_levels" in self.params:
+                config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
+            # If chunk_sizes are provided, use them to calculate hierarchy
+            if "chunk_sizes" in self.params:
+                config_params["chunk_sizes"] = self.params["chunk_sizes"]
+                config_params["hierarchy_levels"] = len(self.params["chunk_sizes"])
 
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
@@ -330,8 +336,13 @@ class TextProcessingStrategyAdapter:
         }
 
         # Add hierarchy levels for hierarchical strategy
-        if self.strategy.name == "hierarchical" and "hierarchy_levels" in self.params:
-            config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
+        if self.strategy.name == "hierarchical":
+            if "hierarchy_levels" in self.params:
+                config_params["hierarchy_levels"] = self.params["hierarchy_levels"]
+            # If chunk_sizes are provided, use them to calculate hierarchy
+            if "chunk_sizes" in self.params:
+                config_params["chunk_sizes"] = self.params["chunk_sizes"]
+                config_params["hierarchy_levels"] = len(self.params["chunk_sizes"])
 
         # Only add custom_attributes if present
         if "custom_attributes" in self.params:
