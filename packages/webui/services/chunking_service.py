@@ -2060,8 +2060,8 @@ class ChunkingService:
         chunk_sizes = [
             len(
                 c.content
-                if hasattr(c, "content") and c.content
-                else c.text if hasattr(c, "text") and c.text else str(c)
+                if hasattr(c, "content") and isinstance(c.content, str) and c.content
+                else c.text if hasattr(c, "text") and isinstance(c.text, str) and c.text else str(c)
             )
             for c in chunks
         ]
@@ -2099,8 +2099,8 @@ class ChunkingService:
         chunk_sizes = [
             len(
                 c.content
-                if hasattr(c, "content") and c.content
-                else c.text if hasattr(c, "text") and c.text else str(c)
+                if hasattr(c, "content") and isinstance(c.content, str) and c.content
+                else c.text if hasattr(c, "text") and isinstance(c.text, str) and c.text else str(c)
             )
             for c in chunks
         ]
