@@ -1161,7 +1161,11 @@ class ChunkingService:
             avg_chunk_size = 0.0
             size_variance = 0.0
             if preview.chunks:
-                sizes = [c.char_count for c in preview.chunks if isinstance(c, ServiceChunkPreview) and c.char_count is not None]
+                sizes = [
+                    c.char_count
+                    for c in preview.chunks
+                    if isinstance(c, ServiceChunkPreview) and c.char_count is not None
+                ]
                 if sizes:
                     avg_chunk_size = sum(sizes) / len(sizes)
                     if len(sizes) > 1:
@@ -1273,7 +1277,11 @@ class ChunkingService:
                     # Calculate basic metrics if not provided
                     chunks = result.chunks
                     if chunks:
-                        sizes = [chunk.char_count or len(chunk.content or "") for chunk in chunks if isinstance(chunk, ServiceChunkPreview)]
+                        sizes = [
+                            chunk.char_count or len(chunk.content or "")
+                            for chunk in chunks
+                            if isinstance(chunk, ServiceChunkPreview)
+                        ]
                         avg_size = sum(sizes) / len(sizes) if sizes else 0
                         variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0
                         quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
@@ -2050,7 +2058,11 @@ class ChunkingService:
             }
 
         chunk_sizes = [
-            len(c.content if hasattr(c, "content") and c.content else c.text if hasattr(c, "text") and c.text else str(c))
+            len(
+                c.content
+                if hasattr(c, "content") and c.content
+                else c.text if hasattr(c, "text") and c.text else str(c)
+            )
             for c in chunks
         ]
         total_chunk_chars = sum(chunk_sizes)
@@ -2085,7 +2097,11 @@ class ChunkingService:
 
         # Calculate chunk size statistics
         chunk_sizes = [
-            len(c.content if hasattr(c, "content") and c.content else c.text if hasattr(c, "text") and c.text else str(c))
+            len(
+                c.content
+                if hasattr(c, "content") and c.content
+                else c.text if hasattr(c, "text") and c.text else str(c)
+            )
             for c in chunks
         ]
         avg_size = sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0
@@ -3078,7 +3094,9 @@ class ChunkingService:
         """
         # Use the regular chunking logic but adjust chunk IDs
         # Pass _from_segment=True to prevent recursive segmentation
-        result = await self.execute_ingestion_chunking(text, document_id, collection, metadata, file_type, _from_segment=True)
+        result = await self.execute_ingestion_chunking(
+            text, document_id, collection, metadata, file_type, _from_segment=True
+        )
 
         # Adjust chunk IDs to maintain continuity
         for idx, chunk in enumerate(result["chunks"]):

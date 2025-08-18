@@ -24,9 +24,9 @@ class TestUnifiedChunking:
         # Old: overlap=10 chars → New: ~2 tokens (10/4)
         config = ChunkConfig(
             max_tokens=12,  # ~50 characters
-            min_tokens=5,   # ~20 characters
+            min_tokens=5,  # ~20 characters
             overlap_tokens=2,  # ~10 characters
-            strategy_name="character"
+            strategy_name="character",
         )
 
         # Create chunker using factory
@@ -52,9 +52,9 @@ class TestUnifiedChunking:
         """Test recursive chunking with flexible boundaries."""
         config = ChunkConfig(
             max_tokens=15,  # ~60 characters
-            min_tokens=8,   # ~32 characters
+            min_tokens=8,  # ~32 characters
             overlap_tokens=3,  # ~12 characters
-            strategy_name="recursive"
+            strategy_name="recursive",
         )
 
         strategy = UnifiedChunkingFactory.create_strategy("recursive")
@@ -82,7 +82,7 @@ class TestUnifiedChunking:
             # Check that consecutive chunks have some overlapping content
             for i in range(len(chunks) - 1):
                 chunks[i].content.split()[-2:]  # Last 2 words
-                chunks[i+1].content.split()[:2]  # First 2 words
+                chunks[i + 1].content.split()[:2]  # First 2 words
                 # There should be some overlap in words between consecutive chunks
                 # This is a basic check for overlap functionality
 
@@ -96,7 +96,7 @@ class TestUnifiedChunking:
             hierarchy_levels=3,  # Use the built-in parameter
             metadata={  # Use metadata for additional info if needed
                 "level_sizes": [50, 25, 12]  # Token sizes for each level
-            }
+            },
         )
 
         strategy = UnifiedChunkingFactory.create_strategy("hierarchical")
@@ -118,7 +118,7 @@ class TestUnifiedChunking:
             assert chunk.metadata.strategy_name == "hierarchical"
             # Hierarchical chunks may have parent/child relationships in metadata
             # The chunk metadata contains information about the hierarchy level
-            assert hasattr(chunk.metadata, 'strategy_name')
+            assert hasattr(chunk.metadata, "strategy_name")
 
     def test_config_validation(self):
         """Test that invalid configs are properly rejected."""
@@ -128,7 +128,7 @@ class TestUnifiedChunking:
                 max_tokens=100,
                 min_tokens=50,
                 overlap_tokens=50,  # Equal to min_tokens - invalid!
-                strategy_name="character"
+                strategy_name="character",
             )
 
         # Test overlap >= max_tokens (invalid)
@@ -137,17 +137,12 @@ class TestUnifiedChunking:
                 max_tokens=100,
                 min_tokens=50,
                 overlap_tokens=100,  # Equal to max_tokens - invalid!
-                strategy_name="character"
+                strategy_name="character",
             )
 
     def test_estimate_chunks(self):
         """Test chunk estimation for planning."""
-        config = ChunkConfig(
-            max_tokens=100,
-            min_tokens=50,
-            overlap_tokens=20,
-            strategy_name="character"
-        )
+        config = ChunkConfig(max_tokens=100, min_tokens=50, overlap_tokens=20, strategy_name="character")
 
         strategy = UnifiedChunkingFactory.create_strategy("character")
 
@@ -164,12 +159,7 @@ class TestUnifiedChunking:
 
     async def test_async_chunking(self):
         """Test async chunking interface."""
-        config = ChunkConfig(
-            max_tokens=20,
-            min_tokens=10,
-            overlap_tokens=5,
-            strategy_name="character"
-        )
+        config = ChunkConfig(max_tokens=20, min_tokens=10, overlap_tokens=5, strategy_name="character")
 
         strategy = UnifiedChunkingFactory.create_strategy("character")
 
@@ -197,7 +187,7 @@ def migrate_old_test_example():
         max_tokens=12,  # 50 chars ÷ 4 ≈ 12 tokens
         min_tokens=5,
         overlap_tokens=2,  # 10 chars ÷ 4 ≈ 2 tokens
-        strategy_name="character"
+        strategy_name="character",
     )
     strategy = UnifiedChunkingFactory.create_strategy("character")
     strategy.chunk(text, config)

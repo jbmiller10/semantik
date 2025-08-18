@@ -18,10 +18,7 @@ from packages.shared.text_processing.chunking_factory import ChunkingFactory
 # Create SemanticChunker using the factory
 def create_semantic_chunker(embed_model):
     """Create a semantic chunker using the factory."""
-    return ChunkingFactory.create_chunker({
-        "strategy": "semantic",
-        "params": {"embed_model": embed_model}
-    })
+    return ChunkingFactory.create_chunker({"strategy": "semantic", "params": {"embed_model": embed_model}})
 
 
 class TestSemanticChunker:
@@ -70,11 +67,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test basic semantic chunking functionality."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["simple"],
-            "doc1",
-            {"source": "test"}
-        )
+        results = chunker.chunk_text(sample_texts["simple"], "doc1", {"source": "test"})
 
         assert isinstance(results, list)
         assert len(results) > 0
@@ -92,11 +85,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test semantic chunking on technical content."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["technical"],
-            "doc2",
-            {"source": "technical"}
-        )
+        results = chunker.chunk_text(sample_texts["technical"], "doc2", {"source": "technical"})
 
         assert len(results) > 0
 
@@ -110,11 +99,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test semantic chunking on coherent topic text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["coherent_topic"],
-            "doc3",
-            {"topic": "python"}
-        )
+        results = chunker.chunk_text(sample_texts["coherent_topic"], "doc3", {"topic": "python"})
 
         assert len(results) > 0
 
@@ -126,11 +111,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test semantic chunking on mixed topic text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["mixed_topics"],
-            "doc4",
-            {"type": "mixed"}
-        )
+        results = chunker.chunk_text(sample_texts["mixed_topics"], "doc4", {"type": "mixed"})
 
         assert len(results) > 0
 
@@ -152,11 +133,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test semantic chunking with empty text."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["empty"],
-            "doc5",
-            {}
-        )
+        results = chunker.chunk_text(sample_texts["empty"], "doc5", {})
 
         assert results == []
 
@@ -164,11 +141,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test semantic chunking with single sentence."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["single_sentence"],
-            "doc6",
-            {}
-        )
+        results = chunker.chunk_text(sample_texts["single_sentence"], "doc6", {})
 
         assert len(results) == 1
         assert results[0].text == sample_texts["single_sentence"]
@@ -178,11 +151,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test async semantic chunking."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = await chunker.chunk_text_async(
-            sample_texts["simple"],
-            "doc7",
-            {"async": True}
-        )
+        results = await chunker.chunk_text_async(sample_texts["simple"], "doc7", {"async": True})
 
         assert isinstance(results, list)
         assert len(results) > 0
@@ -191,17 +160,9 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test that metadata is properly propagated to chunks."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        custom_metadata = {
-            "source": "test_source",
-            "author": "test_author",
-            "timestamp": "2024-01-01"
-        }
+        custom_metadata = {"source": "test_source", "author": "test_author", "timestamp": "2024-01-01"}
 
-        results = chunker.chunk_text(
-            sample_texts["simple"],
-            "doc8",
-            custom_metadata
-        )
+        results = chunker.chunk_text(sample_texts["simple"], "doc8", custom_metadata)
 
         for result in results:
             assert hasattr(result, "metadata")
@@ -214,11 +175,7 @@ Climate change affects global temperatures. Data science involves statistical an
         """Test that chunk IDs are properly generated."""
         chunker = create_semantic_chunker(mock_embed_model)
 
-        results = chunker.chunk_text(
-            sample_texts["simple"],
-            "doc9",
-            {}
-        )
+        results = chunker.chunk_text(sample_texts["simple"], "doc9", {})
 
         chunk_ids = [r.chunk_id for r in results]
 
@@ -256,20 +213,13 @@ Climate change affects global temperatures. Data science involves statistical an
         chunker = create_semantic_chunker(mock_embed_model)
 
         # Valid config
-        assert chunker.validate_config({
-            "buffer_size": 1,
-            "breakpoint_percentile_threshold": 95
-        })
+        assert chunker.validate_config({"buffer_size": 1, "breakpoint_percentile_threshold": 95})
 
         # Invalid config - negative buffer size
-        assert not chunker.validate_config({
-            "buffer_size": -1
-        })
+        assert not chunker.validate_config({"buffer_size": -1})
 
         # Invalid config - percentile out of range
-        assert not chunker.validate_config({
-            "breakpoint_percentile_threshold": 101
-        })
+        assert not chunker.validate_config({"breakpoint_percentile_threshold": 101})
 
     def test_semantic_chunker_estimate_chunks(self, mock_embed_model):
         """Test chunk estimation."""
@@ -285,17 +235,13 @@ Climate change affects global temperatures. Data science involves statistical an
         assert estimate_small >= 1
         assert estimate_large >= 1
 
-    @patch('packages.shared.chunking.unified.semantic_strategy.logger')
+    @patch("packages.shared.chunking.unified.semantic_strategy.logger")
     def test_semantic_chunker_error_handling(self, mock_logger, mock_embed_model, sample_texts):
         """Test error handling in semantic chunker."""
         chunker = create_semantic_chunker(mock_embed_model)
 
         # Test with invalid document ID
-        results = chunker.chunk_text(
-            sample_texts["simple"],
-            None,  # Invalid doc_id
-            {}
-        )
+        results = chunker.chunk_text(sample_texts["simple"], None, {})  # Invalid doc_id
 
         # Should handle gracefully
         assert isinstance(results, list)
@@ -307,10 +253,7 @@ Climate change affects global temperatures. Data science involves statistical an
         chunker = create_semantic_chunker(mock_embed_model)
 
         # Generate large text
-        large_text = " ".join([
-            f"This is sentence number {i}. It contains some information."
-            for i in range(1000)
-        ])
+        large_text = " ".join([f"This is sentence number {i}. It contains some information." for i in range(1000)])
 
         start_time = time.time()
         results = chunker.chunk_text(large_text, "doc_perf", {})

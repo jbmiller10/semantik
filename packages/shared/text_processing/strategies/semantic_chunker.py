@@ -17,9 +17,9 @@ class SemanticChunker(BaseChunker):
     def __init__(self, embed_model: Any = None, **kwargs: Any) -> None:
         """Initialize using the unified strategy directly."""
         # Store parameters for test compatibility
-        self.max_chunk_size = kwargs.pop('max_chunk_size', 1000)
-        self.breakpoint_percentile_threshold = kwargs.pop('breakpoint_percentile_threshold', 95)
-        self.buffer_size = kwargs.pop('buffer_size', 1)
+        self.max_chunk_size = kwargs.pop("max_chunk_size", 1000)
+        self.breakpoint_percentile_threshold = kwargs.pop("breakpoint_percentile_threshold", 95)
+        self.buffer_size = kwargs.pop("buffer_size", 1)
         self.embed_model = embed_model
 
         # Create chunker with all parameters
@@ -28,11 +28,13 @@ class SemanticChunker(BaseChunker):
             "max_chunk_size": self.max_chunk_size,
             "breakpoint_percentile_threshold": self.breakpoint_percentile_threshold,
             "buffer_size": self.buffer_size,
-            **kwargs
+            **kwargs,
         }
 
         # Create unified strategy directly
-        unified_strategy = UnifiedChunkingFactory.create_strategy("semantic", use_llama_index=True, embed_model=embed_model)
+        unified_strategy = UnifiedChunkingFactory.create_strategy(
+            "semantic", use_llama_index=True, embed_model=embed_model
+        )
         self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
 
     def chunk_text(
@@ -46,10 +48,10 @@ class SemanticChunker(BaseChunker):
 
         # Add semantic metadata for test compatibility
         for result in results:
-            if 'semantic_boundary' not in result.metadata:
-                result.metadata['semantic_boundary'] = True
-            if 'breakpoint_threshold' not in result.metadata:
-                result.metadata['breakpoint_threshold'] = self.breakpoint_percentile_threshold
+            if "semantic_boundary" not in result.metadata:
+                result.metadata["semantic_boundary"] = True
+            if "breakpoint_threshold" not in result.metadata:
+                result.metadata["breakpoint_threshold"] = self.breakpoint_percentile_threshold
 
         return results
 
@@ -64,10 +66,10 @@ class SemanticChunker(BaseChunker):
 
         # Add semantic metadata for test compatibility
         for result in results:
-            if 'semantic_boundary' not in result.metadata:
-                result.metadata['semantic_boundary'] = True
-            if 'breakpoint_threshold' not in result.metadata:
-                result.metadata['breakpoint_threshold'] = self.breakpoint_percentile_threshold
+            if "semantic_boundary" not in result.metadata:
+                result.metadata["semantic_boundary"] = True
+            if "breakpoint_threshold" not in result.metadata:
+                result.metadata["breakpoint_threshold"] = self.breakpoint_percentile_threshold
 
         return results
 
@@ -77,7 +79,7 @@ class SemanticChunker(BaseChunker):
             config = {"max_chunk_size": self.max_chunk_size}
 
         # Semantic chunking typically creates fewer chunks than character-based
-        chunk_size = config.get('max_chunk_size', self.max_chunk_size)
+        chunk_size = config.get("max_chunk_size", self.max_chunk_size)
         if not isinstance(chunk_size, int) or chunk_size <= 0:
             return 1
 

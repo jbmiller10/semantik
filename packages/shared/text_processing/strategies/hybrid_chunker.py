@@ -27,12 +27,14 @@ def safe_regex_findall(pattern: str | Pattern[str], text: str, flags: int = 0) -
     except Exception:
         return []
 
+
 class Timeout:
     """Mock timeout context manager for test compatibility."""
+
     def __init__(self, seconds: float) -> None:
         self.seconds = seconds
 
-    def __enter__(self) -> 'Timeout':
+    def __enter__(self) -> "Timeout":
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -41,6 +43,7 @@ class Timeout:
 
 class ChunkingStrategy(str, Enum):
     """Enum for chunking strategies (for backward compatibility)."""
+
     CHARACTER = "character"
     RECURSIVE = "recursive"
     SEMANTIC = "semantic"
@@ -52,14 +55,20 @@ class ChunkingStrategy(str, Enum):
 class HybridChunker(BaseChunker):
     """Wrapper class for backward compatibility."""
 
-    def __init__(self, strategies: list[str] | None = None, weights: list[float] | None = None, embed_model: str | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        strategies: list[str] | None = None,
+        weights: list[float] | None = None,
+        embed_model: str | None = None,
+        **kwargs: Any,
+    ) -> None:
         """Initialize using the factory."""
         # Store test-expected attributes
-        self.markdown_threshold = kwargs.pop('markdown_threshold', 0.15)
-        self.semantic_coherence_threshold = kwargs.pop('semantic_coherence_threshold', 0.7)
-        self.large_doc_threshold = kwargs.pop('large_doc_threshold', 50000)
-        self.enable_strategy_override = kwargs.pop('enable_strategy_override', True)
-        self.fallback_strategy = kwargs.pop('fallback_strategy', ChunkingStrategy.RECURSIVE)
+        self.markdown_threshold = kwargs.pop("markdown_threshold", 0.15)
+        self.semantic_coherence_threshold = kwargs.pop("semantic_coherence_threshold", 0.7)
+        self.large_doc_threshold = kwargs.pop("large_doc_threshold", 50000)
+        self.enable_strategy_override = kwargs.pop("enable_strategy_override", True)
+        self.fallback_strategy = kwargs.pop("fallback_strategy", ChunkingStrategy.RECURSIVE)
 
         params: dict[str, Any] = {"embed_model": embed_model}
         if strategies:
@@ -69,7 +78,9 @@ class HybridChunker(BaseChunker):
         params.update(kwargs)
 
         # Create unified strategy directly
-        unified_strategy = UnifiedChunkingFactory.create_strategy("hybrid", use_llama_index=True, embed_model=embed_model)
+        unified_strategy = UnifiedChunkingFactory.create_strategy(
+            "hybrid", use_llama_index=True, embed_model=embed_model
+        )
         self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
 
         # Initialize parent
@@ -81,6 +92,7 @@ class HybridChunker(BaseChunker):
     def _compile_test_patterns(self) -> dict[str, tuple[Pattern[str], float]]:
         """Compile regex patterns for test compatibility."""
         import re
+
         return {
             r"^#{1,6}\s+\S.*$": (re.compile(r"^#{1,6}\s+\S.*$", re.MULTILINE), 2.0),  # Headers
             r"^[\*\-\+]\s+\S.*$": (re.compile(r"^[\*\-\+]\s+\S.*$", re.MULTILINE), 1.5),  # Unordered lists
@@ -100,10 +112,10 @@ class HybridChunker(BaseChunker):
         # Simple mock implementation
         is_md_file = False
         if metadata:
-            file_path = metadata.get('file_path', '')
-            file_name = metadata.get('file_name', '')
-            file_type = metadata.get('file_type', '')
-            if any(path.endswith(('.md', '.markdown', '.mdx')) for path in [file_path, file_name, file_type]):
+            file_path = metadata.get("file_path", "")
+            file_name = metadata.get("file_name", "")
+            file_type = metadata.get("file_type", "")
+            if any(path.endswith((".md", ".markdown", ".mdx")) for path in [file_path, file_name, file_type]):
                 is_md_file = True
 
         # If it's a markdown file by extension, set density to 1.0
@@ -118,23 +130,23 @@ class HybridChunker(BaseChunker):
         text_len = len(text)
 
         # Headers (weight: 2.0)
-        headers = len(re.findall(r'^#{1,6}\s+', text, re.MULTILINE))
+        headers = len(re.findall(r"^#{1,6}\s+", text, re.MULTILINE))
         markdown_score += headers * 2.0
 
         # Code blocks (weight: 3.0)
-        code_blocks = text.count('```')
+        code_blocks = text.count("```")
         markdown_score += code_blocks * 3.0
 
         # Links (weight: 1.0)
-        links = len(re.findall(r'\[([^\]]+)\]\(([^)]+)\)', text))
+        links = len(re.findall(r"\[([^\]]+)\]\(([^)]+)\)", text))
         markdown_score += links * 1.0
 
         # Lists (weight: 1.5)
-        lists = len(re.findall(r'^[\*\-\+]\s+', text, re.MULTILINE))
+        lists = len(re.findall(r"^[\*\-\+]\s+", text, re.MULTILINE))
         markdown_score += lists * 1.5
 
         # Bold/Italic (weight: 0.5)
-        bold_italic = len(re.findall(r'\*{1,2}[^*]+\*{1,2}', text))
+        bold_italic = len(re.findall(r"\*{1,2}[^*]+\*{1,2}", text))
         markdown_score += bold_italic * 0.5
 
         # Calculate density based on score relative to text length
@@ -189,7 +201,9 @@ class HybridChunker(BaseChunker):
 
         return min(1.0, max(0.0, coherence))
 
-    def _select_strategy(self, text: str, metadata: dict[str, Any] | None) -> tuple[ChunkingStrategy, dict[str, Any], str]:
+    def _select_strategy(
+        self, text: str, metadata: dict[str, Any] | None
+    ) -> tuple[ChunkingStrategy, dict[str, Any], str]:
         """Mock strategy selection for test compatibility."""
         # Check for markdown file
         is_md, md_density = self._analyze_markdown_content(text, metadata)
@@ -201,8 +215,8 @@ class HybridChunker(BaseChunker):
             return ChunkingStrategy.MARKDOWN, {}, f"High markdown syntax density ({md_density:.2f})"
 
         # Check for manual override
-        if self.enable_strategy_override and metadata and 'chunking_strategy' in metadata:
-            strategy = metadata['chunking_strategy']
+        if self.enable_strategy_override and metadata and "chunking_strategy" in metadata:
+            strategy = metadata["chunking_strategy"]
             return ChunkingStrategy(strategy), {}, f"Strategy manually specified: {strategy}"
 
         # Check for large coherent document
@@ -222,7 +236,7 @@ class HybridChunker(BaseChunker):
     def _get_chunker(self, strategy: str, params: dict[str, Any] | None = None) -> BaseChunker:
         """Get or create a cached chunker for the given strategy."""
         # Initialize cache if needed
-        if not hasattr(self, '_chunker_cache'):
+        if not hasattr(self, "_chunker_cache"):
             self._chunker_cache: dict[str, BaseChunker] = {}
 
         # Create cache key from strategy and params
@@ -235,10 +249,7 @@ class HybridChunker(BaseChunker):
         # Try to create chunker using ChunkingFactory first (for test compatibility)
         chunking_factory_error = None
         try:
-            config = {
-                "strategy": strategy,
-                "params": params or {}
-            }
+            config = {"strategy": strategy, "params": params or {}}
             chunker = ChunkingFactory.create_chunker(config)
             self._chunker_cache[cache_key] = chunker
             return chunker
@@ -252,6 +263,7 @@ class HybridChunker(BaseChunker):
         # Fall back to UnifiedChunkingFactory only if ChunkingFactory failed normally
         try:
             from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
             chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
             self._chunker_cache[cache_key] = chunker
@@ -266,27 +278,27 @@ class HybridChunker(BaseChunker):
         """Validate configuration for test compatibility."""
         try:
             # Check markdown threshold
-            if 'markdown_threshold' in config:
-                val = config['markdown_threshold']
+            if "markdown_threshold" in config:
+                val = config["markdown_threshold"]
                 if not isinstance(val, int | float) or val < 0 or val > 1:
                     return False
 
             # Check semantic threshold
-            if 'semantic_coherence_threshold' in config:
-                val = config['semantic_coherence_threshold']
+            if "semantic_coherence_threshold" in config:
+                val = config["semantic_coherence_threshold"]
                 if not isinstance(val, int | float) or val < 0 or val > 1:
                     return False
 
             # Check large doc threshold
-            if 'large_doc_threshold' in config:
-                val = config['large_doc_threshold']
+            if "large_doc_threshold" in config:
+                val = config["large_doc_threshold"]
                 if not isinstance(val, int | float) or val <= 0:
                     return False
 
             # Check fallback strategy
-            if 'fallback_strategy' in config:
-                val = config['fallback_strategy']
-                valid_strategies = ['character', 'recursive', 'semantic', 'hierarchical', 'markdown']
+            if "fallback_strategy" in config:
+                val = config["fallback_strategy"]
+                valid_strategies = ["character", "recursive", "semantic", "hierarchical", "markdown"]
                 if val not in valid_strategies:
                     return False
 
@@ -298,8 +310,8 @@ class HybridChunker(BaseChunker):
     def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:
         """Estimate number of chunks for test compatibility."""
         # Simple estimation based on chunk size
-        chunk_size = config.get('chunk_size', 1000)
-        chunk_overlap = config.get('chunk_overlap', 200)
+        chunk_size = config.get("chunk_size", 1000)
+        chunk_overlap = config.get("chunk_overlap", 200)
 
         if chunk_overlap >= chunk_size:
             chunk_overlap = min(chunk_overlap, chunk_size - 1)
@@ -322,6 +334,7 @@ class HybridChunker(BaseChunker):
     ) -> list[ChunkResult]:
         """Override to add hybrid-specific metadata."""
         import logging
+
         logger = logging.getLogger(__name__)
 
         if not text or not text.strip():
@@ -335,22 +348,30 @@ class HybridChunker(BaseChunker):
         original_strategy = strategy
 
         # Log strategy selection
-        logger.info(f"Document {doc_id}: Selected strategy {strategy.value if hasattr(strategy, 'value') else str(strategy)} - {reasoning}")
+        logger.info(
+            f"Document {doc_id}: Selected strategy {strategy.value if hasattr(strategy, 'value') else str(strategy)} - {reasoning}"
+        )
 
         try:
             # Try to get the selected chunker
-            selected_chunker = self._get_chunker(strategy.value if hasattr(strategy, 'value') else str(strategy), params)
+            selected_chunker = self._get_chunker(
+                strategy.value if hasattr(strategy, "value") else str(strategy), params
+            )
 
             # Try to chunk with the selected strategy
             chunks = selected_chunker.chunk_text(text, doc_id, metadata)
 
             # Add hybrid-specific metadata
             for i, chunk in enumerate(chunks):
-                if hasattr(chunk, 'metadata'):
+                if hasattr(chunk, "metadata"):
                     chunk.metadata["hybrid_chunker"] = True
-                    chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                    chunk.metadata["selected_strategy"] = (
+                        strategy.value if hasattr(strategy, "value") else str(strategy)
+                    )
                     if i == 0:
-                        chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                        chunk.metadata["hybrid_strategy_used"] = (
+                            strategy.value if hasattr(strategy, "value") else str(strategy)
+                        )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
             return chunks
@@ -358,21 +379,32 @@ class HybridChunker(BaseChunker):
         except Exception as e:
             # Strategy failed, use fallback
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Strategy {original_strategy} failed: {e}, falling back to {self.fallback_strategy}")
 
             try:
                 # Try fallback strategy
-                fallback_chunker = self._get_chunker(self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy))
+                fallback_chunker = self._get_chunker(
+                    self.fallback_strategy.value
+                    if hasattr(self.fallback_strategy, "value")
+                    else str(self.fallback_strategy)
+                )
                 chunks = fallback_chunker.chunk_text(text, doc_id, metadata)
 
                 # Add fallback metadata
                 for chunk in chunks:
-                    if hasattr(chunk, 'metadata'):
+                    if hasattr(chunk, "metadata"):
                         chunk.metadata["hybrid_chunker"] = True
-                        chunk.metadata["selected_strategy"] = self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                        chunk.metadata["selected_strategy"] = (
+                            self.fallback_strategy.value
+                            if hasattr(self.fallback_strategy, "value")
+                            else str(self.fallback_strategy)
+                        )
                         chunk.metadata["fallback_used"] = True
-                        chunk.metadata["original_strategy_failed"] = original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy)
+                        chunk.metadata["original_strategy_failed"] = (
+                            original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
+                        )
 
                 return chunks
 
@@ -389,6 +421,7 @@ class HybridChunker(BaseChunker):
     ) -> list[ChunkResult]:
         """Override to add hybrid-specific metadata."""
         import logging
+
         logger = logging.getLogger(__name__)
 
         if not text or not text.strip():
@@ -402,22 +435,30 @@ class HybridChunker(BaseChunker):
         original_strategy = strategy
 
         # Log strategy selection
-        logger.info(f"Document {doc_id}: Selected strategy {strategy.value if hasattr(strategy, 'value') else str(strategy)} - {reasoning}")
+        logger.info(
+            f"Document {doc_id}: Selected strategy {strategy.value if hasattr(strategy, 'value') else str(strategy)} - {reasoning}"
+        )
 
         try:
             # Try to get the selected chunker
-            selected_chunker = self._get_chunker(strategy.value if hasattr(strategy, 'value') else str(strategy), params)
+            selected_chunker = self._get_chunker(
+                strategy.value if hasattr(strategy, "value") else str(strategy), params
+            )
 
             # Try to chunk with the selected strategy
             chunks = await selected_chunker.chunk_text_async(text, doc_id, metadata)
 
             # Add hybrid-specific metadata
             for i, chunk in enumerate(chunks):
-                if hasattr(chunk, 'metadata'):
+                if hasattr(chunk, "metadata"):
                     chunk.metadata["hybrid_chunker"] = True
-                    chunk.metadata["selected_strategy"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                    chunk.metadata["selected_strategy"] = (
+                        strategy.value if hasattr(strategy, "value") else str(strategy)
+                    )
                     if i == 0:
-                        chunk.metadata["hybrid_strategy_used"] = strategy.value if hasattr(strategy, 'value') else str(strategy)
+                        chunk.metadata["hybrid_strategy_used"] = (
+                            strategy.value if hasattr(strategy, "value") else str(strategy)
+                        )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
             return chunks
@@ -425,21 +466,32 @@ class HybridChunker(BaseChunker):
         except Exception as e:
             # Strategy failed, use fallback
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Strategy {original_strategy} failed: {e}, falling back to {self.fallback_strategy}")
 
             try:
                 # Try fallback strategy
-                fallback_chunker = self._get_chunker(self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy))
+                fallback_chunker = self._get_chunker(
+                    self.fallback_strategy.value
+                    if hasattr(self.fallback_strategy, "value")
+                    else str(self.fallback_strategy)
+                )
                 chunks = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
 
                 # Add fallback metadata
                 for chunk in chunks:
-                    if hasattr(chunk, 'metadata'):
+                    if hasattr(chunk, "metadata"):
                         chunk.metadata["hybrid_chunker"] = True
-                        chunk.metadata["selected_strategy"] = self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
+                        chunk.metadata["selected_strategy"] = (
+                            self.fallback_strategy.value
+                            if hasattr(self.fallback_strategy, "value")
+                            else str(self.fallback_strategy)
+                        )
                         chunk.metadata["fallback_used"] = True
-                        chunk.metadata["original_strategy_failed"] = original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy)
+                        chunk.metadata["original_strategy_failed"] = (
+                            original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
+                        )
 
                 return chunks
 
@@ -462,9 +514,15 @@ class HybridChunker(BaseChunker):
                 "emergency_chunk": True,
                 "selected_strategy": "emergency_single_chunk",
                 "all_strategies_failed": True,
-                "original_strategy_failed": original_strategy.value if hasattr(original_strategy, 'value') else str(original_strategy),
-                "fallback_strategy_failed": self.fallback_strategy.value if hasattr(self.fallback_strategy, 'value') else str(self.fallback_strategy)
-            }
+                "original_strategy_failed": (
+                    original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
+                ),
+                "fallback_strategy_failed": (
+                    self.fallback_strategy.value
+                    if hasattr(self.fallback_strategy, "value")
+                    else str(self.fallback_strategy)
+                ),
+            },
         )
         return [emergency_chunk]
 

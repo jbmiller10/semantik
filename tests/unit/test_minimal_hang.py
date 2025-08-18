@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Minimal test to isolate the hanging issue."""
 
+
 def test_hierarchical_chunker_malicious():
     """Test the malicious input handling."""
     from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker

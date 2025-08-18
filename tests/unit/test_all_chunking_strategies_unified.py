@@ -480,10 +480,7 @@ For more complex scenarios...
         from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
 
         chunker = SemanticChunker(
-            breakpoint_percentile_threshold=95,
-            buffer_size=1,
-            max_chunk_size=100,
-            embed_model=mock_embed_model
+            breakpoint_percentile_threshold=95, buffer_size=1, max_chunk_size=100, embed_model=mock_embed_model
         )
 
         text = "This is a test document. It has multiple sentences. Each sentence is different. The semantic chunker should find natural boundaries."
@@ -520,9 +517,7 @@ For more complex scenarios...
 
         # Test with markdown file extension
         chunks = await chunker.chunk_text_async(
-            self.MARKDOWN_SAMPLES["simple"],
-            "test_doc",
-            {"file_path": "/path/to/test.md"}
+            self.MARKDOWN_SAMPLES["simple"], "test_doc", {"file_path": "/path/to/test.md"}
         )
 
         # Verify markdown strategy was selected

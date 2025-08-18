@@ -171,9 +171,17 @@ class TextProcessingStrategyAdapter:
 
         # Filter out known token-based parameters, ignore strategy-specific ones
         self.params = {}
-        for key in ["max_tokens", "min_tokens", "overlap_tokens", "chunk_size",
-                    "chunk_overlap", "min_chunk_size", "custom_attributes", "hierarchy_levels",
-                    "chunk_sizes"]:
+        for key in [
+            "max_tokens",
+            "min_tokens",
+            "overlap_tokens",
+            "chunk_size",
+            "chunk_overlap",
+            "min_chunk_size",
+            "custom_attributes",
+            "hierarchy_levels",
+            "chunk_sizes",
+        ]:
             if key in params:
                 self.params[key] = params[key]
 
@@ -430,7 +438,9 @@ class TextProcessingStrategyAdapter:
 
             # Validate breakpoint_percentile_threshold
             percentile = config.get("breakpoint_percentile_threshold")
-            if percentile is not None and (not isinstance(percentile, int | float) or percentile < 0 or percentile > 100):
+            if percentile is not None and (
+                not isinstance(percentile, int | float) or percentile < 0 or percentile > 100
+            ):
                 return False
 
         # Convert to domain config for validation
