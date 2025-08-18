@@ -270,6 +270,13 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if end_offset < start_offset:
                 # If we can't find the split, estimate the position
                 end_offset = min(start_offset + len(split), len(content))
+            
+            # Ensure end_offset is always greater than start_offset
+            if end_offset <= start_offset:
+                # Make sure we have at least 1 character
+                end_offset = min(start_offset + max(1, len(split) if split else 1), len(content))
+                if end_offset <= start_offset and start_offset < len(content):
+                    end_offset = start_offset + 1
 
             # Add overlap content from previous chunk if needed
             if idx > 0 and overlap_chars > 0 and start_offset < chunks[-1].metadata.end_offset:
@@ -280,6 +287,10 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
 
             chunk_text = self.clean_chunk_text(chunk_text)
             if not chunk_text:
+                continue
+            
+            # Final validation: skip if offsets are invalid
+            if end_offset <= start_offset:
                 continue
 
             # Create chunk metadata
