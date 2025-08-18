@@ -108,12 +108,8 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
         weights = config.weights if hasattr(config, "weights") else None
         adaptive = config.adaptive_weights if hasattr(config, "adaptive_weights") else True
 
-        if adaptive:
-            # Select strategy based on content analysis
-            strategy = self._select_strategy(analysis, weights)
-        else:
-            # Use configured strategies with weights
-            strategy = self._get_weighted_strategy(config)
+        # Select strategy based on content analysis or use configured weights
+        strategy = self._select_strategy(analysis, weights) if adaptive else self._get_weighted_strategy(config)
 
         # Log strategy selection
         logger.info(f"Hybrid chunking selected {strategy.name} strategy for {analysis['content_type'].value} content")
@@ -245,11 +241,7 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
             logger.debug(f"Failed to check for markdown: {e}")
 
         # Fallback: simple check
-        for line in content.split("\n")[:50]:  # Check first 50 lines
-            if line.strip().startswith("#") and len(line.strip()) > 1:
-                return True
-
-        return False
+        return any(line.strip().startswith("#") and len(line.strip()) > 1 for line in content.split("\n")[:50])
 
     def _has_code_blocks(self, content: str) -> bool:
         """Check if content has code blocks."""
@@ -267,11 +259,7 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
             "\n> ",  # Blockquote
         ]
 
-        for indicator in indicators:
-            if indicator in content:
-                return True
-
-        return False
+        return any(indicator in content for indicator in indicators)
 
     def _determine_content_type(
         self,
@@ -295,16 +283,16 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
         # Priority order for content type determination
         if has_markdown:
             return ContentType.MARKDOWN
-        elif has_code:
+        if has_code:
             return ContentType.CODE
-        elif has_structure:
+        if has_structure:
             return ContentType.STRUCTURED
-        elif avg_sentence_length > 50:  # Long sentences indicate narrative
+        if avg_sentence_length > 50:  # Long sentences indicate narrative
             return ContentType.NARRATIVE
-        elif sum([has_markdown, has_code, has_structure]) > 1:
+        if sum([has_markdown, has_code, has_structure]) > 1:
             return ContentType.MIXED
-        else:
-            return ContentType.UNKNOWN
+
+        return ContentType.UNKNOWN
 
     def _recommend_strategy(self, content_type: ContentType, is_mixed: bool) -> str:
         """
@@ -362,7 +350,7 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
         if weights:
             # Calculate weighted scores
             scores = {}
-            for name, strategy in strategy_map.items():
+            for name, _strategy in strategy_map.items():
                 base_score = 1.0 if name == recommended else 0.5
                 weight = weights.get(name, 1.0)
                 scores[name] = base_score * weight

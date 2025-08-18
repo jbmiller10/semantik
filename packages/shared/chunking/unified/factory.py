@@ -30,6 +30,7 @@ from packages.shared.chunking.unified.recursive_strategy import (
 from packages.shared.chunking.unified.semantic_strategy import (
     SemanticChunkingStrategy,
 )
+from packages.shared.text_processing.base_chunker import ChunkResult
 
 logger = logging.getLogger(__name__)
 
@@ -79,22 +80,22 @@ class UnifiedChunkingFactory:
 
         if strategy_type == ChunkingStrategyType.CHARACTER:
             return CharacterChunkingStrategy(use_llama_index=use_llama_index)
-        elif strategy_type == ChunkingStrategyType.RECURSIVE:
+        if strategy_type == ChunkingStrategyType.RECURSIVE:
             return RecursiveChunkingStrategy(use_llama_index=use_llama_index)
-        elif strategy_type == ChunkingStrategyType.SEMANTIC:
+        if strategy_type == ChunkingStrategyType.SEMANTIC:
             # Note: Semantic strategy may need embed_model
             embed_model = kwargs.get("embed_model")
             return SemanticChunkingStrategy(use_llama_index=use_llama_index, embed_model=embed_model)
-        elif strategy_type == ChunkingStrategyType.HIERARCHICAL:
+        if strategy_type == ChunkingStrategyType.HIERARCHICAL:
             return HierarchicalChunkingStrategy(use_llama_index=use_llama_index)
-        elif strategy_type == ChunkingStrategyType.MARKDOWN:
+        if strategy_type == ChunkingStrategyType.MARKDOWN:
             return MarkdownChunkingStrategy(use_llama_index=use_llama_index)
-        elif strategy_type == ChunkingStrategyType.HYBRID:
+        if strategy_type == ChunkingStrategyType.HYBRID:
             # Note: Hybrid strategy may need embed_model for semantic component
             embed_model = kwargs.get("embed_model")
             return HybridChunkingStrategy(use_llama_index=use_llama_index, embed_model=embed_model)
-        else:
-            raise ValueError(f"Unsupported strategy type: {strategy_type}")
+
+        raise ValueError(f"Unsupported strategy type: {strategy_type}")
 
     @staticmethod
     def get_available_strategies() -> list[str]:
@@ -157,7 +158,7 @@ class TextProcessingStrategyAdapter:
     expected by the text_processing chunking system.
     """
 
-    def __init__(self, unified_strategy: UnifiedChunkingStrategy, **params) -> None:
+    def __init__(self, unified_strategy: UnifiedChunkingStrategy, **params: Any) -> None:
         """
         Initialize the adapter.
 
@@ -181,7 +182,7 @@ class TextProcessingStrategyAdapter:
         text: str,
         doc_id: str,
         metadata: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ChunkResult]:
         """
         Adapt unified chunking to text_processing interface.
 
@@ -235,8 +236,6 @@ class TextProcessingStrategyAdapter:
         chunks = self.strategy.chunk(text, config)
 
         # Convert to text_processing format with ChunkResult objects
-        from packages.shared.text_processing.base_chunker import ChunkResult
-
         results = []
         for i, chunk in enumerate(chunks):
             # Generate chunk ID with doc_id prefix if needed
@@ -300,7 +299,7 @@ class TextProcessingStrategyAdapter:
         text: str,
         doc_id: str,
         metadata: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ChunkResult]:
         """
         Async adapter for text_processing interface.
 
@@ -354,8 +353,6 @@ class TextProcessingStrategyAdapter:
         chunks = await self.strategy.chunk_async(text, config)
 
         # Convert to text_processing format with ChunkResult objects
-        from packages.shared.text_processing.base_chunker import ChunkResult
-
         results = []
         for i, chunk in enumerate(chunks):
             # Generate chunk ID with doc_id prefix if needed
@@ -428,15 +425,13 @@ class TextProcessingStrategyAdapter:
         if self.strategy.name == "semantic":
             # Validate buffer_size (must be positive integer)
             buffer_size = config.get("buffer_size")
-            if buffer_size is not None:
-                if not isinstance(buffer_size, int) or buffer_size <= 0:
-                    return False
+            if buffer_size is not None and (not isinstance(buffer_size, int) or buffer_size <= 0):
+                return False
 
             # Validate breakpoint_percentile_threshold
             percentile = config.get("breakpoint_percentile_threshold")
-            if percentile is not None:
-                if not isinstance(percentile, (int, float)) or percentile < 0 or percentile > 100:
-                    return False
+            if percentile is not None and (not isinstance(percentile, int | float) or percentile < 0 or percentile > 100):
+                return False
 
         # Convert to domain config for validation
         try:

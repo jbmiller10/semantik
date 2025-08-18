@@ -269,15 +269,14 @@ class TestHierarchicalChunkerExtended:
 
         # Create a config that will cause an exception during validation
         # Use a mock list that raises an exception when we try to iterate over it
-        from unittest.mock import Mock
-        
+
         class BadList(list):
             def __init__(self):
                 super().__init__([1000, 500])
-            
+
             def __iter__(self):
                 raise Exception("Test exception during iteration")
-        
+
         config = {"chunk_sizes": BadList()}
 
         with patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger:
@@ -478,11 +477,11 @@ class TestHierarchicalChunkerExtended:
 
         # Should handle gracefully (no error raised)
         offset_map = chunker._build_offset_map(text, nodes)
-        
+
         # Bad node should get zero offsets
         assert "bad_node" in offset_map
         assert offset_map["bad_node"] == (0, 0)
-        
+
         # Good node should have proper offsets
         assert "good_node" in offset_map
         assert offset_map["good_node"][0] >= 0
@@ -496,7 +495,7 @@ class TestHierarchicalChunkerExtended:
 
         with (
             patch.object(chunker, "_parser", mock_parser),
-            patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger") as mock_logger,
+            patch("packages.shared.text_processing.strategies.hierarchical_chunker.logger"),
         ):
             chunks = list(chunker.chunk_text_stream("Test text for streaming", "stream_error"))
 
@@ -504,7 +503,7 @@ class TestHierarchicalChunkerExtended:
             assert len(chunks) > 0
             # Logger behavior may vary by implementation
             # The key test is that chunks were created despite the error
-            
+
             # Verify fallback chunks were created
             # They should have some strategy set (character or another fallback)
             for chunk in chunks:

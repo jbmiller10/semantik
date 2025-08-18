@@ -15,11 +15,11 @@ from packages.shared.chunking.unified.factory import (
 class CharacterChunkingStrategy(DomainStrategyAdapter):
     """
     Character-based chunking strategy that splits on character count.
-    
+
     This wrapper provides compatibility with domain tests while delegating
     actual chunking to the unified strategy.
     """
-    
+
     def __init__(self) -> None:
         """Initialize the character chunking strategy."""
         unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=False)

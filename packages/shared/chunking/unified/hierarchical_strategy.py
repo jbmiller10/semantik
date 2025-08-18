@@ -2,7 +2,7 @@
 """
 Unified hierarchical chunking strategy.
 
-This module merges the domain-based and LlamaIndex-based hierarchical chunking 
+This module merges the domain-based and LlamaIndex-based hierarchical chunking
 implementations into a single unified strategy.
 """
 
@@ -43,9 +43,11 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
         if use_llama_index:
             try:
-                from llama_index.core.node_parser import HierarchicalNodeParser
+                # Check if LlamaIndex is available
+                import importlib.util
 
-                self._llama_available = True
+                spec = importlib.util.find_spec("llama_index.core.node_parser")
+                self._llama_available = spec is not None
             except ImportError:
                 logger.warning("LlamaIndex not available, falling back to domain implementation")
                 self._llama_available = False
@@ -182,19 +184,18 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             # Get leaf nodes (smallest chunks) for accurate count
             leaf_nodes = get_leaf_nodes(nodes)
 
-            chunks = []
+            chunks: list[Chunk] = []
             total_chars = len(content)
-            global_chunk_index = 0
 
             # Build a map to track node depths
             node_depths = {}
-            
+
             # First pass: calculate depths for all nodes
             for node in nodes:
                 if hasattr(node, "node_id"):
                     depth = self._calculate_node_depth(node, nodes)
                     node_depths[node.node_id] = depth
-            
+
             # Find max depth to invert levels (0 should be top level)
             max_depth = max(node_depths.values()) if node_depths else 0
 
@@ -205,10 +206,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 # Determine hierarchy level (0 = top level, higher = deeper)
                 # Invert the depth so that top-level nodes have level 0
                 node_id = getattr(node, "node_id", None)
-                if node_id and node_id in node_depths:
-                    level = max_depth - node_depths[node_id]
-                else:
-                    level = 0
+                level = max_depth - node_depths[node_id] if node_id and node_id in node_depths else 0
 
                 # Calculate offsets
                 if idx == 0:
@@ -241,7 +239,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
                 # Determine if this is a leaf node
                 is_leaf = node in leaf_nodes
-                
+
                 # Get chunk sizes - prefer original character sizes if available
                 if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
                     chunk_sizes_list = config.additional_params['chunk_sizes']
@@ -250,7 +248,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     chunk_sizes_list = [size * 4 for size in splitter.chunk_sizes]
                 else:
                     chunk_sizes_list = [config.max_tokens * 4]
-                
+
                 # Add hierarchy metadata to custom_attributes
                 custom_attrs = {
                     "hierarchy_level": level,
@@ -261,11 +259,11 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     custom_attrs["parent_chunk_id"] = parent_id
                 if child_ids:
                     custom_attrs["child_chunk_ids"] = child_ids
-                
+
                 metadata = ChunkMetadata(
-                    chunk_id=f"{config.strategy_name}_{global_chunk_index:04d}",
+                    chunk_id=f"{config.strategy_name}_{idx:04d}",
                     document_id="doc",
-                    chunk_index=global_chunk_index,
+                    chunk_index=idx,
                     start_offset=start_offset,
                     end_offset=end_offset,
                     token_count=token_count,
@@ -288,7 +286,6 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 )
 
                 chunks.append(chunk)
-                global_chunk_index += 1
 
                 # Report progress
                 if progress_callback:
@@ -316,7 +313,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         levels = min(config.hierarchy_levels, 3)  # Max 3 levels for practicality
         logger.debug(f"Hierarchical chunking with {levels} levels (from config.hierarchy_levels={config.hierarchy_levels})")
         level_configs = self._create_level_configs(config, levels)
-        
+
         # Get all chunk sizes (in characters) - either from config or calculate them
         if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
             all_chunk_sizes = config.additional_params['chunk_sizes']
@@ -413,7 +410,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         level: int,
         level_config: dict[str, Any],
         strategy_name: str,
-        parent_chunks: list[Chunk] | None = None,
+        _parent_chunks: list[Chunk] | None = None,
         global_chunk_index: int = 0,
         all_chunk_sizes: list[int] | None = None,
     ) -> tuple[list[Chunk], int]:
@@ -539,7 +536,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
         if not content:
             return [], global_chunk_index
 
-        chunks = []
+        chunks: list[Chunk] = []
         chars_per_token = 4
         chunk_size_chars = max_tokens * chars_per_token
         overlap_chars = overlap_tokens * chars_per_token
@@ -589,7 +586,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 "parent_chunk_id": parent_id,
                 "child_chunk_ids": [],
             }
-            
+
             metadata = ChunkMetadata(
                 chunk_id=f"{strategy_name}_L{level}_{global_chunk_index:04d}",
                 document_id="doc",
@@ -650,28 +647,28 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             return False, "Content too short for hierarchical chunking"
 
         return True, None
-    
+
     def _calculate_node_depth(self, node: Any, all_nodes: list[Any]) -> int:
         """Calculate the depth of a node in the hierarchy (0 = root)."""
         try:
             from llama_index.core.schema import NodeRelationship
         except ImportError:
             return 0
-        
+
         if not hasattr(node, "relationships"):
             return 0
-        
+
         # If node has a parent, calculate depth recursively
         if NodeRelationship.PARENT in node.relationships:
             parent_rel = node.relationships[NodeRelationship.PARENT]
             parent_id = getattr(parent_rel, "node_id", None)
-            
+
             if parent_id:
                 # Find parent node
                 for pnode in all_nodes:
                     if hasattr(pnode, "node_id") and pnode.node_id == parent_id:
                         return self._calculate_node_depth(pnode, all_nodes) + 1
-        
+
         # No parent means this is a root node
         return 0
 

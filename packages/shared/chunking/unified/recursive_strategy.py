@@ -2,7 +2,7 @@
 """
 Unified recursive text chunking strategy.
 
-This module merges the domain-based and LlamaIndex-based recursive chunking 
+This module merges the domain-based and LlamaIndex-based recursive chunking
 implementations into a single unified strategy.
 """
 
@@ -56,9 +56,11 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
 
         if use_llama_index:
             try:
-                from llama_index.core.node_parser import SentenceSplitter
+                # Check if LlamaIndex is available
+                import importlib.util
 
-                self._llama_available = True
+                spec = importlib.util.find_spec("llama_index.core.node_parser")
+                self._llama_available = spec is not None
             except ImportError:
                 logger.warning("LlamaIndex not available, falling back to domain implementation")
                 self._llama_available = False
@@ -172,7 +174,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if not nodes:
                 return []
 
-            chunks = []
+            chunks: list[Chunk] = []
             total_chars = len(content)
 
             # Convert LlamaIndex nodes to domain chunks
@@ -252,7 +254,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             return []
 
         # Convert splits to chunks with overlap
-        chunks = []
+        chunks: list[Chunk] = []
         for idx, split in enumerate(splits):
             # Calculate start offset
             if idx == 0:
@@ -270,7 +272,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             if end_offset < start_offset:
                 # If we can't find the split, estimate the position
                 end_offset = min(start_offset + len(split), len(content))
-            
+
             # Ensure end_offset is always greater than start_offset
             if end_offset <= start_offset:
                 # Make sure we have at least 1 character
@@ -288,7 +290,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             chunk_text = self.clean_chunk_text(chunk_text)
             if not chunk_text:
                 continue
-            
+
             # Final validation: skip if offsets are invalid
             if end_offset <= start_offset:
                 continue

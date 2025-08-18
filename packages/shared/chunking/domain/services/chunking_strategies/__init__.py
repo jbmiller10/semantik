@@ -6,6 +6,8 @@ This module now uses the unified chunking strategies to eliminate duplication.
 Each strategy implements a specific algorithm for breaking text into chunks.
 """
 
+from typing import cast
+
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
 )
@@ -39,14 +41,17 @@ __all__ = [
 ]
 
 # Strategy registry for easy lookup
-STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = {
-    "character": CharacterChunkingStrategy,
-    "recursive": RecursiveChunkingStrategy,
-    "semantic": SemanticChunkingStrategy,
-    "markdown": MarkdownChunkingStrategy,
-    "hierarchical": HierarchicalChunkingStrategy,
-    "hybrid": HybridChunkingStrategy,
-}
+STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = cast(
+    dict[str, type[ChunkingStrategy]],
+    {
+        "character": CharacterChunkingStrategy,
+        "recursive": RecursiveChunkingStrategy,
+        "semantic": SemanticChunkingStrategy,
+        "markdown": MarkdownChunkingStrategy,
+        "hierarchical": HierarchicalChunkingStrategy,
+        "hybrid": HybridChunkingStrategy,
+    }
+)
 
 
 def get_strategy(name: str) -> ChunkingStrategy:

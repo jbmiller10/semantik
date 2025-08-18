@@ -8,7 +8,7 @@ including strategy management, preview operations, collection processing, and an
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -96,7 +96,7 @@ async def list_strategies(
         strategy_dtos = await service.get_available_strategies_for_api()
 
         # Convert DTOs to API response models
-        return [dto.to_api_model() for dto in strategy_dtos]
+        return [cast(StrategyInfo, dto.to_api_model()) for dto in strategy_dtos]
 
     except Exception as e:
         logger.error(f"Failed to list strategies: {e}")
@@ -133,7 +133,7 @@ async def get_strategy_details(
             )
 
         # Convert DTO to API response model
-        return strategy_dto.to_api_model()
+        return cast(StrategyInfo, strategy_dto.to_api_model())
 
     except HTTPException:
         raise
@@ -168,7 +168,7 @@ async def recommend_strategy(
         )
 
         # Convert DTO to API response model
-        return recommendation_dto.to_api_model()
+        return cast(StrategyRecommendation, recommendation_dto.to_api_model())
 
     except Exception as e:
         logger.error(f"Failed to get strategy recommendation: {e}")
@@ -240,7 +240,7 @@ async def generate_preview(
         )
 
         # Convert DTO to API response model and add correlation ID
-        response = preview_dto.to_api_model()
+        response = cast(PreviewResponse, preview_dto.to_api_model())
         response.correlation_id = correlation_id
         return response
 
@@ -317,7 +317,7 @@ async def compare_strategies(
         )
 
         # Convert DTO to API response model
-        return compare_dto.to_api_model()
+        return cast(CompareResponse, compare_dto.to_api_model())
 
     except HTTPException:
         raise
@@ -364,7 +364,7 @@ async def get_cached_preview(
             )
 
         # Convert DTO to API response model
-        return preview_dto.to_api_model()
+        return cast(PreviewResponse, preview_dto.to_api_model())
 
     except HTTPException:
         raise
@@ -673,7 +673,7 @@ async def get_chunking_stats(
         )
 
         # Convert DTO to API response model
-        return stats_dto.to_api_model()
+        return cast(ChunkingStats, stats_dto.to_api_model())
 
     except ApplicationError as e:
         # Translate to HTTP exception
@@ -767,7 +767,7 @@ async def get_metrics_by_strategy(
         )
 
         # Convert DTOs to API response models
-        return [dto.to_api_model() for dto in metrics_dtos]
+        return [cast(StrategyMetrics, dto.to_api_model()) for dto in metrics_dtos]
 
     except Exception as e:
         logger.error(f"Failed to fetch strategy metrics: {e}")
@@ -870,15 +870,15 @@ async def analyze_document(
                 "words": 1500,
             },
             recommended_strategy=StrategyRecommendation(
-                recommended_strategy=recommendation["strategy"],
-                confidence=recommendation["confidence"],
-                reasoning=recommendation["reasoning"],
-                alternative_strategies=recommendation.get("alternatives", []),
+                recommended_strategy=recommendation.strategy,
+                confidence=recommendation.confidence,
+                reasoning=recommendation.reasoning,
+                alternative_strategies=recommendation.alternatives,
                 suggested_config=ChunkingConfigBase(
-                    strategy=recommendation["strategy"],
-                    chunk_size=512,
-                    chunk_overlap=50,
-                    preserve_sentences=True,
+                    strategy=recommendation.strategy,
+                    chunk_size=recommendation.chunk_size,
+                    chunk_overlap=recommendation.chunk_overlap,
+                    preserve_sentences=recommendation.preserve_sentences,
                 ),
             ),
             estimated_chunks={

@@ -2,7 +2,7 @@
 """
 Unified markdown/document structure chunking strategy.
 
-This module merges the domain-based and LlamaIndex-based markdown chunking 
+This module merges the domain-based and LlamaIndex-based markdown chunking
 implementations into a single unified strategy.
 """
 
@@ -64,9 +64,11 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
 
         if use_llama_index:
             try:
-                from llama_index.core.node_parser import MarkdownNodeParser
+                # Check if LlamaIndex is available
+                import importlib.util
 
-                self._llama_available = True
+                spec = importlib.util.find_spec("llama_index.core.node_parser")
+                self._llama_available = spec is not None
             except ImportError:
                 logger.warning("LlamaIndex not available, falling back to domain implementation")
                 self._llama_available = False
@@ -74,7 +76,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
         else:
             self._llama_available = False
 
-    def _init_llama_splitter(self, config: ChunkConfig) -> Any:
+    def _init_llama_splitter(self, _config: ChunkConfig) -> Any:
         """Initialize LlamaIndex splitter if needed."""
         if not self._use_llama_index or not self._llama_available:
             return None
@@ -193,7 +195,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
             if not nodes:
                 return []
 
-            chunks = []
+            chunks: list[Chunk] = []
             total_chars = len(content)
 
             # Convert LlamaIndex nodes to domain chunks
@@ -383,7 +385,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                     }
                 else:
                     # End code section
-                    current_section["content"] += line_with_newline
+                    current_section["content"] = str(current_section["content"]) + line_with_newline
                     current_section["end_offset"] = offset + line_length
                     sections.append(current_section)
                     current_section = {
@@ -395,7 +397,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                     }
             elif in_code_block:
                 # Inside code block
-                current_section["content"] += line_with_newline
+                current_section["content"] = str(current_section["content"]) + line_with_newline
                 current_section["end_offset"] = offset + line_length
             elif self._matches_pattern("heading", line):
                 # Header - start new section
@@ -437,7 +439,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
                 }
             else:
                 # Regular content
-                current_section["content"] += line_with_newline
+                current_section["content"] = str(current_section["content"]) + line_with_newline
                 current_section["end_offset"] = offset + line_length
 
             offset += line_length
@@ -464,7 +466,7 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
             return False
 
         try:
-            return self.safe_regex.match_safe(self.patterns[pattern_name], text) is not None
+            return self.safe_regex.match_with_timeout(self.patterns[pattern_name], text) is not None
         except Exception:
             return False
 
