@@ -13,22 +13,22 @@ class TestDocumentRepository:
     """Test cases for DocumentRepository."""
 
     @pytest.fixture()
-    def mock_session(self) -> None:
+    def mock_session(self) -> AsyncMock:
         """Create a mock async session."""
         return AsyncMock()
 
     @pytest.fixture()
-    def repository(self, mock_session) -> None:
+    def repository(self, mock_session) -> DocumentRepository:
         """Create a DocumentRepository instance with mocked session."""
         return DocumentRepository(mock_session)
 
     @pytest.fixture()
-    def sample_collection(self) -> None:
+    def sample_collection(self) -> Collection:
         """Create a sample collection for testing."""
         return Collection(id=str(uuid4()), name="test-collection", owner_id=1, is_public=False)
 
     @pytest.mark.asyncio()
-    async def test_create_document_validation_errors(self, repository):
+    async def test_create_document_validation_errors(self, repository) -> None:
         """Test validation errors during document creation."""
         # Test missing file path
         with pytest.raises(ValidationError) as exc_info:
@@ -86,7 +86,7 @@ class TestDocumentRepository:
         assert "Invalid SHA-256 hash format" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_document_deduplication_logic(self, repository, mock_session, sample_collection):
+    async def test_create_document_deduplication_logic(self, repository, mock_session, sample_collection) -> None:
         """Test that deduplication logic is called correctly."""
         # Setup
         collection_id = str(uuid4())
@@ -132,7 +132,7 @@ class TestDocumentRepository:
         mock_session.flush.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_get_by_id_calls_correct_query(self, repository, mock_session):
+    async def test_get_by_id_calls_correct_query(self, repository, mock_session) -> None:
         """Test that get_by_id executes the correct query."""
         # Setup
         doc_id = str(uuid4())
@@ -149,7 +149,7 @@ class TestDocumentRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_update_status_validation(self, repository, mock_session):
+    async def test_update_status_validation(self, repository, mock_session) -> None:
         """Test update_status with document not found."""
         # Setup
         doc_id = str(uuid4())
@@ -163,7 +163,7 @@ class TestDocumentRepository:
         assert "document" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_bulk_update_status_executes_update(self, repository, mock_session):
+    async def test_bulk_update_status_executes_update(self, repository, mock_session) -> None:
         """Test that bulk_update_status executes update query."""
         # Setup
         doc_ids = [str(uuid4()) for _ in range(3)]
@@ -181,7 +181,7 @@ class TestDocumentRepository:
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_delete_document_not_found(self, repository, mock_session):
+    async def test_delete_document_not_found(self, repository, mock_session) -> None:
         """Test deletion when document doesn't exist."""
         # Setup
         doc_id = str(uuid4())
@@ -195,7 +195,7 @@ class TestDocumentRepository:
         assert "document" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_get_stats_structure(self, repository, mock_session):
+    async def test_get_stats_structure(self, repository, mock_session) -> None:
         """Test that get_stats_by_collection returns correct structure."""
         # Setup
         collection_id = str(uuid4())
@@ -231,7 +231,7 @@ class TestDocumentRepository:
         assert "duplicate_groups" in stats
 
     @pytest.mark.asyncio()
-    async def test_database_operation_error_handling(self, repository, mock_session):
+    async def test_database_operation_error_handling(self, repository, mock_session) -> None:
         """Test handling of unexpected database errors."""
         # Setup
         mock_session.execute.side_effect = Exception("Database connection lost")

@@ -11,7 +11,7 @@ class TestWebSocketBasic:
     """Basic tests for WebSocket manager."""
 
     @pytest.mark.asyncio()
-    async def test_manager_initialization(self):
+    async def test_manager_initialization(self) -> None:
         """Test that manager initializes correctly."""
         manager = RedisStreamWebSocketManager()
 
@@ -21,7 +21,7 @@ class TestWebSocketBasic:
         assert manager.max_connections_per_user == 10
 
     @pytest.mark.asyncio()
-    async def test_send_operation_update_without_redis(self):
+    async def test_send_operation_update_without_redis(self) -> None:
         """Test sending operation update when Redis is not available."""
         manager = RedisStreamWebSocketManager()
         manager.redis = None  # No Redis connection
@@ -43,7 +43,7 @@ class TestWebSocketBasic:
         assert sent_data["data"]["progress"] == 50
 
     @pytest.mark.asyncio()
-    async def test_broadcast_to_operation(self):
+    async def test_broadcast_to_operation(self) -> None:
         """Test broadcasting to multiple WebSocket connections."""
         manager = RedisStreamWebSocketManager()
 
@@ -66,7 +66,7 @@ class TestWebSocketBasic:
         ws3.send_json.assert_called_once_with(test_message)
 
     @pytest.mark.asyncio()
-    async def test_connection_limit_check(self):
+    async def test_connection_limit_check(self) -> None:
         """Test connection limit enforcement logic."""
         manager = RedisStreamWebSocketManager()
 

@@ -5,10 +5,14 @@ as required by Ticket-003.
 """
 
 import json
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
+
+from packages.webui.api.v2.operations import operation_websocket
 
 
 class TestOperationsWebSocket:
@@ -25,7 +29,7 @@ class TestOperationsWebSocket:
         mock.received_messages = []
 
         # Store messages when send_json is called
-        async def track_send_json(data):
+        async def track_send_json(data) -> None:
             mock.received_messages.append(data)
 
         mock.send_json.side_effect = track_send_json
@@ -40,14 +44,14 @@ class TestOperationsWebSocket:
                 self.published_messages = []
                 self.subscriptions = {}
 
-            async def publish(self, channel, message):
+            async def publish(self, channel, message) -> None:
                 self.published_messages.append({"channel": channel, "message": json.loads(message)})
                 # Simulate message delivery to subscribers
                 if channel in self.subscriptions:
                     for callback in self.subscriptions[channel]:
                         await callback(message)
 
-            async def subscribe(self, channel):
+            async def subscribe(self, channel) -> None:
                 if channel not in self.subscriptions:
                     self.subscriptions[channel] = []
 
@@ -59,9 +63,8 @@ class TestOperationsWebSocket:
         return MockRedis()
 
     @pytest.mark.asyncio()
-    async def test_websocket_authentication_success(self, mock_websocket_client):
+    async def test_websocket_authentication_success(self, mock_websocket_client) -> None:
         """Test successful WebSocket authentication and connection."""
-        from packages.webui.api.v2.operations import operation_websocket
 
         # Mock authentication
         mock_user = {"id": "1", "username": "testuser"}
@@ -89,14 +92,15 @@ class TestOperationsWebSocket:
                 # Mock database session as an async generator
                 mock_db = AsyncMock()
 
-                async def mock_get_db_generator():
+                async def mock_get_db_generator() -> Generator[Any, None, None]:
                     yield mock_db
 
                 # Make get_db return the generator directly (not a coroutine)
                 mock_get_db.side_effect = lambda: mock_get_db_generator()
 
                 # Mock WebSocket manager
-                mock_ws_manager.connect = AsyncMock()
+                mock_connection_id = "mock-connection-id-123"
+                mock_ws_manager.connect = AsyncMock(return_value=mock_connection_id)
                 mock_ws_manager.disconnect = AsyncMock()
 
                 # Mock receive_json to simulate client disconnect after initial connection
@@ -108,8 +112,10 @@ class TestOperationsWebSocket:
                 # Verify authentication was checked
                 assert mock_websocket_client.query_params.get("token") == "valid-test-token"
 
-                # Verify connection was established
-                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
+                # Verify connection was established with correct parameter order
+                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id)
+                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "1", "test-operation-id")
 
-                # Verify disconnection was called
-                mock_ws_manager.disconnect.assert_called_once_with(mock_websocket_client, "test-operation-id", "1")
+                # Verify disconnection was called with connection_id only
+                # ScalableWebSocketManager expects: disconnect(connection_id)
+                mock_ws_manager.disconnect.assert_called_once_with(mock_connection_id)

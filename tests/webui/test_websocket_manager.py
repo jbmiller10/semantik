@@ -3,7 +3,10 @@
 import asyncio
 import contextlib
 import json
+import logging
+from collections.abc import Generator
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,11 +15,13 @@ import pytest_asyncio
 import redis.asyncio as redis
 from fastapi import WebSocket
 
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
+from packages.webui.websocket_manager import ws_manager as _global_ws_manager
+from packages.webui.websocket_manager import ws_manager as ws_manager1
+from packages.webui.websocket_manager import ws_manager as ws_manager2
 
 # Clean up the global singleton before tests start to prevent interference
 try:
-    from packages.webui.websocket_manager import ws_manager as _global_ws_manager
 
     # Force cleanup of any existing state
     for _task_id, task in list(_global_ws_manager.consumer_tasks.items()):
@@ -32,7 +37,7 @@ class TestRedisStreamWebSocketManager:
     """Test suite for RedisStreamWebSocketManager."""
 
     @classmethod
-    def teardown_class(cls):
+    def teardown_class(cls) -> None:
         """Clean up any remaining tasks after all tests in this class."""
         # Force cleanup of any lingering tasks
         try:
@@ -52,7 +57,7 @@ class TestRedisStreamWebSocketManager:
             pass
 
     @pytest.fixture()
-    def mock_redis(self):
+    def mock_redis(self) -> None:
         """Create a mock Redis client."""
         # Create a proper async mock
         mock = AsyncMock(spec=redis.Redis)
@@ -79,7 +84,7 @@ class TestRedisStreamWebSocketManager:
         return mock
 
     @pytest.fixture()
-    def mock_websocket(self):
+    def mock_websocket(self) -> None:
         """Create a mock WebSocket connection."""
         mock = AsyncMock(spec=WebSocket)
         mock.accept = AsyncMock()
@@ -88,7 +93,7 @@ class TestRedisStreamWebSocketManager:
         return mock
 
     @pytest_asyncio.fixture
-    async def manager(self):
+    async def manager(self) -> Generator[Any, None, None]:
         """Create a WebSocket manager instance."""
         manager = RedisStreamWebSocketManager()
         yield manager
@@ -119,7 +124,6 @@ class TestRedisStreamWebSocketManager:
                 manager.redis = None
         except Exception as e:
             # Force cleanup if any error occurs
-            import logging
 
             logger = logging.getLogger(__name__)
             logger.warning(f"Error during manager cleanup: {e}")
@@ -131,32 +135,31 @@ class TestRedisStreamWebSocketManager:
     async def test_startup_success(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test successful startup with Redis connection."""
 
-        # Create an async function that returns the mock
-        async def async_from_url(*_, **__):
-            return mock_redis  # type: ignore[no-any-return]
+        # Mock redis.from_url to return our mock_redis
+        async def mock_from_url(*_args, **_kwargs):
+            return mock_redis
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("redis.asyncio.from_url", new=mock_from_url):
             await manager.startup()
 
             assert manager.redis is not None
             mock_redis.ping.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_startup_retry_logic(self, manager, mock_redis):
+    async def test_startup_retry_logic(self, manager, mock_redis) -> None:
         """Test startup retry logic when Redis is initially unavailable."""
         call_count = 0
 
-        async def mock_from_url(*args: Any, **kwargs: Any) -> AsyncMock:  # noqa: ARG001
+        async def mock_from_url(*_args, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception("Connection failed")
             # Return a mock redis client on the 3rd attempt
-            mock_redis.ping = AsyncMock(return_value=True)
-            return mock_redis  # type: ignore[no-any-return]
+            return mock_redis
 
         with (
-            patch("packages.webui.websocket_manager.redis.from_url", side_effect=mock_from_url),
+            patch("redis.asyncio.from_url", side_effect=mock_from_url),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -167,8 +170,13 @@ class TestRedisStreamWebSocketManager:
     @pytest.mark.asyncio()
     async def test_startup_graceful_degradation(self, manager: RedisStreamWebSocketManager) -> None:
         """Test graceful degradation when Redis is completely unavailable."""
+
+        # Mock redis.from_url to always fail
+        async def mock_from_url(*_args, **_kwargs):
+            raise Exception("Connection failed")
+
         with (
-            patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("redis.asyncio.from_url", side_effect=mock_from_url),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -208,9 +216,6 @@ class TestRedisStreamWebSocketManager:
         manager.redis = mock_redis
 
         # Mock operation object with proper attributes
-        from datetime import UTC, datetime
-        from enum import Enum
-        from unittest.mock import MagicMock
 
         # Create mock enums
         class MockStatus(Enum):
@@ -263,10 +268,12 @@ class TestRedisStreamWebSocketManager:
         for i in range(manager.max_connections_per_user):
             manager.connections[f"user1:operation:operation{i}"] = {AsyncMock()}
 
-        await manager.connect(mock_websocket, "operation_new", "user1")
+        # Should raise exception when limit exceeded
+        with pytest.raises(ConnectionRefusedError, match="User connection limit exceeded"):
+            await manager.connect(mock_websocket, "operation_new", "user1")
 
         # Verify connection rejected
-        mock_websocket.close.assert_called_once_with(code=1008, reason="Connection limit exceeded")
+        mock_websocket.close.assert_called_once_with(code=1008, reason="User connection limit exceeded")
 
     @pytest.mark.asyncio()
     async def test_disconnect(self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock) -> None:
@@ -569,9 +576,6 @@ class TestRedisStreamWebSocketManager:
             mock_repo_class.return_value = mock_repo
 
             # Create mock operation
-            from datetime import UTC, datetime
-            from enum import Enum
-            from unittest.mock import MagicMock
 
             class MockStatus(Enum):
                 PROCESSING = "processing"
@@ -955,10 +959,11 @@ class TestRedisStreamWebSocketManager:
     async def test_startup_idempotency(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """Test that startup can be called multiple times safely."""
 
-        async def async_from_url(*_, **__):
-            return mock_redis  # type: ignore[no-any-return]
+        # Mock redis.from_url to return our mock_redis
+        async def mock_from_url(*_args, **_kwargs):
+            return mock_redis
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("redis.asyncio.from_url", new=mock_from_url):
             # First startup
             await manager.startup()
             assert manager.redis is mock_redis
@@ -1065,10 +1070,9 @@ class TestWebSocketManagerSingleton:
     """Test the global ws_manager singleton."""
 
     @pytest_asyncio.fixture(autouse=True)
-    async def cleanup_singleton(self):
+    async def cleanup_singleton(self) -> None:
         """Clean up any background tasks from the singleton."""
         # Import here to avoid issues
-        from packages.webui.websocket_manager import ws_manager
 
         # Store original state before test
         original_tasks = ws_manager.consumer_tasks.copy()
@@ -1115,18 +1119,15 @@ class TestWebSocketManagerSingleton:
         # Restore Redis state
         ws_manager.redis = original_redis
 
-    def test_ws_manager_singleton_exists(self):
+    def test_ws_manager_singleton_exists(self) -> None:
         """Test that the global ws_manager singleton is properly initialized."""
-        from packages.webui.websocket_manager import ws_manager
 
         assert ws_manager is not None
         assert isinstance(ws_manager, RedisStreamWebSocketManager)
         assert ws_manager.consumer_group.startswith("webui-")
         assert ws_manager.max_connections_per_user == 10
 
-    def test_ws_manager_singleton_is_singleton(self):
+    def test_ws_manager_singleton_is_singleton(self) -> None:
         """Test that ws_manager is a true singleton."""
-        from packages.webui.websocket_manager import ws_manager as ws_manager1
-        from packages.webui.websocket_manager import ws_manager as ws_manager2
 
         assert ws_manager1 is ws_manager2

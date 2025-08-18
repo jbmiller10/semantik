@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/resource_manager.py
 Tests resource allocation, quotas, and management
 """
 
 import asyncio
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,7 +17,7 @@ from webui.services.resource_manager import ResourceEstimate, ResourceManager
 class TestResourceEstimate:
     """Test ResourceEstimate class"""
 
-    def test_resource_estimate_creation(self):
+    def test_resource_estimate_creation(self) -> None:
         """Test creating ResourceEstimate"""
         estimate = ResourceEstimate(memory_mb=1024, storage_gb=2.5, cpu_cores=4.0, gpu_memory_mb=2048)
 
@@ -24,7 +26,7 @@ class TestResourceEstimate:
         assert estimate.cpu_cores == 4.0
         assert estimate.gpu_memory_mb == 2048
 
-    def test_resource_estimate_defaults(self):
+    def test_resource_estimate_defaults(self) -> None:
         """Test ResourceEstimate default values"""
         estimate = ResourceEstimate()
 
@@ -33,7 +35,7 @@ class TestResourceEstimate:
         assert estimate.cpu_cores == 0.0
         assert estimate.gpu_memory_mb == 0
 
-    def test_resource_estimate_string_representation(self):
+    def test_resource_estimate_string_representation(self) -> None:
         """Test ResourceEstimate string representation"""
         estimate = ResourceEstimate(memory_mb=512, storage_gb=1.0, cpu_cores=2.0, gpu_memory_mb=1024)
 
@@ -45,17 +47,17 @@ class TestResourceManager:
     """Test ResourceManager implementation"""
 
     @pytest.fixture()
-    def mock_collection_repo(self):
+    def mock_collection_repo(self) -> None:
         """Create a mock CollectionRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def mock_operation_repo(self):
+    def mock_operation_repo(self) -> None:
         """Create a mock OperationRepository"""
         return AsyncMock()
 
     @pytest.fixture()
-    def resource_manager(self, mock_collection_repo, mock_operation_repo):
+    def resource_manager(self, mock_collection_repo, mock_operation_repo) -> None:
         """Create ResourceManager with mocked dependencies"""
         return ResourceManager(
             collection_repo=mock_collection_repo,
@@ -63,38 +65,41 @@ class TestResourceManager:
         )
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_success(self, resource_manager, mock_collection_repo):
+    async def test_can_create_collection_success(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection when under limit"""
         # Mock user has 3 active collections
         mock_collections = [
-            {"id": "1", "status": "ready"},
-            {"id": "2", "status": "ready"},
-            {"id": "3", "status": "processing"},
+            Mock(id="1", status="ready"),
+            Mock(id="2", status="ready"),
+            Mock(id="3", status="processing"),
         ]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should be able to create (3 < 10)
         result = await resource_manager.can_create_collection(123)
         assert result is True
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_at_limit(self, resource_manager, mock_collection_repo):
+    async def test_can_create_collection_at_limit(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection when at limit"""
         # Mock user has 10 active collections
-        mock_collections = [{"id": str(i), "status": "ready"} for i in range(10)]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(id=str(i), status="ready") for i in range(10)]
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should not be able to create (10 >= 10)
         result = await resource_manager.can_create_collection(123)
         assert result is False
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_excludes_deleted(self, resource_manager, mock_collection_repo):
+    async def test_can_create_collection_excludes_deleted(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection excludes deleted collections"""
         # Mock user has 9 active + 5 deleted collections
-        mock_collections = [{"id": str(i), "status": "ready"} for i in range(9)]
-        mock_collections.extend([{"id": str(i + 9), "status": "deleted"} for i in range(5)])
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(id=str(i), status="ready") for i in range(9)]
+        mock_collections.extend([Mock(id=str(i + 9), status="deleted") for i in range(5)])
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Should be able to create (9 active < 10)
         result = await resource_manager.can_create_collection(123)
@@ -105,7 +110,7 @@ class TestResourceManager:
     @patch("webui.services.resource_manager.psutil.disk_usage")
     async def test_can_allocate_sufficient_resources(
         self, mock_disk_usage, mock_virtual_memory, resource_manager, mock_collection_repo
-    ):
+    ) -> None:
         """Test can_allocate with sufficient system resources"""
         # Mock system resources
         mock_memory = Mock()
@@ -117,8 +122,9 @@ class TestResourceManager:
         mock_disk_usage.return_value = mock_disk
 
         # Mock user resource usage
-        mock_collections = [{"total_size_bytes": 1024 * 1024 * 1024}]  # 1GB
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        mock_collections = [Mock(total_size_bytes=1024 * 1024 * 1024)]  # 1GB
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Request moderate resources
         resources = ResourceEstimate(memory_mb=1024, storage_gb=5.0)
@@ -128,7 +134,9 @@ class TestResourceManager:
 
     @pytest.mark.asyncio()
     @patch("webui.services.resource_manager.psutil.virtual_memory")
-    async def test_can_allocate_insufficient_memory(self, mock_virtual_memory, resource_manager, mock_collection_repo):
+    async def test_can_allocate_insufficient_memory(
+        self, mock_virtual_memory, resource_manager, mock_collection_repo
+    ) -> None:
         """Test can_allocate with insufficient memory"""
         # Mock low memory
         mock_memory = Mock()
@@ -142,10 +150,9 @@ class TestResourceManager:
         assert result is False
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_single_file(self, resource_manager):
+    async def test_estimate_resources_single_file(self, resource_manager) -> None:
         """Test resource estimation for single file"""
         # Create a temporary file
-        import tempfile
 
         with tempfile.NamedTemporaryFile() as temp_file:
             # Write 10MB of data
@@ -161,10 +168,9 @@ class TestResourceManager:
             assert estimate.gpu_memory_mb == 400  # Model size for BGE
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_directory(self, resource_manager):
+    async def test_estimate_resources_directory(self, resource_manager) -> None:
         """Test resource estimation for directory"""
         # Create a temporary directory with files
-        import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create some files
@@ -181,7 +187,7 @@ class TestResourceManager:
             assert estimate.gpu_memory_mb == 100  # Model size for MiniLM
 
     @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_success(self, resource_manager, mock_collection_repo):
+    async def test_reserve_for_reindex_success(self, resource_manager, mock_collection_repo) -> None:
         """Test reserving resources for reindex"""
         # Mock collection
         mock_collection = {
@@ -199,7 +205,7 @@ class TestResourceManager:
             assert "reindex_test-collection" in resource_manager._reserved_resources
 
     @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_insufficient_resources(self, resource_manager, mock_collection_repo):
+    async def test_reserve_for_reindex_insufficient_resources(self, resource_manager, mock_collection_repo) -> None:
         """Test reserve_for_reindex with insufficient resources"""
         # Mock collection
         mock_collection = {
@@ -217,7 +223,7 @@ class TestResourceManager:
             assert "reindex_test-collection" not in resource_manager._reserved_resources
 
     @pytest.mark.asyncio()
-    async def test_release_reindex_reservation(self, resource_manager):
+    async def test_release_reindex_reservation(self, resource_manager) -> None:
         """Test releasing reindex reservation"""
         # Manually add a reservation
         resource_manager._reserved_resources["reindex_test-collection"] = ResourceEstimate(memory_mb=1024)
@@ -229,7 +235,7 @@ class TestResourceManager:
         assert "reindex_test-collection" not in resource_manager._reserved_resources
 
     @pytest.mark.asyncio()
-    async def test_get_resource_usage(self, resource_manager, mock_collection_repo):
+    async def test_get_resource_usage(self, resource_manager, mock_collection_repo) -> None:
         """Test getting resource usage for collection"""
         # Mock collection with usage info
         mock_collection = {
@@ -248,15 +254,16 @@ class TestResourceManager:
         assert usage["storage_gb"] == 2.0
 
     @pytest.mark.asyncio()
-    async def test_get_user_resource_usage(self, resource_manager, mock_collection_repo):
+    async def test_get_user_resource_usage(self, resource_manager, mock_collection_repo) -> None:
         """Test getting total resource usage for user"""
         # Mock user's collections
         mock_collections = [
-            {"total_size_bytes": 1 * 1024 * 1024 * 1024},  # 1GB
-            {"total_size_bytes": 2 * 1024 * 1024 * 1024},  # 2GB
-            {"total_size_bytes": 5 * 1024 * 1024 * 1024},  # 5GB
+            Mock(total_size_bytes=1 * 1024 * 1024 * 1024),  # 1GB
+            Mock(total_size_bytes=2 * 1024 * 1024 * 1024),  # 2GB
+            Mock(total_size_bytes=5 * 1024 * 1024 * 1024),  # 5GB
         ]
-        mock_collection_repo.list_by_user.return_value = mock_collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = (mock_collections, len(mock_collections))
 
         # Call private method directly
         usage = await resource_manager._get_user_resource_usage(123)
@@ -265,7 +272,7 @@ class TestResourceManager:
         assert usage["storage_gb"] == 8.0
 
     @pytest.mark.asyncio()
-    async def test_concurrent_resource_reservation(self, resource_manager, mock_collection_repo):
+    async def test_concurrent_resource_reservation(self, resource_manager, mock_collection_repo) -> None:
         """Test concurrent resource reservation with lock"""
         # Mock collections
         mock_collection = {
@@ -294,7 +301,7 @@ class TestResourceManagerEdgeCases:
     """Test edge cases for ResourceManager"""
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_invalid_path(self):
+    async def test_estimate_resources_invalid_path(self) -> None:
         """Test resource estimation with invalid path"""
         manager = ResourceManager(AsyncMock(), AsyncMock())
 
@@ -310,11 +317,9 @@ class TestResourceManagerEdgeCases:
         assert estimate.cpu_cores == 1.0
 
     @pytest.mark.asyncio()
-    async def test_estimate_resources_unknown_model(self):
+    async def test_estimate_resources_unknown_model(self) -> None:
         """Test resource estimation with unknown model"""
         manager = ResourceManager(AsyncMock(), AsyncMock())
-
-        import tempfile
 
         with tempfile.NamedTemporaryFile() as temp_file:
             temp_file.write(b"x" * 1024)  # 1KB
@@ -328,7 +333,7 @@ class TestResourceManagerEdgeCases:
     @pytest.mark.asyncio()
     @patch("webui.services.resource_manager.psutil.virtual_memory")
     @patch("webui.services.resource_manager.psutil.disk_usage")
-    async def test_check_system_resources_with_reserved(self, mock_disk_usage, mock_virtual_memory):
+    async def test_check_system_resources_with_reserved(self, mock_disk_usage, mock_virtual_memory) -> None:
         """Test system resource check considering reserved resources"""
         manager = ResourceManager(AsyncMock(), AsyncMock())
 
@@ -356,7 +361,7 @@ class TestResourceManagerEdgeCases:
         # Should fail due to reserved resources
         assert result is False
 
-    def test_is_gpu_model(self):
+    def test_is_gpu_model(self) -> None:
         """Test GPU model detection"""
         manager = ResourceManager(AsyncMock(), AsyncMock())
 
@@ -369,14 +374,15 @@ class TestResourceManagerIntegration:
     """Test ResourceManager integration scenarios"""
 
     @pytest.mark.asyncio()
-    async def test_full_allocation_workflow(self):
+    async def test_full_allocation_workflow(self) -> None:
         """Test complete resource allocation workflow"""
         mock_collection_repo = AsyncMock()
         mock_operation_repo = AsyncMock()
         manager = ResourceManager(mock_collection_repo, mock_operation_repo)
 
         # Setup mocks
-        mock_collection_repo.list_by_user.return_value = []  # No existing collections
+        # list_for_user returns (collections, count) tuple
+        mock_collection_repo.list_for_user.return_value = ([], 0)  # No existing collections
         mock_collection_repo.get_by_id.return_value = {
             "id": "test-collection",
             "total_size_bytes": 1024 * 1024 * 1024,  # 1GB
@@ -387,7 +393,6 @@ class TestResourceManagerIntegration:
         assert can_create is True
 
         # Estimate resources for a path
-        import tempfile
 
         with tempfile.NamedTemporaryFile() as temp_file:
             temp_file.write(b"x" * 1024 * 1024)  # 1MB
@@ -410,7 +415,7 @@ class TestResourceManagerIntegration:
         assert len(manager._reserved_resources) == 0
 
     @pytest.mark.asyncio()
-    async def test_rate_limiting_disabled(self):
+    async def test_rate_limiting_disabled(self) -> None:
         """Test that rate limiting is disabled"""
         mock_collection_repo = AsyncMock()
         mock_operation_repo = AsyncMock()

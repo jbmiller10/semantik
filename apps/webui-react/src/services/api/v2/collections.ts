@@ -9,6 +9,8 @@ import type {
   ReindexRequest,
   CollectionListResponse,
   PaginationParams,
+} from '../../../types/collection';
+import type {
   DocumentListResponse,
   SearchRequest,
   SearchResponse,
@@ -70,14 +72,11 @@ export const operationsV2Api = {
 
 /**
  * V2 Search API client
- * Supports multi-collection search
+ * Minimal implementation for existing usage
  */
 export const searchV2Api = {
   search: (data: SearchRequest) => 
     apiClient.post<SearchResponse>('/api/v2/search', data),
-    
-  multiSearch: (data: SearchRequest) => 
-    apiClient.post<SearchResponse>('/api/v2/search/multi', data),
 };
 
 // Helper function to handle API errors

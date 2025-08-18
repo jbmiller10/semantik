@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Comprehensive test suite for webui/services/factory.py
 Tests service factory functions and dependency injection
@@ -35,11 +36,11 @@ class TestServiceFactory:
     """Test service factory functions"""
 
     @pytest.fixture()
-    def mock_db_session(self):
+    def mock_db_session(self) -> None:
         """Create a mock database session"""
         return AsyncMock(spec=AsyncSession)
 
-    def test_create_collection_service(self, mock_db_session):
+    def test_create_collection_service(self, mock_db_session) -> None:
         """Test creating CollectionService with dependencies"""
         service = create_collection_service(mock_db_session)
 
@@ -49,7 +50,7 @@ class TestServiceFactory:
         assert hasattr(service, "operation_repo")
         assert hasattr(service, "document_repo")
 
-    def test_create_document_scanning_service(self, mock_db_session):
+    def test_create_document_scanning_service(self, mock_db_session) -> None:
         """Test creating DocumentScanningService with dependencies"""
         service = create_document_scanning_service(mock_db_session)
 
@@ -57,7 +58,7 @@ class TestServiceFactory:
         assert service.db_session == mock_db_session
         assert hasattr(service, "document_repo")
 
-    def test_create_operation_service(self, mock_db_session):
+    def test_create_operation_service(self, mock_db_session) -> None:
         """Test creating OperationService with dependencies"""
         service = create_operation_service(mock_db_session)
 
@@ -65,7 +66,7 @@ class TestServiceFactory:
         assert service.db_session == mock_db_session
         assert hasattr(service, "operation_repo")
 
-    def test_create_search_service(self, mock_db_session):
+    def test_create_search_service(self, mock_db_session) -> None:
         """Test creating SearchService with default configuration"""
         service = create_search_service(mock_db_session)
 
@@ -75,7 +76,7 @@ class TestServiceFactory:
         assert hasattr(service, "default_timeout")
         assert hasattr(service, "retry_timeout_multiplier")
 
-    def test_create_search_service_with_custom_timeout(self, mock_db_session):
+    def test_create_search_service_with_custom_timeout(self, mock_db_session) -> None:
         """Test creating SearchService with custom timeout configuration"""
         custom_timeout = httpx.Timeout(30.0)
         custom_multiplier = 2.5
@@ -90,7 +91,7 @@ class TestServiceFactory:
         assert service.default_timeout == custom_timeout
         assert service.retry_timeout_multiplier == custom_multiplier
 
-    def test_create_resource_manager(self, mock_db_session):
+    def test_create_resource_manager(self, mock_db_session) -> None:
         """Test creating ResourceManager with dependencies"""
         manager = create_resource_manager(mock_db_session)
 
@@ -104,7 +105,7 @@ class TestServiceFactoryDependencyInjection:
 
     @pytest.mark.asyncio()
     @patch("webui.services.factory.get_db")
-    async def test_get_collection_service_dependency(self, mock_get_db):
+    async def test_get_collection_service_dependency(self, mock_get_db) -> None:
         """Test get_collection_service for FastAPI dependency injection"""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_get_db.return_value = mock_db
@@ -116,7 +117,7 @@ class TestServiceFactoryDependencyInjection:
 
     @pytest.mark.asyncio()
     @patch("webui.services.factory.get_db")
-    async def test_get_operation_service_dependency(self, mock_get_db):
+    async def test_get_operation_service_dependency(self, mock_get_db) -> None:
         """Test get_operation_service for FastAPI dependency injection"""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_get_db.return_value = mock_db
@@ -128,7 +129,7 @@ class TestServiceFactoryDependencyInjection:
 
     @pytest.mark.asyncio()
     @patch("webui.services.factory.get_db")
-    async def test_get_search_service_dependency(self, mock_get_db):
+    async def test_get_search_service_dependency(self, mock_get_db) -> None:
         """Test get_search_service for FastAPI dependency injection"""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_get_db.return_value = mock_db
@@ -139,7 +140,7 @@ class TestServiceFactoryDependencyInjection:
         assert service.db_session == mock_db
 
     @pytest.mark.asyncio()
-    async def test_get_directory_scan_service_dependency(self):
+    async def test_get_directory_scan_service_dependency(self) -> None:
         """Test get_directory_scan_service for FastAPI dependency injection"""
         # DirectoryScanService doesn't require database
         service = await get_directory_scan_service()
@@ -152,7 +153,9 @@ class TestServiceFactoryRepositoryCreation:
     @patch("webui.services.factory.CollectionRepository")
     @patch("webui.services.factory.OperationRepository")
     @patch("webui.services.factory.DocumentRepository")
-    def test_repositories_created_with_session(self, mock_doc_repo_class, mock_op_repo_class, mock_coll_repo_class):
+    def test_repositories_created_with_session(
+        self, mock_doc_repo_class, mock_op_repo_class, mock_coll_repo_class
+    ) -> None:
         """Test that repositories are created with the database session"""
         mock_db = AsyncMock(spec=AsyncSession)
 
@@ -179,7 +182,7 @@ class TestServiceFactoryRepositoryCreation:
         assert service.document_repo == mock_doc_repo
 
     @patch("webui.services.factory.DocumentRepository")
-    def test_document_scanning_service_repository_creation(self, mock_doc_repo_class):
+    def test_document_scanning_service_repository_creation(self, mock_doc_repo_class) -> None:
         """Test repository creation for DocumentScanningService"""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_doc_repo = Mock(spec=DocumentRepository)
@@ -194,7 +197,7 @@ class TestServiceFactoryRepositoryCreation:
 
     @patch("webui.services.factory.CollectionRepository")
     @patch("webui.services.factory.OperationRepository")
-    def test_resource_manager_repository_creation(self, mock_op_repo_class, mock_coll_repo_class):
+    def test_resource_manager_repository_creation(self, mock_op_repo_class, mock_coll_repo_class) -> None:
         """Test repository creation for ResourceManager"""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_coll_repo = Mock(spec=CollectionRepository)
@@ -217,7 +220,7 @@ class TestServiceFactoryRepositoryCreation:
 class TestServiceFactoryEdgeCases:
     """Test edge cases and error scenarios"""
 
-    def test_create_services_with_none_session(self):
+    def test_create_services_with_none_session(self) -> None:
         """Test creating services with None session (should not crash)"""
         # These should not crash but services won't work properly
         service1 = create_collection_service(None)
@@ -229,7 +232,7 @@ class TestServiceFactoryEdgeCases:
         service3 = create_operation_service(None)
         assert service3.db_session is None
 
-    def test_search_service_default_parameters(self):
+    def test_search_service_default_parameters(self) -> None:
         """Test SearchService creation with default parameters"""
         mock_db = AsyncMock(spec=AsyncSession)
         service = create_search_service(mock_db)
@@ -247,7 +250,7 @@ class TestServiceFactoryIntegration:
     """Test factory functions with real instances"""
 
     @pytest.mark.asyncio()
-    async def test_fastapi_dependency_injection_pattern(self):
+    async def test_fastapi_dependency_injection_pattern(self) -> None:
         """Test how factory functions integrate with FastAPI dependencies"""
         # Test the direct factory functions (no async dependencies)
         mock_db = AsyncMock()
@@ -276,7 +279,7 @@ class TestServiceFactoryIntegration:
         dir_scan_service = await get_directory_scan_service()
         assert isinstance(dir_scan_service, DirectoryScanService)
 
-    def test_multiple_service_creation(self):
+    def test_multiple_service_creation(self) -> None:
         """Test creating multiple services with same session"""
         mock_db = AsyncMock(spec=AsyncSession)
 
@@ -294,7 +297,7 @@ class TestServiceFactoryIntegration:
         assert coll_service.collection_repo != doc_service.document_repo
 
     @pytest.mark.asyncio()
-    async def test_service_lifecycle_in_request(self):
+    async def test_service_lifecycle_in_request(self) -> None:
         """Test service creation and cleanup in a request lifecycle"""
         mock_db = AsyncMock(spec=AsyncSession)
 

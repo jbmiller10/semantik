@@ -5,6 +5,7 @@ export * from './settings';
 export * from './directoryScan';
 export * from './documents';
 export * from './system';
+export * from './chunking';
 
 // Re-export the unified v2Api object as default
 import { v2Api } from './collections';
