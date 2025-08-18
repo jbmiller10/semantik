@@ -920,12 +920,17 @@ class TestAnalyticsEndpoints:
 
     def test_analyze_document_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test document analysis for strategy recommendation."""
-        mock_chunking_service.recommend_strategy.return_value = {
-            "strategy": ChunkingStrategy.DOCUMENT_STRUCTURE,
-            "confidence": 0.9,
-            "reasoning": "Document has clear structure with headings",
-            "alternatives": [ChunkingStrategy.SEMANTIC],
-        }
+        from packages.webui.services.dtos.chunking_dtos import ServiceStrategyRecommendation
+        
+        mock_chunking_service.recommend_strategy.return_value = ServiceStrategyRecommendation(
+            strategy=ChunkingStrategy.DOCUMENT_STRUCTURE,
+            confidence=0.9,
+            reasoning="Document has clear structure with headings",
+            alternatives=[ChunkingStrategy.SEMANTIC],
+            chunk_size=512,
+            chunk_overlap=50,
+            preserve_sentences=True
+        )
 
         request_data = {
             "document_id": "doc-123",
