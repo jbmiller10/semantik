@@ -2,7 +2,7 @@
 """
 Unified character/token-based chunking strategy.
 
-This module merges the domain-based and LlamaIndex-based character chunking 
+This module merges the domain-based and LlamaIndex-based character chunking
 implementations into a single unified strategy.
 """
 
@@ -42,9 +42,11 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
 
         if use_llama_index:
             try:
-                from llama_index.core.node_parser import TokenTextSplitter
+                # Check if LlamaIndex is available
+                import importlib.util
 
-                self._llama_available = True
+                spec = importlib.util.find_spec("llama_index.core.node_parser")
+                self._llama_available = spec is not None
             except ImportError:
                 logger.warning("LlamaIndex not available, falling back to domain implementation")
                 self._llama_available = False
@@ -164,15 +166,15 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
 
             # For LlamaIndex chunks, we need to calculate offsets based on the chunking pattern
             # Since LlamaIndex handles the overlap internally, we calculate offsets accordingly
-            
+
             # Calculate approximate characters per token (LlamaIndex uses its own tokenizer)
             chars_per_token = 4
-            chunk_size_chars = config.max_tokens * chars_per_token
+            config.max_tokens * chars_per_token
             overlap_chars = config.overlap_tokens * chars_per_token
-            
+
             # Track the expected position based on chunk size and overlap
             current_position = 0
-            
+
             # Convert LlamaIndex nodes to domain chunks
             for idx, node in enumerate(nodes):
                 chunk_text = node.get_content()

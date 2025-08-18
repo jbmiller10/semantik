@@ -6,10 +6,20 @@ This module provides backward compatibility for tests that import HierarchicalCh
 """
 
 import logging
+from collections.abc import AsyncGenerator, Iterator
 from typing import Any
 
 from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from packages.shared.text_processing.base_chunker import ChunkResult
+
+# Try to import NodeRelationship, fall back if not available
+try:
+    from llama_index.core.schema import NodeRelationship
+except ImportError:
+    # Use simple string constants if llama_index not available
+    class NodeRelationship:  # type: ignore
+        PARENT = 'parent'
+        CHILD = 'child'
 
 # Mock logger for test compatibility
 logger = logging.getLogger(__name__)
@@ -24,7 +34,7 @@ STREAMING_CHUNK_SIZE = 50000  # Size for streaming text segments (50k)
 class HierarchicalChunker:
     """Wrapper class for backward compatibility."""
 
-    def __init__(self, chunk_sizes=None, hierarchy_levels=3, **kwargs):
+    def __init__(self, chunk_sizes: list[int | float] | None = None, hierarchy_levels: int = 3, **kwargs: Any) -> None:
         """Initialize using the factory."""
         # Default chunk sizes if not provided
         if chunk_sizes is None:
@@ -68,7 +78,7 @@ class HierarchicalChunker:
                     )
 
             for size in chunk_sizes:
-                if not isinstance(size, (int, float)) or size <= 0:
+                if not isinstance(size, int | float) or size <= 0:
                     raise ValueError(f"Invalid chunk size {size}. Must be positive")
                 if size > MAX_CHUNK_SIZE:
                     raise ValueError(f"Chunk size {size} exceeds maximum allowed size of {MAX_CHUNK_SIZE}")
@@ -94,10 +104,10 @@ class HierarchicalChunker:
         self._chunker = TextProcessingStrategyAdapter(unified_strategy, **kwargs)
 
         # Add mock attributes for test compatibility
-        self._compiled_patterns = {}  # Mock compiled patterns for tests
-        self._parser = None  # Mock parser for tests
+        self._compiled_patterns: dict[str, Any] = {}  # Mock compiled patterns for tests
+        self._parser: Any | None = None  # Mock parser for tests
 
-    def validate_config(self, config):
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate configuration for test compatibility."""
         try:
             # Check chunk_sizes
@@ -119,7 +129,7 @@ class HierarchicalChunker:
                 # Check each size
                 for size in sizes:
                     # Allow floats for test compatibility
-                    if not isinstance(size, (int, float)):
+                    if not isinstance(size, int | float):
                         return False
                     if size <= 0:
                         return False
@@ -128,17 +138,16 @@ class HierarchicalChunker:
 
                 # Check ordering - should be descending (but allow unsorted with a warning)
                 sorted_sizes = sorted(sizes, reverse=True)
-                if sizes != sorted_sizes:
-                    # Not in descending order, but we allow it if no duplicates
-                    if len(set(sizes)) < len(sizes):
-                        return False  # Has duplicates
+                if sizes != sorted_sizes and len(set(sizes)) < len(sizes):
+                    # Not in descending order and has duplicates
+                    return False  # Has duplicates
 
             # Check chunk overlap
             if 'chunk_overlap' in config:
                 overlap = config['chunk_overlap']
 
                 # Check if overlap is a valid type
-                if not isinstance(overlap, (int, float)):
+                if not isinstance(overlap, int | float):
                     return False
 
                 # Negative overlap is invalid
@@ -155,17 +164,23 @@ class HierarchicalChunker:
             logger.error(f"Config validation failed: {e}")
             return False
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Delegate all attributes to the actual chunker."""
         return getattr(self._chunker, name)
 
-    def chunk_text(self, text, doc_id, metadata=None, include_parents=True):
+    def chunk_text(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+        include_parents: bool = True,
+    ) -> list[ChunkResult]:
         """Override to add text length validation and hierarchical metadata."""
         if len(text) > MAX_TEXT_LENGTH:
             raise ValueError(f"Text too large to process: {len(text)} exceeds maximum of {MAX_TEXT_LENGTH}")
 
         # Check if parser is mocked (for tests)
-        if hasattr(self, '_parser') and hasattr(self._parser, 'get_nodes_from_documents'):
+        if hasattr(self, '_parser') and self._parser is not None and hasattr(self._parser, 'get_nodes_from_documents'):
             # Test is mocking the parser - use it to get nodes
             try:
                 # Create a mock document for the parser
@@ -203,7 +218,7 @@ class HierarchicalChunker:
                     overlap_tokens=min(self.chunk_overlap // 4, max(self.chunk_sizes) // 32)
                 )
 
-                results = fallback_chunker.chunk_text(text, doc_id, metadata)
+                results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
                 for result in results:
@@ -227,7 +242,7 @@ class HierarchicalChunker:
                 overlap_tokens=self.chunk_overlap // 4
             )
 
-            results = fallback_chunker.chunk_text(text, doc_id, metadata)
+            results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
             # Update strategy in metadata to show it's character fallback
             for result in results:
@@ -244,7 +259,7 @@ class HierarchicalChunker:
 
         return results
 
-    def _add_hierarchical_metadata(self, results, doc_id):
+    def _add_hierarchical_metadata(self, results: list[ChunkResult], doc_id: str) -> None:
         """Add hierarchical metadata to chunks."""
         if not results:
             return
@@ -253,7 +268,7 @@ class HierarchicalChunker:
         max_level = max((r.metadata.get('hierarchy_level', 0) for r in results), default=0)
 
         # Group chunks by hierarchy level
-        chunks_by_level = {}
+        chunks_by_level: dict[int, list[ChunkResult]] = {}
         for result in results:
             level = result.metadata.get('hierarchy_level', 0)
             if level not in chunks_by_level:
@@ -279,10 +294,9 @@ class HierarchicalChunker:
 
         # Second pass: assign IDs to leaf chunks first (in order)
         leaf_index = 0
-        for i, result in enumerate(results):
+        for _i, result in enumerate(results):
             if result.metadata.get('is_leaf', False):
                 # Always reassign chunk IDs when coming from domain implementation or when we have duplicates
-                old_id = result.chunk_id
                 needs_new_id = (
                     not result.chunk_id
                     or result.chunk_id.startswith('node_')
@@ -368,13 +382,13 @@ class HierarchicalChunker:
             if 'node_id' not in result.metadata:
                 result.metadata['node_id'] = result.chunk_id
 
-    def chunk_text_stream(self, text, doc_id, metadata=None, include_parents=True):
+    def chunk_text_stream(self, text: str, doc_id: str, metadata: dict[str, Any] | None = None, include_parents: bool = True) -> Iterator[ChunkResult]:
         """Override to add text length validation for streaming."""
         if len(text) > MAX_TEXT_LENGTH:
             raise ValueError(f"Text too large to process: {len(text)} exceeds maximum of {MAX_TEXT_LENGTH}")
 
         # Check if parser is mocked (for tests)
-        if hasattr(self, '_parser') and hasattr(self._parser, 'get_nodes_from_documents'):
+        if hasattr(self, '_parser') and self._parser is not None and hasattr(self._parser, 'get_nodes_from_documents'):
             # Test is mocking the parser - process text in segments for large texts
             try:
                 # Check if text is larger than STREAMING_CHUNK_SIZE
@@ -410,10 +424,9 @@ class HierarchicalChunker:
                         all_results = [r for r in all_results if r.metadata.get('is_leaf', False)]
 
                     return iter(all_results)
-                else:
-                    # Text is small enough to process in one go
-                    results = self.chunk_text(text, doc_id, metadata, include_parents)
-                    return iter(results)
+                # Text is small enough to process in one go
+                results = self.chunk_text(text, doc_id, metadata, include_parents)
+                return iter(results)
             except Exception as e:
                 # Parser failed, fallback to character
                 logger.error(f"Hierarchical chunking failed in stream: {e}")
@@ -431,7 +444,7 @@ class HierarchicalChunker:
                     overlap_tokens=min(self.chunk_overlap // 4, max(self.chunk_sizes) // 32)
                 )
 
-                results = fallback_chunker.chunk_text(text, doc_id, metadata)
+                results: list[ChunkResult] = fallback_chunker.chunk_text(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
                 for result in results:
@@ -442,13 +455,18 @@ class HierarchicalChunker:
         # Delegate to regular chunk_text since unified doesn't have streaming
         return iter(self.chunk_text(text, doc_id, metadata, include_parents))
 
-    async def chunk_text_async(self, text, doc_id, metadata=None):
+    async def chunk_text_async(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[ChunkResult]:
         """Override to add text length validation for async."""
         if len(text) > MAX_TEXT_LENGTH:
             raise ValueError(f"Text too large to process: {len(text)} exceeds maximum of {MAX_TEXT_LENGTH}")
 
         # Check if parser is mocked (for tests)
-        if hasattr(self, '_parser') and hasattr(self._parser, 'get_nodes_from_documents'):
+        if hasattr(self, '_parser') and self._parser is not None and hasattr(self._parser, 'get_nodes_from_documents'):
             # Test is mocking the parser - use it to get nodes
             try:
                 # Create a mock document for the parser
@@ -482,7 +500,7 @@ class HierarchicalChunker:
                     overlap_tokens=min(self.chunk_overlap // 4, max(self.chunk_sizes) // 32)
                 )
 
-                results = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+                results: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, metadata)  # type: ignore
 
                 # Update strategy in metadata to show it's character fallback
                 for result in results:
@@ -506,7 +524,7 @@ class HierarchicalChunker:
                 overlap_tokens=self.chunk_overlap // 4
             )
 
-            results = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+            results: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, metadata)  # type: ignore
 
             # Update strategy in metadata to show it's character fallback
             for result in results:
@@ -519,7 +537,7 @@ class HierarchicalChunker:
 
         return results
 
-    async def chunk_text_stream_async(self, text, doc_id, metadata=None):
+    async def chunk_text_stream_async(self, text: str, doc_id: str, metadata: dict[str, Any] | None = None) -> AsyncGenerator[ChunkResult, None]:
         """Override to add text length validation for async streaming."""
         if len(text) > MAX_TEXT_LENGTH:
             raise ValueError(f"Text too large to process: {len(text)} exceeds maximum of {MAX_TEXT_LENGTH}")
@@ -530,7 +548,7 @@ class HierarchicalChunker:
             # Use async yield to properly implement async generator
             yield result
 
-    def estimate_chunks(self, text_length, config=None):
+    def estimate_chunks(self, text_length: int, config: dict[str, Any] | None = None) -> int:
         """Estimate number of chunks for test compatibility."""
         if text_length == 0:
             return 0
@@ -576,7 +594,7 @@ class HierarchicalChunker:
         # Ensure reasonable bounds
         return max(len(chunk_sizes), min(total, 100))  # Cap at 100 for safety
 
-    def _convert_nodes_to_chunks(self, nodes: list[Any], doc_id: str, metadata: dict | None = None) -> list[ChunkResult]:
+    def _convert_nodes_to_chunks(self, nodes: list[Any], _doc_id: str, metadata: dict[str, Any] | None = None) -> list[ChunkResult]:
         """Convert mock nodes to ChunkResult objects."""
         results = []
 
@@ -599,7 +617,7 @@ class HierarchicalChunker:
             # Get node content
             try:
                 content = node.get_content()
-            except:
+            except Exception:
                 continue
 
             # Skip empty content
@@ -636,7 +654,7 @@ class HierarchicalChunker:
 
         return results
 
-    def _build_hierarchy_info(self, node, node_map, visited=None):
+    def _build_hierarchy_info(self, node: Any, node_map: dict[str, Any], visited: set[str] | None = None) -> dict[str, Any]:
         """Build hierarchy info for test compatibility with infinite loop prevention."""
         # Initialize visited set for loop prevention
         if visited is None:
@@ -656,17 +674,9 @@ class HierarchicalChunker:
         if node_id:
             visited.add(node_id)
 
-        # Try to import NodeRelationship, fall back if not available
-        try:
-            from llama_index.core.schema import NodeRelationship
-        except ImportError:
-            # Use simple string constants if llama_index not available
-            class NodeRelationship:
-                PARENT = 'parent'
-                CHILD = 'child'
 
         # Initialize hierarchy info
-        info = {
+        info: dict[str, Any] = {
             'parent_id': None,
             'child_ids': [],
             'level': 0
@@ -678,16 +688,15 @@ class HierarchicalChunker:
 
             # Check for PARENT relationship
             parent_rel = relationships.get(NodeRelationship.PARENT) if isinstance(relationships, dict) else None
-            if parent_rel:
-                if hasattr(parent_rel, 'node_id'):
-                    info['parent_id'] = parent_rel.node_id
-                    # Calculate level based on parent's level
-                    parent_node = node_map.get(parent_rel.node_id)
-                    if parent_node and parent_rel.node_id not in visited:
-                        parent_info = self._build_hierarchy_info(parent_node, node_map, visited.copy())
-                        info['level'] = parent_info['level'] + 1
-                    else:
-                        info['level'] = 1
+            if parent_rel and hasattr(parent_rel, 'node_id'):
+                info['parent_id'] = parent_rel.node_id
+                # Calculate level based on parent's level
+                parent_node = node_map.get(parent_rel.node_id)
+                if parent_node and parent_rel.node_id not in visited:
+                    parent_info = self._build_hierarchy_info(parent_node, node_map, visited.copy())
+                    info['level'] = parent_info['level'] + 1
+                else:
+                    info['level'] = 1
 
             # Check for CHILD relationships
             child_rel = relationships.get(NodeRelationship.CHILD) if isinstance(relationships, dict) else None
@@ -701,7 +710,7 @@ class HierarchicalChunker:
 
         return info
 
-    def _estimate_node_offset(self, node, all_nodes=None, text: str = "", existing_offsets=None) -> tuple[int, int]:
+    def _estimate_node_offset(self, node: Any, all_nodes: list[Any] | str | None = None, text: str = "", existing_offsets: dict[str, tuple[int, int]] | None = None) -> tuple[int, int]:
         """Estimate the offset of a node in the text."""
         # Handle different call signatures for backward compatibility
         if isinstance(all_nodes, str):
@@ -729,9 +738,9 @@ class HierarchicalChunker:
             pass
 
         # Check existing offsets first
-        if existing_offsets and hasattr(node, 'node_id'):
-            if node.node_id in existing_offsets:
-                return existing_offsets[node.node_id]
+        if existing_offsets and hasattr(node, 'node_id') and node.node_id in existing_offsets:
+            offset_tuple = existing_offsets[node.node_id]
+            return (int(offset_tuple[0]), int(offset_tuple[1]))
 
         if not hasattr(node, 'get_content'):
             return (0, 0)
@@ -748,11 +757,6 @@ class HierarchicalChunker:
 
             # First, check if we have child nodes - prefer to estimate from children if available
             if (node_map or existing_offsets) and hasattr(node, 'relationships'):
-                try:
-                    from llama_index.core.schema import NodeRelationship
-                except ImportError:
-                    class NodeRelationship:
-                        CHILD = 'child'
 
                 relationships = node.relationships
                 child_rel = relationships.get(NodeRelationship.CHILD) if isinstance(relationships, dict) else None
@@ -794,7 +798,7 @@ class HierarchicalChunker:
                                     max_end = child_end
 
                         if min_start != float('inf'):
-                            return (min_start, max_end)
+                            return (int(min_start), int(max_end))
 
             # If no children or couldn't get offsets from children, try to find the content in the text
             content_stripped = content.strip()
@@ -809,7 +813,7 @@ class HierarchicalChunker:
         except Exception:
             return (0, 0)
 
-    def _build_offset_map(self, nodes_or_text, text_or_nodes=None) -> dict[str, tuple[int, int]]:
+    def _build_offset_map(self, nodes_or_text: str | list[Any], text_or_nodes: str | list[Any] | None = None) -> dict[str, tuple[int, int]]:
         """Build a map of node IDs to their text offsets."""
         # Handle different argument orders for backward compatibility
         if isinstance(nodes_or_text, str):
@@ -819,18 +823,19 @@ class HierarchicalChunker:
         else:
             # Called with (nodes, text) order
             nodes = nodes_or_text
-            text = text_or_nodes if text_or_nodes else ""
+            text = text_or_nodes if isinstance(text_or_nodes, str) else ""
 
         offset_map = {}
 
         # Build node map for hierarchy calculations
-        node_map = {node.node_id: node for node in nodes if hasattr(node, 'node_id')}
+        {node.node_id: node for node in nodes if hasattr(node, 'node_id')}
 
         # Track used offsets to handle overlapping content
-        used_ranges = []
+        used_ranges: list[tuple[int, int]] = []
 
         for node in nodes:
-            if not hasattr(node, 'node_id'):
+            # Skip if node is a string or doesn't have required attributes
+            if isinstance(node, str) or not hasattr(node, 'node_id'):
                 continue
 
             if not hasattr(node, 'get_content'):
@@ -888,10 +893,10 @@ class HierarchicalChunker:
 
         return offset_map
 
-    def get_parent_chunks(self, text: str, doc_id: str, leaf_chunks: list[ChunkResult]) -> list[ChunkResult]:
+    def get_parent_chunks(self, text: str, _doc_id: str, leaf_chunks: list[ChunkResult]) -> list[ChunkResult]:
         """Get parent chunks for the given leaf chunks."""
         # If we have a mocked parser, use it
-        if hasattr(self, '_parser') and hasattr(self._parser, 'get_nodes_from_documents'):
+        if hasattr(self, '_parser') and self._parser is not None and hasattr(self._parser, 'get_nodes_from_documents'):
             try:
                 from llama_index.core.schema import Document
                 doc = Document(text=text, metadata={})
@@ -921,13 +926,6 @@ class HierarchicalChunker:
                 leaf_node_ids.add(node_id)
 
         # Find parent nodes by checking which nodes have our leaf nodes as children
-        try:
-            from llama_index.core.schema import NodeRelationship
-        except ImportError:
-            class NodeRelationship:
-                CHILD = 'child'
-                PARENT = 'parent'
-
         for node in all_nodes:
             if not hasattr(node, 'node_id') or not hasattr(node, 'relationships'):
                 continue
@@ -947,8 +945,7 @@ class HierarchicalChunker:
                     child_ids = [c.node_id for c in child_rel if hasattr(c, 'node_id')]
 
                 # If any of the children are our leaf nodes, this is a parent
-                if any(child_id in leaf_node_ids for child_id in child_ids):
-                    if node.node_id not in parent_ids_seen:
+                if any(child_id in leaf_node_ids for child_id in child_ids) and node.node_id not in parent_ids_seen:
                         parent_ids_seen.add(node.node_id)
 
                         if hasattr(node, 'get_content'):

@@ -10,7 +10,7 @@ from packages.webui.services.dtos.chunking_dtos import (
 )
 
 
-def example_usage():
+def example_usage() -> None:
     """Example of how the service layer would use these DTOs."""
 
     # Example 1: Creating a strategy info DTO

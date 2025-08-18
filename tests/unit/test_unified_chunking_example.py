@@ -7,15 +7,16 @@ to the new unified implementation.
 """
 
 import pytest
-from packages.shared.chunking.unified.factory import UnifiedChunkingFactory
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.exceptions import InvalidConfigurationError
+from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from packages.shared.chunking.unified.factory import UnifiedChunkingFactory
 
 
 class TestUnifiedChunking:
     """Example tests for unified chunking implementation."""
-    
+
     def test_character_strategy_basic(self):
         """Test character chunking with token-based sizing."""
         # Create config with token-based sizes
@@ -27,26 +28,26 @@ class TestUnifiedChunking:
             overlap_tokens=2,  # ~10 characters
             strategy_name="character"
         )
-        
+
         # Create chunker using factory
         strategy = UnifiedChunkingFactory.create_strategy("character")
-        
+
         # Test text of ~250 characters (~62 tokens)
         text = "This is a test document. " * 10
-        
+
         # Chunk the text
         chunks = strategy.chunk(text, config)
-        
+
         # Verify we get multiple chunks
         assert len(chunks) > 1, f"Expected multiple chunks, got {len(chunks)}"
-        
+
         # Verify chunk structure
         for chunk in chunks:
             assert isinstance(chunk, Chunk)
             assert chunk.content
             assert chunk.metadata.token_count > 0
             assert chunk.metadata.token_count <= config.max_tokens
-    
+
     def test_recursive_strategy_basic(self):
         """Test recursive chunking with flexible boundaries."""
         config = ChunkConfig(
@@ -55,15 +56,15 @@ class TestUnifiedChunking:
             overlap_tokens=3,  # ~12 characters
             strategy_name="recursive"
         )
-        
+
         strategy = UnifiedChunkingFactory.create_strategy("recursive")
-        
+
         text = "This is sentence one. This is sentence two. This is sentence three. " * 5
         chunks = strategy.chunk(text, config)
-        
+
         # Should get multiple chunks
         assert len(chunks) > 1
-        
+
         # Verify chunk structure and basic properties
         for chunk in chunks:
             assert isinstance(chunk, Chunk)
@@ -71,20 +72,20 @@ class TestUnifiedChunking:
             assert chunk.metadata.token_count > 0
             # Chunks should respect the max token limit
             assert chunk.metadata.token_count <= config.max_tokens
-            
+
         # Verify all chunks have content and we have proper chunking
         assert all(chunk.content.strip() for chunk in chunks), "All chunks should have content"
         assert len(chunks) >= 2, f"Expected at least 2 chunks for text with {len(text)} characters"
-        
+
         # Verify overlap is working (some content should appear in multiple chunks)
         if len(chunks) > 1:
             # Check that consecutive chunks have some overlapping content
             for i in range(len(chunks) - 1):
-                current_end = chunks[i].content.split()[-2:]  # Last 2 words
-                next_start = chunks[i+1].content.split()[:2]  # First 2 words
+                chunks[i].content.split()[-2:]  # Last 2 words
+                chunks[i+1].content.split()[:2]  # First 2 words
                 # There should be some overlap in words between consecutive chunks
                 # This is a basic check for overlap functionality
-    
+
     def test_hierarchical_strategy_basic(self):
         """Test hierarchical chunking with parent-child relationships."""
         config = ChunkConfig(
@@ -97,28 +98,28 @@ class TestUnifiedChunking:
                 "level_sizes": [50, 25, 12]  # Token sizes for each level
             }
         )
-        
+
         strategy = UnifiedChunkingFactory.create_strategy("hierarchical")
-        
+
         text = """
         Machine learning is a field of artificial intelligence.
         It enables systems to learn from data.
         Neural networks are inspired by the human brain.
         They consist of interconnected nodes called neurons.
         """
-        
+
         chunks = strategy.chunk(text, config)
-        
+
         # Should create chunks
         assert len(chunks) > 0
-        
+
         # Check for hierarchical metadata
         for chunk in chunks:
             assert chunk.metadata.strategy_name == "hierarchical"
             # Hierarchical chunks may have parent/child relationships in metadata
             # The chunk metadata contains information about the hierarchy level
             assert hasattr(chunk.metadata, 'strategy_name')
-    
+
     def test_config_validation(self):
         """Test that invalid configs are properly rejected."""
         # Test overlap >= min_tokens (invalid)
@@ -129,7 +130,7 @@ class TestUnifiedChunking:
                 overlap_tokens=50,  # Equal to min_tokens - invalid!
                 strategy_name="character"
             )
-        
+
         # Test overlap >= max_tokens (invalid)
         with pytest.raises(InvalidConfigurationError):
             ChunkConfig(
@@ -138,7 +139,7 @@ class TestUnifiedChunking:
                 overlap_tokens=100,  # Equal to max_tokens - invalid!
                 strategy_name="character"
             )
-    
+
     def test_estimate_chunks(self):
         """Test chunk estimation for planning."""
         config = ChunkConfig(
@@ -147,13 +148,13 @@ class TestUnifiedChunking:
             overlap_tokens=20,
             strategy_name="character"
         )
-        
+
         strategy = UnifiedChunkingFactory.create_strategy("character")
-        
+
         # Text of ~1000 characters (~250 tokens)
         text_length = 1000
         estimated = strategy.estimate_chunks(text_length, config)
-        
+
         # With 100 token chunks and 20 token overlap:
         # First chunk: 100 tokens
         # Subsequent chunks: 80 new tokens each (100 - 20 overlap)
@@ -169,14 +170,14 @@ class TestUnifiedChunking:
             overlap_tokens=5,
             strategy_name="character"
         )
-        
+
         strategy = UnifiedChunkingFactory.create_strategy("character")
-        
+
         text = "This is a test document with multiple sentences that need to be chunked properly."
-        
+
         # Test async interface
         chunks = await strategy.chunk_async(text, config)
-        
+
         assert len(chunks) > 0
         assert all(isinstance(chunk, Chunk) for chunk in chunks)
 
@@ -189,7 +190,7 @@ def migrate_old_test_example():
     # OLD TEST:
     # chunker = CharacterChunker(chunk_size=50, chunk_overlap=10)
     # chunks = chunker.chunk_text(text, "doc_id")
-    
+
     # NEW TEST:
     text = "Example text to be chunked"  # Define text variable for the example
     config = ChunkConfig(
@@ -199,8 +200,8 @@ def migrate_old_test_example():
         strategy_name="character"
     )
     strategy = UnifiedChunkingFactory.create_strategy("character")
-    chunks = strategy.chunk(text, config)
-    
+    strategy.chunk(text, config)
+
     # Convert to old format if needed for compatibility
     # chunk_results = [
     #     ChunkResult(

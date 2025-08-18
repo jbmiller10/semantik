@@ -17,7 +17,6 @@ from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.shared.text_processing.file_type_detector import FileTypeDetector
 
-
 # Set testing environment
 os.environ["TESTING"] = "true"
 
@@ -221,7 +220,7 @@ For more complex scenarios...
     async def test_character_chunker_basic(self) -> None:
         """Test basic character chunker functionality."""
         from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
-        
+
         # Use token-based sizes
         chunker = CharacterChunker(chunk_size=50, chunk_overlap=10)
 
@@ -231,14 +230,14 @@ For more complex scenarios...
         # Verify chunks
         assert len(chunks) > 1
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Verify overlap exists (but don't check exact offsets)
         assert len(chunks) >= 2
 
     async def test_recursive_chunker_basic(self) -> None:
         """Test basic recursive chunker functionality."""
         from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        
+
         chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
 
         text = "This is sentence one. This is sentence two. This is sentence three. " * 10
@@ -251,7 +250,7 @@ For more complex scenarios...
     async def test_recursive_chunker_code_optimization(self) -> None:
         """Test recursive chunker with code file optimization."""
         from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        
+
         chunker = RecursiveChunker()
 
         # Test with Python code
@@ -271,7 +270,7 @@ For more complex scenarios...
     async def test_markdown_chunker_basic(self) -> None:
         """Test basic markdown chunker functionality."""
         from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
-        
+
         chunker = MarkdownChunker()
 
         chunks = await chunker.chunk_text_async(
@@ -292,7 +291,7 @@ For more complex scenarios...
     async def test_markdown_chunker_complex(self) -> None:
         """Test markdown chunker with complex document."""
         from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
-        
+
         chunker = MarkdownChunker()
 
         chunks = await chunker.chunk_text_async(
@@ -382,7 +381,7 @@ For more complex scenarios...
     async def test_metadata_preservation(self) -> None:
         """Test metadata is preserved in chunks."""
         from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        
+
         chunker = RecursiveChunker(chunk_size=50)
 
         metadata = {
@@ -409,7 +408,7 @@ For more complex scenarios...
     async def test_chunk_ids_unique(self) -> None:
         """Test chunk IDs are unique."""
         from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
-        
+
         chunker = CharacterChunker(chunk_size=50)
 
         text = "Test text. " * 20
@@ -420,13 +419,13 @@ For more complex scenarios...
         assert len(chunk_ids) == len(set(chunk_ids))
 
         # Chunk IDs should follow pattern
-        for i, chunk in enumerate(chunks):
+        for _i, chunk in enumerate(chunks):
             assert chunk.chunk_id.startswith("doc123")
 
     async def test_unicode_handling(self) -> None:
         """Test proper Unicode handling."""
         from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        
+
         chunker = RecursiveChunker(chunk_size=50)
 
         # Various Unicode texts
@@ -446,7 +445,7 @@ For more complex scenarios...
     async def test_large_document_handling(self) -> None:
         """Test handling of large documents."""
         from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
-        
+
         # Use larger chunk_size to avoid ChunkSizeViolationError when LlamaIndex creates slightly larger chunks
         # 1300/5 = 260 tokens which gives headroom for 252 token chunks
         chunker = CharacterChunker(chunk_size=1300, chunk_overlap=200)
@@ -465,7 +464,7 @@ For more complex scenarios...
     async def test_hierarchical_chunker_basic(self) -> None:
         """Test hierarchical chunker creates chunks."""
         from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
-        
+
         chunker = HierarchicalChunker(chunk_sizes=[200, 100, 50], chunk_overlap=10)
 
         # Create text that will require multiple hierarchy levels
@@ -479,11 +478,11 @@ For more complex scenarios...
     async def test_semantic_chunker_basic(self, mock_embed_model) -> None:
         """Test basic semantic chunker functionality."""
         from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
-        
+
         chunker = SemanticChunker(
-            breakpoint_percentile_threshold=95, 
-            buffer_size=1, 
-            max_chunk_size=100, 
+            breakpoint_percentile_threshold=95,
+            buffer_size=1,
+            max_chunk_size=100,
             embed_model=mock_embed_model
         )
 
@@ -497,7 +496,7 @@ For more complex scenarios...
     async def test_hybrid_chunker_basic(self) -> None:
         """Test hybrid chunker basic functionality."""
         from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        
+
         chunker = HybridChunker()
 
         # Simple text
@@ -507,7 +506,7 @@ For more complex scenarios...
         # Should produce chunks
         assert len(chunks) >= 1
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Should have hybrid metadata
         for chunk in chunks:
             assert chunk.metadata.get("hybrid_chunker") is True
@@ -516,13 +515,13 @@ For more complex scenarios...
     async def test_hybrid_chunker_markdown_detection(self) -> None:
         """Test hybrid chunker selects markdown strategy for markdown content."""
         from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        
+
         chunker = HybridChunker(semantic_coherence_threshold=0.9)
 
         # Test with markdown file extension
         chunks = await chunker.chunk_text_async(
-            self.MARKDOWN_SAMPLES["simple"], 
-            "test_doc", 
+            self.MARKDOWN_SAMPLES["simple"],
+            "test_doc",
             {"file_path": "/path/to/test.md"}
         )
 
@@ -537,7 +536,7 @@ For more complex scenarios...
     async def test_hybrid_chunker_edge_cases(self) -> None:
         """Test hybrid chunker with various edge cases."""
         from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        
+
         chunker = HybridChunker()
 
         # Empty text
@@ -552,7 +551,7 @@ For more complex scenarios...
     def test_hybrid_chunker_config_validation(self) -> None:
         """Test hybrid chunker configuration validation."""
         from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        
+
         chunker = HybridChunker()
 
         # Valid config
@@ -599,7 +598,7 @@ def fibonacci(n) -> None:
         # Test with .py file type
         config = FileTypeDetector.get_optimal_config("test.py")
         assert config["strategy"] == "recursive"
-        
+
         # Just verify chunking works
         chunker = ChunkingFactory.create_chunker(config)
         chunks = await chunker.chunk_text_async(code_file, "test.py")

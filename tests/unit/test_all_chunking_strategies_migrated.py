@@ -8,16 +8,15 @@ to work directly with the unified chunking system.
 """
 
 import os
-from typing import Any
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
 
+from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from packages.shared.chunking.unified.factory import UnifiedChunkingFactory
 from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 from packages.shared.text_processing.file_type_detector import FileTypeDetector
-from packages.shared.chunking.unified.factory import UnifiedChunkingFactory
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 # Set testing environment
 os.environ["TESTING"] = "true"
@@ -50,7 +49,7 @@ class TestMigratedChunkingStrategies:
         # Verify chunks - should get multiple with token-based sizing
         assert len(chunks) >= 4, f"Expected at least 4 chunks for 250 chars with 12 token chunks, got {len(chunks)}"
         assert all(isinstance(chunk, ChunkResult) for chunk in chunks)
-        
+
         # Verify chunk structure
         for chunk in chunks:
             assert chunk.text
@@ -96,11 +95,11 @@ class Calculator:
     def multiply(self, a, b):
         return a * b
 '''
-        
+
         # Get optimized config for Python file
         config = FileTypeDetector.get_optimal_config("test.py")
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Test with Python code
         metadata = {"file_type": ".py", "file_name": "test.py"}
         chunks = await chunker.chunk_text_async(code_text, "test_code", metadata)
@@ -120,7 +119,7 @@ This project implements a chunking system.
 ### Features
 
 - Feature 1
-- Feature 2  
+- Feature 2
 - Feature 3
 
 ## Installation
@@ -148,7 +147,7 @@ chunks = chunker.chunk_text(text)
 
 For more complex scenarios...
 """
-        
+
         config = {
             "strategy": "markdown",
             "params": {
@@ -158,7 +157,7 @@ For more complex scenarios...
             }
         }
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         chunks = await chunker.chunk_text_async(
             markdown_text,
             "test_doc",
@@ -177,7 +176,7 @@ For more complex scenarios...
         """Test factory creates correct chunker instances."""
         # Test each strategy
         strategies = ["character", "recursive", "markdown", "semantic", "hierarchical", "hybrid"]
-        
+
         for strategy in strategies:
             config = {"strategy": strategy, "params": {}}
             chunker = ChunkingFactory.create_chunker(config)
@@ -266,7 +265,7 @@ class Calculator:
         # Test with .py file type
         config = FileTypeDetector.get_optimal_config("test.py")
         assert config["strategy"] == "recursive"
-        
+
         chunker = ChunkingFactory.create_chunker(config)
         chunks = await chunker.chunk_text_async(code_file, "test.py")
 
@@ -278,7 +277,7 @@ class Calculator:
         """Test hierarchical chunker creates proper parent-child relationships."""
         # Use unified factory directly
         strategy = UnifiedChunkingFactory.create_strategy("hierarchical")
-        
+
         # Create config with hierarchical parameters
         config = ChunkConfig(
             max_tokens=50,  # Parent level
@@ -287,21 +286,21 @@ class Calculator:
             strategy_name="hierarchical",
             hierarchy_levels=3  # Pass hierarchy_levels directly
         )
-        
+
         # Create text that will require multiple hierarchy levels
         text = " ".join([f"Sentence {i}." for i in range(100)])  # ~700 chars
-        
+
         # Use unified chunking directly
         chunks = await strategy.chunk_async(text, config)
-        
+
         # Should create chunks with hierarchy
         assert len(chunks) > 0
-        
+
         # Verify chunk structure
         for chunk in chunks:
             assert chunk.content  # Should have content
             assert chunk.metadata  # Should have metadata
-            
+
             # Check hierarchical information
             if chunk.metadata.custom_attributes:
                 # May have hierarchy level information
@@ -330,7 +329,7 @@ More detailed content."""
             }
         }
         chunker = ChunkingFactory.create_chunker(config)
-        
+
         # Test with markdown file extension
         chunks = await chunker.chunk_text_async(
             markdown_text,
@@ -343,7 +342,7 @@ More detailed content."""
         for chunk in chunks:
             assert chunk.metadata.get("hybrid_chunker") is True
             assert "selected_strategy" in chunk.metadata
-            
+
             # Check if appropriate strategy was selected
             # With .md file extension, may use markdown or hybrid
             # The file_path is passed as metadata and should be in chunk metadata

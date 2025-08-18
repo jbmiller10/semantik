@@ -878,7 +878,7 @@ class ChunkingService:
                         preview_id=result.get("preview_id", str(uuid.uuid4())),
                         strategy=result.get("strategy", cache_strategy),
                         config=result.get("config", {}),
-                        chunks=chunks,
+                        chunks=cast(list[ServiceChunkPreview | dict[str, Any]], chunks),
                         total_chunks=result.get("total_chunks", len(chunks)),
                         metrics=result.get("performance_metrics"),
                         processing_time_ms=result.get("processing_time_ms", 0),
@@ -943,8 +943,20 @@ class ChunkingService:
                     progress_callback=None,  # Could add progress tracking if needed
                 )
 
-                # Extract text content from chunk entities
-                chunks = [chunk.content for chunk in chunk_entities]
+                # Convert chunk entities to ServiceChunkPreview objects
+                chunks = [
+                    ServiceChunkPreview(
+                        index=idx,
+                        content=chunk.content,
+                        text=None,
+                        token_count=len(chunk.content) // 4,  # Rough estimate
+                        char_count=len(chunk.content),
+                        metadata={"index": idx, "strategy": strategy_str},
+                        quality_score=0.8,
+                        overlap_info=None,
+                    )
+                    for idx, chunk in enumerate(chunk_entities)
+                ]
 
             except Exception as strategy_error:
                 logger.warning(f"Strategy {strategy} failed, falling back to simple chunking: {strategy_error}")
@@ -955,10 +967,23 @@ class ChunkingService:
                     chunk_overlap = min(chunk_overlap, chunk_size // 4)
 
                 step_size = max(1, chunk_size - chunk_overlap)  # Ensure positive step
+                chunk_idx = 0
                 for i in range(0, len(content), step_size):
                     chunk_content = content[i : i + chunk_size]
                     if chunk_content.strip():  # Only add non-empty chunks
-                        chunks.append(chunk_content)
+                        chunks.append(
+                            ServiceChunkPreview(
+                                index=chunk_idx,
+                                content=chunk_content,
+                                text=None,
+                                token_count=len(chunk_content) // 4,  # Rough estimate
+                                char_count=len(chunk_content),
+                                metadata={"index": chunk_idx, "strategy": strategy_str},
+                                quality_score=0.8,
+                                overlap_info=None,
+                            )
+                        )
+                        chunk_idx += 1
 
             processing_time_ms = (time.time() - start_time) * 1000
 
@@ -967,21 +992,8 @@ class ChunkingService:
             if max_chunks:
                 preview_chunks = chunks[:max_chunks]
 
-            # Build chunk preview DTOs
-            chunk_previews = []
-            for idx, chunk in enumerate(preview_chunks):
-                chunk_previews.append(
-                    ServiceChunkPreview(
-                        index=idx,
-                        content=chunk,
-                        text=None,
-                        token_count=len(chunk) // 4,  # Rough estimate
-                        char_count=len(chunk),
-                        metadata={"index": idx, "strategy": strategy_str},
-                        quality_score=0.8,
-                        overlap_info=None,
-                    )
-                )
+            # chunks are already ServiceChunkPreview objects
+            chunk_previews = preview_chunks
 
             # Calculate metrics
             metrics = self._calculate_metrics(chunks, len(content), processing_time_ms / 1000)
@@ -994,7 +1006,7 @@ class ChunkingService:
                 preview_id=preview_id,
                 strategy=strategy_str,
                 config=config or self._get_default_config(internal_strategy),
-                chunks=chunk_previews,
+                chunks=cast(list[ServiceChunkPreview | dict[str, Any]], chunk_previews),
                 total_chunks=len(chunks),
                 metrics=metrics,
                 processing_time_ms=int(processing_time_ms),
@@ -1013,15 +1025,15 @@ class ChunkingService:
                     "config": config or self._get_default_config(internal_strategy),
                     "chunks": [
                         {
-                            "index": idx,
-                            "content": chunk,
-                            "text": chunk,
-                            "metadata": {"index": idx, "strategy": strategy_str},
-                            "token_count": len(chunk) // 4,
-                            "char_count": len(chunk),
-                            "quality_score": 0.8,
+                            "index": chunk.index,
+                            "content": chunk.content,
+                            "text": chunk.content,
+                            "metadata": chunk.metadata,
+                            "token_count": chunk.token_count,
+                            "char_count": chunk.char_count,
+                            "quality_score": chunk.quality_score,
                         }
-                        for idx, chunk in enumerate(preview_chunks)
+                        for chunk in preview_chunks
                     ],
                     "total_chunks": len(chunks),
                     "performance_metrics": metrics,
@@ -1149,7 +1161,7 @@ class ChunkingService:
             avg_chunk_size = 0.0
             size_variance = 0.0
             if preview.chunks:
-                sizes = [c.char_count for c in preview.chunks if isinstance(c, ServiceChunkPreview)]
+                sizes = [c.char_count for c in preview.chunks if isinstance(c, ServiceChunkPreview) and c.char_count is not None]
                 if sizes:
                     avg_chunk_size = sum(sizes) / len(sizes)
                     if len(sizes) > 1:
@@ -1198,7 +1210,7 @@ class ChunkingService:
 
         return ServiceCompareResponse(
             comparison_id=str(uuid.uuid4()),
-            comparisons=comparisons,
+            comparisons=cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons),
             recommendation=recommendation,
             processing_time_ms=processing_time_ms,
         )
@@ -1256,12 +1268,12 @@ class ChunkingService:
                 strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
 
                 # Calculate quality metrics
-                metrics = result.get("metrics", {})
+                metrics = result.metrics or {}
                 if not metrics:
                     # Calculate basic metrics if not provided
-                    chunks = result.get("chunks", [])
+                    chunks = result.chunks
                     if chunks:
-                        sizes = [chunk.get("size", len(chunk.get("content", ""))) for chunk in chunks]
+                        sizes = [chunk.char_count or len(chunk.content or "") for chunk in chunks if isinstance(chunk, ServiceChunkPreview)]
                         avg_size = sum(sizes) / len(sizes) if sizes else 0
                         variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0
                         quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
@@ -1279,13 +1291,13 @@ class ChunkingService:
                 # Build comparison entry
                 comparison_entry = {
                     "strategy": strategy,
-                    "config": result.get("config", self._get_default_config(strategy.value)),
-                    "sample_chunks": result.get("chunks", [])[:max_chunks_per_strategy],
-                    "total_chunks": result.get("total_chunks", 0),
+                    "config": result.config or self._get_default_config(strategy.value),
+                    "sample_chunks": result.chunks[:max_chunks_per_strategy],
+                    "total_chunks": result.total_chunks,
                     "avg_chunk_size": metrics.get("avg_chunk_size", 0),
                     "size_variance": metrics.get("size_variance", 0),
                     "quality_score": metrics.get("quality_score", 0),
-                    "processing_time_ms": result.get("processing_time_ms", 0),
+                    "processing_time_ms": result.processing_time_ms,
                     "pros": strategy_def.get("pros", []),
                     "cons": strategy_def.get("cons", []),
                 }
@@ -1533,17 +1545,17 @@ class ChunkingService:
             if not collection:
                 from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
-                raise ResourceNotFoundError(f"Collection {collection_id} not found")
+                raise ResourceNotFoundError("Collection", str(collection_id))
 
             # Get chunk statistics from database
             from packages.shared.database.models import Chunk
 
             chunk_stats_query = select(
                 func.count(Chunk.id).label("total_chunks"),
-                func.avg(Chunk.size).label("avg_chunk_size"),
-                func.min(Chunk.size).label("min_chunk_size"),
-                func.max(Chunk.size).label("max_chunk_size"),
-                func.var_pop(Chunk.size).label("size_variance"),
+                func.avg(func.length(Chunk.content)).label("avg_chunk_size"),
+                func.min(func.length(Chunk.content)).label("min_chunk_size"),
+                func.max(func.length(Chunk.content)).label("max_chunk_size"),
+                func.var_pop(func.length(Chunk.content)).label("size_variance"),
             ).where(Chunk.collection_id == collection.id)
 
             result = await self.db_session.execute(chunk_stats_query)
@@ -1896,7 +1908,7 @@ class ChunkingService:
             preview_id=cached_data.get("preview_id", preview_id),
             strategy=cached_data.get("strategy", "recursive"),
             config=cached_data.get("config", {}),
-            chunks=chunks,
+            chunks=cast(list[ServiceChunkPreview | dict[str, Any]], chunks),
             total_chunks=cached_data.get("total_chunks", len(chunks)),
             metrics=cached_data.get("performance_metrics"),
             processing_time_ms=cached_data.get("processing_time_ms", 0),
@@ -2037,7 +2049,10 @@ class ChunkingService:
                 "compression_ratio": 0,
             }
 
-        chunk_sizes = [len(c.text if hasattr(c, "text") else c) for c in chunks]
+        chunk_sizes = [
+            len(c.content if hasattr(c, "content") and c.content else c.text if hasattr(c, "text") and c.text else str(c))
+            for c in chunks
+        ]
         total_chunk_chars = sum(chunk_sizes)
 
         return {
@@ -2069,7 +2084,10 @@ class ChunkingService:
             return ["No chunks generated - check your content and settings"]
 
         # Calculate chunk size statistics
-        chunk_sizes = [len(c.text if hasattr(c, "text") else c) for c in chunks]
+        chunk_sizes = [
+            len(c.content if hasattr(c, "content") and c.content else c.text if hasattr(c, "text") and c.text else str(c))
+            for c in chunks
+        ]
         avg_size = sum(chunk_sizes) / len(chunk_sizes) if chunk_sizes else 0
         min_size = min(chunk_sizes) if chunk_sizes else 0
         max_size = max(chunk_sizes) if chunk_sizes else 0

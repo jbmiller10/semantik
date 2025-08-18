@@ -8,14 +8,11 @@ content characteristics to achieve optimal results.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.services.chunking_strategies.base import (
     ChunkingStrategy,
-)
-from packages.shared.chunking.unified.factory import (
-    UnifiedChunkingFactory,
 )
 from packages.shared.chunking.domain.services.chunking_strategies.markdown import (
     MarkdownChunkingStrategy,
@@ -25,6 +22,13 @@ from packages.shared.chunking.domain.services.chunking_strategies.semantic impor
 )
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from packages.shared.chunking.unified.factory import (
+    DomainStrategyAdapter,
+    UnifiedChunkingFactory,
+)
+
+if TYPE_CHECKING:
+    from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
 
 
 class ContentAnalysis(TypedDict):
@@ -102,7 +106,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
                     if strategy_name == "character":
                         strategy_chunks = self._character_strategy.chunk(content, config, None)
                     elif strategy_name == "semantic":
-                        strategy_chunks = self._semantic_strategy.chunk(content, config, None)
+                        strategy_chunks = self._semantic_strategy.chunk(content, config)
                     elif strategy_name == "markdown":
                         strategy_chunks = self._markdown_strategy.chunk(content, config, None)
                     elif strategy_name == "recursive":
@@ -352,7 +356,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
             section_type = section["type"]
 
             # Select strategy for this section
-            strategy: ChunkingStrategy
+            strategy: ChunkingStrategy | UnifiedChunkingStrategy | DomainStrategyAdapter
             if section_type == "code":
                 strategy = self._character_strategy
             elif section_type in ["header", "list", "table"]:
@@ -364,7 +368,11 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
             # Chunk the section with error handling
             try:
-                section_chunks = strategy.chunk(section_content, config, None)
+                # Handle semantic strategy which doesn't accept progress_callback
+                if isinstance(strategy, DomainStrategyAdapter):
+                    section_chunks = strategy.chunk(section_content, config)
+                else:
+                    section_chunks = strategy.chunk(section_content, config, None)
             except Exception as e:
                 # Fall back to character strategy if the selected strategy fails
                 print(f"Strategy {section_type} failed: {e}. Falling back to character strategy.")
@@ -436,7 +444,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
             if primary_strategy == "markdown":
                 chunks = self._markdown_strategy.chunk(content, config, progress_callback)
             elif primary_strategy == "semantic":
-                chunks = self._semantic_strategy.chunk(content, config, progress_callback)
+                chunks = self._semantic_strategy.chunk(content, config)
             elif primary_strategy == "character":
                 chunks = self._character_strategy.chunk(content, config, progress_callback)
             else:

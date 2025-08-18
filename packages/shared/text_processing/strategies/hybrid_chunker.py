@@ -7,32 +7,35 @@ This module provides backward compatibility for tests that import HybridChunker 
 
 import re
 from enum import Enum
+from re import Pattern
+from typing import Any
 
 from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 # Add ChunkingFactory for test compatibility
 from packages.shared.text_processing.chunking_factory import ChunkingFactory
 
 
 # Mock functions for ReDoS protection tests
-def safe_regex_findall(pattern, text, flags=0):
+def safe_regex_findall(pattern: str | Pattern[str], text: str, flags: int = 0) -> list[str]:
     """Mock safe regex findall for test compatibility."""
     try:
         if isinstance(pattern, str):
             pattern = re.compile(pattern, flags)
         return pattern.findall(text)
-    except:
+    except Exception:
         return []
 
-class timeout:
+class Timeout:
     """Mock timeout context manager for test compatibility."""
-    def __init__(self, seconds):
+    def __init__(self, seconds: float) -> None:
         self.seconds = seconds
 
-    def __enter__(self):
+    def __enter__(self) -> 'Timeout':
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: Any) -> None:
         pass
 
 
@@ -46,10 +49,10 @@ class ChunkingStrategy(str, Enum):
     HYBRID = "hybrid"
 
 
-class HybridChunker:
+class HybridChunker(BaseChunker):
     """Wrapper class for backward compatibility."""
 
-    def __init__(self, strategies=None, weights=None, embed_model=None, **kwargs):
+    def __init__(self, strategies: list[str] | None = None, weights: list[float] | None = None, embed_model: str | None = None, **kwargs: Any) -> None:
         """Initialize using the factory."""
         # Store test-expected attributes
         self.markdown_threshold = kwargs.pop('markdown_threshold', 0.15)
@@ -58,7 +61,7 @@ class HybridChunker:
         self.enable_strategy_override = kwargs.pop('enable_strategy_override', True)
         self.fallback_strategy = kwargs.pop('fallback_strategy', ChunkingStrategy.RECURSIVE)
 
-        params = {"embed_model": embed_model}
+        params: dict[str, Any] = {"embed_model": embed_model}
         if strategies:
             params["strategies"] = strategies
         if weights:
@@ -69,13 +72,16 @@ class HybridChunker:
         unified_strategy = UnifiedChunkingFactory.create_strategy("hybrid", use_llama_index=True, embed_model=embed_model)
         self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
 
+        # Initialize parent
+        super().__init__(**kwargs)
+
         # Add mock attributes for test compatibility
         self._compiled_patterns = self._compile_test_patterns()
 
-    def _compile_test_patterns(self):
+    def _compile_test_patterns(self) -> dict[str, tuple[Pattern[str], float]]:
         """Compile regex patterns for test compatibility."""
         import re
-        patterns = {
+        return {
             r"^#{1,6}\s+\S.*$": (re.compile(r"^#{1,6}\s+\S.*$", re.MULTILINE), 2.0),  # Headers
             r"^[\*\-\+]\s+\S.*$": (re.compile(r"^[\*\-\+]\s+\S.*$", re.MULTILINE), 1.5),  # Unordered lists
             r"^\d+\.\s+\S.*$": (re.compile(r"^\d+\.\s+\S.*$", re.MULTILINE), 1.5),  # Ordered lists
@@ -88,9 +94,8 @@ class HybridChunker:
             r"^\s*\|[^|]+\|": (re.compile(r"^\s*\|[^|]+\|", re.MULTILINE), 2.0),  # Tables
             r"^(?:---|\\*\\*\\*|___)$": (re.compile(r"^(?:---|\\*\\*\\*|___)$", re.MULTILINE), 1.0),  # Horizontal rules
         }
-        return patterns
 
-    def _analyze_markdown_content(self, text, metadata):
+    def _analyze_markdown_content(self, text: str, metadata: dict[str, Any] | None) -> tuple[bool, float]:
         """Mock markdown content analysis for test compatibility."""
         # Simple mock implementation
         is_md_file = False
@@ -109,7 +114,7 @@ class HybridChunker:
             return False, 0.0
 
         # Count markdown elements with weights
-        markdown_score = 0
+        markdown_score: float = 0.0
         text_len = len(text)
 
         # Headers (weight: 2.0)
@@ -140,7 +145,7 @@ class HybridChunker:
 
         return False, density
 
-    def _estimate_semantic_coherence(self, text):
+    def _estimate_semantic_coherence(self, text: str) -> float:
         """Mock semantic coherence estimation for test compatibility."""
         # Return 0.5 for empty or very short text
         if not text or len(text) < 50:
@@ -152,7 +157,7 @@ class HybridChunker:
             return 0.5
 
         # Count word frequency
-        word_freq = {}
+        word_freq: dict[str, int] = {}
         for word in words:
             # Filter out very short words
             if len(word) > 2:
@@ -184,7 +189,7 @@ class HybridChunker:
 
         return min(1.0, max(0.0, coherence))
 
-    def _select_strategy(self, text, metadata):
+    def _select_strategy(self, text: str, metadata: dict[str, Any] | None) -> tuple[ChunkingStrategy, dict[str, Any], str]:
         """Mock strategy selection for test compatibility."""
         # Check for markdown file
         is_md, md_density = self._analyze_markdown_content(text, metadata)
@@ -214,11 +219,11 @@ class HybridChunker:
         # Default
         return ChunkingStrategy.RECURSIVE, {}, "General text structure"
 
-    def _get_chunker(self, strategy, params=None):
+    def _get_chunker(self, strategy: str, params: dict[str, Any] | None = None) -> BaseChunker:
         """Get or create a cached chunker for the given strategy."""
         # Initialize cache if needed
         if not hasattr(self, '_chunker_cache'):
-            self._chunker_cache = {}
+            self._chunker_cache: dict[str, BaseChunker] = {}
 
         # Create cache key from strategy and params
         cache_key = f"{strategy}_{str(params)}"
@@ -248,34 +253,34 @@ class HybridChunker:
         try:
             from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
-            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))
+            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
             self._chunker_cache[cache_key] = chunker
             return chunker
         except Exception as e:
             # If both fail, raise the original error or the new one
             if chunking_factory_error:
-                raise chunking_factory_error
-            raise ValueError(f"Failed to create chunker for strategy {strategy}: {e}")
+                raise chunking_factory_error from None
+            raise ValueError(f"Failed to create chunker for strategy {strategy}: {e}") from e
 
-    def validate_config(self, config):
+    def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate configuration for test compatibility."""
         try:
             # Check markdown threshold
             if 'markdown_threshold' in config:
                 val = config['markdown_threshold']
-                if not isinstance(val, (int, float)) or val < 0 or val > 1:
+                if not isinstance(val, int | float) or val < 0 or val > 1:
                     return False
 
             # Check semantic threshold
             if 'semantic_coherence_threshold' in config:
                 val = config['semantic_coherence_threshold']
-                if not isinstance(val, (int, float)) or val < 0 or val > 1:
+                if not isinstance(val, int | float) or val < 0 or val > 1:
                     return False
 
             # Check large doc threshold
             if 'large_doc_threshold' in config:
                 val = config['large_doc_threshold']
-                if not isinstance(val, (int, float)) or val <= 0:
+                if not isinstance(val, int | float) or val <= 0:
                     return False
 
             # Check fallback strategy
@@ -287,10 +292,10 @@ class HybridChunker:
 
             # Delegate to underlying chunker for other validations
             return self._chunker.validate_config(config)
-        except:
+        except Exception:
             return False
 
-    def estimate_chunks(self, text_length, config):
+    def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:
         """Estimate number of chunks for test compatibility."""
         # Simple estimation based on chunk size
         chunk_size = config.get('chunk_size', 1000)
@@ -307,9 +312,14 @@ class HybridChunker:
             return int(text_length / 500) + 1  # Smaller chunks for hierarchical
 
         effective_chunk_size = chunk_size - chunk_overlap
-        return max(1, (text_length - chunk_overlap) // effective_chunk_size + 1)
+        return max(1, int((text_length - chunk_overlap) // effective_chunk_size + 1))
 
-    def chunk_text(self, text, doc_id, metadata=None):
+    def chunk_text(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[ChunkResult]:
         """Override to add hybrid-specific metadata."""
         import logging
         logger = logging.getLogger(__name__)
@@ -371,7 +381,12 @@ class HybridChunker:
                 logger.error(f"Fallback strategy also failed: {fallback_error}, creating emergency single chunk")
                 return self._emergency_single_chunk(text, doc_id, original_strategy)
 
-    async def chunk_text_async(self, text, doc_id, metadata=None):
+    async def chunk_text_async(
+        self,
+        text: str,
+        doc_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> list[ChunkResult]:
         """Override to add hybrid-specific metadata."""
         import logging
         logger = logging.getLogger(__name__)
@@ -433,7 +448,7 @@ class HybridChunker:
                 logger.error(f"Fallback strategy also failed: {fallback_error}, creating emergency single chunk")
                 return self._emergency_single_chunk(text, doc_id, original_strategy)
 
-    def _emergency_single_chunk(self, text, doc_id, original_strategy):
+    def _emergency_single_chunk(self, text: str, doc_id: str, original_strategy: ChunkingStrategy) -> list[ChunkResult]:
         """Create a single emergency chunk when all strategies fail."""
         from packages.shared.text_processing.base_chunker import ChunkResult
 
@@ -453,6 +468,6 @@ class HybridChunker:
         )
         return [emergency_chunk]
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """Delegate all other attributes to the actual chunker."""
         return getattr(self._chunker, name)
