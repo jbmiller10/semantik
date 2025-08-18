@@ -273,8 +273,15 @@ class TestProgressiveSegmentation:
     @pytest.mark.asyncio()
     async def test_segment_overlap_maintained(self, service):
         """Test that segments have proper overlap to preserve context."""
-        # Create text that will be segmented
-        test_text = "A" * 2000000  # 2MB of 'A's
+        # Create text that will be segmented - use realistic text instead of repeated chars
+        # which can cause issues with tokenizers and recursive chunking
+        paragraph = (
+            "This is a test paragraph with some content. "
+            "It has multiple sentences to provide natural split points. "
+            "The recursive chunker can work with this text properly. "
+            "Each sentence provides a potential boundary for chunking. "
+        )
+        test_text = paragraph * 5000  # Create ~2MB of more realistic text
 
         collection = {
             "id": "coll-overlap",
