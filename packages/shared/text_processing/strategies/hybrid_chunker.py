@@ -41,6 +41,11 @@ class Timeout:
         pass
 
 
+def timeout(seconds: float) -> Timeout:
+    """Create a timeout context manager for test compatibility."""
+    return Timeout(seconds)
+
+
 class ChunkingStrategy(str, Enum):
     """Enum for chunking strategies (for backward compatibility)."""
 
