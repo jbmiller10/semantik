@@ -59,7 +59,7 @@ class StreamingDocumentProcessor:
         self,
         checkpoint_manager: CheckpointManager | None = None,
         memory_pool: MemoryPool | None = None,
-        redis_client: redis.Redis[bytes] | None = None,
+        redis_client: redis.Redis | None = None,
     ):
         """
         Initialize the streaming processor.

@@ -39,7 +39,7 @@ class TestMigratedChunkingStrategies:
                 "max_tokens": 12,  # ~50 chars / 4
                 "min_tokens": 5,
                 "overlap_tokens": 2,  # ~10 chars / 4
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -64,7 +64,7 @@ class TestMigratedChunkingStrategies:
                 "max_tokens": 12,  # ~50 chars
                 "min_tokens": 5,
                 "overlap_tokens": 2,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -154,7 +154,7 @@ For more complex scenarios...
                 "max_tokens": 100,
                 "min_tokens": 20,
                 "overlap_tokens": 10,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -182,8 +182,8 @@ For more complex scenarios...
             chunker = ChunkingFactory.create_chunker(config)
             assert chunker is not None
             # Verify it has the required methods
-            assert hasattr(chunker, 'chunk_text')
-            assert hasattr(chunker, 'chunk_text_async')
+            assert hasattr(chunker, "chunk_text")
+            assert hasattr(chunker, "chunk_text_async")
 
     @pytest.mark.parametrize("strategy", ["markdown", "semantic", "hybrid"])
     def test_estimate_chunks(self, strategy: str) -> None:
@@ -194,7 +194,7 @@ For more complex scenarios...
                 "max_tokens": 100,
                 "min_tokens": 20,
                 "overlap_tokens": 10,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -216,7 +216,7 @@ For more complex scenarios...
                 "max_tokens": 260,  # ~1000 chars, with tolerance for LlamaIndex chunking
                 "min_tokens": 50,
                 "overlap_tokens": 50,  # ~200 chars
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -284,7 +284,7 @@ class Calculator:
             min_tokens=10,
             overlap_tokens=2,
             strategy_name="hierarchical",
-            hierarchy_levels=3  # Pass hierarchy_levels directly
+            hierarchy_levels=3,  # Pass hierarchy_levels directly
         )
 
         # Create text that will require multiple hierarchy levels
@@ -304,7 +304,7 @@ class Calculator:
             # Check hierarchical information
             if chunk.metadata.custom_attributes:
                 # May have hierarchy level information
-                hierarchy_level = chunk.metadata.custom_attributes.get('hierarchy_level')
+                hierarchy_level = chunk.metadata.custom_attributes.get("hierarchy_level")
                 if hierarchy_level is not None:
                     assert hierarchy_level >= 0
 
@@ -326,16 +326,12 @@ More detailed content."""
             "params": {
                 "markdown_threshold": 0.15,
                 "semantic_coherence_threshold": 0.9,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
         # Test with markdown file extension
-        chunks = await chunker.chunk_text_async(
-            markdown_text,
-            "test_doc",
-            {"file_path": "/path/to/test.md"}
-        )
+        chunks = await chunker.chunk_text_async(markdown_text, "test_doc", {"file_path": "/path/to/test.md"})
 
         # Verify chunks were created
         assert len(chunks) >= 1
@@ -355,7 +351,7 @@ More detailed content."""
             "strategy": "hybrid",
             "params": {
                 "large_doc_threshold": 5000,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 
@@ -379,10 +375,7 @@ More detailed content."""
 
     async def test_hybrid_chunker_performance_logging(self) -> None:
         """Test that hybrid chunker logs strategy selection reasoning."""
-        config = {
-            "strategy": "hybrid",
-            "params": {}
-        }
+        config = {"strategy": "hybrid", "params": {}}
         chunker = ChunkingFactory.create_chunker(config)
 
         # Different content types
@@ -412,7 +405,7 @@ More detailed content."""
                 "breakpoint_percentile_threshold": 95,
                 "buffer_size": 1,
                 "embed_model": mock_embed_model,
-            }
+            },
         }
         chunker = ChunkingFactory.create_chunker(config)
 

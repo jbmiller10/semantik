@@ -26,7 +26,7 @@ class CharacterChunker(BaseChunker):
             "max_tokens": max(10, chunk_size // 5),  # More aggressive conversion
             "min_tokens": min(5, chunk_size // 10),
             "overlap_tokens": min(2, chunk_overlap // 5),
-            **kwargs
+            **kwargs,
         }
 
         # Create unified strategy directly
@@ -43,8 +43,8 @@ class CharacterChunker(BaseChunker):
     def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate configuration."""
         # Check for invalid overlap
-        chunk_size = config.get('chunk_size', self.chunk_size)
-        chunk_overlap = config.get('chunk_overlap', self.chunk_overlap)
+        chunk_size = config.get("chunk_size", self.chunk_size)
+        chunk_overlap = config.get("chunk_overlap", self.chunk_overlap)
 
         if chunk_overlap >= chunk_size:
             return False

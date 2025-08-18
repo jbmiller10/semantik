@@ -64,9 +64,9 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
             from llama_index.core.node_parser import HierarchicalNodeParser
 
             # Check if chunk_sizes are provided in config
-            if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
+            if hasattr(config, "additional_params") and "chunk_sizes" in config.additional_params:
                 # Use provided chunk sizes (character-based)
-                char_sizes = config.additional_params['chunk_sizes']
+                char_sizes = config.additional_params["chunk_sizes"]
                 # Convert character sizes to approximate token sizes (divide by 4)
                 chunk_sizes = [size // 4 for size in char_sizes]
             else:
@@ -241,9 +241,9 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 is_leaf = node in leaf_nodes
 
                 # Get chunk sizes - prefer original character sizes if available
-                if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
-                    chunk_sizes_list = config.additional_params['chunk_sizes']
-                elif hasattr(splitter, 'chunk_sizes'):
+                if hasattr(config, "additional_params") and "chunk_sizes" in config.additional_params:
+                    chunk_sizes_list = config.additional_params["chunk_sizes"]
+                elif hasattr(splitter, "chunk_sizes"):
                     # Convert token sizes back to character sizes (multiply by 4)
                     chunk_sizes_list = [size * 4 for size in splitter.chunk_sizes]
                 else:
@@ -311,15 +311,17 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
 
         # Calculate chunk sizes for each level
         levels = min(config.hierarchy_levels, 3)  # Max 3 levels for practicality
-        logger.debug(f"Hierarchical chunking with {levels} levels (from config.hierarchy_levels={config.hierarchy_levels})")
+        logger.debug(
+            f"Hierarchical chunking with {levels} levels (from config.hierarchy_levels={config.hierarchy_levels})"
+        )
         level_configs = self._create_level_configs(config, levels)
 
         # Get all chunk sizes (in characters) - either from config or calculate them
-        if hasattr(config, 'additional_params') and 'chunk_sizes' in config.additional_params:
-            all_chunk_sizes = config.additional_params['chunk_sizes']
+        if hasattr(config, "additional_params") and "chunk_sizes" in config.additional_params:
+            all_chunk_sizes = config.additional_params["chunk_sizes"]
         else:
             # Calculate chunk sizes in characters from level configs
-            all_chunk_sizes = [cfg['max_tokens'] * 4 for cfg in level_configs]
+            all_chunk_sizes = [cfg["max_tokens"] * 4 for cfg in level_configs]
 
         # Process each level
         total_operations = levels

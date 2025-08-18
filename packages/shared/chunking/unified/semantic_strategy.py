@@ -418,7 +418,9 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
                             sub_token_count = truncated_token_count
                             # Final safety check
                             if sub_token_count > config.max_tokens:
-                                logger.warning(f"Chunk still exceeds max after truncation: {sub_token_count} > {config.max_tokens}")
+                                logger.warning(
+                                    f"Chunk still exceeds max after truncation: {sub_token_count} > {config.max_tokens}"
+                                )
                                 # Force truncation to character limit as last resort
                                 max_chars = config.max_tokens * 4  # Approximate 4 chars per token
                                 sub_chunk_text = sub_chunk_text[:max_chars]
@@ -516,17 +518,17 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
 
             # Check for end of sentence (char is ending and next char is space or end)
             if char in sentence_endings and (i + 1 >= len(content) or content[i + 1].isspace()):
-                    sentence_text = current_sentence.strip()
-                    if sentence_text:
-                        sentences.append(
-                            {
-                                "text": sentence_text,
-                                "start_offset": current_start,
-                                "end_offset": i + 1,
-                            }
-                        )
-                    current_sentence = ""
-                    current_start = i + 1
+                sentence_text = current_sentence.strip()
+                if sentence_text:
+                    sentences.append(
+                        {
+                            "text": sentence_text,
+                            "start_offset": current_start,
+                            "end_offset": i + 1,
+                        }
+                    )
+                current_sentence = ""
+                current_start = i + 1
 
         # Add remaining text as final sentence
         if current_sentence.strip():
@@ -591,13 +593,15 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
                         # Create a cluster from accumulated words
                         chunk_text = " ".join(current_words)
                         chunk_end = sentence_start + len(chunk_text)
-                        clusters.append({
-                            "sentences": [chunk_text],
-                            "start_offset": sentence_start,
-                            "end_offset": chunk_end,
-                            "token_count": current_token_count,
-                            "similarity_score": 0.9,
-                        })
+                        clusters.append(
+                            {
+                                "sentences": [chunk_text],
+                                "start_offset": sentence_start,
+                                "end_offset": chunk_end,
+                                "token_count": current_token_count,
+                                "similarity_score": 0.9,
+                            }
+                        )
                         sentence_start = chunk_end + 1
                         current_words = [word]
                         current_token_count = word_tokens
@@ -702,7 +706,9 @@ class SemanticChunkingStrategy(UnifiedChunkingStrategy):
         # Jaccard similarity
         return len(intersection) / len(union) if union else 0.0
 
-    def _merge_small_clusters(self, clusters: list[dict[str, Any]], min_tokens: int, max_tokens: int) -> list[dict[str, Any]]:
+    def _merge_small_clusters(
+        self, clusters: list[dict[str, Any]], min_tokens: int, max_tokens: int
+    ) -> list[dict[str, Any]]:
         """
         Merge small clusters to meet minimum token requirements while respecting maximum.
 

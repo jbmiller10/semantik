@@ -50,7 +50,7 @@ STRATEGY_REGISTRY: dict[str, type[ChunkingStrategy]] = cast(
         "markdown": MarkdownChunkingStrategy,
         "hierarchical": HierarchicalChunkingStrategy,
         "hybrid": HybridChunkingStrategy,
-    }
+    },
 )
 
 

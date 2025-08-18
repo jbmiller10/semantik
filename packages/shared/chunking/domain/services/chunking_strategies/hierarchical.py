@@ -60,18 +60,18 @@ class HierarchicalChunkingStrategy(DomainStrategyAdapter):
         # Fix metadata placement - move hierarchy-related fields to custom_attributes
         for chunk in chunks:
             # Move hierarchy_level to custom_attributes if it exists
-            if hasattr(chunk.metadata, 'hierarchy_level') and chunk.metadata.hierarchy_level is not None:
+            if hasattr(chunk.metadata, "hierarchy_level") and chunk.metadata.hierarchy_level is not None:
                 chunk.metadata.custom_attributes["hierarchy_level"] = chunk.metadata.hierarchy_level
 
             # Add parent_id if it's a child chunk (map from parent_chunk_id)
-            if chunk.metadata.custom_attributes.get('parent_chunk_id'):
-                chunk.metadata.custom_attributes["parent_id"] = chunk.metadata.custom_attributes['parent_chunk_id']
+            if chunk.metadata.custom_attributes.get("parent_chunk_id"):
+                chunk.metadata.custom_attributes["parent_id"] = chunk.metadata.custom_attributes["parent_chunk_id"]
 
             # Add chunk_id for parent-child linking
             chunk.metadata.custom_attributes["chunk_id"] = chunk.metadata.chunk_id
 
             # Add child_chunk_ids if it's a parent chunk
-            if hasattr(chunk.metadata, 'child_chunk_ids') and chunk.metadata.child_chunk_ids:
+            if hasattr(chunk.metadata, "child_chunk_ids") and chunk.metadata.child_chunk_ids:
                 chunk.metadata.custom_attributes["child_chunk_ids"] = chunk.metadata.child_chunk_ids
 
             # Generate summary for parent chunks (level 0)
