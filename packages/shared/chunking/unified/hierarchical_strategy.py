@@ -232,6 +232,17 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                         if isinstance(children, list):
                             child_ids = [c.node_id for c in children if hasattr(c, "node_id")]
 
+                # Add hierarchy metadata to custom_attributes
+                custom_attrs = {
+                    "hierarchy_level": level,
+                    "is_leaf": is_leaf,
+                    "chunk_sizes": chunk_sizes,
+                }
+                if parent_id:
+                    custom_attrs["parent_chunk_id"] = parent_id
+                if child_ids:
+                    custom_attrs["child_chunk_ids"] = child_ids
+                
                 metadata = ChunkMetadata(
                     chunk_id=f"{config.strategy_name}_{global_chunk_index:04d}",
                     document_id="doc",
@@ -244,10 +255,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                     semantic_density=0.75,  # Good for hierarchical structure
                     confidence_score=0.95,  # Higher confidence with LlamaIndex
                     created_at=datetime.now(tz=UTC),
-                    custom_attributes={
-                        "parent_chunk_id": parent_id,
-                        "child_chunk_ids": child_ids,
-                    },
+                    custom_attributes=custom_attrs,
                 )
 
                 # Create chunk entity
@@ -539,6 +547,16 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 continue
 
             # Create metadata
+            # Create metadata with hierarchy info in custom_attributes
+            custom_attrs = {
+                "hierarchy_level": level,
+                "chunk_id": f"{strategy_name}_L{level}_{global_chunk_index:04d}",
+                "is_leaf": level > 0,  # Non-zero levels are leaf chunks
+                "chunk_sizes": [chunk_size_chars],  # Add chunk sizes for compatibility
+                "parent_chunk_id": parent_id,
+                "child_chunk_ids": [],
+            }
+            
             metadata = ChunkMetadata(
                 chunk_id=f"{strategy_name}_L{level}_{global_chunk_index:04d}",
                 document_id="doc",
@@ -551,10 +569,7 @@ class HierarchicalChunkingStrategy(UnifiedChunkingStrategy):
                 semantic_density=0.75,
                 confidence_score=0.85,
                 created_at=datetime.now(tz=UTC),
-                custom_attributes={
-                    "parent_chunk_id": parent_id,
-                    "child_chunk_ids": [],
-                },
+                custom_attributes=custom_attrs,
             )
 
             # Create chunk
