@@ -1765,16 +1765,19 @@ class TestWebSocketCollectionOperations:
 **Effort**: 2 days  
 **Risk**: Low
 
-**Problem**:
-- `tests/unit/test_search_service.py` recreates `SearchService` with `AsyncMock` dependencies, patches `httpx.AsyncClient`, and asserts on internal calls rather than actual HTTP responses. Most scenarios overlap with API/integration coverage.
-- `tests/unit/test_rate_limiter.py` manipulates global limiter state (`limiter._limiter.storage.storage`) and relies on environment-dependent behavior, which can leak across tests and diverge from production configuration.
+**Progress (2025-10-16)**:
+- Replaced `tests/unit/test_rate_limiter.py` with integration coverage in `tests/integration/services/test_rate_limiter.py` using an isolated limiter instance and circuit-breaker assertions.
+- Exercised bypass key routing and circuit breaker tracking without mutating global limiter state.
+- Removed legacy unit suite that patched private limiter attributes.
 
-**Target State**:
-1. Convert high-value search scenarios into integration tests that hit `/api/v2/search` with dependency overrides; keep a slim unit file for pure validation.
-2. Provide isolated rate-limiter fixtures (fresh `Limiter` instance, fakeredis or in-memory storage) and rework tests to assert observable behavior without touching private attributes.
-3. Remove redundant call-count assertions once integration coverage covers the flows.
+**Outstanding Gaps**:
+- `SearchService` still relies on heavy mocking; integration coverage needs to hit `/api/v2/search` with dependency overrides.
+- Model manager lifecycle tests remain mock-based and must be rewritten around real fixtures.
 
-**Verification**: `uv run pytest tests/integration/search/ tests/unit/services/test_search_service_validation.py` runs green with minimal mocks; rate-limiter unit tests pass without mutating global state.
+**Next Steps**:
+1. Build a FastAPI integration suite for search (`tests/integration/api/test_search_endpoints.py`) that covers hybrid/reranker flows.
+2. Add slim validation-only unit tests for `SearchService` parsing helpers and the model manager configuration surfaces.
+3. Enable the new rate-limiter integration suite in CI once search coverage lands.
 
 ### Action 14: Consolidate Directory/Document Auxiliary Suites ⚠️ HIGH
 
@@ -1782,14 +1785,17 @@ class TestWebSocketCollectionOperations:
 **Effort**: 2-3 days  
 **Risk**: Medium - requires coordinating Celery/WS fixtures
 
-**Problem**: Tests such as `tests/webui/test_document_chunk_count_updates.py`, `tests/webui/services/test_directory_scan_service.py`, `tests/webui/services/test_execute_ingestion_chunking.py`, and the corresponding unit repository/service suites (`tests/unit/test_document_scanning_service.py`, `tests/unit/test_directory_scan_service.py`, `tests/unit/test_operation_repository.py`, etc.) rely on heavy mocking, custom filesystem setups, and duplicate scenarios already covered (or planned) in integration tests. They assert on implementation details (call counts, mock attributes) rather than observable outcomes.
+**Progress (2025-10-16)**:
+- Migrated repository suites to real DB coverage (`tests/integration/repositories/test_user_repository.py`, `test_api_key_repository.py`, `test_auth_repository.py`, `test_chunk_repository.py`, `test_operation_repository.py`).
+- Added service-level integration smoke tests for directory/document scanning, partition monitoring, operation service, and resource manager under `tests/integration/services/`.
+- Simplified `tests/unit/test_partition_utils.py` to validation-only coverage; moved database interactions into `tests/integration/database/test_partition_utils.py` and `test_partitioning.py`.
+- Relocated manual scripts (`tests/test_embedding_oom_handling.py`, `tests/performance/chunking_benchmarks.py`, websocket/streaming load probes) into `manual_tests/` so pytest ignores them.
 
-**Target State**:
-1. Move Celery/ingestion verification into integration tests using fakeredis + async session fixtures.
-2. Provide lightweight, behavior-focused unit tests only for pure helper logic (e.g., pattern filtering).
-3. Replace bespoke filesystem scaffolding with reusable fixtures or integration-level smoke tests.
+**Follow Ups**:
+1. Coordinate with Agents A1/A2 on chunking/ingestion suites to merge remaining Celery-heavy tests into shared integration fixtures.
+2. Review `tests/webui/services/test_execute_ingestion_chunking.py` and related helpers for the next migration pass.
 
-**Verification**: A consolidated integration suite (e.g., `tests/integration/tasks/test_document_ingestion.py`) validates chunk count updates and directory scans end-to-end; unit suites shrink to minimal validation helpers.
+**Verification**: `uv run pytest tests/integration/repositories/ tests/integration/services/ -v` exercises the new coverage without relying on mocks.
 
 ---
 
@@ -1799,7 +1805,7 @@ class TestWebSocketCollectionOperations:
 - [ ] Delete `test_auth.py` (5 min)
 - [ ] Fix `test_collection_repository.py` (2-3 days)
 - [ ] Start fixing `test_collection_service.py` (3-4 days)
-- [ ] Quarantine manual/script-style test files (0.5 day)
+- [x] Quarantine manual/script-style test files (0.5 day) — completed 2025-10-16 (moved probes to `manual_tests/`)
 - [ ] Replace placeholder reranking E2E suite with real coverage (1-2 days)
 - [ ] Enable rate-limit tests in CI (1 day)
 - [ ] Kick off chunking/search API suite consolidation (inventory overlaps, draft plan)
