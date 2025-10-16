@@ -25,7 +25,11 @@ class _ConfigProtocol(Protocol):
     def data_dir(self) -> Path: ...
 
 
-def ensure_internal_api_key(config: _ConfigProtocol, *, key_file: Path | None = None) -> str:
+def ensure_internal_api_key(
+    config: _ConfigProtocol,
+    *,
+    key_file: os.PathLike[str] | str | Path | None = None,
+) -> str:
     """Ensure the internal API key is available and synchronised across processes.
 
     The logic follows these rules:
@@ -47,7 +51,7 @@ def ensure_internal_api_key(config: _ConfigProtocol, *, key_file: Path | None = 
         RuntimeError: If the key is missing in production.
     """
 
-    resolved_path = key_file or _default_key_path(config)
+    resolved_path = Path(key_file) if key_file is not None else _default_key_path(config)
 
     # 1. Prefer explicit configuration.
     explicit_key = _clean_key(config.INTERNAL_API_KEY)
@@ -78,8 +82,7 @@ def ensure_internal_api_key(config: _ConfigProtocol, *, key_file: Path | None = 
     config.INTERNAL_API_KEY = generated_key
     _persist_key_if_needed(resolved_path, generated_key, force_write=True)
     logger.info(
-        "Generated internal API key for %s environment "
-        "(fingerprint=%s, path=%s).",
+        "Generated internal API key for %s environment (fingerprint=%s, path=%s).",
         environment or "unknown",
         _fingerprint(generated_key),
         resolved_path,
@@ -94,7 +97,7 @@ def _default_key_path(config: _ConfigProtocol) -> Path:
     except Exception as exc:  # pragma: no cover - defensive logging only
         raise RuntimeError("Unable to determine data directory for internal API key persistence") from exc
 
-    return data_dir / KEY_FILENAME
+    return Path(data_dir) / KEY_FILENAME
 
 
 def _clean_key(raw_key: str | None) -> str | None:
@@ -105,8 +108,9 @@ def _clean_key(raw_key: str | None) -> str | None:
     return cleaned or None
 
 
-def _read_key_from_file(path: Path) -> str | None:
+def _read_key_from_file(path: os.PathLike[str] | str | Path) -> str | None:
     """Read and validate the key from disk."""
+    path = Path(path)
     try:
         if not path.exists():
             return None
@@ -117,8 +121,9 @@ def _read_key_from_file(path: Path) -> str | None:
         return None
 
 
-def _persist_key_if_needed(path: Path, key: str, *, force_write: bool = False) -> None:
+def _persist_key_if_needed(path: os.PathLike[str] | str | Path, key: str, *, force_write: bool = False) -> None:
     """Persist the key to disk if missing or different."""
+    path = Path(path)
     try:
         current = _read_key_from_file(path)
         if not force_write and current == key:
@@ -128,7 +133,7 @@ def _persist_key_if_needed(path: Path, key: str, *, force_write: bool = False) -
 
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         tmp_path.write_text(key, encoding="utf-8")
-        os.replace(tmp_path, path)
+        tmp_path.replace(path)
 
         try:
             path.chmod(_DEFAULT_FILE_PERMISSIONS)

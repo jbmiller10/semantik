@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlalchemy.exc import OperationalError
 
 from packages.shared.config.postgres import postgres_config
 from packages.shared.database.models import (
@@ -64,7 +64,7 @@ def db_session() -> Generator[Session, None, None]:
         )
 
         @event.listens_for(engine, "connect")
-        def _set_sqlite_pragma(dbapi_connection, connection_record):  # noqa: ANN001
+        def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
@@ -507,4 +507,3 @@ class TestDateTimeTimezoneAwareness:
         # Verify fields were set (SQLite may not preserve timezone info)
         assert limits.created_at is not None
         assert limits.updated_at is not None
-    PermissionType,

@@ -4,9 +4,9 @@ from fastapi import FastAPI
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from shared.config import settings
 
 from packages.webui.middleware.rate_limit import RateLimitMiddleware
-from shared.config import settings
 
 
 def create_app() -> FastAPI:
@@ -22,13 +22,13 @@ def create_app() -> FastAPI:
 
 
 @pytest.mark.parametrize(
-    "token_payload,expected_id",
+    ("token_payload", "expected_id"),
     [
         ({"sub": "alice", "user_id": 42}, 42),
         ({"sub": "bob"}, None),
     ],
 )
-def test_rate_limit_middleware_extracts_user(token_payload, expected_id):
+def test_rate_limit_middleware_extracts_user(token_payload: dict[str, object], expected_id: int | None) -> None:
     app = create_app()
     client = TestClient(app)
 
@@ -43,7 +43,7 @@ def test_rate_limit_middleware_extracts_user(token_payload, expected_id):
         assert isinstance(body["user"]["id"], int)
 
 
-def test_rate_limit_middleware_invalid_token(monkeypatch):
+def test_rate_limit_middleware_invalid_token() -> None:
     app = create_app()
     client = TestClient(app)
 

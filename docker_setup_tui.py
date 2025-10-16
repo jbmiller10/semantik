@@ -143,7 +143,9 @@ class DockerSetupTUI:
             console.print("[green]✓[/green] Docker Buildx plugin found")
         else:
             console.print("[red]✗[/red] Docker Buildx plugin not found")
-            console.print("\n[yellow]Docker Buildx is required because Semantik's Docker Compose configuration uses Bake for builds.[/yellow]")
+            console.print(
+                "\n[yellow]Docker Buildx is required because Semantik's Docker Compose configuration uses Bake for builds.[/yellow]"
+            )
             system_name = platform.system()
             if system_name == "Linux":
                 console.print("Install the Buildx plugin using your package manager, for example:")
@@ -151,7 +153,9 @@ class DockerSetupTUI:
                 console.print("  → Fedora/RHEL: sudo dnf install docker-buildx-plugin")
                 console.print("  → Arch/Manjaro: sudo pacman -S docker-buildx")
             elif system_name == "Darwin":
-                console.print("Update Docker Desktop from https://www.docker.com/products/docker-desktop/ (Buildx is included).")
+                console.print(
+                    "Update Docker Desktop from https://www.docker.com/products/docker-desktop/ (Buildx is included)."
+                )
             else:
                 console.print("Ensure Docker Desktop is up to date; Buildx ships with current releases.")
             console.print("\nAfter installing Buildx, re-run the wizard.")

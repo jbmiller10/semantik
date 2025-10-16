@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 from celery import Celery
 from celery.signals import worker_process_init
@@ -20,7 +20,7 @@ def _is_truthy(value: str | None) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _build_base_config() -> Dict[str, Any]:
+def _build_base_config() -> dict[str, Any]:
     """Return the baseline Celery configuration shared across environments."""
     return {
         # Task serialization
@@ -81,7 +81,7 @@ def _build_base_config() -> Dict[str, Any]:
     }
 
 
-def _build_testing_overrides() -> Dict[str, Any]:
+def _build_testing_overrides() -> dict[str, Any]:
     """Return configuration overrides that make Celery safe inside tests."""
     return {
         "worker_send_task_events": False,

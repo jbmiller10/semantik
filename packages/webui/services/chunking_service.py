@@ -9,22 +9,22 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
+import re
 import uuid
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-import math
 from pathlib import Path
-import re
 from statistics import fmean
 from typing import Any, cast
 
 import redis.asyncio as aioredis
 import shared.text_processing.chunking as token_chunking
+from shared.config import settings as shared_settings
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.config import settings as shared_settings
 from packages.shared.chunking.application.dto.requests import (
     ChunkingStrategy as ChunkingStrategyEnum,
 )
@@ -56,6 +56,7 @@ from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 # All exceptions now come from the new infrastructure layer
 # Old chunking_exceptions module should be deleted as we're PRE-RELEASE
@@ -72,10 +73,10 @@ from .chunking_strategies import ChunkingStrategyRegistry
 from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
 from .dtos import (
-    ServiceChunkList,
-    ServiceChunkRecord,
     ServiceChunkingStats,
+    ServiceChunkList,
     ServiceChunkPreview,
+    ServiceChunkRecord,
     ServiceCompareResponse,
     ServiceDocumentAnalysis,
     ServiceGlobalMetrics,
@@ -87,7 +88,6 @@ from .dtos import (
     ServiceStrategyMetrics,
     ServiceStrategyRecommendation,
 )
-from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, default=_json_default, indent=2), encoding="utf-8")
-    os.replace(tmp_path, path)
+    tmp_path.replace(path)
 
 
 def _json_default(value: Any) -> Any:
@@ -1663,13 +1663,7 @@ class ChunkingService:
         if total_chunks == 0:
             return ServiceChunkList(chunks=[], total=0, page=safe_page, page_size=safe_page_size)
 
-        chunk_query = (
-            select(Chunk)
-            .where(*filters)
-            .order_by(Chunk.chunk_index)
-            .offset(offset)
-            .limit(safe_page_size)
-        )
+        chunk_query = select(Chunk).where(*filters).order_by(Chunk.chunk_index).offset(offset).limit(safe_page_size)
         chunk_rows = await self.db_session.execute(chunk_query)
         chunk_objects = chunk_rows.scalars().all()
 
@@ -1723,9 +1717,7 @@ class ChunkingService:
         )
         total_documents_processed = int(documents_processed_result.scalar() or 0)
 
-        avg_chunks_per_document = (
-            total_chunks_created / total_documents_processed if total_documents_processed else 0.0
-        )
+        avg_chunks_per_document = total_chunks_created / total_documents_processed if total_documents_processed else 0.0
 
         # Operations executed during the period
         operation_rows = await self.db_session.execute(
@@ -1755,8 +1747,9 @@ class ChunkingService:
 
         # Determine most used strategy from collections updated during the period
         strategy_rows = await self.db_session.execute(
-            select(Collection.chunking_strategy)
-            .where(Collection.chunking_strategy.isnot(None), Collection.updated_at >= period_start)
+            select(Collection.chunking_strategy).where(
+                Collection.chunking_strategy.isnot(None), Collection.updated_at >= period_start
+            )
         )
         strategies = [row[0] for row in strategy_rows if row[0]]
         if not strategies and processed_collection_ids:
@@ -1984,7 +1977,9 @@ class ChunkingService:
         if not document_content and document_id:
             document = await self.document_repo.get_by_id(document_id)
             if document:
-                document_type = file_type or document.mime_type or Path(document.file_name).suffix.lstrip(".") or "unknown"
+                document_type = (
+                    file_type or document.mime_type or Path(document.file_name).suffix.lstrip(".") or "unknown"
+                )
                 document_metadata = {
                     "file_name": document.file_name,
                     "file_size": document.file_size,
@@ -1994,7 +1989,9 @@ class ChunkingService:
                     path = Path(file_path)
                     if path.exists() and path.is_file():
                         try:
-                            document_content = await asyncio.to_thread(path.read_text, encoding="utf-8", errors="ignore")
+                            document_content = await asyncio.to_thread(
+                                path.read_text, encoding="utf-8", errors="ignore"
+                            )
                         except Exception as exc:  # pragma: no cover - file system errors handled gracefully
                             logger.debug("Unable to read document %s for analysis: %s", document_id, exc)
 
