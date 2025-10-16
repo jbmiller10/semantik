@@ -494,6 +494,25 @@ class TestOperationRepository:
         assert total == 5
 
     @pytest.mark.asyncio()
+    async def test_list_by_user_returns_dicts(
+        self,
+        repository: OperationRepository,
+        mock_session: AsyncMock,
+        sample_operation: Operation,
+    ) -> None:
+        """Test list_by_user returns normalized dictionaries."""
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [sample_operation]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.list_by_user(user_id=sample_operation.user_id)
+
+        assert len(results) == 1
+        first = results[0]
+        assert first["uuid"] == sample_operation.uuid
+        assert first["status"] == OperationStatus.PENDING.value
+
+    @pytest.mark.asyncio()
     async def test_cancel_pending_operation(
         self, repository: OperationRepository, mock_session: AsyncMock, sample_operation: Operation
     ) -> None:

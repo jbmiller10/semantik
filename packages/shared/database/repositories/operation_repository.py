@@ -25,6 +25,45 @@ class OperationRepository:
         """
         self.session = session
 
+    @staticmethod
+    def _operation_to_dict(operation: Operation) -> dict[str, Any]:
+        """Convert an Operation ORM object into a serializable dictionary."""
+
+        status = operation.status.value if isinstance(operation.status, OperationStatus) else operation.status
+        operation_type = operation.type.value if isinstance(operation.type, OperationType) else operation.type
+
+        return {
+            "id": operation.id,
+            "uuid": operation.uuid,
+            "collection_id": operation.collection_id,
+            "user_id": operation.user_id,
+            "type": operation_type,
+            "status": status,
+            "task_id": operation.task_id,
+            "config": operation.config or {},
+            "error_message": operation.error_message,
+            "created_at": operation.created_at,
+            "started_at": operation.started_at,
+            "completed_at": operation.completed_at,
+            "meta": operation.meta or {},
+        }
+
+    async def list_by_user(self, user_id: int, since: datetime | None = None) -> list[dict[str, Any]]:
+        """Return operations for a user as serializable dicts."""
+
+        try:
+            query = select(Operation).where(Operation.user_id == user_id)
+            if since is not None:
+                query = query.where(Operation.created_at >= since)
+
+            result = await self.session.execute(query.order_by(desc(Operation.created_at)))
+            operations = result.scalars().all()
+
+            return [self._operation_to_dict(operation) for operation in operations]
+        except Exception as e:
+            logger.error(f"Failed to list operations for user {user_id}: {e}")
+            raise DatabaseOperationError("list", "operations", str(e)) from e
+
     async def create(
         self,
         collection_id: str,

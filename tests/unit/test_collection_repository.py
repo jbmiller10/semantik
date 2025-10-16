@@ -288,6 +288,65 @@ class TestCollectionRepository:
         assert total == 10
 
     @pytest.mark.asyncio()
+    async def test_list_all_returns_serializable_dicts(self, repository, mock_session, sample_collection):
+        """Test list_all returns normalized dictionaries."""
+        sample_collection.qdrant_collections = ["primary_col"]
+        sample_collection.qdrant_staging = {"collection_name": "staging_col"}
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [sample_collection]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.list_all()
+
+        assert len(results) == 1
+        first = results[0]
+        assert first["id"] == sample_collection.id
+        assert first["vector_store_name"] == sample_collection.vector_store_name
+        assert first["status"] == CollectionStatus.READY.value
+        assert first["qdrant_collections"] == ["primary_col"]
+        assert first["qdrant_staging"] == {"collection_name": "staging_col"}
+
+    @pytest.mark.asyncio()
+    async def test_list_by_user_returns_dicts(self, repository, mock_session, sample_collection):
+        """Test list_by_user returns normalized dictionaries."""
+        mock_session.scalar.return_value = 1
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = [sample_collection]
+        mock_session.execute.return_value = mock_result
+
+        results = await repository.list_by_user(user_id=sample_collection.owner_id, include_public=False)
+
+        assert len(results) == 1
+        assert results[0]["id"] == sample_collection.id
+        assert results[0]["status"] == CollectionStatus.READY.value
+
+    @pytest.mark.asyncio()
+    async def test_get_by_id_returns_dict(self, repository, mock_session, sample_collection):
+        """Test get_by_id returns normalized dictionary when collection exists."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = sample_collection
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_by_id(sample_collection.id)
+
+        assert result is not None
+        assert result["id"] == sample_collection.id
+        assert result["status"] == CollectionStatus.READY.value
+
+    @pytest.mark.asyncio()
+    async def test_get_by_id_returns_none_when_missing(self, repository, mock_session):
+        """Test get_by_id returns None when collection does not exist."""
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_by_id("non-existent-id")
+
+        assert result is None
+
+    @pytest.mark.asyncio()
     async def test_update_status(self, repository, mock_session, sample_collection):
         """Test updating collection status."""
         # Setup - first call returns collection, second call for update
