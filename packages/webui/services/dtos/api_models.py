@@ -172,3 +172,85 @@ class ChunkingStats(BaseModel):
     last_updated: datetime = Field(..., description="Last update time")
     processing_time_seconds: float = Field(..., description="Total processing time")
     quality_metrics: dict[str, Any] = Field(..., description="Quality assessment metrics")
+
+
+class ChunkListResponse(BaseModel):
+    """Response containing paginated chunks."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    chunks: list[dict[str, Any]] = Field(..., description="Chunk data")
+    total: int = Field(..., description="Total number of chunks")
+    page: int = Field(..., description="Current page")
+    page_size: int = Field(..., description="Items per page")
+    has_next: bool = Field(..., description="Whether there are more pages")
+
+
+class QualityLevel(str, Enum):
+    """Quality assessment levels."""
+
+    EXCELLENT = "excellent"
+    GOOD = "good"
+    FAIR = "fair"
+    POOR = "poor"
+
+
+class GlobalMetrics(BaseModel):
+    """Global chunking metrics across all collections."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    total_collections_processed: int = Field(..., description="Total collections processed")
+    total_chunks_created: int = Field(..., description="Total chunks created")
+    total_documents_processed: int = Field(..., description="Total documents processed")
+    avg_chunks_per_document: float = Field(..., description="Average chunks per document")
+    most_used_strategy: ChunkingStrategy = Field(..., description="Most popular strategy")
+    avg_processing_time: float = Field(..., description="Average processing time")
+    success_rate: float = Field(..., ge=0.0, le=1.0, description="Success rate of operations")
+    period_start: datetime = Field(..., description="Metrics period start")
+    period_end: datetime = Field(..., description="Metrics period end")
+
+
+class QualityAnalysis(BaseModel):
+    """Quality analysis for chunks."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    overall_quality: QualityLevel = Field(..., description="Overall quality level")
+    quality_score: float = Field(..., ge=0.0, le=1.0, description="Numeric quality score")
+    coherence_score: float = Field(..., ge=0.0, le=1.0, description="Semantic coherence")
+    completeness_score: float = Field(..., ge=0.0, le=1.0, description="Information completeness")
+    size_consistency: float = Field(..., ge=0.0, le=1.0, description="Size consistency across chunks")
+    recommendations: list[str] = Field(..., description="Improvement recommendations")
+    issues_detected: list[str] = Field(..., description="Quality issues found")
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """Response containing document analysis results."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    document_type: str = Field(..., description="Detected document type")
+    content_structure: dict[str, Any] = Field(..., description="Document structure analysis")
+    recommended_strategy: StrategyRecommendation = Field(..., description="Strategy recommendation")
+    estimated_chunks: dict[ChunkingStrategy, int] = Field(..., description="Estimated chunks per strategy")
+    complexity_score: float = Field(..., ge=0.0, le=1.0, description="Document complexity")
+    special_considerations: list[str] = Field(default=[], description="Special handling considerations")
+
+
+class SavedConfiguration(BaseModel):
+    """Saved chunking configuration."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(..., description="Configuration ID")
+    name: str = Field(..., description="Configuration name")
+    description: str | None = Field(default=None, description="Description")
+    strategy: ChunkingStrategy = Field(..., description="Strategy")
+    config: ChunkingConfigBase = Field(..., description="Configuration details")
+    created_by: int = Field(..., description="User ID who created")
+    created_at: datetime = Field(..., description="Creation time")
+    updated_at: datetime = Field(..., description="Last update time")
+    usage_count: int = Field(default=0, description="Times used")
+    is_default: bool = Field(default=False, description="Is default config")
+    tags: list[str] = Field(default=[], description="Configuration tags")

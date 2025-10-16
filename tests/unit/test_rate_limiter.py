@@ -5,11 +5,13 @@ Comprehensive test suite for webui/rate_limiter.py
 Tests rate limiting functionality under various scenarios
 """
 
+import json
 import os
 import time
 from unittest.mock import Mock, patch
 
-from fastapi import FastAPI, Request
+import pytest
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from slowapi import Limiter
@@ -18,7 +20,13 @@ from slowapi.util import get_remote_address
 from slowapi.wrappers import Limit
 from webui.rate_limiter import limiter
 
-from packages.webui.rate_limiter import get_user_or_ip
+from packages.webui.rate_limiter import (
+    circuit_breaker,
+    check_circuit_breaker,
+    get_user_or_ip,
+    rate_limit_exceeded_handler,
+    track_circuit_breaker_failure,
+)
 
 # ruff: noqa: ARG001
 
@@ -159,46 +167,83 @@ class TestRateLimiterIntegration:
         assert "/test-high-limit" in routes
         assert "/test-per-hour" in routes
 
-        # Note: With TestClient, all requests come from the same IP ("testclient")
-        # so we can't truly test independent rate limits per endpoint.
-        # In production, slowapi correctly applies limits per endpoint+IP combination.
 
-        # Instead, we'll just verify the decorators are applied
-        client = TestClient(app)
+class TestCircuitBreakerHelpers:
+    """Tests for circuit breaker utility functions."""
 
-        # These requests should work (within respective limits)
-        response = client.get("/test")
+    def setup_method(self) -> None:
+        circuit_breaker.failure_counts.clear()
+        circuit_breaker.blocked_until.clear()
+
+    def test_track_circuit_breaker_blocks_after_threshold(self, monkeypatch) -> None:
+        monkeypatch.setenv("DISABLE_RATE_LIMITING", "false")
+        monkeypatch.setattr(circuit_breaker, "failure_threshold", 2)
+        monkeypatch.setattr(circuit_breaker, "timeout_seconds", 1)
+
+        track_circuit_breaker_failure("user:1")
+        assert "user:1" not in circuit_breaker.blocked_until
+
+        track_circuit_breaker_failure("user:1")
+        assert "user:1" in circuit_breaker.blocked_until
+
+    def test_check_circuit_breaker_raises_when_blocked(self, monkeypatch) -> None:
+        monkeypatch.setenv("DISABLE_RATE_LIMITING", "false")
+        circuit_breaker.blocked_until["user:1"] = time.time() + 5
+
+        mock_request = Mock(spec=Request)
+        mock_request.headers = {}
+        mock_request.state = Mock()
+        mock_request.state.user = {"id": 1}
+        mock_request.client = Mock()
+        mock_request.client.host = "127.0.0.1"
+
+        with pytest.raises(HTTPException) as exc_info:
+            check_circuit_breaker(mock_request)
+
+        assert exc_info.value.status_code == 503
+        assert "Circuit breaker open" in exc_info.value.detail
+
+    def test_rate_limit_handler_respects_bypass_token(self, monkeypatch) -> None:
+        monkeypatch.setenv("DISABLE_RATE_LIMITING", "false")
+        monkeypatch.setenv("RATE_LIMIT_BYPASS_TOKEN", "secret-token")
+
+        mock_request = Mock(spec=Request)
+        mock_request.headers = {"authorization": "Bearer secret-token"}
+        mock_request.state = Mock()
+        mock_request.state.user = None
+        mock_request.client = Mock()
+        mock_request.client.host = "127.0.0.1"
+
+        limit = Limit("1 per 1 minute", ("1", (1, "minute")), "endpoint", None, False, None, None, None, None)
+        exc = RateLimitExceeded(limit)
+        exc.retry_after = 5
+
+        response = rate_limit_exceeded_handler(mock_request, exc)
         assert response.status_code == 200
+        payload = json.loads(response.body)
+        assert payload["bypass"] is True
 
-        response = client.get("/test-high-limit")
-        assert response.status_code == 200
+    def test_rate_limit_handler_triggers_circuit_breaker(self, monkeypatch) -> None:
+        monkeypatch.setenv("DISABLE_RATE_LIMITING", "false")
+        circuit_breaker.failure_counts.clear()
+        circuit_breaker.blocked_until.clear()
+        monkeypatch.setattr(circuit_breaker, "failure_threshold", 1)
+        monkeypatch.setattr(circuit_breaker, "timeout_seconds", 1)
 
-        response = client.get("/test-per-hour")
-        assert response.status_code == 200
+        mock_request = Mock(spec=Request)
+        mock_request.headers = {}
+        mock_request.state = Mock()
+        mock_request.state.user = {"id": 99}
+        mock_request.client = Mock()
+        mock_request.client.host = "127.0.0.1"
 
-    def test_rate_limit_headers(self) -> None:
-        """Test rate limit headers are properly set"""
-        app = self.create_test_app(use_fresh_limiter=True)
+        limit = Limit("1 per 1 minute", ("1", (1, "minute")), "endpoint", None, False, None, None, None, None)
+        exc = RateLimitExceeded(limit)
+        exc.retry_after = 2
 
-        # Add middleware to simulate rate limit headers
-        # Note: In production, slowapi automatically adds these headers
-        @app.middleware("http")
-        async def add_rate_limit_headers(request: Request, call_next) -> None:
-            response = await call_next(request)
-            # Manually add headers for testing since TestClient doesn't trigger all middleware
-            response.headers["X-RateLimit-Limit"] = "5"
-            response.headers["X-RateLimit-Remaining"] = "4"
-            response.headers["X-RateLimit-Reset"] = str(int(time.time()) + 60)
-            return response
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        assert response.status_code == 200
-        assert "X-RateLimit-Limit" in response.headers
-        assert "X-RateLimit-Remaining" in response.headers
-        assert "X-RateLimit-Reset" in response.headers
-
+        response = rate_limit_exceeded_handler(mock_request, exc)
+        assert response.status_code == 503
+        assert circuit_breaker.blocked_until
 
 class TestRateLimiterScenarios:
     """Test specific rate limiting scenarios"""

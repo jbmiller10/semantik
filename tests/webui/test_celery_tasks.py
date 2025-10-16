@@ -80,6 +80,26 @@ class TestCeleryTaskHelpers:
         expected = "User [email] at /home/~/projects failed"
         assert _sanitize_error_message(msg) == expected
 
+    def test_build_internal_api_headers_uses_configured_key(self, monkeypatch) -> None:
+        """Headers should include the configured internal API key."""
+        from packages.webui import tasks as tasks_module
+
+        monkeypatch.setattr(tasks_module.settings, "INTERNAL_API_KEY", "test-key", raising=False)
+
+        headers = tasks_module._build_internal_api_headers()
+
+        assert headers["X-Internal-API-Key"] == "test-key"
+        assert headers["Content-Type"] == "application/json"
+
+    def test_build_internal_api_headers_raises_when_missing(self, monkeypatch) -> None:
+        """Missing keys must raise to avoid unauthenticated requests."""
+        from packages.webui import tasks as tasks_module
+
+        monkeypatch.setattr(tasks_module.settings, "INTERNAL_API_KEY", None, raising=False)
+
+        with pytest.raises(RuntimeError):
+            tasks_module._build_internal_api_headers()
+
 
 class TestCeleryTaskWithOperationUpdates:
     """Test the operation updates helper class."""

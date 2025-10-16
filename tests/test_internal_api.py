@@ -1,6 +1,7 @@
 """Tests for internal API endpoints."""
 
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -155,3 +156,33 @@ class TestInternalAPIIntegration:
 
             # In the new architecture, this returns only the default collection
             assert result == ["work_docs"]
+
+
+class TestInternalApiKeyConfiguration:
+    """Tests for internal API key configuration during app startup."""
+
+    def test_configure_internal_api_key_success(self, monkeypatch) -> None:
+        """Ensure helper invocation succeeds and logs fingerprint."""
+        import packages.webui.main as main_module
+
+        monkeypatch.setattr(main_module, "ensure_internal_api_key", lambda _settings: "test-key", raising=False)
+
+        with patch.object(main_module, "logger") as mock_logger:
+            main_module._configure_internal_api_key()
+
+        mock_logger.info.assert_called()
+
+    def test_configure_internal_api_key_failure(self, monkeypatch) -> None:
+        """Ensure failures propagate when helper raises RuntimeError."""
+        import packages.webui.main as main_module
+
+        def fail(_settings: Any) -> str:
+            raise RuntimeError("missing key")
+
+        monkeypatch.setattr(main_module, "ensure_internal_api_key", fail, raising=False)
+
+        with patch.object(main_module, "logger") as mock_logger:
+            with pytest.raises(RuntimeError):
+                main_module._configure_internal_api_key()
+
+        mock_logger.error.assert_called()

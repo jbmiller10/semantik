@@ -4,7 +4,6 @@ Creates and configures the FastAPI application
 """
 
 import logging
-import secrets
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -23,6 +22,7 @@ from starlette.responses import Response
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings as shared_settings
+from shared.config.internal_api_key import ensure_internal_api_key
 from shared.database import pg_connection_manager
 from shared.embedding import configure_global_embedding_service
 
@@ -78,18 +78,16 @@ def _configure_embedding_service() -> None:
 
 
 def _configure_internal_api_key() -> None:
-    """Configure internal API key, generating one if using the default value."""
-    if shared_settings.INTERNAL_API_KEY == "change-me-in-production":
-        # Generate a secure random key
-        generated_key = secrets.token_urlsafe(32)
-        shared_settings.INTERNAL_API_KEY = generated_key
-        logger.warning(
-            f"Generated internal API key for development. "
-            f"Set INTERNAL_API_KEY environment variable for production. "
-            f"Current key: {generated_key}"
-        )
-    else:
-        logger.info("Using configured internal API key")
+    """Ensure the internal API key is configured and persisted."""
+    import hashlib
+
+    try:
+        key = ensure_internal_api_key(shared_settings)
+        fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+        logger.info("Internal API key configured (fingerprint=%s)", fingerprint)
+    except RuntimeError as exc:
+        logger.error("Internal API key configuration failed: %s", exc)
+        raise
 
 
 def _validate_cors_origins(origins: list[str]) -> list[str]:

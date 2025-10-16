@@ -6,6 +6,13 @@ This guide provides comprehensive documentation for running Semantik with Docker
 
 ## Quick Start
 
+### Prerequisites
+
+Before running the wizard or any Docker workflow, ensure the following are installed and up to date:
+- Docker Engine 24+ (or Docker Desktop on macOS/Windows)
+- Docker Compose v2 (`docker compose` CLI)
+- Docker Buildx plugin (required for Bake-driven builds). On Debian/Ubuntu run `sudo apt-get install docker-buildx-plugin`; Docker Desktop already bundles Buildx.
+
 ### Using the Interactive Wizard (Recommended)
 
 The easiest way to get started is using the interactive setup wizard:
