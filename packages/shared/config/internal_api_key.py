@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import secrets
 from pathlib import Path
 from typing import Protocol
@@ -28,7 +27,7 @@ class _ConfigProtocol(Protocol):
 def ensure_internal_api_key(
     config: _ConfigProtocol,
     *,
-    key_file: os.PathLike[str] | str | Path | None = None,
+    key_file: Path | str | None = None,
 ) -> str:
     """Ensure the internal API key is available and synchronised across processes.
 
@@ -56,6 +55,7 @@ def ensure_internal_api_key(
     # 1. Prefer explicit configuration.
     explicit_key = _clean_key(config.INTERNAL_API_KEY)
     if explicit_key:
+        config.INTERNAL_API_KEY = explicit_key
         _persist_key_if_needed(resolved_path, explicit_key)
         return explicit_key
 
@@ -108,7 +108,7 @@ def _clean_key(raw_key: str | None) -> str | None:
     return cleaned or None
 
 
-def _read_key_from_file(path: os.PathLike[str] | str | Path) -> str | None:
+def _read_key_from_file(path: Path | str) -> str | None:
     """Read and validate the key from disk."""
     path = Path(path)
     try:
@@ -121,7 +121,7 @@ def _read_key_from_file(path: os.PathLike[str] | str | Path) -> str | None:
         return None
 
 
-def _persist_key_if_needed(path: os.PathLike[str] | str | Path, key: str, *, force_write: bool = False) -> None:
+def _persist_key_if_needed(path: Path | str, key: str, *, force_write: bool = False) -> None:
     """Persist the key to disk if missing or different."""
     path = Path(path)
     try:
