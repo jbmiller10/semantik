@@ -55,9 +55,7 @@ def test_get_collection_metadata_retrieves_by_id(mock_qdrant_client):
 
     result = get_collection_metadata(mock_qdrant_client, "project_alpha")
 
-    mock_qdrant_client.retrieve.assert_called_once_with(
-        collection_name=METADATA_COLLECTION, ids=["project_alpha"]
-    )
+    mock_qdrant_client.retrieve.assert_called_once_with(collection_name=METADATA_COLLECTION, ids=["project_alpha"])
     assert result == payload
 
 
