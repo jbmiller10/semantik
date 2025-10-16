@@ -5,9 +5,11 @@ This module provides comprehensive RESTful API endpoints for chunking operations
 including strategy management, preview operations, collection processing, and analytics.
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any, cast
+import inspect
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -59,6 +61,22 @@ from packages.webui.services.factory import get_chunking_service, get_collection
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
+
+
+async def _resolve_service_payload(payload: Any) -> Any:
+    """Normalize service-layer results into API-compatible responses."""
+
+    if inspect.isawaitable(payload):
+        payload = await payload
+
+    to_api = getattr(payload, "to_api_model", None)
+    if callable(to_api):
+        result = to_api()
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    return payload
 
 
 # Note: Exception handlers should be registered at the app level, not router level
@@ -623,7 +641,8 @@ async def get_collection_chunks(
             page_size=page_size,
             document_id=document_id,
         )
-        return cast(ChunkListResponse, chunks_dto.to_api_model())
+        payload = await _resolve_service_payload(chunks_dto)
+        return cast(ChunkListResponse, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
@@ -698,7 +717,8 @@ async def get_global_metrics(
             period_days=period_days,
             user_id=_current_user.get("id") if _current_user else None,
         )
-        return cast(GlobalMetrics, metrics_dto.to_api_model())
+        payload = await _resolve_service_payload(metrics_dto)
+        return cast(GlobalMetrics, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
@@ -758,7 +778,8 @@ async def get_quality_scores(
     """
     try:
         quality_dto = await service.get_quality_scores(collection_id=collection_id)
-        return cast(QualityAnalysis, quality_dto.to_api_model())
+        payload = await _resolve_service_payload(quality_dto)
+        return cast(QualityAnalysis, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
@@ -792,7 +813,8 @@ async def analyze_document(
             user_id=_current_user.get("id") if _current_user else None,
             deep_analysis=analysis_request.deep_analysis,
         )
-        return cast(DocumentAnalysisResponse, analysis_dto.to_api_model())
+        payload = await _resolve_service_payload(analysis_dto)
+        return cast(DocumentAnalysisResponse, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
@@ -834,7 +856,8 @@ async def save_configuration(
             tags=config_request.tags,
             user_id=int(user_id),
         )
-        return cast(SavedConfiguration, config_dto.to_api_model())
+        payload = await _resolve_service_payload(config_dto)
+        return cast(SavedConfiguration, payload)
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
@@ -871,7 +894,11 @@ async def list_configurations(
             strategy=strategy.value if strategy else None,
             is_default=is_default,
         )
-        return [cast(SavedConfiguration, dto.to_api_model()) for dto in configs_dto]
+        resolved = []
+        for dto in configs_dto:
+            payload = await _resolve_service_payload(dto)
+            resolved.append(cast(SavedConfiguration, payload))
+        return resolved
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
