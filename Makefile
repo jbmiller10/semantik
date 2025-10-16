@@ -52,32 +52,32 @@ help:
 	@echo "  docker-dev-logs View logs from development services"
 
 install:
-	poetry install --no-dev
+	uv sync --frozen --no-default-groups
 
 dev-install:
-	poetry install
+	uv sync --frozen
 
 format:
-	poetry run black packages/vecpipe packages/webui packages/shared tests
-	poetry run isort packages/vecpipe packages/webui packages/shared tests
+	uv run black packages/vecpipe packages/webui packages/shared tests
+	uv run isort packages/vecpipe packages/webui packages/shared tests
 
 lint:
-	poetry run ruff check packages/vecpipe packages/webui packages/shared tests
+	uv run ruff check packages/vecpipe packages/webui packages/shared tests
 
 type-check:
-	poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
+	uv run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
-	poetry run pytest tests -v
+	uv run pytest tests -v
 
 test-ci:
-	poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"
+	uv run pytest tests -v --ignore=tests/e2e -m "not e2e"
 
 test-e2e:
-	poetry run pytest tests -v -m e2e
+	uv run pytest tests -v -m e2e
 
 test-coverage:
-	poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
+	uv run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

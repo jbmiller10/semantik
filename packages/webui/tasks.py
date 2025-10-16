@@ -2249,6 +2249,7 @@ async def _process_reindex_operation_impl(
                 batch = documents[i : i + batch_size]
 
                 for doc in batch:
+                    document_id = doc.get("id") if hasattr(doc, "get") else getattr(doc, "id", None)
                     try:
                         # Extract text from document
                         loop = asyncio.get_event_loop()
@@ -2429,13 +2430,13 @@ async def _process_reindex_operation_impl(
                         logger.info(f"Successfully reprocessed document {file_path}: {len(points)} vectors created")
 
                         # Update document with chunk count after successful reprocessing
-                        if doc.get("id") and all_chunks:
+                        if document_id and all_chunks:
                             await document_repo.update_status(
-                                doc["id"],
+                                document_id,
                                 DocumentStatus.COMPLETED,
                                 chunk_count=len(all_chunks),
                             )
-                            logger.info(f"Updated document {doc['id']} with chunk_count={len(all_chunks)}")
+                            logger.info(f"Updated document {document_id} with chunk_count={len(all_chunks)}")
 
                         # Free memory
                         del text_blocks, all_chunks, texts, embeddings_array, embeddings, points
@@ -2446,14 +2447,14 @@ async def _process_reindex_operation_impl(
                         failed_count += 1
 
                         # Mark failed document status
-                        if doc.get("id"):
+                        if document_id:
                             try:
                                 await document_repo.update_status(
-                                    doc["id"],
+                                    document_id,
                                     DocumentStatus.FAILED,
                                     error_message=str(e)[:500],  # Truncate error message to avoid DB overflow
                                 )
-                                logger.info(f"Marked document {doc['id']} as FAILED due to reprocessing error")
+                                logger.info(f"Marked document {document_id} as FAILED due to reprocessing error")
                             except Exception as update_error:
                                 logger.error(f"Failed to update document status to FAILED: {update_error}")
 

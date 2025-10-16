@@ -16,97 +16,100 @@ def check_python_version() -> None:
     print(f"✅ Python {sys.version.split()[0]} detected")
 
 
-def check_poetry() -> bool:
-    """Check if Poetry is installed, install if not"""
-    # Check common Poetry locations based on platform
-    poetry_cmd = None
+def check_uv() -> bool:
+    """Check if uv is installed, install if not"""
+    uv_cmd = None
 
-    # First check if poetry is in PATH
-    if shutil.which("poetry"):
-        poetry_cmd = "poetry"
+    # First check if uv is in PATH
+    if shutil.which("uv"):
+        uv_cmd = "uv"
     else:
         # Check platform-specific locations
         if sys.platform == "win32":
-            # Windows: Check AppData locations
-            appdata = os.environ.get("APPDATA", "")
+            # Windows: Check common installation locations
+            local_app = Path(os.environ.get("LOCALAPPDATA", ""))
             possible_paths = [
-                Path(appdata) / "Python" / "Scripts" / "poetry.exe",
-                Path(appdata) / "pypoetry" / "venv" / "Scripts" / "poetry.exe",
-                Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Python" / "Scripts" / "poetry.exe",
+                local_app / "uv" / "uv.exe",
+                Path(os.environ.get("APPDATA", "")) / "Python" / "Scripts" / "uv.exe",
+                Path.home() / ".local" / "bin" / "uv.exe",
             ]
         else:
             # macOS/Linux: Check home directory locations
             home = Path.home()
             possible_paths = [
-                home / ".local" / "bin" / "poetry",
-                home / ".poetry" / "bin" / "poetry",
-                Path("/usr/local/bin/poetry"),
+                home / ".local" / "bin" / "uv",
+                Path("/usr/local/bin/uv"),
             ]
 
         for path in possible_paths:
             if path and path.exists():
-                poetry_cmd = str(path)
+                uv_cmd = str(path)
                 break
 
-    if poetry_cmd:
-        print(f"✅ Poetry is installed at: {poetry_cmd}")
+    if uv_cmd:
+        print(f"✅ uv is installed at: {uv_cmd}")
         # Store for later use
-        os.environ["POETRY_CMD"] = poetry_cmd
+        os.environ["UV_CMD"] = uv_cmd
         return True
 
-    print("📦 Poetry not found. Would you like to install it? (recommended)")
-    response = input("Install Poetry? [Y/n]: ").strip().lower()
+    print("📦 uv not found. Would you like to install it? (recommended)")
+    response = input("Install uv? [Y/n]: ").strip().lower()
 
     if response in ["", "y", "yes"]:
-        print("Installing Poetry...")
+        print("Installing uv...")
         try:
-            # Download and run Poetry installer
-            import urllib.request
+            if sys.platform == "win32":
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    "iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex",
+                ]
+            else:
+                cmd = ["sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"]
 
-            installer_url = "https://install.python-poetry.org"
-            with urllib.request.urlopen(installer_url) as response:
-                installer_script = response.read().decode("utf-8")
-
-            # Run the installer
-            result = subprocess.run([sys.executable, "-c", installer_script], capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode == 0:
-                print("✅ Poetry installed successfully")
+                print("✅ uv installed successfully")
 
                 # Platform-specific instructions
                 if sys.platform == "win32":
-                    print("ℹ️  You may need to restart your terminal or add Poetry to PATH:")
-                    print(f"   {os.environ.get('APPDATA')}\\Python\\Scripts")
+                    print("ℹ️  You may need to restart your terminal or add uv to PATH:")
+                    print(f"   {Path(os.environ.get('LOCALAPPDATA', '')) / 'uv'}")
+                    print(f"   {Path(os.environ.get('APPDATA', '')) / 'Python' / 'Scripts'}")
                 else:
                     print("ℹ️  You may need to restart your terminal or run:")
                     print('   export PATH="$HOME/.local/bin:$PATH"')
 
                 # Try to find Poetry again after installation
-                return check_poetry()
-            print(f"❌ Failed to install Poetry: {result.stderr}")
+                return check_uv()
+            print(f"❌ Failed to install uv: {result.stderr}")
             return False
 
         except Exception as e:
-            print(f"❌ Error installing Poetry: {e}")
+            print(f"❌ Error installing uv: {e}")
             return False
     else:
-        print("❌ Poetry is required to run the setup wizard")
-        print("Please install it manually: https://python-poetry.org/docs/#installation")
+        print("❌ uv is required to run the setup wizard")
+        print("Please install it manually: https://github.com/astral-sh/uv#installation")
         return False
 
 
-def get_poetry_cmd() -> str:
-    """Get the Poetry command to use"""
-    return os.environ.get("POETRY_CMD", "poetry")
+def get_uv_cmd() -> str:
+    """Get the uv command to use"""
+    return os.environ.get("UV_CMD", "uv")
 
 
 def check_dependencies() -> bool:
     """Check if required dependencies are installed"""
     try:
         # Try to import the required modules
-        poetry_cmd = get_poetry_cmd()
+        uv_cmd = get_uv_cmd()
         result = subprocess.run(
-            [poetry_cmd, "run", "python", "-c", "import questionary, rich"], capture_output=True, text=True
+            [uv_cmd, "run", "python", "-c", "import questionary, rich"], capture_output=True, text=True
         )
         return result.returncode == 0
     except Exception:
@@ -114,11 +117,11 @@ def check_dependencies() -> bool:
 
 
 def install_dependencies() -> bool:
-    """Install required dependencies using Poetry"""
+    """Install required dependencies using uv"""
     print("📦 Installing dependencies...")
     try:
-        poetry_cmd = get_poetry_cmd()
-        result = subprocess.run([poetry_cmd, "install", "--no-interaction"], capture_output=True, text=True)
+        uv_cmd = get_uv_cmd()
+        result = subprocess.run([uv_cmd, "sync", "--frozen"], capture_output=True, text=True)
 
         if result.returncode == 0:
             print("✅ Dependencies installed successfully")
@@ -134,8 +137,8 @@ def run_wizard() -> None:
     """Run the actual setup wizard"""
     print("\n🧙 Starting interactive setup wizard...\n")
     try:
-        poetry_cmd = get_poetry_cmd()
-        subprocess.run([poetry_cmd, "run", "python", "docker_setup_tui.py"])
+        uv_cmd = get_uv_cmd()
+        subprocess.run([uv_cmd, "run", "python", "docker_setup_tui.py"])
     except KeyboardInterrupt:
         print("\n\nSetup cancelled by user")
         sys.exit(0)
@@ -157,8 +160,8 @@ def main() -> None:
     # Check Python version
     check_python_version()
 
-    # Check/install Poetry
-    if not check_poetry():
+    # Check/install uv
+    if not check_uv():
         sys.exit(1)
 
     # Check/install dependencies

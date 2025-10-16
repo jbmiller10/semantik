@@ -14,7 +14,7 @@ echo ""
 
 # Run the migration
 echo "Applying migration..."
-poetry run alembic upgrade head
+uv run alembic upgrade head
 
 if [ $? -ne 0 ]; then
     echo "❌ Migration failed!"
@@ -26,7 +26,7 @@ echo ""
 
 # Run the tests
 echo "Running partition tests..."
-poetry run pytest tests/database/test_partitioning.py -v
+uv run pytest tests/database/test_partitioning.py -v
 
 if [ $? -ne 0 ]; then
     echo "❌ Some tests failed!"
@@ -35,7 +35,7 @@ fi
 
 echo ""
 echo "Running migration tests..."
-poetry run pytest tests/database/test_migration_100_partitions.py -v
+uv run pytest tests/database/test_migration_100_partitions.py -v
 
 if [ $? -ne 0 ]; then
     echo "❌ Some migration tests failed!"
@@ -50,7 +50,7 @@ echo "=================================="
 # Query partition health
 echo ""
 echo "Checking partition health..."
-poetry run python -c "
+uv run python -c "
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker

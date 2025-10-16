@@ -46,10 +46,10 @@ All returning: assert 500 == 200 (Internal Server Error)
 
 ```bash
 # Add fakeredis for proper Redis mocking
-poetry add fakeredis --group dev
+uv add --group dev fakeredis
 
 # Verify installation
-poetry show fakeredis
+uv pip show fakeredis
 ```
 
 ### Phase 2: Create Global Test Configuration (10 minutes)
@@ -413,32 +413,27 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Install Poetry
-      run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-    
-    - name: Configure Poetry
-      run: |
-        poetry config virtualenvs.create true
-        poetry config virtualenvs.in-project true
-    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v1
+
     - name: Cache dependencies
       uses: actions/cache@v3
       with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
-    
+        path: |
+          .venv
+          ~/.cache/uv
+        key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+
     - name: Install dependencies
-      run: poetry install --with dev
-    
+      run: uv sync --frozen
+
     - name: Run migrations
       env:
         DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
         REDIS_URL: redis://localhost:6379
       run: |
-        poetry run alembic upgrade head
-    
+        uv run alembic upgrade head
+
     - name: Run tests
       env:
         TESTING: "true"
@@ -447,7 +442,7 @@ jobs:
         REDIS_URL: redis://localhost:6379
         PYTHONPATH: ${{ github.workspace }}
       run: |
-        poetry run pytest -v --cov=packages --cov-report=xml
+        uv run pytest -v --cov=packages --cov-report=xml
     
     - name: Upload coverage
       uses: codecov/codecov-action@v3

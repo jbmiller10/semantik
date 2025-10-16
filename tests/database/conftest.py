@@ -42,7 +42,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 
     Requirements:
     - PostgreSQL must be running (use `make docker-postgres-up`)
-    - Database migrations must be applied (use `poetry run alembic upgrade head`)
+    - Database migrations must be applied (use `uv run alembic upgrade head`)
     """
     import sys
 
@@ -245,9 +245,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             )
     except Exception as e:
         await engine.dispose()
-        pytest.skip(
-            f"Database setup failed: {e}\nMake sure migrations are applied with: poetry run alembic upgrade head"
-        )
+        pytest.skip(f"Database setup failed: {e}\nMake sure migrations are applied with: uv run alembic upgrade head")
 
     # Create a new session for the test
     try:

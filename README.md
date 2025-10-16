@@ -129,7 +129,7 @@ The setup wizard guides you through the entire configuration process with an int
    
    The wizard will automatically:
    - Work on Windows, macOS, and Linux
-   - Install Poetry if needed
+   - Install uv if needed
    - Install all required dependencies
    - Launch the interactive setup
 
@@ -199,11 +199,11 @@ That's it!  Semantik is now running with:
    - Python 3.11+
    - Node.js 18+
    - Running Qdrant instance
-   - Poetry for Python dependency management
+   - uv for Python dependency management
 
 2. **Setup:**
    ```bash
-   poetry install
+   uv sync
    make frontend-build
    cp .env.example .env
    # Edit .env with your configuration
@@ -345,5 +345,4 @@ AI tooling was used in the development of this repo. All code was reviewed and t
 <li><b>Integrated Model Context Protocol Server</b>: Seamlessly bring the knowledge of your corpus to the LLM of your choice.</li>
 <li><b>Contextually aware document chunking:</b></li>
 <ul>
-
 

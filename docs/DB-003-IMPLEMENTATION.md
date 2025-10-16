@@ -82,13 +82,13 @@ The migration follows this safe process:
 ### Apply the Migration
 ```bash
 # Check current migration status
-poetry run alembic current
+uv run alembic current
 
 # Apply the new migration
-poetry run alembic upgrade head
+uv run alembic upgrade head
 
 # Or specifically this migration
-poetry run alembic upgrade db003_replace_trigger
+uv run alembic upgrade db003_replace_trigger
 ```
 
 ### Verify Implementation
@@ -103,7 +103,7 @@ curl http://localhost:8000/admin/partition/health
 ### Rollback (if needed)
 ```bash
 # Revert to trigger-based implementation
-poetry run alembic downgrade -1
+uv run alembic downgrade -1
 ```
 
 ## Performance Improvements

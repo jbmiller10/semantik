@@ -51,12 +51,12 @@ Updated `packages/shared/database/models.py`:
 
 2. **Run the Migration**:
    ```bash
-   poetry run alembic upgrade head
+   uv run alembic upgrade head
    ```
 
 3. **Verify the Migration**:
    ```bash
-   poetry run python test_migration_fix.py
+   uv run python test_migration_fix.py
    ```
 
 ## Important Notes
@@ -90,7 +90,7 @@ Run the provided test script to verify:
 4. Correct partition count
 
 ```bash
-poetry run python test_migration_fix.py
+uv run python test_migration_fix.py
 ```
 
 ## Rollback Instructions
@@ -98,7 +98,7 @@ poetry run python test_migration_fix.py
 If you need to rollback the changes:
 
 ```bash
-poetry run alembic downgrade 52db15bd2686
+uv run alembic downgrade 52db15bd2686
 ```
 
 This will:

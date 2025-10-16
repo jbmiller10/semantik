@@ -24,31 +24,32 @@ REM Check Python version
 for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
 echo Python %PYTHON_VERSION% detected
 
-REM Check if Poetry is installed
-where poetry >nul 2>&1
+REM Check if uv is installed
+where uv >nul 2>&1
 if %errorlevel% neq 0 (
-    echo Poetry not found. Installing Poetry...
-    curl -sSL https://install.python-poetry.org | python -
+    echo uv not found. Installing uv...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex"
     
-    REM Add Poetry to PATH for this session
-    set PATH=%APPDATA%\Python\Scripts;%PATH%
+    REM Add uv to PATH for this session
+    set PATH=%USERPROFILE%\.local\bin;%PATH%
+    set PATH=%USERPROFILE%\AppData\Local\uv;%PATH%
     
     REM Verify installation
-    where poetry >nul 2>&1
+    where uv >nul 2>&1
     if %errorlevel% neq 0 (
-        echo Error: Failed to install Poetry
-        echo Please install Poetry manually: https://python-poetry.org/docs/#installation
+        echo Error: Failed to install uv
+        echo Please install uv manually: https://github.com/astral-sh/uv#installation
         exit /b 1
     )
-    echo Poetry installed successfully
+    echo uv installed successfully
 )
 
 REM Check if dependencies are installed
 echo Checking dependencies...
-poetry run python -c "import questionary, rich" >nul 2>&1
+uv run python -c "import questionary, rich" >nul 2>&1
 if %errorlevel% neq 0 (
     echo Installing dependencies...
-    poetry install --no-interaction --no-ansi
+    uv sync --frozen
     echo Dependencies installed
 ) else (
     echo Dependencies already installed
@@ -58,4 +59,4 @@ REM Run the wizard
 echo.
 echo Starting interactive setup wizard...
 echo.
-poetry run python docker_setup_tui.py
+uv run python docker_setup_tui.py

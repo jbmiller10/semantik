@@ -80,10 +80,10 @@
 </migration-patterns>
 
 <running-migrations>
-  <command>poetry run alembic upgrade head</command>
-  <rollback>poetry run alembic downgrade -1</command>
-  <status>poetry run alembic current</command>
-  <history>poetry run alembic history</history>
+  <command>uv run alembic upgrade head</command>
+  <rollback>uv run alembic downgrade -1</command>
+  <status>uv run alembic current</status>
+  <history>uv run alembic history</history>
 </running-migrations>
 
 <backup-utilities>
@@ -98,7 +98,7 @@
   
   <backup-manager>
     <!-- Command-line backup management -->
-    poetry run python alembic/migrations_utils/backup_manager.py \
+    uv run python alembic/migrations_utils/backup_manager.py \
       --database-url $DATABASE_URL \
       --action list  # list, cleanup, verify, extend, status
   </backup-manager>
