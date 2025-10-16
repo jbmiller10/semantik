@@ -28,9 +28,9 @@ from packages.webui.dependencies import get_collection_for_user  # noqa: E402
 from packages.webui.services.chunking_service import ChunkingService  # noqa: E402
 from packages.webui.services.collection_service import CollectionService  # noqa: E402
 from packages.webui.services.dtos import (  # noqa: E402
+    ServiceChunkingStats,
     ServiceChunkList,
     ServiceChunkRecord,
-    ServiceChunkingStats,
     ServiceDocumentAnalysis,
     ServiceGlobalMetrics,
     ServiceQualityAnalysis,
