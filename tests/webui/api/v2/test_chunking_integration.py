@@ -28,7 +28,11 @@ from packages.webui.services.dtos.chunking_dtos import (
     ServiceChunkingStats,
     ServiceChunkPreview,
     ServiceCompareResponse,
+    ServiceDocumentAnalysis,
+    ServiceGlobalMetrics,
     ServicePreviewResponse,
+    ServiceQualityAnalysis,
+    ServiceSavedConfiguration,
     ServiceStrategyComparison,
     ServiceStrategyInfo,
     ServiceStrategyMetrics,
@@ -340,6 +344,63 @@ def mock_chunking_service():
             "memory_usage_mb": 256,
         },
     )
+
+    now = datetime.now(UTC)
+    service.get_global_metrics.return_value = ServiceGlobalMetrics(
+        total_collections_processed=3,
+        total_chunks_created=2000,
+        total_documents_processed=120,
+        avg_chunks_per_document=16.6,
+        most_used_strategy="recursive",
+        avg_processing_time=10.5,
+        success_rate=0.92,
+        period_start=now - timedelta(days=30),
+        period_end=now,
+    )
+
+    service.get_quality_scores.return_value = ServiceQualityAnalysis(
+        overall_quality="good",
+        quality_score=0.82,
+        coherence_score=0.8,
+        completeness_score=0.78,
+        size_consistency=0.75,
+        recommendations=["Monitor chunk variance"],
+        issues_detected=[],
+    )
+
+    service.analyze_document.return_value = ServiceDocumentAnalysis(
+        document_type="pdf",
+        content_structure={"sections": 5},
+        recommended_strategy=ServiceStrategyRecommendation(
+            strategy="recursive",
+            confidence=0.88,
+            reasoning="Structured sections detected",
+            alternatives=["semantic"],
+            chunk_size=900,
+            chunk_overlap=90,
+        ),
+        estimated_chunks={"recursive": 8},
+        complexity_score=0.65,
+        special_considerations=[],
+    )
+
+    async def save_configuration_side_effect(**kwargs):
+        return ServiceSavedConfiguration(
+            id=str(uuid.uuid4()),
+            name=kwargs.get("name", "Default"),
+            description=kwargs.get("description"),
+            strategy=kwargs.get("strategy", "recursive"),
+            config=kwargs.get("config", {}),
+            created_by=kwargs.get("user_id", 1),
+            created_at=now,
+            updated_at=now,
+            usage_count=0,
+            is_default=kwargs.get("is_default", False),
+            tags=kwargs.get("tags", []),
+        )
+
+    service.save_configuration.side_effect = save_configuration_side_effect
+    service.list_configurations.side_effect = lambda **_: []
 
     # Mock get_chunking_progress
     service.get_chunking_progress.return_value = {

@@ -5,13 +5,17 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from packages.shared.config.postgres import postgres_config
 from packages.shared.database.models import (
     ApiKey,
     Base,
+    ChunkingConfig,
+    ChunkingStrategy,
     Collection,
     CollectionAuditLog,
     CollectionPermission,
@@ -33,6 +37,7 @@ from packages.shared.database.models import (
 @pytest.fixture()
 def db_session() -> Generator[Session, None, None]:
     """Create a PostgreSQL database session for testing."""
+    use_sqlite_fallback = False
 
     # Use PostgreSQL for tests - get URL from environment or config
     database_url = os.environ.get("DATABASE_URL")
@@ -43,32 +48,71 @@ def db_session() -> Generator[Session, None, None]:
         # Ensure using sync driver
         database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    engine = create_engine(database_url)
+    try:
+        engine = create_engine(database_url, future=True)
+        # Quickly validate connection; if it fails we fall back to SQLite.
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except OperationalError:
+        # Fallback to in-memory SQLite for environments without Postgres.
+        use_sqlite_fallback = True
+        engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            future=True,
+        )
+
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, _connection_record):  # noqa: ANN001
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     # Helper function to drop views before tables
+    timezone_tables = [
+        User.__table__,
+        Collection.__table__,
+        Document.__table__,
+        ApiKey.__table__,
+        ChunkingStrategy.__table__,
+        ChunkingConfig.__table__,
+        CollectionSource.__table__,
+        CollectionPermission.__table__,
+        CollectionResourceLimits.__table__,
+        CollectionAuditLog.__table__,
+        RefreshToken.__table__,
+        Operation.__table__,
+        OperationMetrics.__table__,
+    ]
+
     def drop_views_and_tables(connection) -> None:
-        # Drop views first (in dependency order)
-        views_to_drop = [
-            "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
-            "DROP VIEW IF EXISTS partition_health_summary CASCADE",
-            "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_distribution CASCADE",
-            "DROP VIEW IF EXISTS partition_health CASCADE",
-            "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
-            "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
-        ]
+        if not use_sqlite_fallback:
+            # Drop views first (in dependency order)
+            views_to_drop = [
+                "DROP VIEW IF EXISTS partition_hot_spots CASCADE",
+                "DROP VIEW IF EXISTS partition_health_summary CASCADE",
+                "DROP VIEW IF EXISTS partition_size_distribution CASCADE",
+                "DROP VIEW IF EXISTS partition_chunk_distribution CASCADE",
+                "DROP VIEW IF EXISTS partition_distribution CASCADE",
+                "DROP VIEW IF EXISTS partition_health CASCADE",
+                "DROP VIEW IF EXISTS active_chunking_configs CASCADE",
+                "DROP MATERIALIZED VIEW IF EXISTS collection_chunking_stats CASCADE",
+            ]
 
-        for view_sql in views_to_drop:
-            connection.execute(text(view_sql))
+            for view_sql in views_to_drop:
+                connection.execute(text(view_sql))
 
-        # Now drop all tables
-        Base.metadata.drop_all(connection)
+            # Now drop all tables
+            Base.metadata.drop_all(connection)
+        else:
+            # Limit scope when using SQLite to avoid unsupported constructs.
+            Base.metadata.drop_all(connection, tables=timezone_tables)
 
     # Drop all views and tables, then recreate for test isolation
     with engine.begin() as conn:
         drop_views_and_tables(conn)
-        Base.metadata.create_all(conn)
+        Base.metadata.create_all(conn, tables=timezone_tables if use_sqlite_fallback else None)
 
     session_factory = sessionmaker(bind=engine)
     session = session_factory()

@@ -17,14 +17,20 @@ from packages.shared.chunking.infrastructure.exceptions import (
     ValidationError,
 )
 from packages.webui.api.v2.chunking import (
+    analyze_document,
     compare_strategies,
     generate_preview,
     get_cached_preview,
     get_chunking_stats,
+    get_collection_chunks,
+    get_global_metrics,
     get_operation_progress,
+    get_quality_scores,
     get_strategy_details,
+    list_configurations,
     list_strategies,
     recommend_strategy,
+    save_configuration,
     start_chunking_operation,
 )
 from packages.webui.api.v2.chunking_schemas import (
@@ -33,15 +39,23 @@ from packages.webui.api.v2.chunking_schemas import (
     ChunkingStatus,
     ChunkingStrategy,
     CompareRequest,
+    CreateConfigurationRequest,
+    DocumentAnalysisRequest,
     PreviewRequest,
 )
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.dtos.chunking_dtos import (
     ServiceChunkingStats,
+    ServiceChunkList,
     ServiceChunkPreview,
+    ServiceChunkRecord,
     ServiceCompareResponse,
+    ServiceDocumentAnalysis,
+    ServiceGlobalMetrics,
     ServicePreviewResponse,
+    ServiceQualityAnalysis,
+    ServiceSavedConfiguration,
     ServiceStrategyComparison,
     ServiceStrategyInfo,
     ServiceStrategyRecommendation,
@@ -60,6 +74,45 @@ def mock_chunking_service() -> AsyncMock:
     service = AsyncMock(spec=ChunkingService)
 
     # Setup default responses
+    service.get_collection_chunks.return_value = ServiceChunkList(
+        chunks=[
+            ServiceChunkRecord(
+                id=1,
+                collection_id="col-123",
+                document_id="doc-1",
+                chunk_index=0,
+                content="Sample chunk",
+                token_count=120,
+                metadata={"source": "unit-test"},
+            )
+        ],
+        total=1,
+        page=1,
+        page_size=20,
+    )
+
+    service.get_global_metrics.return_value = ServiceGlobalMetrics(
+        total_collections_processed=3,
+        total_chunks_created=1500,
+        total_documents_processed=75,
+        avg_chunks_per_document=20.0,
+        most_used_strategy=ChunkingStrategy.RECURSIVE,
+        avg_processing_time=15.0,
+        success_rate=0.9,
+        period_start=datetime.now(UTC) - timedelta(days=30),
+        period_end=datetime.now(UTC),
+    )
+
+    service.get_quality_scores.return_value = ServiceQualityAnalysis(
+        overall_quality="good",
+        quality_score=0.82,
+        coherence_score=0.8,
+        completeness_score=0.85,
+        size_consistency=0.78,
+        recommendations=["Consider semantic chunking"],
+        issues_detected=["Variance slightly high"],
+    )
+
     service.get_available_strategies_for_api.return_value = [
         ServiceStrategyInfo(
             id="recursive",
@@ -102,6 +155,62 @@ def mock_chunking_service() -> AsyncMock:
         chunk_overlap=100,
         alternatives=[],
     )
+
+    service.analyze_document.return_value = ServiceDocumentAnalysis(
+        document_type="markdown",
+        content_structure={"paragraphs": 4, "sentences": 20, "words": 600, "characters": 3200},
+        recommended_strategy=ServiceStrategyRecommendation(
+            strategy=ChunkingStrategy.RECURSIVE,
+            reasoning="Handles markdown structure well",
+            confidence=0.9,
+            chunk_size=1200,
+            chunk_overlap=120,
+            alternatives=[ChunkingStrategy.MARKDOWN],
+        ),
+        estimated_chunks={ChunkingStrategy.RECURSIVE: 6, ChunkingStrategy.SEMANTIC: 5},
+        complexity_score=0.7,
+        special_considerations=["Contains code blocks"],
+    )
+
+    service.save_configuration.return_value = ServiceSavedConfiguration(
+        id="config-1",
+        name="Custom recursive",
+        description="Tailored for docs",
+        strategy=ChunkingStrategy.RECURSIVE,
+        config={
+            "strategy": ChunkingStrategy.RECURSIVE,
+            "chunk_size": 1400,
+            "chunk_overlap": 140,
+            "preserve_sentences": True,
+        },
+        created_by=1,
+        created_at=datetime.now(UTC) - timedelta(days=1),
+        updated_at=datetime.now(UTC),
+        usage_count=0,
+        is_default=False,
+        tags=["docs"],
+    )
+
+    service.list_configurations.return_value = [
+        ServiceSavedConfiguration(
+            id="config-1",
+            name="Custom recursive",
+            description="Tailored for docs",
+            strategy=ChunkingStrategy.RECURSIVE,
+            config={
+                "strategy": ChunkingStrategy.RECURSIVE,
+                "chunk_size": 1400,
+                "chunk_overlap": 140,
+                "preserve_sentences": True,
+            },
+            created_by=1,
+            created_at=datetime.now(UTC) - timedelta(days=2),
+            updated_at=datetime.now(UTC) - timedelta(days=1),
+            usage_count=2,
+            is_default=False,
+            tags=["docs"],
+        )
+    ]
 
     service.preview_chunking.return_value = ServicePreviewResponse(
         preview_id="test-preview-id",
@@ -445,6 +554,118 @@ class TestPreviewEndpoints:
         assert result.comparisons[0].strategy == ChunkingStrategy.RECURSIVE
         assert result.recommendation.recommended_strategy == ChunkingStrategy.RECURSIVE
         mock_chunking_service.compare_strategies_for_api.assert_called_once()
+
+
+class TestAnalyticsEndpoints:
+    """Tests for analytics and reporting endpoints."""
+
+    @pytest.mark.asyncio()
+    async def test_get_collection_chunks_success(
+        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
+    ) -> None:
+        mock_request = create_autospec(Request, spec_set=True)
+        result = await get_collection_chunks(
+            request=mock_request,
+            collection_uuid="col-123",
+            page=1,
+            page_size=20,
+            document_id=None,
+            _current_user=mock_user,
+            collection={"id": "col-123"},
+            service=mock_chunking_service,
+        )
+
+        assert result.total == 1
+        assert result.chunks[0]["content"] == "Sample chunk"
+        mock_chunking_service.get_collection_chunks.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_get_global_metrics_success(
+        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
+    ) -> None:
+        mock_request = create_autospec(Request, spec_set=True)
+        result = await get_global_metrics(
+            request=mock_request,
+            period_days=30,
+            _current_user=mock_user,
+            service=mock_chunking_service,
+        )
+
+        assert result.total_chunks_created == 1500
+        assert result.most_used_strategy == ChunkingStrategy.RECURSIVE
+        mock_chunking_service.get_global_metrics.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_get_quality_scores_success(
+        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
+    ) -> None:
+        result = await get_quality_scores(
+            collection_id=None,
+            _current_user=mock_user,
+            service=mock_chunking_service,
+        )
+
+        assert result.quality_score == pytest.approx(0.82)
+        mock_chunking_service.get_quality_scores.assert_called_once_with(collection_id=None)
+
+    @pytest.mark.asyncio()
+    async def test_analyze_document_success(self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock) -> None:
+        request = DocumentAnalysisRequest(
+            content="Sample text",
+            file_type="markdown",
+            deep_analysis=True,
+        )
+
+        result = await analyze_document(
+            analysis_request=request,
+            _current_user=mock_user,
+            service=mock_chunking_service,
+        )
+
+        assert result.document_type == "markdown"
+        assert result.recommended_strategy.recommended_strategy == ChunkingStrategy.RECURSIVE
+        mock_chunking_service.analyze_document.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_save_configuration_success(
+        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
+    ) -> None:
+        request = CreateConfigurationRequest(
+            name="Custom recursive",
+            description="Tailored for docs",
+            strategy=ChunkingStrategy.RECURSIVE,
+            config=ChunkingConfigBase(
+                strategy=ChunkingStrategy.RECURSIVE,
+                chunk_size=1400,
+                chunk_overlap=140,
+            ),
+            is_default=False,
+            tags=["docs"],
+        )
+
+        result = await save_configuration(
+            config_request=request,
+            _current_user=mock_user,
+            service=mock_chunking_service,
+        )
+
+        assert result.name == "Custom recursive"
+        mock_chunking_service.save_configuration.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_list_configurations_success(
+        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
+    ) -> None:
+        result = await list_configurations(
+            strategy=None,
+            is_default=None,
+            _current_user=mock_user,
+            service=mock_chunking_service,
+        )
+
+        assert len(result) == 1
+        assert result[0].name == "Custom recursive"
+        mock_chunking_service.list_configurations.assert_called_once()
 
 
 class TestOperationEndpoints:

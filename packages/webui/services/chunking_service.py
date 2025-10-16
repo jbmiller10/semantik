@@ -9,13 +9,18 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
+import re
 import uuid
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from statistics import fmean
 from typing import Any, cast
 
 import redis.asyncio as aioredis
 import shared.text_processing.chunking as token_chunking
+from shared.config import settings as shared_settings
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,6 +55,7 @@ from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 # All exceptions now come from the new infrastructure layer
 # Old chunking_exceptions module should be deleted as we're PRE-RELEASE
@@ -67,9 +73,15 @@ from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
 from .dtos import (
     ServiceChunkingStats,
+    ServiceChunkList,
     ServiceChunkPreview,
+    ServiceChunkRecord,
     ServiceCompareResponse,
+    ServiceDocumentAnalysis,
+    ServiceGlobalMetrics,
     ServicePreviewResponse,
+    ServiceQualityAnalysis,
+    ServiceSavedConfiguration,
     ServiceStrategyComparison,
     ServiceStrategyInfo,
     ServiceStrategyMetrics,
@@ -80,6 +92,35 @@ logger = logging.getLogger(__name__)
 
 # Constants for chunking configuration
 DEFAULT_MIN_TOKEN_THRESHOLD = 100  # Minimum tokens to ensure meaningful chunks
+
+
+def _read_json_file(path: Path) -> dict[str, Any]:
+    """Safely read JSON content from a file."""
+    try:
+        if not path.exists():
+            return {"configs": {}}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        logger.warning("Failed to decode JSON from %s: %s", path, exc)
+        return {"configs": {}}
+    except OSError as exc:  # pragma: no cover - defensive
+        logger.error("Unable to read %s: %s", path, exc)
+        return {"configs": {}}
+
+
+def _write_json_file(path: Path, payload: dict[str, Any]) -> None:
+    """Persist JSON payload to disk atomically."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(payload, default=_json_default, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _json_default(value: Any) -> Any:
+    """JSON serializer that understands datetime objects."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
 
 
 class ChunkingStatistics:
@@ -166,6 +207,56 @@ class ChunkingService:
         # Initialize cache manager if Redis is available
         self.cache_manager = CacheManager(redis_client) if redis_client else None
         self.query_monitor = QueryMonitor()
+        self._config_store_path = shared_settings.data_dir / "chunking_configs.json"
+
+    async def _load_config_store(self) -> dict[str, list[dict[str, Any]]]:
+        """Load saved configurations grouped by user."""
+        data = await asyncio.to_thread(_read_json_file, self._config_store_path)
+        configs = data.get("configs", {}) if isinstance(data, dict) else {}
+        # Ensure proper types
+        sanitized: dict[str, list[dict[str, Any]]] = {}
+        for user_id, entries in configs.items():
+            if isinstance(user_id, str) and isinstance(entries, list):
+                sanitized[user_id] = [entry for entry in entries if isinstance(entry, dict)]
+        return sanitized
+
+    async def _write_config_store(self, configs: dict[str, list[dict[str, Any]]]) -> None:
+        """Persist configuration store to disk."""
+        await asyncio.to_thread(_write_json_file, self._config_store_path, {"configs": configs})
+
+    def _deserialize_saved_config(self, payload: dict[str, Any]) -> ServiceSavedConfiguration:
+        """Convert raw payload into ServiceSavedConfiguration."""
+        created_at = self._parse_datetime(payload.get("created_at"))
+        updated_at = self._parse_datetime(payload.get("updated_at"))
+        tags = payload.get("tags") or []
+        if not isinstance(tags, list):
+            tags = [str(tags)]
+
+        return ServiceSavedConfiguration(
+            id=str(payload.get("id")),
+            name=str(payload.get("name", "Unnamed configuration")),
+            description=payload.get("description"),
+            strategy=payload.get("strategy", "fixed_size"),
+            config=dict(payload.get("config", {})),
+            created_by=int(payload.get("created_by", 0)),
+            created_at=created_at,
+            updated_at=updated_at,
+            usage_count=int(payload.get("usage_count", 0)),
+            is_default=bool(payload.get("is_default", False)),
+            tags=[str(tag) for tag in tags],
+        )
+
+    @staticmethod
+    def _parse_datetime(value: Any) -> datetime:
+        """Parse datetime from ISO string, defaulting to now if parsing fails."""
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except ValueError:
+                pass
+        return datetime.now(UTC)
 
     async def get_available_strategies(self) -> list[dict[str, Any]]:
         """Get list of available chunking strategies with details.
@@ -1536,6 +1627,152 @@ class ChunkingService:
             # Return default metrics using helper method
             return self._get_default_metrics()
 
+    async def get_collection_chunks(
+        self,
+        collection_id: str,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        document_id: str | None = None,
+    ) -> ServiceChunkList:
+        """Return paginated chunk data for a collection."""
+        from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
+        from packages.shared.database.models import Chunk
+
+        try:
+            collection = await self.collection_repo.get_by_uuid(collection_id)
+        except Exception as exc:  # pragma: no cover - defensive database failure handling
+            logger.error("Failed to fetch collection %s: %s", collection_id, exc)
+            raise
+
+        if not collection:
+            raise ResourceNotFoundError("Collection", str(collection_id))
+
+        safe_page = max(page, 1)
+        safe_page_size = max(1, min(page_size, 500))
+        offset = (safe_page - 1) * safe_page_size
+
+        filters = [Chunk.collection_id == collection.id]
+        if document_id:
+            filters.append(Chunk.document_id == document_id)
+
+        total_result = await self.db_session.execute(select(func.count(Chunk.id)).where(*filters))
+        total_chunks = int(total_result.scalar() or 0)
+
+        if total_chunks == 0:
+            return ServiceChunkList(chunks=[], total=0, page=safe_page, page_size=safe_page_size)
+
+        chunk_query = select(Chunk).where(*filters).order_by(Chunk.chunk_index).offset(offset).limit(safe_page_size)
+        chunk_rows = await self.db_session.execute(chunk_query)
+        chunk_objects = chunk_rows.scalars().all()
+
+        records = [
+            ServiceChunkRecord(
+                id=chunk.id,
+                collection_id=chunk.collection_id,
+                document_id=chunk.document_id,
+                chunk_index=chunk.chunk_index,
+                content=chunk.content or "",
+                token_count=chunk.token_count,
+                metadata=getattr(chunk, "meta", {}) or {},
+                created_at=chunk.created_at,
+                updated_at=chunk.updated_at,
+            )
+            for chunk in chunk_objects
+        ]
+
+        return ServiceChunkList(
+            chunks=records,
+            total=total_chunks,
+            page=safe_page,
+            page_size=safe_page_size,
+        )
+
+    async def get_global_metrics(
+        self,
+        *,
+        period_days: int = 30,
+        user_id: int | None = None,  # noqa: ARG002 - reserved for future multi-tenant filtering
+    ) -> ServiceGlobalMetrics:
+        """Compute global chunking metrics for the requested period."""
+        from packages.shared.database.models import Chunk, Collection, Document, Operation, OperationStatus
+
+        period_end = datetime.now(UTC)
+        safe_days = max(period_days, 1)
+        period_start = period_end - timedelta(days=safe_days)
+
+        # Count chunks created within the period
+        chunk_count_result = await self.db_session.execute(
+            select(func.count(Chunk.id)).where(Chunk.created_at >= period_start)
+        )
+        total_chunks_created = int(chunk_count_result.scalar() or 0)
+
+        # Documents processed during the period
+        documents_processed_result = await self.db_session.execute(
+            select(func.count(Document.id)).where(
+                Document.chunking_completed_at.isnot(None),
+                Document.chunking_completed_at >= period_start,
+            )
+        )
+        total_documents_processed = int(documents_processed_result.scalar() or 0)
+
+        avg_chunks_per_document = total_chunks_created / total_documents_processed if total_documents_processed else 0.0
+
+        # Operations executed during the period
+        operation_rows = await self.db_session.execute(
+            select(
+                Operation.collection_id,
+                Operation.status,
+                Operation.started_at,
+                Operation.completed_at,
+            ).where(Operation.created_at >= period_start)
+        )
+        operations = operation_rows.all()
+
+        total_operations = len(operations)
+        completed_operations = sum(1 for _, status, _, _ in operations if status == OperationStatus.COMPLETED)
+        success_rate = completed_operations / total_operations if total_operations else 1.0
+
+        durations: list[float] = []
+        for _, status, started_at, completed_at in operations:
+            if status == OperationStatus.COMPLETED and started_at and completed_at:
+                durations.append((completed_at - started_at).total_seconds())
+
+        avg_processing_time = fmean(durations) if durations else 0.0
+        processed_collection_ids = {
+            collection_id for collection_id, status, _, _ in operations if status == OperationStatus.COMPLETED
+        }
+        total_collections_processed = len(processed_collection_ids)
+
+        # Determine most used strategy from collections updated during the period
+        strategy_rows = await self.db_session.execute(
+            select(Collection.chunking_strategy).where(
+                Collection.chunking_strategy.isnot(None), Collection.updated_at >= period_start
+            )
+        )
+        strategies = [row[0] for row in strategy_rows if row[0]]
+        if not strategies and processed_collection_ids:
+            # Fallback to collections involved in operations if they lack recent updates
+            fallback_rows = await self.db_session.execute(
+                select(Collection.chunking_strategy).where(Collection.id.in_(processed_collection_ids))
+            )
+            strategies.extend(row[0] for row in fallback_rows if row[0])
+
+        strategy_counter = Counter(str(strategy).lower() for strategy in strategies if strategy)
+        most_used_strategy = strategy_counter.most_common(1)[0][0] if strategy_counter else "fixed_size"
+
+        return ServiceGlobalMetrics(
+            total_collections_processed=total_collections_processed,
+            total_chunks_created=total_chunks_created,
+            total_documents_processed=total_documents_processed,
+            avg_chunks_per_document=avg_chunks_per_document,
+            most_used_strategy=most_used_strategy,
+            avg_processing_time=avg_processing_time,
+            success_rate=min(max(success_rate, 0.0), 1.0),
+            period_start=period_start,
+            period_end=period_end,
+        )
+
     async def get_collection_chunk_stats(self, collection_id: str) -> ServiceChunkingStats:
         """Get chunk-level statistics for a collection.
 
@@ -1640,6 +1877,276 @@ class ChunkingService:
                 processing_time_seconds=0.0,
                 quality_metrics={},
             )
+
+    async def get_quality_scores(self, collection_id: str | None = None) -> ServiceQualityAnalysis:
+        """Analyze chunk quality across collections or a specific collection."""
+        from packages.shared.database.models import Chunk, Document
+
+        filters = []
+        document_filters = []
+        if collection_id:
+            filters.append(Chunk.collection_id == collection_id)
+            document_filters.append(Document.collection_id == collection_id)
+
+        stats_query = select(
+            func.count(Chunk.id).label("total_chunks"),
+            func.avg(func.length(Chunk.content)).label("avg_length"),
+            func.var_pop(func.length(Chunk.content)).label("variance"),
+        ).where(*filters)
+        stats_result = await self.db_session.execute(stats_query)
+        stats = stats_result.one()
+
+        total_chunks = int(stats.total_chunks or 0)
+        avg_length = float(stats.avg_length or 0.0)
+        variance = float(stats.variance or 0.0)
+        std_dev = math.sqrt(max(variance, 0.0)) if total_chunks > 1 else 0.0
+
+        # Size consistency penalises high variance relative to average chunk length
+        size_consistency = 1.0 - min(1.0, std_dev / (avg_length + 1e-6)) if avg_length else 0.0
+        coherence_score = size_consistency
+
+        # Document completeness: proportion of documents with at least one chunk
+        doc_query = select(
+            func.count(Document.id).label("total_docs"),
+            func.count(func.nullif(Document.chunk_count, 0)).label("docs_with_chunks"),
+        ).where(*document_filters)
+        doc_result = await self.db_session.execute(doc_query)
+        doc_stats = doc_result.one()
+
+        total_docs = int(doc_stats.total_docs or 0)
+        docs_with_chunks = int(doc_stats.docs_with_chunks or 0)
+        completeness_score = docs_with_chunks / total_docs if total_docs else 1.0
+
+        # Combine metrics for overall quality
+        quality_components = [size_consistency, coherence_score, completeness_score]
+        quality_score = sum(quality_components) / len(quality_components) if quality_components else 0.0
+        quality_score = max(0.0, min(quality_score, 1.0))
+
+        if quality_score >= 0.85:
+            overall_quality = "excellent"
+        elif quality_score >= 0.7:
+            overall_quality = "good"
+        elif quality_score >= 0.5:
+            overall_quality = "fair"
+        else:
+            overall_quality = "poor"
+
+        recommendations: list[str] = []
+        issues_detected: list[str] = []
+
+        if size_consistency < 0.75:
+            issues_detected.append("High variance in chunk sizes detected")
+            recommendations.append("Consider lowering chunk_size or increasing chunk_overlap for more consistency")
+
+        if completeness_score < 0.85:
+            issues_detected.append("Some documents lack generated chunks")
+            recommendations.append("Re-run chunking on documents without chunks or adjust filters")
+
+        if total_chunks > 50000:
+            recommendations.append("Large chunk volume detected; ensure storage and retrieval are tuned appropriately")
+
+        if not recommendations:
+            recommendations.append("Current configuration appears healthy. Continue monitoring periodically.")
+
+        return ServiceQualityAnalysis(
+            overall_quality=overall_quality,
+            quality_score=quality_score,
+            coherence_score=coherence_score,
+            completeness_score=completeness_score,
+            size_consistency=size_consistency,
+            recommendations=recommendations,
+            issues_detected=issues_detected,
+        )
+
+    async def analyze_document(
+        self,
+        *,
+        content: str | None,
+        document_id: str | None,
+        file_type: str | None,
+        user_id: int | None = None,  # noqa: ARG002 - reserved for personalised recommendations
+        deep_analysis: bool = False,
+    ) -> ServiceDocumentAnalysis:
+        """Analyze document content and produce strategy recommendations."""
+
+        document_content = content
+        document_type = file_type or "unknown"
+        document_metadata: dict[str, Any] = {}
+
+        if not document_content and document_id:
+            document = await self.document_repo.get_by_id(document_id)
+            if document:
+                document_type = (
+                    file_type or document.mime_type or Path(document.file_name).suffix.lstrip(".") or "unknown"
+                )
+                document_metadata = {
+                    "file_name": document.file_name,
+                    "file_size": document.file_size,
+                }
+                file_path = getattr(document, "file_path", None)
+                if file_path:
+                    path = Path(file_path)
+                    if path.exists() and path.is_file():
+                        try:
+                            document_content = await asyncio.to_thread(
+                                path.read_text, encoding="utf-8", errors="ignore"
+                            )
+                        except Exception as exc:  # pragma: no cover - file system errors handled gracefully
+                            logger.debug("Unable to read document %s for analysis: %s", document_id, exc)
+
+        text = document_content or ""
+        paragraphs = [p for p in re.split(r"\n{2,}", text) if p.strip()]
+        sentences = [s for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        words = re.findall(r"\b\w+\b", text)
+
+        lexical_diversity = len(set(words)) / len(words) if words else 0.0
+        sentence_density = len(sentences) / max(len(paragraphs), 1)
+        complexity_score = min(1.0, (lexical_diversity + min(sentence_density / 5, 1.0)) / 2)
+        if deep_analysis:
+            complexity_score = min(1.0, complexity_score + 0.1)
+
+        content_structure = {
+            "paragraphs": len(paragraphs),
+            "sentences": len(sentences),
+            "words": len(words),
+            "characters": len(text),
+        }
+        if document_metadata:
+            content_structure["metadata"] = document_metadata
+
+        base_length = len(text)
+        if base_length == 0 and document_metadata.get("file_size"):
+            base_length = int(document_metadata["file_size"]) // 6  # rough approximation of characters
+
+        estimated_chunks: dict[str | ChunkingStrategy, int] = {}
+        for strategy in ChunkingStrategy:
+            divisor = 900
+            if strategy == ChunkingStrategy.FIXED_SIZE:
+                divisor = 800
+            elif strategy == ChunkingStrategy.RECURSIVE:
+                divisor = 950
+            elif strategy == ChunkingStrategy.MARKDOWN or strategy == ChunkingStrategy.DOCUMENT_STRUCTURE:
+                divisor = 1100
+            elif strategy == ChunkingStrategy.SEMANTIC:
+                divisor = 700
+            elif strategy == ChunkingStrategy.HYBRID:
+                divisor = 750
+
+            estimated = max(1, base_length // max(divisor, 1)) if base_length else max(len(paragraphs), 1)
+            estimated_chunks[strategy] = estimated
+
+        recommendation = await self.recommend_strategy(
+            file_types=[document_type] if document_type and document_type != "unknown" else []
+        )
+
+        special_considerations: list[str] = []
+        if lexical_diversity > 0.4:
+            special_considerations.append("High lexical diversity detected; semantic chunking may excel")
+        if len(sentences) > 0 and sentence_density > 8:
+            special_considerations.append("Dense paragraphs detected; consider higher overlap for context retention")
+        if len(words) < 200:
+            special_considerations.append("Short document; chunking strategies may not significantly differ")
+
+        return ServiceDocumentAnalysis(
+            document_type=document_type,
+            content_structure=content_structure,
+            recommended_strategy=recommendation,
+            estimated_chunks=estimated_chunks,
+            complexity_score=complexity_score,
+            special_considerations=special_considerations,
+        )
+
+    async def save_configuration(
+        self,
+        *,
+        name: str,
+        description: str | None,
+        strategy: str,
+        config: dict[str, Any],
+        is_default: bool,
+        tags: list[str],
+        user_id: int,
+    ) -> ServiceSavedConfiguration:
+        """Persist a user-defined chunking configuration."""
+        from packages.shared.chunking.infrastructure.exceptions import ValidationError as InfraValidationError
+
+        builder_result = self.config_builder.build_config(strategy, config)
+        if builder_result.validation_errors:
+            raise InfraValidationError(
+                "Chunking configuration validation failed",
+                builder_result.validation_errors,
+            )
+
+        sanitized_tags = [tag.strip() for tag in tags if tag and isinstance(tag, str)]
+        normalized_config = builder_result.config
+        normalized_config["strategy"] = builder_result.strategy.value
+
+        configs = await self._load_config_store()
+        user_key = str(user_id)
+        user_configs = configs.get(user_key, [])
+
+        now = datetime.now(UTC)
+        existing = next((item for item in user_configs if item.get("name", "").lower() == name.lower()), None)
+
+        if is_default:
+            for item in user_configs:
+                item["is_default"] = False
+
+        if existing:
+            existing.update(
+                {
+                    "description": description,
+                    "strategy": builder_result.strategy.value,
+                    "config": normalized_config,
+                    "updated_at": now.isoformat(),
+                    "is_default": is_default,
+                    "tags": sanitized_tags,
+                }
+            )
+        else:
+            existing = {
+                "id": uuid.uuid4().hex,
+                "name": name,
+                "description": description,
+                "strategy": builder_result.strategy.value,
+                "config": normalized_config,
+                "created_by": user_id,
+                "created_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+                "usage_count": 0,
+                "is_default": is_default,
+                "tags": sanitized_tags,
+            }
+            user_configs.append(existing)
+
+        configs[user_key] = user_configs
+        await self._write_config_store(configs)
+
+        return self._deserialize_saved_config(existing)
+
+    async def list_configurations(
+        self,
+        *,
+        user_id: int,
+        strategy: str | None = None,
+        is_default: bool | None = None,
+    ) -> list[ServiceSavedConfiguration]:
+        """Return saved configurations for a user with optional filters."""
+
+        configs = await self._load_config_store()
+        user_configs = configs.get(str(user_id), [])
+
+        results = []
+        for entry in user_configs:
+            if strategy and entry.get("strategy", "").lower() != strategy.lower():
+                continue
+            if is_default is not None and bool(entry.get("is_default", False)) != is_default:
+                continue
+            results.append(self._deserialize_saved_config(entry))
+
+        # Return most recently updated first
+        results.sort(key=lambda item: item.updated_at, reverse=True)
+        return results
 
     @QueryMonitor.monitor("get_chunking_statistics")
     async def get_chunking_statistics(self, collection_id: str) -> dict[str, Any]:

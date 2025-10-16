@@ -49,6 +49,7 @@ import psutil
 import redis.asyncio as redis
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 from shared.config import settings
+from shared.config.internal_api_key import ensure_internal_api_key
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import (
     OperationTimer,
@@ -62,6 +63,29 @@ from webui.celery_app import celery_app
 from webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
+
+try:
+    ensure_internal_api_key(settings)
+except RuntimeError as exc:
+    logger.error("Internal API key not configured: %s", exc)
+    raise
+
+
+def _get_internal_api_key() -> str:
+    """Return the configured internal API key, raising if unavailable."""
+    key = settings.INTERNAL_API_KEY
+    if not key:
+        raise RuntimeError("Internal API key is not configured")
+    return key
+
+
+def _build_internal_api_headers() -> dict[str, str]:
+    """Construct headers for internal API calls that require authentication."""
+    return {
+        "X-Internal-API-Key": _get_internal_api_key(),
+        "Content-Type": "application/json",
+    }
+
 
 # Re-export ChunkingService for tests that patch packages.webui.tasks.ChunkingService
 try:  # Prefer packages.* import path to match test patch targets
@@ -2530,10 +2554,7 @@ async def _process_reindex_operation_impl(
             "vector_count": vector_count,
         }
 
-        headers = {
-            "X-Internal-API-Key": settings.INTERNAL_API_KEY,
-            "Content-Type": "application/json",
-        }
+        headers = _build_internal_api_headers()
 
         async with httpx.AsyncClient() as client:
             response = await client.post(

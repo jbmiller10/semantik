@@ -5,9 +5,9 @@ This module provides comprehensive RESTful API endpoints for chunking operations
 including strategy management, preview operations, collection processing, and analytics.
 """
 
+import inspect
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
@@ -60,6 +60,22 @@ from packages.webui.services.factory import get_chunking_service, get_collection
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
+
+
+async def _resolve_service_payload(payload: Any) -> Any:
+    """Normalize service-layer results into API-compatible responses."""
+
+    if inspect.isawaitable(payload):
+        payload = await payload
+
+    to_api = getattr(payload, "to_api_model", None)
+    if callable(to_api):
+        result = to_api()
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+
+    return payload
 
 
 # Note: Exception handlers should be registered at the app level, not router level
@@ -605,43 +621,29 @@ async def get_collection_chunks(
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingService = Depends(get_chunking_service),
 ) -> ChunkListResponse:
     """
     Get paginated list of chunks for a collection.
     Optionally filter by document ID.
     Rate limited to 60 requests per minute per user.
 
-    TODO: Implement service layer method for get_collection_chunks
-    This endpoint currently returns mock data and needs proper implementation
-    in the ChunkingService with a corresponding DTO.
+    Check circuit breaker first.
     """
-    # Check circuit breaker first
+    # Enforce rate limiting safeguards
     check_circuit_breaker(request)
 
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: chunks_dto = await service.get_collection_chunks(
-        #     collection_id=collection_uuid,
-        #     page=page,
-        #     page_size=page_size,
-        #     document_id=document_id
-        # )
-        # return chunks_dto.to_api_model()
-
-        # Mock implementation - to be replaced
-        offset = (page - 1) * page_size
-        chunks: list[dict[str, Any]] = []  # Would fetch from database/storage
-        total = 0  # Would get total count
-
-        return ChunkListResponse(
-            chunks=chunks,
-            total=total,
+        chunks_dto = await service.get_collection_chunks(
+            collection_uuid,
             page=page,
             page_size=page_size,
-            has_next=(offset + page_size) < total,
+            document_id=document_id,
         )
-
+        payload = await _resolve_service_payload(chunks_dto)
+        return cast(ChunkListResponse, payload)
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to fetch chunks: {e}")
         raise HTTPException(
@@ -705,37 +707,19 @@ async def get_global_metrics(
     Get global chunking metrics across all collections for the specified period.
     Rate limited to 30 requests per minute per user.
 
-    TODO: Implement service layer method for get_global_metrics
-    This endpoint currently returns mock data and needs proper implementation
-    in the ChunkingService with a corresponding DTO.
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
 
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: metrics_dto = await service.get_global_metrics(
-        #     period_days=period_days,
-        #     user_id=_current_user["id"]
-        # )
-        # return metrics_dto.to_api_model()
-
-        # Mock implementation - to be replaced
-        period_end = datetime.now(UTC)
-        period_start = period_end - timedelta(days=period_days)
-
-        return GlobalMetrics(
-            total_collections_processed=0,
-            total_chunks_created=0,
-            total_documents_processed=0,
-            avg_chunks_per_document=0.0,
-            most_used_strategy=ChunkingStrategy.FIXED_SIZE,
-            avg_processing_time=0.0,
-            success_rate=0.95,
-            period_start=period_start,
-            period_end=period_end,
+        metrics_dto = await service.get_global_metrics(
+            period_days=period_days,
+            user_id=_current_user.get("id") if _current_user else None,
         )
-
+        payload = await _resolve_service_payload(metrics_dto)
+        return cast(GlobalMetrics, payload)
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to fetch global metrics: {e}")
         raise HTTPException(
@@ -790,35 +774,13 @@ async def get_quality_scores(
     """
     Analyze chunk quality across collections or for a specific collection.
 
-    TODO: Implement service layer method for get_quality_scores
-    This endpoint currently returns mock data and needs proper implementation
-    in the ChunkingService with a corresponding DTO.
     """
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: quality_dto = await service.get_quality_scores(
-        #     collection_id=collection_id,
-        #     user_id=_current_user["id"]
-        # )
-        # return quality_dto.to_api_model()
-
-        # Mock implementation - to be replaced
-        return QualityAnalysis(
-            overall_quality="good",
-            quality_score=0.75,
-            coherence_score=0.8,
-            completeness_score=0.7,
-            size_consistency=0.75,
-            recommendations=[
-                "Consider using semantic chunking for better coherence",
-                "Adjust chunk size for more consistent results",
-            ],
-            issues_detected=[
-                "Some chunks are too small",
-                "Overlapping content detected",
-            ],
-        )
-
+        quality_dto = await service.get_quality_scores(collection_id=collection_id)
+        payload = await _resolve_service_payload(quality_dto)
+        return cast(QualityAnalysis, payload)
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to analyze quality: {e}")
         raise HTTPException(
@@ -841,58 +803,19 @@ async def analyze_document(
     Analyze a document to recommend the best chunking strategy.
     Provides detailed analysis of document structure and complexity.
 
-    TODO: Implement full service layer method for analyze_document
-    This endpoint partially uses the service (recommend_strategy) but builds
-    the response manually with mock data. Needs a proper service method
-    that returns a DocumentAnalysisDTO.
     """
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: analysis_dto = await service.analyze_document(
-        #     content=analysis_request.content,
-        #     file_type=analysis_request.file_type,
-        #     user_id=_current_user["id"]
-        # )
-        # return analysis_dto.to_api_model()
-
-        # Partial implementation - uses service for recommendation only
-        recommendation = await service.recommend_strategy(
-            file_types=[analysis_request.file_type] if analysis_request.file_type else [],
+        analysis_dto = await service.analyze_document(
+            content=analysis_request.content,
+            document_id=analysis_request.document_id,
+            file_type=analysis_request.file_type,
+            user_id=_current_user.get("id") if _current_user else None,
+            deep_analysis=analysis_request.deep_analysis,
         )
-
-        # Mock data for the rest of the response - to be replaced
-        return DocumentAnalysisResponse(
-            document_type=analysis_request.file_type or "unknown",
-            content_structure={
-                "sections": 5,
-                "paragraphs": 20,
-                "sentences": 100,
-                "words": 1500,
-            },
-            recommended_strategy=StrategyRecommendation(
-                recommended_strategy=recommendation.strategy,
-                confidence=recommendation.confidence,
-                reasoning=recommendation.reasoning,
-                alternative_strategies=recommendation.alternatives,
-                suggested_config=ChunkingConfigBase(
-                    strategy=recommendation.strategy,
-                    chunk_size=recommendation.chunk_size,
-                    chunk_overlap=recommendation.chunk_overlap,
-                    preserve_sentences=recommendation.preserve_sentences,
-                ),
-            ),
-            estimated_chunks={
-                ChunkingStrategy.FIXED_SIZE: 10,
-                ChunkingStrategy.SEMANTIC: 8,
-                ChunkingStrategy.RECURSIVE: 12,
-            },
-            complexity_score=0.6,
-            special_considerations=[
-                "Document contains tables",
-                "Mixed language content detected",
-            ],
-        )
-
+        payload = await _resolve_service_payload(analysis_dto)
+        return cast(DocumentAnalysisResponse, payload)
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to analyze document: {e}")
         raise HTTPException(
@@ -917,40 +840,25 @@ async def save_configuration(
     Save a custom chunking configuration for reuse.
     Configurations are user-specific and can be set as defaults.
 
-    TODO: Implement service layer method for save_configuration
-    This endpoint currently returns mock data and needs proper implementation
-    in the ChunkingService with a corresponding DTO.
     """
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: config_dto = await service.save_configuration(
-        #     name=config_request.name,
-        #     description=config_request.description,
-        #     strategy=config_request.strategy,
-        #     config=config_request.config,
-        #     is_default=config_request.is_default,
-        #     tags=config_request.tags,
-        #     user_id=_current_user["id"]
-        # )
-        # return config_dto.to_api_model()
+        user_id = _current_user.get("id") if _current_user else None
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
-        # Mock implementation - to be replaced
-        config_id = str(uuid.uuid4())
-
-        return SavedConfiguration(
-            id=config_id,
+        config_dto = await service.save_configuration(
             name=config_request.name,
             description=config_request.description,
-            strategy=config_request.strategy,
-            config=config_request.config,
-            created_by=_current_user["id"],
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
-            usage_count=0,
+            strategy=config_request.strategy.value,
+            config=config_request.config.model_dump(),
             is_default=config_request.is_default,
             tags=config_request.tags,
+            user_id=int(user_id),
         )
-
+        payload = await _resolve_service_payload(config_dto)
+        return cast(SavedConfiguration, payload)
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to save configuration: {e}")
         raise HTTPException(
@@ -974,24 +882,24 @@ async def list_configurations(
     List all saved chunking configurations for the current user.
     Can filter by strategy or default status.
 
-    TODO: Implement service layer method for list_configurations
-    This endpoint currently returns empty list and needs proper implementation
-    in the ChunkingService with corresponding DTOs.
     """
     try:
-        # TODO: Replace with actual service call once implemented
-        # Expected: configs_dto = await service.list_configurations(
-        #     strategy=strategy,
-        #     is_default=is_default,
-        #     user_id=_current_user["id"]
-        # )
-        # return [dto.to_api_model() for dto in configs_dto]
+        user_id = _current_user.get("id") if _current_user else None
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
-        # Mock implementation - to be replaced
-        configs: list[SavedConfiguration] = []
-
-        return configs
-
+        configs_dto = await service.list_configurations(
+            user_id=int(user_id),
+            strategy=strategy.value if strategy else None,
+            is_default=is_default,
+        )
+        resolved = []
+        for dto in configs_dto:
+            payload = await _resolve_service_payload(dto)
+            resolved.append(cast(SavedConfiguration, payload))
+        return resolved
+    except ApplicationError as e:
+        raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
         logger.error(f"Failed to list configurations: {e}")
         raise HTTPException(
