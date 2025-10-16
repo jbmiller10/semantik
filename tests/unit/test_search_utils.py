@@ -15,9 +15,7 @@ async def test_search_qdrant_closes_client() -> None:
     with patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_client_cls:
         mock_client = mock_client_cls.return_value
         mock_client.search = AsyncMock(
-            return_value=[
-                SimpleNamespace(id="doc-1", score=0.9, payload={"path": "/tmp/doc-1", "chunk_id": "c1"})
-            ]
+            return_value=[SimpleNamespace(id="doc-1", score=0.9, payload={"path": "/tmp/doc-1", "chunk_id": "c1"})]
         )
         mock_client.aclose = AsyncMock()
 
@@ -34,6 +32,4 @@ async def test_search_qdrant_closes_client() -> None:
         mock_client.search.assert_awaited_once()
         mock_client.aclose.assert_awaited_once()
 
-        assert results == [
-            {"id": "doc-1", "score": 0.9, "payload": {"path": "/tmp/doc-1", "chunk_id": "c1"}}
-        ]
+        assert results == [{"id": "doc-1", "score": 0.9, "payload": {"path": "/tmp/doc-1", "chunk_id": "c1"}}]

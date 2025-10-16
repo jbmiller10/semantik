@@ -76,7 +76,7 @@ def _configure_internal_api_key() -> None:
         if not configured_key or configured_key == default_placeholder:
             raise ValueError(
                 "INTERNAL_API_KEY must be explicitly set via environment variable in production. "
-                "Generate a secure value with `python -c \"import secrets; print(secrets.token_urlsafe(32))\"` "
+                'Generate a secure value with `python -c "import secrets; print(secrets.token_urlsafe(32))"` '
                 "and set INTERNAL_API_KEY before starting the service."
             )
 
@@ -88,9 +88,7 @@ def _configure_internal_api_key() -> None:
             key_file.write_text(configured_key)
             key_file.chmod(0o600)
         except Exception as exc:  # pragma: no cover - platform dependent
-            logger.warning(
-                "Using INTERNAL_API_KEY from environment but failed to persist to %s: %s", key_file, exc
-            )
+            logger.warning("Using INTERNAL_API_KEY from environment but failed to persist to %s: %s", key_file, exc)
         else:
             logger.info("Using INTERNAL_API_KEY from environment and stored a copy for development restarts")
         return
