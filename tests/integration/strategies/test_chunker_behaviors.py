@@ -25,7 +25,7 @@ async def test_character_chunker_respects_overlap() -> None:
     chunks = await chunker.chunk_text_async(text, "character_overlap")
 
     assert len(chunks) > 1
-    for first, second in zip(chunks, chunks[1:]):
+    for first, second in zip(chunks, chunks[1:], strict=False):
         assert first.end_offset > second.start_offset
         assert len(first.text) <= 400  # defensive upper bound to catch regressions
 

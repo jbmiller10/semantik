@@ -148,7 +148,9 @@ class APITestSuite:
         async with aiohttp.ClientSession() as session:
             scan_data = {"path": "/tmp", "recursive": True}
             try:
-                async with session.post(f"{self.base_url}/api/scan-directory", headers=self.headers, json=scan_data) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/scan-directory", headers=self.headers, json=scan_data
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         file_count = len(data.get("files", []))
@@ -183,7 +185,9 @@ class APITestSuite:
         async with aiohttp.ClientSession() as session:
             payload = {"query": "test", "collection": "test_collection", "top_k": 5}
             try:
-                async with session.post(f"{self.base_url}/api/search/vector", headers=self.headers, json=payload) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/search/vector", headers=self.headers, json=payload
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self.log_test("Vector Search", True, "Vector search succeeded", data)
@@ -197,7 +201,9 @@ class APITestSuite:
         async with aiohttp.ClientSession() as session:
             payload = {"query": "test", "collection": "test_collection", "top_k": 5, "hybrid": True}
             try:
-                async with session.post(f"{self.base_url}/api/search/hybrid", headers=self.headers, json=payload) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/search/hybrid", headers=self.headers, json=payload
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self.log_test("Hybrid Search", True, "Hybrid search succeeded", data)
@@ -216,7 +222,9 @@ class APITestSuite:
                 "filters": {"document_type": ["pdf"]},
             }
             try:
-                async with session.post(f"{self.base_url}/api/search/vector", headers=self.headers, json=payload) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/search/vector", headers=self.headers, json=payload
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self.log_test("Search Filters", True, "Filter search succeeded", data)
@@ -231,7 +239,9 @@ class APITestSuite:
             payload = {"query": "performance test", "collection": "test_collection", "top_k": 20}
             try:
                 start = time.perf_counter()
-                async with session.post(f"{self.base_url}/api/search/vector", headers=self.headers, json=payload) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/search/vector", headers=self.headers, json=payload
+                ) as resp:
                     elapsed = time.perf_counter() - start
                     if resp.status == 200:
                         data = await resp.json()
@@ -251,7 +261,9 @@ class APITestSuite:
         async with aiohttp.ClientSession() as session:
             payload = {"document_id": "test-doc-id", "collection": "test_collection"}
             try:
-                async with session.post(f"{self.base_url}/api/documents/preview", headers=self.headers, json=payload) as resp:
+                async with session.post(
+                    f"{self.base_url}/api/documents/preview", headers=self.headers, json=payload
+                ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         self.log_test("Document Preview", True, "Preview retrieved", data)

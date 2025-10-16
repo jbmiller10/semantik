@@ -38,11 +38,11 @@ class TestVecpipeIntegration(unittest.TestCase):
         assert embedding_service is not None
         mock_service = EmbeddingService(mock_mode=True)
         success = mock_service.load_model("test-model")
-        self.assertTrue(success)
+        assert success
         texts = ["test text for model manager"]
         embeddings = mock_service.generate_embeddings(texts, "test-model", show_progress=False)
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(embeddings.shape[0], 1)
+        assert embeddings is not None
+        assert embeddings.shape[0] == 1
         mock_service.unload_model()
 
     @patch("torch.cuda.is_available")
@@ -60,9 +60,9 @@ class TestVecpipeIntegration(unittest.TestCase):
             if embeddings is not None:
                 all_embeddings.append(embeddings)
 
-        self.assertGreater(len(all_embeddings), 0)
+        assert len(all_embeddings) > 0
         combined = np.vstack(all_embeddings)
-        self.assertEqual(combined.shape[0], len(chunks))
+        assert combined.shape[0] == len(chunks)
 
     @patch("torch.cuda.is_available")
     def test_search_api_integration(self, mock_cuda: Mock) -> None:
@@ -70,8 +70,8 @@ class TestVecpipeIntegration(unittest.TestCase):
         service = EmbeddingService(mock_mode=True)
         service.load_model("test-model")
         query_embedding = service.generate_single_embedding("search query text", "test-model", quantization="float32")
-        self.assertIsInstance(query_embedding, list)
-        self.assertEqual(len(query_embedding), 384)
+        assert isinstance(query_embedding, list)
+        assert len(query_embedding) == 384
 
 
 class TestWebuiIntegration(unittest.TestCase):
@@ -89,24 +89,24 @@ class TestWebuiIntegration(unittest.TestCase):
         ]
         texts = [chunk["text"] for chunk in file_chunks]
         embeddings = service.generate_embeddings(texts, "test-model", batch_size=32, show_progress=True)
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(embeddings.shape[0], len(file_chunks))
+        assert embeddings is not None
+        assert embeddings.shape[0] == len(file_chunks)
         for embedding in embeddings:
-            self.assertIsInstance(embedding, np.ndarray)
-            self.assertEqual(len(embedding), 384)
+            assert isinstance(embedding, np.ndarray)
+            assert len(embedding) == 384
 
     @patch("torch.cuda.is_available")
     def test_models_api_integration(self, mock_cuda: Mock) -> None:
         mock_cuda.return_value = False
         models = list_available_models()
-        self.assertGreater(len(models), 0)
+        assert len(models) > 0
         service = EmbeddingService(mock_mode=True)
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
         info = service.get_model_info(model_name, "float32")
-        self.assertIsInstance(info, dict)
-        self.assertIn("dimension", info)
-        self.assertIn("model_name", info)
-        self.assertIn("device", info)
+        assert isinstance(info, dict)
+        assert "dimension" in info
+        assert "model_name" in info
+        assert "device" in info
 
 
 class TestCrossPackageWorkflow(unittest.TestCase):
@@ -124,8 +124,8 @@ class TestCrossPackageWorkflow(unittest.TestCase):
         )
         chunks = document_text.split("\n\n")
         embeddings = service.generate_embeddings(chunks, "sentence-transformers/all-MiniLM-L6-v2", batch_size=32)
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(len(embeddings), len(chunks))
+        assert embeddings is not None
+        assert len(embeddings) == len(chunks)
         vectors = []
         for i, (chunk, embedding) in enumerate(zip(chunks, embeddings, strict=False)):
             vectors.append(
@@ -136,10 +136,10 @@ class TestCrossPackageWorkflow(unittest.TestCase):
                     "metadata": {"document_id": "doc_1", "chunk_index": i},
                 }
             )
-        self.assertEqual(len(vectors), 3)
+        assert len(vectors) == 3
         for vector in vectors:
-            self.assertIn("embedding", vector)
-            self.assertEqual(len(vector["embedding"]), 384)
+            assert "embedding" in vector
+            assert len(vector["embedding"]) == 384
 
     @patch("torch.cuda.is_available")
     def test_async_service_lifecycle_workflow(self, mock_cuda: Mock) -> None:
@@ -151,13 +151,13 @@ class TestCrossPackageWorkflow(unittest.TestCase):
             )
             service1 = await get_embedding_service()
             service2 = await get_embedding_service()
-            self.assertIs(service1, service2)
+            assert service1 is service2
             query_embedding = await service1.embed_single("test query")
-            self.assertEqual(len(query_embedding), 384)
+            assert len(query_embedding) == 384
             await cleanup()
             await initialize_embedding_service("test-model", mock_mode=True)
             service3 = await get_embedding_service()
-            self.assertIsNot(service1, service3)
+            assert service1 is not service3
 
         asyncio.run(async_test())
 
@@ -172,8 +172,8 @@ class TestErrorHandlingIntegration(unittest.TestCase):
             service = EmbeddingService(mock_mode=True)
             service.allow_quantization_fallback = True
             success = service.load_model("test-model", quantization="int8")
-            self.assertTrue(success)
-            self.assertTrue(service._service.is_initialized)
+            assert success
+            assert service._service.is_initialized
 
     @patch("torch.cuda.is_available")
     def test_oom_recovery_pattern(self, mock_cuda: Mock) -> None:
@@ -193,8 +193,8 @@ class TestErrorHandlingIntegration(unittest.TestCase):
                 if batch_size < 1:
                     raise
 
-        self.assertIsNotNone(embeddings)
-        self.assertEqual(len(embeddings), len(texts))
+        assert embeddings is not None
+        assert len(embeddings) == len(texts)
 
 
 if __name__ == "__main__":

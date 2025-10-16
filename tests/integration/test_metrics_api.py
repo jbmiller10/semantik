@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
 
@@ -65,7 +67,7 @@ def test_metrics_endpoint_reports_error_when_remote_unhealthy(
         def __init__(self, *args, **kwargs) -> None:
             pass
 
-        async def __aenter__(self) -> "DummyAsyncClient":
+        async def __aenter__(self) -> DummyAsyncClient:
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:

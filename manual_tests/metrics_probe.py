@@ -53,7 +53,9 @@ def probe_metrics_endpoint(base_url: str = "http://localhost:8080") -> None:
 
     metrics = data.get("data", "")
     if metrics:
-        non_zero_lines = [line for line in metrics.splitlines() if line and not line.startswith("#") and " 0" not in line]
+        non_zero_lines = [
+            line for line in metrics.splitlines() if line and not line.startswith("#") and " 0" not in line
+        ]
         if non_zero_lines:
             print("Non-zero metric lines:")
             for line in non_zero_lines:
