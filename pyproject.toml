@@ -175,3 +175,4 @@ markers = [
     "integration: Integration tests that rely on real infrastructure or databases",
     "performance: Performance-focused tests that may run slowly",
 ]
+norecursedirs = ["manual_tests"]

@@ -1,7 +1,7 @@
 # Test Quality Tracking Document
 
 **Date**: 2025-10-16
-**Review Scope**: 10 test files, ~200+ test cases
+**Review Scope**: 16 test files + 1 script suite (manual harnesses), ~350 test cases
 **Status**: 🔴 Critical Issues Identified
 
 ---
@@ -10,11 +10,11 @@
 
 | Metric | Value | Target |
 |--------|-------|--------|
-| Files Reviewed | 10 | - |
-| Critical Issues | 22 | 0 |
-| Moderate Issues | 31 | <5 |
+| Files Reviewed | 16 | - |
+| Critical Issues | 24 | 0 |
+| Moderate Issues | 33 | <5 |
 | Minor Issues | 28 | <10 |
-| Files Needing Immediate Action | 3 | 0 |
+| Files Needing Immediate Action | 5 | 0 |
 | Files Needing Deletion | 1 | 0 |
 | Estimated False Confidence | 40-60% | <10% |
 
@@ -29,6 +29,8 @@
 | `tests/test_auth.py` | Delete entirely - 0 assertions, test pollution | High | 5 min | ✅ Completed (2025-10-16) |
 | `tests/unit/test_collection_repository.py` | Mock everything - false confidence | Critical | 2-3 days | ✅ Completed (2025-10-16) |
 | `tests/unit/test_collection_service.py` | 904 lines, excessive mocking | Critical | 3-4 days | ✅ Completed (2025-10-16) |
+| `tests/test_metrics.py` (cluster) | Manual scripts in test tree, no assertions, hit live services | High | 0.5 day | ✅ Completed (2025-10-16) |
+| `tests/test_reranking_e2e.py` | Placeholder asserts, never exercises reranking flow | High | 1-2 days | ⏳ Pending |
 
 ### P1 - High (Next 2 Weeks)
 
@@ -37,6 +39,8 @@
 | `tests/unit/test_all_chunking_strategies.py` | Wrong location, 78 test permutations | High | 1 day | ✅ Completed (2025-10-16) |
 | `tests/e2e/test_websocket_integration.py` | Giant tests, code duplication | High | 2 days | ⏳ Pending |
 | `tests/test_embedding_integration.py` | Mocks defeat purpose, wrong location | Medium | 1 day | ⏳ Pending |
+| `tests/webui/test_tasks_helpers.py` & `_original.py` | Duplicate suites diverging, redundant coverage | Medium | 1 day | ⏳ Pending |
+| `tests/websocket/*` & `tests/webui/test_chunking_websocket.py` | Real Redis + sleeps; flaky timing in "unit" suites | High | 2-3 days | ⏳ Pending |
 
 ### P2 - Medium (Within Month)
 
@@ -195,6 +199,98 @@
 
 ---
 
+### Cluster: Manual Script-Style Tests (`tests/test_metrics.py`, `tests/test_metrics_update.py`, `tests/test_search.py`, `tests/test_embedding_performance.py`, `tests/test_embedding_full_integration.py`, `apps/webui-react/tests/api_test_suite.py`)
+
+**Grade**: F (1/10)  
+**Status**: ✅ Completed (2025-10-16) - scripts relocated, metrics covered by integration tests
+
+These files live under `tests/` (and CI executes them) but behave like manual diagnostics:
+- `tests/test_metrics.py:14-95` and `tests/test_metrics_update.py:12-42` issue HTTP requests, print responses, never assert.
+- `tests/test_search.py:12-46` performs interactive login/search with only `print` statements.
+- `tests/test_embedding_performance.py:24-200` runs benchmarks with `ThreadPoolExecutor`, `psutil`, and `time.sleep`, returning dicts but asserting nothing.
+- `tests/test_embedding_full_integration.py` mirrors the pattern for full embedding flows.
+- `apps/webui-react/tests/api_test_suite.py:1-140` is an async smoke harness using `aiohttp` and `websockets`, again without assertions.
+
+**Critical Issues**
+- **No Assertions** (P0): pytest marks them passing regardless of behavior.
+- **External Dependencies** (P0): Expect full stack on `localhost:8080`, `9092`, websocket endpoints; risk of hangs locally/CI.
+- **Runtime Drag** (P1): Benchmarks and sleeps slow down test runs.
+
+**Recommended Fix**
+1. Relocate scripts to `manual_tests/` (or similar) and add `pytest.ini` ignore.
+2. Open follow-up tickets to implement proper automated coverage for metrics, search, and embedding flows.
+3. Document manual run instructions (see ACTION_PLAN.md Action 3).
+
+**Resolution (2025-10-16)**
+- Replaced `tests/test_metrics.py` with `tests/integration/test_metrics_api.py`, asserting healthy and fallback responses via FastAPI fixtures.
+- Relocated manual probes to `manual_tests/` (`metrics_probe.py`, `metrics_flow_probe.py`, `metrics_update_probe.py`, `search_probe.py`, `embedding_performance_bench.py`, `embedding_full_integration_suite.py`, `frontend_api_test_suite.py`).
+- Removed script-style files from `tests/` and `apps/webui-react/tests/` to prevent accidental execution in pytest/CI.
+- Added `norecursedirs = ["manual_tests"]` to pytest config to keep diagnostics opt-in.
+
+**Verification**
+- `uv run pytest tests/integration/test_metrics_api.py -q`
+- Manual diagnostics now live in `manual_tests/` and are gitignored from automated discovery.
+
+---
+
+### File: `tests/test_reranking_e2e.py`
+
+**Grade**: F (1/10)  
+**Status**: ⏳ Pending - needs full rewrite
+
+**Findings**
+- Lines `18-111` contain only `assert True` with commentary referencing code inspection.
+- No requests issued; reranking pipeline remains untested end-to-end.
+
+**Action Plan**
+1. Author a real integration test under `tests/integration/search/` that issues a reranked search request via API client fixtures.
+2. Validate parameter propagation (`use_reranker`, `rerank_model`) and returned metrics.
+3. Remove the placeholder file once genuine coverage exists.
+
+**Effort**: 1-2 days coordinating with Search team fixtures.  
+**Dependencies**: Requires deterministic reranker stub or fixture.
+
+---
+
+### Files: `tests/webui/test_tasks_helpers.py` & `tests/webui/test_tasks_helpers_original.py`
+
+**Grade**: D (4/10)  
+**Status**: ⏳ Pending - consolidation required
+
+**Issues**
+- Duplicate suites diverge (e.g., nested sanitization assertions differ at lines `tests/webui/test_tasks_helpers.py:64` vs `_original.py:63`).
+- Redundant helper factories and fixtures.
+- Mock-heavy assertions (`assert_called_once`) dominate, offering little behavioral confidence.
+
+**Recommended Steps**
+1. Merge valued scenarios into a single file.
+2. Remove redundant module and update references.
+3. While consolidating, shift from call-count assertions to outcome-based checks (aligns with ACTION_PLAN.md Action 5).
+
+---
+
+### Cluster: WebSocket/Redis Suites (`tests/webui/test_chunking_websocket.py`, `tests/websocket/test_performance.py`, `tests/websocket/websocket_load_test.py`, `tests/websocket/stress_test_race_conditions.py`, `tests/websocket/test_race_conditions.py`)
+
+**Grade**: C- (5/10)  
+**Status**: ⏳ Pending - stabilize and scope appropriately
+
+**Findings**
+- `tests/webui/test_chunking_websocket.py:269` relies on `time.sleep(1.1)` for throttling windows, creating flakiness.
+- `tests/websocket/test_performance.py:42-55` opens real Redis connections on `redis://localhost:6379/15`.
+- Load/stress scripts spawn many asyncio tasks, patch redis globally, and are effectively performance tests hiding inside default suites.
+
+**Risks**
+- Local runs fail if Redis isn’t running.
+- Test suite mixes unit, integration, and performance concerns -> unclear guarantees.
+
+**Remediation**
+1. Provide fake/in-memory Redis fixtures for unit-level behavior.
+2. Replace sleeps with controllable timing (e.g., patch loop time, use deterministic clocks).
+3. Move true load/stress tests into an opt-in harness executed outside standard CI, or mark with `@pytest.mark.performance`.
+
+**Reference**: ACTION_PLAN.md Action 6 outlines the implementation steps.
+
+---
 ### File: `tests/unit/test_all_chunking_strategies.py`
 
 **Grade**: ✅ Addressed
