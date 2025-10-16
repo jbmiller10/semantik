@@ -9,6 +9,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 from pathlib import Path
@@ -1160,14 +1161,30 @@ class DockerSetupTUI:
         if not confirm:
             return False
 
+        generate_test_env = questionary.confirm(
+            "Generate .env.test for host-side integration tests?", default=True
+        ).ask()
+        self.config["GENERATE_TEST_ENV"] = "true" if generate_test_env else "false"
+        if generate_test_env:
+            default_test_db = f"{self.config['POSTGRES_DB']}_test"
+            test_db_name = questionary.text(
+                "Database name to use in .env.test:", default=default_test_db
+            ).ask()
+            if not test_db_name:
+                test_db_name = default_test_db
+            self.config["POSTGRES_TEST_DB"] = test_db_name
+
         # Save configuration
-        self._save_env_file()
+        generated_test_env = self._save_env_file()
         self._save_config()  # Save to JSON for future use
-        console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
+        if generated_test_env:
+            console.print("[green]Configuration saved to .env, .env.test and .semantik-config.json[/green]\n")
+        else:
+            console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
         return True
 
-    def _save_env_file(self) -> None:
-        """Save configuration to .env file"""
+    def _save_env_file(self) -> bool:
+        """Save configuration to .env file and optionally .env.test."""
         # Backup existing .env if present
         env_path = Path(".env")
         if env_path.exists():
@@ -1211,6 +1228,42 @@ class DockerSetupTUI:
 
         # Write .env
         with Path(".env").open("w") as f:
+            f.write(content)
+
+        generated_test_env = False
+        if self.config.get("GENERATE_TEST_ENV") == "true":
+            self._save_env_test_file()
+            generated_test_env = True
+
+        return generated_test_env
+
+    def _save_env_test_file(self) -> None:
+        """Generate a host-side .env.test file for integration tests."""
+        test_env_path = Path(".env.test")
+        if test_env_path.exists():
+            backup_path = test_env_path.with_suffix(".env.test.backup")
+            shutil.copy(test_env_path, backup_path)
+            console.print(f"[yellow]Backed up existing .env.test to {backup_path}[/yellow]")
+
+        test_db = self.config.get("POSTGRES_TEST_DB", f"{self.config['POSTGRES_DB']}_test")
+        user = self.config["POSTGRES_USER"]
+        password = self.config["POSTGRES_PASSWORD"]
+        host = "localhost"
+        port = "5432"
+
+        content = textwrap.dedent(
+            f"""
+            # Test environment overrides for Semantik integration tests
+            POSTGRES_HOST={host}
+            POSTGRES_PORT={port}
+            POSTGRES_DB={test_db}
+            POSTGRES_USER={user}
+            POSTGRES_PASSWORD={password}
+            DATABASE_URL=postgresql://{user}:{password}@{host}:{port}/{test_db}
+            """
+        ).strip() + "\n"
+
+        with test_env_path.open("w") as f:
             f.write(content)
 
     def execute_setup(self) -> None:

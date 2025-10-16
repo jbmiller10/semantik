@@ -72,7 +72,7 @@
 | `tests/unit/test_chunking_exceptions.py` | Mock-based exception tests; behavior covered elsewhere | Medium | 1 day | ⏳ Pending |
 | `tests/unit/test_shared_qdrant_manager.py` | Patches Redis/Qdrant internals; duplicate coverage | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_chunking_error_flow.py` | Custom mocks, duplicates error handling coverage | Medium | 1-2 days | ⏳ Pending |
-| `tests/unit/test_resource_manager.py` | Mocked repositories/psutil, duplicates service behavior | Medium | 1 day | ⏳ Pending |
+| `tests/unit/test_resource_manager.py` | Replaced by integration ResourceManager tests | Complete | 1 day | ✅ Completed (2025-10-16) |
 | `tests/webui/services/test_progressive_segmentation.py` | Extensive mocks for segmentation logic | Medium | 1-2 days | ⏳ Pending |
 | `tests/unit/test_models.py` | Massive SQLAlchemy model suite with mocks | Medium | 2 days | ⏳ Pending |
 | `tests/unit/test_model_manager.py` | Mock-based tests for model manager internals | Medium | 1-2 days | ⏳ Pending |
@@ -88,15 +88,15 @@
 | `tests/e2e/test_websocket_performance.py` | Performance script requiring live stack | High | 1-2 days | ⏳ Pending |
 | `tests/e2e/test_websocket_reindex.py` | Giant E2E suite with duplicate coverage | High | 2 days | ⏳ Pending |
 | `tests/unit/test_auth.py` | Legacy mock-based auth tests overlapping newer coverage | Medium | 1 day | ⏳ Pending |
-| `tests/webui/services/test_partition_monitoring_service.py` | Mock-heavy monitoring suite | Medium | 1-2 days | ⏳ Pending |
-| `tests/unit/test_auth_repository.py` | Mock session tests; need DB integration | Medium | 1 day | ⏳ Pending |
-| `tests/test_embedding_oom_handling.py` | Manual script hitting real resources | Medium | 1 day | ⏳ Pending |
+| `tests/webui/services/test_partition_monitoring_service.py` | Covered by integration monitoring smoke tests | Complete | 1-2 days | ✅ Completed (2025-10-16) |
+| `tests/unit/test_auth_repository.py` | Replaced by integration repository coverage | Complete | 1 day | ✅ Completed (2025-10-16) |
+| `tests/test_embedding_oom_handling.py` | Relocated to `manual_tests/test_embedding_oom_handling.py` | Complete | 1 day | ✅ Completed (2025-10-16) |
 | `tests/unit/test_chunk_repository.py` | Mock-only repository coverage | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_partition_utils.py` | Helper tests duplicating production logic | Medium | 1 day | ⏳ Pending |
-| `tests/performance/chunking_benchmarks.py` | Performance script without assertions | High | 1 day | ⏳ Pending |
+| `tests/unit/test_partition_utils.py` | Slimmed to validation-only; DB coverage moved to integration | Complete | 1 day | ✅ Completed (2025-10-16) |
+| `tests/performance/chunking_benchmarks.py` | Relocated to `manual_tests/performance/chunking_benchmarks.py` | Complete | 1 day | ✅ Completed (2025-10-16) |
 | `tests/webui/api/v2/test_directory_scan.py` | Mocked API coverage overlapping service tests | Medium | 1-2 days | ⏳ Pending |
 | `tests/unit/test_chunking_exception_handlers.py` | Mock-based error handler tests | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_operation_service.py` | Mock-heavy service suite | Medium | 1-2 days | ⏳ Pending |
+| `tests/unit/test_operation_service.py` | Replaced by integration OperationService suite | Complete | 1-2 days | ✅ Completed (2025-10-16) |
 | `tests/unit/test_chunking_security.py` | Overlapping security tests with mocks | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/test_websocket_race_conditions.py` | Manual load script with no assertions | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_search_reranking_integration.py` | Overlapping integration coverage | Medium | 1-2 days | ⏳ Pending |
@@ -120,10 +120,10 @@
 | `tests/domain/test_chunking_strategies.py` | Placeholder assertions (`assert True`), weak metadata checks | Medium | 1 day | ⏳ Pending |
 | `tests/unit/test_search_api.py` | Mutates module singletons (`search_api_module.*`), heavy mocking, brittle cleanup | Medium | 1-2 days | ⏳ Pending |
 | `tests/unit/test_search_api_edge_cases.py` | Same singleton patching, duplicates main suite, mocks internals | Medium | 1-2 days | ⏳ Pending |
-| `tests/unit/test_rate_limiter.py` | Touches private limiter state, environment-dependent behavior | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_user_repository.py` | Mock-only repository tests duplicating integration coverage | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_api_key_repository.py` | Mock session verifications instead of DB-backed tests | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_operation_repository.py` | Mocked UoW tests instead of real transactions | Medium | 1-2 days | ⏳ Pending |
+| `tests/unit/test_rate_limiter.py` | Replaced by integration limiter suite | Complete | 1 day | ✅ Completed (2025-10-16) |
+| `tests/unit/test_user_repository.py` | Replaced by integration coverage (`tests/integration/repositories/test_user_repository.py`) | Complete | 1 day | ✅ Completed (2025-10-16) |
+| `tests/unit/test_api_key_repository.py` | Replaced by integration tests (`tests/integration/repositories/test_api_key_repository.py`) | Complete | 1 day | ✅ Completed (2025-10-16) |
+| `tests/unit/test_operation_repository.py` | Replaced by integration repository coverage | Complete | 1-2 days | ✅ Completed (2025-10-16) |
 
 ---
 
@@ -491,20 +491,11 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 
 ### File: `tests/unit/test_rate_limiter.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - isolate limiter state
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - superseded by `tests/integration/services/test_rate_limiter.py`
 
-**Observations**
-- Touches private limiter attributes (`limiter._limiter.storage.storage`) and relies on environment toggles, so global state can leak between tests.
-- Patches `Limiter._check_request_limit` to simulate throttling instead of exercising actual storage behavior.
-- Test app factory doesn’t always dispose of limiter instances, risking shared counters across tests.
-
-**Action Items**
-1. Provide fixtures that yield a fresh `Limiter` with isolated in-memory or fakeredis storage per test.
-2. Assert on HTTP responses/headers rather than limiter internals.
-3. Remove dependency on `DISABLE_RATE_LIMITING` flag inside unit tests; configure key function explicitly.
-
----
+**Summary**
+- Integration app exercises limiter behaviour and circuit breaker tracking without touching private state.
 
 ### File: `tests/webui/test_chunking_metrics.py`
 
@@ -734,63 +725,36 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 
 ### File: `tests/unit/test_document_scanning_service.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - relies on mocked sessions
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - replaced with `tests/integration/services/test_document_scanning_service.py`
 
-**Findings**
-- Mocks `AsyncSession` and repository calls, effectively reimplementing ORM behavior.
-- Duplicate coverage of scenarios already exercised by directory scanning service tests.
-
-**Remediation**
-1. Replace with integration tests that operate against the DB using the real service.
-2. Keep only simple validation unit tests if needed.
-
----
+**Summary**
+- Integration tests register documents via real repository; counts/dedup verified in DB.
 
 ### File: `tests/unit/test_directory_scan_service.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - duplicates service tests
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - replaced with `tests/integration/services/test_directory_scan_service.py`
 
-**Issues**
-- Uses mocked DB sessions to verify internal calls, rather than asserting on API/service outputs.
-- Overlaps nearly entirely with `tests/webui/services/test_directory_scan_service.py`.
-
-**Action Items**
-1. Remove redundant unit tests once integration coverage is in place.
-2. Retain only pure helper validation tests if necessary.
-
----
+**Summary**
+- New integration suite scans real tmp directories and records progress events without mocks.
 
 ### File: `tests/unit/test_api_key_repository.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - mock-based repository coverage
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - coverage moved to `tests/integration/repositories/test_api_key_repository.py`
 
-**Problems**
-- Interacts with `AsyncMock` session objects instead of exercising real database constraints.
-- Asserts on mocked `execute`/`flush` calls, offering minimal behavioral assurance.
-
-**Recommendation**
-1. Move repository coverage into integration tests using the async session fixture.
-2. Keep a slim unit file only for pure utility functions.
-
----
+**Summary**
+- Legacy mock-based assertions removed.
+- Integration suite verifies create/list/update/delete flows against the real async session.
 
 ### File: `tests/unit/test_operation_repository.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - mock-based unit suite
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - see `tests/integration/repositories/test_operation_repository.py`
 
-**Findings**
-- Uses mocked unit-of-work/session patterns to assert call sequences rather than persisted state changes.
-- Duplicates scenarios planned for integration coverage (operation lifecycle, retries).
-
-**Next Steps**
-1. Shift coverage to integration tests with the real DB.
-2. Remove or shrink this mock-heavy suite after migration.
-
----
+**Summary**
+- Integration suite validates create/set_task/update/list/cancel flows with permission checks.
 
 ### File: `tests/webui/api/v2/test_collections.py`
 
@@ -930,12 +894,11 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 
 ### File: `tests/unit/test_resource_manager.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - mock-based resource checks
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - integration coverage in `tests/integration/services/test_resource_manager.py`
 
-**Issue**: Relies on mocked repositories and `psutil`, providing limited assurance; migrate to integration tests for resource enforcement.
-
----
+**Summary**
+- Tests validate quotas/estimation/reservation using real repositories and patched psutil metrics.
 
 ### File: `tests/webui/services/test_progressive_segmentation.py`
 
@@ -1232,18 +1195,11 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 
 ### File: `tests/unit/test_user_repository.py`
 
-**Grade**: C- (5/10)  
-**Status**: ⏳ Pending - migrate to database-backed coverage
+**Grade**: ✅ Replaced  
+**Status**: ✅ Completed (2025-10-16) - covered by `tests/integration/repositories/test_user_repository.py`
 
-**Findings**
-- Uses `AsyncMock` sessions to simulate ORM behavior, then asserts on `add/flush/refresh` call counts.
-- Key behaviors (unique constraint handling, password hashing, timestamp updates) should be exercised with the real async session fixture.
-
-**Action Items**
-1. Add integration tests for the repository using the test database.
-2. Reduce this unit file to minimal validation helpers once integration coverage exists.
-
----
+**Summary**
+- Integration tests assert create/update/delete/password verification using real hashed credentials.
 
 ### File: `tests/security/test_path_traversal.py`
 
