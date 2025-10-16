@@ -69,12 +69,6 @@ dev = [
 ]
 e2e = ["pytest-playwright>=0.6.2,<0.7"]
 
-[tool.uv]
-default-groups = [
-    "dev",
-    "e2e",
-]
-
 [tool.hatch.build.targets.sdist]
 include = [
     "packages/vecpipe",
@@ -175,3 +169,4 @@ markers = [
     "integration: Integration tests that rely on real infrastructure or databases",
     "performance: Performance-focused tests that may run slowly",
 ]
+norecursedirs = ["manual_tests"]

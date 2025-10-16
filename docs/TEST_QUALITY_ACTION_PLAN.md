@@ -1577,6 +1577,73 @@ class TestWebSocketCollectionOperations:
 - Can run specific tests in isolation
 - Better test names describe actual behavior
 
+### Action 3: Quarantine Script-Style "Tests" That Hit Live Services ⚠️ CRITICAL
+
+**Priority**: P0  
+**Effort**: 0.5 day to relocate/remove, follow-up stories for real coverage  
+**Risk**: Low - these files already provide no automated validation
+
+**Problem**: Several top-level files under `tests/` and `apps/webui-react/tests/` are executable scripts rather than assertions. They call live HTTP endpoints, sleep, or print results, and they run as part of CI because they live under `tests/`. Examples:
+- `tests/test_metrics.py`, `tests/test_metrics_update.py`, `tests/test_search.py` – issue only `requests` calls with bare `print`, zero assertions.
+- `tests/test_embedding_performance.py`, `tests/test_embedding_full_integration.py` – long-running benchmarks with timers, create real services, no validation.
+- `apps/webui-react/tests/api_test_suite.py` – asynchronous smoke harness that depends on a fully running stack.
+
+**Impact**: Pytest treats these files as passing even when nothing is asserted, masking regressions and lengthening suite runtime. Some call external services (`localhost:8080`, `:9092`) and will hang if the stack isn't running locally.
+
+**Target State**:
+1. Move these scripts into a dedicated `manual_tests/` (or `qa_scripts/`) directory excluded from pytest discovery.
+2. Replace each with real automated coverage stories (tracked separately) before re-introducing them to automated runs.
+3. Document how to run the manual scripts when needed.
+
+**Steps**:
+1. Create `manual_tests/README.md` explaining intent.
+2. Relocate the script files (or delete if superseded) and update imports.
+3. Update CI (pytest invocation) to ignore the new manual directory explicitly.
+4. File follow-up tickets for proper automated coverage (see Tracking doc).
+
+### Action 4: Replace Placeholder Reranking "E2E" Suite With Real Coverage ⚠️ CRITICAL
+
+**Priority**: P0  
+**Effort**: 1-2 days for a real API+service reranking flow  
+**Risk**: Medium - requires orchestrating integration fixtures
+
+**Problem**: `tests/test_reranking_e2e.py` contains only `assert True` statements referencing "verified by code inspection". No request is performed, no pipeline exercised.
+
+**Target State**:
+- Implement an async integration test that uses existing fixtures to issue a real search request with reranking enabled and validates that reranking parameters flow through WebUI → VecPipe and that reranking metrics return.
+- Ensure the test is tagged (`@pytest.mark.integration`) and placed in `tests/integration/search/`.
+- Remove or rewrite the current placeholder file.
+
+**Verification**: Run `uv run pytest tests/integration/search/test_reranking_flow.py -v`.
+
+### Action 5: Deduplicate Celery Helper Suites & Audit Assertions
+
+**Priority**: P1  
+**Effort**: 1 day  
+**Risk**: Low
+
+**Problem**: `tests/webui/test_tasks_helpers.py` and `tests/webui/test_tasks_helpers_original.py` diverge while covering overlapping behavior. Keeping both causes maintenance drift and inconsistent assertions.
+
+**Target State**:
+1. Agree on a single canonical helper suite.
+2. Merge meaningful scenarios, drop redundant ones, and tighten assertions (avoid `assert True` placeholders).
+3. Remove the obsolete file and update imports.
+
+### Action 6: Stabilize WebSocket/Redis Tests (Remove Sleeps & Real Network Reliance)
+
+**Priority**: P1  
+**Effort**: 2-3 days across suites  
+**Risk**: Medium - concurrency logic is sensitive
+
+**Problem**: WebSocket suites (`tests/webui/test_chunking_websocket.py`, `tests/websocket/test_performance.py`, `tests/websocket/websocket_load_test.py`, etc.) rely on `time.sleep`, direct `redis://localhost:6379/15`, and even aiohttp clients. While CI spins up Redis, these tests are effectively integration/load tests hiding under unit directories and remain flaky locally.
+
+**Target State**:
+- Introduce fake Redis pub/sub fixtures or use `fakeredis` to avoid real network calls.
+- Replace `time.sleep` with controllable time mocking (e.g., `freezegun`, `asyncio` clock helpers).
+- Extract true load/stress scripts into performance tooling outside pytest default runs.
+
+**Verification**: Run `uv run pytest tests/websocket -v` locally without Redis; ensure tests pass using fakes/mocks.
+
 **Estimated Time**: 2 days to refactor all giant tests
 
 ---
@@ -1587,6 +1654,8 @@ class TestWebSocketCollectionOperations:
 - [ ] Delete `test_auth.py` (5 min)
 - [ ] Fix `test_collection_repository.py` (2-3 days)
 - [ ] Start fixing `test_collection_service.py` (3-4 days)
+- [ ] Quarantine manual/script-style test files (0.5 day)
+- [ ] Replace placeholder reranking E2E suite with real coverage (1-2 days)
 
 ### Week 3-4 (Sprint 2)
 - [ ] Complete `test_collection_service.py` refactor
@@ -1594,6 +1663,8 @@ class TestWebSocketCollectionOperations:
 - [ ] Extract shared E2E fixtures (4 hours)
 - [ ] Add missing negative test cases (2-3 days)
 - [ ] Fix performance test flakiness (4 hours)
+- [ ] Deduplicate Celery helper suites & tighten assertions (1 day)
+- [ ] Stabilize WebSocket/Redis tests with fakes and async time control (2-3 days)
 
 ### Week 5-6 (Sprint 3)
 - [ ] Break down giant tests (2 days)
