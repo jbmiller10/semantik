@@ -16,9 +16,15 @@ from .api_models import (
     ChunkingConfigBase,
     ChunkingStats,
     ChunkingStrategy,
+    ChunkListResponse,
     ChunkPreview,
     CompareResponse,
+    DocumentAnalysisResponse,
+    GlobalMetrics,
     PreviewResponse,
+    QualityAnalysis,
+    QualityLevel,
+    SavedConfiguration,
     StrategyComparison,
     StrategyInfo,
     StrategyMetrics,
@@ -464,4 +470,203 @@ class ServiceChunkingStats:
             last_updated=self.last_updated,
             processing_time_seconds=self.processing_time_seconds,
             quality_metrics=self.quality_metrics or {},
+        )
+
+
+@dataclass
+class ServiceChunkRecord:
+    """Representation of a single chunk entry."""
+
+    id: int
+    collection_id: str
+    document_id: str | None
+    chunk_index: int
+    content: str
+    token_count: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    def to_api_dict(self) -> dict[str, Any]:
+        """Convert to dictionary suitable for API response."""
+        char_count = len(self.content or "")
+        token_estimate = self.token_count if self.token_count is not None else max(char_count // 4, 1)
+        return {
+            "id": self.id,
+            "collection_id": self.collection_id,
+            "document_id": self.document_id,
+            "chunk_index": self.chunk_index,
+            "content": self.content,
+            "token_count": token_estimate,
+            "char_count": char_count,
+            "metadata": self.metadata or {},
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+@dataclass
+class ServiceChunkList:
+    """Paginated chunk list."""
+
+    chunks: list[ServiceChunkRecord]
+    total: int
+    page: int
+    page_size: int
+
+    def to_api_model(self) -> ChunkListResponse:
+        """Convert to API response model."""
+        has_next = (self.page - 1) * self.page_size + len(self.chunks) < self.total
+        return ChunkListResponse(
+            chunks=[chunk.to_api_dict() for chunk in self.chunks],
+            total=self.total,
+            page=self.page,
+            page_size=self.page_size,
+            has_next=has_next,
+        )
+
+
+@dataclass
+class ServiceGlobalMetrics:
+    """Global chunking metrics across collections."""
+
+    total_collections_processed: int
+    total_chunks_created: int
+    total_documents_processed: int
+    avg_chunks_per_document: float
+    most_used_strategy: str | ChunkingStrategy
+    avg_processing_time: float
+    success_rate: float
+    period_start: datetime
+    period_end: datetime
+
+    def to_api_model(self) -> GlobalMetrics:
+        """Convert to API response model."""
+        try:
+            strategy = (
+                ChunkingStrategy(self.most_used_strategy)
+                if isinstance(self.most_used_strategy, str)
+                else self.most_used_strategy
+            )
+        except ValueError:
+            strategy = ChunkingStrategy.FIXED_SIZE
+
+        return GlobalMetrics(
+            total_collections_processed=self.total_collections_processed,
+            total_chunks_created=self.total_chunks_created,
+            total_documents_processed=self.total_documents_processed,
+            avg_chunks_per_document=self.avg_chunks_per_document,
+            most_used_strategy=strategy,
+            avg_processing_time=self.avg_processing_time,
+            success_rate=min(max(self.success_rate, 0.0), 1.0),
+            period_start=self.period_start,
+            period_end=self.period_end,
+        )
+
+
+@dataclass
+class ServiceQualityAnalysis:
+    """Quality analysis summary."""
+
+    overall_quality: str | QualityLevel
+    quality_score: float
+    coherence_score: float
+    completeness_score: float
+    size_consistency: float
+    recommendations: list[str] = field(default_factory=list)
+    issues_detected: list[str] = field(default_factory=list)
+
+    def to_api_model(self) -> QualityAnalysis:
+        """Convert to API response model."""
+        try:
+            quality_level = (
+                QualityLevel(self.overall_quality) if isinstance(self.overall_quality, str) else self.overall_quality
+            )
+        except ValueError:
+            quality_level = QualityLevel.GOOD
+
+        return QualityAnalysis(
+            overall_quality=quality_level,
+            quality_score=min(max(self.quality_score, 0.0), 1.0),
+            coherence_score=min(max(self.coherence_score, 0.0), 1.0),
+            completeness_score=min(max(self.completeness_score, 0.0), 1.0),
+            size_consistency=min(max(self.size_consistency, 0.0), 1.0),
+            recommendations=self.recommendations,
+            issues_detected=self.issues_detected,
+        )
+
+
+@dataclass
+class ServiceDocumentAnalysis:
+    """Document analysis result."""
+
+    document_type: str
+    content_structure: dict[str, Any]
+    recommended_strategy: ServiceStrategyRecommendation
+    estimated_chunks: dict[str | ChunkingStrategy, int]
+    complexity_score: float
+    special_considerations: list[str] = field(default_factory=list)
+
+    def to_api_model(self) -> DocumentAnalysisResponse:
+        """Convert to API response model."""
+        estimated = {}
+        for strategy, count in self.estimated_chunks.items():
+            try:
+                strategy_enum = (
+                    ChunkingStrategy(strategy) if isinstance(strategy, str) else strategy  # type: ignore[arg-type]
+                )
+            except ValueError:
+                strategy_enum = ChunkingStrategy.FIXED_SIZE
+            estimated[strategy_enum] = max(int(count), 0)
+
+        return DocumentAnalysisResponse(
+            document_type=self.document_type,
+            content_structure=self.content_structure,
+            recommended_strategy=self.recommended_strategy.to_api_model(),
+            estimated_chunks=estimated,
+            complexity_score=min(max(self.complexity_score, 0.0), 1.0),
+            special_considerations=self.special_considerations,
+        )
+
+
+@dataclass
+class ServiceSavedConfiguration:
+    """Saved chunking configuration with metadata."""
+
+    id: str
+    name: str
+    description: str | None
+    strategy: str | ChunkingStrategy
+    config: dict[str, Any]
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    usage_count: int = 0
+    is_default: bool = False
+    tags: list[str] = field(default_factory=list)
+
+    def to_api_model(self) -> SavedConfiguration:
+        """Convert to API response model."""
+        try:
+            strategy = ChunkingStrategy(self.strategy) if isinstance(self.strategy, str) else self.strategy
+        except ValueError:
+            strategy = ChunkingStrategy.FIXED_SIZE
+
+        try:
+            config_model = ChunkingConfigBase(**self.config)
+        except ValidationError:
+            config_model = ChunkingConfigBase(strategy=strategy)
+
+        return SavedConfiguration(
+            id=self.id,
+            name=self.name,
+            description=self.description,
+            strategy=strategy,
+            config=config_model,
+            created_by=self.created_by,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+            usage_count=self.usage_count,
+            is_default=self.is_default,
+            tags=self.tags,
         )

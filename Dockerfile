@@ -52,10 +52,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Install uv
+# Install uv (supports swapping in a pre-downloaded installer script)
 ENV UV_HOME=/opt/uv
-RUN mkdir -p "${UV_HOME}/bin" && \
-    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --install-dir "${UV_HOME}/bin"
+COPY scripts/install_uv.sh /tmp/install_uv.sh
+RUN chmod +x /tmp/install_uv.sh && \
+    mkdir -p "${UV_HOME}/bin" && \
+    UV_INSTALL_DIR="${UV_HOME}/bin" sh /tmp/install_uv.sh && \
+    rm /tmp/install_uv.sh
 ENV PATH="${UV_HOME}/bin:${PATH}"
 
 # Copy dependency files
@@ -143,6 +146,10 @@ RUN mkdir -p \
     /app/data/output \
     && chown -R appuser:appuser /app/data /app/logs
 
+# Prepare Hugging Face cache directory with correct ownership
+RUN mkdir -p /app/.cache/huggingface/hub && \
+    chown -R appuser:appuser /app/.cache
+
 # Create symbolic links for CUDA libraries if needed
 RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so || true && \
     ln -sf /usr/lib/x86_64-linux-gnu/libcusparse.so.11 /usr/local/cuda/lib64/libcusparse.so.11 || true && \
@@ -167,6 +174,8 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY
 # C compiler for bitsandbytes JIT compilation
 ENV CC=gcc
 ENV CXX=g++
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/

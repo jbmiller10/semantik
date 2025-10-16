@@ -10,10 +10,19 @@ import subprocess
 import sys
 from pathlib import Path
 
+MIN_PYTHON_VERSION = (3, 11)
+
 
 def check_python_version() -> None:
-    """Check if Python version is 3.10 or higher"""
-    print(f"✅ Python {sys.version.split()[0]} detected")
+    """Ensure the current interpreter meets the minimum supported version."""
+    if sys.version_info < MIN_PYTHON_VERSION:
+        required = ".".join(str(part) for part in MIN_PYTHON_VERSION)
+        detected = ".".join(str(part) for part in sys.version_info[:3])
+        print(f"❌ Python {detected} detected. Semantik requires Python >= {required}.")
+        sys.exit(1)
+
+    required = ".".join(str(part) for part in MIN_PYTHON_VERSION)
+    print(f"✅ Python {sys.version.split()[0]} detected (>= {required})")
 
 
 def check_uv() -> bool:

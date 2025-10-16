@@ -18,6 +18,8 @@ os.environ["ENV"] = "test"
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 
+import importlib  # noqa: E402
+
 import asyncpg  # noqa: E402
 import fakeredis  # noqa: E402
 import fakeredis.aioredis  # noqa: E402
@@ -30,7 +32,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-import packages.webui.celery_app as celery_module  # noqa: E402
+celery_module = importlib.import_module("packages.webui.celery_app")  # noqa: E402
 from packages.shared.database import get_db  # noqa: E402
 from packages.shared.database.factory import (  # noqa: E402
     create_auth_repository,
@@ -70,6 +72,19 @@ os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
+
+
+@pytest.fixture(autouse=True)
+def stub_celery_send_task(monkeypatch):
+    """Ensure Celery does not require a live broker during tests."""
+
+    send_task_mock = MagicMock(name="celery_send_task_stub")
+    send_task_mock.return_value = MagicMock(name="celery_async_result_stub")
+
+    monkeypatch.setattr(celery_module.celery_app, "send_task", send_task_mock, raising=False)
+
+    # Expose the stub to tests that may want to inspect dispatch calls.
+    return send_task_mock
 
 
 @pytest.fixture()

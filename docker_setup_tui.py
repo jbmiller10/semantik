@@ -29,6 +29,7 @@ class DockerSetupTUI:
         self.docker_available = False
         self.compose_available = False
         self.docker_gpu_available = False
+        self.buildx_available = False
         self.driver_version: str | None = None
         self.is_wsl2 = False
 
@@ -136,6 +137,30 @@ class DockerSetupTUI:
             console.print("For manual installation: https://docs.docker.com/compose/install/")
             return False
 
+        # Check Docker Buildx plugin (required for Bake-based builds)
+        self.buildx_available = self._check_docker_buildx()
+        if self.buildx_available:
+            console.print("[green]✓[/green] Docker Buildx plugin found")
+        else:
+            console.print("[red]✗[/red] Docker Buildx plugin not found")
+            console.print(
+                "\n[yellow]Docker Buildx is required because Semantik's Docker Compose configuration uses Bake for builds.[/yellow]"
+            )
+            system_name = platform.system()
+            if system_name == "Linux":
+                console.print("Install the Buildx plugin using your package manager, for example:")
+                console.print("  → Debian/Ubuntu: sudo apt-get install docker-buildx-plugin")
+                console.print("  → Fedora/RHEL: sudo dnf install docker-buildx-plugin")
+                console.print("  → Arch/Manjaro: sudo pacman -S docker-buildx")
+            elif system_name == "Darwin":
+                console.print(
+                    "Update Docker Desktop from https://www.docker.com/products/docker-desktop/ (Buildx is included)."
+                )
+            else:
+                console.print("Ensure Docker Desktop is up to date; Buildx ships with current releases.")
+            console.print("\nAfter installing Buildx, re-run the wizard.")
+            return False
+
         # Check GPU availability
         self.gpu_available = self._check_gpu()
         if self.gpu_available:
@@ -183,6 +208,16 @@ class DockerSetupTUI:
 
             # Try old syntax
             return shutil.which("docker-compose") is not None
+        except Exception:
+            return False
+
+    def _check_docker_buildx(self) -> bool:
+        """Check if docker buildx plugin is available"""
+        try:
+            result = subprocess.run(["docker", "buildx", "version"], capture_output=True, text=True)
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
         except Exception:
             return False
 
