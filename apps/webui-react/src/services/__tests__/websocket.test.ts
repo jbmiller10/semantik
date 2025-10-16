@@ -56,7 +56,7 @@ class TestMockWebSocket {
     });
     
     this.removeEventListener = vi.fn();
-    this.dispatchEvent = vi.fn();
+    this.dispatchEvent = vi.fn(() => true);
     
     // Make send a spy from the start
     this.send = vi.fn((data: string) => {
@@ -128,9 +128,9 @@ class TestMockWebSocket {
   
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
-    if (this.onopen) {
-      this.onopen({ type: 'open' } as Event);
-    }
+    const event = new Event('open');
+    this.dispatchEvent(event);
+    this.onopen?.(event);
   }
   
   simulateMessage(message: WebSocketMessage) {
@@ -142,9 +142,9 @@ class TestMockWebSocket {
   }
   
   simulateError() {
-    if (this.onerror) {
-      this.onerror({ type: 'error' } as Event);
-    }
+    const event = new Event('error');
+    this.dispatchEvent(event);
+    this.onerror?.(event);
   }
   
   simulateClose(code = 1000, reason = 'Normal closure') {
