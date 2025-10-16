@@ -172,4 +172,6 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
+    "integration: Integration tests that rely on real infrastructure or databases",
+    "performance: Performance-focused tests that may run slowly",
 ]

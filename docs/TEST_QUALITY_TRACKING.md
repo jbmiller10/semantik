@@ -34,7 +34,7 @@
 
 | File | Issue | Impact | Effort | Status |
 |------|-------|--------|--------|--------|
-| `tests/unit/test_all_chunking_strategies.py` | Wrong location, 78 test permutations | High | 1 day | ⏳ Pending |
+| `tests/unit/test_all_chunking_strategies.py` | Wrong location, 78 test permutations | High | 1 day | ✅ Completed (2025-10-16) |
 | `tests/e2e/test_websocket_integration.py` | Giant tests, code duplication | High | 2 days | ⏳ Pending |
 | `tests/test_embedding_integration.py` | Mocks defeat purpose, wrong location | Medium | 1 day | ⏳ Pending |
 
@@ -197,46 +197,44 @@
 
 ### File: `tests/unit/test_all_chunking_strategies.py`
 
-**Grade**: C+ (6.5/10)
-**Status**: 🟡 High Priority - Misplaced and slow
-**Location**: `/home/john/semantik/tests/unit/test_all_chunking_strategies.py`
+**Grade**: ✅ Addressed
+**Status**: ✅ Completed (2025-10-16) - Split into focused integration suites and performance smoke
+**Location**:
+- `tests/integration/strategies/test_chunker_edge_cases.py`
+- `tests/integration/strategies/test_chunker_behaviors.py`
+- `tests/integration/strategies/test_chunker_factory.py`
+- `tests/performance/test_chunking_large_documents.py`
 
 #### Critical Issues
 
-- [ ] **Conjoined Twins** (P1) - Integration tests in unit test directory
-  - Lines: 179-206, 476-495
-  - Impact: Slow "unit" tests, creates real chunker instances
-  - Effort: 1 day
-  - Action: Move to `tests/integration/strategies/test_chunking_strategies.py`
+- [x] **Conjoined Twins** (P1) - Integration tests in unit test directory
+  - Action: Introduced `tests/integration/strategies/` package hosting edge-case, behavior, and factory coverage with integration marker.
 
-- [ ] **Slow Poke** (P1) - Parametrized tests create 78 test permutations
-  - Lines: 179-180 (6 strategies × 13 edge cases = 78 tests)
-  - Lines: 476-495 (processes 1MB of text)
-  - Impact: Test suite takes minutes to run
-  - Action: Move large document tests to `tests/performance/`, reduce permutations
+- [x] **Slow Poke** (P1) - Parametrized tests create 78 test permutations
+  - Action: Trimmed to 24 cross-strategy edge-case permutations; migrated 1MB document stress test into `tests/performance/test_chunking_large_documents.py` with `@pytest.mark.performance`.
 
-- [ ] **Giant Tests** (P1) - Single 816-line class with 30+ test methods
-  - Lines: 30-846
-  - Impact: Hard to navigate, slow to run
-  - Action: Split into strategy-specific test classes
+- [x] **Giant Tests** (P1) - Single 816-line class with 30+ test methods
+  - Action: Replaced monolith with three concise modules grouped by concern.
 
 #### Moderate Issues
 
-- [ ] **Happy Path Only** (P1) - Missing negative test cases
-  - Missing: `chunk_size=0`, `None` inputs, resource exhaustion
-  - Action: Add comprehensive error case tests
+- [x] **Happy Path Only** (P1) - Missing negative test cases
+  - Action: Added metadata preservation assertions, strategy override checks, and validation failures that cover previous blind spots.
 
-- [ ] **Testing Implementation Details** (P2) - Verifies internal offset calculation
-  - Lines: 221-223, 237-241
-  - Action: Focus on observable behavior
+- [x] **Testing Implementation Details** (P2) - Verifies internal offset calculation
+  - Action: Rewrote assertions to focus on observable behavior (unique chunk ids, hierarchy metadata, semantic markers) rather than internal calls.
 
 #### Action Items
 
-1. ⏳ Create `tests/integration/strategies/` directory
-2. ⏳ Move file: `git mv tests/unit/test_all_chunking_strategies.py tests/integration/strategies/`
-3. ⏳ Add `pytestmark = pytest.mark.integration` at top of file
-4. ⏳ Split into multiple focused test classes
-5. ⏳ Move performance tests to separate file with `@pytest.mark.performance`
+1. ✅ Create `tests/integration/strategies/` directory
+2. ✅ Replace legacy unit file with integration-focused modules
+3. ✅ Add `pytestmark = pytest.mark.integration` (registered in `pyproject.toml`)
+4. ✅ Split scenarios across strategy-specific tests
+5. ✅ Move large document scenario under `tests/performance/` with `@pytest.mark.performance`
+
+#### Verification
+- `uv run pytest tests/integration/strategies -q`
+- `uv run pytest tests/performance/test_chunking_large_documents.py -q`
 
 ---
 
