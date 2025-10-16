@@ -92,9 +92,7 @@ class TestCollectionRepositoryIntegration:
         assert fetched.id == collection.id
         assert fetched.name == collection.name
 
-    async def test_get_by_uuid_returns_none_for_missing_collection(
-        self, repository: CollectionRepository
-    ) -> None:
+    async def test_get_by_uuid_returns_none_for_missing_collection(self, repository: CollectionRepository) -> None:
         """Missing collections should return None."""
         fetched = await repository.get_by_uuid("00000000-0000-0000-0000-000000000000")
 
@@ -128,9 +126,7 @@ class TestCollectionRepositoryIntegration:
     ) -> None:
         """Listing for a user should include owned and public collections."""
         owned = await collection_factory(owner_id=test_user_db.id, name=f"owned-{uuid4().hex[:8]}")
-        public = await collection_factory(
-            owner_id=other_user_db.id, name=f"public-{uuid4().hex[:8]}", is_public=True
-        )
+        public = await collection_factory(owner_id=other_user_db.id, name=f"public-{uuid4().hex[:8]}", is_public=True)
 
         collections, total = await repository.list_for_user(test_user_db.id)
 
@@ -176,9 +172,7 @@ class TestCollectionRepositoryIntegration:
     ) -> None:
         """Renaming fails when the target name already exists."""
         collection = await collection_factory(owner_id=test_user_db.id, name=f"primary-{uuid4().hex[:8]}")
-        existing = await collection_factory(
-            owner_id=other_user_db.id, name=f"taken-{uuid4().hex[:8]}", is_public=True
-        )
+        existing = await collection_factory(owner_id=other_user_db.id, name=f"taken-{uuid4().hex[:8]}", is_public=True)
 
         with pytest.raises(ValidationError):
             await repository.rename(collection.id, "", test_user_db.id)
