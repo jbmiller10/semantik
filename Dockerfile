@@ -146,6 +146,10 @@ RUN mkdir -p \
     /app/data/output \
     && chown -R appuser:appuser /app/data /app/logs
 
+# Prepare Hugging Face cache directory with correct ownership
+RUN mkdir -p /app/.cache/huggingface/hub && \
+    chown -R appuser:appuser /app/.cache
+
 # Create symbolic links for CUDA libraries if needed
 RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so || true && \
     ln -sf /usr/lib/x86_64-linux-gnu/libcusparse.so.11 /usr/local/cuda/lib64/libcusparse.so.11 || true && \
@@ -170,6 +174,8 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY
 # C compiler for bitsandbytes JIT compilation
 ENV CC=gcc
 ENV CXX=g++
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/
