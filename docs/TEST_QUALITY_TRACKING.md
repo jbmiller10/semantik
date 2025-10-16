@@ -26,8 +26,8 @@
 
 | File | Issue | Impact | Effort | Status |
 |------|-------|--------|--------|--------|
-| `tests/test_auth.py` | Delete entirely - 0 assertions, test pollution | High | 5 min | ⏳ Pending |
-| `tests/unit/test_collection_repository.py` | Mock everything - false confidence | Critical | 2-3 days | ⏳ Pending |
+| `tests/test_auth.py` | Delete entirely - 0 assertions, test pollution | High | 5 min | ✅ Completed (2025-10-16) |
+| `tests/unit/test_collection_repository.py` | Mock everything - false confidence | Critical | 2-3 days | ✅ Completed (2025-10-16) |
 | `tests/unit/test_collection_service.py` | 904 lines, excessive mocking | Critical | 3-4 days | ⏳ Pending |
 
 ### P1 - High (Next 2 Weeks)
@@ -54,53 +54,53 @@
 ### File: `tests/test_auth.py` ❌ DELETE
 
 **Grade**: F (2/10)
-**Status**: 🔴 Critical - Should be deleted
+**Status**: ✅ Completed (2025-10-16) - Removed redundant HTTP smoke script
 **Location**: `/home/john/semantik/tests/test_auth.py`
 
 #### Critical Issues
-- [ ] **No Assertions** (P0) - File has zero assertions, only print statements
+- [x] **No Assertions** (P0) - File has zero assertions, only print statements
   - Lines: 28-70
   - Impact: Test always passes, provides no validation
   - Action: Delete file entirely
 
-- [ ] **Test Pollution** (P0) - Creates persistent user "testuser" without cleanup
+- [x] **Test Pollution** (P0) - Creates persistent user "testuser" without cleanup
   - Lines: 20-34
   - Impact: Second test run fails, test order dependencies
   - Action: Delete file (covered by other tests)
 
-- [ ] **Redundant** (P0) - Functionality covered by existing tests
+- [x] **Redundant** (P0) - Functionality covered by existing tests
   - Better coverage in: `tests/unit/test_auth.py` (623 lines)
   - Better coverage in: `tests/integration/test_auth_api.py` (322 lines)
   - Action: `git rm tests/test_auth.py`
 
 **Action Items**:
 1. ✅ Verify coverage: `pytest tests/unit/test_auth.py tests/integration/test_auth_api.py -v`
-2. ⏳ Delete: `git rm tests/test_auth.py`
-3. ⏳ Commit with message explaining redundancy
+2. ✅ Delete: `git rm tests/test_auth.py`
+3. 🔜 Fold into test quality cleanup commit after additional refactors
 
 ---
 
 ### File: `tests/unit/test_collection_repository.py`
 
 **Grade**: D (3/10)
-**Status**: 🔴 Critical - Needs complete rewrite
+**Status**: ✅ Completed (2025-10-16) - Reauthored as integration suite with real DB
 **Location**: `/home/john/semantik/tests/unit/test_collection_repository.py`
 
 #### Critical Issues
 
-- [ ] **Conjoined Twins** (P0) - Mock integration tests, not unit tests
+- [x] **Conjoined Twins** (P0) - Mock integration tests, not unit tests
   - Lines: 23-477 (entire file)
   - Impact: Tests verify mock behavior, not real repository logic
   - Effort: 2-3 days
   - Action: Rewrite as integration tests with real database
   - Target: `tests/integration/repositories/test_collection_repository.py`
 
-- [ ] **Mockery** (P0) - Mocks critical business logic (UUID generation)
+- [x] **Mockery** (P0) - Mocks critical business logic (UUID generation)
   - Lines: 72-73
   - Impact: Hides potential bugs, brittle tests
   - Action: Use real UUID generation
 
-- [ ] **Dodger** (P0) - Tests mock assertions instead of behavior
+- [x] **Dodger** (P0) - Tests mock assertions instead of behavior
   - Lines: 88-89, 159, 305-306, 337, 381, 439-440, 465
   - Example: `mock_session.add.assert_called_once()`
   - Impact: Tests mock implementation, not actual functionality
@@ -108,35 +108,39 @@
 
 #### Moderate Issues
 
-- [ ] **Free Ride** (P1) - Multiple unrelated validations in single test
+- [x] **Free Ride** (P1) - Multiple unrelated validations in single test
   - Lines: 106-130
   - Impact: Unclear failure messages
   - Action: Split into parameterized tests
 
-- [ ] **Missing Coverage** (P1) - No tests for `update()` method
+- [x] **Missing Coverage** (P1) - No tests for `update()` method
   - Lines: N/A (method exists in production, no tests)
   - Impact: Critical functionality untested
   - Action: Add comprehensive update tests
 
-- [ ] **Leaky Mocks** (P2) - Mutable fixture state between tests
+- [x] **Leaky Mocks** (P2) - Mutable fixture state between tests
   - Lines: 40-56
   - Impact: Potential test interference
   - Action: Use factory fixtures
 
 #### Minor Issues
 
-- [ ] **Wrong Type Hints** (P2) - Fixtures return `None` instead of mock type
+- [x] **Wrong Type Hints** (P2) - Fixtures return `None` instead of mock type
   - Lines: 21-51
   - Action: Fix return types for IDE/mypy support
 
 **Action Items**:
-1. ⏳ Create `tests/integration/repositories/` directory
-2. ⏳ Rewrite tests using `async_session` fixture
-3. ⏳ Add missing `update()` method tests
-4. ⏳ Delete old mock-based file
-5. ⏳ Verify: `pytest tests/integration/repositories/test_collection_repository.py -v`
+1. ✅ Create `tests/integration/repositories/` directory
+2. ✅ Rewrite tests using `async_session` fixture
+3. ✅ Add missing `update()` / stats coverage
+4. ✅ Delete old mock-based file
+5. ✅ Verify: `uv run pytest tests/integration/repositories/test_collection_repository.py -q`
 
-**Code Examples**: See ACTION_PLAN.md Section "Action 2"
+**Resolution Summary**:
+- Introduced `tests/integration/repositories/test_collection_repository.py` backed by the real PostgreSQL session.
+- Exercised creation, retrieval, listing (public/private), rename, update_stats, update field mutations, and permission checks.
+- Added UUID-suffixed names to avoid cross-test collisions and aligned negative assertions with `DatabaseOperationError` / `EntityAlreadyExistsError`.
+- Ensured cleanup relies on transaction rollback via existing fixture isolation.
 
 ---
 
