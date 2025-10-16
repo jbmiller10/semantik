@@ -94,9 +94,14 @@ JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: openssl rand -hex
 JWT_ALGORITHM=HS256                                 # JWT signing algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES=1440                    # Access token expiration (24 hours)
 
+# Internal maintenance API
+INTERNAL_API_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Required in production; dev auto-saves to data/.internal_api_key
+
 # Security
 DISABLE_AUTH=false           # Disable authentication (NEVER in production!)
 ```
+
+In development environments, the WebUI stores the auto-generated internal API key in `data/.internal_api_key` so it persists across restarts. In production you **must** set `INTERNAL_API_KEY` to a strong value before launching; startup validation will fail if the default placeholder is still present.
 
 ### Model Configuration
 

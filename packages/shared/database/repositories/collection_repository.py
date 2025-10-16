@@ -32,6 +32,74 @@ class CollectionRepository:
         """
         self.session = session
 
+    @staticmethod
+    def _collection_to_dict(collection: Collection) -> dict[str, Any]:
+        """Convert a Collection ORM object into a serializable dictionary."""
+
+        status = collection.status.value if isinstance(collection.status, CollectionStatus) else collection.status
+
+        return {
+            "id": collection.id,
+            "name": collection.name,
+            "description": collection.description,
+            "owner_id": collection.owner_id,
+            "vector_store_name": collection.vector_store_name,
+            "embedding_model": collection.embedding_model,
+            "quantization": collection.quantization,
+            "chunk_size": collection.chunk_size,
+            "chunk_overlap": collection.chunk_overlap,
+            "is_public": collection.is_public,
+            "status": status,
+            "status_message": collection.status_message,
+            "qdrant_collections": collection.qdrant_collections or [],
+            "qdrant_staging": collection.qdrant_staging,
+            "document_count": collection.document_count,
+            "vector_count": collection.vector_count,
+            "total_size_bytes": collection.total_size_bytes,
+            "meta": collection.meta or {},
+            "created_at": collection.created_at,
+            "updated_at": collection.updated_at,
+        }
+
+    async def list_all(self) -> list[dict[str, Any]]:
+        """Return all collections including Qdrant metadata."""
+
+        try:
+            result = await self.session.execute(select(Collection).order_by(desc(Collection.created_at)))
+            collections = result.scalars().all()
+            return [self._collection_to_dict(collection) for collection in collections]
+        except Exception as e:
+            logger.error(f"Failed to list all collections: {e}")
+            raise DatabaseOperationError("list", "collections", str(e)) from e
+
+    async def list_by_user(
+        self,
+        user_id: int,
+        include_public: bool = True,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return collections accessible to a user as serializable dicts."""
+
+        try:
+            collections, _ = await self.list_for_user(
+                user_id=user_id,
+                offset=0,
+                limit=limit or 500,
+                include_public=include_public,
+            )
+            return [self._collection_to_dict(collection) for collection in collections]
+        except Exception as e:
+            logger.error(f"Failed to list collections for user {user_id}: {e}")
+            raise DatabaseOperationError("list", "collections", str(e)) from e
+
+    async def get_by_id(self, collection_uuid: str) -> dict[str, Any] | None:
+        """Return a collection by UUID as a serializable dict."""
+
+        collection = await self.get_by_uuid(collection_uuid)
+        if not collection:
+            return None
+        return self._collection_to_dict(collection)
+
     async def create(
         self,
         name: str,

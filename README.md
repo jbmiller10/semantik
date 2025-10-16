@@ -167,7 +167,7 @@ The setup wizard guides you through the entire configuration process with an int
    ```bash
    cp .env.docker.example .env
    # Edit .env with your configuration
-   # At minimum, change JWT_SECRET_KEY for security
+   # At minimum, change JWT_SECRET_KEY and INTERNAL_API_KEY for security
    ```
 
 3. **Start all services:**
@@ -184,6 +184,8 @@ That's it!  Semantik is now running with:
 - **WebUI** on port 8080
 - **Search API** on port 8001
 - **Qdrant** vector database on port 6333
+
+> **Security Note:** In production deployments the WebUI exits during startup unless `INTERNAL_API_KEY` is explicitly set to a strong value. For local development, the key is generated automatically and stored at `data/.internal_api_key` so it remains stable between restarts.
 
 **Additional Docker Options:**
 - **Production**: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
@@ -345,5 +347,3 @@ AI tooling was used in the development of this repo. All code was reviewed and t
 <li><b>Integrated Model Context Protocol Server</b>: Seamlessly bring the knowledge of your corpus to the LLM of your choice.</li>
 <li><b>Contextually aware document chunking:</b></li>
 <ul>
-
-

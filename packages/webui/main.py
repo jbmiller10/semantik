@@ -66,18 +66,60 @@ def _configure_embedding_service() -> None:
 
 
 def _configure_internal_api_key() -> None:
-    """Configure internal API key, generating one if using the default value."""
-    if shared_settings.INTERNAL_API_KEY == "change-me-in-production":
-        # Generate a secure random key
-        generated_key = secrets.token_urlsafe(32)
-        shared_settings.INTERNAL_API_KEY = generated_key
+    """Configure the internal API key without exposing its value in logs."""
+
+    default_placeholder = "change-me-in-production"
+    key_file = shared_settings.data_dir / ".internal_api_key"
+    configured_key = shared_settings.INTERNAL_API_KEY
+
+    if shared_settings.ENVIRONMENT == "production":
+        if not configured_key or configured_key == default_placeholder:
+            raise ValueError(
+                "INTERNAL_API_KEY must be explicitly set via environment variable in production. "
+                "Generate a secure value with `python -c \"import secrets; print(secrets.token_urlsafe(32))\"` "
+                "and set INTERNAL_API_KEY before starting the service."
+            )
+
+        logger.info("Using configured internal API key for production deployment")
+        return
+
+    if configured_key and configured_key != default_placeholder:
+        try:
+            key_file.write_text(configured_key)
+            key_file.chmod(0o600)
+        except Exception as exc:  # pragma: no cover - platform dependent
+            logger.warning(
+                "Using INTERNAL_API_KEY from environment but failed to persist to %s: %s", key_file, exc
+            )
+        else:
+            logger.info("Using INTERNAL_API_KEY from environment and stored a copy for development restarts")
+        return
+
+    if key_file.exists():
+        try:
+            stored_key = key_file.read_text().strip()
+            if stored_key:
+                shared_settings.INTERNAL_API_KEY = stored_key
+                logger.info("Loaded internal API key from %s for development", key_file)
+                return
+            logger.warning("Internal API key file %s is empty; generating a new key", key_file)
+        except Exception as exc:  # pragma: no cover - platform dependent
+            logger.warning("Failed to read internal API key from %s: %s", key_file, exc)
+
+    generated_key = secrets.token_urlsafe(32)
+    shared_settings.INTERNAL_API_KEY = generated_key
+
+    try:
+        key_file.write_text(generated_key)
+        key_file.chmod(0o600)
+        logger.info("Generated new internal API key for development and stored it securely")
+    except Exception as exc:  # pragma: no cover - platform dependent
         logger.warning(
-            f"Generated internal API key for development. "
-            f"Set INTERNAL_API_KEY environment variable for production. "
-            f"Current key: {generated_key}"
+            "Generated new internal API key for development but failed to persist to %s: %s. "
+            "The key will be regenerated on next startup unless INTERNAL_API_KEY is set.",
+            key_file,
+            exc,
         )
-    else:
-        logger.info("Using configured internal API key")
 
 
 def _validate_cors_origins(origins: list[str]) -> list[str]:

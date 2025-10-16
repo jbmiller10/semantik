@@ -136,6 +136,7 @@ class TestSearchAPIIntegration:
 
         # Mock Qdrant client for search_utils
         mock_qdrant_instance = mock_qdrant_client_class.return_value
+        mock_qdrant_instance.aclose = AsyncMock()
 
         # Create mock search results
         from unittest.mock import MagicMock
@@ -268,6 +269,7 @@ class TestSearchAPIIntegration:
 
         # Mock Qdrant client for search_utils to return empty results
         mock_qdrant_instance = mock_qdrant_client_class.return_value
+        mock_qdrant_instance.aclose = AsyncMock()
         mock_qdrant_instance.search = AsyncMock(return_value=[])
 
         # Import and create test client

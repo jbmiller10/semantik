@@ -51,6 +51,7 @@ class TestSearchAPIEmbeddingFlow:
 
             # Mock Qdrant search results
             mock_qdrant_instance = mock_qdrant_client_class.return_value
+            mock_qdrant_instance.aclose = AsyncMock()
             mock_result = MagicMock()
             mock_result.id = "test-id"
             mock_result.score = 0.95
@@ -146,6 +147,7 @@ class TestSearchAPIEmbeddingFlow:
             mock_get.return_value.raise_for_status = AsyncMock()
 
             mock_qdrant_instance = mock_qdrant_client_class.return_value
+            mock_qdrant_instance.aclose = AsyncMock()
             mock_qdrant_instance.search = AsyncMock(return_value=[])
 
             # Need to patch metrics server to avoid port conflicts

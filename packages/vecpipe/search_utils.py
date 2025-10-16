@@ -31,18 +31,24 @@ async def search_qdrant(
     Returns:
         List of search results from Qdrant
     """
-    # Initialize async client
     client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
 
-    # Perform search
-    results = await client.search(
-        collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
-    )
+    try:
+        results = await client.search(
+            collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
+        )
 
-    # Convert results to dictionary format for backward compatibility
-    return [
-        {"id": point.id, "score": point.score, "payload": point.payload if with_payload else None} for point in results
-    ]
+        return [
+            {"id": point.id, "score": point.score, "payload": point.payload if with_payload else None}
+            for point in results
+        ]
+    finally:
+        close = getattr(client, "aclose", None)
+        if callable(close):
+            try:
+                await close()
+            except Exception:  # pragma: no cover - network errors
+                logger.debug("Failed to close AsyncQdrantClient", exc_info=True)
 
 
 def parse_search_results(qdrant_results: list[dict]) -> list[dict]:

@@ -36,10 +36,15 @@ async def get_all_collection_vector_store_names(
     collections = await collection_repo.list_all()
 
     # Extract vector_store_names, filtering out None values
-    vector_store_names = []
+    vector_store_names: list[str] = []
     for collection in collections:
-        if hasattr(collection, "vector_store_name") and collection.vector_store_name:
-            vector_store_names.append(collection.vector_store_name)
+        vector_store_name = (
+            collection.get("vector_store_name")
+            if isinstance(collection, dict)
+            else getattr(collection, "vector_store_name", None)
+        )
+        if vector_store_name:
+            vector_store_names.append(vector_store_name)
 
     return vector_store_names
 

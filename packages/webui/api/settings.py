@@ -54,22 +54,28 @@ async def reset_database_endpoint(
         result = await db.execute(select(Collection))
         collections = result.scalars().all()
 
-        # Delete Qdrant collections for all collections
         async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-        for collection in collections:
-            collection_name = str(collection.vector_store_name)
-            try:
-                await async_client.delete_collection(collection_name)
-                logger.info(f"Deleted Qdrant collection: {collection_name}")
-            except Exception as e:
-                logger.warning(f"Failed to delete collection {collection_name}: {e}")
-
-        # Also delete the metadata collection
         try:
-            await async_client.delete_collection("_collection_metadata")
-            logger.info("Deleted metadata collection")
-        except Exception as e:
-            logger.warning(f"Failed to delete metadata collection: {e}")
+            for collection in collections:
+                collection_name = str(collection.vector_store_name)
+                try:
+                    await async_client.delete_collection(collection_name)
+                    logger.info(f"Deleted Qdrant collection: {collection_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete collection {collection_name}: {e}")
+
+            try:
+                await async_client.delete_collection("_collection_metadata")
+                logger.info("Deleted metadata collection")
+            except Exception as e:
+                logger.warning(f"Failed to delete metadata collection: {e}")
+        finally:
+            close = getattr(async_client, "aclose", None)
+            if callable(close):
+                try:
+                    await close()
+                except Exception:  # pragma: no cover - network errors
+                    logger.debug("Failed to close AsyncQdrantClient during reset", exc_info=True)
 
         # Delete all parquet files
         try:

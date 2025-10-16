@@ -76,15 +76,12 @@ class TestInternalAPIEndpoints:
     def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test successful retrieval of all vector store names."""
         # Mock repository response
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
-        # Create mock collections with vector_store_name attribute
-        mock_collection1 = MagicMock()
-        mock_collection1.vector_store_name = "collection_1"
-        mock_collection2 = MagicMock()
-        mock_collection2.vector_store_name = "collection_2"
-        mock_collection3 = MagicMock()
-        mock_collection3.vector_store_name = None  # This should be filtered out
+        # Create mock collections as dicts with vector_store_name key
+        mock_collection1 = {"vector_store_name": "collection_1"}
+        mock_collection2 = {"vector_store_name": "collection_2"}
+        mock_collection3 = {"vector_store_name": None}  # This should be filtered out
 
         mock_collection_repository.list_all = AsyncMock(
             return_value=[mock_collection1, mock_collection2, mock_collection3]
