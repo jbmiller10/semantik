@@ -27,6 +27,16 @@ from packages.webui.auth import get_current_user  # noqa: E402
 from packages.webui.dependencies import get_collection_for_user  # noqa: E402
 from packages.webui.services.chunking_service import ChunkingService  # noqa: E402
 from packages.webui.services.collection_service import CollectionService  # noqa: E402
+from packages.webui.services.dtos import (  # noqa: E402
+    ServiceChunkList,
+    ServiceChunkRecord,
+    ServiceChunkingStats,
+    ServiceDocumentAnalysis,
+    ServiceGlobalMetrics,
+    ServiceQualityAnalysis,
+    ServiceSavedConfiguration,
+    ServiceStrategyRecommendation,
+)
 
 bg_tasks.start_background_tasks = AsyncMock()
 bg_tasks.stop_background_tasks = AsyncMock()
@@ -65,7 +75,96 @@ def mock_collection() -> dict[str, Any]:
 @pytest.fixture()
 def mock_chunking_service() -> AsyncMock:
     """Mock ChunkingService."""
-    return AsyncMock(spec=ChunkingService)
+    service = AsyncMock(spec=ChunkingService)
+
+    service.get_collection_chunks.return_value = ServiceChunkList(
+        chunks=[
+            ServiceChunkRecord(
+                id=1,
+                collection_id="123e4567-e89b-12d3-a456-426614174000",
+                document_id="doc-1",
+                chunk_index=0,
+                content="Example chunk",
+                token_count=128,
+                metadata={},
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+        ],
+        total=1,
+        page=1,
+        page_size=20,
+    )
+
+    service.get_collection_chunk_stats.return_value = ServiceChunkingStats(
+        total_documents=10,
+        total_chunks=100,
+        avg_chunk_size=512.0,
+        min_chunk_size=100,
+        max_chunk_size=1024,
+        size_variance=50.0,
+        strategy_used="semantic",
+        last_updated=datetime.now(UTC),
+        processing_time_seconds=120.0,
+        quality_metrics={"coherence": 0.8},
+    )
+
+    now = datetime.now(UTC)
+    service.get_global_metrics.return_value = ServiceGlobalMetrics(
+        total_collections_processed=2,
+        total_chunks_created=500,
+        total_documents_processed=50,
+        avg_chunks_per_document=10.0,
+        most_used_strategy=ChunkingStrategy.RECURSIVE,
+        avg_processing_time=5.0,
+        success_rate=0.9,
+        period_start=now - timedelta(days=30),
+        period_end=now,
+    )
+
+    service.get_quality_scores.return_value = ServiceQualityAnalysis(
+        overall_quality="good",
+        quality_score=0.78,
+        coherence_score=0.76,
+        completeness_score=0.8,
+        size_consistency=0.7,
+        recommendations=["Monitor variance"],
+        issues_detected=[],
+    )
+
+    service.analyze_document.return_value = ServiceDocumentAnalysis(
+        document_type="markdown",
+        content_structure={"paragraphs": 3},
+        recommended_strategy=ServiceStrategyRecommendation(
+            strategy=ChunkingStrategy.RECURSIVE,
+            confidence=0.88,
+            reasoning="Handles structure",
+            alternatives=[],
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        estimated_chunks={ChunkingStrategy.RECURSIVE: 6},
+        complexity_score=0.6,
+        special_considerations=[],
+    )
+
+    saved_config = ServiceSavedConfiguration(
+        id="config-1",
+        name="Default",
+        description="Default config",
+        strategy=ChunkingStrategy.RECURSIVE,
+        config={"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 100},
+        created_by=1,
+        created_at=now,
+        updated_at=now,
+        usage_count=0,
+        is_default=False,
+        tags=[],
+    )
+    service.save_configuration.return_value = saved_config
+    service.list_configurations.return_value = [saved_config]
+
+    return service
 
 
 @pytest.fixture()
@@ -920,16 +1019,20 @@ class TestAnalyticsEndpoints:
 
     def test_analyze_document_success(self, client: TestClient, mock_chunking_service: AsyncMock) -> None:
         """Test document analysis for strategy recommendation."""
-        from packages.webui.services.dtos.chunking_dtos import ServiceStrategyRecommendation
-
-        mock_chunking_service.recommend_strategy.return_value = ServiceStrategyRecommendation(
-            strategy=ChunkingStrategy.DOCUMENT_STRUCTURE,
-            confidence=0.9,
-            reasoning="Document has clear structure with headings",
-            alternatives=[ChunkingStrategy.SEMANTIC],
-            chunk_size=512,
-            chunk_overlap=50,
-            preserve_sentences=True,
+        mock_chunking_service.analyze_document.return_value = ServiceDocumentAnalysis(
+            document_type="pdf",
+            content_structure={"sections": 4},
+            recommended_strategy=ServiceStrategyRecommendation(
+                strategy=ChunkingStrategy.DOCUMENT_STRUCTURE,
+                confidence=0.9,
+                reasoning="Document has clear structure with headings",
+                alternatives=[ChunkingStrategy.SEMANTIC],
+                chunk_size=512,
+                chunk_overlap=50,
+            ),
+            estimated_chunks={ChunkingStrategy.DOCUMENT_STRUCTURE: 6},
+            complexity_score=0.7,
+            special_considerations=[],
         )
 
         request_data = {
@@ -948,6 +1051,7 @@ class TestAnalyticsEndpoints:
         assert "recommended_strategy" in analysis
         assert "estimated_chunks" in analysis
         assert "complexity_score" in analysis
+        mock_chunking_service.analyze_document.assert_awaited()
 
 
 class TestConfigurationManagement:
@@ -968,6 +1072,21 @@ class TestConfigurationManagement:
             "is_default": False,
             "tags": ["technical", "documentation"],
         }
+
+        now = datetime.now(UTC)
+        mock_chunking_service.save_configuration.return_value = ServiceSavedConfiguration(
+            id="config-123",
+            name=request_data["name"],
+            description=request_data["description"],
+            strategy=ChunkingStrategy.RECURSIVE,
+            config=request_data["config"],
+            created_by=1,
+            created_at=now,
+            updated_at=now,
+            usage_count=0,
+            is_default=request_data["is_default"],
+            tags=request_data["tags"],
+        )
 
         response = client.post("/api/v2/chunking/configs", json=request_data)
 
