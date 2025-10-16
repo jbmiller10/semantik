@@ -143,11 +143,13 @@ async def test_analyze_document_uses_recommendation(chunking_service):
 
 @pytest.mark.asyncio()
 async def test_save_and_list_configurations(chunking_service):
-    chunking_service.config_builder.build_config = lambda strategy, config: chunking_service.config_builder.ChunkingConfigResult(
-        strategy=ChunkingStrategy(strategy),
-        config=config,
-        validation_errors=None,
-        warnings=None,
+    chunking_service.config_builder.build_config = (
+        lambda strategy, config: chunking_service.config_builder.ChunkingConfigResult(
+            strategy=ChunkingStrategy(strategy),
+            config=config,
+            validation_errors=None,
+            warnings=None,
+        )
     )
 
     await chunking_service.save_configuration(
