@@ -1,4 +1,3 @@
-import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -7,8 +6,8 @@ import pytest
 
 from packages.shared.database.models import OperationStatus
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.dtos.chunking_dtos import ServiceStrategyRecommendation
 from packages.webui.services.dtos.api_models import ChunkingStrategy
+from packages.webui.services.dtos.chunking_dtos import ServiceStrategyRecommendation
 
 
 class FakeResult:
