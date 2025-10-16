@@ -65,19 +65,19 @@ This guide documents the safe migration from the existing chunks table structure
 
 2. **Check current migration status**:
    ```bash
-   poetry run alembic current
+   uv run alembic current
    ```
 
 ### Apply Migration
 
 1. **Review the migration** (dry run):
    ```bash
-   poetry run alembic show 8547ff31e80c
+   uv run alembic show 8547ff31e80c
    ```
 
 2. **Apply the migration**:
    ```bash
-   poetry run alembic upgrade 8547ff31e80c
+   uv run alembic upgrade 8547ff31e80c
    ```
 
 3. **Monitor the logs** - The migration provides detailed progress information:
@@ -91,7 +91,7 @@ This guide documents the safe migration from the existing chunks table structure
 
 1. **Check migration status**:
    ```bash
-   poetry run alembic current
+   uv run alembic current
    ```
 
 2. **Verify data integrity**:
@@ -163,7 +163,7 @@ If you need to rollback the migration:
 
 1. **Downgrade using Alembic**:
    ```bash
-   poetry run alembic downgrade ae558c9e183f
+   uv run alembic downgrade ae558c9e183f
    ```
 
 2. **Manual restoration** (if needed):
@@ -244,12 +244,12 @@ Based on batch size of 10,000 records:
 2. **Test migration**:
    ```bash
    # In development environment
-   poetry run alembic upgrade 8547ff31e80c
+   uv run alembic upgrade 8547ff31e80c
    ```
 
 3. **Verify results**:
    ```bash
-   poetry run pytest tests/test_safe_migration.py -v
+   uv run pytest tests/test_safe_migration.py -v
    ```
 
 ## Monitoring After Migration

@@ -430,7 +430,7 @@ class Phase1DryRunValidator:
             print("\n✅ All static validation criteria met!")
             print("\nNext steps:")
             print("1. Start PostgreSQL: make docker-dev-up")
-            print("2. Run migrations: poetry run alembic upgrade head")
+            print("2. Run migrations: uv run alembic upgrade head")
             print("3. Run full validation: python scripts/phase1_validation.py")
         else:
             print("\n⚠️  Some validation criteria not met - review failures above")

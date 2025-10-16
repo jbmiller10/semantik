@@ -152,7 +152,7 @@ The `monitor_partition_health` task includes commented examples for integrating 
 ```
 
 To add Slack alerts:
-1. Install slack-sdk: `poetry add slack-sdk`
+1. Install slack-sdk: `uv add slack-sdk`
 2. Add Slack webhook URL to environment
 3. Implement `send_alert_to_slack()` function
 4. Uncomment the alert sending code
