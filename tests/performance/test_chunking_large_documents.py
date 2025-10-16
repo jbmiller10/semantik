@@ -27,5 +27,5 @@ async def test_character_chunker_large_document_handles_offsets() -> None:
     assert len(chunks) > 50
     assert all(len(chunk.text) <= 5000 for chunk in chunks)
 
-    for first, second in zip(chunks, chunks[1:]):
+    for first, second in zip(chunks, chunks[1:], strict=False):
         assert first.end_offset <= second.end_offset
