@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from packages.webui.services.dtos.api_models import ChunkingStrategy
 from packages.webui.services.dtos.chunking_dtos import (
     ServiceChunkList,
     ServiceChunkRecord,
@@ -9,7 +10,6 @@ from packages.webui.services.dtos.chunking_dtos import (
     ServiceSavedConfiguration,
     ServiceStrategyRecommendation,
 )
-from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 
 def test_service_chunk_record_to_api_dict():
