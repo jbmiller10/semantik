@@ -52,10 +52,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Install uv
+# Install uv (supports swapping in a pre-downloaded installer script)
 ENV UV_HOME=/opt/uv
-RUN mkdir -p "${UV_HOME}/bin" && \
-    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --install-dir "${UV_HOME}/bin"
+COPY scripts/install_uv.sh /tmp/install_uv.sh
+RUN chmod +x /tmp/install_uv.sh && \
+    mkdir -p "${UV_HOME}/bin" && \
+    UV_INSTALL_DIR="${UV_HOME}/bin" sh /tmp/install_uv.sh && \
+    rm /tmp/install_uv.sh
 ENV PATH="${UV_HOME}/bin:${PATH}"
 
 # Copy dependency files
