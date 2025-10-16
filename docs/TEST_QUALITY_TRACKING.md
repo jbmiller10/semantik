@@ -305,16 +305,18 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 ### File: `tests/test_reranking_e2e.py`
 
 **Grade**: F (1/10)  
-**Status**: ⏳ Pending - needs full rewrite
+**Status**: ⏳ Pending - needs full reranking integration coverage  
+**Location**: _File deleted_; current automated coverage gap persists
 
-**Findings**
-- Lines `18-111` contain only `assert True` with commentary referencing code inspection.
-- No requests issued; reranking pipeline remains untested end-to-end.
+#### Findings
+- Previous placeholder suite consisted only of `assert True` statements referencing code inspection; it never exercised WebUI → VecPipe reranking.
+- Placeholder file has now been removed, leaving no automated end-to-end reranking coverage.
+- Existing `tests/integration/test_search_reranking_integration.py` still relies on mocked `SearchService`; reranking parameters are not validated against a real VecPipe flow.
 
-**Action Plan**
-1. Author a real integration test under `tests/integration/search/` that issues a reranked search request via API client fixtures.
-2. Validate parameter propagation (`use_reranker`, `rerank_model`) and returned metrics.
-3. Remove the placeholder file once genuine coverage exists.
+#### Action Plan
+1. Implement an async integration test using existing fixtures that issues a real search request with reranking enabled, ensuring WebUI forwards parameters to VecPipe.
+2. Stub external dependencies only where unavoidable (e.g., reranker model), and assert reranking metrics on the response.
+3. Once genuine coverage exists, document the authoritative test location and delete any remaining placeholder scaffolding.
 
 **Effort**: 1-2 days coordinating with Search team fixtures.  
 **Dependencies**: Requires deterministic reranker stub or fixture.

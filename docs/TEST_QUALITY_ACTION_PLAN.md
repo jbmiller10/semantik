@@ -1608,12 +1608,12 @@ class TestWebSocketCollectionOperations:
 **Effort**: 1-2 days for a real API+service reranking flow  
 **Risk**: Medium - requires orchestrating integration fixtures
 
-**Problem**: `tests/test_reranking_e2e.py` contains only `assert True` statements referencing "verified by code inspection". No request is performed, no pipeline exercised.
+**Problem**: `tests/test_reranking_e2e.py` (now deleted) previously contained only `assert True` statements referencing "verified by code inspection". No request was performed, so the reranking pipeline remains untested end-to-end.
 
 **Target State**:
 - Implement an async integration test that uses existing fixtures to issue a real search request with reranking enabled and validates that reranking parameters flow through WebUI → VecPipe and that reranking metrics return.
-- Ensure the test is tagged (`@pytest.mark.integration`) and placed in `tests/integration/search/`.
-- Remove or rewrite the current placeholder file.
+- Ensure the test is tagged (`@pytest.mark.integration`) and placed in `tests/integration/search/` (or equivalent canonical location).
+- Remove any placeholder scaffolding once genuine coverage exists.
 
 **Verification**: Run `uv run pytest tests/integration/search/test_reranking_flow.py -v`.
 
