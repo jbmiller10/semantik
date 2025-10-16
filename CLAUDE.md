@@ -1,189 +1,390 @@
-<role>
-You are an elite software engineering orchestrator with over 20 years of experience leading high-performance development teams. Your expertise spans system architecture, code quality assurance, and technical debt prevention. You have su>
+# CLAUDE.md
 
-Your core responsibilities:
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-1. **Strategic Planning & Decomposition**
-   - You analyze complex requirements and break them into logical, manageable subtasks
-   - You identify dependencies between components and sequence work appropriately
-   - You anticipate integration challenges and plan mitigation strategies upfront
-   - You ensure all work aligns with the project's architectural principles and long-term vision
+## Project Overview
 
-2. **Delegation & Coordination**
-   - You assign tasks to specialized subagents based on their expertise domains
-   - You provide clear, detailed specifications to each subagent including success criteria
-   - You track progress across all active subagents and identify bottlenecks early
-   - You facilitate communication between subagents when their work intersects
+**Semantik** is a self-hosted semantic search engine that transforms private file servers into AI-powered knowledge bases without data ever leaving your hardware. Built with privacy-first architecture for technically proficient users.
 
-3. **Quality Enforcement**
-   - You ALWAYS invoke a review subagent after any code is written or modified
-   - You critically evaluate review feedback and demand corrections for any identified issues
-   - You reject implementations that introduce technical debt, even if they "work"
-   - You ensure all code follows established patterns, security practices, and testing requirements
-   - You verify that error handling, logging, and documentation meet professional standards
+**Current Status**: Pre-release, undergoing active refactoring from "job-centric" to "collection-centric" architecture.
 
-4. **Technical Debt Prevention**
-   - You identify code smells and anti-patterns before they enter the codebase
-   - You recognize when quick fixes will create future maintenance burdens
-   - You advocate for proper abstractions and refuse to accept copy-paste solutions
-   - You ensure new code integrates cleanly with existing systems without creating coupling issues
-   - You track TODO comments and ensure they're addressed rather than accumulated
+## Architecture
 
-5. **Big Picture Maintenance**
-   - You continuously evaluate how individual changes affect system-wide architecture
-   - You ensure consistency in naming conventions, API designs, and data models across components
-   - You identify opportunities for refactoring that improve overall system health
-   - You balance feature delivery with maintaining code quality and system stability
-   - You consider performance implications and scalability of all implementations
+### Tech Stack
+- **Backend**: Python 3.11+, FastAPI, SQLAlchemy, Celery, Redis
+- **Frontend**: React 19, TypeScript, Vite, Zustand, React Query, TailwindCSS
+- **Databases**: PostgreSQL (metadata), Qdrant (vectors)
+- **DevOps**: Docker, Docker Compose, Alembic (migrations), uv (dependency management)
 
+### Service Architecture
 
-</role>
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Docker Compose                       │
+├─────────────┬─────────────┬──────────────┬──────────────────┤
+│   webui     │  vecpipe    │   worker     │   Infrastructure │
+│  (Port 8080)│ (Port 8000) │   (Celery)   │   Services       │
+│             │             │              │                  │
+│ • Auth/API  │ • Embeddings│ • Background │ • PostgreSQL     │
+│ • WebSockets│ • Search    │   Tasks      │ • Redis          │
+│ • Frontend  │ • Parsing   │ • Indexing   │ • Qdrant         │
+└─────────────┴─────────────┴──────────────┴──────────────────┘
+```
 
-  <overview>
-    <name>Semantik</name>
-    <tagline>A self-hosted semantic search engine.</tagline>
-    <mission>To transform private file servers into powerful, AI-powered knowledge bases without data ever leaving the user's hardware.</mission>
-    <status>Pre-release, undergoing a critical refactoring from a "job-centric" to a "collection-centric" architecture.</status>
-    <motivation>
-      The core motivation for your work is to build a secure, stable, and user-friendly application. The target audience is technically proficient users who value data privacy and control. Therefore, all code must be robust, and security cannot be an afterthought. The current refactoring is critical for long-term maintainability and scalability.
-    </motivation>
-  </overview>
+**webui**: FastAPI service handling authentication, collection management, WebSocket connections, and serving the React frontend.
 
-  <architecture>
-    <tech_stack>
-      <backend>Python 3.11+, FastAPI, SQLAlchemy (with PostgreSQL), Celery, Redis</backend>
-      <frontend>React 19, TypeScript, Vite, Zustand, React Query, TailwindCSS</frontend>
-      <database>PostgreSQL (metadata), Qdrant (vectors)</database>
-      <devops>Docker, Docker Compose, Alembic (migrations)</devops>
-    </tech_stack>
-    <components>
-      <component name="webui">FastAPI backend handling user auth, collection management, and serving the frontend.</component>
-      <component name="vecpipe">A dedicated FastAPI service for the heavy lifting: document parsing, embedding, and search queries against Qdrant.</component>
-      <component name="worker">A Celery worker for all asynchronous background tasks like indexing and re-indexing collections.</component>
-      <component name="webui-react">The React single-page application providing the user interface.</component>
-      <component name="shared">A shared Python library containing database models, configurations, and core utilities used by other services.</component>
-    </components>
-  </architecture>
-</project_context>
+**vecpipe**: Dedicated FastAPI service for compute-intensive operations: document parsing, embedding generation, and semantic search against Qdrant.
 
-<instructions>
-  <general_principles>
-    1.  **Prioritize Security and Stability:** Before writing any code, consider the security implications. Sanitize all user inputs, validate data, and avoid insecure patterns.
-    2.  **Follow the Architecture:** Adhere to the established separation of concerns defined in the `<codebase_map>`.
-    3.  **Complete the Refactor:** Your primary directive is to advance the "collection-centric" architecture. Systematically remove and replace all legacy "job-centric" code and terminology.
-    4.  **Test Your Work:** No feature or fix is complete without corresponding tests. All new backend logic must have integration tests, and new frontend components must have unit tests.
-    5.  **Be Explicit:** Never mention your identity as "Claude" or "an AI." Your commit messages, PR descriptions, and code comments should be written from the perspective of a human software engineer on the team.
-  </general_principles>
+**worker**: Celery worker processing async background tasks (indexing, re-indexing, collection operations).
 
-  <task_workflow>
-    <chain_of_thought>
-      For any complex task, you must first outline your plan in a `<thinking>` block before writing code.
-    </chain_of_thought>
-    <self_correction>
-      After generating any code, you MUST perform a self-review. In a `<review>` block, critically evaluate your own code against the principles in this document (security, testing, architecture, anti-patterns). If you find any issues, provide a corrected version of the code in a `<corrected_code>` block.
-    </self_correction>
-  </task_workflow>
-  
-</instructions>
+**shared**: Python library containing database models, repositories, core utilities, and domain logic shared across services.
 
-<reference_information>
-  <key_commands>
-    <!-- NOTE: The Docker commands are being simplified per TICKET-001. -->
-    <command context="Full Application Startup (Docker)">
-      `make docker-up`
-    </command>
-    <command context="Local Development (Backend Services Only)">
-      `make docker-dev-up` or `docker compose --profile backend up -d`
-    </command>
-    <command context="Code Quality & Testing">
-      `make check` (runs format, lint, and test)
-    </command>
-    <command context="Database Migrations">
-      `uv run alembic upgrade head`
-    </command>
-  </key_commands>
+## Development Commands
 
-  <codebase_map>
-    <directory path="packages/webui/api/">
-      <rule>API Routers ONLY. Contains FastAPI routers. No business logic or direct database calls are allowed here. Logic must be delegated to a service.</rule>
-    </directory>
-    <directory path="packages/webui/services/">
-      <rule>Business Logic ONLY. Orchestrates calls between repositories and other services. All database transactions should be managed here.</rule>
-    </directory>
-    <directory path="apps/webui-react/src/stores/">
-      <rule>Zustand Stores ONLY. All client-side state management lives here. API calls should be initiated from store actions to handle state updates (loading, success, error).</rule>
-    </directory>
-  </codebase_map>
+### Primary Workflow
 
-  <anti_patterns>
-    <anti_pattern name="Direct DB Calls from API Routers">
-      <description>Business logic and database calls should not be made directly from an API endpoint function. This violates separation of concerns.</description>
-      <bad_example>
-        @router.post("/")
-        async def create_collection(request: Request, db: AsyncSession = Depends(get_db)):
-          new_collection = CollectionModel(**request.dict())
-          db.add(new_collection)
-          await db.commit() // BAD: Business logic in router
-          return new_collection
-      </bad_example>
-      <good_example>
-        @router.post("/")
-        async def create_collection(request: Request, service: CollectionService = Depends(get_collection_service)):
-          collection = await service.create_collection(request.dict()) // GOOD: Delegated to service
-          return collection
-      </good_example>
-    </anti_pattern>
-  </anti_patterns>
+```bash
+# Install dependencies
+uv sync --frozen
 
-  <examples_of_good_practice>
-    <example name="Secure Database Query">
-      <description>Using parameterized queries with SQLAlchemy to prevent SQL injection.</description>
-      <code>
-        from sqlalchemy import select
-        
-        async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
-          stmt = select(User).where(User.username == username)
-          result = await db.execute(stmt)
-          return result.scalar_one_or_none()
-      </code>
-    </example>
-    <example name="Correct API Error Handling">
-      <description>Catching specific service-layer exceptions and mapping them to appropriate HTTP status codes.</description>
-      <code>
-        from shared.database import EntityNotFoundError, InvalidStateError
-        
-        @router.post("/{collection_id}/reindex")
-        async def reindex_collection(...):
-          try:
-            # ... call service method ...
-          except EntityNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-          except InvalidStateError as e:
-            raise HTTPException(status_code=409, detail=str(e))
-      </code>
-    </example>
-    <example name="Frontend State Update">
-      <description>Using Zustand for optimistic UI updates while handling potential API failures.</description>
-      <code>
-        // GOOD: Optimistic update with error handling
-        updateCollection: async (id, updates) => {
-          get().optimisticUpdateCollection(id, updates);
-          try {
-            await collectionsV2Api.update(id, updates);
-            await get().fetchCollectionById(id); // Re-fetch canonical state
-          } catch (error) {
-            await get().fetchCollectionById(id); // Revert on failure
-            // ... handle and display error ...
-          }
-        },
-      </code>
-    </example>
-  </examples_of_good_practice>
+# Code quality checks (format, lint, test)
+make check
 
-  <common_pitfalls_to_avoid>
-    - **Mixing Sync/Async:** Do not call synchronous, blocking I/O operations inside an `async` function.
-    - **Incomplete Refactoring:** Do not introduce new code that uses the old "job" terminology. All new features must use "operation" and "collection".
-    - **Ignoring Tests:** Do not submit code without corresponding tests.
-    - **Hardcoding Secrets:** Never place passwords, API keys, or secret keys directly in the code.
-  </common_pitfalls_to_avoid>
-</reference_information>
+# Run individual checks
+make format      # Black + isort
+make lint        # Ruff
+make type-check  # Mypy
+make test        # Pytest with coverage
+```
+
+### Docker Operations
+
+```bash
+# Interactive setup wizard (recommended for first-time setup)
+make wizard
+
+# Start all services
+make docker-up
+
+# Start backend services only (for local webui development)
+make docker-dev-up
+
+# View logs
+make docker-logs
+make docker-logs-webui
+make docker-logs-vecpipe
+
+# Stop services
+make docker-down
+
+# Access service shells
+make docker-shell-webui
+make docker-shell-vecpipe
+```
+
+### Database Migrations
+
+```bash
+# Apply migrations
+uv run alembic upgrade head
+
+# Create new migration
+uv run alembic revision --autogenerate -m "Description"
+
+# Rollback migration
+uv run alembic downgrade -1
+
+# PostgreSQL shell access
+make docker-shell-postgres
+
+# Database backup/restore
+make docker-postgres-backup
+make docker-postgres-restore BACKUP_FILE=path/to/backup.sql
+```
+
+### Testing
+
+```bash
+# Run all tests
+make test
+
+# Run tests excluding E2E
+make test-ci
+
+# Run only E2E tests (requires running services)
+make test-e2e
+
+# Run with coverage report
+make test-coverage
+
+# Run specific test file
+uv run pytest tests/webui/api/v2/test_chunking_direct.py -v
+
+# Run specific test
+uv run pytest tests/webui/api/v2/test_chunking_direct.py::test_function_name -v
+```
+
+### Frontend Development
+
+```bash
+# Build frontend
+make frontend-build
+
+# Development server (with hot reload)
+make frontend-dev
+
+# Frontend tests
+cd apps/webui-react
+npm run test           # Run tests
+npm run test:ui        # Interactive test UI
+npm run test:coverage  # Coverage report
+npm run test:e2e       # Playwright E2E tests
+```
+
+### Local Development Mode
+
+```bash
+# Start backend services in Docker + run webui locally with hot reload
+make docker-dev-up
+# Then in another terminal:
+cd packages/webui && uv run uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+```
+
+## Code Architecture Patterns
+
+### Three-Layer Architecture (Critical)
+
+**API Layer** (`packages/webui/api/`)
+- FastAPI routers ONLY
+- No business logic, no direct database calls
+- Delegates everything to service layer
+- Maps HTTP requests/responses to service calls
+
+**Service Layer** (`packages/webui/services/`)
+- ALL business logic lives here
+- Orchestrates repository calls
+- Manages transactions
+- Handles cross-cutting concerns (caching, validation)
+
+**Repository Layer** (`packages/shared/database/repositories/`)
+- Database access ONLY
+- Abstract SQLAlchemy details
+- Provides clean interface for CRUD operations
+
+### Anti-Pattern Example
+
+❌ **BAD - Business logic in router:**
+```python
+@router.post("/collections")
+async def create_collection(request: Request, db: AsyncSession = Depends(get_db)):
+    new_collection = CollectionModel(**request.dict())
+    db.add(new_collection)
+    await db.commit()  # WRONG: Business logic in router
+    return new_collection
+```
+
+✅ **GOOD - Delegated to service:**
+```python
+@router.post("/collections")
+async def create_collection(
+    request: Request,
+    service: CollectionService = Depends(get_collection_service)
+):
+    collection = await service.create_collection(request.dict())
+    return collection
+```
+
+### Repository Pattern (Critical for Database Access)
+
+**Always use repositories for database access:**
+
+```python
+# Get repository from factory
+from shared.database import create_collection_repository
+
+collection_repo = create_collection_repository(db_session)
+
+# Use repository methods
+collection = await collection_repo.get_by_id(collection_id)
+await collection_repo.update(collection_id, updates)
+```
+
+**Partition-Aware Queries (Chunks Table)**
+
+The `chunks` table uses 100 LIST partitions based on `collection_id`. ALWAYS include `collection_id` in chunk queries for partition pruning:
+
+```python
+# ✅ GOOD - Efficient with partition pruning
+chunks = await chunk_repo.get_by_collection_id(collection_id)
+
+# ❌ BAD - Full table scan across all partitions
+chunks = await session.execute(select(Chunk))  # Missing collection_id filter
+```
+
+### Celery Task Pattern (Critical)
+
+**Transaction BEFORE task dispatch to avoid race conditions:**
+
+```python
+async def create_collection_and_index(collection_data: dict):
+    # 1. Create operation record in database
+    operation = await collection_service.create_operation(
+        collection_id=collection_id,
+        operation_type="INDEX"
+    )
+
+    # 2. Commit transaction FIRST
+    await db.commit()
+
+    # 3. THEN dispatch Celery task
+    index_collection_task.delay(operation.uuid)
+
+    # 4. Return immediately with operation ID
+    return {"operation_id": operation.uuid}
+```
+
+❌ **WRONG - Task dispatched before commit causes race condition where worker can't find the operation record.**
+
+### Frontend State Management
+
+**Zustand stores** (`apps/webui-react/src/stores/`) handle all client-side state with optimistic updates:
+
+```typescript
+// Optimistic update pattern
+updateCollection: async (id, updates) => {
+  get().optimisticUpdateCollection(id, updates);  // Update UI immediately
+  try {
+    await collectionsV2Api.update(id, updates);
+    await get().fetchCollectionById(id);  // Re-fetch canonical state
+  } catch (error) {
+    await get().fetchCollectionById(id);  // Revert on failure
+    // Handle error...
+  }
+}
+```
+
+## Key Domain Concepts
+
+### Collection States
+
+Collections progress through states managed by `CollectionStatus` enum:
+
+- `PENDING`: Created, waiting for indexing
+- `READY`: Indexed and available for search
+- `PROCESSING`: Operation in progress
+- `ERROR`: Operation failed
+- `DEGRADED`: Partially functional
+
+### Operation Types
+
+Background operations tracked via `OperationType` enum:
+
+- `INDEX`: Initial collection indexing
+- `APPEND`: Add new documents to collection
+- `REINDEX`: Blue-green reindexing with zero downtime
+- `DELETE`: Collection deletion
+- `REMOVE_SOURCE`: Remove documents by source path
+
+### Chunking Strategies
+
+Modern chunking system (`packages/shared/chunking/`) with domain-driven design:
+
+- `CHARACTER`: Simple character-based splitting
+- `RECURSIVE`: Intelligent hierarchical splitting
+- `MARKDOWN`: Markdown-aware preservation
+- `SEMANTIC`: Meaning-based boundaries
+- `HIERARCHICAL`: Document structure-aware
+- `HYBRID`: Combined approach
+
+Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunking` module is deprecated.
+
+## WebSocket Architecture
+
+**Redis Pub/Sub** for horizontal scaling with per-user connection limits:
+
+- Maximum 10 connections per user
+- Maximum 10,000 total connections
+- Authentication via JWT in first message after connection
+- Channels: `operation-progress:{operation_id}`, `collection-updates:{collection_id}`
+
+## Security Guidelines
+
+1. **Authentication**: JWT with 24h access tokens, 30d refresh tokens
+2. **Authorization**: Owner-based collection access control
+3. **Input Validation**: Pydantic models for all API inputs
+4. **Secrets**: Never commit `JWT_SECRET_KEY` or database passwords
+5. **SQL Injection**: Always use SQLAlchemy parameterized queries
+6. **Rate Limiting**: Configured per-endpoint via `RateLimitConfig`
+
+## Testing Requirements
+
+- All new backend services/endpoints require integration tests in `tests/webui/`
+- All new frontend components require unit tests in `apps/webui-react/src/components/__tests__/`
+- Use `TestClient` for API tests, mock Redis/Celery
+- E2E tests marked with `@pytest.mark.e2e` and require running services
+- Run `make check` before committing
+
+## Critical Refactoring Context
+
+**Ongoing Migration**: "job-centric" → "collection-centric" terminology
+
+- ❌ OLD: Jobs, job_id, job tables
+- ✅ NEW: Operations, operation_id, operations tables
+
+**When adding features:**
+- Use "operation" terminology exclusively
+- Never introduce new "job" references
+- Update any legacy "job" code you encounter
+
+## Common Pitfalls
+
+1. **Async/Sync Mixing**: Never call blocking I/O in async functions
+2. **Missing Commit**: Always commit transaction before Celery dispatch
+3. **Collection State**: Check collection status before operations
+4. **Partition Pruning**: Always include `collection_id` in chunk queries
+5. **Business Logic Location**: Keep it in services, not routers
+6. **Frontend Cache Invalidation**: Re-fetch after mutations
+7. **Environment Variables**: Use `.env` files, never hardcode
+
+## File Structure Reference
+
+```
+semantik/
+├── packages/
+│   ├── shared/           # Cross-service models, repos, utilities
+│   │   ├── database/     # SQLAlchemy models, repositories
+│   │   ├── chunking/     # Domain-driven chunking (NEW)
+│   │   ├── config/       # Pydantic settings
+│   │   └── managers/     # Qdrant management
+│   ├── webui/            # Main API service
+│   │   ├── api/v2/       # API routers (thin controllers)
+│   │   ├── services/     # Business logic
+│   │   ├── middleware/   # HTTP middleware
+│   │   └── websocket/    # WebSocket management
+│   └── vecpipe/          # Embedding & search service
+├── apps/
+│   └── webui-react/      # React frontend
+│       ├── src/
+│       │   ├── stores/   # Zustand state management
+│       │   ├── components/
+│       │   └── api/      # API client
+├── tests/                # Test suite
+│   ├── webui/           # WebUI integration tests
+│   ├── shared/          # Shared library tests
+│   ├── e2e/             # End-to-end tests
+│   └── conftest.py      # Pytest configuration
+├── alembic/             # Database migrations
+├── Makefile             # Development commands
+└── docker-compose.yml   # Service orchestration
+```
+
+## Additional Resources
+
+- [API Reference](docs/API_REFERENCE.md) - Complete REST and WebSocket API documentation
+- [Architecture Guide](docs/ARCH.md) - Detailed system design
+- [Testing Guide](docs/TESTING.md) - Testing patterns and practices
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+
+## Migration Note
+
+Semantik is in pre-release. Breaking changes may occur between versions as we optimize the foundation. Always review the changelog when upgrading.
