@@ -245,9 +245,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
             )
     except Exception as e:
         await engine.dispose()
-        pytest.skip(
-            f"Database setup failed: {e}\nMake sure migrations are applied with: uv run alembic upgrade head"
-        )
+        pytest.skip(f"Database setup failed: {e}\nMake sure migrations are applied with: uv run alembic upgrade head")
 
     # Create a new session for the test
     try:
