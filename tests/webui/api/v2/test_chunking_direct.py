@@ -21,13 +21,13 @@ from packages.webui.api.v2.chunking import (
     compare_strategies,
     generate_preview,
     get_cached_preview,
+    get_chunking_stats,
     get_collection_chunks,
     get_global_metrics,
-    get_quality_scores,
-    get_chunking_stats,
-    list_configurations,
     get_operation_progress,
+    get_quality_scores,
     get_strategy_details,
+    list_configurations,
     list_strategies,
     recommend_strategy,
     save_configuration,
@@ -38,19 +38,18 @@ from packages.webui.api.v2.chunking_schemas import (
     ChunkingOperationRequest,
     ChunkingStatus,
     ChunkingStrategy,
+    CompareRequest,
     CreateConfigurationRequest,
     DocumentAnalysisRequest,
-    SavedConfiguration,
-    CompareRequest,
     PreviewRequest,
 )
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.dtos.chunking_dtos import (
-    ServiceChunkList,
-    ServiceChunkRecord,
     ServiceChunkingStats,
+    ServiceChunkList,
     ServiceChunkPreview,
+    ServiceChunkRecord,
     ServiceCompareResponse,
     ServiceDocumentAnalysis,
     ServiceGlobalMetrics,
@@ -610,9 +609,7 @@ class TestAnalyticsEndpoints:
         mock_chunking_service.get_quality_scores.assert_called_once_with(collection_id=None)
 
     @pytest.mark.asyncio()
-    async def test_analyze_document_success(
-        self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock
-    ) -> None:
+    async def test_analyze_document_success(self, mock_user: dict[str, Any], mock_chunking_service: AsyncMock) -> None:
         request = DocumentAnalysisRequest(
             content="Sample text",
             file_type="markdown",

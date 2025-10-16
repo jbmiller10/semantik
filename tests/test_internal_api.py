@@ -181,8 +181,7 @@ class TestInternalApiKeyConfiguration:
 
         monkeypatch.setattr(main_module, "ensure_internal_api_key", fail, raising=False)
 
-        with patch.object(main_module, "logger") as mock_logger:
-            with pytest.raises(RuntimeError):
-                main_module._configure_internal_api_key()
+        with patch.object(main_module, "logger") as mock_logger, pytest.raises(RuntimeError):
+            main_module._configure_internal_api_key()
 
         mock_logger.error.assert_called()

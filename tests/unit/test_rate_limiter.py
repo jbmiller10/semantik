@@ -21,8 +21,8 @@ from slowapi.wrappers import Limit
 from webui.rate_limiter import limiter
 
 from packages.webui.rate_limiter import (
-    circuit_breaker,
     check_circuit_breaker,
+    circuit_breaker,
     get_user_or_ip,
     rate_limit_exceeded_handler,
     track_circuit_breaker_failure,
@@ -244,6 +244,7 @@ class TestCircuitBreakerHelpers:
         response = rate_limit_exceeded_handler(mock_request, exc)
         assert response.status_code == 503
         assert circuit_breaker.blocked_until
+
 
 class TestRateLimiterScenarios:
     """Test specific rate limiting scenarios"""

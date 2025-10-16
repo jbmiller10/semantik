@@ -13,7 +13,7 @@ class DummyConfig:
     """Minimal configuration object compatible with ensure_internal_api_key."""
 
     def __init__(self, data_dir: Path, *, environment: str = "development", key: str | None = None) -> None:
-        self._data_dir = data_dir
+        self._data_dir = Path(data_dir)
         self.ENVIRONMENT = environment
         self.INTERNAL_API_KEY = key
 
@@ -29,7 +29,7 @@ def test_generates_and_persists_key(tmp_path: Path) -> None:
     key = ensure_internal_api_key(config)
 
     assert key
-    assert config.INTERNAL_API_KEY == key
+    assert key == config.INTERNAL_API_KEY
     stored = (tmp_path / "internal_api_key").read_text(encoding="utf-8").strip()
     assert stored == key
 

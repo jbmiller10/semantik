@@ -9,11 +9,11 @@ from .api_models import (
     ChunkingConfigBase,
     ChunkingStats,
     ChunkingStrategy,
-    ChunkPreview,
     ChunkListResponse,
+    ChunkPreview,
+    CompareResponse,
     DocumentAnalysisResponse,
     GlobalMetrics,
-    CompareResponse,
     PreviewResponse,
     QualityAnalysis,
     QualityLevel,
@@ -27,8 +27,8 @@ from .api_models import (
 # Service DTOs - internal representations with business logic
 from .chunking_dtos import (
     ServiceChunkingStats,
-    ServiceChunkPreview,
     ServiceChunkList,
+    ServiceChunkPreview,
     ServiceChunkRecord,
     ServiceCompareResponse,
     ServiceDocumentAnalysis,

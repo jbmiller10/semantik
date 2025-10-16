@@ -86,6 +86,7 @@ def _build_internal_api_headers() -> dict[str, str]:
         "Content-Type": "application/json",
     }
 
+
 # Re-export ChunkingService for tests that patch packages.webui.tasks.ChunkingService
 try:  # Prefer packages.* import path to match test patch targets
     from packages.webui.services.chunking_service import ChunkingService

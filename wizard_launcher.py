@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 MIN_PYTHON_VERSION = (3, 11)
 
 
