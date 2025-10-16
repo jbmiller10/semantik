@@ -30,7 +30,7 @@
 | `tests/unit/test_collection_repository.py` | Mock everything - false confidence | Critical | 2-3 days | ✅ Completed (2025-10-16) |
 | `tests/unit/test_collection_service.py` | 904 lines, excessive mocking | Critical | 3-4 days | ✅ Completed (2025-10-16) |
 | `tests/test_metrics.py` (cluster) | Manual scripts in test tree, no assertions, hit live services | High | 0.5 day | ⏳ Pending |
-| `tests/test_reranking_e2e.py` | Placeholder asserts, never exercises reranking flow | High | 1-2 days | ⏳ Pending |
+| `tests/test_reranking_e2e.py` | Placeholder asserts, never exercises reranking flow | High | 1-2 days | ✅ Completed (2025-10-16) |
 | `tests/api/test_rate_limits.py` | CI skips entire suite (`@pytest.mark.skipif(CI==\"true\")`), no automated coverage | Critical | 1 day | ⏳ Pending |
 
 ### P1 - High (Next 2 Weeks)
@@ -304,20 +304,20 @@ These files live under `tests/` (and CI executes them) but behave like manual di
 
 ### File: `tests/test_reranking_e2e.py`
 
-**Grade**: F (1/10)  
-**Status**: ⏳ Pending - needs full rewrite
+**Grade**: N/A (removed)  
+**Status**: ✅ Completed (2025-10-16) - Placeholder suite removed; integration coverage lives in `tests/integration/test_search_reranking_integration.py`  
+**Location**: _File deleted_; canonical coverage: `/home/john/semantik/tests/integration/test_search_reranking_integration.py`
 
-**Findings**
-- Lines `18-111` contain only `assert True` with commentary referencing code inspection.
-- No requests issued; reranking pipeline remains untested end-to-end.
+#### Resolution
+- Eliminated the non-asserting placeholder file that previously relied on code-inspection comments.
+- Confirmed `tests/integration/test_search_reranking_integration.py` exercises reranking requests end-to-end via FastAPI client, including parameter propagation and returned metrics.
+- Updated test quality documentation to point at the integration suite as the source of truth.
 
-**Action Plan**
-1. Author a real integration test under `tests/integration/search/` that issues a reranked search request via API client fixtures.
-2. Validate parameter propagation (`use_reranker`, `rerank_model`) and returned metrics.
-3. Remove the placeholder file once genuine coverage exists.
+#### Verification
+- `uv run pytest tests/integration/test_search_reranking_integration.py -q` (2025-10-16)
 
-**Effort**: 1-2 days coordinating with Search team fixtures.  
-**Dependencies**: Requires deterministic reranker stub or fixture.
+#### Follow-ups
+- Monitor integration coverage for future reranker parameters; extend fixtures if new options are introduced.
 
 ---
 

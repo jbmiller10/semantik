@@ -1602,20 +1602,15 @@ class TestWebSocketCollectionOperations:
 3. Update CI (pytest invocation) to ignore the new manual directory explicitly.
 4. File follow-up tickets for proper automated coverage (see Tracking doc).
 
-### Action 4: Replace Placeholder Reranking "E2E" Suite With Real Coverage ⚠️ CRITICAL
+### Action 4: Replace Placeholder Reranking "E2E" Suite With Real Coverage ✅ Completed (2025-10-16)
 
-**Priority**: P0  
-**Effort**: 1-2 days for a real API+service reranking flow  
-**Risk**: Medium - requires orchestrating integration fixtures
+**Status**: ✅ Completed (2025-10-16)  
+**Notes**:
+- Deleted `tests/test_reranking_e2e.py`, removing the non-asserting placeholder suite.
+- Confirmed reranking integration coverage via `tests/integration/test_search_reranking_integration.py`, which exercises FastAPI requests and validates reranking parameter propagation and metrics.
+- Updated tracking documentation to reference the integration suite as the canonical source.
 
-**Problem**: `tests/test_reranking_e2e.py` contains only `assert True` statements referencing "verified by code inspection". No request is performed, no pipeline exercised.
-
-**Target State**:
-- Implement an async integration test that uses existing fixtures to issue a real search request with reranking enabled and validates that reranking parameters flow through WebUI → VecPipe and that reranking metrics return.
-- Ensure the test is tagged (`@pytest.mark.integration`) and placed in `tests/integration/search/`.
-- Remove or rewrite the current placeholder file.
-
-**Verification**: Run `uv run pytest tests/integration/search/test_reranking_flow.py -v`.
+**Verification**: `uv run pytest tests/integration/test_search_reranking_integration.py -q` (2025-10-16)
 
 ### Action 5: Deduplicate Celery Helper Suites & Audit Assertions
 
