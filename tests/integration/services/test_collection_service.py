@@ -7,14 +7,16 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
+from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from sqlalchemy import select
 
 from packages.shared.database.exceptions import (
     AccessDeniedError as PackageAccessDeniedError,
+)
+from packages.shared.database.exceptions import (
     InvalidStateError as PackageInvalidStateError,
 )
-from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
-from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from packages.shared.database.models import (
     Collection,
     CollectionStatus,
