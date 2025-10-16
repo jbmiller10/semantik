@@ -182,29 +182,32 @@ semantik/
 └── Makefile                # Development commands
 ```
 
-### Poetry Configuration
+### Python Configuration
 
 ```toml
-[tool.poetry]
+[project]
 name = "semantik"
 version = "2.0.0"
-packages = [
-    {include = "shared", from = "packages"},
-    {include = "vecpipe", from = "packages"},
-    {include = "webui", from = "packages"}
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "fastapi>=0.116.0,<0.117",
+    "uvicorn>=0.27.1,<0.28",
+    "sqlalchemy>=2.0.23,<3",
+    "asyncpg>=0.30.0,<0.31",
+    "qdrant-client>=1.9.0,<2",
+    "celery[redis]>=5.3.0,<6",
+    "redis>=5.0.0,<6",
+    "transformers>=4.51.0,<5",
+    "torch",
+    # ..."
 ]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-fastapi = "^0.110.0"
-uvicorn = "^0.27.1"
-sqlalchemy = "^2.0.25"
-asyncpg = "^0.29.0"
-qdrant-client = "^1.9.0"
-celery = {extras = ["redis"], version = "^5.3.4"}
-redis = "^5.0.1"
-transformers = "^4.36.2"
-torch = "^2.1.2"
+[dependency-groups]
+dev = ["pytest>=8.0.0,<9", "ruff>=0.2.0,<0.3", "mypy>=1.8.0,<2"]
+e2e = ["pytest-playwright>=0.6.2,<0.7"]
+
+[tool.uv]
+default-groups = ["dev", "e2e"]
 ```
 
 ### Development Dependencies
@@ -345,9 +348,9 @@ make test
 make test-coverage
 
 # Run specific test category
-poetry run pytest tests/unit -v
-poetry run pytest tests/integration -v
-poetry run pytest tests/e2e -v
+uv run pytest tests/unit -v
+uv run pytest tests/integration -v
+uv run pytest tests/e2e -v
 
 # Run frontend tests
 make frontend-test
@@ -365,19 +368,20 @@ The `Dockerfile` uses a multi-stage build:
 # Stage 1: Dependencies
 FROM python:3.12-slim as dependencies
 WORKDIR /app
-COPY pyproject.toml poetry.lock ./
-RUN pip install poetry && poetry export -f requirements.txt > requirements.txt
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH=/root/.local/bin:$PATH
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-default-groups
 
 # Stage 2: Builder
 FROM python:3.12-slim as builder
-COPY --from=dependencies /app/requirements.txt .
-RUN pip install --user -r requirements.txt
+COPY --from=dependencies /app/.venv /app/.venv
 
 # Stage 3: Runtime
 FROM python:3.12-slim as runtime
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /app/.venv /app/.venv
 COPY packages/ /app/packages/
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/app/.venv/bin:$PATH
 ```
 
 ### Frontend Build
@@ -660,8 +664,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
-      - run: pip install poetry
-      - run: poetry install
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v1
+      - run: uv sync --frozen
       - run: make check
       - run: make test-coverage
 ```
@@ -786,7 +792,7 @@ SQLALCHEMY_ECHO=true
 git pull origin main
 
 # 3. Update dependencies
-poetry update
+uv lock --upgrade
 cd apps/webui-react && npm update
 
 # 4. Rebuild

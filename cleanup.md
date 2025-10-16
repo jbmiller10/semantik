@@ -59,8 +59,8 @@ While `partition_count` currently comes from environment variables, this pattern
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -152,8 +152,8 @@ partition_key = hash(collection_id || ':' || document_id) % 100
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -251,8 +251,8 @@ if table_exists('chunks') and has_data('chunks'):
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -351,8 +351,8 @@ These dictionaries are accessed and modified from multiple async contexts withou
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -549,8 +549,8 @@ async def create(data: Model, service: Service = Depends(get_service)):
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -762,8 +762,8 @@ HTTP_TIMEOUT = int(os.getenv("HTTP_TIMEOUT", "30"))
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -874,8 +874,8 @@ def upgrade():
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run tests to ensure nothing broke:
    ```bash
@@ -985,8 +985,8 @@ While individual PRs may have had tests, the integrated feature needs comprehens
    ```bash
    make lint
    # or
-   poetry run ruff check --fix
-   poetry run mypy packages/
+   uv run ruff check --fix
+   uv run mypy packages/
    ```
 2. Run ALL tests to ensure comprehensive coverage:
    ```bash

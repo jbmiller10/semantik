@@ -29,7 +29,6 @@ concurrency:
 env:
   PYTHON_VERSION: "3.11"
   NODE_VERSION: "20.x"
-  POETRY_VERSION: "1.7.1"
   # Test environment variables
   DATABASE_URL: postgresql://semantik_test:test_password@localhost:5432/semantik_test
   QDRANT_HOST: localhost
@@ -39,8 +38,6 @@ env:
   USE_MOCK_EMBEDDINGS: "true"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
   # Performance optimizations
-  POETRY_VIRTUALENVS_IN_PROJECT: true
-  PIP_CACHE_DIR: ~/.cache/pip
 
 jobs:
   # Python formatting check
@@ -51,38 +48,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python with cache
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install Poetry
-        run: |
-          pip install --upgrade pip
-          pip install poetry==${{ env.POETRY_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
 
-      - name: Cache dependencies
-        id: cache-deps
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: |
             .venv
-            ~/.cache/pip
-          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: poetry install --with dev
-
-      - name: Verify dependencies
-        if: steps.cache-deps.outputs.cache-hit == 'true'
-        run: poetry install --with dev --no-root
+        run: uv sync --frozen
 
       - name: Run Black formatting check
-        run: poetry run black --check --diff .
+        run: uv run black --check --diff .
 
   # Python linting check
   python-lint:
@@ -92,41 +80,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python with cache
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install Poetry
-        run: |
-          pip install --upgrade pip
-          pip install poetry==${{ env.POETRY_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
 
-      - name: Cache dependencies
-        id: cache-deps
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: |
             .venv
-            ~/.cache/pip
-          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: poetry install --with dev
-
-      - name: Verify dependencies
-        if: steps.cache-deps.outputs.cache-hit == 'true'
-        run: poetry install --with dev --no-root
+        run: uv sync --frozen
 
       - name: Run Ruff linting
-        run: poetry run ruff check .
+        run: uv run ruff check .
 
       - name: Run Mypy type checking
-        run: poetry run mypy packages/ --ignore-missing-imports
+        run: uv run mypy packages/ --ignore-missing-imports
         continue-on-error: true  # TODO: Remove when type issues are fixed
 
   # Frontend linting check
@@ -248,65 +227,56 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python with cache
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
 
-      - name: Install Poetry
-        run: |
-          pip install --upgrade pip
-          pip install poetry==${{ env.POETRY_VERSION }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v1
 
-      - name: Cache dependencies
-        id: cache-deps
+      - name: Cache uv environment
         uses: actions/cache@v4
         with:
           path: |
             .venv
-            ~/.cache/pip
-          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('**/poetry.lock') }}
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
+            uv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        run: poetry install --with dev
-
-      - name: Verify dependencies
-        if: steps.cache-deps.outputs.cache-hit == 'true'
-        run: poetry install --with dev --no-root
+        run: uv sync --frozen
 
       - name: Run database migrations
-        run: poetry run alembic upgrade head
+        run: uv run alembic upgrade head
 
       - name: Run backend tests in parallel
         run: |
           if [ "${{ matrix.group }}" = "unit" ]; then
             # Run all unit tests
-            poetry run pytest tests/unit/ -v \
+            uv run pytest tests/unit/ -v \
               -n auto \
               --cov=packages \
               --cov-report=xml \
               --cov-report=term-missing
           elif [ "${{ matrix.group }}" = "webui" ]; then
             # Run all webui tests
-            poetry run pytest tests/webui/ -v \
+            uv run pytest tests/webui/ -v \
               -n auto \
               --cov=packages \
               --cov-report=xml \
               --cov-report=term-missing
           elif [ "${{ matrix.group }}" = "integration" ]; then
             # Run integration tests
-            poetry run pytest tests/integration/ -v \
+            uv run pytest tests/integration/ -v \
               -n auto \
               --cov=packages \
               --cov-report=xml \
               --cov-report=term-missing
           elif [ "${{ matrix.group }}" = "other" ]; then
             # Run all other test directories
-            poetry run pytest \
+            uv run pytest \
               tests/domain/ \
               tests/application/ \
               tests/streaming/ \

@@ -99,7 +99,7 @@ Your core responsibilities:
       `make check` (runs format, lint, and test)
     </command>
     <command context="Database Migrations">
-      `poetry run alembic upgrade head`
+      `uv run alembic upgrade head`
     </command>
   </key_commands>
 

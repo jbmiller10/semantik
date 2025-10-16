@@ -508,7 +508,7 @@ For detailed documentation, see [INFRASTRUCTURE.md](./INFRASTRUCTURE.md)
 ### Quick Start
 ```bash
 # Install dependencies
-poetry install
+uv sync
 
 # Configure environment
 cp .env.example .env

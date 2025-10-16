@@ -14,7 +14,7 @@ These tests require a running PostgreSQL database with the proper schema setup.
 
 2. **Run Database Migrations**:
    ```bash
-   poetry run alembic upgrade head
+   uv run alembic upgrade head
    ```
 
 ## Running Tests
@@ -31,10 +31,10 @@ export POSTGRES_PASSWORD="postgres"
 export DATABASE_URL="postgresql+asyncpg://postgres:postgres@localhost:5432/semantik_test"
 
 # Run specific test
-poetry run pytest tests/database/test_partitioning.py -v
+uv run pytest tests/database/test_partitioning.py -v
 
 # Run all database tests
-poetry run pytest tests/database/ -v
+uv run pytest tests/database/ -v
 ```
 
 ## Test Database Configuration
@@ -70,5 +70,5 @@ make docker-postgres-up
 ### "relation does not exist" errors
 The database schema is not set up. Run:
 ```bash
-poetry run alembic upgrade head
+uv run alembic upgrade head
 ```

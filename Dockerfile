@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     git \
+    curl \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,19 +52,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Install Poetry
-ENV POETRY_VERSION=1.8.2
-ENV POETRY_HOME=/opt/poetry
-ENV PATH="$POETRY_HOME/bin:$PATH"
-RUN python -m venv $POETRY_HOME && \
-    $POETRY_HOME/bin/pip install poetry==$POETRY_VERSION
+# Install uv
+ENV UV_HOME=/opt/uv
+RUN mkdir -p "${UV_HOME}/bin" && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh -s -- --install-dir "${UV_HOME}/bin"
+ENV PATH="${UV_HOME}/bin:${PATH}"
 
 # Copy dependency files
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies (without creating virtual env since we're in container)
-ENV POETRY_VIRTUALENVS_CREATE=false
-RUN poetry install --no-root --only main
+# Install dependencies into a virtual environment for production use
+RUN uv sync --frozen --no-install-project --no-default-groups
 
 # ============================================
 # Stage 3: Final Runtime Image
@@ -114,10 +113,8 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON
 
 WORKDIR /app
 
-# Copy Python packages from builder
-# Poetry installs to dist-packages on Ubuntu with system Python
-COPY --from=python-builder /usr/local/lib/python${PYTHON_VERSION}/dist-packages /usr/local/lib/python${PYTHON_VERSION}/dist-packages
-COPY --from=python-builder /usr/local/bin /usr/local/bin
+# Copy virtual environment from builder
+COPY --from=python-builder /app/.venv /app/.venv
 
 # Copy application code
 COPY packages/ ./packages/
@@ -134,6 +131,7 @@ RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/logs && \
     chown -R appuser:appuser /app && \
     chown -R appuser:appuser /app/alembic /app/alembic.ini
+RUN chown -R appuser:appuser /app/.venv
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
@@ -154,6 +152,9 @@ RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart
 # Test bitsandbytes installation (as root for library access)
 RUN python -c "import bitsandbytes; print('Bitsandbytes loaded successfully')" || \
     (echo "WARNING: Bitsandbytes test failed, INT8 quantization may not work" && exit 0)
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:${PATH}"
 
 USER appuser
 
