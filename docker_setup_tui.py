@@ -4,6 +4,7 @@
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -1414,6 +1415,7 @@ class DockerSetupTUI:
                     "Stop all services",
                     "Restart all services",
                     "Rebuild and start services",
+                    "Reset database (permanent delete)",
                     "View logs",
                     "View specific service logs",
                     "Check service health",
@@ -1431,6 +1433,10 @@ class DockerSetupTUI:
                 break
 
             compose_files = self._get_compose_files()
+
+            if "Reset database" in action:
+                self._handle_database_reset()
+                continue
 
             if "Start all" in action:
                 # Check if services are already running
@@ -1468,6 +1474,104 @@ class DockerSetupTUI:
 
             if "Exit" not in action:
                 questionary.press_any_key_to_continue("Press any key to continue...").ask()
+
+    def _handle_database_reset(self) -> None:
+        """Interactively confirm and execute a destructive database reset."""
+        console.print("\n[bold red]Database Reset[/bold red]")
+        console.print(
+            "[red]This will stop all Docker services and permanently delete the PostgreSQL data volume.[/red]"
+        )
+        console.print("[red]All collections, documents, and metadata will be lost. This cannot be undone.[/red]\n")
+
+        proceed = questionary.confirm("Do you want to continue?", default=False).ask()
+        if not proceed:
+            console.print("[yellow]Database reset cancelled.[/yellow]")
+            return
+
+        confirmation = questionary.text("Type DELETE DATABASE to confirm:").ask()
+        if confirmation is None or confirmation.strip().upper() != "DELETE DATABASE":
+            console.print("[yellow]Database reset aborted. Confirmation phrase did not match.[/yellow]")
+            return
+
+        self._perform_database_reset()
+
+    def _perform_database_reset(self) -> None:
+        """Stop services, delete database volume, and optionally restart services."""
+        compose_files = self._get_compose_files()
+
+        if not self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services"):
+            console.print("[red]Unable to stop services. Database reset halted.[/red]")
+            return
+
+        project_name = self._get_compose_project_name()
+        postgres_volume = f"{project_name}_postgres_data"
+
+        volume_removed = self._remove_docker_volume(postgres_volume)
+        if not volume_removed:
+            console.print("[red]Database volume could not be removed. See errors above.[/red]")
+            return
+
+        # Offer to reset the vector index as well since it often mirrors database content
+        reset_qdrant = questionary.confirm("Also delete the Qdrant vector index data?", default=False).ask()
+        if reset_qdrant:
+            qdrant_volume = f"{project_name}_qdrant_storage"
+            self._remove_docker_volume(qdrant_volume)
+
+        console.print("\n[green]PostgreSQL volume deleted. Database reset complete.[/green]")
+        console.print(
+            "[yellow]You will need to re-run migrations or the initial setup the next time services start.[/yellow]"
+        )
+
+        restart = questionary.confirm("Start Semantik services now?", default=True).ask()
+        if restart:
+            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+        else:
+            console.print("[yellow]Services remain stopped. Run `docker compose up -d` when ready.[/yellow]")
+
+    def _get_compose_project_name(self) -> str:
+        """Determine the Docker Compose project name used for volume prefixes."""
+        for key in ("COMPOSE_PROJECT_NAME", "project_name"):
+            value = os.environ.get(key)
+            if value:
+                return value
+
+        for key in ("COMPOSE_PROJECT_NAME", "project_name"):
+            value = self.config.get(key)
+            if value:
+                return value
+
+        base = Path.cwd().name.lower()
+        safe_name = re.sub(r"[^a-z0-9_-]", "", base)
+        return safe_name or "semantik"
+
+    def _remove_docker_volume(self, volume_name: str) -> bool:
+        """Remove a Docker volume, handling missing-volume errors gracefully."""
+        console.print(f"[cyan]Removing Docker volume: {volume_name}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                ["docker", "volume", "rm", volume_name],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            console.print("[red]Docker is not installed or not accessible on this system.[/red]")
+            return False
+        except Exception as exc:  # pragma: no cover - defensive logging
+            console.print(f"[red]Unexpected error removing volume: {exc}[/red]")
+            return False
+
+        if result.returncode == 0:
+            console.print(f"[green]✓ Removed volume {volume_name}[/green]")
+            return True
+
+        stderr = (result.stderr or result.stdout or "").strip()
+        if "No such volume" in stderr:
+            console.print(f"[yellow]Volume {volume_name} not found (already removed).[/yellow]")
+            return True
+
+        console.print(f"[red]Failed to remove volume {volume_name}: {stderr}[/red]")
+        return False
 
     def _show_service_status(self) -> None:
         """Display current status of all services"""
