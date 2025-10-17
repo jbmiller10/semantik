@@ -44,10 +44,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         for p in self.patches:
             p.stop()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
-    def test_oom_batch_size_reduction(self, mock_empty_cache, mock_cuda_available, mock_isinstance) -> None:
+    def test_oom_batch_size_reduction(self, mock_empty_cache, mock_cuda_available) -> None:
         """Test that batch size is reduced on OOM error"""
         mock_cuda_available.return_value = True
 
@@ -122,9 +122,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         # Verify empty_cache was called
         mock_empty_cache.assert_called()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_minimum_batch_size_enforcement(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_minimum_batch_size_enforcement(self, mock_cuda_available) -> None:
         """Test that batch size doesn't go below min_batch_size"""
         mock_cuda_available.return_value = True
 
@@ -155,9 +155,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
 
         assert "minimum batch size" in str(context.value)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_batch_size_recovery(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_batch_size_recovery(self, mock_cuda_available) -> None:
         """Test that batch size increases after successful batches"""
         mock_cuda_available.return_value = True
 
@@ -191,9 +191,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         assert service.current_batch_size == 16
         assert service.successful_batches == 0  # Reset after increase
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_adaptive_sizing_disabled(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_adaptive_sizing_disabled(self, mock_cuda_available) -> None:
         """Test behavior when adaptive sizing is disabled"""
         mock_cuda_available.return_value = True
 
@@ -217,9 +217,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         with pytest.raises(torch.cuda.OutOfMemoryError):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=32, normalize=True, show_progress=False)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_cpu_no_adaptive_sizing(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_cpu_no_adaptive_sizing(self, mock_cuda_available) -> None:
         """Test that CPU doesn't use adaptive sizing"""
         mock_cuda_available.return_value = False
 
@@ -241,10 +241,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         with pytest.raises(RuntimeError):
             service._embed_sentence_transformer_texts(["test"] * 10, batch_size=32, normalize=True, show_progress=False)
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
-    def test_qwen_model_oom_handling(self, mock_empty_cache, mock_cuda_available, mock_isinstance) -> None:
+    def test_qwen_model_oom_handling(self, mock_empty_cache, mock_cuda_available) -> None:
         """Test OOM handling for Qwen models"""
         mock_cuda_available.return_value = True
 
@@ -312,9 +312,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         # Verify empty_cache was called
         mock_empty_cache.assert_called()
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_batch_size_increase_with_original_limit(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_batch_size_increase_with_original_limit(self, mock_cuda_available) -> None:
         """Test that batch size doesn't exceed original when recovering"""
         mock_cuda_available.return_value = True
 
@@ -351,9 +351,9 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         # Should stay at 32
         assert service.current_batch_size == 32
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
-    def test_adaptive_batch_size_initialization(self, mock_cuda_available, mock_isinstance) -> None:
+    def test_adaptive_batch_size_initialization(self, mock_cuda_available) -> None:
         """Test that adaptive batch size is properly initialized on first use"""
         mock_cuda_available.return_value = True
 
@@ -382,10 +382,10 @@ class TestEmbeddingOOMHandling(unittest.TestCase):
         assert service.original_batch_size == 64
         assert service.current_batch_size == 64
 
-    @patch("packages.shared.embedding.dense.isinstance", side_effect=lambda _obj, _cls: True)
+    @patch("packages.shared.embedding.dense.isinstance", new=lambda _obj, _cls: True)
     @patch("torch.cuda.is_available")
     @patch("torch.cuda.empty_cache")
-    def test_multiple_oom_reductions(self, mock_empty_cache, mock_cuda_available, mock_isinstance) -> None:
+    def test_multiple_oom_reductions(self, mock_empty_cache, mock_cuda_available) -> None:
         """Test multiple OOM errors lead to progressive batch size reduction"""
         mock_cuda_available.return_value = True
 
