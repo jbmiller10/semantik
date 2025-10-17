@@ -6,8 +6,9 @@ selection, preview generation, and actual document chunking.
 """
 
 import asyncio
-import importlib
+import contextlib
 import hashlib
+import importlib
 import json
 import logging
 import math
@@ -3189,11 +3190,9 @@ class ChunkingService:
                         else str(config_result.strategy)
                     )
 
-                    try:
+                    # Fall back to the raw value if normalization fails; downstream logic will handle it.
+                    with contextlib.suppress(Exception):
                         strategy_value = ChunkingStrategyFactory.normalize_strategy_name(strategy_value)
-                    except Exception:
-                        # Fall back to the raw value if normalization fails; downstream logic will handle it.
-                        pass
 
                     strategy_input_key = chunking_strategy or strategy_value
                     if isinstance(strategy_input_key, str):
