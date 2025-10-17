@@ -2,7 +2,7 @@
 
 .PHONY: help install dev-install format lint type-check test test-coverage clean
 .PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
-.PHONY: docker-up docker-down docker-logs docker-build-fresh docker-ps docker-restart
+.PHONY: docker-up docker-down docker-down-clean docker-logs docker-build-fresh docker-ps docker-restart
 .PHONY: docker-postgres-up docker-postgres-down docker-postgres-logs docker-shell-postgres
 .PHONY: docker-postgres-backup docker-postgres-restore
 .PHONY: dev-local docker-dev-up docker-dev-down docker-dev-logs
@@ -23,7 +23,8 @@ help:
 	@echo "Docker commands:"
 	@echo "  wizard            Interactive Docker setup wizard (TUI)"
 	@echo "  docker-up         Start all services with PostgreSQL"
-	@echo "  docker-down       Stop and remove all containers"
+	@echo "  docker-down       Stop and remove containers (keeps volumes)"
+	@echo "  docker-down-clean Stop and remove containers and volumes (data loss)"
 	@echo "  docker-logs       View logs from all services"
 	@echo "  docker-build-fresh Rebuild images without cache"
 	@echo "  docker-ps         Show status of all containers"
@@ -154,6 +155,12 @@ docker-up:
 docker-down:
 	@echo "Stopping Semantik services..."
 	docker compose down
+	@echo "Containers stopped. Persistent volumes preserved."
+
+docker-down-clean:
+	@echo "Stopping Semantik services and removing volumes (this deletes Postgres data)..."
+	docker compose down -v
+	@echo "All containers and volumes removed."
 
 docker-logs:
 	docker compose logs -f
