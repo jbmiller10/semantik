@@ -54,8 +54,14 @@ async def test_can_allocate_checks_system_resources(
     monkeypatch,
     test_user_db,
 ) -> None:
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.virtual_memory", lambda: _FakeVirtualMemory(available=32 * 1024 * 1024 * 1024))
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.disk_usage", lambda _: _FakeDiskUsage(free=2 * 1024 * 1024 * 1024 * 1024))
+    monkeypatch.setattr(
+        "packages.webui.services.resource_manager.psutil.virtual_memory",
+        lambda: _FakeVirtualMemory(available=32 * 1024 * 1024 * 1024),
+    )
+    monkeypatch.setattr(
+        "packages.webui.services.resource_manager.psutil.disk_usage",
+        lambda _: _FakeDiskUsage(free=2 * 1024 * 1024 * 1024 * 1024),
+    )
 
     estimate = ResourceEstimate(memory_mb=1024, storage_gb=1.0)
     assert await resource_manager.can_allocate(test_user_db.id, estimate) is True
@@ -87,8 +93,14 @@ async def test_reserve_and_release_reindex(
     collection.total_size_bytes = 5 * 1024 * 1024 * 1024
     await db_session.commit()
 
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.virtual_memory", lambda: _FakeVirtualMemory(available=64 * 1024 * 1024 * 1024))
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.disk_usage", lambda _: _FakeDiskUsage(free=4 * 1024 * 1024 * 1024 * 1024))
+    monkeypatch.setattr(
+        "packages.webui.services.resource_manager.psutil.virtual_memory",
+        lambda: _FakeVirtualMemory(available=64 * 1024 * 1024 * 1024),
+    )
+    monkeypatch.setattr(
+        "packages.webui.services.resource_manager.psutil.disk_usage",
+        lambda _: _FakeDiskUsage(free=4 * 1024 * 1024 * 1024 * 1024),
+    )
 
     reserved = await resource_manager.reserve_for_reindex(collection.id)
     assert reserved is True

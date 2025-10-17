@@ -80,9 +80,7 @@ print("Streaming!")
 
     collected = []
     for index, window in enumerate(windows):
-        collected.extend(
-            await streaming_strategy.process_window(window, config, is_final=index == len(windows) - 1)
-        )
+        collected.extend(await streaming_strategy.process_window(window, config, is_final=index == len(windows) - 1))
 
     assert collected
     assert any("# Title" in chunk.text for chunk in collected)

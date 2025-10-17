@@ -24,7 +24,9 @@ pytestmark = pytest.mark.usefixtures("_db_isolation")
 @pytest.fixture()
 def rate_limited_app() -> TestClient:
     os.environ["DISABLE_RATE_LIMITING"] = "false"
-    limiter = Limiter(key_func=get_user_or_ip, storage_uri="memory://", default_limits=["2/second"], headers_enabled=False)
+    limiter = Limiter(
+        key_func=get_user_or_ip, storage_uri="memory://", default_limits=["2/second"], headers_enabled=False
+    )
 
     app = FastAPI()
     app.state.limiter = limiter
@@ -72,5 +74,7 @@ def test_get_user_or_ip_prefers_user_id() -> None:
         def __init__(self) -> None:
             self.user = {"id": 42}
 
-    request = type("Request", (), {"headers": {}, "client": type("Client", (), {"host": "127.0.0.1"})(), "state": DummyState()})
+    request = type(
+        "Request", (), {"headers": {}, "client": type("Client", (), {"host": "127.0.0.1"})(), "state": DummyState()}
+    )
     assert get_user_or_ip(request) == "user:42"

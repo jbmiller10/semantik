@@ -49,7 +49,9 @@ async def test_execute_ingestion_chunking_returns_chunk_stats(
     }
     text = " ".join(f"Recursive sentence {i} for integration coverage." for i in range(40))
 
-    result = await service.execute_ingestion_chunking(text=text, document_id="doc-recursive", collection=collection_payload)
+    result = await service.execute_ingestion_chunking(
+        text=text, document_id="doc-recursive", collection=collection_payload
+    )
 
     stats = result["stats"]
     assert stats["chunk_count"] == len(result["chunks"])
@@ -90,7 +92,9 @@ async def test_execute_ingestion_chunking_with_invalid_config_falls_back(
         "chunk_overlap": 20,
     }
 
-    result = await service.execute_ingestion_chunking(text=text, document_id="doc-invalid", collection=collection_payload)
+    result = await service.execute_ingestion_chunking(
+        text=text, document_id="doc-invalid", collection=collection_payload
+    )
 
     stats = result["stats"]
     assert stats["fallback"] is True
