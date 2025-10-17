@@ -28,7 +28,7 @@ def test_hierarchical_chunker_rejects_excessive_depth() -> None:
 @pytest.mark.parametrize("invalid_size", [0, -5])
 def test_hierarchical_chunker_validates_chunk_size_values(invalid_size: int) -> None:
     """Chunk sizes must be positive integers."""
-    with pytest.raises(ValueError, match="Chunk sizes must be positive"):
+    with pytest.raises(ValueError, match="Must be positive"):
         HierarchicalChunker(chunk_sizes=[1024, invalid_size, 128])
 
 
