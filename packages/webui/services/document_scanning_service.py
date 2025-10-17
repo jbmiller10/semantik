@@ -214,7 +214,7 @@ class DocumentScanningService:
         collection_id: str,
         file_path: Path,
         source_id: int | None = None,
-        scan_start_time: datetime | None = None,
+        _scan_start_time: datetime | None = None,
     ) -> dict[str, Any]:
         """Register a single file in the collection.
 
@@ -222,7 +222,7 @@ class DocumentScanningService:
             collection_id: UUID of the collection
             file_path: Path to the file
             source_id: Optional source ID
-            scan_start_time: Start time of scan for duplicate detection
+            _scan_start_time: Start time of scan for duplicate detection (unused in current flow)
 
         Returns:
             Dictionary with:

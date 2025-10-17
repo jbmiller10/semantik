@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import text
+
 from packages.webui.services.partition_monitoring_service import (
     MonitoringResult,
     PartitionHealthStatus,
     PartitionMonitoringService,
     SkewStatus,
 )
-from sqlalchemy import text
 
 
 @pytest.mark.asyncio()
-@pytest.mark.usefixtures("_db_isolation")
+@pytest.mark.usefixtures("_db_isolation", "_partition_monitoring_schema")
 class TestPartitionMonitoringServiceIntegration:
     """Ensure monitoring queries parse real database results."""
 
     @pytest.fixture()
-    async def partition_monitoring_schema(self, db_session):
+    async def _partition_monitoring_schema(self, db_session):
         await db_session.execute(text("DROP VIEW IF EXISTS partition_health_summary"))
         await db_session.execute(
             text(
@@ -60,7 +61,7 @@ class TestPartitionMonitoringServiceIntegration:
     def service(self, db_session):
         return PartitionMonitoringService(db_session)
 
-    async def test_get_partition_health_summary(self, service, partition_monitoring_schema):
+    async def test_get_partition_health_summary(self, service):
         summary = await service.get_partition_health_summary()
         assert len(summary) == 3
         summary_by_partition = {item.partition_num: item for item in summary}
@@ -69,22 +70,18 @@ class TestPartitionMonitoringServiceIntegration:
         assert summary_by_partition[2].health_status == PartitionHealthStatus.UNBALANCED
         assert summary_by_partition[2].recommendation == "Consider rebalancing"
 
-    async def test_analyze_partition_skew(self, service, partition_monitoring_schema):
+    async def test_analyze_partition_skew(self, service):
         metrics = await service.analyze_partition_skew()
         assert len(metrics) == 2
         assert metrics[0].metric == "chunk_distribution"
         assert metrics[0].status == SkewStatus.WARNING
         assert metrics[1].status == SkewStatus.NORMAL
 
-    async def test_check_partition_health_compiles_alerts(self, service, partition_monitoring_schema):
+    async def test_check_partition_health_compiles_alerts(self, service):
         result = await service.check_partition_health()
         assert isinstance(result, MonitoringResult)
-        assert result.status == 'success'
+        assert result.status == "success"
         assert result.metrics["unbalanced_count"] == 1
         assert result.metrics["warning_count"] == 1
         assert result.metrics["healthy_count"] == 1
-        assert any(
-            detail.get("partition") == 2
-            for alert in result.alerts
-            for detail in alert.get("details", [])
-        )
+        assert any(detail.get("partition") == 2 for alert in result.alerts for detail in alert.get("details", []))

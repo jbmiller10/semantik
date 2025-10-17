@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import pytest
 import psutil
+import pytest
+
 from packages.shared.database.models import OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
+
+if TYPE_CHECKING:
+    from datetime import datetime
 
 
 @dataclass
@@ -90,7 +93,9 @@ class TestResourceManagerIntegration:
         estimate = ResourceEstimate(memory_mb=100, storage_gb=1)
         assert await manager.can_allocate(test_user_db.id, estimate) is False
 
-    async def test_reserve_and_release_reindex(self, manager, collection_factory, test_user_db, db_session, monkeypatch):
+    async def test_reserve_and_release_reindex(
+        self, manager, collection_factory, test_user_db, db_session, monkeypatch
+    ):
         monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(available=8 * 1024 * 1024 * 1024))
         monkeypatch.setattr(psutil, "disk_usage", lambda _path="/": SimpleNamespace(free=500 * 1024 * 1024 * 1024))
 

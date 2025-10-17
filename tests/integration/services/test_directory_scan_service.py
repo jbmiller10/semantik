@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
+
 from packages.webui.api.schemas import DirectoryScanProgress
 from packages.webui.services.directory_scan_service import MAX_FILE_SIZE, DirectoryScanService
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.asyncio()
@@ -24,7 +27,7 @@ class TestDirectoryScanServiceIntegration:
         """Capture WebSocket progress events emitted by the service."""
         messages: list[DirectoryScanProgress] = []
 
-        async def fake_send(scan_id: str, payload: dict[str, Any]) -> None:  # matches send_to_operation signature
+        async def fake_send(_scan_id: str, payload: dict[str, Any]) -> None:  # matches send_to_operation signature
             messages.append(DirectoryScanProgress(**payload))
 
         monkeypatch.setattr(
@@ -58,9 +61,7 @@ class TestDirectoryScanServiceIntegration:
         assert result.total_size > 0
         assert all(isinstance(msg, DirectoryScanProgress) for msg in capture_progress)
 
-    async def test_non_recursive_scan_ignores_subdirectories(
-        self, service, tmp_path: Path, capture_progress
-    ) -> None:
+    async def test_non_recursive_scan_ignores_subdirectories(self, service, tmp_path: Path, capture_progress) -> None:
         base = tmp_path / "docs"
         base.mkdir()
         (base / "root.txt").write_text("root")

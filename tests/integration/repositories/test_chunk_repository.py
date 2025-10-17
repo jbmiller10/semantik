@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
+from sqlalchemy import select
+
 from packages.shared.database.models import Chunk
 from packages.shared.database.repositories.chunk_repository import ChunkRepository
-from sqlalchemy import select
 
 
 @pytest.mark.asyncio()
@@ -19,7 +18,9 @@ class TestChunkRepositoryIntegration:
     def repository(self, db_session):
         return ChunkRepository(db_session)
 
-    async def test_create_chunk_persists_record(self, repository, db_session, collection_factory, document_factory, test_user_db):
+    async def test_create_chunk_persists_record(
+        self, repository, db_session, collection_factory, document_factory, test_user_db
+    ):
         """Creating a chunk should populate partitioned table."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
@@ -42,7 +43,9 @@ class TestChunkRepositoryIntegration:
         assert persisted.chunk_index == 0
         assert persisted.metadata["origin"] == "integration"
 
-    async def test_create_chunks_bulk_inserts_all(self, repository, db_session, collection_factory, document_factory, test_user_db):
+    async def test_create_chunks_bulk_inserts_all(
+        self, repository, db_session, collection_factory, document_factory, test_user_db
+    ):
         """Bulk insert should create all chunks grouped per collection."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
@@ -65,7 +68,9 @@ class TestChunkRepositoryIntegration:
         assert len(persisted) == 3
         assert {chunk.chunk_index for chunk in persisted} == {0, 1, 2}
 
-    async def test_get_chunk_by_id_fetches_partition(self, repository, db_session, collection_factory, document_factory, test_user_db):
+    async def test_get_chunk_by_id_fetches_partition(
+        self, repository, db_session, collection_factory, document_factory, test_user_db
+    ):
         """Fetching by id should return the created chunk when using correct collection id."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
@@ -129,7 +134,9 @@ class TestChunkRepositoryIntegration:
         count = await repository.count_chunks_by_document(document.id, collection.id)
         assert count == 0
 
-    async def test_chunk_exists_checks_presence(self, repository, db_session, collection_factory, document_factory, test_user_db):
+    async def test_chunk_exists_checks_presence(
+        self, repository, db_session, collection_factory, document_factory, test_user_db
+    ):
         """chunk_exists should reflect whether a chunk is stored."""
         collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)

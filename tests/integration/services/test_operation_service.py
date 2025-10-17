@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
+
 from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.operation_service import OperationService, celery_app
@@ -80,5 +81,5 @@ class TestOperationServiceIntegration:
         assert total >= 1
 
     async def test_parse_status_filter_invalid_value(self, service):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="Invalid status"):
             await service.parse_status_filter("does-not-exist")

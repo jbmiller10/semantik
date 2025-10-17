@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from packages.shared.database.models import Chunk
 from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
-from sqlalchemy import select
 
 
 @pytest.mark.asyncio()
@@ -43,7 +44,9 @@ class TestPartitionUtilitiesIntegration:
         assert len(persisted) == 4
         assert {chunk.chunk_index for chunk in persisted} == {0, 1, 2, 3}
 
-    async def test_delete_by_partition_filter_removes_rows(self, db_session, collection_factory, document_factory, test_user_db) -> None:
+    async def test_delete_by_partition_filter_removes_rows(
+        self, db_session, collection_factory, document_factory, test_user_db
+    ) -> None:
         mixin = PartitionAwareMixin()
         collection = await collection_factory(owner_id=test_user_db.id)
         doc_one = await document_factory(collection_id=collection.id)
