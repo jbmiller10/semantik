@@ -350,25 +350,28 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
         return hashlib.sha256(api_key.encode()).hexdigest()
 
     def _api_key_to_dict(self, api_key: ApiKey | None) -> dict[str, Any] | None:
-        """Convert ApiKey model to dictionary.
+        """Convert ApiKey model to dictionary without triggering implicit lazy loads."""
 
-        Args:
-            api_key: ApiKey model instance
-
-        Returns:
-            API key dictionary or None
-        """
         if not api_key:
             return None
 
-        # Helper function to safely convert datetime to string
         def datetime_to_str(dt: Any) -> str | None:
             if dt is None:
                 return None
             if hasattr(dt, "isoformat"):
                 return dt.isoformat()  # type: ignore[no-any-return]
-            # If it's already a string, return it
             return str(dt)
+
+        user_data = None
+        if hasattr(api_key, "__dict__"):
+            user_rel = api_key.__dict__.get("user")
+            if user_rel is not None:
+                user_data = {
+                    "id": user_rel.id,
+                    "username": user_rel.username,
+                    "email": user_rel.email,
+                    "is_active": user_rel.is_active,
+                }
 
         return {
             "id": api_key.id,
@@ -379,15 +382,6 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             "last_used_at": datetime_to_str(api_key.last_used_at),
             "expires_at": datetime_to_str(api_key.expires_at),
             "created_at": datetime_to_str(api_key.created_at),
-            # Include user info if loaded
-            "user": (
-                {
-                    "id": api_key.user.id,
-                    "username": api_key.user.username,
-                    "email": api_key.user.email,
-                    "is_active": api_key.user.is_active,
-                }
-                if hasattr(api_key, "user") and api_key.user
-                else None
-            ),
+            "user": user_data,
         }
+
