@@ -5,11 +5,10 @@ from __future__ import annotations
 import os
 
 import pytest
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from packages.webui.rate_limiter import (
     check_circuit_breaker,
@@ -23,7 +22,7 @@ pytestmark = pytest.mark.usefixtures("_db_isolation")
 
 
 @pytest.fixture()
-def rate_limited_app(monkeypatch) -> TestClient:
+def rate_limited_app() -> TestClient:
     os.environ["DISABLE_RATE_LIMITING"] = "false"
     limiter = Limiter(key_func=get_user_or_ip, storage_uri="memory://", default_limits=["2/second"], headers_enabled=False)
 
@@ -66,7 +65,7 @@ def test_circuit_breaker_blocks_after_threshold(rate_limited_app: TestClient) ->
         assert response.json()["error"] == "circuit_breaker_open"
 
 
-def test_get_user_or_ip_prefers_user_id(monkeypatch) -> None:
+def test_get_user_or_ip_prefers_user_id() -> None:
     os.environ["DISABLE_RATE_LIMITING"] = "false"
 
     class DummyState:

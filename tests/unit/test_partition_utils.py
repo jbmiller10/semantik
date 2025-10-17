@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
+
 from packages.shared.database.partition_utils import PartitionValidation
 
 
@@ -17,9 +18,9 @@ class TestPartitionValidationUnit:
         assert PartitionValidation.validate_uuid(valid_uuid.upper()) == valid_uuid
 
     def test_validate_uuid_invalid_inputs(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="valid UUID v4"):
             PartitionValidation.validate_uuid("not-a-uuid")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="cannot be empty"):
             PartitionValidation.validate_uuid("", "document_id")
         with pytest.raises(TypeError):
             PartitionValidation.validate_uuid(12345)  # type: ignore[arg-type]
@@ -37,16 +38,16 @@ class TestPartitionValidationUnit:
         assert validated["document_id"].islower()
 
     def test_validate_chunk_data_errors(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="collection_id is required"):
             PartitionValidation.validate_chunk_data({})
         with pytest.raises(TypeError):
             PartitionValidation.validate_chunk_data("wrong")
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="chunk_index must be non-negative"):
             PartitionValidation.validate_chunk_data({"collection_id": str(uuid4()), "chunk_index": -1})
 
     def test_validate_batch_size_limits(self) -> None:
         PartitionValidation.validate_batch_size(list(range(PartitionValidation.MAX_BATCH_SIZE)))
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="exceeds maximum allowed"):
             PartitionValidation.validate_batch_size(list(range(PartitionValidation.MAX_BATCH_SIZE + 1)))
 
     def test_sanitize_string_behaviour(self) -> None:

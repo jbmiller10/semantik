@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
-from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 

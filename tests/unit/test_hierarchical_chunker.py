@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from packages.shared.text_processing.base_chunker import ChunkResult
@@ -58,7 +56,7 @@ def test_hierarchical_chunker_chunk_text_emits_hierarchy_metadata() -> None:
 )
 def test_hierarchical_chunker_invalid_configuration(chunk_sizes: list[int]) -> None:
     """Invalid configurations should raise ValueError with descriptive messages."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="chunk_sizes"):
         HierarchicalChunker(chunk_sizes=chunk_sizes)
 
 
