@@ -14,6 +14,7 @@ import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
 
+from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
 from packages.webui.websocket_manager import RedisStreamWebSocketManager
 
 
@@ -249,8 +250,13 @@ class TestWebSocketManager:
 
     @pytest.mark.asyncio()
     async def test_send_update_with_redis(self, ws_manager, mock_redis) -> None:
-        """Test sending update through Redis stream"""
+        """Test sending update delegates to the progress manager when Redis is available."""
+
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SENT)
+
         ws_manager.redis = mock_redis
+        ws_manager._progress_manager = progress_manager
 
         await ws_manager.send_update(
             operation_id="op-123",
@@ -258,14 +264,14 @@ class TestWebSocketManager:
             data={"percentage": 50, "message": "Processing..."},
         )
 
-        # Verify Redis stream operations
-        mock_redis.xadd.assert_called_once()
-        call_args = mock_redis.xadd.call_args
-        assert call_args[0][0] == "operation-progress:op-123"
-        assert "message" in call_args[0][1]
-        assert call_args[1]["maxlen"] == 1000
-
-        mock_redis.expire.assert_called_once_with("operation-progress:op-123", 86400)
+        progress_manager.send_async_update.assert_awaited_once()
+        _, kwargs = progress_manager.send_async_update.await_args
+        assert kwargs["stream_template"] == "operation-progress:{operation_id}"
+        assert kwargs["ttl"] == 86400
+        assert kwargs["maxlen"] == 1000
+        assert kwargs["use_throttle"] is False
+        payload = progress_manager.send_async_update.await_args.args[0]
+        assert payload.operation_id == "op-123"
 
     @pytest.mark.asyncio()
     async def test_send_update_without_redis(self, ws_manager, mock_websocket) -> None:
@@ -288,22 +294,28 @@ class TestWebSocketManager:
     @pytest.mark.asyncio()
     @patch("packages.webui.websocket_manager.logger")
     async def test_send_update_redis_failure(self, mock_logger, ws_manager, mock_redis, mock_websocket) -> None:
-        """Test fallback to direct broadcast on Redis failure"""
+        """Test fallback to direct broadcast when the progress manager reports failure."""
+
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.FAILED)
+
         ws_manager.redis = mock_redis
         ws_manager.connections = {"user-123:operation:op-123": {mock_websocket}}
-
-        # Make Redis fail
-        mock_redis.xadd.side_effect = Exception("Redis error")
+        ws_manager._progress_manager = progress_manager
+        ws_manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
+        ws_manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
 
         await ws_manager.send_update(
             operation_id="op-123",
             update_type="error",
             data={"message": "Something went wrong"},
+            throttle=True,
         )
 
-        # Should log error and broadcast directly
+        progress_manager.send_async_update.assert_awaited_once()
+        ws_manager._broadcast.assert_awaited_once()  # type: ignore[attr-defined]
+        ws_manager._record_throttle_timestamp.assert_awaited_once()  # type: ignore[attr-defined]
         mock_logger.error.assert_called()
-        mock_websocket.send_json.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_consume_updates_lifecycle(self, ws_manager, mock_redis) -> None:
