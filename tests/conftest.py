@@ -649,13 +649,10 @@ async def db_session():
 async def test_user_db(db_session) -> None:
     """Create a test user in the database."""
 
-    # Use random ID to avoid conflicts
-    user_id = random.randint(1000, 9999)
     user = User(
-        id=user_id,
-        username=f"testuser_{user_id}",
+        username=f"testuser_{uuid4().hex[:8]}",
         hashed_password="hashed_password",
-        email=f"test_{user_id}@example.com",
+        email=f"test_{uuid4().hex[:8]}@example.com",
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -670,13 +667,10 @@ async def test_user_db(db_session) -> None:
 async def other_user_db(db_session) -> None:
     """Create another test user in the database."""
 
-    # Use random ID to avoid conflicts
-    user_id = random.randint(10000, 19999)
     user = User(
-        id=user_id,
-        username=f"otheruser_{user_id}",
+        username=f"otheruser_{uuid4().hex[:8]}",
         hashed_password="hashed_password",
-        email=f"other_{user_id}@example.com",
+        email=f"other_{uuid4().hex[:8]}@example.com",
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
