@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from packages.shared.database.models import Chunk, OperationStatus
+from packages.shared.database.partition_utils import compute_partition_key_from_hash
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.dtos.chunking_dtos import ServiceStrategyInfo
 
@@ -63,9 +64,11 @@ async def test_get_collection_chunks_returns_seeded_data(
     document = await document_factory(collection_id=collection.id, chunk_count=1)
 
     content = "Integration chunk content"
+    partition_key = await _compute_partition_key(db_session, collection.id)
+
     chunk = Chunk(
         collection_id=collection.id,
-        partition_key=0,
+        partition_key=partition_key,
         document_id=document.id,
         chunk_index=0,
         content=content,
@@ -110,11 +113,12 @@ async def test_get_chunking_stats_reflects_recent_operation(
 
     now = datetime.now(UTC)
     contents = ["alpha" * 5, "beta" * 5]
+    partition_key = await _compute_partition_key(db_session, collection.id)
     for index, text in enumerate(contents):
         db_session.add(
             Chunk(
                 collection_id=collection.id,
-                partition_key=0,
+                partition_key=partition_key,
                 document_id=document.id,
                 chunk_index=index,
                 content=text,
@@ -172,10 +176,12 @@ async def test_get_global_metrics_counts_recent_activity(
     document = await document_factory(collection_id=collection.id, chunk_count=1)
 
     timestamp = datetime.now(UTC)
+    partition_key = await _compute_partition_key(db_session, collection.id)
+
     db_session.add(
         Chunk(
             collection_id=collection.id,
-            partition_key=0,
+            partition_key=partition_key,
             document_id=document.id,
             chunk_index=0,
             content="metrics chunk",
@@ -208,3 +214,9 @@ async def test_get_global_metrics_counts_recent_activity(
     assert metrics["total_documents_processed"] >= 1
     assert metrics["total_collections_processed"] >= 1
     assert metrics["most_used_strategy"] in {"recursive", "fixed_size"}
+
+
+async def _compute_partition_key(db_session, collection_id: str) -> int:
+    """Helper to compute deterministic partition key using database helper."""
+
+    return compute_partition_key_from_hash(collection_id)

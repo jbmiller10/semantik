@@ -7,6 +7,7 @@ on partitioned tables, particularly the chunks table which is partitioned
 by collection_id.
 """
 
+import hashlib
 import logging
 import re
 from collections.abc import Callable, Iterable, Sequence
@@ -173,6 +174,19 @@ class PartitionValidation:
 
         # Remove null bytes which PostgreSQL doesn't like
         return value.replace("\x00", "")
+
+
+def compute_partition_key_from_hash(collection_id: str) -> int:
+    """Compute deterministic partition key purely in Python.
+
+    Mirrors the database helper that hashes the collection_id and maps the
+    result into the [0, 99] partition range. This allows codepaths (and tests)
+    to avoid relying on triggers when computing partition keys.
+    """
+
+    validated = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+    digest = hashlib.sha256(validated.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=False) % 100
 
 
 class PartitionAwareMixin:
