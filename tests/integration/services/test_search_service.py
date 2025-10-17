@@ -6,13 +6,15 @@ import json
 from collections import deque
 from uuid import uuid4
 
-import pytest
 import httpx
-from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError, EntityNotFoundError
+import pytest
+from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
+
+from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
+from packages.shared.database.exceptions import EntityNotFoundError
 from packages.shared.database.models import CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
-from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
 
 
 @pytest.mark.asyncio()
@@ -24,9 +26,7 @@ class TestSearchServiceIntegration:
     def service(self, db_session):
         return SearchService(db_session, CollectionRepository(db_session))
 
-    async def test_validate_collection_access_allows_authorized_user(
-        self, service, collection_factory, test_user_db
-    ):
+    async def test_validate_collection_access_allows_authorized_user(self, service, collection_factory, test_user_db):
         collection = await collection_factory(owner_id=test_user_db.id)
         result = await service.validate_collection_access([collection.id], test_user_db.id)
         assert [col.id for col in result] == [collection.id]
@@ -63,15 +63,15 @@ class TestSearchServiceIntegration:
             ]
         )
 
-        def fake_async_client(*args, **kwargs):  # noqa: ANN001
+        def fake_async_client(*_args, **_kwargs):  # noqa: ANN001
             class _Client:
-                async def __aenter__(self_inner):  # noqa: ANN001
-                    return self_inner
+                async def __aenter__(self):  # noqa: ANN001
+                    return self
 
-                async def __aexit__(self_inner, exc_type, exc, tb):  # noqa: ANN001
+                async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
                     return False
 
-                async def post(self_inner, url, json):  # noqa: ANN001
+                async def post(self, url, json):  # noqa: ANN001
                     response = responses.popleft()
                     response.request = httpx.Request("POST", url, json=json)
                     return response
@@ -100,15 +100,15 @@ class TestSearchServiceIntegration:
     ):
         collection = await collection_factory(owner_id=test_user_db.id, status=CollectionStatus.READY)
 
-        def failing_client(*args, **kwargs):  # noqa: ANN001
+        def failing_client(*_args, **_kwargs):  # noqa: ANN001
             class _Client:
-                async def __aenter__(self_inner):
-                    return self_inner
+                async def __aenter__(self):
+                    return self
 
-                async def __aexit__(self_inner, exc_type, exc, tb):
+                async def __aexit__(self, exc_type, exc, tb):
                     return False
 
-                async def post(self_inner, url, json):
+                async def post(self, url, json):
                     response = httpx.Response(
                         status_code=404,
                         content=b"{}",

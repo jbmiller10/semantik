@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import importlib
 import asyncio
+import importlib
 
 import pytest
 
@@ -25,8 +25,7 @@ def model_manager(monkeypatch):
     from packages.vecpipe import model_manager as model_manager_module
 
     importlib.reload(model_manager_module)
-    manager = model_manager_module.ModelManager(unload_after_seconds=0)
-    yield manager
+    return model_manager_module.ModelManager(unload_after_seconds=0)
 
 
 @pytest.mark.asyncio()

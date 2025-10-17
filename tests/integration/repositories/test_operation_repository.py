@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.models import Collection, Operation, OperationStatus, OperationType
-from packages.shared.database.repositories.operation_repository import OperationRepository
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from sqlalchemy import select
+
+from packages.shared.database.models import Operation, OperationStatus, OperationType
+from packages.shared.database.repositories.operation_repository import OperationRepository
 
 
 @pytest.mark.asyncio()
@@ -146,9 +147,7 @@ class TestOperationRepositoryIntegration:
         with pytest.raises(ValidationError):
             await repository.cancel(operation.uuid, test_user_db.id)
 
-    async def test_list_for_user_returns_operations(
-        self, repository, db_session, collection_factory, test_user_db
-    ):
+    async def test_list_for_user_returns_operations(self, repository, db_session, collection_factory, test_user_db):
         """Listing for user should return operations they created."""
         collection = await collection_factory(owner_id=test_user_db.id)
         op1 = await repository.create(collection.id, test_user_db.id, OperationType.INDEX, config={"idx": 1})

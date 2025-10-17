@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from packages.shared.database.models import Document
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.document_scanning_service import DocumentScanningService
-from sqlalchemy import select
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.asyncio()
@@ -21,7 +25,9 @@ class TestDocumentScanningServiceIntegration:
     def service(self, db_session):
         return DocumentScanningService(db_session, DocumentRepository(db_session))
 
-    async def test_scan_directory_registers_documents(self, service, db_session, collection_factory, tmp_path: Path, test_user_db):
+    async def test_scan_directory_registers_documents(
+        self, service, db_session, collection_factory, tmp_path: Path, test_user_db
+    ):
         collection = await collection_factory(owner_id=test_user_db.id)
         source = tmp_path / "docs"
         source.mkdir()
@@ -47,7 +53,9 @@ class TestDocumentScanningServiceIntegration:
         }
         assert paths == expected_paths
 
-    async def test_scan_directory_skips_duplicates(self, service, db_session, collection_factory, tmp_path: Path, test_user_db):
+    async def test_scan_directory_skips_duplicates(
+        self, service, db_session, collection_factory, tmp_path: Path, test_user_db
+    ):
         collection = await collection_factory(owner_id=test_user_db.id)
         source = tmp_path / "docs"
         source.mkdir()

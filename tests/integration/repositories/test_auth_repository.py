@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.models import RefreshToken
-from packages.webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
 from shared.database.exceptions import InvalidUserIdError
 from sqlalchemy import select
+
+from packages.shared.database.models import RefreshToken
+from packages.webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
 
 
 @pytest.mark.asyncio()
@@ -53,7 +54,9 @@ class TestPostgreSQLAuthRepositoryIntegration:
     async def test_revoke_token_marks_record(self, repository, db_session, test_user_db):
         """Revoking a token should mark it as revoked in the database."""
         token_value = f"revoke-me-{uuid4().hex}"
-        await repository.create_token(str(test_user_db.id), token_value, (datetime.now(UTC) + timedelta(days=1)).isoformat())
+        await repository.create_token(
+            str(test_user_db.id), token_value, (datetime.now(UTC) + timedelta(days=1)).isoformat()
+        )
         await db_session.commit()
 
         await repository.revoke_refresh_token(token_value)

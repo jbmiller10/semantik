@@ -6,10 +6,11 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.models import User
-from packages.webui.repositories.postgres.user_repository import PostgreSQLUserRepository
 from shared.database.exceptions import EntityAlreadyExistsError, InvalidUserIdError
 from sqlalchemy import select
+
+from packages.shared.database.models import User
+from packages.webui.repositories.postgres.user_repository import PostgreSQLUserRepository
 
 
 @pytest.mark.asyncio()
