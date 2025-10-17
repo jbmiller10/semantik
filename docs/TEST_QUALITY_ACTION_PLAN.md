@@ -1760,6 +1760,16 @@ class TestWebSocketCollectionOperations:
 
 **Verification**: Metrics coverage verified via new integration tests; unit chunker suites execute quickly with limited fixture setup.
 
+**Progress (2025-10-17)**:
+1. Added `tests/integration/chunking/test_ingestion_metrics.py`
+
+**Pending (2025-10-17)**:
+- Recursive runs in `tests/integration/chunking/test_ingestion_metrics.py` now execute with the configured recursive strategy; ChunkingService relaxes min token thresholds, retries on domain validation, and records metrics via module reload so isolated CollectorRegistry fixtures see the expected counters. No additional remediation items remain for this blocker.
+
+ to exercise real chunking flows with isolated Prometheus registries and DB/fakeredis fixtures.
+2. Replaced mock-heavy chunker suites with `tests/unit/chunking/test_hierarchical_chunker_validations.py` plus expanded integration assertions under `tests/integration/strategies/`.
+3. Retired metrics/error suites that manipulated private `_metrics`, ensuring new coverage relies on CollectorRegistry fixtures.
+
 ### Action 13: Rationalize Search/Rate-Limiter Unit Suites ⚠️ MEDIUM
 
 **Priority**: P2  
@@ -1795,6 +1805,11 @@ class TestWebSocketCollectionOperations:
 - Manual streaming/websocket probes relocated to `manual_tests/`; ingestion/document suite migration still pending.
 
 **Verification**: A consolidated integration suite (e.g., `tests/integration/tasks/test_document_ingestion.py`) validates chunk count updates and directory scans end-to-end; unit suites shrink to minimal validation helpers.
+
+**Progress (2025-10-17)**:
+1. Introduced `tests/integration/chunking/test_ingestion_metrics.py` to cover chunk count updates and service metrics using async DB + fakeredis fixtures.
+2. Removed `tests/webui/test_document_chunk_count_updates.py` and `tests/webui/services/test_execute_ingestion_chunking.py`, migrating high-value assertions to integration coverage.
+3. Documented remaining Celery orchestration gaps for follow-up (see tracking table entries for directory scan and task orchestration).
 
 ---
 
