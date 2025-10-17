@@ -56,6 +56,7 @@ async def _truncate_all_tables(engine: AsyncEngine) -> None:
                 SELECT tablename
                 FROM pg_tables
                 WHERE schemaname = 'public'
+                  AND tablename <> 'alembic_version'
                 ORDER BY tablename;
                 """
             )
