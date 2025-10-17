@@ -24,7 +24,9 @@ TEXT_SAMPLE = " ".join(f"Sentence {i} about chunking." for i in range(64))
 
 
 @pytest.fixture()
-def isolated_chunking_metrics(monkeypatch: pytest.MonkeyPatch) -> Generator[tuple[CollectorRegistry, object, object], None, None]:
+def isolated_chunking_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[tuple[CollectorRegistry, object, object], None, None]:
     """Provide an isolated CollectorRegistry for chunking metric modules."""
 
     registry = CollectorRegistry()
