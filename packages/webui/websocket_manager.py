@@ -14,13 +14,19 @@ import redis.asyncio as aioredis
 import redis.asyncio as redis
 from fastapi import WebSocket
 
+from packages.webui.services.progress_manager import (
+    ProgressPayload,
+    ProgressSendResult,
+    ProgressUpdateManager,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class RedisStreamWebSocketManager:
     """WebSocket manager that uses Redis Streams for distributed state synchronization."""
 
-    def __init__(self) -> None:
+    def __init__(self, progress_manager: ProgressUpdateManager | None = None) -> None:
         """Initialize the WebSocket manager."""
         self.redis: aioredis.Redis | None = None
         self.connections: dict[str, set[WebSocket]] = {}
@@ -33,6 +39,7 @@ class RedisStreamWebSocketManager:
         self._get_operation_func = None  # Function to get operation by ID
         self._chunking_progress_throttle: dict[str, datetime] = {}  # Track last progress update time per operation
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
+        self._progress_manager = progress_manager
 
         # Add locks for thread-safe access to shared state
         self._connections_lock = asyncio.Lock()
@@ -68,6 +75,19 @@ class RedisStreamWebSocketManager:
                     # Validate connection
                     await redis_client.ping()
                     self.redis = redis_client
+
+                    if self._progress_manager is None:
+                        self._progress_manager = ProgressUpdateManager(
+                            async_redis=redis_client,
+                            default_stream_template="operation-progress:{operation_id}",
+                            default_ttl=86400,
+                            default_maxlen=1000,
+                            async_throttle_interval=self._chunking_progress_threshold,
+                            logger_=logger.getChild("progress"),
+                        )
+                    else:
+                        self._progress_manager.set_async_client(redis_client)
+
                     logger.info("WebSocket manager connected to Redis")
                     return
                 except Exception as e:
@@ -114,6 +134,25 @@ class RedisStreamWebSocketManager:
         if self.redis:
             await self.redis.close()
             logger.info("WebSocket manager Redis connection closed")
+
+    async def _record_throttle_timestamp(self, operation_id: str, timestamp: datetime) -> None:
+        """Update the throttle bookkeeping for chunking progress events."""
+
+        async with self._throttle_lock:
+            self._chunking_progress_throttle[operation_id] = timestamp
+
+    @staticmethod
+    def _resolve_stream_ttl(update_type: str, data: dict[str, Any]) -> int:
+        """Determine TTL to apply to a Redis stream entry for *update_type*."""
+
+        ttl = 86400
+        if update_type == "status_update":
+            status = data.get("status", "")
+            if status in {"completed", "cancelled"}:
+                ttl = 300
+            elif status == "failed":
+                ttl = 60
+        return ttl
 
     def set_operation_getter(self, get_operation_func: Any) -> None:
         """Set the function to get operation by ID.
@@ -251,48 +290,72 @@ class RedisStreamWebSocketManager:
                     if operation_id in self.consumer_tasks:
                         del self.consumer_tasks[operation_id]
 
-    async def send_update(self, operation_id: str, update_type: str, data: dict) -> None:
+    async def send_update(
+        self,
+        operation_id: str,
+        update_type: str,
+        data: dict,
+        *,
+        throttle: bool = False,
+        throttle_key: str | None = None,
+    ) -> None:
         """Send an update to Redis Stream for a specific operation.
 
-        This method is called by Celery tasks to send updates.
-        If Redis is not available, updates are sent directly to connected clients.
+        If Redis is unavailable or publishing fails, updates are sent directly to
+        connected WebSocket clients as a fallback.
         """
-        message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
 
-        if self.redis:
-            # Redis available - use streams for persistence
-            stream_key = f"operation-progress:{operation_id}"
+        payload_timestamp = datetime.now(UTC)
+        message = {"timestamp": payload_timestamp.isoformat(), "type": update_type, "data": data}
+        manager = self._progress_manager
+        publish_result: ProgressSendResult | None = None
 
-            try:
-                # Add to stream with automatic ID and max length to prevent unbounded growth
-                await self.redis.xadd(
-                    stream_key,
-                    {"message": json.dumps(message)},
-                    maxlen=1000,  # Keep last 1000 messages
+        if manager is not None and self.redis is not None:
+            payload = ProgressPayload(
+                operation_id=operation_id,
+                correlation_id=data.get("correlation_id"),
+                status=data.get("status"),
+                message=data.get("message"),
+                progress=data.get("progress_percentage") or data.get("progress"),
+                extra={"type": update_type},
+                timestamp=payload_timestamp,
+            )
+
+            ttl = self._resolve_stream_ttl(update_type, data)
+            publish_result = await manager.send_async_update(
+                payload,
+                stream_fields={"message": json.dumps(message)},
+                stream_template="operation-progress:{operation_id}",
+                ttl=ttl,
+                maxlen=1000,
+                use_throttle=throttle,
+                throttle_key=throttle_key or operation_id,
+                redis_client=self.redis,
+            )
+
+            if publish_result is ProgressSendResult.SENT:
+                if throttle:
+                    await self._record_throttle_timestamp(operation_id, payload.timestamp)
+                logger.debug(
+                    "Sent update to stream operation-progress:%s: type=%s, TTL=%ss",
+                    operation_id,
+                    update_type,
+                    ttl,
                 )
+                return
 
-                # Set TTL based on operation status
-                # Active operations get longer TTL, completed operations get shorter
-                ttl = 86400  # Default: 24 hours for active operations
+            if publish_result is ProgressSendResult.SKIPPED:
+                return
 
-                if update_type == "status_update":
-                    status = data.get("status", "")
-                    if status in ["completed", "cancelled"]:
-                        ttl = 300  # 5 minutes for completed operations
-                    elif status == "failed":
-                        ttl = 60  # 1 minute for failed operations
+        if throttle:
+            await self._record_throttle_timestamp(operation_id, payload_timestamp)
 
-                await self.redis.expire(stream_key, ttl)
+        if publish_result is ProgressSendResult.FAILED:
+            logger.error("Failed to send update to Redis stream for %s", operation_id)
+        elif manager is None or self.redis is None:
+            logger.debug("Redis not available, broadcasting directly for operation %s", operation_id)
 
-                logger.debug(f"Sent update to stream {stream_key}: type={update_type}, TTL={ttl}s")
-            except Exception as e:
-                logger.error(f"Failed to send update to Redis stream: {e}")
-                # Fall back to direct broadcast
-                await self._broadcast(operation_id, message)
-        else:
-            # Redis not available - send directly to connected clients
-            logger.debug(f"Redis not available, broadcasting directly for operation {operation_id}")
-            await self._broadcast(operation_id, message)
+        await self._broadcast(operation_id, message)
 
     async def _consume_updates(self, operation_id: str) -> None:
         """Consume updates from Redis Stream for a specific operation."""
@@ -675,19 +738,6 @@ class RedisStreamWebSocketManager:
             current_document: Currently processing document name
             throttle: Whether to throttle progress updates
         """
-        # Apply throttling to reduce WebSocket traffic
-        async with self._throttle_lock:
-            now = datetime.now(UTC)
-            if throttle and operation_id in self._chunking_progress_throttle:
-                time_since_last = (now - self._chunking_progress_throttle[operation_id]).total_seconds()
-                if time_since_last < self._chunking_progress_threshold:
-                    # Skip this update if too soon after the last one
-                    return
-
-            # Update throttle timestamp
-            self._chunking_progress_throttle[operation_id] = now
-
-        # Send the progress update
         await self.send_update(
             operation_id,
             "chunking_progress",
@@ -698,6 +748,8 @@ class RedisStreamWebSocketManager:
                 "chunks_created": chunks_created,
                 "current_document": current_document,
             },
+            throttle=throttle,
+            throttle_key=operation_id,
         )
 
     async def send_chunking_event(
