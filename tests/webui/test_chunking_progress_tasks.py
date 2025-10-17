@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -47,7 +46,9 @@ def test_send_progress_update_sync_uses_shared_manager(monkeypatch: pytest.Monke
 
 
 @pytest.mark.asyncio()
-async def test_send_progress_update_async_delegates_and_logs(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+async def test_send_progress_update_async_delegates_and_logs(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     manager = FakeProgressManager(result=ProgressSendResult.FAILED)
     redis_client = MagicMock()
 
@@ -89,4 +90,3 @@ async def test_send_progress_update_async_success(monkeypatch: pytest.MonkeyPatc
     payload, kwargs = manager.calls[0]
     assert payload.progress == 90
     assert kwargs["redis_client"] is redis_client
-
