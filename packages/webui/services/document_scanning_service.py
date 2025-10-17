@@ -209,12 +209,12 @@ class DocumentScanningService:
 
         return stats
 
-    async def _register_file(
+    async def _register_file(  # noqa: ARG002
         self,
         collection_id: str,
         file_path: Path,
         source_id: int | None = None,
-        _scan_start_time: datetime | None = None,
+        scan_start_time: datetime | None = None,
     ) -> dict[str, Any]:
         """Register a single file in the collection.
 
@@ -222,7 +222,7 @@ class DocumentScanningService:
             collection_id: UUID of the collection
             file_path: Path to the file
             source_id: Optional source ID
-            _scan_start_time: Start time of scan for duplicate detection (unused in current flow)
+            scan_start_time: Start time of scan for duplicate detection
 
         Returns:
             Dictionary with:
@@ -233,6 +233,9 @@ class DocumentScanningService:
         Raises:
             ValueError: If file is too large or cannot be accessed
         """
+        # Retain parameter for future duplicate detection logic without dropping caller compatibility.
+        _ = scan_start_time
+
         # Get file stats
         try:
             stat = file_path.stat()
