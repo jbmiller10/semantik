@@ -184,24 +184,20 @@ def record_chunk_sizes(strategy: str, chunks: list[str | dict[str, Any] | Any]) 
     if not chunks:
         return
 
-    # Calculate average chunk size
-    total_size = 0
+    metric = ingestion_avg_chunk_size_bytes.labels(strategy=strategy)
+
     for chunk in chunks:
         if isinstance(chunk, dict):
             # Handle dictionary chunks with 'text' field
             text = chunk.get("text", chunk.get("content", ""))
             if text is not None:
-                total_size += len(text.encode("utf-8"))
+                metric.observe(len(text.encode("utf-8")))
         elif isinstance(chunk, str):
             # Handle string chunks
-            total_size += len(chunk.encode("utf-8"))
+            metric.observe(len(chunk.encode("utf-8")))
         elif hasattr(chunk, "content"):
             # Handle chunk objects with content attribute
-            total_size += len(chunk.content.encode("utf-8"))
-
-    if chunks:
-        avg_size = total_size / len(chunks)
-        ingestion_avg_chunk_size_bytes.labels(strategy=strategy).observe(avg_size)
+            metric.observe(len(chunk.content.encode("utf-8")))
 
 
 def record_document_segmented(strategy: str) -> None:
