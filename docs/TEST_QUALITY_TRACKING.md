@@ -84,7 +84,7 @@
 | `tests/unit/test_model_manager.py` | Mock-embedding integration tests cover lifecycle | Medium | 1-2 days | ✅ Completed (2025-10-17) |
 | `tests/websocket/test_cleanup.py` | Manual cleanup script with real sockets | Medium | 1 day | ⏳ Pending |
 | `tests/websocket/test_scaling.py` | Load-style script, relies on live services | Medium | 1 day | ⏳ Pending |
-| `tests/webui/services/test_directory_scan_service.py` | Replaced with filesystem-backed integration tests | Medium | 2 days | ✅ Completed (2025-10-17) |
+| `tests/webui/services/test_directory_scan_service.py` | Legacy mock suite still overlaps integration coverage | Medium | 2 days | ⏳ Pending |
 | `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ⏳ Pending |
 | `tests/unit/test_document_scanning_service.py` | Integration tests register documents via real repo | Medium | 1 day | ✅ Completed (2025-10-17) |
 | `tests/unit/test_directory_scan_service.py` | Replaced with integration coverage alongside service suite | Medium | 1 day | ✅ Completed (2025-10-17) |

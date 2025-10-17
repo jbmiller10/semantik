@@ -1765,7 +1765,7 @@ class TestWebSocketCollectionOperations:
 **Effort**: 2 days  
 **Risk**: Low
 
-**Status 2025-10-17:** Completed. Rate limiter now tested via `tests/integration/web/test_rate_limiter.py`; search service scenarios covered in `tests/integration/services/test_search_service.py`.
+**Status 2025-10-17:** Partially complete — rate limiter scenarios now live in `tests/integration/web/test_rate_limiter.py`, but legacy mock-heavy search service suites (`tests/unit/test_search_service.py`, `tests/webui/services/test_search_service_reranking.py`) are still in place.
 
 **Problem**:
 - `tests/unit/test_search_service.py` recreates `SearchService` with `AsyncMock` dependencies, patches `httpx.AsyncClient`, and asserts on internal calls rather than actual HTTP responses. Most scenarios overlap with API/integration coverage.
@@ -1784,7 +1784,7 @@ class TestWebSocketCollectionOperations:
 **Effort**: 2-3 days  
 **Risk**: Medium - requires coordinating Celery/WS fixtures
 
-**Status 2025-10-17:** Completed. Directory/document services now rely on integration suites (`tests/integration/services/test_directory_scan_service.py`, `tests/integration/services/test_document_scanning_service.py`, `tests/integration/services/test_operation_service.py`, `tests/integration/services/test_partition_monitoring_service.py`, `tests/integration/services/test_resource_manager.py`). Repository coverage moved to `tests/integration/repositories/`. Manual benchmark scripts relocated under `manual_tests/`.
+**Status 2025-10-17:** Partially complete — integration suites are in place (`tests/integration/services/test_directory_scan_service.py`, `tests/integration/services/test_document_scanning_service.py`, `tests/integration/services/test_operation_service.py`, `tests/integration/services/test_partition_monitoring_service.py`, `tests/integration/services/test_resource_manager.py`), but the legacy mock-based service suites (`tests/webui/services/test_directory_scan_service.py`, `tests/webui/services/test_execute_ingestion_chunking.py`, etc.) still need consolidation.
 
 **Problem**: Tests such as `tests/webui/test_document_chunk_count_updates.py`, `tests/webui/services/test_directory_scan_service.py`, `tests/webui/services/test_execute_ingestion_chunking.py`, and the corresponding unit repository/service suites (`tests/unit/test_document_scanning_service.py`, `tests/unit/test_directory_scan_service.py`, `tests/unit/test_operation_repository.py`, etc.) rely on heavy mocking, custom filesystem setups, and duplicate scenarios already covered (or planned) in integration tests. They assert on implementation details (call counts, mock attributes) rather than observable outcomes.
 

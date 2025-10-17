@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from packages.shared.database.models import OperationStatus, OperationType
@@ -49,15 +49,15 @@ class TestOperationServiceIntegration:
         await repository.set_task_id(operation.uuid, "celery-task-xyz")
         revoke_calls: list[str] = []
 
-        async def fake_revoke(task_id, terminate=True):  # noqa: ARG001
+        def fake_revoke(task_id, terminate=True):  # noqa: ARG001
             revoke_calls.append(task_id)
 
-        mock_control = AsyncMock()
+        mock_control = MagicMock()
         mock_control.revoke.side_effect = fake_revoke
         monkeypatch.setattr(celery_app, "control", mock_control)
 
         cancelled = await service.cancel_operation(operation.uuid, test_user_db.id)
-        assert cancelled.status is OperationStatus.CANCELLED
+        assert cancelled.status == OperationStatus.CANCELLED
         assert revoke_calls == ["celery-task-xyz"]
 
     async def test_list_operations_with_filters(self, service, repository, collection_factory, test_user_db):
