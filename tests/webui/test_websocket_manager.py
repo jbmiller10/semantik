@@ -332,9 +332,7 @@ class TestRedisStreamWebSocketManager:
         mock_redis.expire.assert_called_once_with("operation-progress:operation1", 86400)
 
     @pytest.mark.asyncio()
-    async def test_send_update_throttle_skip(
-        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
-    ) -> None:
+    async def test_send_update_throttle_skip(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
         """If the progress manager throttles the update, no broadcast should occur."""
 
         manager.redis = mock_redis
