@@ -212,7 +212,7 @@ async def test_successful_ingestion_records_metrics(
     assert result["stats"]["chunk_count"] > 0
 
     recorded_chunks = registry.get_sample_value(
-        "ingestion_chunks_total_total",
+        "ingestion_chunks_total",
         labels={"strategy": "recursive"},
     )
     assert recorded_chunks == float(result["stats"]["chunk_count"])
@@ -230,7 +230,7 @@ async def test_successful_ingestion_records_metrics(
     assert summary_count == float(result["stats"]["chunk_count"])
 
     fallback_counter = registry.get_sample_value(
-        "ingestion_chunking_fallback_total_total",
+        "ingestion_chunking_fallback_total",
         labels={"strategy": "recursive", "reason": "runtime_error"},
     )
     assert fallback_counter is None
@@ -276,13 +276,13 @@ async def test_invalid_strategy_falls_back_to_token_chunker(
     assert result["stats"]["chunk_count"] > 0
 
     fallback_value = registry.get_sample_value(
-        "ingestion_chunking_fallback_total_total",
+        "ingestion_chunking_fallback_total",
         labels={"strategy": "nonsense", "reason": result["stats"]["fallback_reason"]},
     )
     assert fallback_value == 1.0
 
     token_chunks = registry.get_sample_value(
-        "ingestion_chunks_total_total",
+        "ingestion_chunks_total",
         labels={"strategy": "character"},
     )
     assert token_chunks == float(result["stats"]["chunk_count"])
