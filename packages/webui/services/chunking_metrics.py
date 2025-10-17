@@ -9,7 +9,18 @@ from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
-from packages.shared.metrics.prometheus import registry
+from packages.shared.metrics.prometheus import registry as default_registry
+
+_metrics_registry: CollectorRegistry = default_registry
+
+ingestion_chunking_duration_seconds: Histogram
+ingestion_chunking_fallback_total: Counter
+ingestion_chunks_total: Counter
+ingestion_avg_chunk_size_bytes: Summary
+ingestion_segmented_documents_total: Counter
+ingestion_segments_total: Counter
+ingestion_segment_size_bytes: Histogram
+ingestion_streaming_used_total: Counter
 
 
 def _get_or_create_metric(
@@ -71,76 +82,93 @@ def _get_or_create_metric(
         raise
 
 
-# Chunking duration histogram - tracks time taken to chunk documents per strategy
-ingestion_chunking_duration_seconds = _get_or_create_metric(
-    Histogram,
-    "ingestion_chunking_duration_seconds",
-    "Duration of chunking operation per document in seconds",
-    registry,
-    labelnames=["strategy"],
-    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
-)
+def init_metrics(registry_override: CollectorRegistry | None = None) -> None:
+    """Initialize chunking metrics, optionally using an isolated registry."""
+    global _metrics_registry
+    global ingestion_chunking_duration_seconds
+    global ingestion_chunking_fallback_total
+    global ingestion_chunks_total
+    global ingestion_avg_chunk_size_bytes
+    global ingestion_segmented_documents_total
+    global ingestion_segments_total
+    global ingestion_segment_size_bytes
+    global ingestion_streaming_used_total
 
-# Chunking fallback counter - tracks when strategies fail and fallback is used
-ingestion_chunking_fallback_total = _get_or_create_metric(
-    Counter,
-    "ingestion_chunking_fallback_total",
-    "Total number of chunking fallbacks by strategy and reason",
-    registry,
-    labelnames=["strategy", "reason"],
-)
+    _metrics_registry = registry_override or default_registry
 
-# Chunks produced counter - tracks total chunks created per strategy
-ingestion_chunks_total = _get_or_create_metric(
-    Counter,
-    "ingestion_chunks_total",
-    "Total number of chunks produced per strategy",
-    registry,
-    labelnames=["strategy"],
-)
+    ingestion_chunking_duration_seconds = _get_or_create_metric(
+        Histogram,
+        "ingestion_chunking_duration_seconds",
+        "Duration of chunking operation per document in seconds",
+        _metrics_registry,
+        labelnames=["strategy"],
+        buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30),
+    )
 
-# Average chunk size summary - tracks chunk size distribution per strategy
-ingestion_avg_chunk_size_bytes = _get_or_create_metric(
-    Summary,
-    "ingestion_avg_chunk_size_bytes",
-    "Average chunk size in bytes per strategy",
-    registry,
-    labelnames=["strategy"],
-)
+    ingestion_chunking_fallback_total = _get_or_create_metric(
+        Counter,
+        "ingestion_chunking_fallback_total",
+        "Total number of chunking fallbacks by strategy and reason",
+        _metrics_registry,
+        labelnames=["strategy", "reason"],
+    )
 
-# Segmentation metrics for Phase 3
-ingestion_segmented_documents_total = _get_or_create_metric(
-    Counter,
-    "ingestion_segmented_documents_total",
-    "Total number of documents that required segmentation",
-    registry,
-    labelnames=["strategy"],
-)
+    ingestion_chunks_total = _get_or_create_metric(
+        Counter,
+        "ingestion_chunks_total",
+        "Total number of chunks produced per strategy",
+        _metrics_registry,
+        labelnames=["strategy"],
+    )
 
-ingestion_segments_total = _get_or_create_metric(
-    Counter,
-    "ingestion_segments_total",
-    "Total number of segments created from large documents",
-    registry,
-    labelnames=["strategy"],
-)
+    ingestion_avg_chunk_size_bytes = _get_or_create_metric(
+        Summary,
+        "ingestion_avg_chunk_size_bytes",
+        "Average chunk size in bytes per strategy",
+        _metrics_registry,
+        labelnames=["strategy"],
+    )
 
-ingestion_segment_size_bytes = _get_or_create_metric(
-    Histogram,
-    "ingestion_segment_size_bytes",
-    "Size distribution of document segments in bytes",
-    registry,
-    labelnames=["strategy"],
-    buckets=(100000, 500000, 1000000, 2000000, 5000000, 10000000),  # 100KB to 10MB
-)
+    ingestion_segmented_documents_total = _get_or_create_metric(
+        Counter,
+        "ingestion_segmented_documents_total",
+        "Total number of documents that required segmentation",
+        _metrics_registry,
+        labelnames=["strategy"],
+    )
 
-ingestion_streaming_used_total = _get_or_create_metric(
-    Counter,
-    "ingestion_streaming_used_total",
-    "Total number of documents processed with streaming strategies",
-    registry,
-    labelnames=["strategy"],
-)
+    ingestion_segments_total = _get_or_create_metric(
+        Counter,
+        "ingestion_segments_total",
+        "Total number of segments created from large documents",
+        _metrics_registry,
+        labelnames=["strategy"],
+    )
+
+    ingestion_segment_size_bytes = _get_or_create_metric(
+        Histogram,
+        "ingestion_segment_size_bytes",
+        "Size distribution of document segments in bytes",
+        _metrics_registry,
+        labelnames=["strategy"],
+        buckets=(100000, 500000, 1000000, 2000000, 5000000, 10000000),
+    )
+
+    ingestion_streaming_used_total = _get_or_create_metric(
+        Counter,
+        "ingestion_streaming_used_total",
+        "Total number of documents processed with streaming strategies",
+        _metrics_registry,
+        labelnames=["strategy"],
+    )
+
+
+def get_metrics_registry() -> CollectorRegistry:
+    """Return the active metrics registry (useful for tests)."""
+    return _metrics_registry
+
+
+init_metrics()
 
 
 # Helper functions for recording metrics
