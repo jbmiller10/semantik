@@ -370,6 +370,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # If it's already a string, return it
             return str(dt)
 
+        user_obj = api_key.__dict__.get("user")
+
         return {
             "id": api_key.id,
             "user_id": api_key.user_id,
@@ -382,12 +384,12 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Include user info if loaded
             "user": (
                 {
-                    "id": api_key.user.id,
-                    "username": api_key.user.username,
-                    "email": api_key.user.email,
-                    "is_active": api_key.user.is_active,
+                    "id": user_obj.id,
+                    "username": user_obj.username,
+                    "email": user_obj.email,
+                    "is_active": user_obj.is_active,
                 }
-                if hasattr(api_key, "user") and api_key.user
+                if user_obj
                 else None
             ),
         }

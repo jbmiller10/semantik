@@ -250,7 +250,16 @@ class DocumentScanningService:
         # Detect MIME type
         mime_type = self._get_mime_type(file_path)
 
-        # Register document (handles deduplication internally)
+        # If document already exists with same hash, treat as duplicate
+        existing_doc = await self.document_repo.get_by_content_hash(collection_id, content_hash)
+        if existing_doc is not None:
+            return {
+                "is_new": False,
+                "document_id": existing_doc.id,
+                "file_size": existing_doc.file_size or file_size,
+            }
+
+        # Register document
         document = await self.document_repo.create(
             collection_id=collection_id,
             file_path=str(file_path),
@@ -261,21 +270,11 @@ class DocumentScanningService:
             source_id=source_id,
         )
 
-        # Check if this was a new document or existing one
-        # If scan_start_time is provided, compare with document creation time
-        # Documents created before scan start are considered duplicates
-        is_new = True
-        if scan_start_time and hasattr(document, "created_at"):
-            is_new = document.created_at >= scan_start_time
-
-        # Log duplicate detection
-        if not is_new:
-            logger.debug(
-                f"Duplicate document detected: {file_path} (existing document created at {document.created_at})"
-            )
+        # Ensure server defaults (e.g., created_at) are populated
+        await self.document_repo.session.refresh(document)
 
         return {
-            "is_new": is_new,
+            "is_new": True,
             "document_id": document.id,
             "file_size": file_size,
         }
