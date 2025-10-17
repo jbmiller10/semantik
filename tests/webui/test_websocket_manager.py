@@ -368,6 +368,31 @@ class TestRedisStreamWebSocketManager:
         manager._record_throttle_timestamp.assert_awaited_once()
 
     @pytest.mark.asyncio()
+    async def test_send_update_throttle_skips_fallback_when_recent(
+        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
+    ) -> None:
+        """Fallback path should respect throttling if an update was sent recently."""
+
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.FAILED)
+        manager.redis = mock_redis
+        manager._progress_manager = progress_manager
+        manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
+        manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
+        manager._should_send_progress_update = AsyncMock(return_value=False)  # type: ignore[attr-defined]
+
+        await manager.send_update(
+            "operation1",
+            "chunking_progress",
+            {"progress_percentage": 10},
+            throttle=True,
+        )
+
+        manager._should_send_progress_update.assert_awaited_once()
+        manager._broadcast.assert_not_awaited()
+        manager._record_throttle_timestamp.assert_not_awaited()
+
+    @pytest.mark.asyncio()
     async def test_send_update_applies_status_ttl(
         self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
     ) -> None:
