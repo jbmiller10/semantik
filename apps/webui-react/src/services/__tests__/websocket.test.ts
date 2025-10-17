@@ -126,9 +126,14 @@ class TestMockWebSocket {
     this.timeoutIds.clear();
   }
   
+  private createDomEvent<T extends Event>(type: string): T {
+    const EventCtor = typeof window !== 'undefined' && typeof window.Event === 'function' ? window.Event : Event;
+    return new EventCtor(type) as T;
+  }
+
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
-    const event = new Event('open');
+    const event = this.createDomEvent<Event>('open');
     this.dispatchEvent(event);
     this.onopen?.(event);
   }
@@ -142,7 +147,7 @@ class TestMockWebSocket {
   }
   
   simulateError() {
-    const event = new Event('error');
+    const event = this.createDomEvent<Event>('error');
     this.dispatchEvent(event);
     this.onerror?.(event);
   }
