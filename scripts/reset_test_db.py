@@ -21,10 +21,7 @@ def _confirm_reset(force: bool) -> None:
     if force or env_force:
         return
 
-    prompt = (
-        "WARNING: this will truncate all tables in the configured test database. "
-        "Type 'RESET' to continue: "
-    )
+    prompt = "WARNING: this will truncate all tables in the configured test database. " "Type 'RESET' to continue: "
     try:
         response = input(prompt)
     except EOFError:  # pragma: no cover - defensive
@@ -37,9 +34,7 @@ def _confirm_reset(force: bool) -> None:
 def _get_database_url() -> str:
     url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not url:
-        raise SystemExit(
-            "TEST_DATABASE_URL or DATABASE_URL must be set to clean the test database."
-        )
+        raise SystemExit("TEST_DATABASE_URL or DATABASE_URL must be set to clean the test database.")
 
     if not url.startswith("postgres"):
         raise SystemExit("reset_test_db.py currently supports PostgreSQL URLs only.")
