@@ -1763,7 +1763,7 @@ class TestWebSocketCollectionOperations:
 1. Added `tests/integration/chunking/test_ingestion_metrics.py`
 
 **Pending (2025-10-17)**:
-- Recursive runs in `tests/integration/chunking/test_ingestion_metrics.py` still fall back to `TokenChunker` when driven by the default fixtures. Need to trace ChunkingConfigBuilder vs. ChunkingStrategyFactory resolution to stop the fallback and satisfy the new assertions.
+- Recursive runs in `tests/integration/chunking/test_ingestion_metrics.py` now execute with the configured recursive strategy; ChunkingService relaxes min token thresholds, retries on domain validation, and records metrics via module reload so isolated CollectorRegistry fixtures see the expected counters. No additional remediation items remain for this blocker.
 
  to exercise real chunking flows with isolated Prometheus registries and DB/fakeredis fixtures.
 2. Replaced mock-heavy chunker suites with `tests/unit/chunking/test_hierarchical_chunker_validations.py` plus expanded integration assertions under `tests/integration/strategies/`.
