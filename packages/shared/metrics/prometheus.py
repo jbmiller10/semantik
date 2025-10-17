@@ -361,10 +361,9 @@ def start_metrics_server(port: int = 9090) -> None:
     try:
         start_http_server(port, registry=registry)
         logger.info("Metrics server started on port %s", port)
+        _METRICS_SERVER_STARTED = True
     except OSError as exc:
         logger.warning("Failed to start metrics server on port %s: %s", port, exc)
-    finally:
-        _METRICS_SERVER_STARTED = True
 
 
 if __name__ == "__main__":
