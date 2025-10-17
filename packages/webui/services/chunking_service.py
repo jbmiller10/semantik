@@ -6,7 +6,9 @@ selection, preview generation, and actual document chunking.
 """
 
 import asyncio
+import contextlib
 import hashlib
+import importlib
 import json
 import logging
 import math
@@ -29,6 +31,7 @@ from packages.shared.chunking.application.dto.requests import (
 )
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
+    ChunkSizeViolationError,
     InvalidConfigurationError,
     StrategyNotFoundError,
 )
@@ -62,12 +65,6 @@ from packages.webui.services.dtos.api_models import ChunkingStrategy
 from .cache_manager import CacheManager, QueryMonitor
 from .chunking_config_builder import ChunkingConfigBuilder
 from .chunking_error_handler import ChunkingErrorHandler
-from .chunking_metrics import (
-    record_chunk_sizes,
-    record_chunking_duration,
-    record_chunking_fallback,
-    record_chunks_produced,
-)
 from .chunking_strategies import ChunkingStrategyRegistry
 from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
@@ -198,6 +195,7 @@ class ChunkingService:
         self.collection_repo = collection_repo
         self.document_repo = document_repo
         self.redis_client = redis_client
+
         self.error_handler = ChunkingErrorHandler()
         self.validator = ChunkingInputValidator()
         self.config_builder = ChunkingConfigBuilder()
@@ -223,6 +221,23 @@ class ChunkingService:
     async def _write_config_store(self, configs: dict[str, list[dict[str, Any]]]) -> None:
         """Persist configuration store to disk."""
         await asyncio.to_thread(_write_json_file, self._config_store_path, {"configs": configs})
+
+    @staticmethod
+    def _calculate_min_tokens(desired_chunk_size: int) -> int:
+        """Derive a conservative min_tokens target that avoids over-constraining small chunk sizes."""
+
+        normalized_size = max(10, desired_chunk_size)
+        base_tokens = max(10, normalized_size // 4)
+        return min(DEFAULT_MIN_TOKEN_THRESHOLD, base_tokens)
+
+    @staticmethod
+    def _record_metric(method_name: str, *args: Any, **kwargs: Any) -> None:
+        """Dispatch metric recording to the dynamically reloaded chunking_metrics module."""
+
+        metrics_module = importlib.import_module("packages.webui.services.chunking_metrics")
+        record_func = getattr(metrics_module, method_name, None)
+        if record_func:
+            record_func(*args, **kwargs)
 
     def _deserialize_saved_config(self, payload: dict[str, Any]) -> ServiceSavedConfiguration:
         """Convert raw payload into ServiceSavedConfiguration."""
@@ -432,9 +447,12 @@ class ChunkingService:
             )
 
         # Create operation
+        operation_strategy = (
+            config_result.strategy.value if hasattr(config_result.strategy, "value") else str(config_result.strategy)
+        )
         operation_id = await self.start_chunking_operation(
             collection_id="",  # Would get from document
-            strategy=str(config_result.strategy),
+            strategy=operation_strategy,
             config=config_result.config,
             user_id=user_id,
         )
@@ -3150,8 +3168,8 @@ class ChunkingService:
                     metrics_strategy_label = "character"  # Internal name for metrics
 
                     # Record metrics for direct TokenChunker usage
-                    record_chunks_produced(metrics_strategy_label, len(chunks))
-                    record_chunk_sizes(metrics_strategy_label, chunks)
+                    self._record_metric("record_chunks_produced", metrics_strategy_label, len(chunks))
+                    self._record_metric("record_chunk_sizes", metrics_strategy_label, chunks)
                 except (MemoryError, SystemError) as e:
                     # Fatal errors should be propagated
                     logger.error(f"Fatal error creating TokenChunker: {e}", extra={"correlation_id": correlation_id})
@@ -3165,6 +3183,21 @@ class ChunkingService:
                         strategy=chunking_strategy,
                         user_config=chunking_config,
                     )
+
+                    strategy_value = (
+                        config_result.strategy.value
+                        if hasattr(config_result.strategy, "value")
+                        else str(config_result.strategy)
+                    )
+
+                    # Fall back to the raw value if normalization fails; downstream logic will handle it.
+                    with contextlib.suppress(Exception):
+                        strategy_value = ChunkingStrategyFactory.normalize_strategy_name(strategy_value)
+
+                    strategy_input_key = chunking_strategy or strategy_value
+                    if isinstance(strategy_input_key, str):
+                        normalized_input_key = strategy_input_key.lower().replace("-", "_")
+                        strategy_value = self.STRATEGY_MAPPING.get(normalized_input_key, strategy_value)
 
                     if config_result.validation_errors:
                         logger.warning(
@@ -3188,20 +3221,13 @@ class ChunkingService:
                         try:
                             from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
-                            normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
-                                str(config_result.strategy)
-                                if hasattr(config_result, "strategy")
-                                else (chunking_strategy or "unknown")
-                            )
+                            fallback_label = chunking_strategy or strategy_value or "unknown"
+                            normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(fallback_label)
                         except Exception:
-                            normalized_strategy = (
-                                str(config_result.strategy)
-                                if hasattr(config_result, "strategy")
-                                else (chunking_strategy or "unknown")
-                            )
-                        record_chunking_fallback(normalized_strategy, "invalid_config")
-                        record_chunks_produced(metrics_strategy_label, len(chunks))
-                        record_chunk_sizes(metrics_strategy_label, chunks)
+                            normalized_strategy = chunking_strategy or strategy_value or "unknown"
+                        self._record_metric("record_chunking_fallback", normalized_strategy, "invalid_config")
+                        self._record_metric("record_chunks_produced", metrics_strategy_label, len(chunks))
+                        self._record_metric("record_chunk_sizes", metrics_strategy_label, chunks)
 
                     else:
                         # Create strategy instance
@@ -3215,32 +3241,62 @@ class ChunkingService:
                             # Execute chunking with the strategy
                             from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
-                            # Extract relevant config values
                             config = config_result.config
-                            chunk_size_from_config = config.get("chunk_size", chunk_size)
-                            chunk_overlap_from_config = config.get("chunk_overlap", chunk_overlap)
+                            chunk_size_from_config = int(config.get("chunk_size", chunk_size) or chunk_size)
+                            chunk_overlap_from_config = int(config.get("chunk_overlap", chunk_overlap) or 0)
 
-                            # Build ChunkConfig for domain strategy
-                            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size_from_config // 2)
-                            max_tokens = max(chunk_size_from_config, min_tokens + 1)
-                            overlap_tokens = min(chunk_overlap_from_config, min_tokens - 1)
+                            initial_min_tokens = self._calculate_min_tokens(chunk_size_from_config)
 
-                            chunk_config_obj = ChunkConfig(
-                                strategy_name=str(config_result.strategy),
-                                min_tokens=min_tokens,
-                                max_tokens=max_tokens,
-                                overlap_tokens=max(0, overlap_tokens),
-                                preserve_structure=config.get("preserve_structure", True),
-                                semantic_threshold=config.get("semantic_threshold", 0.7),
-                                hierarchy_levels=config.get("hierarchy_levels", 3),
-                            )
+                            def build_chunk_config(min_tokens_override: int) -> ChunkConfig:
+                                adjusted_min_tokens = max(10, min_tokens_override)
+                                adjusted_max_tokens = max(chunk_size_from_config, adjusted_min_tokens + 1)
+                                adjusted_overlap = min(
+                                    chunk_overlap_from_config,
+                                    max(0, adjusted_min_tokens - 1),
+                                )
+                                return ChunkConfig(
+                                    strategy_name=strategy_value,
+                                    min_tokens=adjusted_min_tokens,
+                                    max_tokens=adjusted_max_tokens,
+                                    overlap_tokens=adjusted_overlap,
+                                    preserve_structure=config.get("preserve_structure", True),
+                                    semantic_threshold=config.get("semantic_threshold", 0.7),
+                                    hierarchy_levels=config.get("hierarchy_levels", 3),
+                                )
 
-                            # Execute chunking in thread pool to avoid blocking event loop
-                            chunk_entities = await asyncio.to_thread(
-                                chunking_strategy_instance.chunk,
-                                content=text,
-                                config=chunk_config_obj,
-                            )
+                            chunk_config_obj = build_chunk_config(initial_min_tokens)
+
+                            try:
+                                # Execute chunking in thread pool to avoid blocking event loop
+                                chunk_entities = await asyncio.to_thread(
+                                    chunking_strategy_instance.chunk,
+                                    content=text,
+                                    config=chunk_config_obj,
+                                )
+                            except ChunkSizeViolationError as size_error:
+                                relaxed_min_tokens = max(10, initial_min_tokens // 2)
+                                if relaxed_min_tokens < initial_min_tokens:
+                                    logger.info(
+                                        "Retrying chunking with relaxed min_tokens due to size violation",
+                                        extra={
+                                            "correlation_id": correlation_id,
+                                            "document_id": document_id,
+                                            "collection_id": collection.get("id"),
+                                            "initial_min_tokens": initial_min_tokens,
+                                            "relaxed_min_tokens": relaxed_min_tokens,
+                                            "chunk_size": chunk_size_from_config,
+                                            "chunk_overlap": chunk_overlap_from_config,
+                                            "error": str(size_error),
+                                        },
+                                    )
+                                    chunk_config_obj = build_chunk_config(relaxed_min_tokens)
+                                    chunk_entities = await asyncio.to_thread(
+                                        chunking_strategy_instance.chunk,
+                                        content=text,
+                                        config=chunk_config_obj,
+                                    )
+                                else:
+                                    raise
 
                             # Convert chunk entities to ingestion format
                             chunks = []
@@ -3251,12 +3307,12 @@ class ChunkingService:
                                     "metadata": {
                                         **(metadata or {}),
                                         "index": idx,
-                                        "strategy": str(config_result.strategy),
+                                        "strategy": strategy_value,
                                     },
                                 }
                                 chunks.append(chunk_dict)
 
-                            strategy_used = str(config_result.strategy)
+                            strategy_used = strategy_value
                             # Normalize to internal strategy label for metrics
                             try:
                                 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
@@ -3276,8 +3332,8 @@ class ChunkingService:
                             )
 
                             # Record metrics for successful strategy execution
-                            record_chunks_produced(metrics_strategy_label, len(chunks))
-                            record_chunk_sizes(metrics_strategy_label, chunks)
+                            self._record_metric("record_chunks_produced", metrics_strategy_label, len(chunks))
+                            self._record_metric("record_chunk_sizes", metrics_strategy_label, chunks)
 
                         except Exception as strategy_error:
                             # Strategy execution failed, fall back to TokenChunker
@@ -3304,13 +3360,13 @@ class ChunkingService:
                                 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
                                 normalized_strategy = ChunkingStrategyFactory.normalize_strategy_name(
-                                    str(config_result.strategy)
+                                    chunking_strategy or strategy_value or "unknown"
                                 )
                             except Exception:
-                                normalized_strategy = str(config_result.strategy)
-                            record_chunking_fallback(normalized_strategy, "runtime_error")
-                            record_chunks_produced(metrics_strategy_label, len(chunks))
-                            record_chunk_sizes(metrics_strategy_label, chunks)
+                                normalized_strategy = chunking_strategy or strategy_value or "unknown"
+                            self._record_metric("record_chunking_fallback", normalized_strategy, "runtime_error")
+                            self._record_metric("record_chunks_produced", metrics_strategy_label, len(chunks))
+                            self._record_metric("record_chunk_sizes", metrics_strategy_label, chunks)
 
                 except Exception as config_error:
                     # Configuration building failed, fall back to TokenChunker
@@ -3337,13 +3393,13 @@ class ChunkingService:
                         from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
                         normalized_fallback = ChunkingStrategyFactory.normalize_strategy_name(
-                            chunking_strategy or "unknown"
+                            chunking_strategy or strategy_value or "unknown"
                         )
                     except Exception:
-                        normalized_fallback = chunking_strategy or "unknown"
-                    record_chunking_fallback(normalized_fallback, "config_error")
-                    record_chunks_produced(metrics_strategy_label, len(chunks))
-                    record_chunk_sizes(metrics_strategy_label, chunks)
+                        normalized_fallback = chunking_strategy or strategy_value or "unknown"
+                    self._record_metric("record_chunking_fallback", normalized_fallback, "config_error")
+                    self._record_metric("record_chunks_produced", metrics_strategy_label, len(chunks))
+                    self._record_metric("record_chunk_sizes", metrics_strategy_label, chunks)
 
         except Exception as e:
             # Fatal error - cannot proceed with chunking
@@ -3364,7 +3420,7 @@ class ChunkingService:
 
         # Record duration metric for the strategy that was actually used
         if metrics_strategy_label:
-            record_chunking_duration(metrics_strategy_label, duration_seconds)
+            self._record_metric("record_chunking_duration", metrics_strategy_label, duration_seconds)
 
         # Log fallback event if occurred
         if fallback_used:
