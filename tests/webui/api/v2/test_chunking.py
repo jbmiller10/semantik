@@ -19,7 +19,7 @@ async def test_list_chunking_strategies_integration(
 ) -> None:
     """The strategies endpoint should return the built-in strategies."""
 
-    async def fake_get_available_strategies_for_api(self):
+    async def fake_get_available_strategies_for_api(_self):
         return [
             ServiceStrategyInfo(
                 id="fixed_size",
@@ -216,7 +216,7 @@ async def test_get_global_metrics_counts_recent_activity(
     assert metrics["most_used_strategy"] in {"recursive", "fixed_size"}
 
 
-async def _compute_partition_key(db_session, collection_id: str) -> int:
+async def _compute_partition_key(_db_session, collection_id: str) -> int:
     """Helper to compute deterministic partition key using database helper."""
 
     return compute_partition_key_from_hash(collection_id)

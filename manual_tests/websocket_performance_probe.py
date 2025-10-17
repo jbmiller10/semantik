@@ -66,6 +66,7 @@ class TestWebSocketPerformanceAndValidation:
 
     def test_websocket_message_validation(self, test_documents_fixture: Path, cleanup_collection: list[str]) -> None:
         """Test that all WebSocket messages conform to expected structure."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 
@@ -164,6 +165,7 @@ class TestWebSocketPerformanceAndValidation:
         self, test_documents_fixture: Path, cleanup_collection: list[str]
     ) -> None:
         """Test that WebSocket messages don't overwhelm the client."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 
@@ -253,6 +255,7 @@ class TestWebSocketPerformanceAndValidation:
         self, test_documents_fixture: Path, cleanup_collection: list[str]
     ) -> None:
         """Test that reconnection provides consistent state information."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 
@@ -330,6 +333,7 @@ class TestWebSocketPerformanceAndValidation:
         self, test_documents_fixture: Path, cleanup_collection: list[str]
     ) -> None:
         """Test that repeated connections/disconnections don't cause memory leaks."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 

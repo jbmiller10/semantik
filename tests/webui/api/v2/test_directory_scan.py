@@ -36,7 +36,10 @@ async def test_scan_directory_preview_returns_supported_files(
     body = response.json()
     file_paths = {item["file_path"] for item in body["files"]}
     assert str(tmp_path / "doc1.txt") in file_paths
-    assert all(Path(path).suffix in {".txt", ".text", ".md", ".pdf", ".docx", ".doc", ".pptx", ".eml", ".html"} for path in file_paths)
+    assert all(
+        Path(path).suffix in {".txt", ".text", ".md", ".pdf", ".docx", ".doc", ".pptx", ".eml", ".html"}
+        for path in file_paths
+    )
     assert body["total_files"] == len(file_paths)
 
 

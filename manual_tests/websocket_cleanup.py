@@ -375,6 +375,7 @@ class TestGracefulFailover:
     @pytest.mark.asyncio()
     async def test_connection_migration_simulation(self, redis_client) -> None:
         """Test simulated connection migration between instances."""
+        _ = redis_client
         # Create first instance
         manager1 = ScalableWebSocketManager(redis_url="redis://localhost:6379/15")
         await manager1.startup()

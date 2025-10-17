@@ -1,13 +1,11 @@
 """Integration tests for the v2 operations API."""
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 
-from packages.shared.database.models import Operation, OperationStatus
+from packages.shared.database.models import OperationStatus
 from packages.webui.celery_app import celery_app
 
 

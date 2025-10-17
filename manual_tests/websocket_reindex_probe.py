@@ -66,6 +66,7 @@ class TestWebSocketReindexOperation:
         self, test_documents_fixture: Path, cleanup_collection: list[str]
     ) -> None:
         """Test Scenario 3: Reindex collection with blue-green deployment and WebSocket monitoring."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 
@@ -238,6 +239,7 @@ class TestWebSocketReindexOperation:
 
     def test_reindex_failure_recovery(self, test_documents_fixture: Path, cleanup_collection: list[str]) -> None:
         """Test reindex operation failure and recovery via WebSocket monitoring."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
 
         # Create a collection
@@ -271,6 +273,7 @@ class TestWebSocketReindexOperation:
 
     def test_remove_source_with_websocket(self, test_documents_fixture: Path, cleanup_collection: list[str]) -> None:
         """Test remove source operation with WebSocket monitoring."""
+        _ = test_documents_fixture
         headers = self._get_auth_headers()
         token = self._get_auth_token()
 
