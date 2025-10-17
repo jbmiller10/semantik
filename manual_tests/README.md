@@ -1,31 +1,23 @@
 # Manual Test Harnesses
 
-These scripts provide ad-hoc diagnostics and performance probes that are **not** meant to run as part of the automated pytest suite. Execute them manually when you need to:
+This directory contains exploratory or resource-intensive scripts that are intentionally excluded from automated pytest discovery. Each script is meant for manual validation while running the Semantik stack locally or inside a controlled staging environment.
 
-- validate end-to-end streaming or websocket behaviour against a running Semantik stack;
-- capture performance numbers for chunking or embedding pipelines;
-- exercise maintenance flows that depend on live infrastructure.
+## Layout
 
-## Running A Script
+- `embedding_full_integration_suite.py` – drives end-to-end embedding flows against a running vecpipe instance.
+- `embedding_performance_bench.py` – measures embedding latency/throughput; requires GPUs or tuned CPU settings.
+- `metrics_flow_probe.py`, `metrics_update_probe.py`, `metrics_flow_probe.py` – ad-hoc Prometheus instrumentation probes for chunking/ingestion flows.
+- `search_probe.py` – manual search smoke script for troubleshooting vecpipe/search deployments.
+- `frontend_api_test_suite.py` – quick manual regression harness for the web UI REST surface.
+- `performance/` – performance and benchmark utilities (for example `chunking_benchmarks.py`).
+- `test_embedding_oom_handling.py` – stress test for OOM handling scenarios; runs outside pytest to avoid bringing down CI workers.
 
-1. Start the required services locally (e.g. `make dev` or `make docker-up`).
-2. Activate the same virtualenv used for development (`uv` environment or `source .venv/bin/activate`).
-3. Invoke the script directly, for example:
-   ```bash
-   uv run python manual_tests/validate_streaming_pipeline.py --help
-   ```
-4. Review the script-specific flags/output before sharing results.
+## Usage Guidelines
 
-## Available Scripts
+1. Ensure `make dev-install` and any service-specific dependencies are installed.
+2. Start the stack via `make dev` or `make docker-dev-up` so services and Postgres are available.
+3. Run scripts with `uv run python <script>` or the interpreter of your choice; most scripts respect environment variables defined in `.env`/`.env.test`.
+4. Never commit changes to these scripts without documenting the intent here; keep them deterministic and side-effect free where possible.
+5. Because these utilities are excluded via `pyproject.toml:norecursedirs`, move new manual probes here rather than under `tests/`.
 
-- `chunking_benchmarks.py` – chunking throughput benchmark harness.
-- `embedding_full_integration_suite.py` – exercises the full embedding workflow.
-- `embedding_performance_bench.py` – micro-benchmark for embedding calls.
-- `frontend_api_test_suite.py` – legacy API smoke checks driven from the frontend harness.
-- `metrics_*_probe.py` – HTTP probes for metric pipelines.
-- `search_probe.py` – manual search smoke test.
-- `validate_streaming_pipeline.py` – streaming ingestion validation.
-- `websocket_cleanup.py` / `websocket_scaling.py` – manual websocket maintenance and load scripts.
-- `websocket_performance_probe.py` / `websocket_reindex_probe.py` – high-load websocket diagnostics.
-
-Because `manual_tests/` is listed in `norecursedirs`, pytest will ignore these files automatically.
+If additional documentation or context is needed for a script, add a short section below describing prerequisites and expected output.

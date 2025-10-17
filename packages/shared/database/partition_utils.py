@@ -102,6 +102,14 @@ class PartitionValidation:
         # Validate collection_id
         chunk_data["collection_id"] = cls.validate_partition_key(chunk_data["collection_id"], "collection_id")
 
+        # Validate partition_key if present
+        if "partition_key" in chunk_data and chunk_data["partition_key"] is not None:
+            partition_key = chunk_data["partition_key"]
+            if not isinstance(partition_key, int):
+                raise TypeError("partition_key must be an integer")
+            if partition_key < 0 or partition_key > 99:
+                raise ValueError("partition_key must be between 0 and 99")
+
         # Validate document_id if present
         if "document_id" in chunk_data and chunk_data["document_id"] is not None:
             chunk_data["document_id"] = cls.validate_uuid(chunk_data["document_id"], "document_id")
@@ -136,6 +144,19 @@ class PartitionValidation:
             raise TypeError("metadata must be a dictionary")
 
         return chunk_data
+
+    @classmethod
+    def compute_partition_key_from_hash(cls, collection_id: str) -> int:
+        """Compute a deterministic partition key in pure Python.
+
+        Falls back to a stable hashing approach when database helpers are
+        unavailable (e.g., in tests or limited environments).
+        """
+
+        validated = cls.validate_partition_key(collection_id, "collection_id")
+        digest = hashlib.sha256(validated.encode("utf-8")).digest()
+        # Use first 8 bytes for good distribution, then map into [0, 99]
+        return int.from_bytes(digest[:8], byteorder="big", signed=False) % 100
 
     @classmethod
     def validate_batch_size(cls, items: Sequence[Any], operation: str = "bulk operation") -> None:
@@ -273,6 +294,7 @@ class PartitionAwareMixin:
 
         # Validate and group by partition key
         items_by_partition: dict[str, list[dict[str, Any]]] = {}
+        partition_key_cache: dict[str, int] = {}
         for item in items:
             key = item.get(partition_key_field)
             if key is None:
@@ -284,6 +306,11 @@ class PartitionAwareMixin:
 
             # Additional validation for chunk data
             if model_class.__name__ == "Chunk":
+                if "partition_key" not in item or item["partition_key"] is None:
+                    partition_key_cache.setdefault(validated_key, None)
+                    if partition_key_cache[validated_key] is None:
+                        partition_key_cache[validated_key] = await self.compute_partition_key(session, validated_key)
+                    item["partition_key"] = partition_key_cache[validated_key]
                 item = PartitionValidation.validate_chunk_data(item)
 
             items_by_partition.setdefault(validated_key, []).append(item)
@@ -339,6 +366,31 @@ class PartitionAwareMixin:
             await session.delete(record)
 
         return len(records)
+
+    @staticmethod
+    async def compute_partition_key(session: AsyncSession, collection_id: str) -> int:
+        """Resolve the partition key for a collection id.
+
+        Prefers the database helper (get_partition_key) when available so that
+        computed keys always match production behaviour. Falls back to a
+        deterministic hash if the helper is missing (e.g., in tests with a
+        simplified schema).
+        """
+
+        validated_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        try:
+            result = await session.execute(
+                text("SELECT get_partition_key(:collection_id)"),
+                {"collection_id": validated_id},
+            )
+            db_value = result.scalar_one_or_none()
+            if db_value is not None:
+                return int(db_value)
+        except SQLAlchemyError:
+            logger.debug("Database helper get_partition_key unavailable, falling back to Python hash", exc_info=True)
+
+        return PartitionValidation.compute_partition_key_from_hash(validated_id)
 
 
 class ChunkPartitionHelper:

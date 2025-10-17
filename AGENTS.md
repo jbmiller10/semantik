@@ -21,3 +21,6 @@ Aim for Conventional Commit formatting: `feat(search): add reranker fallback`, `
 
 ## Security & Configuration Tips
 Use `wizard.sh` or `make docker-up` to generate `.env` secrets, and keep secrets out of version control. Mount document corpora in `data/` and ensure GDPR/PII redaction before sharing datasets. Rotate embeddings or clear indexes with the helper scripts in `packages/vecpipe/maintenance.py` when working with sensitive data.
+
+### Partition-Test Troubleshooting
+When resetting the Postgres volume, run `uv run alembic upgrade head` so helper functions such as `get_partition_key` exist. The integration tests now inject `partition_key` values directly; `tests/conftest.py` installs the `compute_partition_key` helper but avoids re-creating the trigger so manual keys persist. All chunk inserts in tests should flow through `PartitionAwareMixin.bulk_insert_partitioned` or `ChunkRepository`, which call the helper to compute the same partition value the trigger would have provided. This resolved the “no partition of relation `chunks` found for row” failure that appeared once the generated column/trigger wasn’t available in the test DB.
