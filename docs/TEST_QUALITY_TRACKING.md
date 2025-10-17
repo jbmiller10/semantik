@@ -57,7 +57,9 @@
 | `tests/webui/test_tasks_websocket_integration.py` | Extensive patching of Redis/tasks, duplicates websocket suites | High | 2 days | ⏳ Pending |
 | `tests/integration/test_websocket_redis_integration.py` | Uses custom Redis mock instead of real fixture, duplicates unit tests | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ✅ Completed (2025-10-17) – integrated into `tests/integration/chunking/test_ingestion_metrics.py` with real DB + redis fixtures |
-| `tests/integration/chunking/test_ingestion_metrics.py` | Recursive strategy still falls back to TokenChunker in local env, blocking assertions | Medium | 1 day | ⚠️ Blocked (2025-10-17) – investigate ChunkingService config validation vs. strategy factory so recursive runs without fallback |
+| `tests/integration/chunking/test_ingestion_metrics.py` | Recursive strategy still falls back to TokenChunker in local env, blocking assertions | Medium | 1 day | ✅ Resolved (2025-10-17) – adjusted ChunkingService config translation to avoid over-constraining recursion and normalized metrics recording |
+
+**Outstanding follow-up for the chunking consolidation effort:** None. All items tied to the recursive fallback blocker have been cleared, and the integration/unit suites listed in the migration plan are green under isolated metric registries.
 | `tests/webui/api/v2/test_collections.py` | Mocking collection service duplicates integration coverage | High | 2 days | ⏳ Pending |
 | `tests/webui/api/v2/test_collections_operations.py` | Mock-based listing endpoints overlapping integration | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/services/dtos/test_chunking_dtos.py` | DTO conversions retesting Pydantic outputs | Medium | 1 day | ⏳ Pending |

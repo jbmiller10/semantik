@@ -84,7 +84,7 @@ ingestion_chunking_duration_seconds = _get_or_create_metric(
 # Chunking fallback counter - tracks when strategies fail and fallback is used
 ingestion_chunking_fallback_total = _get_or_create_metric(
     Counter,
-    "ingestion_chunking_fallback_total",
+    "ingestion_chunking_fallback_total_total",
     "Total number of chunking fallbacks by strategy and reason",
     registry,
     labelnames=["strategy", "reason"],
@@ -93,7 +93,7 @@ ingestion_chunking_fallback_total = _get_or_create_metric(
 # Chunks produced counter - tracks total chunks created per strategy
 ingestion_chunks_total = _get_or_create_metric(
     Counter,
-    "ingestion_chunks_total",
+    "ingestion_chunks_total_total",
     "Total number of chunks produced per strategy",
     registry,
     labelnames=["strategy"],
@@ -111,7 +111,7 @@ ingestion_avg_chunk_size_bytes = _get_or_create_metric(
 # Segmentation metrics for Phase 3
 ingestion_segmented_documents_total = _get_or_create_metric(
     Counter,
-    "ingestion_segmented_documents_total",
+    "ingestion_segmented_documents_total_total",
     "Total number of documents that required segmentation",
     registry,
     labelnames=["strategy"],
@@ -119,7 +119,7 @@ ingestion_segmented_documents_total = _get_or_create_metric(
 
 ingestion_segments_total = _get_or_create_metric(
     Counter,
-    "ingestion_segments_total",
+    "ingestion_segments_total_total",
     "Total number of segments created from large documents",
     registry,
     labelnames=["strategy"],
@@ -136,7 +136,7 @@ ingestion_segment_size_bytes = _get_or_create_metric(
 
 ingestion_streaming_used_total = _get_or_create_metric(
     Counter,
-    "ingestion_streaming_used_total",
+    "ingestion_streaming_used_total_total",
     "Total number of documents processed with streaming strategies",
     registry,
     labelnames=["strategy"],
@@ -184,24 +184,20 @@ def record_chunk_sizes(strategy: str, chunks: list[str | dict[str, Any] | Any]) 
     if not chunks:
         return
 
-    # Calculate average chunk size
-    total_size = 0
+    metric = ingestion_avg_chunk_size_bytes.labels(strategy=strategy)
+
     for chunk in chunks:
         if isinstance(chunk, dict):
             # Handle dictionary chunks with 'text' field
             text = chunk.get("text", chunk.get("content", ""))
             if text is not None:
-                total_size += len(text.encode("utf-8"))
+                metric.observe(len(text.encode("utf-8")))
         elif isinstance(chunk, str):
             # Handle string chunks
-            total_size += len(chunk.encode("utf-8"))
+            metric.observe(len(chunk.encode("utf-8")))
         elif hasattr(chunk, "content"):
             # Handle chunk objects with content attribute
-            total_size += len(chunk.content.encode("utf-8"))
-
-    if chunks:
-        avg_size = total_size / len(chunks)
-        ingestion_avg_chunk_size_bytes.labels(strategy=strategy).observe(avg_size)
+            metric.observe(len(chunk.content.encode("utf-8")))
 
 
 def record_document_segmented(strategy: str) -> None:
