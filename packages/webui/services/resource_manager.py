@@ -162,12 +162,13 @@ class ResourceManager:
         async with self._lock:
             try:
                 # Get collection info
-                collection = await self.collection_repo.get_by_id(collection_id)
+                collection = await self.collection_repo.get_by_uuid(collection_id)
                 if not collection:
                     return False
 
                 # Estimate resources (2x current size for blue-green)
-                size_gb = (collection.get("total_size_bytes", 0) / 1024 / 1024 / 1024) * 2
+                total_size_bytes = int(collection.total_size_bytes or 0)
+                size_gb = (total_size_bytes / 1024 / 1024 / 1024) * 2
                 memory_mb = int(size_gb * 1024 + 1000)  # Add 1GB overhead
 
                 estimate = ResourceEstimate(memory_mb=memory_mb, storage_gb=size_gb, cpu_cores=2.0)
@@ -195,23 +196,32 @@ class ResourceManager:
     async def get_resource_usage(self, collection_id: str) -> dict[str, Any]:
         """Get current resource usage for a collection."""
         try:
-            collection = await self.collection_repo.get_by_id(collection_id)
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
-                return {}
+                return {
+                    "documents": 0,
+                    "vectors": 0,
+                    "storage_bytes": 0,
+                    "storage_gb": 0.0,
+                }
 
-            # Get Qdrant collection info
-            # TODO: Query actual Qdrant usage
+            total_size = int(collection.total_size_bytes or 0)
 
             return {
-                "documents": collection.get("document_count", 0),
-                "vectors": collection.get("vector_count", 0),
-                "storage_bytes": collection.get("total_size_bytes", 0),
-                "storage_gb": collection.get("total_size_bytes", 0) / 1024 / 1024 / 1024,
+                "documents": int(collection.document_count or 0),
+                "vectors": int(collection.vector_count or 0),
+                "storage_bytes": total_size,
+                "storage_gb": total_size / 1024 / 1024 / 1024,
             }
 
         except Exception as e:
             logger.error(f"Failed to get resource usage: {e}")
-            return {}
+            return {
+                "documents": 0,
+                "vectors": 0,
+                "storage_bytes": 0,
+                "storage_gb": 0.0,
+            }
 
     async def _get_user_resource_usage(self, user_id: int) -> dict[str, Any]:
         """Get total resource usage for a user."""

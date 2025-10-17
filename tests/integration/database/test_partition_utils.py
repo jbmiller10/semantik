@@ -35,11 +35,12 @@ class TestPartitionUtilitiesIntegration:
         db_session: AsyncSession,
         collection_factory,
         document_factory,
+        test_user_db,
     ) -> None:
-        collection = await collection_factory()
+        collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
 
-        other_collection = await collection_factory()
+        other_collection = await collection_factory(owner_id=test_user_db.id)
         other_document = await document_factory(collection_id=other_collection.id)
 
         payload = [
@@ -84,8 +85,9 @@ class TestPartitionUtilitiesIntegration:
         db_session: AsyncSession,
         collection_factory,
         document_factory,
+        test_user_db,
     ) -> None:
-        collection = await collection_factory()
+        collection = await collection_factory(owner_id=test_user_db.id)
         document = await document_factory(collection_id=collection.id)
 
         payload = [

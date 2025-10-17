@@ -251,7 +251,7 @@ class DocumentScanningService:
         mime_type = self._get_mime_type(file_path)
 
         # Register document (handles deduplication internally)
-        document = await self.document_repo.create(
+        document, was_created = await self.document_repo.create(
             collection_id=collection_id,
             file_path=str(file_path),
             file_name=file_path.name,
@@ -264,9 +264,7 @@ class DocumentScanningService:
         # Check if this was a new document or existing one
         # If scan_start_time is provided, compare with document creation time
         # Documents created before scan start are considered duplicates
-        is_new = True
-        if scan_start_time and hasattr(document, "created_at"):
-            is_new = document.created_at >= scan_start_time
+        is_new = was_created
 
         # Log duplicate detection
         if not is_new:

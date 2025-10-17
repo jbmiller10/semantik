@@ -11,6 +11,8 @@ Python code follows 4-space indentation, 120-character lines, and exhaustive typ
 
 ## Testing Guidelines
 Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
+For database-backed integration tests, create an `.env.test` alongside `.env`. The wizard can do this automatically; otherwise copy `.env`, keep the same Postgres credentials, and point `POSTGRES_DB` to a disposable database (default `semantik_test`). Pytest fixtures load `.env.test` first, fall back to `.env`, then use built-in defaults. Make sure the target database exists before running migrations or tests.
+
 
 ## Commit & Pull Request Guidelines
 Aim for Conventional Commit formatting: `feat(search): add reranker fallback`, `fix(webui): guard empty filter`, etc.; reference tracking numbers or PR IDs like `(#212)` when merging. Squash local WIP commits. PRs should outline scope, highlight touchpoints (`vecpipe`, `webui`, `frontend`), list validation commands executed, and include screenshots or API traces for user-visible changes. Confirm linting, typing, and relevant tests before requesting review.

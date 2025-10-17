@@ -39,11 +39,12 @@ class DocumentRepository:
         mime_type: str | None = None,
         source_id: int | None = None,
         meta: dict[str, Any] | None = None,
-    ) -> Document:
+    ) -> tuple[Document, bool]:
         """Create a new document with deduplication.
 
         If a document with the same content_hash already exists in the collection,
-        returns the existing document instead of creating a new one.
+        returns the existing document instead of creating a new one along with a flag
+        indicating whether the document was newly created.
 
         Args:
             collection_id: UUID of the collection
@@ -56,7 +57,7 @@ class DocumentRepository:
             meta: Optional metadata
 
         Returns:
-            Created or existing Document instance
+            Tuple of (Document instance, was_created flag)
 
         Raises:
             EntityNotFoundError: If collection not found
@@ -88,7 +89,7 @@ class DocumentRepository:
                     f"Document with content_hash {content_hash} already exists "
                     f"in collection {collection_id}, returning existing document {existing_doc.id}"
                 )
-                return existing_doc
+                return existing_doc, False
 
             # Create new document
             document_id = str(uuid4())
@@ -107,18 +108,19 @@ class DocumentRepository:
 
             self.session.add(document)
             await self.session.flush()
+            await self.session.refresh(document)
 
             logger.info(
                 f"Created document {document.id} for collection {collection_id} with content_hash {content_hash}"
             )
-            return document
+            return document, True
 
         except IntegrityError as e:
             # Handle race condition where another process created the same document
             logger.warning(f"Integrity error creating document, checking for existing: {e}")
             existing_doc = await self.get_by_content_hash(collection_id, content_hash)
             if existing_doc:
-                return existing_doc
+                return existing_doc, False
             raise DatabaseOperationError("create", "document", str(e)) from e
         except (EntityNotFoundError, ValidationError):
             raise

@@ -175,7 +175,7 @@ class Collection(Base):
     qdrant_staging = Column(JSON)  # Staging collections during reindex
     document_count = Column(Integer, nullable=False, default=0)
     vector_count = Column(Integer, nullable=False, default=0)
-    total_size_bytes = Column(Integer, nullable=False, default=0)
+    total_size_bytes = Column(BigInteger, nullable=False, default=0)
 
     # New chunking-related fields
     default_chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True, index=True)
@@ -485,7 +485,7 @@ class Chunk(Base):
 
     Partition Awareness:
     - The table uses LIST partitioning on partition_key (0-99)
-    - partition_key is computed automatically via trigger: abs(hashtext(collection_id)) % 100
+    - partition_key is computed via get_partition_key(collection_id) before insert
     - Primary key is (id, collection_id, partition_key) to support partitioning
     - Always include collection_id in WHERE clauses for optimal partition pruning
     - Bulk operations should be grouped by collection_id for efficiency
@@ -519,7 +519,7 @@ class Chunk(Base):
     # Note: id is BigInteger with auto-incrementing sequence
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True, nullable=False)
-    partition_key = Column(Integer, primary_key=True, nullable=False, server_default="0")  # Computed via trigger
+    partition_key = Column(Integer, primary_key=True, nullable=False)
 
     # Foreign keys and data columns
     document_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True)  # Can be NULL
@@ -549,12 +549,11 @@ class Chunk(Base):
         Index("idx_chunks_part_chunk_index", "collection_id", "chunk_index"),  # Per-partition index
         Index("idx_chunks_part_document", "document_id"),  # Per-partition conditional index
         {
-            "comment": "Partitioned by LIST(partition_key) with 100 partitions. partition_key is computed via trigger.",
+            "comment": "Partitioned by LIST(partition_key) with 100 partitions. partition_key is computed via database function.",
             "info": {
                 "partition_key": "partition_key",
                 "partition_method": "LIST",
                 "partition_count": 100,
-                "partition_trigger": "compute_partition_key()",
             },
         },
     )

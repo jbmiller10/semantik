@@ -50,6 +50,7 @@ from packages.shared.database.models import (  # noqa: E402
     OperationType,
     User,
 )
+from packages.shared.database.schema_setup import ensure_chunking_infrastructure  # noqa: E402
 from packages.webui.auth import create_access_token, get_current_user  # noqa: E402
 from packages.webui.main import app  # noqa: E402
 from packages.webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
@@ -573,6 +574,7 @@ async def db_session():
     # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(ensure_chunking_infrastructure)
 
     # Create session for this test
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

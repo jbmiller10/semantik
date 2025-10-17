@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy import and_, delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Chunk
@@ -56,8 +56,11 @@ class ChunkRepository(PartitionAwareMixin):
             del chunk_data["id"]
 
         # Don't set partition_key - it's computed by trigger
-        if "partition_key" in chunk_data:
-            del chunk_data["partition_key"]
+        partition_key = await self.session.scalar(
+            text("SELECT get_partition_key(:collection_id)"),
+            {"collection_id": chunk_data["collection_id"]},
+        )
+        chunk_data["partition_key"] = int(partition_key)
 
         chunk = Chunk(**chunk_data)
         self.session.add(chunk)
@@ -85,12 +88,15 @@ class ChunkRepository(PartitionAwareMixin):
         if not chunks_data:
             return 0
 
-        # Remove id and partition_key from chunks - let database handle them
         for chunk_data in chunks_data:
             if "id" in chunk_data:
                 del chunk_data["id"]
-            if "partition_key" in chunk_data:
-                del chunk_data["partition_key"]
+
+            partition_key = await self.session.scalar(
+                text("SELECT get_partition_key(:collection_id)"),
+                {"collection_id": chunk_data["collection_id"]},
+            )
+            chunk_data["partition_key"] = int(partition_key)
 
         # Use partition-aware bulk insert
         await self.bulk_insert_partitioned(self.session, Chunk, chunks_data, partition_key_field="collection_id")
