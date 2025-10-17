@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
 import pytest
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.operation_service import OperationService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 
@@ -81,7 +82,7 @@ async def test_cancel_operation_revokes_task(
 
 
 async def test_parse_and_list_filters(operation_service: OperationService, collection_factory, test_user_db) -> None:
-    op1 = await _create_operation(operation_service, collection_factory, test_user_db, status=OperationStatus.COMPLETED)
+    await _create_operation(operation_service, collection_factory, test_user_db, status=OperationStatus.COMPLETED)
     await _create_operation(
         operation_service,
         collection_factory,
@@ -105,9 +106,9 @@ async def test_parse_and_list_filters(operation_service: OperationService, colle
     assert operations[0].type is OperationType.REINDEX
 
     # Ensure invalid filters raise errors
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="INVALID"):
         await operation_service.parse_status_filter("INVALID")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="UNKNOWN"):
         await operation_service.parse_type_filter("UNKNOWN")
 
 

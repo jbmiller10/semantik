@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.models import ApiKey, User
-from packages.webui.repositories.postgres.api_key_repository import PostgreSQLApiKeyRepository
 from shared.database.exceptions import EntityNotFoundError, InvalidUserIdError
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.database.models import ApiKey, User
+from packages.webui.repositories.postgres.api_key_repository import PostgreSQLApiKeyRepository
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
-from packages.shared.database.models import Operation, OperationStatus, OperationType
-from packages.shared.database.repositories.operation_repository import OperationRepository
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.database.models import Operation, OperationStatus, OperationType
+from packages.shared.database.repositories.operation_repository import OperationRepository
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 

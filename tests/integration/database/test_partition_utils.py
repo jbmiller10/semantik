@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from packages.shared.database.models import Chunk
 from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 

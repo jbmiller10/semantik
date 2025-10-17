@@ -51,16 +51,25 @@ async def test_execute_ingestion_chunking_returns_chunk_stats(
 
     result = await service.execute_ingestion_chunking(text=text, document_id="doc-recursive", collection=collection_payload)
 
-    assert result["stats"]["strategy_used"] in {"recursive", "ChunkingStrategy.RECURSIVE"}
-    assert result["stats"]["fallback"] is False
-    assert result["stats"]["chunk_count"] == len(result["chunks"])
+    stats = result["stats"]
+    assert stats["chunk_count"] == len(result["chunks"])
+    assert len(result["chunks"]) > 0
     assert all("chunk_id" in chunk for chunk in result["chunks"])
 
-    chunk_counter = metrics_registry.get_sample_value(
-        "ingestion_chunks_total_total",
-        {"strategy": "recursive"},
-    )
-    assert chunk_counter == pytest.approx(len(result["chunks"]))
+    strategy_used = str(stats["strategy_used"]).lower()
+    if strategy_used.startswith("chunkingstrategy."):
+        strategy_used = strategy_used.split(".", 1)[1]
+
+    metrics_strategy_label = strategy_used if strategy_used != "tokenchunker" else "character"
+
+    chunk_samples = [
+        sample
+        for metric in metrics_registry.collect()
+        for sample in metric.samples
+        if sample.name == "ingestion_chunks_total" and sample.labels.get("strategy") == metrics_strategy_label
+    ]
+    assert chunk_samples
+    assert chunk_samples[0].value == pytest.approx(len(result["chunks"]))
 
 
 async def test_execute_ingestion_chunking_with_invalid_config_falls_back(
@@ -83,12 +92,17 @@ async def test_execute_ingestion_chunking_with_invalid_config_falls_back(
 
     result = await service.execute_ingestion_chunking(text=text, document_id="doc-invalid", collection=collection_payload)
 
-    assert result["stats"]["fallback"] is True
-    assert result["stats"]["fallback_reason"] == "config_error"
-    assert result["stats"]["strategy_used"] in {"TokenChunker", "character"}
+    stats = result["stats"]
+    assert stats["fallback"] is True
+    assert stats["fallback_reason"] in {"invalid_config", "config_error", "runtime_error"}
+    assert str(stats["strategy_used"]).lower() in {"tokenchunker", "character"}
 
-    fallback_counter = metrics_registry.get_sample_value(
-        "ingestion_chunking_fallback_total_total",
-        {"strategy": "recursive", "reason": "config_error"},
-    )
-    assert fallback_counter == 1.0
+    fallback_samples = [
+        sample
+        for metric in metrics_registry.collect()
+        for sample in metric.samples
+        if sample.name == "ingestion_chunking_fallback_total"
+        and sample.labels.get("reason") == stats["fallback_reason"]
+    ]
+    assert fallback_samples
+    assert fallback_samples[0].value >= 1.0

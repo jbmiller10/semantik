@@ -16,9 +16,10 @@ async def test_chunk_count_updates_persist_to_database(
     db_session,
     collection_factory,
     document_factory,
+    test_user_db,
 ) -> None:
     """Chunk counts produced by ChunkingService should persist via the repository layer."""
-    collection = await collection_factory()
+    collection = await collection_factory(owner_id=test_user_db.id)
     document = await document_factory(collection_id=collection.id, chunk_count=0, status=DocumentStatus.PENDING)
 
     service = ChunkingService(
@@ -34,10 +35,10 @@ async def test_chunk_count_updates_persist_to_database(
         collection={
             "id": collection.id,
             "name": collection.name,
-            "chunking_strategy": collection.chunking_strategy,
-            "chunking_config": collection.chunking_config,
-            "chunk_size": collection.chunk_size,
-            "chunk_overlap": collection.chunk_overlap,
+            "chunking_strategy": collection.chunking_strategy or "recursive",
+            "chunking_config": collection.chunking_config or {},
+            "chunk_size": collection.chunk_size or 1000,
+            "chunk_overlap": collection.chunk_overlap or 200,
         },
     )
 

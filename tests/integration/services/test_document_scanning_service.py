@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from sqlalchemy import select
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from packages.shared.database.models import Document
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.document_scanning_service import DocumentScanningService
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 
@@ -29,7 +34,7 @@ async def _write_documents(root: Path) -> None:
 
 async def test_scan_directory_registers_documents(
     document_service: DocumentScanningService,
-    db_session: AsyncSession,
+        db_session: AsyncSession,
     collection_factory,
     test_user_db,
     tmp_path: Path,

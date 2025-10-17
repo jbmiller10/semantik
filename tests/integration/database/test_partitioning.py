@@ -5,8 +5,9 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from packages.shared.chunking.infrastructure.repositories.partition_manager import PartitionManager
 from sqlalchemy.exc import SQLAlchemyError
+
+from packages.shared.chunking.infrastructure.repositories.partition_manager import PartitionManager
 
 pytestmark = [pytest.mark.asyncio(), pytest.mark.usefixtures("_db_isolation")]
 
