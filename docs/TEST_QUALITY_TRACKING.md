@@ -11,6 +11,7 @@
 **Latest Verification (2025-10-17)**:
 - `source .env.test && uv run pytest tests/integration/repositories/ -v`
 - `source .env.test && uv run pytest tests/integration/services/ -k directory -v`
+- `source .env.test && uv run pytest tests/integration/services/ -k "model_manager or operation_service or partition_monitoring or resource_manager or search_service"`
 - `source .env.test && uv run pytest tests/integration/web/test_rate_limiter.py -v`
 - `source .env.test && uv run pytest tests/unit/ -k "resource_manager or rate_limiter or model_manager" -v`
 
@@ -23,6 +24,14 @@
 | Files Needing Immediate Action | 5 | 0 |
 | Files Needing Deletion | 1 | 0 |
 | Estimated False Confidence | 40-60% | <10% |
+
+---
+
+### Notable Updates (2025-10-17)
+
+- Resolved `ModelManager` unload deadlock (thread locks → `RLock`), unblocking the service integration bucket (19 cases) and keeping mock-embedding mode reliable.
+- Re-ran targeted service integrations covering model manager, operation, partition monitoring, resource manager, and search services — all green with the current Postgres fixture stack.
+- Cleared Ruff/Black lint blockers across the updated manual OOM harness and integration/service repository tests to stabilize CI signal.
 
 ---
 
@@ -51,7 +60,7 @@
 | `tests/webui/test_ingestion_chunking_integration.py` | Labeled integration but fully mocked; asserts internal details | High | 2 days | ⏳ Pending |
 | `tests/webui/services/test_collection_service.py` | 1k+ line mock suite duplicating service logic | High | 2-3 days | ⏳ Pending |
 | `tests/webui/api/v2/test_chunking.py` (plus simple/direct variants) | Huge mock-based API suite duplicating integration tests | High | 3-4 days | ⏳ Pending |
-| `tests/webui/services/test_search_service.py` | Reauthored with real repo + httpx stubs | High | 2-3 days | ✅ Completed (2025-10-17) |
+| `tests/webui/services/test_search_service.py` | Reauthored with real repo + httpx stubs; integration bucket (19 tests) passing | High | 2-3 days | ✅ Completed (2025-10-17) |
 | `tests/webui/test_websocket_manager.py` | Manipulates global singleton, heavy cleanup logic, brittle | High | 2 days | ⏳ Pending |
 | `packages/shared/chunking/infrastructure/streaming/test_memory_pool.py` | Relies on real sleeps/threading → flaky leak checks | High | 1 day | ⏳ Pending |
 | `tests/application/test_*_use_case.py` & `packages/webui/tests/test_collection_service_chunking_validation.py` | Mock-heavy duplicates of service logic | High | 2-3 days | ⏳ Pending |
