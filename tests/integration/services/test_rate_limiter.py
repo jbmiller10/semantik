@@ -64,7 +64,11 @@ def test_circuit_breaker_blocks_after_threshold(rate_limited_app: TestClient) ->
     response = rate_limited_app.get("/protected", headers=headers)
     assert response.status_code in {429, 503}
     if response.status_code == 503:
-        assert response.json()["error"] == "circuit_breaker_open"
+        body = response.json()
+        error_value = body.get("error")
+        if error_value is None and isinstance(body.get("detail"), dict):
+            error_value = body["detail"].get("error")
+        assert error_value == "circuit_breaker_open"
 
 
 def test_get_user_or_ip_prefers_user_id() -> None:

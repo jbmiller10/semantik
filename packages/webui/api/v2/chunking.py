@@ -226,7 +226,9 @@ async def generate_preview(
         correlation_id = str(uuid.uuid4())
 
     # Check circuit breaker first
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         # Delegate validation to service
@@ -310,7 +312,9 @@ async def compare_strategies(
     Router is now a thin controller - all logic in service!
     """
     # Check circuit breaker first
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         # Convert strategy enums to strings for service
@@ -364,7 +368,9 @@ async def get_cached_preview(
     Router is now a thin controller - all logic in service!
     """
     # Check circuit breaker first
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         # Get DTO from service
@@ -443,7 +449,9 @@ async def start_chunking_operation(
     Rate limited to 20 requests per hour per user.
     """
     # Check circuit breaker first
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         # First validate the configuration
@@ -631,7 +639,9 @@ async def get_collection_chunks(
     Check circuit breaker first.
     """
     # Enforce rate limiting safeguards
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         chunks_dto = await service.get_collection_chunks(
@@ -709,7 +719,9 @@ async def get_global_metrics(
 
     """
     # Check circuit breaker first
-    check_circuit_breaker(request)
+    block_response = check_circuit_breaker(request)
+    if block_response is not None:
+        return block_response
 
     try:
         metrics_dto = await service.get_global_metrics(

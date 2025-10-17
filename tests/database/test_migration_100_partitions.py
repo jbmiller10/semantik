@@ -238,9 +238,10 @@ class TestMigration100Partitions:
 
         pk_columns = [row[0] for row in result]
 
-        # Primary key should be (id, collection_id)
+        # Primary key should include id, collection_id, and partition_key for partitioned table
         assert "id" in pk_columns, "id not in primary key"
         assert "collection_id" in pk_columns, "collection_id not in primary key"
+        assert "partition_key" in pk_columns, "partition_key not in primary key"
 
 
 # The db_session fixture is imported from conftest.py which creates the necessary views

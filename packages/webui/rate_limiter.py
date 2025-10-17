@@ -60,8 +60,15 @@ def get_user_or_ip(request: Request) -> str:
         if isinstance(user, dict) and "id" in user:
             return f"user:{user['id']}"
 
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        ip = forwarded_for.split(",")[0].strip()
+        if ip:
+            return f"ip:{ip}"
+
     # Fallback to IP address
-    return get_remote_address(request)
+    remote = get_remote_address(request)
+    return f"ip:{remote}"
 
 
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Response:
@@ -177,7 +184,7 @@ def track_circuit_breaker_failure(key: str) -> None:
         circuit_breaker.failure_counts[key] = 0
 
 
-def check_circuit_breaker(request: Request) -> None:
+def check_circuit_breaker(request: Request) -> JSONResponse | None:
     """
     Check if request should be blocked by circuit breaker.
 
@@ -189,22 +196,32 @@ def check_circuit_breaker(request: Request) -> None:
     """
     # Skip circuit breaker check if rate limiting is disabled
     if os.getenv("DISABLE_RATE_LIMITING", "false").lower() == "true":
-        return
+        return None
 
     key = get_user_or_ip(request)
 
     # Admin bypass and test bypass always allowed
     if key in ("admin_bypass", "test_bypass"):
-        return
+        return None
 
     current_time = time.time()
+    logger.debug(
+        "Circuit breaker check for key %s (blocked=%s, now=%s)",
+        key,
+        circuit_breaker.blocked_until.get(key),
+        current_time,
+    )
 
     if key in circuit_breaker.blocked_until:
         if current_time < circuit_breaker.blocked_until[key]:
             remaining = int(circuit_breaker.blocked_until[key] - current_time)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=f"Circuit breaker open. Service temporarily unavailable. Retry after {remaining} seconds.",
+                detail={
+                    "error": "circuit_breaker_open",
+                    "detail": "Circuit breaker open. Service temporarily unavailable.",
+                    "retry_after": remaining,
+                },
                 headers={
                     "Retry-After": str(remaining),
                     "X-Circuit-Breaker": "open",
@@ -214,6 +231,8 @@ def check_circuit_breaker(request: Request) -> None:
         del circuit_breaker.blocked_until[key]
         if key in circuit_breaker.failure_counts:
             del circuit_breaker.failure_counts[key]
+
+    return None
 
 
 def create_rate_limit_decorator(limit: str) -> Callable:
@@ -237,7 +256,9 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             # Check circuit breaker first
             request = kwargs.get("request")
             if request:
-                check_circuit_breaker(request)
+                block_response = check_circuit_breaker(request)
+                if block_response is not None:
+                    return block_response
 
                 # Check if user has special limits
                 key = get_user_or_ip(request)
