@@ -46,7 +46,9 @@ async def _create_operation(
     return operation.uuid
 
 
-async def test_get_operation_returns_entity(operation_service: OperationService, collection_factory, test_user_db) -> None:
+async def test_get_operation_returns_entity(
+    operation_service: OperationService, collection_factory, test_user_db
+) -> None:
     operation_uuid = await _create_operation(operation_service, collection_factory, test_user_db)
 
     fetched = await operation_service.get_operation(operation_uuid, test_user_db.id)

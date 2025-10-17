@@ -1167,9 +1167,7 @@ class DockerSetupTUI:
         self.config["GENERATE_TEST_ENV"] = "true" if generate_test_env else "false"
         if generate_test_env:
             default_test_db = f"{self.config['POSTGRES_DB']}_test"
-            test_db_name = questionary.text(
-                "Database name to use in .env.test:", default=default_test_db
-            ).ask()
+            test_db_name = questionary.text("Database name to use in .env.test:", default=default_test_db).ask()
             if not test_db_name:
                 test_db_name = default_test_db
             self.config["POSTGRES_TEST_DB"] = test_db_name
@@ -1251,8 +1249,9 @@ class DockerSetupTUI:
         host = "localhost"
         port = "5432"
 
-        content = textwrap.dedent(
-            f"""
+        content = (
+            textwrap.dedent(
+                f"""
             # Test environment overrides for Semantik integration tests
             POSTGRES_HOST={host}
             POSTGRES_PORT={port}
@@ -1261,7 +1260,9 @@ class DockerSetupTUI:
             POSTGRES_PASSWORD={password}
             DATABASE_URL=postgresql://{user}:{password}@{host}:{port}/{test_db}
             """
-        ).strip() + "\n"
+            ).strip()
+            + "\n"
+        )
 
         with test_env_path.open("w") as f:
             f.write(content)

@@ -34,7 +34,7 @@ async def _write_documents(root: Path) -> None:
 
 async def test_scan_directory_registers_documents(
     document_service: DocumentScanningService,
-        db_session: AsyncSession,
+    db_session: AsyncSession,
     collection_factory,
     test_user_db,
     tmp_path: Path,
