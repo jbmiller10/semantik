@@ -63,16 +63,18 @@ class TestPartitionMonitoringServiceIntegration:
     async def test_get_partition_health_summary(self, service, partition_monitoring_schema):
         summary = await service.get_partition_health_summary()
         assert len(summary) == 3
-        assert summary[0].health_status is PartitionHealthStatus.HEALTHY
-        assert summary[1].health_status is PartitionHealthStatus.WARNING
-        assert summary[2].recommendation == 'Consider rebalancing'
+        summary_by_partition = {item.partition_num: item for item in summary}
+        assert summary_by_partition[0].health_status == PartitionHealthStatus.HEALTHY
+        assert summary_by_partition[1].health_status == PartitionHealthStatus.WARNING
+        assert summary_by_partition[2].health_status == PartitionHealthStatus.UNBALANCED
+        assert summary_by_partition[2].recommendation == "Consider rebalancing"
 
     async def test_analyze_partition_skew(self, service, partition_monitoring_schema):
         metrics = await service.analyze_partition_skew()
         assert len(metrics) == 2
-        assert metrics[0].metric == 'chunk_distribution'
-        assert metrics[0].status is SkewStatus.WARNING
-        assert metrics[1].status is SkewStatus.NORMAL
+        assert metrics[0].metric == "chunk_distribution"
+        assert metrics[0].status == SkewStatus.WARNING
+        assert metrics[1].status == SkewStatus.NORMAL
 
     async def test_check_partition_health_compiles_alerts(self, service, partition_monitoring_schema):
         result = await service.check_partition_health()
@@ -81,4 +83,8 @@ class TestPartitionMonitoringServiceIntegration:
         assert result.metrics["unbalanced_count"] == 1
         assert result.metrics["warning_count"] == 1
         assert result.metrics["healthy_count"] == 1
-        assert any(alert["partition"] == 2 for alert in result.alerts)
+        assert any(
+            detail.get("partition") == 2
+            for alert in result.alerts
+            for detail in alert.get("details", [])
+        )

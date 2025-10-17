@@ -2,7 +2,6 @@
 
 import contextlib
 import os
-import random
 import sys
 import warnings
 from collections.abc import Generator
@@ -31,6 +30,7 @@ from dotenv import dotenv_values, load_dotenv  # noqa: E402
 from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
 celery_module = importlib.import_module("packages.webui.celery_app")  # noqa: E402
@@ -129,6 +129,45 @@ os.environ.setdefault("DEFAULT_COLLECTION", "test_collection")
 os.environ.setdefault("USE_MOCK_EMBEDDINGS", "true")
 os.environ.setdefault("DISABLE_AUTH", "true")
 os.environ.setdefault("DISABLE_RATE_LIMITING", "true")
+
+
+async def _ensure_chunk_partition_triggers(conn) -> None:
+    """Ensure the test database can compute partition keys like production.
+
+    Tests provide partition_key explicitly, so keep the helper functions but
+    drop the trigger that would otherwise overwrite or reject manual values.
+    """
+
+    try:
+        await conn.execute(
+            text(
+                """
+            CREATE OR REPLACE FUNCTION compute_partition_key()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.collection_id IS NULL THEN
+                    RAISE EXCEPTION 'collection_id cannot be null for chunks';
+                END IF;
+
+                IF NEW.partition_key IS NULL THEN
+                    NEW.partition_key := abs(hashtext(NEW.collection_id::text)) % 100;
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        """
+            )
+        )
+
+        await conn.execute(
+            text(
+                """
+            DROP TRIGGER IF EXISTS set_partition_key ON chunks;
+        """
+            )
+        )
+    except Exception as exc:
+        warnings.warn(f"Unable to ensure chunk partition trigger: {exc}", stacklevel=1)
 
 
 @pytest.fixture(autouse=True)
@@ -630,6 +669,7 @@ async def db_session():
     # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_chunk_partition_triggers(conn)
 
     # Create session for this test
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -649,13 +689,11 @@ async def db_session():
 async def test_user_db(db_session) -> None:
     """Create a test user in the database."""
 
-    # Use random ID to avoid conflicts
-    user_id = random.randint(1000, 9999)
+    unique_suffix = uuid4().hex[:8]
     user = User(
-        id=user_id,
-        username=f"testuser_{user_id}",
+        username=f"testuser_{unique_suffix}",
         hashed_password="hashed_password",
-        email=f"test_{user_id}@example.com",
+        email=f"test_{unique_suffix}@example.com",
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -670,13 +708,11 @@ async def test_user_db(db_session) -> None:
 async def other_user_db(db_session) -> None:
     """Create another test user in the database."""
 
-    # Use random ID to avoid conflicts
-    user_id = random.randint(10000, 19999)
+    unique_suffix = uuid4().hex[:8]
     user = User(
-        id=user_id,
-        username=f"otheruser_{user_id}",
+        username=f"otheruser_{unique_suffix}",
         hashed_password="hashed_password",
-        email=f"other_{user_id}@example.com",
+        email=f"other_{unique_suffix}@example.com",
         is_active=True,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),

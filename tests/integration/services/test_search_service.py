@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import json
 from collections import deque
+from uuid import uuid4
 
 import pytest
 import httpx
+from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.search_service import SearchService
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
 
 
 @pytest.mark.asyncio()
@@ -33,7 +35,7 @@ class TestSearchServiceIntegration:
         self, service, collection_factory, test_user_db, other_user_db
     ):
         collection = await collection_factory(owner_id=other_user_db.id)
-        with pytest.raises(AccessDeniedError):
+        with pytest.raises((PackagesAccessDeniedError, SharedAccessDeniedError)):
             await service.validate_collection_access([collection.id], test_user_db.id)
 
     async def test_multi_collection_search_merges_results(
@@ -43,8 +45,8 @@ class TestSearchServiceIntegration:
         collection_factory,
         test_user_db,
     ):
-        ready_one = await collection_factory(owner_id=test_user_db.id, name="Ready One")
-        ready_two = await collection_factory(owner_id=test_user_db.id, name="Ready Two")
+        ready_one = await collection_factory(owner_id=test_user_db.id, name=f"Ready One {uuid4().hex[:4]}")
+        ready_two = await collection_factory(owner_id=test_user_db.id, name=f"Ready Two {uuid4().hex[:4]}")
 
         responses = deque(
             [
