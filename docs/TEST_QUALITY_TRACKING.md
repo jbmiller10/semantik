@@ -71,15 +71,10 @@
 | `tests/webui/api/v2/test_chunking_simple_integration.py` & `_direct.py` | “Integration” files but fully mocked | High | 2 days | ⏳ Pending |
 | `tests/webui/test_tasks_websocket_integration.py` | Extensive patching of Redis/tasks, duplicates websocket suites | High | 2 days | ⏳ Pending |
 | `tests/integration/test_websocket_redis_integration.py` | Uses custom Redis mock instead of real fixture, duplicates unit tests | Medium | 1-2 days | ⏳ Pending |
-| `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ⏳ Pending |
+| `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ✅ Completed (2025-10-17) – integrated into `tests/integration/chunking/test_ingestion_metrics.py` with real DB + redis fixtures |
 | `tests/webui/api/v2/test_collections.py` | Mocking collection service duplicates integration coverage | High | 2 days | ✅ Completed (2025-10-17) |
 | `tests/webui/api/v2/test_collections_operations.py` | Mock-based listing endpoints overlapping integration | Medium | 1-2 days | ✅ Completed (2025-10-17) |
-| `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ✅ Completed (2025-10-17) – integrated into `tests/integration/chunking/test_ingestion_metrics.py` with real DB + redis fixtures |
 | `tests/integration/chunking/test_ingestion_metrics.py` | Recursive strategy still falls back to TokenChunker in local env, blocking assertions | Medium | 1 day | ✅ Resolved (2025-10-17) – adjusted ChunkingService config translation to avoid over-constraining recursion and normalized metrics recording |
-
-**Outstanding follow-up for the chunking consolidation effort:** None. All items tied to the recursive fallback blocker have been cleared, and the integration/unit suites listed in the migration plan are green under isolated metric registries.
-| `tests/webui/api/v2/test_collections.py` | Mocking collection service duplicates integration coverage | High | 2 days | ⏳ Pending |
-| `tests/webui/api/v2/test_collections_operations.py` | Mock-based listing endpoints overlapping integration | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/services/dtos/test_chunking_dtos.py` | DTO conversions retesting Pydantic outputs | Medium | 1 day | ⏳ Pending |
 | `tests/unit/test_hierarchical_chunker_extended.py` | More llama-index patches, redundant | Medium | 2 days | ✅ Completed (2025-10-17) – consolidated into lean validation/unit coverage and strategy integrations |
 | `tests/unit/test_hybrid_chunker.py` | Large suite patching chunking factory; overlaps other chunker tests | Medium | 2 days | ✅ Completed (2025-10-17) – behavior covered via integration strategy tests and slim unit validations |
@@ -108,8 +103,6 @@
 | `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ✅ Completed (2025-10-17) – replaced by service-level assertions in `tests/integration/chunking/test_ingestion_metrics.py` |
 | `tests/unit/test_document_scanning_service.py` | Mocked DB/session duplication of integration tests | Medium | 1 day | ⏳ Pending |
 | `tests/unit/test_directory_scan_service.py` | Mocked session verifies implementation, duplicates service tests | Medium | 1 day | ⏳ Pending |
-| `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ✅ Completed (2025-10-17) – replaced by service-level assertions in `tests/integration/chunking/test_ingestion_metrics.py` |
-
 | `tests/unit/test_chunking_service.py` | Large mock-heavy suite duplicating integration coverage | High | 2 days | ⏳ Pending |
 | `tests/e2e/test_websocket_performance.py` | Performance script requiring live stack | High | 1-2 days | ✅ Completed (2025-10-17) |
 | `tests/e2e/test_websocket_reindex.py` | Giant E2E suite with duplicate coverage | High | 2 days | ✅ Completed (2025-10-17) |
@@ -131,6 +124,7 @@
 | `tests/webui/test_cleanup_tasks.py` | Mocked cleanup flow | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_exception_translation.py` | Overlaps domain coverage | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_embedding_gpu_memory.py` | GPU-dependent script | Medium | 1 day | ⏳ Pending |
+
 ### P2 - Medium (Within Month)
 
 | File | Issue | Impact | Effort | Status |
@@ -1554,19 +1548,19 @@ Comments/documentation:           ~1,000  (13%)
 ### Sprint 1 (Week 1-2)
 
 - [x] Action 1: Delete `test_auth.py` (5 min)
-  - [ ] Verify existing coverage
-  - [ ] Delete file
-  - [ ] Commit with explanation
+  - [x] Verify existing coverage
+  - [x] Delete file
+  - [x] Commit with explanation
 
 - [x] Action 2: Fix `test_collection_repository.py` (2-3 days)
-  - [ ] Create integration test structure
-  - [ ] Implement test_user fixture
-  - [ ] Rewrite create tests
-  - [ ] Rewrite get/list tests
-  - [ ] Add update() method tests
-  - [ ] Add validation tests
-  - [ ] Delete old file
-  - [ ] Verify all pass
+  - [x] Create integration test structure
+  - [x] Implement test_user fixture
+  - [x] Rewrite create tests
+  - [x] Rewrite get/list tests
+  - [x] Add update() method tests
+  - [x] Add validation tests
+  - [x] Delete old file
+  - [x] Verify all pass
 
 - [x] Action 3: Replace `tests/unit/test_collection_service.py` with integration coverage (3-4 days)
     - ✅ Created `tests/integration/services/test_collection_service.py`
@@ -1594,18 +1588,13 @@ Comments/documentation:           ~1,000  (13%)
   1. Tackle the remaining ⏳ items in this tracking table (chunking strategies, websocket tests, etc.).
   2. Follow the integration-test pattern (real DB + stubbed externals) when migrating additional suites.
   3. Update this document immediately after each milestone; it's the single source of truth for test quality status.
-  - [ ] Create factory fixtures
-  - [ ] Create integration test file
-  - [ ] Convert create tests
-  - [ ] Convert update tests
-  - [ ] Convert delete tests
 
 ### Sprint 2 (Week 3-4)
 
-- [ ] Complete `test_collection_service.py` refactor
-  - [ ] Add transaction rollback tests
-  - [ ] Extract validation to unit tests
-  - [ ] Delete old file
+- [x] Complete `test_collection_service.py` refactor
+  - [x] Add transaction rollback tests
+  - [x] Extract validation to unit tests
+  - [x] Delete old file
 
 - [ ] Action 4: Reorganize test structure (1 day)
   - [ ] Create new directories
