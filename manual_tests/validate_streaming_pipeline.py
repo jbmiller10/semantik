@@ -33,7 +33,7 @@ class ValidationStrategy(ChunkingStrategy):
         super().__init__(name="validation_strategy")
         self.chunks_created = 0
 
-    def chunk(self, text: str, config: ChunkConfig, progress_callback=None) -> list:
+    def chunk(self, text: str, _config: ChunkConfig, _progress_callback=None) -> list:
         """Create simple chunks for validation."""
         chunks = []
         # Split by sentences or fixed size
@@ -50,7 +50,7 @@ class ValidationStrategy(ChunkingStrategy):
 
         return chunks
 
-    def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:
+    def estimate_chunks(self, content_length: int, _config: ChunkConfig) -> int:
         """Estimate number of chunks for given content length."""
         # Rough estimate: one chunk per 100 characters
         return max(1, content_length // 100)
