@@ -7,9 +7,12 @@ import argparse
 import asyncio
 import os
 import sys
-from typing import Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 

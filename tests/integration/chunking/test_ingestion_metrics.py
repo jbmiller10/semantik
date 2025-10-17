@@ -5,9 +5,12 @@ from __future__ import annotations
 import importlib
 import sys
 from hashlib import sha256
-from typing import Generator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 from prometheus_client import CollectorRegistry
 
 from packages.shared.database.models import DocumentStatus
