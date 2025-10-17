@@ -1759,6 +1759,11 @@ class TestWebSocketCollectionOperations:
 
 **Verification**: Metrics coverage verified via new integration tests; unit chunker suites execute quickly with limited fixture setup.
 
+**Status Update (2025-10-16)**:
+- ✅ Replaced `tests/webui/test_chunking_metrics.py` with integration coverage (`tests/integration/chunking/test_chunking_metrics.py`) and registry-safe unit helpers.
+- ✅ Slimmed `tests/unit/test_hierarchical_chunker.py` / `tests/unit/test_hybrid_chunker.py`; removed extended/unified mega suites.
+- ✅ Added `init_metrics` hooks to production modules, enabling CollectorRegistry isolation with zero `_metrics` mutation.
+
 ### Action 13: Rationalize Search/Rate-Limiter Unit Suites ⚠️ MEDIUM
 
 **Priority**: P2  
@@ -1796,6 +1801,11 @@ class TestWebSocketCollectionOperations:
 2. Review `tests/webui/services/test_execute_ingestion_chunking.py` and related helpers for the next migration pass.
 
 **Verification**: `uv run pytest tests/integration/repositories/ tests/integration/services/ -v` exercises the new coverage without relying on mocks.
+
+**Status Update (2025-10-16)**:
+- ✅ Removed `tests/webui/test_document_chunk_count_updates.py` and `tests/webui/services/test_execute_ingestion_chunking.py`; coverage migrated to `tests/integration/chunking/test_chunking_service.py`, `test_document_chunk_counts.py`, and `test_progress_updates.py`.
+- ✅ Replaced `tests/unit/test_chunking_tasks.py` with deterministic helper tests; Redis progress streaming validated against fakeredis.
+- ⏳ Remaining: refactor directory scan/service suites and repository unit tests to leverage shared integration fixtures.
 
 ---
 
