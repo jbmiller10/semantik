@@ -84,7 +84,7 @@ ingestion_chunking_duration_seconds = _get_or_create_metric(
 # Chunking fallback counter - tracks when strategies fail and fallback is used
 ingestion_chunking_fallback_total = _get_or_create_metric(
     Counter,
-    "ingestion_chunking_fallback_total_total",
+    "ingestion_chunking_fallback_total",
     "Total number of chunking fallbacks by strategy and reason",
     registry,
     labelnames=["strategy", "reason"],
@@ -93,7 +93,7 @@ ingestion_chunking_fallback_total = _get_or_create_metric(
 # Chunks produced counter - tracks total chunks created per strategy
 ingestion_chunks_total = _get_or_create_metric(
     Counter,
-    "ingestion_chunks_total_total",
+    "ingestion_chunks_total",
     "Total number of chunks produced per strategy",
     registry,
     labelnames=["strategy"],
@@ -111,7 +111,7 @@ ingestion_avg_chunk_size_bytes = _get_or_create_metric(
 # Segmentation metrics for Phase 3
 ingestion_segmented_documents_total = _get_or_create_metric(
     Counter,
-    "ingestion_segmented_documents_total_total",
+    "ingestion_segmented_documents_total",
     "Total number of documents that required segmentation",
     registry,
     labelnames=["strategy"],
@@ -119,7 +119,7 @@ ingestion_segmented_documents_total = _get_or_create_metric(
 
 ingestion_segments_total = _get_or_create_metric(
     Counter,
-    "ingestion_segments_total_total",
+    "ingestion_segments_total",
     "Total number of segments created from large documents",
     registry,
     labelnames=["strategy"],
@@ -136,7 +136,7 @@ ingestion_segment_size_bytes = _get_or_create_metric(
 
 ingestion_streaming_used_total = _get_or_create_metric(
     Counter,
-    "ingestion_streaming_used_total_total",
+    "ingestion_streaming_used_total",
     "Total number of documents processed with streaming strategies",
     registry,
     labelnames=["strategy"],
