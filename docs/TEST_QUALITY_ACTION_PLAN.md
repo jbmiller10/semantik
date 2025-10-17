@@ -1597,10 +1597,10 @@ class TestWebSocketCollectionOperations:
 3. Document how to run the manual scripts when needed.
 
 **Steps**:
-1. Create `manual_tests/README.md` explaining intent.
-2. Relocate the script files (or delete if superseded) and update imports.
-3. Update CI (pytest invocation) to ignore the new manual directory explicitly.
-4. File follow-up tickets for proper automated coverage (see Tracking doc).
+1. ✅ (2025-10-17) Created `manual_tests/README.md` explaining intent.
+2. ✅ (2025-10-17) Relocated streaming/performance/websocket scripts to `manual_tests/`.
+3. ✅ (2025-10-17) Verified pytest ignores the directory via `norecursedirs`.
+4. ⏳ File follow-up tickets for automated replacements (see Tracking doc).
 
 ### Action 4: Replace Placeholder Reranking "E2E" Suite With Real Coverage ⚠️ CRITICAL
 
@@ -1735,9 +1735,10 @@ class TestWebSocketCollectionOperations:
 3. Split monolithic files into smaller modules grouped by endpoint behavior (strategies, previews, analytics, operations).
 
 **Steps**:
-1. Inventory overlapping scenarios with existing integration suites (`tests/webui/api/v2/test_chunking_integration.py`, service-level integration tests).
-2. Port high-value gaps to integration tests, delete redundant mock-heavy cases.
-3. Introduce shared fixtures for FastAPI dependency overrides to avoid per-test patch cascades.
+1. ✅ (2025-10-17) Inventoried chunking API coverage and consolidated into the new integration suite (`tests/webui/api/v2/test_chunking.py`).
+2. ✅ (2025-10-17) Deleted redundant mock files (`test_chunking_simple_integration.py`, `test_chunking_direct.py`) after porting scenarios.
+3. ✅ (2025-10-17) Added shared FastAPI overrides in `tests/webui/api/v2/conftest.py` for async DB + fakeredis.
+4. ⏳ Apply the same migration to the remaining search API/service suites.
 
 **Verification**: `uv run pytest tests/webui/api/v2/ -k chunking` executes with manageable runtime and minimal mocking.
 
@@ -1789,6 +1790,10 @@ class TestWebSocketCollectionOperations:
 2. Provide lightweight, behavior-focused unit tests only for pure helper logic (e.g., pattern filtering).
 3. Replace bespoke filesystem scaffolding with reusable fixtures or integration-level smoke tests.
 
+**Progress (2025-10-17)**:
+- Directory scan API now covered via real FastAPI overrides (`tests/webui/api/v2/test_directory_scan.py`).
+- Manual streaming/websocket probes relocated to `manual_tests/`; ingestion/document suite migration still pending.
+
 **Verification**: A consolidated integration suite (e.g., `tests/integration/tasks/test_document_ingestion.py`) validates chunk count updates and directory scans end-to-end; unit suites shrink to minimal validation helpers.
 
 ---
@@ -1799,10 +1804,10 @@ class TestWebSocketCollectionOperations:
 - [ ] Delete `test_auth.py` (5 min)
 - [ ] Fix `test_collection_repository.py` (2-3 days)
 - [ ] Start fixing `test_collection_service.py` (3-4 days)
-- [ ] Quarantine manual/script-style test files (0.5 day)
+- [x] Quarantine manual/script-style test files (0.5 day)
 - [ ] Replace placeholder reranking E2E suite with real coverage (1-2 days)
 - [ ] Enable rate-limit tests in CI (1 day)
-- [ ] Kick off chunking/search API suite consolidation (inventory overlaps, draft plan)
+- [x] Kick off chunking/search API suite consolidation (inventory overlaps, draft plan)
 
 ### Week 3-4 (Sprint 2)
 - [ ] Complete `test_collection_service.py` refactor
