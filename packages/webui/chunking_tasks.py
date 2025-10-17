@@ -57,6 +57,11 @@ from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.factory import (
     get_redis_manager,
 )
+from packages.webui.services.progress_manager import (
+    ProgressPayload,
+    ProgressSendResult,
+    ProgressUpdateManager,
+)
 from packages.webui.services.type_guards import ensure_sync_redis
 
 if TYPE_CHECKING:
@@ -70,6 +75,25 @@ def get_redis_client() -> Redis:
     redis_manager = get_redis_manager()
     client = redis_manager.sync_client
     return ensure_sync_redis(client)
+
+
+_progress_update_manager: ProgressUpdateManager | None = None
+
+
+def get_progress_update_manager() -> ProgressUpdateManager:
+    """Return a cached progress update manager for chunking tasks."""
+
+    global _progress_update_manager
+    if _progress_update_manager is None:
+        manager = ProgressUpdateManager(
+            sync_redis=get_redis_client(),
+            default_stream_template="stream:chunking:{operation_id}",
+            default_ttl=None,
+            default_maxlen=1000,
+            logger_=logger.getChild("progress"),
+        )
+        _progress_update_manager = manager
+    return _progress_update_manager
 
 
 # Metrics
@@ -1220,31 +1244,32 @@ def _send_progress_update_sync(
     if not redis_client:
         return
 
-    try:
-        update = {
-            "operation_id": operation_id,
-            "correlation_id": correlation_id,
-            "progress": str(progress),  # Redis requires string values
-            "message": message,
-            "timestamp": str(time.time()),
-        }
+    manager = get_progress_update_manager()
+    payload = ProgressPayload(
+        operation_id=operation_id,
+        correlation_id=correlation_id,
+        progress=progress,
+        message=message,
+        extra={"timestamp": str(time.time())},
+    )
 
-        # Send to Redis stream
-        stream_key = f"stream:chunking:{operation_id}"
-        redis_client.xadd(stream_key, update, maxlen=1000)
+    hash_mapping = {
+        "progress": progress,
+        "message": message,
+        "updated_at": datetime.now(UTC).isoformat(),
+        "correlation_id": correlation_id,
+    }
 
-        # Also update hash for current state
-        redis_client.hset(
-            f"operation:{operation_id}:progress",
-            mapping={
-                "progress": str(progress),
-                "message": message,
-                "updated_at": datetime.now(UTC).isoformat(),
-            },
-        )
-
-    except Exception as e:
-        logger.warning(f"Failed to send progress update: {e}")
+    manager.send_sync_update(
+        payload,
+        stream_template="stream:chunking:{operation_id}",
+        maxlen=1000,
+        ttl=None,
+        hash_key_template="operation:{operation_id}:progress",
+        hash_mapping=hash_mapping,
+        use_throttle=False,
+        redis_client=redis_client,
+    )
 
 
 async def _handle_soft_timeout(
@@ -1465,25 +1490,29 @@ async def _send_progress_update(
     if not redis_client:
         return
 
-    try:
-        update = {
-            "operation_id": operation_id,
-            "correlation_id": correlation_id,
-            "progress": progress,
-            "message": message,
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
+    payload = ProgressPayload(
+        operation_id=operation_id,
+        correlation_id=correlation_id,
+        progress=progress,
+        message=message,
+    )
 
-        # Send to Redis stream for WebSocket updates
-        stream_key = f"chunking:progress:{operation_id}"
-        # Redis client is sync, not async - need to use sync methods
-        redis_client.xadd(stream_key, update)
+    manager = get_progress_update_manager()
+    loop = asyncio.get_running_loop()
 
-        # Expire stream after 1 hour for progress updates
-        redis_client.expire(stream_key, 3600)
+    def _send() -> ProgressSendResult:
+        return manager.send_sync_update(
+            payload,
+            stream_template="chunking:progress:{operation_id}",
+            ttl=3600,
+            maxlen=0,
+            use_throttle=False,
+            redis_client=redis_client,
+        )
 
-    except Exception as e:
-        logger.error(f"Failed to send progress update: {e}")
+    result = await loop.run_in_executor(None, _send)
+    if result is ProgressSendResult.FAILED:
+        logger.error("Failed to send progress update for operation %s", operation_id)
 
 
 # Retry helper for specific operations

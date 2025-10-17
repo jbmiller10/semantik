@@ -11,6 +11,8 @@ Run `make dev-install` for a full `uv` sync of Python dependencies and tooling; 
 ## Coding Style & Naming Conventions
 Python code follows 4-space indentation, 120-character lines, and exhaustive typing. Before pushing, run `make format` (Black + Isort) and `make lint` (Ruff) followed by `make type-check` (Mypy). Modules stay snake_case (`search_api.py`), pytest fixtures snake_case, and React components PascalCase inside `apps/webui-react/src`. Prefer descriptive folder names aligned with existing domains (e.g., `ingest`, `metrics`). JSON/YAML config files should remain kebab-case.
 
+Always ensure Black and Ruff pass before marking a ticket complete—rerun `make format` and `make lint` (or the equivalent `uv run` commands) after your final changes so reviewers never see style regressions.
+
 ## Testing Guidelines
 Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
 

@@ -15,6 +15,7 @@ import pytest_asyncio
 import redis.asyncio as redis
 from fastapi import WebSocket
 
+from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
 from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
 from packages.webui.websocket_manager import ws_manager as _global_ws_manager
 from packages.webui.websocket_manager import ws_manager as ws_manager1
@@ -303,6 +304,12 @@ class TestRedisStreamWebSocketManager:
     ) -> None:
         """Test sending operation update via Redis stream."""
         manager.redis = mock_redis
+        manager._progress_manager = ProgressUpdateManager(
+            async_redis=mock_redis,
+            default_stream_template="operation-progress:{operation_id}",
+            default_ttl=86400,
+            default_maxlen=1000,
+        )
 
         update_data = {"progress": 50, "current_file": "test.pdf"}
         await manager.send_update("operation1", "progress", update_data)
@@ -323,6 +330,63 @@ class TestRedisStreamWebSocketManager:
 
         # Verify TTL was set
         mock_redis.expire.assert_called_once_with("operation-progress:operation1", 86400)
+
+    @pytest.mark.asyncio()
+    async def test_send_update_throttle_skip(
+        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
+    ) -> None:
+        """If the progress manager throttles the update, no broadcast should occur."""
+
+        manager.redis = mock_redis
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SKIPPED)
+        manager._progress_manager = progress_manager
+        manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
+        manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
+
+        await manager.send_update("operation1", "chunking_progress", {}, throttle=True)
+
+        progress_manager.send_async_update.assert_awaited_once()
+        manager._broadcast.assert_not_awaited()
+        manager._record_throttle_timestamp.assert_not_awaited()
+
+    @pytest.mark.asyncio()
+    async def test_send_update_records_throttle_on_failure(
+        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
+    ) -> None:
+        """When publishing fails we still broadcast and track throttle timestamps."""
+
+        manager.redis = mock_redis
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.FAILED)
+        manager._progress_manager = progress_manager
+        manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
+        manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
+
+        await manager.send_update("operation1", "progress", {"progress": 10}, throttle=True)
+
+        progress_manager.send_async_update.assert_awaited_once()
+        manager._broadcast.assert_awaited_once()
+        manager._record_throttle_timestamp.assert_awaited_once()
+
+    @pytest.mark.asyncio()
+    async def test_send_update_applies_status_ttl(
+        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
+    ) -> None:
+        """Status updates should request shorter TTLs based on completion state."""
+
+        manager.redis = mock_redis
+        progress_manager = AsyncMock(spec=ProgressUpdateManager)
+        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SENT)
+        manager._progress_manager = progress_manager
+
+        await manager.send_update("operation1", "status_update", {"status": "completed"})
+        ttl_completed = progress_manager.send_async_update.call_args.kwargs["ttl"]
+        assert ttl_completed == 300
+
+        await manager.send_update("operation1", "status_update", {"status": "failed"})
+        ttl_failed = progress_manager.send_async_update.call_args.kwargs["ttl"]
+        assert ttl_failed == 60
 
     @pytest.mark.asyncio()
     async def test_send_operation_update_without_redis(
@@ -655,6 +719,12 @@ class TestRedisStreamWebSocketManager:
     ) -> None:
         """Test send_update falls back to broadcast when Redis operations fail."""
         manager.redis = mock_redis
+        manager._progress_manager = ProgressUpdateManager(
+            async_redis=mock_redis,
+            default_stream_template="operation-progress:{operation_id}",
+            default_ttl=86400,
+            default_maxlen=1000,
+        )
         manager.connections["user1:operation:operation1"] = {mock_websocket}
 
         # Make Redis operations fail
