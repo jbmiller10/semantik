@@ -115,9 +115,7 @@ if env_file_loaded and env_file_loaded.name == ".env":
 
     if postgres_password:
         encoded_password = quote(postgres_password, safe="")
-        database_url = (
-            f"postgresql://{encoded_user}:{encoded_password}@{postgres_host}:{postgres_port}/{encoded_db}"
-        )
+        database_url = f"postgresql://{encoded_user}:{encoded_password}@{postgres_host}:{postgres_port}/{encoded_db}"
     else:
         database_url = f"postgresql://{encoded_user}@{postgres_host}:{postgres_port}/{encoded_db}"
 
