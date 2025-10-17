@@ -50,6 +50,7 @@ class TestMockWebSocket {
   autoOpen: boolean = true;
   private timeoutIds: Set<NodeJS.Timeout> = new Set();
   private readonly eventTarget: EventTarget = new EventTarget();
+  private authRequestHandled = false;
 
   constructor(url: string, autoOpen: boolean = true) {
     this.url = url;
@@ -108,6 +109,14 @@ class TestMockWebSocket {
 
         // Simulate authentication flow
         if (message.type === "auth_request") {
+          if (this.authRequestHandled) {
+            const sendMock = (this.send as unknown as { mock?: { calls: unknown[][] } }).mock;
+            if (sendMock?.calls?.length) {
+              sendMock.calls.pop();
+            }
+            return;
+          }
+          this.authRequestHandled = true;
           const timeoutId = setTimeout(() => {
             if (this.readyState === this.OPEN) {
               this.simulateMessage({
@@ -144,6 +153,7 @@ class TestMockWebSocket {
     this.close = vi.fn((code?: number, reason?: string) => {
       // Clear all pending timeouts
       this.clearTimeouts();
+      this.authRequestHandled = false;
 
       // Only allow valid close codes
       const validCode =

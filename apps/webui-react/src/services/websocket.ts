@@ -158,6 +158,7 @@ export class WebSocketService extends EventEmitter {
   private lastPongReceived = Date.now();
   private isAuthenticated = false;
   private authenticationToken: string | null = null;
+  private hasSentAuthRequest = false;
   
   constructor(config: WebSocketConfig) {
     super();
@@ -219,6 +220,7 @@ export class WebSocketService extends EventEmitter {
       // Connect WITHOUT token in URL (SECURE)
       console.log('Connecting to WebSocket:', this.config.url);
       this.ws = new WebSocket(this.config.url);
+      this.hasSentAuthRequest = false;
       
       // Set up connection timeout
       this.connectionTimer = setTimeout(() => {
@@ -285,9 +287,10 @@ export class WebSocketService extends EventEmitter {
     };
     
     // Send directly without queueing (authentication is special)
-    if (this.ws?.readyState === WebSocketState.OPEN) {
+    if (this.ws?.readyState === WebSocketState.OPEN && !this.hasSentAuthRequest) {
       try {
         this.ws.send(JSON.stringify(authMessage));
+        this.hasSentAuthRequest = true;
         console.log('Authentication request sent');
       } catch (error) {
         console.error('Failed to send authentication:', error);
@@ -374,6 +377,7 @@ export class WebSocketService extends EventEmitter {
     
     console.error('WebSocket authentication failed:', data);
     this.isAuthenticated = false;
+    this.hasSentAuthRequest = false;
     
     // Emit error and close connection
     this.emit('error', { message: data.message, code: data.code || 'AUTH_FAILED' });
@@ -395,6 +399,7 @@ export class WebSocketService extends EventEmitter {
       this.connectionTimer = null;
     }
     
+    this.hasSentAuthRequest = false;
     this.emit('error', event);
   }
 
@@ -407,6 +412,7 @@ export class WebSocketService extends EventEmitter {
     // Reset authentication state
     this.isAuthenticated = false;
     this.authenticationToken = null;
+    this.hasSentAuthRequest = false;
     
     // Clear timers
     this.stopHeartbeat();
@@ -434,6 +440,7 @@ export class WebSocketService extends EventEmitter {
   private handleConnectionError(error: Error): void {
     console.error('WebSocket connection error:', error);
     this.emit('error', { message: error.message, code: 'CONNECTION_ERROR' });
+    this.hasSentAuthRequest = false;
     
     if (!this.isIntentionallyClosed && this.config.reconnect) {
       this.scheduleReconnect();
