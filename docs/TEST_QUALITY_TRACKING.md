@@ -55,26 +55,29 @@
 | `tests/webui/test_websocket_manager.py` | Manipulates global singleton, heavy cleanup logic, brittle | High | 2 days | ⏳ Pending |
 | `packages/shared/chunking/infrastructure/streaming/test_memory_pool.py` | Relies on real sleeps/threading → flaky leak checks | High | 1 day | ⏳ Pending |
 | `tests/application/test_*_use_case.py` & `packages/webui/tests/test_collection_service_chunking_validation.py` | Mock-heavy duplicates of service logic | High | 2-3 days | ⏳ Pending |
-| `tests/webui/test_chunking_metrics.py` | Direct Prometheus `_metrics` mutation, mocks service internals | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_hierarchical_chunker.py` & related chunker suites | Heavy mocking of llama-index internals, oversized permutations | Medium | 2 days | ⏳ Pending |
+| `tests/webui/test_chunking_metrics.py` | Direct Prometheus `_metrics` mutation, mocks service internals | Medium | 1 day | ✅ Completed (2025-10-17) – coverage relocated to `tests/integration/chunking/test_ingestion_metrics.py` with isolated registries |
+| `tests/unit/test_hierarchical_chunker.py` & related chunker suites | Heavy mocking of llama-index internals, oversized permutations | Medium | 2 days | ✅ Completed (2025-10-17) – replaced by `tests/unit/chunking/test_hierarchical_chunker_validations.py` and extended coverage in `tests/integration/strategies/` |
 | `tests/unit/test_search_service.py` | HTTP mocked, duplicates API coverage | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/api/v2/test_operations.py` | Mock-based API suite overlapping integration tests | High | 2 days | ⏳ Pending |
 | `tests/webui/api/v2/test_chunking_simple_integration.py` & `_direct.py` | “Integration” files but fully mocked | High | 2 days | ⏳ Pending |
 | `tests/webui/test_tasks_websocket_integration.py` | Extensive patching of Redis/tasks, duplicates websocket suites | High | 2 days | ⏳ Pending |
 | `tests/integration/test_websocket_redis_integration.py` | Uses custom Redis mock instead of real fixture, duplicates unit tests | Medium | 1-2 days | ⏳ Pending |
-| `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ⏳ Pending |
+| `tests/webui/test_document_chunk_count_updates.py` | Mock-based Celery ingestion, duplicates integration suite | High | 2 days | ✅ Completed (2025-10-17) – integrated into `tests/integration/chunking/test_ingestion_metrics.py` with real DB + redis fixtures |
+| `tests/integration/chunking/test_ingestion_metrics.py` | Recursive strategy still falls back to TokenChunker in local env, blocking assertions | Medium | 1 day | ✅ Resolved (2025-10-17) – adjusted ChunkingService config translation to avoid over-constraining recursion and normalized metrics recording |
+
+**Outstanding follow-up for the chunking consolidation effort:** None. All items tied to the recursive fallback blocker have been cleared, and the integration/unit suites listed in the migration plan are green under isolated metric registries.
 | `tests/webui/api/v2/test_collections.py` | Mocking collection service duplicates integration coverage | High | 2 days | ⏳ Pending |
 | `tests/webui/api/v2/test_collections_operations.py` | Mock-based listing endpoints overlapping integration | Medium | 1-2 days | ⏳ Pending |
 | `tests/webui/services/dtos/test_chunking_dtos.py` | DTO conversions retesting Pydantic outputs | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_hierarchical_chunker_extended.py` | More llama-index patches, redundant | Medium | 2 days | ⏳ Pending |
-| `tests/unit/test_hybrid_chunker.py` | Large suite patching chunking factory; overlaps other chunker tests | Medium | 2 days | ⏳ Pending |
+| `tests/unit/test_hierarchical_chunker_extended.py` | More llama-index patches, redundant | Medium | 2 days | ✅ Completed (2025-10-17) – consolidated into lean validation/unit coverage and strategy integrations |
+| `tests/unit/test_hybrid_chunker.py` | Large suite patching chunking factory; overlaps other chunker tests | Medium | 2 days | ✅ Completed (2025-10-17) – behavior covered via integration strategy tests and slim unit validations |
 | `tests/domain/test_chunking_operation.py` | Heavy MagicMock usage, duplicates domain tests | Medium | 1-2 days | ⏳ Pending |
 | `tests/domain/test_value_objects.py` | Over-assertive unit tests, could slim | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_all_chunking_strategies_unified.py` | Massive cross-strategy suite, duplicative | Medium | 2 days | ⏳ Pending |
+| `tests/unit/test_all_chunking_strategies_unified.py` | Massive cross-strategy suite, duplicative | Medium | 2 days | ✅ Completed (2025-10-17) – scenarios moved into targeted integration suites (`tests/integration/strategies/` & `tests/integration/chunking/`) |
 | `tests/streaming/validate_streaming_pipeline.py` | Manual validation script with prints | High | 1 day | ⏳ Pending |
-| `tests/unit/test_chunking_error_metrics.py` | Direct Prometheus internals, duplicate metrics suite | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_chunking_tasks.py` | Mock-heavy Celery tasks, overlaps integration | High | 2 days | ⏳ Pending |
-| `tests/chunking/streaming/test_streaming_strategies.py` | Large streaming strategy suite using real implementations | Medium | 2 days | ⏳ Pending |
+| `tests/unit/test_chunking_error_metrics.py` | Direct Prometheus internals, duplicate metrics suite | Medium | 1 day | ✅ Completed (2025-10-17) – error counters verified via `tests/integration/chunking/test_ingestion_metrics.py` isolated registry fixture |
+| `tests/unit/test_chunking_tasks.py` | Mock-heavy Celery tasks, overlaps integration | High | 2 days | ✅ Completed (2025-10-17) – core chunk count/assertions folded into service integration flow; Celery orchestration follow-ups tracked separately |
+| `tests/chunking/streaming/test_streaming_strategies.py` | Large streaming strategy suite using real implementations | Medium | 2 days | ✅ Completed (2025-10-17) – replaced by targeted streaming coverage in `tests/integration/chunking/test_streaming_strategies.py` |
 | `tests/unit/test_chunking_exceptions.py` | Mock-based exception tests; behavior covered elsewhere | Medium | 1 day | ⏳ Pending |
 | `tests/unit/test_shared_qdrant_manager.py` | Patches Redis/Qdrant internals; duplicate coverage | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_chunking_error_flow.py` | Custom mocks, duplicates error handling coverage | Medium | 1-2 days | ⏳ Pending |
@@ -89,6 +92,11 @@
 | `tests/unit/test_document_scanning_service.py` | Integration tests register documents via real repo | Medium | 1 day | ✅ Completed (2025-10-17) |
 | `tests/unit/test_directory_scan_service.py` | Replaced with integration coverage alongside service suite | Medium | 1 day | ✅ Completed (2025-10-17) |
 | `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ⏳ Pending |
+| `tests/webui/services/test_directory_scan_service.py` | Heavy filesystem/mocking, overlaps service logic | Medium | 2 days | ⏳ Pending |
+| `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ✅ Completed (2025-10-17) – replaced by service-level assertions in `tests/integration/chunking/test_ingestion_metrics.py` |
+| `tests/unit/test_document_scanning_service.py` | Mocked DB/session duplication of integration tests | Medium | 1 day | ⏳ Pending |
+| `tests/unit/test_directory_scan_service.py` | Mocked session verifies implementation, duplicates service tests | Medium | 1 day | ⏳ Pending |
+| `tests/webui/services/test_execute_ingestion_chunking.py` | Unit suite overlapping integration coverage | Medium | 1-2 days | ✅ Completed (2025-10-17) – replaced by service-level assertions in `tests/integration/chunking/test_ingestion_metrics.py` |
 
 | `tests/unit/test_chunking_service.py` | Large mock-heavy suite duplicating integration coverage | High | 2 days | ⏳ Pending |
 | `tests/e2e/test_websocket_performance.py` | Performance script requiring live stack | High | 1-2 days | ⏳ Pending |
@@ -107,7 +115,7 @@
 | `tests/webui/test_websocket_race_conditions.py` | Manual load script with no assertions | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_search_reranking_integration.py` | Overlapping integration coverage | Medium | 1-2 days | ⏳ Pending |
 | `tests/security/test_redos_prevention.py` | Mocked regex tests needing refactor | Medium | 1 day | ⏳ Pending |
-| `tests/unit/test_all_chunking_strategies_migrated.py` | Redundant large suite | Medium | 2 days | ⏳ Pending |
+| `tests/unit/test_all_chunking_strategies_migrated.py` | Redundant large suite | Medium | 2 days | ✅ Completed (2025-10-17) – coverage consolidated into strategy integration smoke tests |
 | `tests/webui/test_cleanup_tasks.py` | Mocked cleanup flow | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_exception_translation.py` | Overlaps domain coverage | Medium | 1 day | ⏳ Pending |
 | `tests/integration/test_embedding_gpu_memory.py` | GPU-dependent script | Medium | 1 day | ⏳ Pending |
