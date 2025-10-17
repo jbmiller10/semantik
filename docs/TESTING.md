@@ -42,6 +42,9 @@ those settings. If you skipped that step, create one manually for test-specific 
 # Use mock embeddings to avoid GPU requirements
 USE_MOCK_EMBEDDINGS=true
 
+# Flag test environment (disables Prometheus server, enables test hooks)
+TESTING=true
+
 # Use test database (PostgreSQL required)
 DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test
 
@@ -69,6 +72,11 @@ createdb semantik_test
 
 # Run migrations on test database
 DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test uv run alembic upgrade head
+
+# Clean the database before running the test suite (destroys all data!)
+TEST_DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
+CONFIRM_TEST_DB_RESET=true \
+uv run python scripts/reset_test_db.py
 ```
 
 ## Running Tests
