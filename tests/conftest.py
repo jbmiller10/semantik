@@ -2,7 +2,6 @@
 
 import contextlib
 import os
-import random
 import sys
 import warnings
 from collections.abc import Generator
@@ -18,6 +17,7 @@ os.environ["TESTING"] = "true"
 os.environ["ENV"] = "test"
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
+os.environ.setdefault("PROMETHEUS_DISABLE_SERVER", "true")
 
 import importlib  # noqa: E402
 
