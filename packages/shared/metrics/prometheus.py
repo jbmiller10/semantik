@@ -342,6 +342,12 @@ def _should_skip_metrics_server() -> bool:
     if os.getenv("TESTING", "").lower() in {"1", "true", "yes"}:
         return True
 
+    if os.getenv("ENV", "").lower() == "test":
+        return True
+
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("PYTEST_XDIST_WORKER"):
+        return True
+
     return False
 
 
