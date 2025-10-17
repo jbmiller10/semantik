@@ -4,12 +4,13 @@ import contextlib
 import os
 import random
 import sys
+import warnings
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from uuid import uuid4
 
 # Set test environment BEFORE any app imports
@@ -26,7 +27,7 @@ import fakeredis.aioredis  # noqa: E402
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 import redis.asyncio as redis  # noqa: E402
-from dotenv import load_dotenv  # noqa: E402
+from dotenv import dotenv_values, load_dotenv  # noqa: E402
 from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
@@ -58,11 +59,69 @@ from packages.webui.websocket_manager import RedisStreamWebSocketManager  # noqa
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Load test environment if available
-test_env_path = Path(__file__).parent.parent / ".env.test"
-if test_env_path.exists():
+# Load test environment with fallback and sane defaults
+project_root = Path(__file__).parent.parent
+env_file_loaded: Path | None = None
 
-    load_dotenv(test_env_path, override=True)
+test_env = project_root / ".env.test"
+default_env = project_root / ".env"
+
+if test_env.exists():
+    load_dotenv(test_env, override=True)
+    env_file_loaded = test_env
+elif default_env.exists():
+    candidate_values = dotenv_values(default_env)
+    host = (candidate_values.get("POSTGRES_HOST") or "").strip()
+    database_url = (candidate_values.get("DATABASE_URL") or "").strip()
+
+    is_local_host = not host or host in {"localhost", "127.0.0.1"} or host.startswith("127.")
+    is_local_url = not database_url or "localhost" in database_url or "127." in database_url
+
+    if is_local_host and is_local_url:
+        load_dotenv(default_env, override=True)
+        env_file_loaded = default_env
+    else:
+        warnings.warn(
+            "Skipping .env for tests because POSTGRES_HOST/DATABASE_URL are not local.",
+            stacklevel=1,
+        )
+
+# Ensure Postgres defaults are present whenever env files omit them
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+os.environ.setdefault("POSTGRES_PORT", "5432")
+
+if "POSTGRES_USER" not in os.environ:
+    default_user = "semantik" if env_file_loaded else "postgres"
+    os.environ["POSTGRES_USER"] = default_user
+
+if "POSTGRES_DB" not in os.environ:
+    default_db = "semantik_test" if env_file_loaded else "postgres"
+    os.environ["POSTGRES_DB"] = default_db
+
+if env_file_loaded and env_file_loaded.name == ".env":
+    # Ensure tests never inherit production/staging DATABASE_URL values.
+    os.environ.pop("DATABASE_URL", None)
+
+    postgres_user = os.environ.get("POSTGRES_USER", "semantik")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD")
+    # Force test database to avoid mutating non-test schemas.
+    postgres_db = "semantik_test"
+    os.environ["POSTGRES_DB"] = postgres_db
+    postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+    postgres_port = os.environ.get("POSTGRES_PORT", "5432")
+
+    encoded_user = quote(postgres_user, safe="")
+    encoded_db = quote(postgres_db, safe="")
+
+    if postgres_password:
+        encoded_password = quote(postgres_password, safe="")
+        database_url = (
+            f"postgresql://{encoded_user}:{encoded_password}@{postgres_host}:{postgres_port}/{encoded_db}"
+        )
+    else:
+        database_url = f"postgresql://{encoded_user}@{postgres_host}:{postgres_port}/{encoded_db}"
+
+    os.environ["DATABASE_URL"] = database_url
 
 # Set required environment variables for tests
 os.environ.setdefault("QDRANT_HOST", "localhost")

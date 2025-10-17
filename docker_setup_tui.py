@@ -12,7 +12,9 @@ import sys
 import threading
 import time
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
+from urllib.parse import quote
 
 import questionary
 from rich.console import Console
@@ -1160,13 +1162,40 @@ class DockerSetupTUI:
         if not confirm:
             return False
 
+        generate_env_test = questionary.confirm(
+            "Generate .env.test for host-side integration tests?", default=True
+        ).ask()
+
+        if generate_env_test is None:
+            return False
+
+        env_test_db_name: str | None = None
+        if generate_env_test:
+            default_test_db = f"{self.config['POSTGRES_DB']}_test"
+            env_test_db_name = questionary.text(
+                "Enter PostgreSQL database name for host-side tests:",
+                default=default_test_db,
+            ).ask()
+
+            if env_test_db_name is None:
+                return False
+
+            env_test_db_name = env_test_db_name.strip() or default_test_db
+
         # Save configuration
-        self._save_env_file()
+        env_test_written = self._save_env_file(
+            generate_env_test=bool(generate_env_test),
+            env_test_db_name=env_test_db_name,
+        )
         self._save_config()  # Save to JSON for future use
-        console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
+
+        if env_test_written:
+            console.print("[green]Configuration saved to .env, .env.test, and .semantik-config.json[/green]\n")
+        else:
+            console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
         return True
 
-    def _save_env_file(self) -> None:
+    def _save_env_file(self, *, generate_env_test: bool, env_test_db_name: str | None) -> bool:
         """Save configuration to .env file"""
         # Backup existing .env if present
         env_path = Path(".env")
@@ -1212,6 +1241,40 @@ class DockerSetupTUI:
         # Write .env
         with Path(".env").open("w") as f:
             f.write(content)
+
+        env_test_written = False
+
+        if generate_env_test and env_test_db_name:
+            env_test_path = Path(".env.test")
+            if env_test_path.exists():
+                backup_path = Path(f"{env_test_path}.backup")
+                shutil.copy(env_test_path, backup_path)
+                console.print(f"[yellow]Backed up existing .env.test to {backup_path}[/yellow]")
+
+            postgres_user = self.config["POSTGRES_USER"]
+            postgres_password = self.config["POSTGRES_PASSWORD"]
+
+            encoded_user = quote(postgres_user, safe="")
+            encoded_password = quote(postgres_password, safe="")
+            encoded_db = quote(env_test_db_name, safe="")
+
+            env_test_content = dedent(
+                f"""
+                POSTGRES_HOST=localhost
+                POSTGRES_PORT=5432
+                POSTGRES_DB={env_test_db_name}
+                POSTGRES_USER={postgres_user}
+                POSTGRES_PASSWORD={postgres_password}
+                DATABASE_URL=postgresql://{encoded_user}:{encoded_password}@localhost:5432/{encoded_db}
+                """
+            ).strip()
+
+            with env_test_path.open("w") as f:
+                f.write(env_test_content + "\n")
+
+            env_test_written = True
+
+        return env_test_written
 
     def execute_setup(self) -> None:
         """Execute Docker setup with selected options"""

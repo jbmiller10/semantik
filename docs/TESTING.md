@@ -36,7 +36,8 @@ uv run pytest --version
 ```
 
 ### Environment Variables
-Create a `.env.test` file for test-specific configuration:
+The Docker setup wizard now offers to generate a `.env.test` file with host overrides; accept the prompt to reuse
+those settings. If you skipped that step, create one manually for test-specific configuration:
 ```bash
 # Use mock embeddings to avoid GPU requirements
 USE_MOCK_EMBEDDINGS=true
