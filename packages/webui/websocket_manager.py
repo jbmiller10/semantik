@@ -347,13 +347,16 @@ class RedisStreamWebSocketManager:
             if publish_result is ProgressSendResult.SKIPPED:
                 return
 
-        if throttle:
-            await self._record_throttle_timestamp(operation_id, payload_timestamp)
-
         if publish_result is ProgressSendResult.FAILED:
             logger.error("Failed to send update to Redis stream for %s", operation_id)
         elif manager is None or self.redis is None:
             logger.debug("Redis not available, broadcasting directly for operation %s", operation_id)
+
+        if throttle:
+            should_send = await self._should_send_progress_update(operation_id, message)
+            if not should_send:
+                return
+            await self._record_throttle_timestamp(operation_id, payload_timestamp)
 
         await self._broadcast(operation_id, message)
 
