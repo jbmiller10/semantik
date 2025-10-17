@@ -134,7 +134,6 @@ class TestMockWebSocket {
   simulateOpen() {
     this.readyState = 1; // WebSocket.OPEN
     const event = this.createDomEvent<Event>('open');
-    this.dispatchEvent(event);
     this.onopen?.(event);
   }
   
@@ -148,7 +147,6 @@ class TestMockWebSocket {
   
   simulateError() {
     const event = this.createDomEvent<Event>('error');
-    this.dispatchEvent(event);
     this.onerror?.(event);
   }
   

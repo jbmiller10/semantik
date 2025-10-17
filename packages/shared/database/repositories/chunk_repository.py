@@ -55,9 +55,10 @@ class ChunkRepository(PartitionAwareMixin):
         if "id" in chunk_data:
             del chunk_data["id"]
 
-        # Don't set partition_key - it's computed by trigger
-        if "partition_key" in chunk_data:
-            del chunk_data["partition_key"]
+        # Ensure partition key is present (tests may not have triggers/generation)
+        if chunk_data.get("partition_key") is None:
+            partition_key = await self.compute_partition_key(self.session, chunk_data["collection_id"])
+            chunk_data["partition_key"] = partition_key
 
         chunk = Chunk(**chunk_data)
         self.session.add(chunk)
@@ -85,12 +86,19 @@ class ChunkRepository(PartitionAwareMixin):
         if not chunks_data:
             return 0
 
-        # Remove id and partition_key from chunks - let database handle them
+        partition_cache: dict[str, int] = {}
+        # Remove id from chunks - let database handle them
         for chunk_data in chunks_data:
             if "id" in chunk_data:
                 del chunk_data["id"]
-            if "partition_key" in chunk_data:
-                del chunk_data["partition_key"]
+
+            if chunk_data.get("partition_key") is None:
+                collection_id = chunk_data.get("collection_id")
+                if not collection_id:
+                    raise ValueError("collection_id is required for chunks")
+                if collection_id not in partition_cache:
+                    partition_cache[collection_id] = await self.compute_partition_key(self.session, collection_id)
+                chunk_data["partition_key"] = partition_cache[collection_id]
 
         # Use partition-aware bulk insert
         await self.bulk_insert_partitioned(self.session, Chunk, chunks_data, partition_key_field="collection_id")
