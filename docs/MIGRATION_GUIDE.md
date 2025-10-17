@@ -183,7 +183,7 @@ The system includes automatic migration support:
 
 ```bash
 # Run the migration
-poetry run python -m scripts.migrate_to_collections
+uv run python -m scripts.migrate_to_collections
 
 # The migration will:
 # 1. Create new collection records
@@ -420,7 +420,7 @@ If you need to rollback to the job-centric architecture:
 pg_restore -d semantik semantik_backup_pre_migration.sql
 
 # Or use Alembic
-poetry run alembic downgrade -1
+uv run alembic downgrade -1
 ```
 
 ### 2. Code Rollback

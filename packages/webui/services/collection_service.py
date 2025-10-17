@@ -6,12 +6,20 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityAlreadyExistsError, InvalidStateError
+from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
+from packages.shared.database.exceptions import (
+    AccessDeniedError,
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    InvalidStateError,
+)
 from packages.shared.database.models import Collection, CollectionStatus, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.celery_app import celery_app
+from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
+from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 from packages.webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
@@ -65,20 +73,73 @@ class CollectionService:
 
         # Create collection in database
         try:
+            # Apply expected defaults for legacy chunking fields
+            # Pull values from config while treating explicit None as "unspecified"
+            embedding_model = (config.get("embedding_model") if config else None) or "Qwen/Qwen3-Embedding-0.6B"
+            quantization = (config.get("quantization") if config else None) or "float16"
+            # If client sends null for legacy fields, fall back to safe defaults
+            chunk_size = (config.get("chunk_size") if config else None) or 1000
+            chunk_overlap = (config.get("chunk_overlap") if config else None) or 200
+            chunking_strategy = config.get("chunking_strategy") if config else None
+            chunking_config = config.get("chunking_config") if config else None
+            is_public = (config.get("is_public") if config else None) or False
+
+            meta = config.get("metadata") if config else None
+
+            # Validate chunking strategy if provided
+            if chunking_strategy is not None:
+                try:
+                    # Validate that the strategy exists and is supported
+                    ChunkingStrategyFactory.create_strategy(
+                        strategy_name=chunking_strategy,
+                        config=chunking_config or {},
+                    )
+                    # Normalize the strategy name to internal format for persistence
+                    chunking_strategy = ChunkingStrategyFactory.normalize_strategy_name(chunking_strategy)
+                except ChunkingStrategyError as e:
+                    # Use the structured error fields for a user-friendly response
+                    if "Unknown strategy" in e.reason:
+                        available = ChunkingStrategyFactory.get_available_strategies()
+                        raise ValueError(
+                            f"Invalid chunking_strategy '{e.strategy}'. "
+                            f"Available strategies: {', '.join(available)}"
+                        ) from None
+                    raise ValueError(f"Invalid chunking_strategy: Strategy {e.strategy} failed: {e.reason}") from None
+                except Exception as e:
+                    # Catch any other unexpected errors
+                    raise ValueError(f"Invalid chunking_strategy: {str(e)}") from None
+
+            # Validate chunking config if provided
+            if chunking_config is not None:
+                # Only validate config if we have a strategy
+                if chunking_strategy is not None:
+                    config_builder = ChunkingConfigBuilder()
+                    result = config_builder.build_config(
+                        strategy=chunking_strategy,
+                        user_config=chunking_config,
+                    )
+                    if result.validation_errors:
+                        errors = "; ".join(result.validation_errors)
+                        raise ValueError(f"Invalid chunking_config for strategy '{chunking_strategy}': {errors}")
+                    # Use the validated and normalized config
+                    chunking_config = result.config
+                else:
+                    # Config without strategy is not allowed
+                    raise ValueError("chunking_config requires chunking_strategy to be specified")
+
+            # Create with new chunking fields
             collection = await self.collection_repo.create(
                 owner_id=user_id,
                 name=name,
                 description=description,
-                embedding_model=(
-                    config.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-                    if config
-                    else "Qwen/Qwen3-Embedding-0.6B"
-                ),
-                quantization=config.get("quantization", "float16") if config else "float16",
-                chunk_size=config.get("chunk_size", 1000) if config else 1000,
-                chunk_overlap=config.get("chunk_overlap", 200) if config else 200,
-                is_public=config.get("is_public", False) if config else False,
-                meta=config.get("metadata") if config else None,
+                embedding_model=embedding_model,
+                quantization=quantization,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                chunking_strategy=chunking_strategy,
+                chunking_config=chunking_config,
+                is_public=is_public,
+                meta=meta,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -108,33 +169,8 @@ class CollectionService:
             task_id=str(uuid.uuid4()),
         )
 
-        # Convert ORM objects to dictionaries
-        collection_dict = {
-            "id": collection.id,
-            "name": collection.name,
-            "description": collection.description,
-            "owner_id": collection.owner_id,
-            "vector_store_name": collection.vector_store_name,
-            "embedding_model": collection.embedding_model,
-            "quantization": collection.quantization,
-            "chunk_size": collection.chunk_size,
-            "chunk_overlap": collection.chunk_overlap,
-            "is_public": collection.is_public,
-            "metadata": collection.meta,
-            "created_at": collection.created_at,
-            "updated_at": collection.updated_at,
-            "document_count": 0,  # New collection has no documents
-            "vector_count": 0,  # New collection has no vectors
-            "status": collection.status.value if hasattr(collection.status, "value") else collection.status,
-            "config": {
-                "embedding_model": collection.embedding_model,
-                "quantization": collection.quantization,
-                "chunk_size": collection.chunk_size,
-                "chunk_overlap": collection.chunk_overlap,
-                "is_public": collection.is_public,
-                "metadata": collection.meta,
-            },
-        }
+        # Convert ORM object to dictionary via shared serializer
+        collection_dict = self._collection_to_dict(collection)
 
         operation_dict = {
             "uuid": operation.uuid,
@@ -482,7 +518,7 @@ class CollectionService:
         )
 
     async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:
-        """Update collection metadata.
+        """Update collection metadata with chunking validation.
 
         Args:
             collection_id: UUID of the collection
@@ -496,6 +532,7 @@ class CollectionService:
             EntityNotFoundError: If collection not found
             AccessDeniedError: If user doesn't have permission
             EntityAlreadyExistsError: If new name already exists
+            ValueError: If chunking strategy/config validation fails
         """
         # Get collection with permission check (only owner can update)
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -505,6 +542,46 @@ class CollectionService:
         # Only the owner can update the collection
         if collection.owner_id != user_id:
             raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
+
+        # Handle chunking strategy update with validation
+        if "chunking_strategy" in updates:
+            strategy = updates["chunking_strategy"]
+            if strategy:
+                try:
+                    # Normalize and validate strategy
+                    factory = ChunkingStrategyFactory()
+                    normalized_strategy = factory.normalize_strategy_name(strategy)
+                    # Validate by attempting to create (but don't actually use it)
+                    factory.create_strategy(
+                        strategy_name=normalized_strategy,
+                        config={},
+                        correlation_id=str(uuid.uuid4()),
+                    )
+                    updates["chunking_strategy"] = normalized_strategy
+                except ChunkingStrategyError as e:
+                    raise ValueError(f"Invalid chunking strategy: {e}") from e
+
+        # Handle chunking config update with validation
+        if "chunking_config" in updates:
+            config = updates["chunking_config"]
+            if config:
+                # Require a strategy to be present
+                strategy = updates.get("chunking_strategy") or collection.chunking_strategy
+                if not strategy:
+                    raise ValueError("chunking_config requires chunking_strategy to be set")
+
+                # Validate and normalize config
+                try:
+                    builder = ChunkingConfigBuilder()
+                    config_result = builder.build_config(
+                        strategy=strategy,
+                        user_config=config,
+                    )
+                    if config_result.validation_errors:
+                        raise ValueError(f"Invalid chunking config: {', '.join(config_result.validation_errors)}")
+                    updates["chunking_config"] = config_result.config
+                except Exception as e:
+                    raise ValueError(f"Invalid chunking config: {e}") from e
 
         # Perform the update
         updated_collection = await self.collection_repo.update(str(collection.id), updates)
@@ -578,3 +655,245 @@ class CollectionService:
         )
 
         return operations, total
+
+    async def list_operations_filtered(
+        self,
+        collection_id: str,
+        user_id: int,
+        status: str | None = None,
+        operation_type: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Any], int]:
+        """List operations for a collection with filtering.
+
+        This method contains the filtering logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            collection_id: Collection UUID
+            user_id: User ID for permission check
+            status: Optional status filter
+            operation_type: Optional type filter
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (filtered operations, total count)
+
+        Raises:
+            ValueError: If invalid filter values provided
+        """
+        from packages.shared.database.models import OperationStatus, OperationType
+
+        # Validate filters first
+        if status:
+            try:
+                OperationStatus(status)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid status: {status}. Valid values are: {[st.value for st in OperationStatus]}"
+                ) from None
+
+        if operation_type:
+            try:
+                OperationType(operation_type)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}"
+                ) from None
+
+        # Get all operations
+        operations, total = await self.list_operations(
+            collection_id=collection_id,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+
+        # Apply filters if specified
+        if status or operation_type:
+            filtered_operations = operations
+
+            if status:
+                status_enum = OperationStatus(status)
+                filtered_operations = [op for op in filtered_operations if op.status == status_enum]
+
+            if operation_type:
+                type_enum = OperationType(operation_type)
+                filtered_operations = [op for op in filtered_operations if op.type == type_enum]
+
+            return filtered_operations, len(filtered_operations)
+
+        return operations, total
+
+    async def list_documents_filtered(
+        self,
+        collection_id: str,
+        user_id: int,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[Any], int]:
+        """List documents in a collection with filtering.
+
+        This method contains the filtering logic that was previously
+        in the router, ensuring proper separation of concerns.
+
+        Args:
+            collection_id: Collection UUID
+            user_id: User ID for permission check
+            status: Optional status filter
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (filtered documents, total count)
+
+        Raises:
+            ValueError: If invalid filter values provided
+        """
+        from packages.shared.database.models import DocumentStatus
+
+        # Validate status filter first
+        if status:
+            try:
+                DocumentStatus(status)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid status: {status}. Valid values are: {[st.value for st in DocumentStatus]}"
+                ) from None
+
+        # Get all documents
+        documents, total = await self.list_documents(
+            collection_id=collection_id,
+            user_id=user_id,
+            offset=offset,
+            limit=limit,
+        )
+
+        # Apply filter if specified
+        if status:
+            status_enum = DocumentStatus(status)
+            documents = [doc for doc in documents if doc.status == status_enum]
+            total = len(documents)  # Update total after filtering
+
+        return documents, total
+
+    async def create_operation(
+        self,
+        collection_id: str,
+        operation_type: str,
+        config: dict[str, Any],
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Create a new operation for a collection.
+
+        Args:
+            collection_id: Collection UUID
+            operation_type: Type of operation
+            config: Operation configuration
+            user_id: User ID
+
+        Returns:
+            Created operation data
+        """
+        # Get collection
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id,
+            user_id=user_id,
+        )
+
+        if not collection:
+            raise EntityNotFoundError("Collection", collection_id)
+
+        # Map operation type string to enum
+        operation_type_enum = {
+            "chunking": OperationType.INDEX,  # Initial chunking uses INDEX type
+            "rechunking": OperationType.REINDEX,  # Re-chunking uses REINDEX type
+            "index": OperationType.INDEX,
+            "reindex": OperationType.REINDEX,
+        }.get(operation_type, OperationType.INDEX)
+
+        # Create operation
+        operation = await self.operation_repo.create(
+            collection_id=collection.id,
+            user_id=user_id,
+            operation_type=operation_type_enum,
+            config=config,
+            meta={"operation_type": operation_type},  # Store original operation type in meta
+        )
+
+        await self.db_session.commit()
+
+        return {
+            "uuid": operation.uuid,
+            "collection_id": collection_id,
+            "type": operation.type.value,
+            "status": operation.status.value,
+            "meta": operation.meta,
+            "created_at": operation.created_at.isoformat() if operation.created_at else None,
+        }
+
+    async def update_collection(
+        self,
+        collection_id: str,
+        updates: dict[str, Any],
+        user_id: int,
+    ) -> dict[str, Any]:
+        """Update collection settings (alias for update that returns dict).
+
+        This method exists for backward compatibility with tests.
+
+        Args:
+            collection_id: Collection UUID
+            updates: Fields to update
+            user_id: User ID
+
+        Returns:
+            Updated collection as dictionary
+        """
+        # Use the main update method
+        updated_collection = await self.update(
+            collection_id=collection_id,
+            user_id=user_id,
+            updates=updates,
+        )
+        # Build a stable dictionary representation (avoid repo.to_dict dependency)
+        return self._collection_to_dict(updated_collection)
+
+    def _collection_to_dict(self, collection: Collection) -> dict[str, Any]:
+        """Serialize a Collection ORM object into a response dictionary."""
+        status_value = collection.status.value if hasattr(collection.status, "value") else collection.status
+        base = {
+            "id": collection.id,
+            "name": collection.name,
+            "description": getattr(collection, "description", None),
+            "owner_id": getattr(collection, "owner_id", None),
+            "vector_store_name": getattr(collection, "vector_store_name", None),
+            "embedding_model": getattr(collection, "embedding_model", None),
+            "quantization": getattr(collection, "quantization", None),
+            "chunk_size": getattr(collection, "chunk_size", None),
+            "chunk_overlap": getattr(collection, "chunk_overlap", None),
+            "chunking_strategy": getattr(collection, "chunking_strategy", None),
+            "chunking_config": getattr(collection, "chunking_config", None),
+            "is_public": getattr(collection, "is_public", None),
+            "metadata": getattr(collection, "meta", None),
+            "created_at": getattr(collection, "created_at", None),
+            "updated_at": getattr(collection, "updated_at", None),
+            "document_count": getattr(collection, "document_count", 0),
+            "vector_count": getattr(collection, "vector_count", 0),
+            "status": status_value,
+            "status_message": getattr(collection, "status_message", None),
+        }
+        base["config"] = {
+            "embedding_model": base["embedding_model"],
+            "quantization": base["quantization"],
+            "chunk_size": base["chunk_size"],
+            "chunk_overlap": base["chunk_overlap"],
+            "chunking_strategy": base["chunking_strategy"],
+            "chunking_config": base["chunking_config"],
+            "is_public": base["is_public"],
+            "metadata": base["metadata"],
+        }
+        return base

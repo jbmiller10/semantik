@@ -1,6 +1,19 @@
-"""Services module for business logic."""
+"""Services module for business logic.
 
-from .collection_service import CollectionService
-from .factory import create_collection_service
+This package exposes common service factories lazily to avoid import cycles
+between FastAPI routers and background task modules.
+"""
 
 __all__ = ["CollectionService", "create_collection_service"]
+
+
+def __getattr__(name: str):  # pragma: no cover - thin import shim
+    if name == "CollectionService":
+        from .collection_service import CollectionService as _CollectionService
+
+        return _CollectionService
+    if name == "create_collection_service":
+        from .factory import create_collection_service as _create_collection_service
+
+        return _create_collection_service
+    raise AttributeError(f"module 'packages.webui.services' has no attribute {name!r}")

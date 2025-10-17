@@ -107,12 +107,23 @@ case "$SERVICE" in
         
     vecpipe)
         echo "Starting Search API service..."
-        
+
         # Wait for Qdrant to be ready
         if [ "${WAIT_FOR_QDRANT:-true}" = "true" ]; then
             wait_for_service "${QDRANT_HOST:-localhost}" "${QDRANT_PORT:-6333}" "Qdrant"
         fi
-        
+
+        # Ensure Hugging Face cache is writable and clean up stale lock files
+        CACHE_ROOT="${HF_HOME:-/app/.cache/huggingface}"
+        if ! mkdir -p "$CACHE_ROOT/hub" 2>/dev/null; then
+            echo "Warning: unable to create $CACHE_ROOT, falling back to /tmp/huggingface-cache"
+            CACHE_ROOT="/tmp/huggingface-cache"
+            export HF_HOME="$CACHE_ROOT"
+            export TRANSFORMERS_CACHE="$CACHE_ROOT"
+            mkdir -p "$CACHE_ROOT/hub"
+        fi
+        find "$CACHE_ROOT" -name "*.lock" -type f -delete 2>/dev/null || true
+
         # Start the Search API service
         exec python -m vecpipe.search_api
         ;;

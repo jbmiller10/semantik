@@ -4,6 +4,7 @@
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import subprocess
@@ -11,7 +12,9 @@ import sys
 import threading
 import time
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
+from urllib.parse import quote
 
 import questionary
 from rich.console import Console
@@ -29,6 +32,7 @@ class DockerSetupTUI:
         self.docker_available = False
         self.compose_available = False
         self.docker_gpu_available = False
+        self.buildx_available = False
         self.driver_version: str | None = None
         self.is_wsl2 = False
 
@@ -136,6 +140,30 @@ class DockerSetupTUI:
             console.print("For manual installation: https://docs.docker.com/compose/install/")
             return False
 
+        # Check Docker Buildx plugin (required for Bake-based builds)
+        self.buildx_available = self._check_docker_buildx()
+        if self.buildx_available:
+            console.print("[green]✓[/green] Docker Buildx plugin found")
+        else:
+            console.print("[red]✗[/red] Docker Buildx plugin not found")
+            console.print(
+                "\n[yellow]Docker Buildx is required because Semantik's Docker Compose configuration uses Bake for builds.[/yellow]"
+            )
+            system_name = platform.system()
+            if system_name == "Linux":
+                console.print("Install the Buildx plugin using your package manager, for example:")
+                console.print("  → Debian/Ubuntu: sudo apt-get install docker-buildx-plugin")
+                console.print("  → Fedora/RHEL: sudo dnf install docker-buildx-plugin")
+                console.print("  → Arch/Manjaro: sudo pacman -S docker-buildx")
+            elif system_name == "Darwin":
+                console.print(
+                    "Update Docker Desktop from https://www.docker.com/products/docker-desktop/ (Buildx is included)."
+                )
+            else:
+                console.print("Ensure Docker Desktop is up to date; Buildx ships with current releases.")
+            console.print("\nAfter installing Buildx, re-run the wizard.")
+            return False
+
         # Check GPU availability
         self.gpu_available = self._check_gpu()
         if self.gpu_available:
@@ -183,6 +211,16 @@ class DockerSetupTUI:
 
             # Try old syntax
             return shutil.which("docker-compose") is not None
+        except Exception:
+            return False
+
+    def _check_docker_buildx(self) -> bool:
+        """Check if docker buildx plugin is available"""
+        try:
+            result = subprocess.run(["docker", "buildx", "version"], capture_output=True, text=True)
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
         except Exception:
             return False
 
@@ -1124,13 +1162,40 @@ class DockerSetupTUI:
         if not confirm:
             return False
 
+        generate_env_test = questionary.confirm(
+            "Generate .env.test for host-side integration tests?", default=True
+        ).ask()
+
+        if generate_env_test is None:
+            return False
+
+        env_test_db_name: str | None = None
+        if generate_env_test:
+            default_test_db = f"{self.config['POSTGRES_DB']}_test"
+            env_test_db_name = questionary.text(
+                "Enter PostgreSQL database name for host-side tests:",
+                default=default_test_db,
+            ).ask()
+
+            if env_test_db_name is None:
+                return False
+
+            env_test_db_name = env_test_db_name.strip() or default_test_db
+
         # Save configuration
-        self._save_env_file()
+        env_test_written = self._save_env_file(
+            generate_env_test=bool(generate_env_test),
+            env_test_db_name=env_test_db_name,
+        )
         self._save_config()  # Save to JSON for future use
-        console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
+
+        if env_test_written:
+            console.print("[green]Configuration saved to .env, .env.test, and .semantik-config.json[/green]\n")
+        else:
+            console.print("[green]Configuration saved to .env and .semantik-config.json[/green]\n")
         return True
 
-    def _save_env_file(self) -> None:
+    def _save_env_file(self, *, generate_env_test: bool, env_test_db_name: str | None) -> bool:
         """Save configuration to .env file"""
         # Backup existing .env if present
         env_path = Path(".env")
@@ -1176,6 +1241,40 @@ class DockerSetupTUI:
         # Write .env
         with Path(".env").open("w") as f:
             f.write(content)
+
+        env_test_written = False
+
+        if generate_env_test and env_test_db_name:
+            env_test_path = Path(".env.test")
+            if env_test_path.exists():
+                backup_path = Path(f"{env_test_path}.backup")
+                shutil.copy(env_test_path, backup_path)
+                console.print(f"[yellow]Backed up existing .env.test to {backup_path}[/yellow]")
+
+            postgres_user = self.config["POSTGRES_USER"]
+            postgres_password = self.config["POSTGRES_PASSWORD"]
+
+            encoded_user = quote(postgres_user, safe="")
+            encoded_password = quote(postgres_password, safe="")
+            encoded_db = quote(env_test_db_name, safe="")
+
+            env_test_content = dedent(
+                f"""
+                POSTGRES_HOST=localhost
+                POSTGRES_PORT=5432
+                POSTGRES_DB={env_test_db_name}
+                POSTGRES_USER={postgres_user}
+                POSTGRES_PASSWORD={postgres_password}
+                DATABASE_URL=postgresql://{encoded_user}:{encoded_password}@localhost:5432/{encoded_db}
+                """
+            ).strip()
+
+            with env_test_path.open("w") as f:
+                f.write(env_test_content + "\n")
+
+            env_test_written = True
+
+        return env_test_written
 
     def execute_setup(self) -> None:
         """Execute Docker setup with selected options"""
@@ -1274,12 +1373,12 @@ class DockerSetupTUI:
                 task = progress.add_task(description, total=None)
 
                 try:
-                    result: subprocess.CompletedProcess[str] = subprocess.run(cmd, capture_output=True, text=True)
+                    cmd_result: subprocess.CompletedProcess[str] = subprocess.run(cmd, capture_output=True, text=True)
 
-                    if result.returncode == 0:
+                    if cmd_result.returncode == 0:
                         progress.update(task, completed=True)
                         return True
-                    error_msg = result.stderr if result.stderr else "Unknown error"
+                    error_msg = cmd_result.stderr if cmd_result.stderr else "Unknown error"
                     console.print(f"\n[red]Error: {error_msg}[/red]")
                     return False
                 except Exception as e:
@@ -1379,6 +1478,7 @@ class DockerSetupTUI:
                     "Stop all services",
                     "Restart all services",
                     "Rebuild and start services",
+                    "Reset database (permanent delete)",
                     "View logs",
                     "View specific service logs",
                     "Check service health",
@@ -1396,6 +1496,10 @@ class DockerSetupTUI:
                 break
 
             compose_files = self._get_compose_files()
+
+            if "Reset database" in action:
+                self._handle_database_reset()
+                continue
 
             if "Start all" in action:
                 # Check if services are already running
@@ -1433,6 +1537,104 @@ class DockerSetupTUI:
 
             if "Exit" not in action:
                 questionary.press_any_key_to_continue("Press any key to continue...").ask()
+
+    def _handle_database_reset(self) -> None:
+        """Interactively confirm and execute a destructive database reset."""
+        console.print("\n[bold red]Database Reset[/bold red]")
+        console.print(
+            "[red]This will stop all Docker services and permanently delete the PostgreSQL data volume.[/red]"
+        )
+        console.print("[red]All collections, documents, and metadata will be lost. This cannot be undone.[/red]\n")
+
+        proceed = questionary.confirm("Do you want to continue?", default=False).ask()
+        if not proceed:
+            console.print("[yellow]Database reset cancelled.[/yellow]")
+            return
+
+        confirmation = questionary.text("Type DELETE DATABASE to confirm:").ask()
+        if confirmation is None or confirmation.strip().upper() != "DELETE DATABASE":
+            console.print("[yellow]Database reset aborted. Confirmation phrase did not match.[/yellow]")
+            return
+
+        self._perform_database_reset()
+
+    def _perform_database_reset(self) -> None:
+        """Stop services, delete database volume, and optionally restart services."""
+        compose_files = self._get_compose_files()
+
+        if not self._run_docker_command(["docker", "compose"] + compose_files + ["down"], "Stopping services"):
+            console.print("[red]Unable to stop services. Database reset halted.[/red]")
+            return
+
+        project_name = self._get_compose_project_name()
+        postgres_volume = f"{project_name}_postgres_data"
+
+        volume_removed = self._remove_docker_volume(postgres_volume)
+        if not volume_removed:
+            console.print("[red]Database volume could not be removed. See errors above.[/red]")
+            return
+
+        # Offer to reset the vector index as well since it often mirrors database content
+        reset_qdrant = questionary.confirm("Also delete the Qdrant vector index data?", default=False).ask()
+        if reset_qdrant:
+            qdrant_volume = f"{project_name}_qdrant_storage"
+            self._remove_docker_volume(qdrant_volume)
+
+        console.print("\n[green]PostgreSQL volume deleted. Database reset complete.[/green]")
+        console.print(
+            "[yellow]You will need to re-run migrations or the initial setup the next time services start.[/yellow]"
+        )
+
+        restart = questionary.confirm("Start Semantik services now?", default=True).ask()
+        if restart:
+            self._run_docker_command(["docker", "compose"] + compose_files + ["up", "-d"], "Starting services")
+        else:
+            console.print("[yellow]Services remain stopped. Run `docker compose up -d` when ready.[/yellow]")
+
+    def _get_compose_project_name(self) -> str:
+        """Determine the Docker Compose project name used for volume prefixes."""
+        for key in ("COMPOSE_PROJECT_NAME", "project_name"):
+            value = os.environ.get(key)
+            if value:
+                return value
+
+        for key in ("COMPOSE_PROJECT_NAME", "project_name"):
+            value = self.config.get(key)
+            if value:
+                return value
+
+        base = Path.cwd().name.lower()
+        safe_name = re.sub(r"[^a-z0-9_-]", "", base)
+        return safe_name or "semantik"
+
+    def _remove_docker_volume(self, volume_name: str) -> bool:
+        """Remove a Docker volume, handling missing-volume errors gracefully."""
+        console.print(f"[cyan]Removing Docker volume: {volume_name}[/cyan]")
+
+        try:
+            result = subprocess.run(
+                ["docker", "volume", "rm", volume_name],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            console.print("[red]Docker is not installed or not accessible on this system.[/red]")
+            return False
+        except Exception as exc:  # pragma: no cover - defensive logging
+            console.print(f"[red]Unexpected error removing volume: {exc}[/red]")
+            return False
+
+        if result.returncode == 0:
+            console.print(f"[green]✓ Removed volume {volume_name}[/green]")
+            return True
+
+        stderr = (result.stderr or result.stdout or "").strip()
+        if "No such volume" in stderr:
+            console.print(f"[yellow]Volume {volume_name} not found (already removed).[/yellow]")
+            return True
+
+        console.print(f"[red]Failed to remove volume {volume_name}: {stderr}[/red]")
+        return False
 
     def _show_service_status(self) -> None:
         """Display current status of all services"""

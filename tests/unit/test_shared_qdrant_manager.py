@@ -5,8 +5,6 @@ Tests the QdrantManager service for managing Qdrant collections with
 blue-green deployment support.
 """
 
-# mypy: ignore-errors
-
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, Mock, patch
 
@@ -15,6 +13,8 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance
 
 from packages.shared.managers.qdrant_manager import QdrantManager
+
+# mypy: ignore-errors
 
 
 class TestQdrantManager:

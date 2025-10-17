@@ -47,15 +47,15 @@ The reranking feature allows search results to be re-scored using a cross-encode
 
 ```bash
 # Run all backend reranking tests
-poetry run pytest tests/ -k "rerank" -v
+uv run pytest tests/ -k "rerank" -v
 
 # Run specific test files
-poetry run pytest tests/webui/api/v2/test_search.py::TestSearchReranking -v
-poetry run pytest tests/webui/services/test_search_service_reranking.py -v
-poetry run pytest tests/integration/test_search_reranking_integration.py -v
+uv run pytest tests/webui/api/v2/test_search.py::TestSearchReranking -v
+uv run pytest tests/webui/services/test_search_service_reranking.py -v
+uv run pytest tests/integration/test_search_reranking_integration.py -v
 
 # Run with coverage
-poetry run pytest tests/ -k "rerank" --cov=packages.webui --cov-report=html
+uv run pytest tests/ -k "rerank" --cov=packages.webui --cov-report=html
 ```
 
 ### Frontend Tests

@@ -1,12 +1,9 @@
 import { useState, useCallback } from 'react';
 import { directoryScanV2Api, generateScanId } from '../services/api/v2/directoryScan';
+import type { DirectoryScanResponse } from '../services/api/v2/types';
 import { getErrorMessage } from '../utils/errorUtils';
 
-interface ScanResult {
-  files: string[];
-  total_files: number;
-  total_size: number;
-}
+type ScanResult = DirectoryScanResponse;
 
 export function useDirectoryScan(scanId?: string) {
   const [scanning, setScanning] = useState(false);
@@ -32,12 +29,8 @@ export function useDirectoryScan(scanId?: string) {
           recursive: true,
         });
 
-        // Convert response to legacy format for compatibility
-        setScanResult({
-          files: response.files.map(f => f.file_path),
-          total_files: response.total_files,
-          total_size: response.total_size,
-        });
+        // Use v2 response shape directly
+        setScanResult(response);
 
         // If there are warnings in the response, show the first one as an error
         if (response.warnings.length > 0 && response.warnings[0] !== 'Scan in progress - connect to WebSocket for real-time updates') {

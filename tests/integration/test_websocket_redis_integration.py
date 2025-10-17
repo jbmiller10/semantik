@@ -2,7 +2,8 @@
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from enum import Enum
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -16,9 +17,6 @@ class TestWebSocketRedisIntegration:
 
     def _setup_operation_getter(self, manager, operation_ids) -> None:
         """Helper to set up mock operation getter for tests."""
-        from datetime import UTC, datetime
-        from enum import Enum
-        from unittest.mock import MagicMock
 
         # Create mock enums
         class MockStatus(Enum):
@@ -38,7 +36,7 @@ class TestWebSocketRedisIntegration:
         mock_operation.error_message = None
 
         # Set up the operation getter function
-        async def mock_get_operation(operation_id):
+        async def mock_get_operation(operation_id) -> None:
             if operation_id in operation_ids:
                 return mock_operation
             return None
@@ -56,12 +54,12 @@ class TestWebSocketRedisIntegration:
                 self.closed = False
                 self.pending_messages = {}  # Track pending messages for consumer groups
 
-            async def ping(self):
+            async def ping(self) -> None:
                 if self.closed:
                     raise Exception("Connection closed")
                 return True
 
-            async def xadd(self, stream_key, data, maxlen=None):
+            async def xadd(self, stream_key, data, maxlen=None) -> None:
                 if self.closed:
                     raise Exception("Connection closed")
 
@@ -78,11 +76,11 @@ class TestWebSocketRedisIntegration:
 
                 return msg_id
 
-            async def expire(self, key, ttl):
+            async def expire(self, key, ttl) -> None:
                 # Just track that expire was called
                 pass
 
-            async def xrange(self, stream_key, min="-", max="+", count=None):
+            async def xrange(self, stream_key, min="-", max="+", count=None) -> None:
                 if stream_key not in self.streams:
                     return []
 
@@ -92,12 +90,12 @@ class TestWebSocketRedisIntegration:
 
                 return messages
 
-            async def xgroup_create(self, stream_key, group_name, id="0"):
+            async def xgroup_create(self, stream_key, group_name, id="0") -> None:
                 if stream_key not in self.consumer_groups:
                     self.consumer_groups[stream_key] = {}
                 self.consumer_groups[stream_key][group_name] = {"last_delivered_id": id, "consumers": {}}
 
-            async def xreadgroup(self, group_name, consumer_name, streams, count=None, block=None):
+            async def xreadgroup(self, group_name, consumer_name, streams, count=None, block=None) -> None:
                 # Simulate reading from stream with proper consumer group semantics
                 results = []
 
@@ -139,33 +137,33 @@ class TestWebSocketRedisIntegration:
 
                 return results
 
-            async def xack(self, stream_key, group_name, msg_id):
+            async def xack(self, stream_key, group_name, msg_id) -> None:
                 # Just track acknowledgment
                 pass
 
-            async def xgroup_delconsumer(self, stream_key, group_name, consumer_name):
+            async def xgroup_delconsumer(self, stream_key, group_name, consumer_name) -> None:
                 pass
 
-            async def delete(self, key):
+            async def delete(self, key) -> None:
                 if key in self.streams:
                     del self.streams[key]
                 return 1
 
-            async def xinfo_groups(self, stream_key):
+            async def xinfo_groups(self, stream_key) -> None:
                 if stream_key in self.consumer_groups:
                     return [{"name": name} for name in self.consumer_groups[stream_key]]
                 return []
 
-            async def xgroup_destroy(self, stream_key, group_name):
+            async def xgroup_destroy(self, stream_key, group_name) -> None:
                 if stream_key in self.consumer_groups:
                     self.consumer_groups[stream_key].pop(group_name, None)
 
-            async def xinfo_stream(self, stream_key):
+            async def xinfo_stream(self, stream_key) -> None:
                 if stream_key not in self.streams:
                     raise Exception(f"Stream {stream_key} does not exist")
                 return {"length": len(self.streams[stream_key])}
 
-            async def close(self):
+            async def close(self) -> None:
                 self.closed = True
 
         return RedisStreamMock()
@@ -187,7 +185,7 @@ class TestWebSocketRedisIntegration:
             mock.received_messages = received_messages
 
             # Store messages when send_json is called
-            async def track_send_json(data):
+            async def track_send_json(data) -> None:
                 received_messages.append(data)
 
             mock.send_json.side_effect = track_send_json
@@ -197,12 +195,12 @@ class TestWebSocketRedisIntegration:
         return create_mock_websocket
 
     @pytest.mark.asyncio()
-    async def test_end_to_end_operation_updates_flow(self, real_redis_mock, mock_websocket_factory):
+    async def test_end_to_end_operation_updates_flow(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test complete flow from Celery task to WebSocket client."""
         # Setup
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -213,9 +211,6 @@ class TestWebSocketRedisIntegration:
 
             # Mock operation repository
             with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
-                from datetime import UTC, datetime
-                from enum import Enum
-                from unittest.mock import MagicMock
 
                 # Create mock operation object
                 class MockStatus(Enum):
@@ -239,7 +234,7 @@ class TestWebSocketRedisIntegration:
                 mock_create_repo.return_value = mock_repo
 
                 # Set up the operation getter function
-                async def mock_get_operation(operation_id):
+                async def mock_get_operation(operation_id) -> None:
                     if operation_id == "operation1":
                         return mock_operation
                     return None
@@ -285,11 +280,11 @@ class TestWebSocketRedisIntegration:
                 await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_multiple_clients_receive_updates(self, real_redis_mock, mock_websocket_factory):
+    async def test_multiple_clients_receive_updates(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test that multiple clients receive the same updates."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -350,11 +345,11 @@ class TestWebSocketRedisIntegration:
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_message_history_replay(self, real_redis_mock, mock_websocket_factory):
+    async def test_message_history_replay(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test that new clients receive message history."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -413,13 +408,13 @@ class TestWebSocketRedisIntegration:
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_consumer_group_coordination(self, real_redis_mock, mock_websocket_factory):
+    async def test_consumer_group_coordination(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test that multiple server instances coordinate via consumer groups."""
         # Create two manager instances (simulating multiple servers)
         manager1 = RedisStreamWebSocketManager()
         manager2 = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -485,11 +480,11 @@ class TestWebSocketRedisIntegration:
             await manager2.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_stream_cleanup_after_operation_completion(self, real_redis_mock):
+    async def test_stream_cleanup_after_operation_completion(self, real_redis_mock) -> None:
         """Test that Redis streams are cleaned up after operation completion."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -511,7 +506,7 @@ class TestWebSocketRedisIntegration:
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_graceful_degradation_without_redis(self, mock_websocket_factory):
+    async def test_graceful_degradation_without_redis(self, mock_websocket_factory) -> None:
         """Test that system works in degraded mode when Redis is unavailable."""
         # Create a fresh manager instance with clean state
         manager = RedisStreamWebSocketManager()
@@ -596,11 +591,11 @@ class TestWebSocketRedisIntegration:
         await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_connection_resilience(self, real_redis_mock, mock_websocket_factory):
+    async def test_connection_resilience(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test handling of connection failures and reconnections."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
@@ -647,11 +642,11 @@ class TestWebSocketRedisIntegration:
             await manager.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_concurrent_operation_processing(self, real_redis_mock, mock_websocket_factory):
+    async def test_concurrent_operation_processing(self, real_redis_mock, mock_websocket_factory) -> None:
         """Test handling multiple operations concurrently."""
         manager = RedisStreamWebSocketManager()
 
-        async def async_from_url(*args, **kwargs):  # noqa: ARG001
+        async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
         with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):

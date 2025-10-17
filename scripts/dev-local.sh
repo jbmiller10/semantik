@@ -47,12 +47,12 @@ export $(cat .env.local | grep -v '^#' | xargs)
 
 # Run database migrations
 echo -e "${GREEN}Running database migrations...${NC}"
-poetry run alembic upgrade head
+uv run alembic upgrade head
 
 # Start the webui locally with hot reload
 echo -e "${GREEN}Starting WebUI locally with hot reload...${NC}"
 echo -e "${YELLOW}WebUI will be available at: http://localhost:8080${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
 
-# Run with poetry to ensure correct environment
-cd packages/webui && poetry run python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+# Run with uv to ensure correct environment
+uv run uvicorn webui.app:app --host 0.0.0.0 --port 8080 --reload

@@ -13,6 +13,7 @@ and error handling with proper mocking of external dependencies.
 
 import json
 import unittest.mock
+from collections import namedtuple
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -22,10 +23,11 @@ from packages.shared.database.models import CollectionStatus, DocumentStatus, Op
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
-    _process_append_operation,
+    _handle_task_failure_async,
+    _process_append_operation_impl,
     _process_collection_operation_async,
     _process_index_operation,
-    _process_reindex_operation,
+    _process_reindex_operation_impl,
     _process_remove_source_operation,
     _sanitize_error_message,
     _validate_reindex,
@@ -37,7 +39,7 @@ from packages.webui.tasks import (
 
 
 @pytest.fixture()
-def mock_updater():
+def mock_updater() -> None:
     """Create mock operation updater."""
     updater = AsyncMock()
     updater.send_update = AsyncMock()
@@ -47,7 +49,7 @@ def mock_updater():
 class TestCeleryTaskHelpers:
     """Test helper functions used by Celery tasks."""
 
-    def test_calculate_cleanup_delay(self):
+    def test_calculate_cleanup_delay(self) -> None:
         """Test cleanup delay calculation based on vector count."""
         # Test minimum delay
         assert calculate_cleanup_delay(0) == 300  # 5 minutes minimum
@@ -62,7 +64,7 @@ class TestCeleryTaskHelpers:
         assert calculate_cleanup_delay(500000) == 1800  # Capped at 30 min
         assert calculate_cleanup_delay(1000000) == 1800  # Still capped
 
-    def test_sanitize_error_message(self):
+    def test_sanitize_error_message(self) -> None:
         """Test error message sanitization to remove PII."""
         # Test home directory sanitization
         assert _sanitize_error_message("/home/username/file.txt") == "/home/~/file.txt"
@@ -78,12 +80,32 @@ class TestCeleryTaskHelpers:
         expected = "User [email] at /home/~/projects failed"
         assert _sanitize_error_message(msg) == expected
 
+    def test_build_internal_api_headers_uses_configured_key(self, monkeypatch) -> None:
+        """Headers should include the configured internal API key."""
+        from packages.webui import tasks as tasks_module
+
+        monkeypatch.setattr(tasks_module.settings, "INTERNAL_API_KEY", "test-key", raising=False)
+
+        headers = tasks_module._build_internal_api_headers()
+
+        assert headers["X-Internal-API-Key"] == "test-key"
+        assert headers["Content-Type"] == "application/json"
+
+    def test_build_internal_api_headers_raises_when_missing(self, monkeypatch) -> None:
+        """Missing keys must raise to avoid unauthenticated requests."""
+        from packages.webui import tasks as tasks_module
+
+        monkeypatch.setattr(tasks_module.settings, "INTERNAL_API_KEY", None, raising=False)
+
+        with pytest.raises(RuntimeError):
+            tasks_module._build_internal_api_headers()
+
 
 class TestCeleryTaskWithOperationUpdates:
     """Test the operation updates helper class."""
 
     @pytest.fixture()
-    def mock_redis(self):
+    def mock_redis(self) -> None:
         """Create a mock Redis client."""
         mock = AsyncMock()
         mock.xadd = AsyncMock()
@@ -93,15 +115,15 @@ class TestCeleryTaskWithOperationUpdates:
         return mock
 
     @pytest.fixture()
-    def updater(self):
+    def updater(self) -> None:
         """Create an updater instance."""
         return CeleryTaskWithOperationUpdates("test-op-123")
 
-    async def test_context_manager_lifecycle(self, updater, mock_redis):
+    async def test_context_manager_lifecycle(self, updater, mock_redis) -> None:
         """Test context manager properly manages Redis connection."""
 
         # Create async function that returns the mock
-        async def async_from_url(*_, **__):
+        async def async_from_url(*_, **__) -> None:
             return mock_redis
 
         # Patch redis.asyncio.from_url with the async function
@@ -113,11 +135,11 @@ class TestCeleryTaskWithOperationUpdates:
             # After exit, connection should be closed
             mock_redis.close.assert_called_once()
 
-    async def test_send_update_formats_message(self, updater, mock_redis):
+    async def test_send_update_formats_message(self, updater, mock_redis) -> None:
         """Test update message formatting."""
 
         # Create async function that returns the mock
-        async def async_from_url(*_, **__):
+        async def async_from_url(*_, **__) -> None:
             return mock_redis
 
         # Patch redis.asyncio.from_url with the async function
@@ -138,12 +160,12 @@ class TestCeleryTaskWithOperationUpdates:
             assert message["data"] == {"key": "value"}
             assert "timestamp" in message
 
-    async def test_send_update_handles_errors(self, updater, mock_redis):
+    async def test_send_update_handles_errors(self, updater, mock_redis) -> None:
         """Test graceful error handling in send_update."""
         mock_redis.xadd.side_effect = Exception("Redis error")
 
         # Create async function that returns the mock
-        async def async_from_url(*_, **__):
+        async def async_from_url(*_, **__) -> None:
             return mock_redis
 
         # Patch redis.asyncio.from_url with the async function
@@ -161,7 +183,7 @@ class TestProcessCollectionOperation:
     """Test the main process_collection_operation task."""
 
     @pytest.fixture()
-    def mock_celery_task(self):
+    def mock_celery_task(self) -> None:
         """Create a mock Celery task instance."""
         task = Mock()
         task.request.id = "celery-task-123"
@@ -169,7 +191,7 @@ class TestProcessCollectionOperation:
         return task
 
     @pytest.fixture()
-    def mock_repositories(self):
+    def mock_repositories(self) -> None:
         """Create mock repository instances."""
         # Operation repository
         operation_repo = AsyncMock()
@@ -221,7 +243,7 @@ class TestProcessCollectionOperation:
         mock_pg_manager,
         mock_repositories,
         mock_celery_task,
-    ):
+    ) -> None:
         """Test successful INDEX operation processing."""
         # Setup psutil mock
         mock_cpu_times = Mock()
@@ -287,7 +309,7 @@ class TestProcessCollectionOperation:
         mock_pg_manager,
         mock_repositories,
         mock_celery_task,
-    ):
+    ) -> None:
         """Test failure handling in process_collection_operation."""
         # Setup psutil mock
         mock_cpu_times = Mock()
@@ -327,11 +349,11 @@ class TestProcessCollectionOperation:
             assert "Qdrant connection failed" in str(final_status_call[1].get("error_message", ""))
 
     @patch("packages.webui.tasks._process_collection_operation_async")
-    def test_process_collection_operation_sync_wrapper(self, mock_async_func, mock_celery_task):
+    def test_process_collection_operation_sync_wrapper(self, mock_async_func, mock_celery_task) -> None:
         """Test the synchronous wrapper handles async execution."""
 
         # Mock the async function to return a coroutine
-        async def mock_coro(_operation_id, _celery_task):
+        async def mock_coro(_operation_id, _celery_task) -> None:
             return {"success": True}
 
         mock_async_func.side_effect = mock_coro
@@ -343,7 +365,6 @@ class TestProcessCollectionOperation:
 
         with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
             # Import and get the task
-            from packages.webui.tasks import process_collection_operation
 
             # Call the task's run method directly (bypassing Celery's binding)
             # When calling .run(), Celery already provides self
@@ -360,7 +381,7 @@ class TestProcessCollectionOperation:
             assert result == {"success": True}
 
     @patch("packages.webui.tasks.process_collection_operation.retry")
-    def test_process_collection_operation_retry_on_network_error(self, mock_retry, mock_celery_task):
+    def test_process_collection_operation_retry_on_network_error(self, mock_retry, mock_celery_task) -> None:
         """Test that network errors trigger retry."""
         # Mock retry to raise an exception we can catch
         mock_retry.side_effect = Exception("Retry called")
@@ -372,7 +393,6 @@ class TestProcessCollectionOperation:
 
         with patch("packages.webui.tasks.asyncio.get_event_loop", return_value=mock_loop):
             # Import and get the task
-            from packages.webui.tasks import process_collection_operation
 
             # Call the task - should trigger retry
             with pytest.raises(Exception, match="Retry called"):
@@ -390,7 +410,7 @@ class TestIndexOperation:
     """Test INDEX operation processing."""
 
     @pytest.fixture()
-    def mock_qdrant_manager(self):
+    def mock_qdrant_manager(self) -> None:
         """Create mock Qdrant manager."""
         manager = Mock()
         client = Mock()
@@ -408,7 +428,7 @@ class TestIndexOperation:
     @patch("shared.embedding.models.get_model_config")
     async def test_process_index_operation_success(
         self, mock_get_model_config, mock_qdrant_global, mock_qdrant_manager, mock_updater
-    ):
+    ) -> None:
         """Test successful INDEX operation."""
         # Setup mocks
         mock_qdrant_global.get_client.return_value = mock_qdrant_manager.get_client()
@@ -457,7 +477,9 @@ class TestIndexOperation:
         mock_updater.send_update.assert_called()
 
     @patch("packages.webui.tasks.qdrant_manager")
-    async def test_process_index_operation_qdrant_failure(self, mock_qdrant_global, mock_qdrant_manager, mock_updater):
+    async def test_process_index_operation_qdrant_failure(
+        self, mock_qdrant_global, mock_qdrant_manager, mock_updater
+    ) -> None:
         """Test INDEX operation when Qdrant fails."""
         # Setup mocks
         client = mock_qdrant_manager.get_client()
@@ -492,7 +514,7 @@ class TestAppendOperation:
     """Test APPEND operation processing."""
 
     @pytest.fixture()
-    def mock_document_scanner(self):
+    def mock_document_scanner(self) -> None:
         """Create mock document scanner."""
         scanner = AsyncMock()
         scanner.scan_directory_and_register_documents.return_value = {
@@ -505,7 +527,7 @@ class TestAppendOperation:
         return scanner
 
     @pytest.fixture()
-    def mock_documents(self):
+    def mock_documents(self) -> None:
         """Create mock documents."""
         docs = []
         for i in range(3):
@@ -543,13 +565,13 @@ class TestAppendOperation:
         # The actual code awaits loop.run_in_executor which should return a coroutine
         # But actually, run_in_executor returns a Future/Task, not a coroutine
         # So we need to make the executor's function return the text blocks
-        def mock_extract_func(_filepath):
+        def mock_extract_func(_filepath) -> None:
             return [("This is test content", {"page": 1})]
 
         # Mock asyncio.get_event_loop and run_in_executor
         mock_loop = Mock()
 
-        async def async_extract(*args):
+        async def async_extract(*args) -> None:
             return mock_extract_func(args[2])  # Third arg is the filepath
 
         mock_loop.run_in_executor = Mock(return_value=async_extract(None, None, "/test/documents/doc0.txt"))
@@ -568,7 +590,7 @@ class TestAppendOperation:
         # Patch both the extract function and TokenChunker
         with (
             patch("packages.webui.tasks.extract_and_serialize_thread_safe", side_effect=mock_extract_func),
-            patch("packages.webui.tasks.TokenChunker", return_value=mock_chunker),
+            patch("shared.text_processing.chunking.TokenChunker", return_value=mock_chunker),
             patch("asyncio.get_event_loop", return_value=mock_loop),
         ):
             # Mock httpx client for vecpipe API
@@ -620,7 +642,7 @@ class TestAppendOperation:
             }
 
             # Run operation
-            result = await _process_append_operation(
+            result = await _process_append_operation_impl(
                 operation, collection, collection_repo, document_repo, mock_updater
             )
 
@@ -646,7 +668,7 @@ class TestAppendOperation:
             mock_updater.send_update.assert_called()
 
     @patch("webui.services.document_scanning_service.DocumentScanningService")
-    async def test_process_append_operation_no_source_path(self, mock_scanner_class, mock_updater):
+    async def test_process_append_operation_no_source_path(self, mock_scanner_class, mock_updater) -> None:
         """Test APPEND operation without source_path."""
         operation = {
             "id": "op-123",
@@ -662,14 +684,14 @@ class TestAppendOperation:
 
         # Should raise ValueError
         with pytest.raises(ValueError, match="source_path is required"):
-            await _process_append_operation(operation, collection, collection_repo, document_repo, mock_updater)
+            await _process_append_operation_impl(operation, collection, collection_repo, document_repo, mock_updater)
 
 
 class TestReindexOperation:
     """Test REINDEX operation processing."""
 
     @pytest.fixture()
-    def mock_qdrant_manager_instance(self):
+    def mock_qdrant_manager_instance(self) -> None:
         """Create mock QdrantManager instance."""
         manager = Mock()
         manager.create_staging_collection.return_value = "staging_col_123_20240115_120000"
@@ -695,7 +717,7 @@ class TestReindexOperation:
         mock_qdrant_manager_class,
         mock_qdrant_manager_instance,
         mock_updater,
-    ):
+    ) -> None:
         """Test successful REINDEX operation."""
         # Setup mocks
         mock_qdrant_manager_class.return_value = mock_qdrant_manager_instance
@@ -770,7 +792,9 @@ class TestReindexOperation:
         document_repo.list_by_collection.return_value = [mock_doc]
 
         # Run operation
-        result = await _process_reindex_operation(operation, collection, collection_repo, document_repo, mock_updater)
+        result = await _process_reindex_operation_impl(
+            operation, collection, collection_repo, document_repo, mock_updater
+        )
 
         # Verify staging collection was created
         mock_reindex_handler.assert_called_once()
@@ -797,7 +821,7 @@ class TestReindexOperation:
     @patch("packages.webui.tasks.qdrant_manager")
     async def test_process_reindex_operation_validation_failure(
         self, mock_qdrant_global, mock_qdrant_manager_class, mock_qdrant_manager_instance, mock_updater
-    ):
+    ) -> None:
         """Test REINDEX operation with validation failure."""
         # Setup mocks
         mock_qdrant_manager_class.return_value = mock_qdrant_manager_instance
@@ -844,7 +868,7 @@ class TestReindexOperation:
 
                 # Should raise validation error
                 with pytest.raises(ValueError, match="Reindex validation failed"):
-                    await _process_reindex_operation(
+                    await _process_reindex_operation_impl(
                         operation, collection, collection_repo, document_repo, mock_updater
                     )
 
@@ -861,7 +885,7 @@ class TestRemoveSourceOperation:
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_process_remove_source_operation_success(
         self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
-    ):
+    ) -> None:
         """Test successful REMOVE_SOURCE operation with vector deletion."""
         # Setup mocks
         mock_session = AsyncMock()
@@ -873,7 +897,7 @@ class TestRemoveSourceOperation:
         mock_transaction.__aexit__ = AsyncMock(return_value=None)
 
         # Make begin() return the context manager, not a coroutine
-        def begin_sync():
+        def begin_sync() -> None:
             return mock_transaction
 
         mock_session.begin = Mock(side_effect=begin_sync)
@@ -973,7 +997,7 @@ class TestRemoveSourceOperation:
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_process_remove_source_operation_multiple_collections(
         self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
-    ):
+    ) -> None:
         """Test REMOVE_SOURCE operation with multiple Qdrant collections (blue-green)."""
         # Setup mocks
         mock_session = AsyncMock()
@@ -985,7 +1009,7 @@ class TestRemoveSourceOperation:
         mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
         mock_transaction.__aexit__ = AsyncMock(return_value=None)
 
-        def begin_sync():
+        def begin_sync() -> None:
             return mock_transaction
 
         mock_session.begin = Mock(side_effect=begin_sync)
@@ -1072,7 +1096,7 @@ class TestRemoveSourceOperation:
         assert "col_test_123_v2" in called_collections
         assert "col_test_123_staging" in called_collections
 
-    async def test_process_remove_source_operation_no_documents(self, mock_updater):
+    async def test_process_remove_source_operation_no_documents(self, mock_updater) -> None:
         """Test REMOVE_SOURCE operation with no documents found."""
         operation = {
             "id": "op-123",
@@ -1103,7 +1127,7 @@ class TestRemoveSourceOperation:
     @patch("shared.database.database.AsyncSessionLocal")
     async def test_process_remove_source_operation_vector_deletion_error(
         self, mock_session_local, mock_qdrant_manager_class, mock_qdrant_global, mock_updater
-    ):
+    ) -> None:
         """Test REMOVE_SOURCE operation with vector deletion errors."""
         # Setup mocks
         mock_session = AsyncMock()
@@ -1115,7 +1139,7 @@ class TestRemoveSourceOperation:
         mock_transaction.__aenter__ = AsyncMock(return_value=mock_transaction)
         mock_transaction.__aexit__ = AsyncMock(return_value=None)
 
-        def begin_sync():
+        def begin_sync() -> None:
             return mock_transaction
 
         mock_session.begin = Mock(side_effect=begin_sync)
@@ -1201,7 +1225,7 @@ class TestReindexValidation:
     """Test reindex validation logic."""
 
     @pytest.fixture()
-    def mock_qdrant_client(self):
+    def mock_qdrant_client(self) -> None:
         """Create mock Qdrant client."""
         client = Mock()
 
@@ -1237,7 +1261,7 @@ class TestReindexValidation:
         client.scroll.return_value = (sample_points, None)
 
         # Mock search results - need to return results that match the test points
-        def mock_search(*args, **kwargs):  # noqa: ARG001
+        def mock_search(*args, **kwargs) -> None:  # noqa: ARG001
             # Return results that match the point being searched for
             # This simulates that both collections return the same results
             results = []
@@ -1252,7 +1276,7 @@ class TestReindexValidation:
 
         return client
 
-    async def test_validate_reindex_success(self, mock_qdrant_client):
+    async def test_validate_reindex_success(self, mock_qdrant_client) -> None:
         """Test successful reindex validation."""
         result = await _validate_reindex(mock_qdrant_client, "old", "new", sample_size=10)
 
@@ -1267,7 +1291,7 @@ class TestReindexValidation:
         assert result["new_count"] == 1050
         assert result["sample_size"] == 10
 
-    async def test_validate_reindex_vector_count_mismatch(self, mock_qdrant_client):
+    async def test_validate_reindex_vector_count_mismatch(self, mock_qdrant_client) -> None:
         """Test validation failure due to vector count mismatch."""
         # Mock significant vector count difference
         new_info = Mock()
@@ -1283,7 +1307,7 @@ class TestReindexValidation:
         assert result["passed"] is False
         assert any("Vector count mismatch" in issue for issue in result["issues"])
 
-    async def test_validate_reindex_empty_new_collection(self, mock_qdrant_client):
+    async def test_validate_reindex_empty_new_collection(self, mock_qdrant_client) -> None:
         """Test validation failure when new collection is empty."""
         # Mock empty new collection
         new_info = Mock()
@@ -1303,11 +1327,11 @@ class TestTaskFailureHandling:
     """Test task failure handling and cleanup."""
 
     @patch("packages.webui.tasks.asyncio.run")
-    def test_handle_task_failure_index_operation(self, mock_asyncio_run):
+    def test_handle_task_failure_index_operation(self, mock_asyncio_run) -> None:
         """Test failure handling for INDEX operation."""
 
         # Mock the async handler
-        async def mock_handler(_op_id, _exc, _task_id):
+        async def mock_handler(_op_id, _exc, _task_id) -> None:
             pass
 
         mock_asyncio_run.side_effect = lambda _coro: None
@@ -1329,9 +1353,10 @@ class TestTaskFailureHandling:
     @patch("shared.database.database.AsyncSessionLocal")
     @patch("shared.database.repositories.operation_repository.OperationRepository")
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    async def test_handle_task_failure_async_index(self, mock_col_repo_class, mock_op_repo_class, mock_session_local):
+    async def test_handle_task_failure_async_index(
+        self, mock_col_repo_class, mock_op_repo_class, mock_session_local
+    ) -> None:
         """Test async failure handling for INDEX operation."""
-        from packages.webui.tasks import _handle_task_failure_async
 
         # Setup mocks
         mock_session = AsyncMock()
@@ -1385,9 +1410,8 @@ class TestTaskFailureHandling:
     @patch("packages.webui.tasks.QdrantManager")
     async def test_handle_task_failure_async_reindex(
         self, mock_qdrant_manager_class, mock_col_repo_class, mock_op_repo_class, mock_session_local
-    ):
+    ) -> None:
         """Test async failure handling for REINDEX operation."""
-        from packages.webui.tasks import _handle_task_failure_async
 
         # Setup mocks similar to above but for REINDEX
         mock_session = AsyncMock()
@@ -1432,7 +1456,7 @@ class TestTaskFailureHandling:
 class TestCleanupTasks:
     """Test cleanup tasks."""
 
-    def test_cleanup_old_collections_success(self):
+    def test_cleanup_old_collections_success(self) -> None:
         """Test successful cleanup of old collections."""
         with patch("webui.utils.qdrant_manager.qdrant_manager") as mock_qdrant_manager:
             # Setup mocks
@@ -1440,7 +1464,6 @@ class TestCleanupTasks:
             mock_qdrant_manager.get_client.return_value = client
 
             # Mock collections exist
-            from collections import namedtuple
 
             CollectionInfo = namedtuple("CollectionInfo", ["name"])
             collections_response = Mock()
@@ -1456,7 +1479,7 @@ class TestCleanupTasks:
             assert result["collections_failed"] == 0
             assert client.delete_collection.call_count == 2
 
-    def test_cleanup_old_collections_partial_failure(self):
+    def test_cleanup_old_collections_partial_failure(self) -> None:
         """Test cleanup with some failures."""
         with patch("webui.utils.qdrant_manager.qdrant_manager") as mock_qdrant_manager:
             # Setup mocks
@@ -1464,7 +1487,6 @@ class TestCleanupTasks:
             mock_qdrant_manager.get_client.return_value = client
 
             # Mock collections exist
-            from collections import namedtuple
 
             CollectionInfo = namedtuple("CollectionInfo", ["name"])
             collections_response = Mock()
@@ -1488,7 +1510,7 @@ class TestCleanupTasks:
     @patch("packages.webui.tasks.QdrantManager")
     def test_cleanup_qdrant_collections_with_safety_checks(
         self, mock_qdrant_manager_class, mock_qdrant_global, mock_asyncio_run
-    ):
+    ) -> None:
         """Test enhanced cleanup with safety checks."""
         # Setup mocks
         client = Mock()
@@ -1527,7 +1549,7 @@ class TestTaskIntegration:
     """Integration tests for complete task flows."""
 
     @patch("packages.webui.tasks.process_collection_operation.apply_async")
-    def test_task_scheduling(self, mock_apply_async):
+    def test_task_scheduling(self, mock_apply_async) -> None:
         """Test that tasks can be scheduled properly."""
         # Mock task result
         mock_result = Mock()

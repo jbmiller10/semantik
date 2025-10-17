@@ -1,7 +1,17 @@
 """Test suite for Qdrant collection cleanup tasks."""
 
+from collections import namedtuple
+from collections.abc import Generator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from packages.webui.tasks import (
+    _audit_collection_deletions_batch,
+    _get_active_collections,
+    cleanup_old_collections,
+    cleanup_qdrant_collections,
+)
 
 
 class TestCleanupOldCollections:
@@ -9,7 +19,6 @@ class TestCleanupOldCollections:
 
     def test_cleanup_old_collections_empty_list(self) -> None:
         """Test cleanup with empty collection list."""
-        from packages.webui.tasks import cleanup_old_collections
 
         result = cleanup_old_collections([], "collection-123")
 
@@ -22,14 +31,12 @@ class TestCleanupOldCollections:
     @patch("webui.utils.qdrant_manager.qdrant_manager")
     def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer) -> None:
         """Test successful cleanup of collections."""
-        from packages.webui.tasks import cleanup_old_collections
 
         # Setup mocks
         mock_qdrant_client = MagicMock()
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock collections exist
-        from collections import namedtuple
 
         CollectionInfo = namedtuple("CollectionInfo", ["name"])
 
@@ -56,7 +63,6 @@ class TestCleanupQdrantCollections:
 
     def test_cleanup_qdrant_collections_empty_list(self) -> None:
         """Test cleanup with empty collection list."""
-        from packages.webui.tasks import cleanup_qdrant_collections
 
         result = cleanup_qdrant_collections([])
 
@@ -72,12 +78,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_system(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that system collections are skipped."""
         # Setup mocks
@@ -94,7 +95,6 @@ class TestCleanupQdrantCollections:
         mock_asyncio_run.side_effect = lambda coro: set() if "_get_active_collections" in str(coro) else None
 
         # Run cleanup with system collection
-        from packages.webui.tasks import cleanup_qdrant_collections
 
         result = cleanup_qdrant_collections(["_system_collection"])
 
@@ -113,12 +113,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_active(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that active collections are skipped."""
         # Setup mocks
@@ -137,7 +132,6 @@ class TestCleanupQdrantCollections:
         )
 
         # Run cleanup
-        from packages.webui.tasks import cleanup_qdrant_collections
 
         result = cleanup_qdrant_collections(["col_active", "col_inactive"])
 
@@ -151,12 +145,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_recent_staging(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
     ) -> None:
         """Test that recent staging collections are skipped."""
         # Setup mocks
@@ -182,7 +171,6 @@ class TestCleanupQdrantCollections:
         mock_qdrant_manager_instance.get_collection_info.return_value = mock_collection_info
 
         # Run cleanup
-        from packages.webui.tasks import cleanup_qdrant_collections
 
         result = cleanup_qdrant_collections(["staging_col_123_20240115_120000"], staging_age_hours=1)
 
@@ -197,12 +185,7 @@ class TestCleanupQdrantCollections:
     @patch("packages.webui.utils.qdrant_manager.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_successful_deletion(
-        self,
-        mock_qdrant_manager_class,
-        mock_conn_manager,
-        mock_asyncio_run,
-        mock_audit_batch,
-        mock_timer,
+        self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit_batch, mock_timer
     ) -> None:
         """Test successful collection deletion with all safety checks passed."""
         # Setup mocks
@@ -216,7 +199,7 @@ class TestCleanupQdrantCollections:
         mock_conn_manager.get_client.return_value = mock_qdrant_client
 
         # Mock asyncio.run to return empty set for _get_active_collections, None for audit
-        def mock_run_side_effect(coro):
+        def mock_run_side_effect(coro) -> None:
             coro_str = str(coro)
             if "_get_active_collections" in coro_str:
                 return set()
@@ -237,7 +220,6 @@ class TestCleanupQdrantCollections:
         mock_qdrant_client.delete_collection.return_value = None  # Successful deletion
 
         # Run cleanup
-        from packages.webui.tasks import cleanup_qdrant_collections
 
         result = cleanup_qdrant_collections(["staging_col_old_20240101_120000"])
 
@@ -258,7 +240,7 @@ class TestCleanupQdrantCollections:
 class TestGetActiveCollections:
     """Test suite for _get_active_collections helper function."""
 
-    async def test_get_active_collections(self):
+    async def test_get_active_collections(self) -> None:
         """Test getting active collections from database."""
         # Create a mock session and repository
         mock_session = AsyncMock()
@@ -282,7 +264,7 @@ class TestGetActiveCollections:
 
         # Create a context manager that returns our mock session
         @asynccontextmanager
-        async def mock_session_maker():
+        async def mock_session_maker() -> Generator[Any, None, None]:
             yield mock_session
 
         # Patch both AsyncSessionLocal and CollectionRepository at their source
@@ -290,7 +272,6 @@ class TestGetActiveCollections:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
         ):
-            from packages.webui.tasks import _get_active_collections
 
             # Run function
             active_collections = await _get_active_collections()
@@ -308,7 +289,7 @@ class TestGetActiveCollections:
 class TestAuditCollectionDeletion:
     """Test suite for _audit_collection_deletions_batch helper function."""
 
-    async def test_audit_collection_deletions_batch_success(self):
+    async def test_audit_collection_deletions_batch_success(self) -> None:
         """Test successful batch audit log creation."""
         # Create a mock session
         mock_session = AsyncMock()
@@ -317,7 +298,7 @@ class TestAuditCollectionDeletion:
 
         # Create a context manager that returns our mock session
         @asynccontextmanager
-        async def mock_session_maker():
+        async def mock_session_maker() -> Generator[Any, None, None]:
             yield mock_session
 
         # Mock the audit log class
@@ -328,7 +309,6 @@ class TestAuditCollectionDeletion:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
         ):
-            from packages.webui.tasks import _audit_collection_deletions_batch
 
             # Run function
             deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
@@ -338,13 +318,12 @@ class TestAuditCollectionDeletion:
             assert mock_session.add.call_count == 2
             assert mock_session.commit.call_count == 1
 
-    async def test_audit_collection_deletions_batch_empty(self):
+    async def test_audit_collection_deletions_batch_empty(self) -> None:
         """Test batch audit with empty list."""
         # Create a mock that should not be called
         mock_session_maker = MagicMock()
 
         with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
-            from packages.webui.tasks import _audit_collection_deletions_batch
 
             # Run function with empty list
             await _audit_collection_deletions_batch([])

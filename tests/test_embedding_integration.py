@@ -1,12 +1,25 @@
 #!/usr/bin/env python3
+
 """
 Integration tests for the embedding service async/sync interaction
 """
+
+import asyncio
 import sys
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
+
+from packages.shared.embedding import (
+    EmbeddingService,
+    cleanup,
+    embedding_service,
+    enhanced_embedding_service,
+    get_embedding_service,
+    get_embedding_service_sync,
+)
+from packages.shared.embedding.dense import DenseEmbeddingService
 
 # Mock metrics before importing
 sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
@@ -19,9 +32,6 @@ class TestEmbeddingIntegration(unittest.TestCase):
     def test_async_sync_wrapper_interaction(self, mock_cuda) -> None:
         """Test that sync wrapper properly calls async implementation"""
         mock_cuda.return_value = False
-
-        from packages.shared.embedding import EmbeddingService
-        from packages.shared.embedding.dense import DenseEmbeddingService
 
         # Create service
         service = EmbeddingService()
@@ -39,9 +49,8 @@ class TestEmbeddingIntegration(unittest.TestCase):
     def test_concurrent_embedding_requests(self) -> None:
         """Test handling concurrent embedding requests"""
         # This tests thread safety of the sync wrapper
-        from packages.shared.embedding import get_embedding_service_sync
 
-        def make_request(i) -> None:
+        def make_request(i) -> str:
             try:
                 service = get_embedding_service_sync()
                 # Just verify we can get the service
@@ -62,7 +71,6 @@ class TestEmbeddingIntegration(unittest.TestCase):
 
     def test_performance_baseline(self) -> None:
         """Establish performance baseline for embedding generation"""
-        from packages.shared.embedding import EmbeddingService
 
         service = EmbeddingService(mock_mode=True)
 
@@ -84,10 +92,7 @@ class TestEmbeddingIntegration(unittest.TestCase):
         """Test async service lifecycle management"""
         mock_cuda.return_value = False
 
-        import asyncio
-
-        async def async_test():
-            from packages.shared.embedding import cleanup, get_embedding_service
+        async def async_test() -> None:
 
             # Get service
             service1 = await get_embedding_service()
@@ -108,7 +113,6 @@ class TestEmbeddingIntegration(unittest.TestCase):
 
     def test_backwards_compatibility(self) -> None:
         """Test that old API still works"""
-        from packages.shared.embedding import embedding_service, enhanced_embedding_service
 
         # These should exist for backwards compatibility
         assert embedding_service is not None

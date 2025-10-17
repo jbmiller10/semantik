@@ -1,12 +1,17 @@
 """Tests for internal API endpoints."""
 
-from unittest.mock import MagicMock, patch
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from packages.shared.database.factory import create_collection_repository
+from packages.vecpipe.maintenance import QdrantMaintenanceService
 from packages.webui.api.internal import router, verify_internal_api_key
+from packages.webui.dependencies import get_collection_repository, get_db
 
 
 class TestInternalAPIAuth:
@@ -48,14 +53,8 @@ class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
 
     @pytest.fixture()
-    def client_with_mocked_repos(self, mock_collection_repository) -> None:
+    def client_with_mocked_repos(self, mock_collection_repository) -> Generator[TestClient, None, None]:
         """Create test client with mocked repositories."""
-        from unittest.mock import AsyncMock
-
-        from fastapi import FastAPI
-
-        from packages.shared.database.factory import create_collection_repository
-        from packages.webui.dependencies import get_collection_repository, get_db
 
         app = FastAPI()
         app.include_router(router)
@@ -76,7 +75,6 @@ class TestInternalAPIEndpoints:
     def test_get_all_vector_store_names_success(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test successful retrieval of all vector store names."""
         # Mock repository response
-        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock collections with vector_store_name attribute
         mock_collection1 = MagicMock()
@@ -126,7 +124,6 @@ class TestInternalAPIEndpoints:
     def test_get_all_vector_store_names_empty_list(self, client_with_mocked_repos, mock_collection_repository) -> None:
         """Test retrieval when no collections exist."""
         # Mock repository response
-        from unittest.mock import AsyncMock
 
         mock_collection_repository.list_all = AsyncMock(return_value=[])
 
@@ -145,9 +142,8 @@ class TestInternalAPIIntegration:
     """Integration tests for internal API with maintenance service."""
 
     @pytest.mark.asyncio()
-    async def test_maintenance_service_api_integration(self):
+    async def test_maintenance_service_api_integration(self) -> None:
         """Test that maintenance service can successfully call internal API."""
-        from packages.vecpipe.maintenance import QdrantMaintenanceService
 
         # Create maintenance service
         with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
@@ -160,3 +156,32 @@ class TestInternalAPIIntegration:
 
             # In the new architecture, this returns only the default collection
             assert result == ["work_docs"]
+
+
+class TestInternalApiKeyConfiguration:
+    """Tests for internal API key configuration during app startup."""
+
+    def test_configure_internal_api_key_success(self, monkeypatch) -> None:
+        """Ensure helper invocation succeeds and logs fingerprint."""
+        import packages.webui.main as main_module
+
+        monkeypatch.setattr(main_module, "ensure_internal_api_key", lambda _settings: "test-key", raising=False)
+
+        with patch.object(main_module, "logger") as mock_logger:
+            main_module._configure_internal_api_key()
+
+        mock_logger.info.assert_called()
+
+    def test_configure_internal_api_key_failure(self, monkeypatch) -> None:
+        """Ensure failures propagate when helper raises RuntimeError."""
+        import packages.webui.main as main_module
+
+        def fail(_settings: Any) -> str:
+            raise RuntimeError("missing key")
+
+        monkeypatch.setattr(main_module, "ensure_internal_api_key", fail, raising=False)
+
+        with patch.object(main_module, "logger") as mock_logger, pytest.raises(RuntimeError):
+            main_module._configure_internal_api_key()
+
+        mock_logger.error.assert_called()

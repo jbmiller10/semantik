@@ -4,6 +4,8 @@ Prometheus metrics for document embedding pipeline
 Provides observability into system performance
 """
 
+import logging
+import os
 import threading
 import time
 from typing import Any
@@ -11,6 +13,8 @@ from typing import Any
 import GPUtil
 import psutil
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info, start_http_server
+
+logger = logging.getLogger(__name__)
 
 # Re-export prometheus_client types for convenience
 __all__ = [
@@ -67,6 +71,8 @@ __all__ = [
 
 # Create custom registry
 registry = CollectorRegistry()
+
+_METRICS_SERVER_STARTED = False
 
 # System Info
 system_info = Info("embedding_system", "Document embedding system information", registry=registry)
@@ -327,10 +333,43 @@ def update_gpu_memory_usage(bytes_used: int) -> None:
     gpu_memory_usage_bytes.set(bytes_used)
 
 
+def _should_skip_metrics_server() -> bool:
+    """Determine whether metrics server startup should be skipped."""
+
+    if os.getenv("PROMETHEUS_DISABLE_SERVER", "").lower() in {"1", "true", "yes"}:
+        return True
+
+    if os.getenv("TESTING", "").lower() in {"1", "true", "yes"}:
+        return True
+
+    if os.getenv("ENV", "").lower() == "test":
+        return True
+
+    if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("PYTEST_XDIST_WORKER"):
+        return True
+
+    return False
+
+
 def start_metrics_server(port: int = 9090) -> None:
-    """Start Prometheus metrics server"""
-    start_http_server(port, registry=registry)
-    print(f"Metrics server started on port {port}")
+    """Start Prometheus metrics server unless disabled or already running."""
+
+    global _METRICS_SERVER_STARTED
+
+    if _METRICS_SERVER_STARTED:
+        return
+
+    if _should_skip_metrics_server():
+        logger.info("Prometheus metrics server startup skipped for testing environment")
+        _METRICS_SERVER_STARTED = True
+        return
+
+    try:
+        start_http_server(port, registry=registry)
+        logger.info("Metrics server started on port %s", port)
+        _METRICS_SERVER_STARTED = True
+    except OSError as exc:
+        logger.warning("Failed to start metrics server on port %s: %s", port, exc)
 
 
 if __name__ == "__main__":

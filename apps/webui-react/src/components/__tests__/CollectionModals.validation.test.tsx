@@ -220,14 +220,13 @@ describe('Collection Modals - API Validation Errors', () => {
       // Expand advanced settings and verify they're visible
       await userEvent.click(screen.getByText(/advanced settings/i))
       await waitFor(() => {
-        expect(screen.getByLabelText(/chunk size/i)).toBeInTheDocument()
+        // Check for chunking strategy selector instead of individual fields
+        expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
       })
       
-      // Verify the defaults are reasonable
-      const chunkSizeInput = screen.getByLabelText(/chunk size/i) as HTMLInputElement
-      expect(chunkSizeInput.value).toBe('512')
-      expect(chunkSizeInput.min).toBe('100')
-      expect(chunkSizeInput.max).toBe('2000')
+      // Verify the chunking strategy selector is present
+      const strategySection = screen.getByText(/chunking strategy/i).closest('div')
+      expect(strategySection).toBeInTheDocument()
     })
   })
 
@@ -504,14 +503,11 @@ describe('Collection Modals - API Validation Errors', () => {
 
       await userEvent.click(screen.getByText(/advanced settings/i))
       
-      const chunkSizeInput = screen.getByLabelText(/chunk size/i)
-      // First clear by selecting all and typing
-      await userEvent.click(chunkSizeInput)
-      await userEvent.tripleClick(chunkSizeInput)
-      await userEvent.type(chunkSizeInput, '5000')
-      
-      // Should either prevent typing beyond max or show error
-      // Actual behavior depends on implementation
+      // Chunking parameters are now handled by ChunkingParameterTuner with sliders
+      // which enforce bounds automatically, so we just verify the component is present
+      await waitFor(() => {
+        expect(screen.getByText(/chunking strategy/i)).toBeInTheDocument()
+      })
     })
   })
 })

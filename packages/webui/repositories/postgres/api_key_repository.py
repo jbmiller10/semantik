@@ -81,6 +81,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
 
             # Refresh to get database-generated defaults (like created_at)
             await self.session.refresh(api_key_record)
+            # Ensure relationship is available for serialization
+            await self.session.refresh(api_key_record, attribute_names=["user"])
 
             logger.info(f"Created API key {api_key_id} for user {user_id}")
 
@@ -163,7 +165,10 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                 raise InvalidUserIdError(user_id) from e
 
             result = await self.session.execute(
-                select(ApiKey).where(ApiKey.user_id == user_id_int).order_by(ApiKey.created_at.desc())
+                select(ApiKey)
+                .where(ApiKey.user_id == user_id_int)
+                .options(selectinload(ApiKey.user))
+                .order_by(ApiKey.created_at.desc())
             )
             api_keys = result.scalars().all()
 
@@ -198,6 +203,8 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
                     setattr(api_key, field, value)
 
             await self.session.flush()
+
+            await self.session.refresh(api_key, attribute_names=["user"])
 
             logger.info(f"Updated API key {api_key_id} with fields: {list(updates.keys())}")
             return self._api_key_to_dict(api_key)
@@ -370,6 +377,9 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # If it's already a string, return it
             return str(dt)
 
+        # Fetch relationship via getattr so lazy loading makes user data available when needed.
+        user_obj = getattr(api_key, "user", None)
+
         return {
             "id": api_key.id,
             "user_id": api_key.user_id,
@@ -382,12 +392,12 @@ class PostgreSQLApiKeyRepository(PostgreSQLBaseRepository, ApiKeyRepository):
             # Include user info if loaded
             "user": (
                 {
-                    "id": api_key.user.id,
-                    "username": api_key.user.username,
-                    "email": api_key.user.email,
-                    "is_active": api_key.user.is_active,
+                    "id": user_obj.id,
+                    "username": user_obj.username,
+                    "email": user_obj.email,
+                    "is_active": user_obj.is_active,
                 }
-                if hasattr(api_key, "user") and api_key.user
+                if user_obj
                 else None
             ),
         }

@@ -5,16 +5,18 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from packages.vecpipe.search_api import app
+
 
 @pytest.fixture()
-def mock_embedding_service() -> None:
+def mock_embedding_service() -> Mock:
     """Create a mock embedding service"""
     service = Mock()
     service.is_initialized = True
     service.get_model_info.return_value = {"model_name": "test-model", "dimension": 384, "device": "cpu"}
 
     # Create an async version of embed_single
-    async def async_embed_single(_text):
+    async def async_embed_single(_text) -> None:
         return [0.1] * 384
 
     service.embed_single = async_embed_single
@@ -40,7 +42,7 @@ class TestWebuiHealthEndpoints:
             def json(self) -> None:
                 return {"status": "healthy"}
 
-        async def mock_get(*_args, **_kwargs):
+        async def mock_get(*_args, **_kwargs) -> None:
             return MockResponse()
 
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
@@ -58,7 +60,7 @@ class TestWebuiHealthEndpoints:
             status_code = 503
             text = "Service unavailable"
 
-        async def mock_get(*_args, **_kwargs):
+        async def mock_get(*_args, **_kwargs) -> None:
             return MockResponse()
 
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
@@ -72,7 +74,7 @@ class TestWebuiHealthEndpoints:
     def test_search_api_health_connection_error(self, test_client) -> None:
         """Test search API health when connection fails"""
 
-        async def mock_get(*_args, **_kwargs):
+        async def mock_get(*_args, **_kwargs) -> None:
             raise Exception("Connection failed")
 
         with patch("httpx.AsyncClient.get", side_effect=mock_get):
@@ -90,7 +92,7 @@ class TestWebuiHealthEndpoints:
         # Mock Redis connection
         mock_redis = Mock()
 
-        async def async_ping():
+        async def async_ping() -> None:
             return True
 
         mock_redis.ping = async_ping
@@ -102,15 +104,15 @@ class TestWebuiHealthEndpoints:
             def json(self) -> None:
                 return {"status": "healthy", "components": {}}
 
-        async def mock_get(*_args, **_kwargs):
+        async def mock_get(*_args, **_kwargs) -> None:
             return MockResponse()
 
         # Mock embedding service health check
-        async def mock_check_embedding_service_health():
+        async def mock_check_embedding_service_health() -> None:
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
 
         # Mock database health check
-        async def mock_check_postgres():
+        async def mock_check_postgres() -> None:
             return True
 
         # Mock Qdrant connection
@@ -141,7 +143,7 @@ class TestWebuiHealthEndpoints:
         # Mock Redis connection - make it healthy so we can test search API failure
         mock_redis = Mock()
 
-        async def async_ping():
+        async def async_ping() -> None:
             return True
 
         mock_redis.ping = async_ping
@@ -153,15 +155,15 @@ class TestWebuiHealthEndpoints:
             def json(self) -> None:
                 return {"status": "unhealthy", "components": {}}
 
-        async def mock_get(*_args, **_kwargs):
+        async def mock_get(*_args, **_kwargs) -> None:
             return MockResponse()
 
         # Mock embedding service health check
-        async def mock_check_embedding_service_health():
+        async def mock_check_embedding_service_health() -> None:
             return {"status": "unhealthy", "message": "Embedding service not initialized"}
 
         # Mock database health check - make it fail
-        async def mock_check_postgres():
+        async def mock_check_postgres() -> None:
             return False
 
         # Mock Qdrant connection
@@ -191,9 +193,8 @@ class TestVecpipeHealthEndpoints:
     """Test health endpoints in vecpipe"""
 
     @pytest.fixture()
-    def vecpipe_app(self) -> None:
+    def vecpipe_app(self) -> TestClient:
         """Create vecpipe app for testing"""
-        from packages.vecpipe.search_api import app
 
         return TestClient(app)
 
@@ -202,7 +203,7 @@ class TestVecpipeHealthEndpoints:
         mock_qdrant = Mock()
 
         # Create async mock for qdrant_client.get
-        async def mock_get(_path):
+        async def mock_get(_path) -> None:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"result": {"collections": [{"name": "col1"}, {"name": "col2"}]}}
@@ -239,7 +240,7 @@ class TestVecpipeHealthEndpoints:
         mock_qdrant = Mock()
 
         # Create async mock for qdrant_client.get
-        async def mock_get(_path):
+        async def mock_get(_path) -> None:
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"result": {"collections": []}}
