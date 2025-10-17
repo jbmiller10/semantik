@@ -3189,6 +3189,17 @@ class ChunkingService:
                         else str(config_result.strategy)
                     )
 
+                    try:
+                        strategy_value = ChunkingStrategyFactory.normalize_strategy_name(strategy_value)
+                    except Exception:
+                        # Fall back to the raw value if normalization fails; downstream logic will handle it.
+                        pass
+
+                    strategy_input_key = chunking_strategy or strategy_value
+                    if isinstance(strategy_input_key, str):
+                        normalized_input_key = strategy_input_key.lower().replace("-", "_")
+                        strategy_value = self.STRATEGY_MAPPING.get(normalized_input_key, strategy_value)
+
                     if config_result.validation_errors:
                         logger.warning(
                             "Invalid chunking config, falling back to TokenChunker",
