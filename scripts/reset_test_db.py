@@ -21,7 +21,7 @@ def _confirm_reset(force: bool) -> None:
     if force or env_force:
         return
 
-    prompt = "WARNING: this will truncate all tables in the configured test database. " "Type 'RESET' to continue: "
+    prompt = "WARNING: this will truncate all tables in the configured test database. Type 'RESET' to continue: "
     try:
         response = input(prompt)
     except EOFError:  # pragma: no cover - defensive
