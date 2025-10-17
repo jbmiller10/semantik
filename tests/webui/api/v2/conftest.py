@@ -15,7 +15,7 @@ from packages.webui.main import app
 from packages.webui.services import factory as services_factory
 
 
-@pytest.fixture()
+@pytest.fixture(name="reset_redis_manager")
 def _reset_redis_manager() -> None:
     """Ensure Redis manager singleton does not leak between tests."""
 
@@ -36,10 +36,13 @@ def api_auth_headers(test_user_db) -> dict[str, str]:
 async def api_client(
     db_session,
     test_user_db,
-    _use_fakeredis,
-    _reset_redis_manager,
+    use_fakeredis,
+    reset_redis_manager,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an AsyncClient with real DB session and fakeredis overrides."""
+
+    _ = use_fakeredis
+    _ = reset_redis_manager
 
     async def override_get_db() -> AsyncGenerator[Any, None]:
         yield db_session
