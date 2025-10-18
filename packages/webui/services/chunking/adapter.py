@@ -43,6 +43,38 @@ class ChunkingServiceAdapter:
         self.document_repo = document_repo or orchestrator.document_repo
         self._legacy_service: ChunkingService | None = None
 
+    @staticmethod
+    def _summarize_chunking_outcome(
+        chunks: list[dict[str, Any]],
+        *,
+        default_strategy: str | None,
+    ) -> tuple[bool, str | None, str | None]:
+        """Derive fallback usage, reason, and reported strategy from orchestrator chunks."""
+
+        fallback_used = False
+        fallback_reason: str | None = None
+
+        for chunk in chunks:
+            metadata = chunk.get("metadata") or {}
+            if chunk.get("strategy") == "fallback" or metadata.get("fallback"):
+                fallback_used = True
+                fallback_reason = metadata.get("fallback_reason") or fallback_reason
+                if fallback_reason:
+                    break
+
+        if fallback_used and fallback_reason is None:
+            fallback_reason = "strategy_error"
+
+        strategy_used: str | None
+        if fallback_used:
+            strategy_used = "fallback"
+        elif chunks:
+            strategy_used = chunks[0].get("strategy") or default_strategy
+        else:
+            strategy_used = default_strategy
+
+        return fallback_used, fallback_reason, strategy_used
+
     async def preview_chunks(
         self,
         content: str | None = None,
@@ -277,6 +309,11 @@ class ChunkingServiceAdapter:
                 metadata=base_metadata or None,
             )
 
+            fallback_used, fallback_reason, reported_strategy = self._summarize_chunking_outcome(
+                orchestrator_chunks,
+                default_strategy=actual_strategy,
+            )
+
             legacy_chunks: list[dict[str, Any]] = []
             for idx, chunk in enumerate(orchestrator_chunks):
                 chunk_text = chunk.get("text") or chunk.get("content") or ""
@@ -301,10 +338,10 @@ class ChunkingServiceAdapter:
             return {
                 "chunks": legacy_chunks,
                 "stats": {
-                    "strategy_used": actual_strategy,
+                    "strategy_used": reported_strategy or actual_strategy,
                     "chunk_count": len(legacy_chunks),
-                    "fallback": False,
-                    "fallback_reason": None,
+                    "fallback": fallback_used,
+                    "fallback_reason": fallback_reason,
                     "duration_ms": None,
                 },
             }
@@ -322,6 +359,11 @@ class ChunkingServiceAdapter:
             metadata=metadata,
         )
 
+        fallback_used, fallback_reason, reported_strategy = self._summarize_chunking_outcome(
+            orchestrator_chunks,
+            default_strategy=strategy,
+        )
+
         return {
             "chunks": [
                 {
@@ -332,10 +374,10 @@ class ChunkingServiceAdapter:
                 for idx, chunk in enumerate(orchestrator_chunks)
             ],
             "stats": {
-                "strategy_used": strategy,
+                "strategy_used": reported_strategy or strategy,
                 "chunk_count": len(orchestrator_chunks),
-                "fallback": False,
-                "fallback_reason": None,
+                "fallback": fallback_used,
+                "fallback_reason": fallback_reason,
                 "duration_ms": None,
             },
         }

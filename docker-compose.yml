@@ -76,6 +76,35 @@ services:
       start_period: 40s
     shm_size: 256mb
 
+  # Dedicated PostgreSQL instance for integration and API tests
+  postgres_test:
+    image: postgres:16-alpine
+    container_name: semantik-postgres-test
+    profiles:
+      - testing
+    ports:
+      - "${POSTGRES_TEST_PORT:-55432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_TEST_DB:-semantik_test}
+      - POSTGRES_USER=${POSTGRES_TEST_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_TEST_PASSWORD:-semantik_test_password}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_TEST_USER:-semantik} -d ${POSTGRES_TEST_DB:-semantik_test}",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    shm_size: 256mb
+
   # Redis message broker for Celery
   redis:
     image: redis:7-alpine
@@ -391,6 +420,8 @@ volumes:
     driver: local
   # Named volume for PostgreSQL data persistence
   postgres_data:
+    driver: local
+  postgres_test_data:
     driver: local
   # Named volume for Redis data persistence
   redis_data:

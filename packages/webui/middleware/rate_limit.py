@@ -12,7 +12,9 @@ import jwt
 from fastapi import Request
 from jwt.exceptions import InvalidTokenError
 from shared.config import settings
+from packages.webui.rate_limiter import ensure_limiter_runtime_state
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi.middleware import _find_route_handler, sync_check_limits
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,38 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 # Rate limiting will fall back to IP address
                 logger.debug(f"Could not extract user from token for rate limiting: {e}")
 
-        # Continue with the request
-        return await call_next(request)
+        limiter = getattr(request.app.state, "limiter", None)
+        inject_headers = False
+
+        if limiter:
+            ensure_limiter_runtime_state(limiter)
+            if not limiter.enabled:
+                return await call_next(request)
+
+            handler = _find_route_handler(request.app.routes, request.scope)
+            error_response, inject_headers = sync_check_limits(
+                limiter,
+                request,
+                handler,
+                request.app,
+            )
+            if getattr(request.state, "view_rate_limit", None):
+                limit, args = request.state.view_rate_limit
+                logger.debug(
+                    "Rate limit check: limit=%s args=%s remaining=%s",
+                    limit,
+                    args,
+                    limiter.limiter.get_window_stats(limit, *args)[1],
+                )
+            if error_response is not None:
+                return error_response
+
+        response = await call_next(request)
+
+        if limiter and inject_headers and getattr(request.state, "view_rate_limit", None):
+            response = limiter._inject_headers(response, request.state.view_rate_limit)
+
+        return response
 
     async def get_user_from_token(self, token: str) -> dict[str, Any] | None:
         """
