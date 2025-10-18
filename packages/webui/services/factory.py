@@ -31,6 +31,7 @@ from .search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
+
 def get_redis_manager() -> RedisManager:
     """Backward-compatible wrapper over chunking container Redis manager."""
 
