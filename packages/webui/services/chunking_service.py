@@ -40,9 +40,10 @@ from packages.shared.chunking.infrastructure.exceptions import (
     ChunkingStrategyError,
     DocumentTooLargeError,
     DomainError,
+    ResourceNotFoundError,
+    ValidationError,
 )
 from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
-from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError, ValidationError
 from packages.shared.database.models import Operation
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
