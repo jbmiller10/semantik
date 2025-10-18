@@ -1,7 +1,8 @@
 """Tests for chunking composition container."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from packages.webui.services.chunking import container
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter

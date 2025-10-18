@@ -16,10 +16,10 @@ from httpx import AsyncClient
 from slowapi.errors import RateLimitExceeded
 
 from packages.webui.config.rate_limits import RateLimitConfig
+from packages.webui.dependencies import get_chunking_service_adapter_dependency
 from packages.webui.main import app
 from packages.webui.rate_limiter import circuit_breaker
 from packages.webui.services.dtos import ServicePreviewResponse
-from packages.webui.services.factory import get_chunking_service
 
 
 @pytest.fixture()
@@ -63,8 +63,6 @@ def _reset_circuit_breaker() -> Generator[Any, None, None]:
 async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that preview endpoint enforces rate limits."""
     from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service
-
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -85,7 +83,7 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
     async def override_get_chunking_service():
         return mock_chunking_service
 
-    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+    app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
     try:
         # Make requests up to the limit (10 per minute for preview)
@@ -116,7 +114,7 @@ async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict)
                 assert "rate_limit_exceeded" in error_data.get("error", "")
     finally:
         # Clean up the override
-        del app.dependency_overrides[get_chunking_service]
+        del app.dependency_overrides[get_chunking_service_adapter_dependency]
 
 
 @pytest.mark.asyncio()
@@ -131,8 +129,6 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
         ServiceStrategyComparison,
         ServiceStrategyRecommendation,
     )
-    from packages.webui.services.factory import get_chunking_service
-
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.compare_strategies_for_api = AsyncMock(
@@ -166,7 +162,7 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
     async def override_get_chunking_service():
         return mock_chunking_service
 
-    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+    app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
     try:
         # Compare endpoint has 5 requests per minute limit
@@ -191,15 +187,13 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
                 assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
     finally:
         # Clean up the override
-        del app.dependency_overrides[get_chunking_service]
+        del app.dependency_overrides[get_chunking_service_adapter_dependency]
 
 
 @pytest.mark.asyncio()
 async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) -> None:
     """Test that admin bypass token allows unlimited requests."""
     from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service
-
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -220,7 +214,7 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
     async def override_get_chunking_service():
         return mock_chunking_service
 
-    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+    app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
     try:
         # Use bypass token in Authorization header
@@ -241,7 +235,7 @@ async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) 
             assert response.status_code != status.HTTP_429_TOO_MANY_REQUESTS
     finally:
         # Clean up the override
-        del app.dependency_overrides[get_chunking_service]
+        del app.dependency_overrides[get_chunking_service_adapter_dependency]
 
 
 @pytest.mark.asyncio()
@@ -318,7 +312,7 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
     async def override_get_chunking_service():
         return mock_chunking_service
 
-    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+    app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
     try:
         preview_data = {
@@ -339,7 +333,7 @@ async def test_rate_limit_headers(async_client: AsyncClient, auth_headers: dict)
             pass  # Headers may or may not be present depending on setup
     finally:
         # Clean up the override
-        del app.dependency_overrides[get_chunking_service]
+        del app.dependency_overrides[get_chunking_service_adapter_dependency]
 
 
 @pytest.mark.asyncio()
@@ -350,8 +344,8 @@ async def test_process_hourly_rate_limit(async_client: AsyncClient, auth_headers
     """Test that process endpoint has hourly rate limits."""
     # Mock dependencies
     with (
-        patch("packages.webui.dependencies.get_collection_for_user") as mock_collection,
-        patch("packages.webui.services.factory.get_chunking_service") as mock_chunking,
+        patch("packages.webui.api.v2.chunking.get_collection_for_user") as mock_collection,
+        patch("packages.webui.api.v2.chunking.get_chunking_service_adapter_dependency") as mock_chunking,
         patch("packages.webui.services.factory.get_collection_service") as mock_coll_service,
     ):
         mock_collection.return_value = {"id": "test-collection"}
@@ -387,7 +381,6 @@ async def test_different_users_have_separate_limits(
 ) -> None:
     """Test that different users have independent rate limits."""
     from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service
 
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
@@ -409,7 +402,7 @@ async def test_different_users_have_separate_limits(
     async def override_get_chunking_service():
         return mock_chunking_service
 
-    app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+    app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
     try:
         preview_data = {
@@ -442,7 +435,7 @@ async def test_different_users_have_separate_limits(
         # Both should be able to make requests independently
     finally:
         # Clean up the override
-        del app.dependency_overrides[get_chunking_service]
+        del app.dependency_overrides[get_chunking_service_adapter_dependency]
         # (actual behavior depends on auth implementation)
 
 
@@ -450,7 +443,6 @@ async def test_different_users_have_separate_limits(
 async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test fallback behavior when Redis is unavailable."""
     from packages.webui.main import app
-    from packages.webui.services.factory import get_chunking_service
 
     # Simulate Redis connection failure
     with patch("packages.webui.rate_limiter.limiter") as mock_limiter:
@@ -477,7 +469,7 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
         async def override_get_chunking_service():
             return mock_chunking_service
 
-        app.dependency_overrides[get_chunking_service] = override_get_chunking_service
+        app.dependency_overrides[get_chunking_service_adapter_dependency] = override_get_chunking_service
 
         try:
             preview_data = {
@@ -496,4 +488,4 @@ async def test_rate_limit_with_redis_failure(async_client: AsyncClient, auth_hea
             assert response.status_code != status.HTTP_500_INTERNAL_SERVER_ERROR
         finally:
             # Clean up the override
-            del app.dependency_overrides[get_chunking_service]
+            del app.dependency_overrides[get_chunking_service_adapter_dependency]
