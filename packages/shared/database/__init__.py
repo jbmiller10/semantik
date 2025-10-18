@@ -17,9 +17,8 @@ Import Organization:
 from passlib.context import CryptContext
 
 from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
-from .collection_metadata import ensure_metadata_collection
+from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
-from .collection_metadata import store_collection_metadata
 
 # Async database session management
 from .database import AsyncSessionLocal, get_db

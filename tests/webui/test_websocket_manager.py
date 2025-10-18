@@ -16,8 +16,7 @@ import redis.asyncio as redis
 from fastapi import WebSocket
 
 from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
-from packages.webui.websocket_manager import ws_manager
+from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
 from packages.webui.websocket_manager import ws_manager as _global_ws_manager
 from packages.webui.websocket_manager import ws_manager as ws_manager1
 from packages.webui.websocket_manager import ws_manager as ws_manager2
