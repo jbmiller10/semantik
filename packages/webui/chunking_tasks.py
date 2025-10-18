@@ -19,9 +19,9 @@ import logging
 import signal
 import time
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import psutil
 from celery import Task
@@ -338,7 +338,12 @@ def process_chunking_operation(
     operation_id: str,
     correlation_id: str,
 ) -> dict[str, Any]:
-    """Celery entrypoint that delegates to the internal executor."""
+    """Celery entrypoint that delegates to the manager-driven executor.
+
+    The heavy lifting happens inside :func:`_execute_chunking_task`, which
+    ensures that :class:`ChunkingOperationManager` owns retries, circuit
+    breaker state, DLQ hand-offs, and resource monitoring for the task.
+    """
 
     return _execute_chunking_task(self, operation_id, correlation_id)
 
@@ -399,7 +404,7 @@ def _collection_to_payload(collection: Any) -> dict[str, Any]:
             return collection.get(field, default)
         return getattr(collection, field, default)
 
-    payload = {
+    return {
         "id": _get("id"),
         "name": _get("name"),
         "chunking_strategy": _get("chunking_strategy"),
@@ -410,7 +415,6 @@ def _collection_to_payload(collection: Any) -> dict[str, Any]:
         "quantization": _get("quantization", "float16"),
         "vector_store_name": _get("vector_store_name") or _get("vector_collection_id"),
     }
-    return payload
 
 
 def _extract_document_ids(operation: Any) -> list[str]:
@@ -635,7 +639,8 @@ async def _process_chunking_operation_async(
         if not pg_connection_manager._sessionmaker:
             await pg_connection_manager.initialize()
 
-        async with AsyncSessionLocal() as db:
+        session_factory = cast(Callable[[], AsyncSession], AsyncSessionLocal)
+        async with session_factory() as db:
             operation_repo = OperationRepository(db)
             collection_repo = CollectionRepository(db)
             document_repo = DocumentRepository(db)

@@ -11,17 +11,26 @@ from unittest.mock import MagicMock
 import pytest
 
 from packages.webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingTimeoutError
-from packages.webui.chunking_tasks import (
-    ChunkingTask,
-    _execute_chunking_task,
-    process_chunking_operation,
-)
+from packages.webui.chunking_tasks import ChunkingTask, _execute_chunking_task
 from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
 
 
 class _StubClassifier:
     def as_code(self, exc: Exception) -> str:  # noqa: D401 - minimal stub
         return exc.__class__.__name__.replace("Chunking", "").lower()
+
+
+def _patch_task_request(
+    monkeypatch: pytest.MonkeyPatch,
+    stub: SimpleNamespace,
+) -> None:
+    """Replace `ChunkingTask.request` property to return the provided stub."""
+
+    def _request_property(self: ChunkingTask) -> SimpleNamespace:
+        _ = self  # satisfy Ruff about unused parameter
+        return stub
+
+    monkeypatch.setattr(ChunkingTask, "request", property(_request_property))
 
 
 def test_process_chunking_operation_invokes_manager(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,11 +56,7 @@ def test_process_chunking_operation_invokes_manager(monkeypatch: pytest.MonkeyPa
     )
 
     request_stub = SimpleNamespace(id="task-1")
-    monkeypatch.setattr(
-        ChunkingTask,
-        "request",
-        property(lambda self: request_stub),
-    )
+    _patch_task_request(monkeypatch, request_stub)
 
     result = _execute_chunking_task(task, "op-1", "corr-1")
 
@@ -74,11 +79,7 @@ def test_process_chunking_operation_circuit_breaker(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(task, "_ensure_operation_manager", lambda: mgr)
 
     request_stub = SimpleNamespace(id="task-2")
-    monkeypatch.setattr(
-        ChunkingTask,
-        "request",
-        property(lambda self: request_stub),
-    )
+    _patch_task_request(monkeypatch, request_stub)
 
     with pytest.raises(ChunkingDependencyError):
         _execute_chunking_task(task, "op-2", "corr-2")
@@ -91,11 +92,7 @@ def test_chunking_task_on_retry_calls_manager(monkeypatch: pytest.MonkeyPatch) -
     manager = SimpleNamespace(handle_retry=MagicMock())
     monkeypatch.setattr(task, "_ensure_operation_manager", lambda: manager)
     request_stub = SimpleNamespace(retries=2)
-    monkeypatch.setattr(
-        ChunkingTask,
-        "request",
-        property(lambda self: request_stub),
-    )
+    _patch_task_request(monkeypatch, request_stub)
 
     exc = ChunkingTimeoutError(detail="timeout", correlation_id="corr", operation_id="op")
 
@@ -120,11 +117,7 @@ def test_chunking_task_on_failure_publishes_dlq(monkeypatch: pytest.MonkeyPatch)
     task = ChunkingTask()
     monkeypatch.setattr(task, "_ensure_operation_manager", lambda: manager)
     request_stub = SimpleNamespace(retries=task.max_retries)
-    monkeypatch.setattr(
-        ChunkingTask,
-        "request",
-        property(lambda self: request_stub),
-    )
+    _patch_task_request(monkeypatch, request_stub)
 
     exc = ChunkingDependencyError(detail="fail", correlation_id="corr", operation_id="op")
 
@@ -185,11 +178,7 @@ def test_circuit_breaker_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # First call succeeds and keeps circuit closed.
     request_stub = SimpleNamespace(id="task-3", retries=0)
-    monkeypatch.setattr(
-        ChunkingTask,
-        "request",
-        property(lambda self: request_stub),
-    )
+    _patch_task_request(monkeypatch, request_stub)
 
     result = _execute_chunking_task(task, "op-3", "corr-3")
     assert result["status"] == "ok"
