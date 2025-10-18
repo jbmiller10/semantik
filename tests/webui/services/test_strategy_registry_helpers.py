@@ -17,8 +17,8 @@ from packages.webui.services.chunking.strategy_registry import (
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_strategy_factory import (
-    ChunkingStrategyFactory,
     ChunkingStrategyError,
+    ChunkingStrategyFactory,
 )
 
 
@@ -109,7 +109,7 @@ def test_strategy_factory_metadata_uses_registry(monkeypatch: pytest.MonkeyPatch
     assert info["description"] == "Test description"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_service_get_strategy_details_resolves_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     """ChunkingService should resolve API aliases before returning details."""
 
