@@ -63,6 +63,7 @@ from packages.webui.services.progress_manager import (
     ProgressUpdateManager,
 )
 from packages.webui.services.type_guards import ensure_sync_redis
+from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     from packages.shared.text_processing.base_chunker import ChunkResult
@@ -186,6 +187,7 @@ class ChunkingTask(Task):
         self._graceful_shutdown = False
         self._redis_client: Redis | None = None
         self._error_handler: ChunkingErrorHandler | None = None
+        self._error_classifier = get_default_chunking_error_classifier()
 
     def before_start(self, task_id: str, args: tuple, kwargs: dict) -> None:
         """Set up task before execution starts.
@@ -418,25 +420,7 @@ class ChunkingTask(Task):
         Returns:
             Error type string
         """
-        if isinstance(exc, ChunkingMemoryError):
-            return "memory_error"
-        if isinstance(exc, ChunkingTimeoutError):
-            return "timeout_error"
-        if isinstance(exc, ChunkingValidationError):
-            return "validation_error"
-        if isinstance(exc, ChunkingStrategyError):
-            return "strategy_error"
-        if isinstance(exc, ChunkingDependencyError):
-            return "dependency_error"
-        if isinstance(exc, ChunkingResourceLimitError):
-            return "resource_limit_error"
-        if isinstance(exc, ChunkingPartialFailureError):
-            return "partial_failure"
-        if isinstance(exc, ConnectionError):
-            return "connection_error"
-        if isinstance(exc, TimeoutError):
-            return "timeout_error"
-        return "unknown"
+        return self._error_classifier.as_code(exc)
 
     def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows execution.

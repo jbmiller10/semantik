@@ -1,0 +1,57 @@
+Ticket: FE-001 – Modularize CollectionDetailsModal
+Phase: 3 – Frontend Modularization (Sprints 3–4)
+Owner Type: Senior frontend engineer experienced with React, TanStack Query, Zustand
+
+Repository Context:
+- Frontend project: `apps/webui-react/`
+- `CollectionDetailsModal.tsx` currently resides in `apps/webui-react/src/components/` and spans 794 LOC (`wc -l`), mixing data fetching, tab state, modal orchestration, and sub-modals.
+- State management uses Zustand (`useUIStore`) and React Query for API calls (`collectionsV2Api`).
+- Audit highlights excessive state (`useState` calls lines 21-34) and multiple responsibilities gathered into a single component, complicating testing and comprehension.
+
+Problem Statement:
+Engineers struggle to reason about the modal due to tightly-coupled data fetching, derived state, and UI rendering. The component should be decomposed into smaller units with clearer roles and reusable hooks.
+
+Goal:
+Split `CollectionDetailsModal` into composable child components and custom hooks that encapsulate data fetching and derived state. Maintain existing UX while making the codebase more approachable to stateless automation agents.
+
+Implementation Steps:
+1. Baseline documentation:
+   - Capture current behaviour: tabs (overview/jobs/files/settings), nested modals (add data, rename, delete, reindex), toast handling.
+   - Note props/state transitions for each tab.
+2. Introduce custom hooks under `apps/webui-react/src/hooks/`:
+   - `useCollectionDetails(collectionId)` – wraps React Query calls for collection metadata, documents, jobs; manages pagination.
+   - `useCollectionConfigChanges()` – encapsulates config editing logic.
+   - Hooks should expose loading/error states and event handlers currently defined inline.
+3. Component decomposition:
+   - Create new components under `apps/webui-react/src/components/collection-details/` (directory) for each tab: `CollectionOverviewTab`, `CollectionJobsTab`, `CollectionFilesTab`, `CollectionSettingsTab`.
+   - Extract reusable status widgets or metrics displays if they appear in multiple tabs.
+   - Keep modal shell in `CollectionDetailsModal.tsx`, but reduce it to orchestrating state (selected tab, modal visibility) and rendering child components.
+4. Sub-modal management:
+   - Move AddData/Rename/Delete/Reindex modals into their own files if not already separated; ensure they receive callbacks via props instead of closing over parent state.
+5. Styling & assets:
+   - Maintain existing class names/tailwind usage; avoid regressions in CSS.
+6. Testing:
+   - Add component tests (Vitest/React Testing Library) for the new hooks/components covering:
+     * Tab switching updates content.
+     * Loading/error states display correctly.
+     * Callbacks (e.g., rename) trigger `useUIStore` actions.
+   - Optional: add Playwright smoke test verifying modal operations if e2e suite exists.
+7. Documentation:
+   - Update Storybook (if enabled) or add MDX docs describing new component hierarchy.
+   - Include JSDoc/TSDoc comments for hooks explaining expected data shape.
+
+Acceptance Criteria:
+- `CollectionDetailsModal.tsx` shrinks substantially (target <250 LOC) and no longer contains data fetching or heavy conditional logic; instead it composes hooks/components.
+- New hooks/components created in clearly-named directories with unit tests verifying behaviour.
+- Existing functionality preserved: tabs, nested modals, toast notifications, pagination, data refresh.
+- Linting/type checking/testing succeed (`npm test --prefix apps/webui-react`, `npm run lint --prefix apps/webui-react` if applicable).
+- Documentation/comments help future contributors understand the new structure.
+
+Out of Scope:
+- API contract changes or backend modifications.
+- UX redesign beyond structural refactor.
+
+References:
+- apps/webui-react/src/components/CollectionDetailsModal.tsx
+- apps/webui-react/src/hooks/useCollections.ts (existing query keys)
+- apps/webui-react/src/stores/uiStore.ts (modal state)

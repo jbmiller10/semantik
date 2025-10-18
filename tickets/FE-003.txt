@@ -1,0 +1,51 @@
+Ticket: FE-003 – Shared UI & Config Utilities for Chunking Modals
+Phase: 3 – Frontend Modularization (Sprints 3–4)
+Owner Type: Frontend engineer with design systems and API integration experience
+
+Repository Context:
+- Both `CollectionDetailsModal` and `CreateCollectionModal` currently duplicate UI pieces (e.g., progress displays, chunking strategy selectors, validation messaging) and hard-code strategy defaults.
+- Backend consolidation tickets (ENG-003) will expose canonical strategy metadata/defaults via API or shared constants.
+- No shared component library currently encapsulates chunking-specific UI primitives.
+
+Problem Statement:
+Without shared components/hooks, frontend refactors risk reintroducing duplication and inconsistencies when backend constants change. Need a foundation layer that both modals and future components can reuse.
+
+Goal:
+Create reusable UI components and hooks that consume centralized chunking metadata, ensuring consistent strategy selection, progress display, and status messaging across the UI.
+
+Implementation Steps:
+1. Coordinate with backend output:
+   - Confirm how strategy metadata/defaults are exposed post-ENG-003 (REST endpoint or shared TS constants).
+   - If API-driven, extend `apps/webui-react/src/services/api/` to fetch and cache metadata.
+2. Create shared hooks/components under `apps/webui-react/src/components/chunking/` and `apps/webui-react/src/hooks/`:
+   - `useChunkingStrategies()` hook wrapping data fetching/memoization of strategy metadata.
+   - UI components: `ChunkingStrategySelector`, `ChunkingProgressSummary`, `ChunkingErrorBanner` (names flexible) with props supporting both modals.
+3. Migrate modals to use shared utilities:
+   - Update `CollectionDetailsModal` and `CreateCollectionModal` (post-refactor from FE-001/FE-002) to consume new components/hooks.
+   - Remove duplicate logic for formatting strategy data or progress summaries.
+4. Ensure design consistency:
+   - Align with existing design tokens/Tailwind classes; consult UX if needed.
+   - Provide storybook stories showcasing shared components in isolation.
+5. Testing:
+   - Unit tests for hooks (data fetching, caching, error states).
+   - Component tests verifying rendering of strategy options, progress metrics, and error banners given props.
+   - Regression tests in modals to ensure nothing breaks when switching to shared components.
+6. Developer experience:
+   - Document shared component APIs and usage examples in a README or MDX story.
+
+Acceptance Criteria:
+- Shared hook(s) and components exist and are adopted by both modals, eliminating duplicated logic for strategy defaults/progress displays.
+- Components are type-safe, documented, and covered by tests.
+- Modals render identically (or intentionally improved) after adopting shared utilities.
+- Frontend lint/test suites pass (`npm test --prefix apps/webui-react`, `npm run lint --prefix apps/webui-react`).
+- Storybook or documentation updated to help future contributors reuse the components.
+
+Out of Scope:
+- Creating new pages or major UX redesign beyond shared component extraction.
+- Backend API implementation (assumed available via ENG-003 deliverables; coordinate if not yet merged).
+
+References:
+- apps/webui-react/src/components/CollectionDetailsModal.tsx
+- apps/webui-react/src/components/CreateCollectionModal.tsx
+- apps/webui-react/src/types/chunking.ts (strategy enums)
+- Output from ENG-003 (centralized metadata)
