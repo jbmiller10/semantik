@@ -7,128 +7,17 @@ Handles strategy configuration, defaults, and recommendations.
 import logging
 from typing import Any
 
+from packages.webui.services.chunking.strategy_registry import (
+    get_strategy_defaults,
+    get_strategy_metadata,
+    list_api_strategy_ids,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class ChunkingConfigManager:
     """Service responsible for chunking configuration management."""
-
-    # Default configurations for each strategy
-    DEFAULT_CONFIGS: dict[str, dict[str, Any]] = {
-        "fixed_size": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "separator": "\n",
-        },
-        "sliding_window": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "stride": 800,
-        },
-        "semantic": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "embedding_model": "sentence-transformers",
-            "similarity_threshold": 0.8,
-        },
-        "recursive": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "separators": ["\n\n", "\n", " ", ""],
-        },
-        "document_structure": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "preserve_structure": True,
-        },
-        "markdown": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "split_by_headers": True,
-            "min_header_level": 1,
-            "max_header_level": 3,
-        },
-        "hierarchical": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "max_level": 3,
-            "level_separator": "\n\n",
-        },
-        "hybrid": {
-            "chunk_size": 1000,
-            "chunk_overlap": 200,
-            "primary_strategy": "semantic",
-            "fallback_strategy": "recursive",
-        },
-    }
-
-    # Strategy metadata
-    STRATEGY_INFO: dict[str, dict[str, Any]] = {
-        "fixed_size": {
-            "name": "Fixed Size",
-            "description": "Splits text into fixed-size chunks with optional overlap",
-            "best_for": ["General text", "Consistent chunk sizes", "Simple documents"],
-            "pros": ["Fast processing", "Predictable output", "Simple to configure"],
-            "cons": ["May split sentences", "Ignores document structure"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "sliding_window": {
-            "name": "Sliding Window",
-            "description": "Uses a sliding window approach for overlapping chunks",
-            "best_for": ["Sequential analysis", "Context preservation", "Time series text"],
-            "pros": ["Better context preservation", "Smooth transitions"],
-            "cons": ["More chunks produced", "Higher storage requirements"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "semantic": {
-            "name": "Semantic",
-            "description": "Creates chunks based on semantic similarity",
-            "best_for": ["Technical documents", "Research papers", "Complex topics"],
-            "pros": ["Preserves meaning", "Better for search", "Topic coherence"],
-            "cons": ["Slower processing", "Requires embeddings", "Variable chunk sizes"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "recursive": {
-            "name": "Recursive",
-            "description": "Recursively splits text using multiple separators",
-            "best_for": ["Mixed content", "Code files", "Structured documents"],
-            "pros": ["Respects structure", "Flexible", "Good default choice"],
-            "cons": ["May produce small chunks", "Configuration dependent"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "document_structure": {
-            "name": "Document Structure",
-            "description": "Splits documents based on structural elements",
-            "best_for": ["Structured documents", "Reports", "Articles"],
-            "pros": ["Preserves document structure", "Clean boundaries"],
-            "cons": ["Requires structured input", "May miss context"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "markdown": {
-            "name": "Markdown",
-            "description": "Splits markdown documents preserving structure",
-            "best_for": ["Markdown files", "Documentation", "README files"],
-            "pros": ["Preserves formatting", "Header-aware", "Clean splits"],
-            "cons": ["Only for markdown", "May create large chunks"],
-            "supported_file_types": [],  # All file types supported - especially good for markdown
-        },
-        "hierarchical": {
-            "name": "Hierarchical",
-            "description": "Creates nested chunks at multiple levels",
-            "best_for": ["Books", "Long documents", "Hierarchical content"],
-            "pros": ["Multi-level context", "Good for navigation", "Preserves hierarchy"],
-            "cons": ["Complex output", "More storage", "Harder to search"],
-            "supported_file_types": [],  # All file types supported
-        },
-        "hybrid": {
-            "name": "Hybrid",
-            "description": "Combines multiple strategies with fallback",
-            "best_for": ["Mixed content types", "Uncertain document structure"],
-            "pros": ["Adaptable", "Best of both worlds", "Robust"],
-            "cons": ["Slower", "Complex configuration", "Unpredictable behavior"],
-            "supported_file_types": [],  # All file types supported
-        },
-    }
 
     def __init__(self) -> None:
         """Initialize the configuration manager."""
@@ -144,9 +33,7 @@ class ChunkingConfigManager:
         Returns:
             Default configuration dictionary
         """
-        if strategy in self.DEFAULT_CONFIGS:
-            return self.DEFAULT_CONFIGS[strategy].copy()
-        return {}
+        return get_strategy_defaults(strategy, context="manager")
 
     def get_strategy_info(self, strategy: str) -> dict[str, Any]:
         """
@@ -158,8 +45,8 @@ class ChunkingConfigManager:
         Returns:
             Strategy information dictionary
         """
-        strategy_info = self.STRATEGY_INFO.get(strategy, {})
-        info: dict[str, Any] = strategy_info.copy() if strategy_info else {}
+        metadata = get_strategy_metadata(strategy)
+        info: dict[str, Any] = metadata.copy() if metadata else {}
         info["id"] = strategy
         info["default_config"] = self.get_default_config(strategy)
         return info
@@ -171,10 +58,7 @@ class ChunkingConfigManager:
         Returns:
             List of strategy information dictionaries
         """
-        strategies = []
-        for strategy_id in self.STRATEGY_INFO:
-            strategies.append(self.get_strategy_info(strategy_id))
-        return strategies
+        return [self.get_strategy_info(strategy_id) for strategy_id in list_api_strategy_ids()]
 
     def merge_configs(
         self,

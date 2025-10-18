@@ -9,55 +9,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
+from packages.webui.services.chunking.strategy_registry import (
+    get_strategy_defaults,
+    resolve_api_identifier,
+)
 
 
 class ChunkingConfigBuilder:
     """Builds and validates chunking configurations."""
-
-    # Default configurations per strategy
-    DEFAULT_CONFIGS: dict[ChunkingStrategyEnum, dict[str, Any]] = {
-        ChunkingStrategyEnum.FIXED_SIZE: {
-            "chunk_size": 500,
-            "chunk_overlap": 50,
-            "separator": None,
-            "keep_separator": False,
-        },
-        ChunkingStrategyEnum.RECURSIVE: {
-            "chunk_size": 500,
-            "chunk_overlap": 50,
-            "separators": ["\n\n", "\n", " ", ""],
-            "keep_separator": True,
-        },
-        ChunkingStrategyEnum.DOCUMENT_STRUCTURE: {
-            "chunk_size": 1000,
-            "chunk_overlap": 100,
-            "preserve_headers": True,
-            "preserve_code_blocks": True,
-            "min_header_level": 1,
-            "max_header_level": 6,
-        },
-        ChunkingStrategyEnum.SEMANTIC: {
-            "chunk_size": 512,
-            "chunk_overlap": 50,
-            "similarity_threshold": 0.7,
-            "min_chunk_size": 100,
-            "max_chunk_size": 1000,
-            "embedding_model": "default",
-        },
-        ChunkingStrategyEnum.SLIDING_WINDOW: {
-            "chunk_size": 500,
-            "chunk_overlap": 200,
-            "window_step": 300,
-            "preserve_sentences": True,
-        },
-        ChunkingStrategyEnum.HYBRID: {
-            "primary_strategy": "semantic",
-            "fallback_strategy": "recursive",
-            "chunk_size": 500,
-            "chunk_overlap": 50,
-            "switch_threshold": 0.5,
-        },
-    }
 
     @dataclass
     class ChunkingConfigResult:
@@ -85,10 +44,13 @@ class ChunkingConfigBuilder:
         """
         # Handle string or enum input
         if isinstance(strategy, str):
-            try:
-                strategy_enum = ChunkingStrategyEnum(strategy.lower())
-            except ValueError:
-                # Try to map common variations
+            resolved = resolve_api_identifier(strategy)
+            if resolved:
+                try:
+                    strategy_enum = ChunkingStrategyEnum(resolved)
+                except ValueError:
+                    strategy_enum = ChunkingStrategyEnum.RECURSIVE
+            else:
                 mapped_strategy = self._map_strategy_name(strategy)
                 if not mapped_strategy:
                     return self.ChunkingConfigResult(
@@ -101,7 +63,7 @@ class ChunkingConfigBuilder:
             strategy_enum = strategy
 
         # Get default config
-        config = self.DEFAULT_CONFIGS.get(strategy_enum, {}).copy()
+        config = get_strategy_defaults(strategy_enum, context="builder")
 
         # Apply user overrides
         if user_config:
@@ -127,24 +89,13 @@ class ChunkingConfigBuilder:
 
     def _map_strategy_name(self, strategy: str) -> ChunkingStrategyEnum | None:
         """Map common strategy name variations to enum values."""
-        strategy_mapping = {
-            "fixed": ChunkingStrategyEnum.FIXED_SIZE,
-            "fixed_size": ChunkingStrategyEnum.FIXED_SIZE,
-            "character": ChunkingStrategyEnum.FIXED_SIZE,
-            "recursive": ChunkingStrategyEnum.RECURSIVE,
-            "recursive_text": ChunkingStrategyEnum.RECURSIVE,
-            "markdown": ChunkingStrategyEnum.DOCUMENT_STRUCTURE,
-            "document_structure": ChunkingStrategyEnum.DOCUMENT_STRUCTURE,
-            "document": ChunkingStrategyEnum.DOCUMENT_STRUCTURE,
-            "semantic": ChunkingStrategyEnum.SEMANTIC,
-            "ai": ChunkingStrategyEnum.SEMANTIC,
-            "sliding": ChunkingStrategyEnum.SLIDING_WINDOW,
-            "sliding_window": ChunkingStrategyEnum.SLIDING_WINDOW,
-            "window": ChunkingStrategyEnum.SLIDING_WINDOW,
-            "hybrid": ChunkingStrategyEnum.HYBRID,
-            "mixed": ChunkingStrategyEnum.HYBRID,
-        }
-        return strategy_mapping.get(strategy.lower())
+        resolved = resolve_api_identifier(strategy)
+        if not resolved:
+            return None
+        try:
+            return ChunkingStrategyEnum(resolved)
+        except ValueError:
+            return None
 
     def _merge_configs(self, default: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Merge user config with defaults."""
@@ -262,7 +213,7 @@ class ChunkingConfigBuilder:
 
     def get_default_config(self, strategy: ChunkingStrategyEnum) -> dict[str, Any]:
         """Get default configuration for a strategy."""
-        return self.DEFAULT_CONFIGS.get(strategy, {}).copy()
+        return get_strategy_defaults(strategy, context="builder")
 
     def validate_parameter(
         self,
