@@ -12,9 +12,10 @@ from __future__ import annotations
 import asyncio
 import json
 import traceback
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingDependencyError,
@@ -30,9 +31,6 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for minimal environme
     psutil = None  # type: ignore
 
 import time as _time
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
 
 DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5
 DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = 300
