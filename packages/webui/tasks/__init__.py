@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from packages.webui.services.chunking.container import resolve_celery_chunking_service
+
 from .cleanup import (
     cleanup_old_collections,
     cleanup_old_results,
@@ -102,6 +104,7 @@ __all__ = [
     "httpx",
     "CeleryTaskWithOperationUpdates",
     "ChunkingService",
+    "resolve_celery_chunking_service",
     "celery_app",
     "executor",
     "extract_and_serialize_thread_safe",
@@ -134,6 +137,7 @@ __all__ = [
     "REDIS_STREAM_TTL",
     "VECTOR_UPLOAD_BATCH_SIZE",
 ]
+
 
 def _load_module(name: str) -> Any:
     return import_module(f"packages.webui.tasks.{name}")
