@@ -16,10 +16,7 @@ from packages.webui.services.chunking.strategy_registry import (
 )
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.chunking_strategy_factory import (
-    ChunkingStrategyError,
-    ChunkingStrategyFactory,
-)
+from packages.webui.services.chunking_strategy_factory import ChunkingStrategyError, ChunkingStrategyFactory
 
 
 def test_strategy_registry_alias_resolution() -> None:
@@ -88,7 +85,7 @@ def test_strategy_factory_alias_resolution(monkeypatch: pytest.MonkeyPatch) -> N
 def test_strategy_factory_unknown_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
     """Factory should raise a clear error for unknown identifiers."""
 
-    monkeypatch.setattr(factory_module, "get_strategy", lambda name: object())
+    monkeypatch.setattr(factory_module, "get_strategy", lambda _: object())
 
     with pytest.raises(ChunkingStrategyError):
         ChunkingStrategyFactory.create_strategy("does_not_exist", {})
@@ -100,7 +97,7 @@ def test_strategy_factory_metadata_uses_registry(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         factory_module,
         "get_strategy_metadata",
-        lambda identifier: {"description": "Test description"},
+        lambda _: {"description": "Test description"},
     )
 
     info = ChunkingStrategyFactory.get_strategy_info("fixed")

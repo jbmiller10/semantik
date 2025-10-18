@@ -6,10 +6,7 @@ This module defines the core chunk entity with its business logic and invariants
 """
 
 
-from packages.shared.chunking.domain.exceptions import (
-    ChunkSizeViolationError,
-    InvalidChunkError,
-)
+from packages.shared.chunking.domain.exceptions import ChunkSizeViolationError, InvalidChunkError
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 

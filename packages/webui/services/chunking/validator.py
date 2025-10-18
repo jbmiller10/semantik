@@ -9,13 +9,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedError,
-    ValidationError,
-)
-from packages.shared.database.repositories.collection_repository import (
-    CollectionRepository,
-)
+from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 
 logger = logging.getLogger(__name__)

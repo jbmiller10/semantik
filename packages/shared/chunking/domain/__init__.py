@@ -8,9 +8,7 @@ completely independent of any infrastructure concerns.
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunk_collection import ChunkCollection
-from packages.shared.chunking.domain.entities.chunking_operation import (
-    ChunkingOperation,
-)
+from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     ChunkSizeViolationError,
@@ -22,9 +20,7 @@ from packages.shared.chunking.domain.exceptions import (
 )
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.domain.value_objects.operation_status import (
-    OperationStatus,
-)
+from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
 
 __all__ = [
     # Entities

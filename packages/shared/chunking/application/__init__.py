@@ -13,18 +13,16 @@ Structure:
 
 # Import use cases
 # Import DTOs
-from .dto import (
+from .dto import (  # Request DTOs; Response DTOs
     CancelOperationRequest,
     CancelOperationResponse,
     ChunkDTO,
-    # Request DTOs
     ChunkingStrategy,
     CompareStrategiesRequest,
     CompareStrategiesResponse,
     GetOperationStatusRequest,
     GetOperationStatusResponse,
     OperationMetrics,
-    # Response DTOs
     OperationStatus,
     PreviewRequest,
     PreviewResponse,
@@ -34,13 +32,11 @@ from .dto import (
 )
 
 # Import interfaces
-from .interfaces import (
+from .interfaces import (  # Repository interfaces; Service interfaces
     CheckpointRepository,
     ChunkingOperationRepository,
     ChunkingStrategyFactory,
-    # Repository interfaces
     ChunkRepository,
-    # Service interfaces
     DocumentFormat,
     DocumentRepository,
     DocumentService,

@@ -280,9 +280,7 @@ def get_default_chunking_error_classifier() -> ErrorClassifier:
     )
 
 
-def build_chunking_error_classifier(
-    *, extra_rules: Sequence[ClassificationRule] | None = None
-) -> ErrorClassifier:
+def build_chunking_error_classifier(*, extra_rules: Sequence[ClassificationRule] | None = None) -> ErrorClassifier:
     """Create a new classifier instance with optional extra rules."""
 
     base_classifier = get_default_chunking_error_classifier()

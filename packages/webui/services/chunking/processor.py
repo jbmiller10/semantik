@@ -8,13 +8,8 @@ and fallback mechanisms.
 import logging
 from typing import Any
 
-from packages.shared.chunking.domain.services.chunking_strategies import (
-    get_strategy,
-)
-from packages.shared.chunking.infrastructure.exceptions import (
-    ChunkingStrategyError,
-    DocumentTooLargeError,
-)
+from packages.shared.chunking.domain.services.chunking_strategies import get_strategy
+from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError, DocumentTooLargeError
 
 logger = logging.getLogger(__name__)
 

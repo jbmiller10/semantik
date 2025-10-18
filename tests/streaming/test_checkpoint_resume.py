@@ -16,10 +16,7 @@ import pytest
 
 from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.infrastructure.streaming.checkpoint import (
-    CheckpointManager,
-    StreamingCheckpoint,
-)
+from packages.shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager, StreamingCheckpoint
 
 
 class InterruptibleStrategy(ChunkingStrategy):

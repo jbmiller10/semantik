@@ -54,14 +54,8 @@ from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.factory import (
-    get_redis_manager,
-)
-from packages.webui.services.progress_manager import (
-    ProgressPayload,
-    ProgressSendResult,
-    ProgressUpdateManager,
-)
+from packages.webui.services.factory import get_redis_manager
+from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 from packages.webui.services.type_guards import ensure_sync_redis
 from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
 

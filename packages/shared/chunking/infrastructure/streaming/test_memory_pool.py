@@ -13,15 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.chunking.infrastructure.streaming.memory_monitor import (
-    MemoryAlert,
-    MemoryMonitor,
-)
-from packages.shared.chunking.infrastructure.streaming.memory_pool import (
-    BufferAllocation,
-    ManagedBuffer,
-    MemoryPool,
-)
+from packages.shared.chunking.infrastructure.streaming.memory_monitor import MemoryAlert, MemoryMonitor
+from packages.shared.chunking.infrastructure.streaming.memory_pool import BufferAllocation, ManagedBuffer, MemoryPool
 
 
 class TestMemoryPool:
@@ -381,9 +374,7 @@ class TestIntegration:
     @pytest.mark.asyncio()
     async def test_processor_with_safe_pool(self) -> None:
         """Test that processor works with new safe pool."""
-        from packages.shared.chunking.infrastructure.streaming.processor import (
-            StreamingDocumentProcessor,
-        )
+        from packages.shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
 
         pool = MemoryPool(
             max_size=10 * 1024 * 1024,  # 10MB
