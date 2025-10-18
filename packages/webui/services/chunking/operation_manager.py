@@ -9,16 +9,13 @@ service/business layers can focus on chunking logic.
 
 from __future__ import annotations
 
-import json
-import logging
-import traceback
 import asyncio
+import json
+import traceback
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Iterable, Mapping, Sequence
-
-from prometheus_client import Gauge
-from redis import Redis
+from typing import Any
 
 from packages.webui.api.chunking_exceptions import (
     ChunkingDependencyError,
@@ -27,8 +24,6 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingTimeoutError,
     ResourceType,
 )
-from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.utils.error_classifier import ErrorClassifier
 
 try:  # pragma: no cover - psutil always available in production, but tests can mock it
     import psutil  # type: ignore
@@ -60,15 +55,15 @@ class ChunkingOperationManager:
     def __init__(
         self,
         *,
-        redis_client: Redis | None,
-        error_handler: ChunkingErrorHandler,
-        error_classifier: ErrorClassifier,
-        logger: logging.Logger,
-        expected_circuit_breaker_exceptions: Sequence[type[Exception]] | None = None,
+        redis_client: Any | None,
+        error_handler: Any,
+        error_classifier: Any,
+        logger: Any,
+        expected_circuit_breaker_exceptions: Iterable[type[Exception]] | None = None,
         failure_threshold: int = DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
         recovery_timeout: int = DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
         dead_letter_ttl_seconds: int = DEFAULT_DEAD_LETTER_TTL_SECONDS,
-        memory_usage_gauge: Gauge | None = None,
+        memory_usage_gauge: Any | None = None,
         psutil_module: Any | None = None,
         time_module: Any | None = None,
         memory_limit_gb: int = 4,
@@ -78,9 +73,11 @@ class ChunkingOperationManager:
         self._error_handler = error_handler
         self._error_classifier = error_classifier
         self._logger = logger
-        self._expected_circuit_breaker_exceptions: tuple[type[Exception], ...] = tuple(
-            expected_circuit_breaker_exceptions
-        ) if expected_circuit_breaker_exceptions else (ChunkingDependencyError,)
+        self._expected_circuit_breaker_exceptions: tuple[type[Exception], ...] = (
+            tuple(expected_circuit_breaker_exceptions)
+            if expected_circuit_breaker_exceptions
+            else (ChunkingDependencyError,)
+        )
         self._failure_threshold = failure_threshold
         self._recovery_timeout = recovery_timeout
         self._dead_letter_ttl_seconds = dead_letter_ttl_seconds
@@ -141,8 +138,8 @@ class ChunkingOperationManager:
         correlation_id: str,
         retry_count: int,
         max_retries: int,
-        args: Sequence[Any] | None,
-        kwargs: Mapping[str, Any] | None,
+        args: tuple[Any, ...] | None,
+        kwargs: dict[str, Any] | None,
     ) -> str:
         """Log failure, update circuit breaker, and publish to DLQ if needed.
 

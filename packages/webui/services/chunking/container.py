@@ -3,31 +3,29 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from packages.shared.config import settings
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
-from prometheus_client import Gauge
-
 from packages.webui.services.chunking.cache import ChunkingCache
 from packages.webui.services.chunking.config_manager import ChunkingConfigManager
 from packages.webui.services.chunking.metrics import ChunkingMetrics
 from packages.webui.services.chunking.operation_manager import (
-    ChunkingOperationManager,
     DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
     DEFAULT_DEAD_LETTER_TTL_SECONDS,
+    ChunkingOperationManager,
 )
 from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 from packages.webui.services.chunking.processor import ChunkingProcessor
 from packages.webui.services.chunking.validator import ChunkingValidator
-from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
+from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.redis_manager import RedisConfig, RedisManager
 from packages.webui.services.type_guards import ensure_async_redis, ensure_sync_redis
-from packages.webui.utils.error_classifier import ErrorClassifier, get_default_chunking_error_classifier
+from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis
@@ -90,13 +88,13 @@ def build_chunking_operation_manager(
     *,
     redis_client: Redis | None = None,
     error_handler: ChunkingErrorHandler | None = None,
-    error_classifier: ErrorClassifier | None = None,
+    error_classifier: Any | None = None,
     logger_: logging.Logger | None = None,
     expected_circuit_breaker_exceptions: tuple[type[Exception], ...] | None = None,
     failure_threshold: int | None = None,
     recovery_timeout: int | None = None,
     dead_letter_ttl_seconds: int | None = None,
-    memory_usage_gauge: Gauge | None = None,
+    memory_usage_gauge: Any | None = None,
 ) -> ChunkingOperationManager:
     """Construct a ChunkingOperationManager with dependency defaults."""
 
