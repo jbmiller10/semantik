@@ -140,3 +140,23 @@ async def get_document_repository(db: AsyncSession = Depends(get_db)) -> Documen
         DocumentRepository instance configured with the database session
     """
     return create_document_repository(db)
+
+
+async def get_chunking_orchestrator_dependency(
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Provide chunking orchestrator via composition root."""
+    from packages.webui.services.chunking.container import (
+        get_chunking_orchestrator as container_get_chunking_orchestrator,
+    )
+
+    return await container_get_chunking_orchestrator(db)
+
+
+async def get_chunking_service_adapter_dependency(
+    db: AsyncSession = Depends(get_db),
+) -> Any:
+    """Provide adapter-compatible chunking dependency for legacy flows."""
+    from packages.webui.services.chunking.container import resolve_api_chunking_dependency
+
+    return await resolve_api_chunking_dependency(db, prefer_adapter=True)

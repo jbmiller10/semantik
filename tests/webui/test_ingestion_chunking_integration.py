@@ -569,8 +569,11 @@ class TestAppendTaskIntegration:
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
 
-        # Mock ChunkingService
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        # Mock chunking dependency resolver
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -691,7 +694,10 @@ class TestAppendTaskIntegration:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
 
         # Mock ChunkingService with different chunk counts for each document
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -769,7 +775,10 @@ class TestAppendTaskIntegration:
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
 
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -836,7 +845,10 @@ class TestAppendTaskIntegration:
         mock_qdrant_client = MagicMock()
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
 
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -1012,7 +1024,10 @@ class TestReindexTaskIntegration:
         mock_qdrant_client.get_collection.return_value = MagicMock(points_count=1)
 
         # Mock ChunkingService
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -1100,7 +1115,10 @@ class TestReindexTaskIntegration:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         mock_qdrant_client.get_collection.return_value = MagicMock(points_count=1)
 
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -1191,7 +1209,10 @@ class TestReindexTaskIntegration:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         mock_qdrant_client.get_collection.return_value = MagicMock(points_count=9)
 
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
@@ -1281,7 +1302,10 @@ class TestReindexTaskIntegration:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         mock_qdrant_client.get_collection.return_value = MagicMock(points_count=1)
 
-        with patch("packages.webui.tasks.ChunkingService") as mock_chunking_service_class:
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
             mock_chunking_service = MagicMock()
             mock_chunking_service_class.return_value = mock_chunking_service
 
