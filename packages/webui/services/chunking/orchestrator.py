@@ -165,7 +165,11 @@ class ChunkingOrchestrator:
             cached = await self.cache.get_cached_preview(content_hash, normalized_strategy, merged_config)
             if cached:
                 self.metrics.record_cache_hit("preview")
-                return self._build_preview_response_from_cache(cached, correlation)
+                return self._build_preview_response_from_cache(
+                    cached,
+                    correlation_id=correlation,
+                    max_chunks=max_chunks,
+                )
             self.metrics.record_cache_miss("preview")
 
         async with self.metrics.measure_operation(normalized_strategy) as context:
@@ -540,7 +544,9 @@ class ChunkingOrchestrator:
     def _build_preview_response_from_cache(
         self,
         cached: dict[str, Any],
+        *,
         correlation_id: str | None,
+        max_chunks: int | None = None,
     ) -> ServicePreviewResponse:
         preview_id = cached.get("preview_id") or cached.get("cache_id") or cached.get("cache_key") or str(uuid.uuid4())
         raw_expires = cached.get("expires_at")
@@ -551,18 +557,23 @@ class ChunkingOrchestrator:
         elif isinstance(raw_expires, datetime):
             expires_at = raw_expires
 
-        preview_chunks = self._transform_chunks_to_preview(cached.get("chunks", []))
+        preview_chunks_full = self._transform_chunks_to_preview(cached.get("chunks", []))
+        display_chunks = (
+            preview_chunks_full
+            if max_chunks is None or max_chunks <= 0
+            else preview_chunks_full[:max_chunks]
+        )
         metrics = cached.get("performance_metrics") or cached.get("statistics") or cached.get("metrics") or {}
         strategy = cached.get("strategy", "unknown")
         config = cached.get("config", {})
-        total_chunks = cached.get("total_chunks", len(preview_chunks))
+        total_chunks = cached.get("total_chunks", len(preview_chunks_full))
         processing_time_ms = cached.get("processing_time_ms", 0)
 
         return self._build_preview_response(
             preview_id=preview_id,
             strategy=strategy,
             config=config,
-            chunks=preview_chunks,
+            chunks=display_chunks,
             total_chunks=total_chunks,
             metrics=metrics,
             processing_time_ms=processing_time_ms,
