@@ -4,13 +4,16 @@ Chunking orchestrator service.
 Main coordinator that orchestrates chunking operations across all specialized services.
 """
 
+import contextlib
 import logging
+import time
 import uuid
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import ValidationError
+from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.dtos import (
@@ -77,79 +80,135 @@ class ChunkingOrchestrator:
         config: dict[str, Any] | None = None,
         user_id: int | None = None,
         use_cache: bool = True,
+        *,
+        max_chunks: int | None = None,
+        correlation_id: str | None = None,
     ) -> ServicePreviewResponse:
-        """
-        Preview chunking results for content or document.
+        """Preview chunking results for content or document."""
+        correlation = correlation_id or str(uuid.uuid4())
+        normalized_strategy = strategy or "recursive"
+        incoming_config = config.copy() if config else None
+        normalized_config = self._normalize_config(incoming_config)
 
-        Args:
-            content: Direct content to chunk
-            document_id: Document ID to chunk
-            strategy: Chunking strategy
-            config: Strategy configuration
-            user_id: User ID for access control
-            use_cache: Whether to use caching
+        try:
+            await self.validator.validate_preview_request(
+                content,
+                document_id,
+                normalized_strategy,
+                normalized_config,
+            )
+        except ValidationError as exc:
+            if (
+                exc.field == "content"
+                and isinstance(content, str)
+                and "exceeds maximum" in (exc.reason or "").lower()
+            ):
+                raise DocumentTooLargeError(
+                    size=len(content),
+                    max_size=self.validator.MAX_CONTENT_SIZE,
+                    correlation_id=correlation,
+                ) from exc
+            raise
 
-        Returns:
-            Preview response with chunks and statistics
-        """
-        # Validate request
-        await self.validator.validate_preview_request(content, document_id, strategy, config)
-
-        # Validate access if document_id provided
-        if document_id and user_id:
-            await self.validator.validate_document_access(document_id, user_id)
-
-        # Load content if document_id provided
         if document_id:
+            if user_id is None:
+                raise ValidationError(
+                    field="user_id",
+                    value=None,
+                    reason="User context required when previewing by document",
+                )
+            await self.validator.validate_document_access(document_id, user_id)
             content = await self._load_document_content(document_id)
 
-        # Generate content hash for caching
         if content is None:
             raise ValidationError(field="content", value=None, reason="Content is required for preview")
+
+        if len(content) > self.validator.MAX_CONTENT_SIZE:
+            raise DocumentTooLargeError(
+                size=len(content),
+                max_size=self.validator.MAX_CONTENT_SIZE,
+                correlation_id=correlation,
+            )
+
+        merged_config = self.config_manager.merge_configs(normalized_strategy, normalized_config)
+        config_for_response = merged_config.copy()
+        config_for_response.setdefault("strategy", normalized_strategy)
+
         content_hash = self.cache.generate_content_hash(content)
 
-        # Check cache
         if use_cache:
-            cached = await self.cache.get_cached_preview(content_hash, strategy, config)
+            cached = await self.cache.get_cached_preview(content_hash, normalized_strategy, merged_config)
             if cached:
                 self.metrics.record_cache_hit("preview")
-                return self._build_preview_response(cached)
+                return self._build_preview_response_from_cache(cached, correlation)
             self.metrics.record_cache_miss("preview")
 
-        # Merge with default config
-        merged_config = self.config_manager.merge_configs(strategy, config)
-
-        # Execute chunking with metrics tracking
-        async with self.metrics.measure_operation(strategy) as context:
-            chunks = await self.processor.process_document(
-                content, strategy, merged_config, use_fallback=True  # content is guaranteed non-None here
+        async with self.metrics.measure_operation(normalized_strategy) as context:
+            start_time = time.perf_counter()
+            chunk_dicts = await self.processor.process_document(
+                content,
+                normalized_strategy,
+                merged_config,
+                use_fallback=True,
             )
-            context["chunks_produced"] = len(chunks)
-            self.metrics.record_chunks_produced(strategy, chunks)
+            processing_time_ms = int((time.perf_counter() - start_time) * 1000)
+            context["chunks_produced"] = len(chunk_dicts)
 
-        # Calculate statistics
-        statistics = self.processor.calculate_statistics(chunks)
+        if any(chunk.get("strategy") == "fallback" for chunk in chunk_dicts):
+            self.metrics.record_fallback(normalized_strategy)
 
-        # Build response
-        preview_data = {
-            "chunks": chunks,
-            "statistics": statistics,
-            "strategy": strategy,
-            "config": merged_config,
-        }
+        self.metrics.record_chunks_produced(normalized_strategy, chunk_dicts)
 
-        # Cache result
+        preview_chunks = self._transform_chunks_to_preview(chunk_dicts)
+        total_chunks = len(preview_chunks)
+        display_chunks = preview_chunks if max_chunks is None else preview_chunks[:max_chunks]
+
+        metrics = self._calculate_preview_metrics(
+            preview_chunks,
+            len(content),
+            processing_time_ms / 1000 if processing_time_ms > 0 else 0,
+        )
+
+        expires_at = datetime.now(UTC) + timedelta(minutes=30)
+        preview_id = str(uuid.uuid4())
+
+        response = self._build_preview_response(
+            preview_id=preview_id,
+            strategy=normalized_strategy,
+            config=config_for_response,
+            chunks=display_chunks,
+            total_chunks=total_chunks,
+            metrics=metrics,
+            processing_time_ms=processing_time_ms,
+            cached=False,
+            expires_at=expires_at,
+            correlation_id=correlation,
+        )
+
         if use_cache:
-            await self.cache.cache_preview(content_hash, strategy, merged_config, preview_data)
+            cache_payload = self._serialize_preview_for_cache(
+                preview_id=preview_id,
+                strategy=normalized_strategy,
+                config=config_for_response,
+                chunks=preview_chunks,
+                metrics=metrics,
+                processing_time_ms=processing_time_ms,
+                expires_at=expires_at,
+                correlation_id=correlation,
+            )
+            await self.cache.cache_preview(content_hash, normalized_strategy, merged_config, cache_payload)
 
-        return self._build_preview_response(preview_data)
+        return response
 
     async def compare_strategies(
         self,
         content: str,
         strategies: list[str] | None = None,
         base_config: dict[str, Any] | None = None,
+        strategy_configs: dict[str, dict[str, Any]] | None = None,
         user_id: int | None = None,  # noqa: ARG002
+        *,
+        max_chunks_per_strategy: int | None = 5,
     ) -> ServiceCompareResponse:
         """
         Compare multiple chunking strategies.
@@ -159,77 +218,83 @@ class ChunkingOrchestrator:
             strategies: List of strategies to compare (default: all)
             base_config: Base configuration for all strategies
             user_id: User ID for tracking
+            max_chunks_per_strategy: Maximum number of preview chunks per strategy
 
         Returns:
             Comparison response with results for each strategy
         """
-        # Validate content
         self.validator.validate_content(content)
 
-        # Use all strategies if none specified
-        if not strategies:
-            all_strategies = self.config_manager.get_all_strategies()
-            strategies = [s["id"] for s in all_strategies]
+        selected_strategies = strategies or [s["id"] for s in self.config_manager.get_all_strategies()]
+        comparisons: list[ServiceStrategyComparison] = []
+        comparison_start = time.perf_counter()
+        chunk_limit = max_chunks_per_strategy or 5
+        normalized_base_config = self._normalize_config(base_config)
+        normalized_strategy_configs = (
+            {name: self._normalize_config(cfg) for name, cfg in strategy_configs.items()}
+            if strategy_configs
+            else None
+        )
 
-        comparisons = []
-
-        for strategy in strategies:
+        for strategy in selected_strategies:
             try:
-                # Validate strategy
                 self.validator.validate_strategy(strategy)
+                config_override = None
+                if normalized_strategy_configs and strategy in normalized_strategy_configs:
+                    config_override = normalized_strategy_configs[strategy]
+                merged_config = self.config_manager.merge_configs(strategy, config_override or normalized_base_config)
 
-                # Get strategy-specific config
-                config = self.config_manager.merge_configs(strategy, base_config)
+                preview = await self.preview_chunks(
+                    content=content,
+                    strategy=strategy,
+                    config=merged_config,
+                    use_cache=False,
+                    max_chunks=chunk_limit,
+                )
 
-                # Execute chunking
-                async with self.metrics.measure_operation(strategy) as context:
-                    chunks = await self.processor.process_document(content, strategy, config, use_fallback=False)
-                    context["chunks_produced"] = len(chunks)
+                preview_chunks = self._transform_chunks_to_preview(preview.chunks)
+                metrics = self._calculate_preview_metrics(
+                    preview_chunks,
+                    len(content),
+                    preview.processing_time_ms / 1000 if preview.processing_time_ms else 0,
+                )
 
-                # Calculate statistics
-                stats = self.processor.calculate_statistics(chunks)
+                strategy_info = self.config_manager.get_strategy_info(strategy)
+                sample_chunks = preview_chunks[:chunk_limit]
 
-                # Build comparison entry
                 comparison = ServiceStrategyComparison(
                     strategy=strategy,
-                    config=config,
-                    sample_chunks=[
-                        ServiceChunkPreview(
-                            content=chunk.get("content", ""),
-                            index=chunk.get("index", i),
-                            char_count=len(chunk.get("content", "")),
-                            metadata=chunk.get("metadata", {}),
-                        )
-                        for i, chunk in enumerate(chunks[:3])
-                    ],
-                    total_chunks=len(chunks),
-                    avg_chunk_size=stats["avg_chunk_size"],
-                    size_variance=self._calculate_variance(stats),
-                    quality_score=self._calculate_quality_score(stats),
-                    processing_time_ms=0,  # Will be set from context after
+                    config=preview.config,
+                    sample_chunks=cast(list[ServiceChunkPreview | dict[str, Any]], sample_chunks),
+                    total_chunks=preview.total_chunks,
+                    avg_chunk_size=metrics.get("avg_chunk_size", metrics.get("average_chunk_size", 0)),
+                    size_variance=metrics.get("size_variance", 0),
+                    quality_score=metrics.get("quality_score", 0),
+                    processing_time_ms=preview.processing_time_ms,
+                    pros=list(strategy_info.get("pros", [])),
+                    cons=list(strategy_info.get("cons", [])),
                 )
                 comparisons.append(comparison)
-
-            except Exception as e:
-                logger.error("Error comparing strategy %s: %s", strategy, str(e))
-                # Add failed comparison
-                comparison = ServiceStrategyComparison(
-                    strategy=strategy,
-                    config=base_config or {},
-                    sample_chunks=[],
-                    total_chunks=0,
-                    avg_chunk_size=0,
-                    size_variance=0,
-                    quality_score=0,
-                    processing_time_ms=0,
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Error comparing strategy %s: %s", strategy, exc)
+                fallback_config = self.config_manager.get_default_config(strategy)
+                comparisons.append(
+                    ServiceStrategyComparison(
+                        strategy=strategy,
+                        config=fallback_config,
+                        sample_chunks=[],
+                        total_chunks=0,
+                        avg_chunk_size=0,
+                        size_variance=0,
+                        quality_score=0,
+                        processing_time_ms=0,
+                        pros=[],
+                        cons=[str(exc)],
+                    )
                 )
-                comparisons.append(comparison)
 
-        # Get recommendation
         recommendation = self._get_recommendation(comparisons, content)
-
-        # Convert to proper type for ServiceCompareResponse
-        from typing import cast
+        elapsed_ms = int((time.perf_counter() - comparison_start) * 1000)
 
         comparisons_typed = cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons)
 
@@ -237,7 +302,7 @@ class ChunkingOrchestrator:
             comparison_id=str(uuid.uuid4()),
             comparisons=comparisons_typed,
             recommendation=recommendation,
-            processing_time_ms=0,  # Could track actual time if needed
+            processing_time_ms=elapsed_ms,
         )
 
     async def execute_ingestion_chunking(
@@ -416,36 +481,191 @@ class ChunkingOrchestrator:
 
         return document.content or ""
 
-    def _build_preview_response(self, data: dict[str, Any]) -> ServicePreviewResponse:
-        """Build preview response from data."""
-        chunks = data.get("chunks", [])
-        stats = data.get("statistics", {})
-
-        # Convert chunks to preview format
-        preview_chunks = [
-            ServiceChunkPreview(
-                content=chunk.get("content", ""),
-                index=chunk.get("index", i),
-                char_count=len(chunk.get("content", "")),
-                metadata=chunk.get("metadata", {}),
-            )
-            for i, chunk in enumerate(chunks[:10])  # Limit to 10 for preview
-        ]
-
-        # Convert to proper type for ServicePreviewResponse
-        from typing import cast
-
-        preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], preview_chunks)
+    def _build_preview_response(
+        self,
+        *,
+        preview_id: str,
+        strategy: str,
+        config: dict[str, Any],
+        chunks: list[ServiceChunkPreview],
+        total_chunks: int,
+        metrics: dict[str, Any],
+        processing_time_ms: int,
+        cached: bool,
+        expires_at: datetime | None,
+        correlation_id: str | None,
+    ) -> ServicePreviewResponse:
+        preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], chunks)
 
         return ServicePreviewResponse(
-            preview_id=data.get("cache_key", str(uuid.uuid4())),
+            preview_id=preview_id,
+            strategy=strategy,
+            config=config,
             chunks=preview_chunks_typed,
-            total_chunks=len(chunks),
-            metrics=stats,
-            strategy=data.get("strategy", "unknown"),
-            config=data.get("config", {}),
-            cached=bool(data.get("cache_key")),
+            total_chunks=total_chunks,
+            metrics=metrics,
+            processing_time_ms=processing_time_ms,
+            cached=cached,
+            expires_at=expires_at,
+            correlation_id=correlation_id,
         )
+
+    def _build_preview_response_from_cache(
+        self,
+        cached: dict[str, Any],
+        correlation_id: str | None,
+    ) -> ServicePreviewResponse:
+        preview_id = cached.get("preview_id") or cached.get("cache_id") or cached.get("cache_key") or str(uuid.uuid4())
+        raw_expires = cached.get("expires_at")
+        expires_at: datetime | None = None
+        if isinstance(raw_expires, str):
+            with contextlib.suppress(ValueError, TypeError):
+                expires_at = datetime.fromisoformat(raw_expires)
+        elif isinstance(raw_expires, datetime):
+            expires_at = raw_expires
+
+        preview_chunks = self._transform_chunks_to_preview(cached.get("chunks", []))
+        metrics = (
+            cached.get("performance_metrics")
+            or cached.get("statistics")
+            or cached.get("metrics")
+            or {}
+        )
+        strategy = cached.get("strategy", "unknown")
+        config = cached.get("config", {})
+        total_chunks = cached.get("total_chunks", len(preview_chunks))
+        processing_time_ms = cached.get("processing_time_ms", 0)
+
+        return self._build_preview_response(
+            preview_id=preview_id,
+            strategy=strategy,
+            config=config,
+            chunks=preview_chunks,
+            total_chunks=total_chunks,
+            metrics=metrics,
+            processing_time_ms=processing_time_ms,
+            cached=True,
+            expires_at=expires_at,
+            correlation_id=correlation_id or cached.get("correlation_id"),
+        )
+
+    def _serialize_preview_for_cache(
+        self,
+        *,
+        preview_id: str,
+        strategy: str,
+        config: dict[str, Any],
+        chunks: list[ServiceChunkPreview],
+        metrics: dict[str, Any],
+        processing_time_ms: int,
+        expires_at: datetime,
+        correlation_id: str | None,
+    ) -> dict[str, Any]:
+        return {
+            "preview_id": preview_id,
+            "strategy": strategy,
+            "config": config,
+            "chunks": [self._serialize_chunk_preview(chunk) for chunk in chunks],
+            "total_chunks": len(chunks),
+            "performance_metrics": metrics,
+            "processing_time_ms": processing_time_ms,
+            "expires_at": expires_at.isoformat(),
+            "correlation_id": correlation_id,
+        }
+
+    def _serialize_chunk_preview(self, chunk: ServiceChunkPreview) -> dict[str, Any]:
+        return {
+            "index": chunk.index,
+            "content": chunk.content,
+            "text": chunk.text or chunk.content,
+            "token_count": chunk.token_count,
+            "char_count": chunk.char_count,
+            "metadata": chunk.metadata,
+            "quality_score": chunk.quality_score,
+            "overlap_info": chunk.overlap_info,
+        }
+
+    def _normalize_config(self, config: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Flatten legacy config payloads (e.g., with nested params)."""
+
+        if not config:
+            return None
+
+        normalized = config.copy()
+        params = normalized.pop("params", None)
+        if isinstance(params, dict):
+            normalized.update(params)
+        return normalized
+
+    def _transform_chunks_to_preview(
+        self,
+        chunks: list[dict[str, Any]] | list[ServiceChunkPreview],
+    ) -> list[ServiceChunkPreview]:
+        preview_chunks: list[ServiceChunkPreview] = []
+
+        for entry in chunks:
+            if isinstance(entry, ServiceChunkPreview):
+                preview_chunks.append(entry)
+                continue
+
+            content = entry.get("content") or entry.get("text") or ""
+            char_count = entry.get("char_count") or len(content)
+            token_count = entry.get("token_count") or (char_count // 4 if char_count else 0)
+
+            preview_chunks.append(
+                ServiceChunkPreview(
+                    index=entry.get("index", len(preview_chunks)),
+                    content=content,
+                    text=None,
+                    token_count=token_count,
+                    char_count=char_count,
+                    metadata=entry.get("metadata", {}),
+                    quality_score=entry.get("quality_score", 0.8),
+                    overlap_info=entry.get("overlap_info"),
+                )
+            )
+
+        return preview_chunks
+
+    def _calculate_preview_metrics(
+        self,
+        chunks: list[ServiceChunkPreview],
+        text_length: int,
+        processing_time: float,
+    ) -> dict[str, Any]:
+        if not chunks:
+            return {
+                "total_chunks": 0,
+                "average_chunk_size": 0,
+                "avg_chunk_size": 0,
+                "min_chunk_size": 0,
+                "max_chunk_size": 0,
+                "chunks_per_second": 0,
+                "compression_ratio": 0,
+                "size_variance": 0.0,
+                "quality_score": 0.0,
+            }
+
+        sizes = [chunk.char_count or len(chunk.content or "") for chunk in chunks]
+        total_size = sum(sizes)
+        average = total_size / len(sizes) if sizes else 0
+        variance = sum((s - average) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0.0
+        quality_score = 1.0 - min(1.0, variance / (average**2)) if average > 0 else 0.0
+
+        chunks_per_second = (len(chunks) / processing_time) if processing_time > 0 else 0
+        compression_ratio = (total_size / text_length) if text_length > 0 else 1
+
+        return {
+            "total_chunks": len(chunks),
+            "average_chunk_size": average,
+            "avg_chunk_size": average,
+            "min_chunk_size": min(sizes) if sizes else 0,
+            "max_chunk_size": max(sizes) if sizes else 0,
+            "chunks_per_second": chunks_per_second,
+            "compression_ratio": compression_ratio,
+            "size_variance": variance,
+            "quality_score": quality_score,
+        }
 
     def _build_strategy_metrics(
         self,
