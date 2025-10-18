@@ -9,11 +9,11 @@ available to Celery.
 from __future__ import annotations
 
 import asyncio
+from importlib import import_module
 from typing import Any
 
 import httpx
 
-from . import cleanup, ingestion, reindex, utils
 from .cleanup import (
     cleanup_old_collections,
     cleanup_old_results,
@@ -135,10 +135,14 @@ __all__ = [
     "VECTOR_UPLOAD_BATCH_SIZE",
 ]
 
-_PROXY_MODULES = (ingestion, reindex, cleanup, utils)
+def _load_module(name: str) -> Any:
+    return import_module(f"packages.webui.tasks.{name}")
 
 
-def __getattr__(name: str) -> Any:
+_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "reindex", "cleanup", "utils"))
+
+
+def __getattr__(name: str) -> Any:  # noqa: N807
     """Proxy attribute access to underlying task modules for test patches."""
     for module in _PROXY_MODULES:
         if hasattr(module, name):
@@ -146,7 +150,7 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(name)
 
 
-def __setattr__(name: str, value: Any) -> None:
+def __setattr__(name: str, value: Any) -> None:  # noqa: N807
     """Propagate attribute assignments to the originating module when possible."""
     for module in _PROXY_MODULES:
         if hasattr(module, name):
