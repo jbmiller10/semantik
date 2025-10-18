@@ -8,7 +8,6 @@ aligned with the refactored module structure.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
@@ -58,9 +57,8 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
 @celery_app.task(name="webui.tasks.refresh_collection_chunking_stats")
 def refresh_collection_chunking_stats() -> dict[str, Any]:
     """Refresh the collection_chunking_stats materialized view."""
-    from sqlalchemy import text
-
     from shared.database.database import AsyncSessionLocal
+    from sqlalchemy import text
 
     stats: dict[str, Any] = {"status": "success", "duration_seconds": 0.0, "error": None}
     start_time = time.time()
@@ -98,6 +96,7 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
 def monitor_partition_health() -> dict[str, Any]:
     """Monitor partition health and alert on imbalances."""
     from shared.database.database import AsyncSessionLocal
+
     from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
 
     tasks_ns = _tasks_namespace()
@@ -267,9 +266,7 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
 
                 staging_is_old = bool(
                     resolve_awaitable_sync(
-                        qdrant_manager_instance._is_staging_collection_old(
-                            collection_name, hours=staging_age_hours
-                        )
+                        qdrant_manager_instance._is_staging_collection_old(collection_name, hours=staging_age_hours)
                     )
                 )
 

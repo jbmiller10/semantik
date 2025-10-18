@@ -8,19 +8,18 @@ domain-specific task implementations are split across multiple files.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import inspect
 import json
 import logging
 import re
-import inspect
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
 from typing import Any
-
-import contextlib
-import redis.asyncio as redis
 from unittest.mock import AsyncMock, MagicMock, Mock
 
+import redis.asyncio as redis
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
 from shared.managers.qdrant_manager import QdrantManager
@@ -120,7 +119,7 @@ class CeleryTaskWithOperationUpdates:
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("Failed to send operation update: %s", exc)
 
-    async def __aenter__(self) -> "CeleryTaskWithOperationUpdates":
+    async def __aenter__(self) -> CeleryTaskWithOperationUpdates:
         redis_client = await self._get_redis()
         await redis_client.ping()
         return self
@@ -299,7 +298,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
 
             async with AsyncSessionLocal() as session:
                 for metric_name, metric_value in metrics.items():
-                    if isinstance(metric_value, (int, float)):
+                    if isinstance(metric_value, int | float):
                         metric = OperationMetrics(
                             operation_id=operation.id,
                             metric_name=metric_name,
@@ -324,7 +323,7 @@ async def _update_collection_metrics(collection_id: str, documents: int, vectors
 
 def _is_mock_like(obj: Any) -> bool:
     """Return True when the object is a unittest.mock instance."""
-    return isinstance(obj, (Mock, MagicMock, AsyncMock)) or getattr(obj, "_mock_parent", None) is not None
+    return isinstance(obj, Mock | MagicMock | AsyncMock) or getattr(obj, "_mock_parent", None) is not None
 
 
 def _select_patchable(tasks_module: Any, attr: str, fallback_module: Any) -> Any:
@@ -334,8 +333,6 @@ def _select_patchable(tasks_module: Any, attr: str, fallback_module: Any) -> Any
 
     if fallback is not None and _is_mock_like(fallback):
         selected = fallback
-    elif candidate is not None and _is_mock_like(candidate):
-        selected = candidate
     elif candidate is not None:
         selected = candidate
     else:
@@ -374,8 +371,8 @@ def resolve_awaitable_sync(value: Any) -> Any:
     """Resolve coroutine-like values from synchronous contexts using patched asyncio."""
     if inspect.isawaitable(value):
         tasks_module = import_module("packages.webui.tasks")
-        asyncio_module = getattr(tasks_module, "asyncio")
-        run = getattr(asyncio_module, "run")
+        asyncio_module = tasks_module.asyncio
+        run = asyncio_module.run
         try:
             return run(value)
         finally:
