@@ -78,9 +78,7 @@ async def test_celery_adapter_accepts_legacy_kwargs(monkeypatch):
     fake_orchestrator = MagicMock()
     fake_orchestrator.collection_repo = MagicMock()
     fake_orchestrator.document_repo = MagicMock()
-    fake_orchestrator.execute_ingestion_chunking = AsyncMock(
-        return_value=[{"content": "chunk", "metadata": {}}]
-    )
+    fake_orchestrator.execute_ingestion_chunking = AsyncMock(return_value=[{"content": "chunk", "metadata": {}}])
 
     monkeypatch.setattr(
         container,
