@@ -14,10 +14,7 @@ import pytest
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import (
-    DocumentTooLargeError,
-    ValidationError,
-)
+from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.text_processing.base_chunker import ChunkResult

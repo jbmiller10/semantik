@@ -5,9 +5,7 @@ import time
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import (
-    MarkdownChunkingStrategy,
-)
+from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
 from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor

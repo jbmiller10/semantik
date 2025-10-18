@@ -11,17 +11,12 @@ from typing import TYPE_CHECKING, Any
 
 from packages.shared.chunking.domain.entities.chunk import Chunk
 from packages.shared.chunking.domain.entities.chunk_collection import ChunkCollection
-from packages.shared.chunking.domain.exceptions import (
-    DocumentTooLargeError,
-    InvalidStateError,
-)
+from packages.shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
 
 if TYPE_CHECKING:
-    from packages.shared.chunking.domain.services.chunking_strategies.base import (
-        ChunkingStrategy,
-    )
+    from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 
 
 class ChunkingOperation:

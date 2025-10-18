@@ -26,37 +26,25 @@ from shared.config import settings as shared_settings
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.application.dto.requests import (
-    ChunkingStrategy as ChunkingStrategyEnum,
-)
+from packages.shared.chunking.application.dto.requests import ChunkingStrategy as ChunkingStrategyEnum
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     ChunkSizeViolationError,
     InvalidConfigurationError,
     StrategyNotFoundError,
 )
-from packages.shared.chunking.domain.services.chunking_strategies import (
-    STRATEGY_REGISTRY,
-    get_strategy,
-)
-from packages.shared.chunking.infrastructure.exception_translator import (
-    exception_translator,
-)
+from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
+from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import (
     ApplicationError,
     ChunkingStrategyError,
     DocumentTooLargeError,
     DomainError,
-    ResourceNotFoundError,
-    ValidationError,
 )
-from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedError as InfraPermissionDeniedError,
-)
+from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
+from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError, ValidationError
 from packages.shared.database.models import Operation
-from packages.shared.database.repositories.collection_repository import (
-    CollectionRepository,
-)
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking.strategy_registry import (
     get_api_to_internal_map,

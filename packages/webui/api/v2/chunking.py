@@ -13,13 +13,8 @@ from typing import Any, cast
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
-from packages.shared.chunking.infrastructure.exception_translator import (
-    exception_translator,
-)
-from packages.shared.chunking.infrastructure.exceptions import (
-    ApplicationError,
-    ValidationError,
-)
+from packages.shared.chunking.infrastructure.exception_translator import exception_translator
+from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
 
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE

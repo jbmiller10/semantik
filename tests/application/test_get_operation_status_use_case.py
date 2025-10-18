@@ -10,12 +10,8 @@ from uuid import uuid4
 import pytest
 
 from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
-from packages.shared.chunking.application.dto.responses import (
-    GetOperationStatusResponse,
-)
-from packages.shared.chunking.application.dto.responses import (
-    OperationStatus as DTOOperationStatus,
-)
+from packages.shared.chunking.application.dto.responses import GetOperationStatusResponse
+from packages.shared.chunking.application.dto.responses import OperationStatus as DTOOperationStatus
 from packages.shared.chunking.application.use_cases.get_operation_status import GetOperationStatusUseCase
 from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig

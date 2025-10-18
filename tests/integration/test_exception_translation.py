@@ -12,9 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
-from packages.shared.chunking.infrastructure.exception_translator import (
-    ExceptionTranslator,
-)
+from packages.shared.chunking.infrastructure.exception_translator import ExceptionTranslator
 from packages.shared.chunking.infrastructure.exceptions import (
     ApplicationException,
     ChunkingStrategyError,
