@@ -365,16 +365,31 @@ class ChunkingOrchestrator:
         merged_config = self.config_manager.merge_configs(strategy, config)
 
         # Execute chunking with fallback
+        fallback_used = False
+        fallback_reason: str | None = None
+
         async with self.metrics.measure_operation(strategy) as context:
             try:
                 chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=False)
             except Exception as e:
+                fallback_used = True
+                fallback_reason = getattr(e, "reason", None) or type(e).__name__
                 logger.warning("Strategy %s failed, using fallback: %s", strategy, str(e))
                 self.metrics.record_fallback(strategy)
                 chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=True)
 
             context["chunks_produced"] = len(chunks)
+            if fallback_used:
+                context["fallback"] = True
+                context["fallback_reason"] = fallback_reason
             self.metrics.record_chunks_produced(strategy, chunks)
+
+        if fallback_used:
+            for chunk in chunks:
+                metadata = chunk.setdefault("metadata", {})
+                metadata.setdefault("fallback", True)
+                metadata.setdefault("fallback_reason", fallback_reason)
+                metadata.setdefault("original_strategy", strategy)
 
         # Add metadata to chunks
         if metadata:

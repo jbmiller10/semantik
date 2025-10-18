@@ -35,11 +35,43 @@ class RedisStreamWebSocketManager:
         self._chunking_progress_throttle: dict[str, datetime] = {}  # Track last progress update time per operation
         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
         self._progress_manager = progress_manager
+        self._progress_logger = logger.getChild("progress")
 
         # Add locks for thread-safe access to shared state
         self._connections_lock = asyncio.Lock()
         self._consumer_tasks_lock = asyncio.Lock()
         self._throttle_lock = asyncio.Lock()
+
+    def set_progress_manager(self, manager: ProgressUpdateManager | None) -> None:
+        """Inject or replace the progress manager at runtime."""
+
+        self._progress_manager = manager
+        if manager is not None and self.redis is not None and hasattr(manager, "set_async_client"):
+            manager.set_async_client(self.redis)
+
+    def _ensure_progress_manager(
+        self,
+        redis_client: aioredis.Redis | None = None,
+    ) -> ProgressUpdateManager | None:
+        """Create or update the progress manager when Redis is available."""
+
+        client = redis_client or self.redis
+        if client is None:
+            return self._progress_manager
+
+        if self._progress_manager is None:
+            self._progress_manager = ProgressUpdateManager(
+                async_redis=client,
+                default_stream_template="operation-progress:{operation_id}",
+                default_ttl=86400,
+                default_maxlen=1000,
+                async_throttle_interval=self._chunking_progress_threshold,
+                logger_=self._progress_logger,
+            )
+        elif hasattr(self._progress_manager, "set_async_client"):
+            self._progress_manager.set_async_client(client)
+
+        return self._progress_manager
 
     async def startup(self) -> None:
         """Initialize Redis connection on application startup with retry logic.
@@ -70,18 +102,7 @@ class RedisStreamWebSocketManager:
                     # Validate connection
                     await redis_client.ping()
                     self.redis = redis_client
-
-                    if self._progress_manager is None:
-                        self._progress_manager = ProgressUpdateManager(
-                            async_redis=redis_client,
-                            default_stream_template="operation-progress:{operation_id}",
-                            default_ttl=86400,
-                            default_maxlen=1000,
-                            async_throttle_interval=self._chunking_progress_threshold,
-                            logger_=logger.getChild("progress"),
-                        )
-                    else:
-                        self._progress_manager.set_async_client(redis_client)
+                    self._ensure_progress_manager(redis_client)
 
                     logger.info("WebSocket manager connected to Redis")
                     return
@@ -302,7 +323,7 @@ class RedisStreamWebSocketManager:
 
         payload_timestamp = datetime.now(UTC)
         message = {"timestamp": payload_timestamp.isoformat(), "type": update_type, "data": data}
-        manager = self._progress_manager
+        manager = self._ensure_progress_manager()
         publish_result: ProgressSendResult | None = None
 
         if manager is not None and self.redis is not None:
@@ -373,7 +394,14 @@ class RedisStreamWebSocketManager:
                             # First check if the stream exists
                             try:
                                 stream_info = await self.redis.xinfo_stream(stream_key)
-                                logger.debug(f"Stream {stream_key} exists with {stream_info.get('length', 0)} messages")
+                                stream_length = 0
+                                if isinstance(stream_info, dict):
+                                    stream_length = int(stream_info.get("length", 0) or 0)
+                                logger.debug(
+                                    "Stream %s exists with %s messages",
+                                    stream_key,
+                                    stream_length,
+                                )
                             except Exception:
                                 # Stream doesn't exist - this is normal for operations that haven't started yet
                                 logger.debug(

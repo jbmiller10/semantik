@@ -74,7 +74,7 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
                 await session.execute(text("SELECT refresh_collection_chunking_stats()"))
                 await session.commit()
 
-        tasks_ns.asyncio.run(_refresh_view())
+        resolve_awaitable_sync(_refresh_view())
 
         stats["duration_seconds"] = time.time() - start_time
         log.info(
@@ -118,7 +118,7 @@ def monitor_partition_health() -> dict[str, Any]:
                     "error": monitoring_result.error,
                 }
 
-        results = tasks_ns.asyncio.run(_check_health())
+        results = resolve_awaitable_sync(_check_health())
 
     except Exception as exc:  # pragma: no cover - defensive logging
         log.error(f"Partition health monitoring failed: {exc}")

@@ -66,6 +66,17 @@ JWT_SECRET_KEY=test-secret-key-for-testing-only
 ```
 
 ### PostgreSQL Test Database Setup
+
+We now ship a dedicated Docker service for the test database. Bring it up with the
+new `testing` profile before running suites that hit FastAPI endpoints:
+
+```bash
+# Start the disposable test database (uses credentials from .env.test)
+docker compose --profile testing up -d postgres_test
+```
+
+If you prefer a local Postgres instance, you can still create the database by hand:
+
 ```bash
 # Create test database
 createdb semantik_test

@@ -47,9 +47,9 @@ from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.dependencies import (
     get_chunking_service_adapter_dependency,
-    get_collection_for_user,
+    get_collection_for_user_safe,
 )
-from packages.webui.rate_limiter import check_circuit_breaker, limiter
+from packages.webui.rate_limiter import check_circuit_breaker, create_rate_limit_decorator, rate_limit_dependency
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
 from packages.webui.services.chunking_service import ChunkingService
 
@@ -66,6 +66,9 @@ ChunkingServiceLike = ChunkingServiceAdapter | ChunkingService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking-v2"])
+
+# Backwards-compatible alias for tests that patch the original dependency name
+get_collection_for_user = get_collection_for_user_safe
 
 
 async def _resolve_service_payload(payload: Any) -> Any:
@@ -210,8 +213,9 @@ async def recommend_strategy(
         413: {"description": "Content too large"},
         503: {"description": "Circuit breaker open"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PREVIEW_RATE))],
 )
-@limiter.limit(RateLimitConfig.PREVIEW_RATE)
+@create_rate_limit_decorator(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
@@ -283,8 +287,9 @@ async def generate_preview(
     responses={
         429: {"description": "Rate limit exceeded"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.COMPARE_RATE))],
 )
-@limiter.limit(RateLimitConfig.COMPARE_RATE)
+@create_rate_limit_decorator(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
@@ -341,8 +346,9 @@ async def compare_strategies(
     "/preview/{preview_id}",
     response_model=PreviewResponse,
     summary="Get cached preview results",
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.READ_RATE))],
 )
-@limiter.limit(RateLimitConfig.READ_RATE)
+@create_rate_limit_decorator(RateLimitConfig.READ_RATE)
 async def get_cached_preview(
     request: Request,  # Required for rate limiting
     preview_id: str,
@@ -417,14 +423,15 @@ async def clear_preview_cache(
         422: {"description": "Validation error"},
         429: {"description": "Rate limit exceeded"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PROCESS_RATE))],
 )
-@limiter.limit(RateLimitConfig.PROCESS_RATE)
+@create_rate_limit_decorator(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
     background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
@@ -532,7 +539,7 @@ async def update_chunking_strategy(
     background_tasks: BackgroundTasks,
     request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
@@ -610,8 +617,9 @@ async def update_chunking_strategy(
     "/collections/{collection_uuid}/chunks",
     response_model=ChunkListResponse,
     summary="Get chunks with pagination",
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.READ_RATE))],
 )
-@limiter.limit(RateLimitConfig.READ_RATE)
+@create_rate_limit_decorator(RateLimitConfig.READ_RATE)
 async def get_collection_chunks(
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency # noqa: ARG001
@@ -619,7 +627,7 @@ async def get_collection_chunks(
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> ChunkListResponse:
     """
@@ -659,7 +667,7 @@ async def get_collection_chunks(
 async def get_chunking_stats(
     collection_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
+    collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> ChunkingStats:
     """
@@ -694,8 +702,9 @@ async def get_chunking_stats(
     "/metrics",
     response_model=GlobalMetrics,
     summary="Get global chunking metrics",
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.ANALYTICS_RATE))],
 )
-@limiter.limit(RateLimitConfig.ANALYTICS_RATE)
+@create_rate_limit_decorator(RateLimitConfig.ANALYTICS_RATE)
 async def get_global_metrics(
     request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
