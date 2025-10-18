@@ -49,6 +49,10 @@ dependencies = [
     "aiofiles>=24.1.0,<25",
     "google-re2~=1.1",
     "regex>=2024.11.6,<2025",
+    "playwright>=1.54.0",
+    "python-slugify>=8.0.4",
+    "text-unidecode>=1.3",
+    "pytest-base-url>=2.1.0",
 ]
 
 [dependency-groups]
