@@ -548,7 +548,7 @@ class ChunkingService:
         document_id: str | None = None,
         config_overrides: dict[str, Any] | None = None,
         user_id: int | None = None,
-        correlation_id: str | None = None,
+        _correlation_id: str | None = None,
     ) -> dict[str, Any]:
         """Delegate preview computation to orchestrator-backed adapter."""
 
@@ -763,14 +763,13 @@ class ChunkingService:
         cache_result: bool = True,
     ) -> ServicePreviewResponse:
         strategy_name = self._strategy_to_string(strategy or ChunkingStrategyEnum.RECURSIVE)
-        response = await self._orchestrator.preview_chunks(
+        return await self._orchestrator.preview_chunks(
             content=content,
             strategy=strategy_name,
             config=config,
             use_cache=cache_result,
             max_chunks=max_chunks,
         )
-        return response
 
     async def validate_preview_content(self, content: str | None, document_id: str | None) -> None:
         """Validate preview request content.

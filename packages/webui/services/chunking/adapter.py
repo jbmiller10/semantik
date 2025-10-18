@@ -77,11 +77,7 @@ class ChunkingServiceAdapter:
                         if hasattr(chunk, "char_count")
                         else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
                     ),
-                    "token_count": (
-                        chunk.token_count
-                        if hasattr(chunk, "token_count")
-                        else chunk.get("token_count")
-                    ),
+                    "token_count": (chunk.token_count if hasattr(chunk, "token_count") else chunk.get("token_count")),
                     "quality_score": (
                         chunk.quality_score if hasattr(chunk, "quality_score") else chunk.get("quality_score", 0.8)
                     ),
@@ -158,10 +154,7 @@ class ChunkingServiceAdapter:
                         {
                             "content": _from_obj(chunk, "content", ""),
                             "index": _from_obj(chunk, "index", 0),
-                            "size": (
-                                _from_obj(chunk, "char_count", None)
-                                or len(_from_obj(chunk, "content", ""))
-                            ),
+                            "size": (_from_obj(chunk, "char_count", None) or len(_from_obj(chunk, "content", ""))),
                             "metadata": _from_obj(chunk, "metadata", {}),
                         }
                         for chunk in (
@@ -171,9 +164,7 @@ class ChunkingServiceAdapter:
                         )
                     ],
                     "metrics": {
-                        "processing_time": (
-                            _from_obj(comp, "processing_time_ms", 0) / 1000.0
-                        ),
+                        "processing_time": (_from_obj(comp, "processing_time_ms", 0) / 1000.0),
                         "quality_score": _from_obj(comp, "quality_score", 0),
                         "chunk_variance": _from_obj(comp, "size_variance", 0),
                         "average_chunk_size": _from_obj(comp, "avg_chunk_size", 0),
