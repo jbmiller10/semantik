@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import json
 import traceback
-from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
@@ -59,7 +58,7 @@ class ChunkingOperationManager:
         error_handler: Any,
         error_classifier: Any,
         logger: Any,
-        expected_circuit_breaker_exceptions: Iterable[type[Exception]] | None = None,
+        expected_circuit_breaker_exceptions: tuple[type[Exception], ...] | None = None,
         failure_threshold: int = DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
         recovery_timeout: int = DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
         dead_letter_ttl_seconds: int = DEFAULT_DEAD_LETTER_TTL_SECONDS,
@@ -210,7 +209,7 @@ class ChunkingOperationManager:
             return error_code
 
         try:
-            retry_state: Mapping[str, Any] = {
+            retry_state: dict[str, Any] = {
                 "operation_id": operation_id,
                 "correlation_id": correlation_id,
                 "task_id": task_id,
@@ -352,8 +351,8 @@ class ChunkingOperationManager:
         correlation_id: str,
         error: Exception,
         error_type: str,
-        args: Sequence[Any],
-        kwargs: Mapping[str, Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
         retry_count: int,
     ) -> None:
         if not self._redis_client:
