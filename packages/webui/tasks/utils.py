@@ -13,6 +13,8 @@ import inspect
 import json
 import logging
 import re
+import socket
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
@@ -92,6 +94,11 @@ class CeleryTaskWithOperationUpdates:
         self.redis_url = settings.REDIS_URL
         self.stream_key = f"operation-progress:{operation_id}"
         self._redis_client: redis.Redis | None = None
+        self._publisher_id = (
+            getattr(settings, "PROGRESS_PUBLISHER_ID", None)
+            or getattr(settings, "INSTANCE_ID", None)
+            or f"celery-worker:{socket.gethostname()}"
+        )
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
@@ -115,7 +122,15 @@ class CeleryTaskWithOperationUpdates:
             )
 
             # Publish to pub/sub listeners so WebSocket clients receive live updates
-            await redis_client.publish(f"operation:{self.operation_id}", message_json)
+            publish_payload = {
+                "message": message,
+                "from_instance": self._publisher_id,
+                "timestamp": time.time(),
+            }
+            await redis_client.publish(
+                f"operation:{self.operation_id}",
+                json.dumps(publish_payload),
+            )
 
             # Set TTL for stream
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
