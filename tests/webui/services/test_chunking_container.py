@@ -67,3 +67,40 @@ async def test_resolve_celery_dependency_returns_adapter(monkeypatch):
     result = await container.resolve_celery_chunking_service(AsyncMock())
 
     assert isinstance(result, ChunkingServiceAdapter)
+
+
+@pytest.mark.asyncio()
+async def test_celery_adapter_accepts_legacy_kwargs(monkeypatch):
+    """Adapter returned for Celery honours legacy ChunkingService signature."""
+
+    monkeypatch.setattr(container.settings, "USE_CHUNKING_ORCHESTRATOR", True)
+
+    fake_orchestrator = MagicMock()
+    fake_orchestrator.collection_repo = MagicMock()
+    fake_orchestrator.document_repo = MagicMock()
+    fake_orchestrator.execute_ingestion_chunking = AsyncMock(
+        return_value=[{"content": "chunk", "metadata": {}}]
+    )
+
+    monkeypatch.setattr(
+        container,
+        "build_chunking_orchestrator",
+        AsyncMock(return_value=fake_orchestrator),
+    )
+
+    adapter = await container.resolve_celery_chunking_service(AsyncMock())
+
+    result = await adapter.execute_ingestion_chunking(
+        text="dummy",
+        document_id="doc-123",
+        collection={
+            "chunking_strategy": "recursive",
+            "chunking_config": {"chunk_size": 256},
+        },
+        metadata={"source": "unit"},
+    )
+
+    fake_orchestrator.execute_ingestion_chunking.assert_awaited_once()
+    assert "chunks" in result
+    assert result["chunks"]
+    assert result["stats"]["strategy_used"] == "recursive"
