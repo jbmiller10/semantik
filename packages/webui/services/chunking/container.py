@@ -224,21 +224,8 @@ async def resolve_celery_chunking_service(
 ) -> ChunkingService | ChunkingServiceAdapter:
     """Provide Celery-friendly chunking dependency."""
 
-    if settings.USE_CHUNKING_ORCHESTRATOR:
-        # Celery tasks run sync contexts, so bypass Redis cache inside adapter.
-        orchestrator = await build_chunking_orchestrator(
-            db_session,
-            collection_repo=collection_repo,
-            document_repo=document_repo,
-            enable_cache=False,
-        )
-        return ChunkingServiceAdapter(
-            orchestrator=orchestrator,
-            db_session=db_session,
-            collection_repo=orchestrator.collection_repo,
-            document_repo=orchestrator.document_repo,
-        )
-
+    # Celery tasks expect the legacy ChunkingService signature (text/document_id/collection kwargs).
+    # Keep returning the monolith until ingestion paths are fully ported.
     return await get_legacy_chunking_service(
         db_session,
         collection_repo=collection_repo,
