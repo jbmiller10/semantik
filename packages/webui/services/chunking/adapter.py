@@ -72,6 +72,15 @@ class ChunkingServiceAdapter:
                         if hasattr(chunk, "char_count")
                         else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
                     ),
+                    "char_count": (
+                        chunk.char_count
+                        if hasattr(chunk, "char_count")
+                        else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
+                    ),
+                    "token_count": (chunk.token_count if hasattr(chunk, "token_count") else chunk.get("token_count")),
+                    "quality_score": (
+                        chunk.quality_score if hasattr(chunk, "quality_score") else chunk.get("quality_score", 0.8)
+                    ),
                     "metadata": chunk.metadata if hasattr(chunk, "metadata") else chunk.get("metadata", {}),
                 }
                 for chunk in result.chunks
@@ -81,6 +90,11 @@ class ChunkingServiceAdapter:
             "strategy": result.strategy,
             "config": result.config,
             "cache_key": result.preview_id,
+            "preview_id": result.preview_id,
+            "cached": result.cached,
+            "expires_at": result.expires_at.isoformat() if result.expires_at else None,
+            "processing_time_ms": result.processing_time_ms,
+            "correlation_id": result.correlation_id,
         }
 
     async def preview_chunking(
@@ -105,57 +119,60 @@ class ChunkingServiceAdapter:
         content: str,
         strategies: list[str] | None = None,
         base_config: dict[str, Any] | None = None,
+        strategy_configs: dict[str, dict[str, Any]] | None = None,
         user_id: int | None = None,
+        max_chunks_per_strategy: int | None = 5,
     ) -> dict[str, Any]:
         """Compare multiple strategies - delegates to orchestrator."""
         result = await self.orchestrator.compare_strategies(
             content=content,
             strategies=strategies,
             base_config=base_config,
+            strategy_configs=strategy_configs,
             user_id=user_id,
+            max_chunks_per_strategy=max_chunks_per_strategy,
         )
 
         # Convert ServiceCompareResponse to dict
+        def _from_obj(obj: Any, attr: str, default: Any = None) -> Any:
+            if hasattr(obj, attr):
+                return getattr(obj, attr)
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return default
+
         return {
+            "comparison_id": result.comparison_id,
             "comparisons": [
                 {
-                    "strategy": comp.strategy if hasattr(comp, "strategy") else comp.get("strategy", ""),
-                    "chunk_count": comp.total_chunks if hasattr(comp, "total_chunks") else comp.get("total_chunks", 0),
-                    "avg_chunk_size": (
-                        comp.avg_chunk_size if hasattr(comp, "avg_chunk_size") else comp.get("avg_chunk_size", 0)
-                    ),
+                    "strategy": _from_obj(comp, "strategy", ""),
+                    "chunk_count": _from_obj(comp, "total_chunks", 0),
+                    "avg_chunk_size": _from_obj(comp, "avg_chunk_size", 0),
                     "min_chunk_size": 0,  # Not available in ServiceStrategyComparison
                     "max_chunk_size": 0,  # Not available in ServiceStrategyComparison
                     "preview_chunks": [
                         {
-                            "content": chunk.content if hasattr(chunk, "content") else chunk.get("content", ""),
-                            "index": chunk.index if hasattr(chunk, "index") else chunk.get("index", 0),
-                            "size": (
-                                chunk.char_count
-                                if hasattr(chunk, "char_count")
-                                else len(chunk.content if hasattr(chunk, "content") else chunk.get("content", ""))
-                            ),
-                            "metadata": chunk.metadata if hasattr(chunk, "metadata") else chunk.get("metadata", {}),
+                            "content": _from_obj(chunk, "content", ""),
+                            "index": _from_obj(chunk, "index", 0),
+                            "size": (_from_obj(chunk, "char_count", None) or len(_from_obj(chunk, "content", ""))),
+                            "metadata": _from_obj(chunk, "metadata", {}),
                         }
                         for chunk in (
-                            comp.sample_chunks if hasattr(comp, "sample_chunks") else comp.get("sample_chunks", [])
+                            comp.sample_chunks
+                            if hasattr(comp, "sample_chunks")
+                            else _from_obj(comp, "sample_chunks", [])
                         )
                     ],
                     "metrics": {
-                        "processing_time": (
-                            comp.processing_time_ms / 1000.0
-                            if hasattr(comp, "processing_time_ms")
-                            else comp.get("processing_time_ms", 0) / 1000.0
-                        ),
-                        "memory_usage": 0,
-                        "quality_score": (
-                            comp.quality_score if hasattr(comp, "quality_score") else comp.get("quality_score", 0)
-                        ),
-                        "chunk_variance": (
-                            comp.size_variance if hasattr(comp, "size_variance") else comp.get("size_variance", 0)
-                        ),
-                        "error": None,
+                        "processing_time": (_from_obj(comp, "processing_time_ms", 0) / 1000.0),
+                        "quality_score": _from_obj(comp, "quality_score", 0),
+                        "chunk_variance": _from_obj(comp, "size_variance", 0),
+                        "average_chunk_size": _from_obj(comp, "avg_chunk_size", 0),
+                        "total_chunks": _from_obj(comp, "total_chunks", 0),
+                        "error": _from_obj(comp, "error"),
                     },
+                    "pros": list(_from_obj(comp, "pros", [])),
+                    "cons": list(_from_obj(comp, "cons", [])),
                 }
                 for comp in result.comparisons
             ],
@@ -186,6 +203,7 @@ class ChunkingServiceAdapter:
                 if result.recommendation
                 else None
             ),
+            "processing_time_ms": result.processing_time_ms,
             "metadata": {
                 "comparison_id": result.comparison_id,
                 "processing_time_ms": result.processing_time_ms,

@@ -163,37 +163,37 @@ class ChunkingProcessor:
 
         for i, chunk in enumerate(chunks):
             if isinstance(chunk, str):
-                formatted.append(
-                    {
-                        "content": chunk,
-                        "index": i,
-                        "strategy": strategy,
-                        "metadata": {
-                            "chunk_size": len(chunk),
-                            "position": i,
-                        },
-                    }
-                )
+                content = chunk
+                metadata: dict[str, Any] = {"chunk_size": len(content), "position": i}
+                token_count = len(content) // 4
+                quality_score = 0.8
             elif isinstance(chunk, dict):
-                # Chunk already has structure
-                chunk_data = {
-                    "content": chunk.get("content", str(chunk)),
+                content = chunk.get("content") or chunk.get("text") or str(chunk)
+                metadata = chunk.get("metadata", {}).copy()
+                metadata.setdefault("chunk_size", len(content))
+                metadata["position"] = i
+                token_count = chunk.get("token_count")
+                if token_count is None:
+                    token_count = len(content) // 4
+                quality_score = chunk.get("quality_score", 0.8)
+            else:
+                content = str(chunk)
+                metadata = {"position": i, "chunk_size": len(content)}
+                token_count = len(content) // 4
+                quality_score = 0.8
+
+            formatted.append(
+                {
+                    "content": content,
+                    "text": content,
                     "index": i,
                     "strategy": strategy,
-                    "metadata": chunk.get("metadata", {}),
+                    "metadata": metadata,
+                    "char_count": len(content),
+                    "token_count": token_count,
+                    "quality_score": quality_score,
                 }
-                chunk_data["metadata"]["position"] = i
-                formatted.append(chunk_data)
-            else:
-                # Convert to string as last resort
-                formatted.append(
-                    {
-                        "content": str(chunk),
-                        "index": i,
-                        "strategy": strategy,
-                        "metadata": {"position": i},
-                    }
-                )
+            )
 
         return formatted
 
@@ -213,14 +213,23 @@ class ChunkingProcessor:
                 "min_chunk_size": 0,
                 "max_chunk_size": 0,
                 "total_size": 0,
+                "size_variance": 0.0,
+                "quality_score": 0.0,
             }
 
-        sizes = [len(chunk.get("content", "")) for chunk in chunks]
+        sizes = [chunk.get("char_count") or len(chunk.get("content", "")) for chunk in chunks]
+
+        total_size = sum(sizes)
+        avg_size = total_size / len(sizes) if sizes else 0
+        variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0.0
+        quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
 
         return {
             "total_chunks": len(chunks),
-            "avg_chunk_size": sum(sizes) / len(sizes) if sizes else 0,
+            "avg_chunk_size": avg_size,
             "min_chunk_size": min(sizes) if sizes else 0,
             "max_chunk_size": max(sizes) if sizes else 0,
-            "total_size": sum(sizes),
+            "total_size": total_size,
+            "size_variance": variance,
+            "quality_score": quality_score,
         }
