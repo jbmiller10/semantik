@@ -19,23 +19,21 @@ import logging
 import signal
 import time
 import uuid
+from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from typing import Any
 
 import psutil
-from celery import Task, current_task
+from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import pg_connection_manager
 from packages.shared.database.database import AsyncSessionLocal
-from packages.shared.database.models import CollectionStatus, OperationStatus, OperationType
+from packages.shared.database.models import DocumentStatus, OperationStatus, OperationType
+from packages.shared.database.repositories.chunk_repository import ChunkRepository
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
@@ -43,11 +41,8 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingPartialFailureError,
-    ChunkingResourceLimitError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
-    ChunkingValidationError,
-    ResourceType,
 )
 from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
@@ -60,10 +55,9 @@ from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.factory import get_redis_manager
 from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 from packages.webui.services.type_guards import ensure_sync_redis
+from packages.webui.tasks import executor as chunk_executor
+from packages.webui.tasks import extract_and_serialize_thread_safe
 from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
-
-if TYPE_CHECKING:
-    from packages.shared.text_processing.base_chunker import ChunkResult
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +325,7 @@ class ChunkingTask(Task):
         logger.info("Received shutdown signal, initiating graceful shutdown")
         self._graceful_shutdown = True
 
+
 @celery_app.task(
     base=ChunkingTask,
     bind=True,
@@ -343,28 +338,19 @@ def process_chunking_operation(
     operation_id: str,
     correlation_id: str,
 ) -> dict[str, Any]:
-    """Process a chunking operation with comprehensive error handling.
+    """Celery entrypoint that delegates to the internal executor."""
 
-    This task handles document chunking with:
-    - Idempotency through operation fingerprinting
-    - Resource limit enforcement
-    - Graceful shutdown on soft time limit
-    - Progress tracking and error reporting
-    - Automatic cleanup on failure
+    return _execute_chunking_task(self, operation_id, correlation_id)
 
-    Args:
-        self: Task instance (bound task)
-        operation_id: Unique operation identifier
-        correlation_id: Correlation ID for distributed tracing
 
-    Returns:
-        Dictionary with operation results
+def _execute_chunking_task(
+    task: ChunkingTask,
+    operation_id: str,
+    correlation_id: str,
+) -> dict[str, Any]:
+    """Execute the chunking task synchronously for Celery and tests."""
 
-    Raises:
-        Various chunking exceptions based on failure type
-    """
-    # Check circuit breaker before proceeding
-    operation_manager = self._ensure_operation_manager()
+    operation_manager = task._ensure_operation_manager()
     if not operation_manager.allow_execution():
         raise ChunkingDependencyError(
             detail="Circuit breaker is open - external service unavailable",
@@ -373,24 +359,29 @@ def process_chunking_operation(
             operation_id=operation_id,
         )
 
-    # Run synchronous implementation (no asyncio.run!)
     try:
-        return _process_chunking_operation_sync(
-            operation_id=operation_id,
-            correlation_id=correlation_id,
-            celery_task=self,
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():  # pragma: no cover - defensive
+                raise RuntimeError("event loop closed")
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(
+            _process_chunking_operation_async(
+                operation_id=operation_id,
+                correlation_id=correlation_id,
+                celery_task=task,
+            )
         )
     except SoftTimeLimitExceeded:
-        # Handle soft time limit gracefully
         logger.warning(
-            f"Soft time limit exceeded for operation {operation_id}",
-            extra={
-                "operation_id": operation_id,
-                "correlation_id": correlation_id,
-            },
+            "Soft time limit exceeded for operation %s",
+            operation_id,
+            extra={"operation_id": operation_id, "correlation_id": correlation_id},
         )
-        # Clean up and save partial results
-        _handle_soft_timeout_sync(operation_id, correlation_id, self)
+        _handle_soft_timeout_sync(operation_id, correlation_id, task)
         raise ChunkingTimeoutError(
             detail="Operation exceeded soft time limit",
             correlation_id=correlation_id,
@@ -398,605 +389,442 @@ def process_chunking_operation(
             elapsed_time=CHUNKING_SOFT_TIME_LIMIT,
             timeout_limit=CHUNKING_SOFT_TIME_LIMIT,
         ) from None
-    except Exception:
-        # Let the task class handle retries and failures
-        raise
 
 
-def _process_chunking_operation_sync(
-    operation_id: str,
+def _collection_to_payload(collection: Any) -> dict[str, Any]:
+    """Return a mapping with chunking configuration for the collection."""
+
+    def _get(field: str, default: Any = None) -> Any:
+        if isinstance(collection, dict):
+            return collection.get(field, default)
+        return getattr(collection, field, default)
+
+    payload = {
+        "id": _get("id"),
+        "name": _get("name"),
+        "chunking_strategy": _get("chunking_strategy"),
+        "chunking_config": _get("chunking_config", {}) or {},
+        "chunk_size": _get("chunk_size", 1000),
+        "chunk_overlap": _get("chunk_overlap", 200),
+        "embedding_model": _get("embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
+        "quantization": _get("quantization", "float16"),
+        "vector_store_name": _get("vector_store_name") or _get("vector_collection_id"),
+    }
+    return payload
+
+
+def _extract_document_ids(operation: Any) -> list[str]:
+    """Extract document identifiers from operation config/meta if present."""
+
+    containers: list[dict[str, Any]] = []
+    for candidate in (getattr(operation, "config", None), getattr(operation, "meta", None)):
+        if isinstance(candidate, dict):
+            containers.append(candidate)
+
+    candidates: list[str] = []
+    keys = ("document_ids", "documents", "document_uuids", "pending_document_ids")
+    for container in containers:
+        for key in keys:
+            value = container.get(key)
+            if not value:
+                continue
+            if isinstance(value, str):
+                candidates.append(value)
+            elif isinstance(value, Iterable):
+                for item in value:
+                    document_id: str | None = None
+                    if isinstance(item, dict):
+                        document_id = item.get("id") or item.get("document_id")
+                    elif item:
+                        document_id = str(item)
+                    if document_id:
+                        candidates.append(document_id)
+
+    seen: set[str] = set()
+    unique_ids: list[str] = []
+    for document_id in candidates:
+        if document_id not in seen:
+            seen.add(document_id)
+            unique_ids.append(document_id)
+    return unique_ids
+
+
+def _normalize_document_status(value: Any) -> DocumentStatus | None:
+    """Return DocumentStatus enum when possible."""
+
+    if isinstance(value, DocumentStatus):
+        return value
+    if isinstance(value, str):
+        try:
+            return DocumentStatus(value.lower())
+        except ValueError:
+            return None
+    return None
+
+
+def _should_process_document(document: Any) -> bool:
+    """Return True when the document should be chunked."""
+
+    status = _normalize_document_status(getattr(document, "status", None))
+    if status in {DocumentStatus.DELETED}:
+        return False
+    chunk_count = getattr(document, "chunk_count", 0) or 0
+    if status == DocumentStatus.COMPLETED and chunk_count > 0:
+        return False
+    return True
+
+
+def _combine_text_blocks(blocks: Sequence[tuple[str, dict[str, Any]]]) -> tuple[str, dict[str, Any]]:
+    """Combine extracted text blocks into a single payload."""
+
+    combined_text_parts: list[str] = []
+    combined_metadata: dict[str, Any] = {}
+    for text, metadata in blocks:
+        if isinstance(text, str) and text.strip():
+            combined_text_parts.append(text)
+        if isinstance(metadata, dict):
+            combined_metadata.update(metadata)
+    return "\n\n".join(combined_text_parts).strip(), combined_metadata
+
+
+def _build_chunk_rows(
+    collection_id: str,
+    document_id: str,
+    chunks: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Transform chunking results into database rows."""
+
+    rows: list[dict[str, Any]] = []
+    for index, chunk in enumerate(chunks):
+        content = chunk.get("text") or chunk.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        metadata = chunk.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {"value": metadata}
+        rows.append(
+            {
+                "collection_id": collection_id,
+                "document_id": document_id,
+                "chunk_index": chunk.get("chunk_index", index),
+                "content": content,
+                "start_offset": chunk.get("start_offset"),
+                "end_offset": chunk.get("end_offset"),
+                "token_count": chunk.get("token_count"),
+                "metadata": metadata,
+            }
+        )
+    return rows
+
+
+async def _resolve_documents_for_operation(
+    operation: Any,
+    document_repo: DocumentRepository,
+) -> list[Any]:
+    """Return documents relevant to the chunking operation."""
+
+    document_ids = _extract_document_ids(operation)
+    documents: list[Any] = []
+    if document_ids:
+        for document_id in document_ids:
+            doc = await document_repo.get_by_id(document_id)
+            if doc and _should_process_document(doc):
+                documents.append(doc)
+    else:
+        docs, _ = await document_repo.list_by_collection(
+            operation.collection_id,
+            status=None,
+            limit=10_000,
+        )
+        for doc in docs:
+            if _should_process_document(doc):
+                documents.append(doc)
+    return documents
+
+
+async def _process_document_chunking(
+    *,
+    chunking_service: Any,
+    chunk_repo: ChunkRepository,
+    document_repo: DocumentRepository,
+    collection_payload: dict[str, Any],
+    collection_id: str,
+    document: Any,
     correlation_id: str,
-    celery_task: ChunkingTask,
-) -> dict[str, Any]:
-    """Synchronous implementation of chunking operation processing for Celery.
+) -> tuple[int, dict[str, Any] | None]:
+    """Chunk a single document and persist the resulting rows."""
 
-    This is a sync version that doesn't use asyncio, preventing event loop conflicts
-    in Celery workers.
-
-    Args:
-        operation_id: Operation identifier
-        correlation_id: Correlation ID for tracing
-        celery_task: Celery task instance
-
-    Returns:
-        Operation results dictionary
-    """
-    start_time = time.time()
-    chunks_created = 0
-    documents_processed = 0
-    failed_documents = []
-
-    # Initialize resources
-    redis_client = get_redis_client()  # Sync Redis client
-
-    # Track resources
-    process = psutil.Process()
-    initial_memory = process.memory_info().rss
-    process.cpu_times().user + process.cpu_times().system
-
-    # Store task ID immediately
-    task_id = current_task.request.id if current_task else str(uuid.uuid4())
-
-    logger.info(f"Processing chunking operation {operation_id} (sync mode)")
-
-    try:
-        # Update operation status in Redis
-        redis_client.hset(
-            f"operation:{operation_id}",
-            mapping={
-                "status": "processing",
-                "task_id": task_id,
-                "started_at": datetime.now(UTC).isoformat(),
-            },
+    loop = asyncio.get_running_loop()
+    file_path = getattr(document, "file_path", "")
+    text_blocks = await loop.run_in_executor(chunk_executor, extract_and_serialize_thread_safe, file_path)
+    if not text_blocks:
+        raise ValueError(
+            f"No text content extracted for document {getattr(document, 'id', file_path)}"
         )
 
-        # Send progress update via Redis
-        _send_progress_update_sync(
-            redis_client,
-            operation_id,
-            correlation_id,
-            0,
-            "Starting chunking operation",
+    combined_text, metadata = _combine_text_blocks(text_blocks)
+    if not combined_text:
+        raise ValueError(
+            f"Extracted content empty for document {getattr(document, 'id', file_path)}"
         )
 
-        # Get operation configuration from Redis
-        operation_data = redis_client.hgetall(f"operation:{operation_id}:config")
-        if not operation_data:
-            logger.warning(f"No configuration found for operation {operation_id}, using defaults")
-            operation_data = {
-                "strategy": "recursive",
-                "chunk_size": "1000",
-                "chunk_overlap": "200",
-            }
+    file_type = file_path.rsplit(".", 1)[-1] if "." in file_path else None
+    chunking_result = await chunking_service.execute_ingestion_chunking(
+        text=combined_text,
+        document_id=document.id,
+        collection=collection_payload,
+        metadata=metadata,
+        file_type=file_type,
+    )
 
-        # Parse configuration
-        strategy = operation_data.get("strategy", "recursive")
-        chunk_size = int(operation_data.get("chunk_size", "1000"))
-        chunk_overlap = int(operation_data.get("chunk_overlap", "200"))
-
-        # Get documents to process (stored in Redis during operation creation)
-        documents_key = f"operation:{operation_id}:documents"
-        document_ids = redis_client.lrange(documents_key, 0, -1)
-        total_documents = len(document_ids)
-
-        if total_documents == 0:
-            logger.warning(f"No documents found for operation {operation_id}")
-            # Still mark as successful but with 0 chunks
-            redis_client.hset(
-                f"operation:{operation_id}",
-                mapping={
-                    "status": "completed",
-                    "completed_at": datetime.now(UTC).isoformat(),
-                    "chunks_created": "0",
-                    "documents_processed": "0",
-                },
-            )
-            return {
-                "operation_id": operation_id,
-                "status": "success",
-                "chunks_created": 0,
-                "documents_processed": 0,
-                "duration_seconds": time.time() - start_time,
-            }
-
-        # Process documents in batches
-        batch_size = 10  # Process 10 documents at a time
-
-        for i in range(0, total_documents, batch_size):
-            # Check for graceful shutdown
-            if celery_task._graceful_shutdown:
-                logger.info("Graceful shutdown requested, saving progress")
-                break
-
-            # Monitor resources
-            current_memory = process.memory_info().rss
-            memory_increase = current_memory - initial_memory
-
-            if memory_increase > CHUNKING_MEMORY_LIMIT_GB * 1024**3:
-                raise ChunkingMemoryError(
-                    detail="Operation memory usage exceeded limit",
-                    correlation_id=correlation_id,
-                    operation_id=operation_id,
-                    memory_used=current_memory,
-                    memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
-                )
-
-            batch = document_ids[i : i + batch_size]
-
-            for doc_id in batch:
-                try:
-                    # Get document content from Redis
-                    doc_content = redis_client.get(f"document:{doc_id}:content")
-                    if not doc_content:
-                        logger.warning(f"No content found for document {doc_id}")
-                        failed_documents.append(doc_id.decode() if isinstance(doc_id, bytes) else doc_id)
-                        continue
-
-                    # Decode content if needed
-                    if isinstance(doc_content, bytes):
-                        doc_content = doc_content.decode("utf-8")
-
-                    # Simple chunking logic (character-based with overlap)
-                    doc_chunks: list[dict[str, Any]] = []
-                    step = max(1, chunk_size - chunk_overlap)
-
-                    for chunk_start in range(0, len(doc_content), step):
-                        chunk_end = min(chunk_start + chunk_size, len(doc_content))
-                        chunk_text = doc_content[chunk_start:chunk_end]
-
-                        if chunk_text.strip():  # Only add non-empty chunks
-                            chunk_id = f"{doc_id}_chunk_{len(doc_chunks):04d}"
-                            doc_chunks.append(
-                                {
-                                    "id": chunk_id,
-                                    "content": chunk_text,
-                                    "metadata": {
-                                        "document_id": doc_id.decode() if isinstance(doc_id, bytes) else doc_id,
-                                        "chunk_index": len(doc_chunks),
-                                        "chunk_start": chunk_start,
-                                        "chunk_end": chunk_end,
-                                        "strategy": strategy,
-                                    },
-                                }
-                            )
-
-                    # Store chunks in Redis
-                    for chunk in doc_chunks:
-                        chunk_key = f"chunk:{chunk['id']}"
-                        mapping_data: "Mapping[str | bytes, bytes | float | int | str]" = {
-                            "content": chunk["content"],
-                            "document_id": chunk["metadata"]["document_id"],
-                            "chunk_index": str(chunk["metadata"]["chunk_index"]),
-                            "created_at": datetime.now(UTC).isoformat(),
-                        }
-                        redis_client.hset(
-                            chunk_key,
-                            mapping=mapping_data,
-                        )
-                        # Add to operation's chunk list
-                        redis_client.rpush(f"operation:{operation_id}:chunks", cast(str, chunk["id"]))
-
-                    chunks_created += len(doc_chunks)
-                    documents_processed += 1
-
-                except Exception as e:
-                    logger.error(f"Failed to process document {doc_id}: {e}")
-                    failed_documents.append(doc_id.decode() if isinstance(doc_id, bytes) else doc_id)
-
-            # Update progress
-            progress = int((documents_processed / total_documents) * 100) if total_documents > 0 else 0
-            _send_progress_update_sync(
-                redis_client,
-                operation_id,
-                correlation_id,
-                progress,
-                f"Processed {documents_processed}/{total_documents} documents",
-            )
-
-            # Force garbage collection after each batch
-            gc.collect()
-
-        # Update completion status
-        redis_client.hset(
-            f"operation:{operation_id}",
-            mapping={
-                "status": "completed" if not failed_documents else "partial_success",
-                "completed_at": datetime.now(UTC).isoformat(),
-                "chunks_created": str(chunks_created),
-                "documents_processed": str(documents_processed),
-                "documents_failed": str(len(failed_documents)),
-            },
+    chunks = chunking_result.get("chunks") or []
+    if not chunks:
+        raise ValueError(
+            f"No chunks produced for document {getattr(document, 'id', file_path)}"
         )
 
-        # Store failed documents for potential retry
-        if failed_documents:
-            for doc_id in failed_documents:
-                redis_client.rpush(f"operation:{operation_id}:failed_documents", doc_id)
-
-        return {
-            "operation_id": operation_id,
-            "status": "success" if not failed_documents else "partial_success",
-            "chunks_created": chunks_created,
-            "documents_processed": documents_processed,
-            "documents_failed": len(failed_documents),
-            "duration_seconds": time.time() - start_time,
-        }
-
-    except Exception as exc:
-        logger.error(
-            f"Chunking operation failed: {exc}",
-            extra={
-                "operation_id": operation_id,
-                "correlation_id": correlation_id,
-            },
-            exc_info=exc,
+    chunk_rows = _build_chunk_rows(collection_id, document.id, chunks)
+    if not chunk_rows:
+        raise ValueError(
+            f"No chunk rows generated for document {getattr(document, 'id', file_path)}"
         )
 
-        # Update failure status in Redis
-        redis_client.hset(
-            f"operation:{operation_id}",
-            mapping={
-                "status": "failed",
-                "error": str(exc),
-                "error_type": type(exc).__name__,
-                "failed_at": datetime.now(UTC).isoformat(),
-            },
-        )
+    await chunk_repo.create_chunks_bulk(chunk_rows)
+    await document_repo.update_status(
+        document.id,
+        DocumentStatus.COMPLETED,
+        chunk_count=len(chunk_rows),
+    )
 
-        # Re-raise with appropriate exception type
-        if isinstance(exc, MemoryError):
-            current_memory = process.memory_info().rss
-            raise ChunkingMemoryError(
-                detail="Operation exceeded memory limits",
-                correlation_id=correlation_id,
-                operation_id=operation_id,
-                memory_used=current_memory,
-                memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
-            ) from exc
-        if isinstance(exc, TimeoutError):
-            raise ChunkingTimeoutError(
-                detail="Operation timed out",
-                correlation_id=correlation_id,
-                operation_id=operation_id,
-                elapsed_time=time.time() - start_time,
-                timeout_limit=CHUNKING_SOFT_TIME_LIMIT,
-            ) from exc
-        raise
+    logger.info(
+        "Chunked document %s with %s chunks",
+        getattr(document, "id", "unknown"),
+        len(chunk_rows),
+        extra={"correlation_id": correlation_id},
+    )
 
-    finally:
-        # Clear memory usage metric
-        chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
+    return len(chunk_rows), chunking_result.get("stats")
 
 
 async def _process_chunking_operation_async(
+    *,
     operation_id: str,
     correlation_id: str,
     celery_task: ChunkingTask,
 ) -> dict[str, Any]:
-    """Async implementation of chunking operation processing.
+    """Async implementation for chunking operations executed by Celery."""
 
-    Args:
-        operation_id: Operation identifier
-        correlation_id: Correlation ID for tracing
-        celery_task: Celery task instance
-
-    Returns:
-        Operation results dictionary
-    """
     start_time = time.time()
-    operation = None
-    chunks_created = 0
-
-    # Initialize resources
-    redis_client = get_redis_client()
-    # ChunkingErrorHandler expects async Redis, create async client
-
-    from packages.shared.config import settings
-
-    async_redis = AsyncRedis.from_url(settings.REDIS_URL)
-    error_handler = ChunkingErrorHandler(async_redis)
-
-    operation_manager = build_chunking_operation_manager(
-        redis_client=redis_client,
-        error_handler=error_handler,
-        error_classifier=celery_task._error_classifier,
-        logger_=logger.getChild("operation_manager"),
-        expected_circuit_breaker_exceptions=(ChunkingDependencyError,),
-        memory_usage_gauge=chunking_operation_memory_usage,
-    )
-    celery_task._operation_manager = operation_manager
-
-    # Track resources
     process = psutil.Process()
     initial_memory = process.memory_info().rss
-    initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+    cpu_times = process.cpu_times()
+    initial_cpu_time = cpu_times.user + cpu_times.system
 
-    # Store task ID immediately
-    task_id = current_task.request.id if current_task else str(uuid.uuid4())
+    chunking_operation_memory_usage.labels(operation_id=operation_id).set(initial_memory)
 
-    # Initialize database connection
-    if not pg_connection_manager._sessionmaker:
-        await pg_connection_manager.initialize()
-        logger.info("Initialized database connection for chunking task")
+    redis_client = get_redis_client()
+    manager = celery_task._ensure_operation_manager()
 
-    async with AsyncSessionLocal() as db:  # type: ignore[misc]
-        operation_repo = OperationRepository(db)
-        collection_repo = CollectionRepository(db)
+    documents_processed = 0
+    total_documents = 0
+    total_chunks = 0
+    failed_documents: list[str] = []
+    partial_failure = False
 
-        try:
-            # Update operation with task ID
-            operation = await operation_repo.get_by_uuid(operation_id)
-            if not operation:
-                raise ValueError(f"Operation {operation_id} not found")
+    try:
+        if not pg_connection_manager._sessionmaker:
+            await pg_connection_manager.initialize()
 
-            # Check idempotency - if already processed, return early
-            if operation.status == OperationStatus.COMPLETED:
-                logger.info(f"Operation {operation_id} already completed (idempotent)")
-                return {
-                    "operation_id": operation_id,
-                    "status": "already_completed",
-                    "chunks_created": operation.metadata.get("chunks_created", 0),
-                }
+        async with AsyncSessionLocal() as db:
+            operation_repo = OperationRepository(db)
+            collection_repo = CollectionRepository(db)
+            document_repo = DocumentRepository(db)
+            chunk_repo = ChunkRepository(db)
 
-            # Update operation status to processing
-            await operation_repo.update_status(
-                operation_id,
-                OperationStatus.PROCESSING,
-                json.dumps({"task_id": task_id, "started_at": datetime.now(UTC).isoformat()}),
-            )
+            try:
+                operation = await operation_repo.get_by_uuid(operation_id)
+                if not operation:
+                    raise ValueError(f"Operation {operation_id} not found")
 
-            # Send progress update
-            await _send_progress_update(
-                redis_client,
-                operation_id,
-                correlation_id,
-                0,
-                "Starting chunking operation",
-            )
+                collection = await collection_repo.get_by_uuid(operation.collection_id)
+                if not collection:
+                    raise ValueError(
+                        f"Collection {operation.collection_id} not found for operation {operation_id}"
+                    )
 
-            # Initialize chunking service via composition root (no Redis in Celery context)
-            chunking_service = await resolve_celery_chunking_service(
-                db,
-                collection_repo=collection_repo,
-                document_repo=DocumentRepository(db),
-            )
+                task_id = getattr(getattr(celery_task, "request", None), "id", None) or str(uuid.uuid4())
+                await operation_repo.set_task_id(operation_id, task_id)
+                await operation_repo.update_status(
+                    operation_id,
+                    OperationStatus.PROCESSING,
+                    started_at=datetime.now(UTC),
+                )
 
-            # Check resource limits before processing
-            await operation_manager.check_resource_limits(
-                operation_id=operation_id,
-                correlation_id=correlation_id,
-            )
+                documents = await _resolve_documents_for_operation(operation, document_repo)
+                total_documents = len(documents)
 
-            # Process documents with progress tracking
-            collection_id = operation.collection_id
-            collection = await collection_repo.get_by_uuid(collection_id)
+                collection_payload = _collection_to_payload(collection)
+                collection_identifier = collection_payload.get("id") or getattr(collection, "id", None)
+                if not collection_identifier:
+                    raise ValueError("Collection identifier is required to persist chunks")
+                collection_identifier = str(collection_identifier)
 
-            if not collection:
-                raise ValueError(f"Collection {collection_id} not found")
-
-            # Get documents to process based on operation type
-            documents = await _get_documents_for_operation(
-                operation,
-                collection,
-                operation_repo,
-                db,
-            )
-
-            total_documents = len(documents)
-            processed_count = 0
-            failed_documents = []
-            errors = []
-            chunks: list[ChunkResult] = []
-
-            # Process documents in batches with resource monitoring
-            batch_size = await operation_manager.calculate_batch_size()
-
-            for i in range(0, total_documents, batch_size):
-                # Check for graceful shutdown
-                if celery_task._graceful_shutdown:
-                    logger.info("Graceful shutdown requested, saving progress")
-                    break
-
-                batch = documents[i : i + batch_size]
-
-                # Monitor resources
-                await operation_manager.monitor_resources(
-                    process=process,
+                await manager.check_resource_limits(
                     operation_id=operation_id,
-                    initial_memory=initial_memory,
-                    initial_cpu_time=initial_cpu_time,
                     correlation_id=correlation_id,
                 )
 
-                # Process batch
-                try:
-                    # TODO: Implement actual chunking logic
-                    # ChunkingService doesn't have process_documents method yet
-                    # This needs to be implemented based on the actual chunking strategy
-                    batch_results: list[ChunkResult] = []  # Placeholder
-
-                    chunks.extend(batch_results)
-                    processed_count += len(batch)
-
-                except ChunkingPartialFailureError as e:
-                    # Handle partial failures
-                    # ChunkingPartialFailureError.successful_chunks is an int, not a list
-                    # The actual chunks should be tracked separately
-                    # chunks.extend(e.successful_chunks)  # Can't extend with int
-                    failed_documents.extend(e.failed_documents)
-                    errors.append(e)
-                    processed_count += e.total_documents - len(e.failed_documents)
-
-                except Exception as e:
-                    # Track failed documents
-                    failed_documents.extend([doc["id"] for doc in batch])
-                    errors.append(e)  # type: ignore[arg-type]
-                    logger.error(
-                        f"Batch processing failed: {e}",
-                        extra={
-                            "operation_id": operation_id,
-                            "correlation_id": correlation_id,
-                            "batch_start": i,
-                            "batch_size": len(batch),
-                        },
-                        exc_info=e,
-                    )
-
-                # Update progress
-                progress = int((processed_count / total_documents) * 100)
                 await _send_progress_update(
                     redis_client,
                     operation_id,
                     correlation_id,
-                    progress,
-                    f"Processed {processed_count}/{total_documents} documents",
+                    0,
+                    f"Preparing {total_documents} documents for chunking",
                 )
 
-                # Force garbage collection after each batch
-                gc.collect()
+                if total_documents == 0:
+                    await operation_repo.update_status(
+                        operation_id,
+                        OperationStatus.COMPLETED,
+                        completed_at=datetime.now(UTC),
+                    )
+                    await db.commit()
+                    duration = time.time() - start_time
+                    chunking_task_duration.labels(operation_type="chunking").observe(duration)
+                    return {
+                        "operation_id": operation_id,
+                        "status": "success",
+                        "chunks_created": 0,
+                        "documents_processed": 0,
+                        "documents_failed": 0,
+                        "duration_seconds": duration,
+                    }
 
-            # Handle any failures
-            if failed_documents:
-                result = await error_handler.handle_partial_failure(
-                    operation_id=operation_id,
-                    processed_chunks=chunks,
-                    failed_documents=failed_documents,
-                    errors=errors,  # type: ignore[arg-type]
+                chunking_service = await resolve_celery_chunking_service(
+                    db,
+                    collection_repo=collection_repo,
+                    document_repo=document_repo,
                 )
 
-                # Update operation with partial success
+                batch_size = max(1, await manager.calculate_batch_size())
+
+                for batch_start in range(0, total_documents, batch_size):
+                    batch = documents[batch_start : batch_start + batch_size]
+
+                    await manager.monitor_resources(
+                        process=process,
+                        operation_id=operation_id,
+                        initial_memory=initial_memory,
+                        initial_cpu_time=initial_cpu_time,
+                        correlation_id=correlation_id,
+                    )
+
+                    for document in batch:
+                        if celery_task._graceful_shutdown:
+                            partial_failure = True
+                            break
+
+                        try:
+                            chunks_created, stats = await _process_document_chunking(
+                                chunking_service=chunking_service,
+                                chunk_repo=chunk_repo,
+                                document_repo=document_repo,
+                                collection_payload=collection_payload,
+                                collection_id=collection_identifier,
+                                document=document,
+                                correlation_id=correlation_id,
+                            )
+                        except ChunkingPartialFailureError as exc:
+                            partial_failure = True
+                            failed_documents.extend(exc.failed_documents)
+                            documents_processed += exc.total_documents - len(exc.failed_documents)
+                            total_chunks += exc.successful_chunks
+                        except Exception as exc:  # noqa: BLE001
+                            partial_failure = True
+                            document_id = str(getattr(document, "id", "unknown"))
+                            failed_documents.append(document_id)
+                            await document_repo.update_status(
+                                document_id,
+                                DocumentStatus.FAILED,
+                                error_message=str(exc),
+                            )
+                            logger.exception(
+                                "Failed to chunk document %s in operation %s",
+                                document_id,
+                                operation_id,
+                                extra={"correlation_id": correlation_id},
+                                exc_info=exc,
+                            )
+                        else:
+                            documents_processed += 1
+                            total_chunks += chunks_created
+                            if stats:
+                                logger.debug(
+                                    "Chunked document %s with stats %s",
+                                    getattr(document, "id", "unknown"),
+                                    stats,
+                                    extra={"correlation_id": correlation_id},
+                                )
+
+                        progress = int((documents_processed / total_documents) * 100)
+                        await _send_progress_update(
+                            redis_client,
+                            operation_id,
+                            correlation_id,
+                            progress,
+                            f"Processed {documents_processed}/{total_documents} documents",
+                        )
+                        await db.flush()
+                        gc.collect()
+
+                    await db.commit()
+
+                    if celery_task._graceful_shutdown:
+                        break
+
+                operation.meta = {
+                    "chunks_created": total_chunks,
+                    "documents_processed": documents_processed,
+                    "documents_failed": len(failed_documents),
+                    "failed_documents": failed_documents,
+                    "partial_failure": partial_failure or bool(failed_documents) or celery_task._graceful_shutdown,
+                    "completed_at": datetime.now(UTC).isoformat(),
+                }
                 await operation_repo.update_status(
                     operation_id,
                     OperationStatus.COMPLETED,
-                    json.dumps(
-                        {
-                            "chunks_created": len(chunks),
-                            "documents_processed": processed_count,
-                            "documents_failed": len(failed_documents),
-                            "partial_failure": True,
-                            "recovery_operation_id": result.recovery_operation_id,
-                            "completed_at": datetime.now(UTC).isoformat(),
-                        }
-                    ),
+                    completed_at=datetime.now(UTC),
                 )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+    finally:
+        chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
 
-                return {
-                    "operation_id": operation_id,
-                    "status": "partial_success",
-                    "chunks_created": len(chunks),
-                    "documents_processed": processed_count,
-                    "documents_failed": len(failed_documents),
-                    "recovery_operation_id": result.recovery_operation_id,
-                    "recommendations": result.recommendations,
-                }
+    await _send_progress_update(
+        redis_client,
+        operation_id,
+        correlation_id,
+        100,
+        f"Chunking operation processed {documents_processed}/{total_documents} documents",
+    )
 
-            # All successful
-            chunks_created = len(chunks)
+    duration = time.time() - start_time
+    chunking_task_duration.labels(operation_type="chunking").observe(duration)
 
-            # Update operation status
-            await operation_repo.update_status(
-                operation_id,
-                OperationStatus.COMPLETED,
-                json.dumps(
-                    {
-                        "chunks_created": chunks_created,
-                        "documents_processed": processed_count,
-                        "completed_at": datetime.now(UTC).isoformat(),
-                        "duration_seconds": time.time() - start_time,
-                    }
-                ),
-            )
+    status = "success"
+    if partial_failure or failed_documents or celery_task._graceful_shutdown:
+        status = "partial_success"
 
-            # Update collection status
-            await collection_repo.update_status(
-                collection_id,
-                CollectionStatus.READY,
-            )
-
-            # Send completion update
-            await _send_progress_update(
-                redis_client,
-                operation_id,
-                correlation_id,
-                100,
-                f"Successfully created {chunks_created} chunks",
-            )
-
-            # Track metrics
-            chunking_task_duration.labels(operation_type="chunking").observe(time.time() - start_time)
-
-            return {
-                "operation_id": operation_id,
-                "status": "success",
-                "chunks_created": chunks_created,
-                "documents_processed": processed_count,
-                "duration_seconds": time.time() - start_time,
-            }
-
-        except Exception as exc:
-            logger.error(
-                f"Chunking operation failed: {exc}",
-                extra={
-                    "operation_id": operation_id,
-                    "correlation_id": correlation_id,
-                },
-                exc_info=exc,
-            )
-
-            # Update operation status
-            if operation:
-                await operation_repo.update_status(
-                    operation_id,
-                    OperationStatus.FAILED,
-                    json.dumps(
-                        {
-                            "error": str(exc),
-                            "error_type": type(exc).__name__,
-                            "failed_at": datetime.now(UTC).isoformat(),
-                        }
-                    ),
-                )
-
-            # Clean up failed operation
-            cleanup_result = await error_handler.cleanup_failed_operation(
-                operation_id=operation_id,
-                partial_results=chunks if "chunks" in locals() else None,
-                cleanup_strategy="save_partial" if chunks_created > 0 else "rollback",
-            )
-
-            logger.info(
-                f"Cleanup completed for operation {operation_id}",
-                extra={
-                    "operation_id": operation_id,
-                    "cleanup_result": (
-                        cleanup_result.to_dict() if hasattr(cleanup_result, "to_dict") else str(cleanup_result)
-                    ),
-                },
-            )
-
-            # Re-raise with appropriate exception type
-            if isinstance(exc, MemoryError):
-                current_memory = process.memory_info().rss
-                raise ChunkingMemoryError(
-                    detail="Operation exceeded memory limits",
-                    correlation_id=correlation_id,
-                    operation_id=operation_id,
-                    memory_used=current_memory,
-                    memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
-                ) from exc
-            if isinstance(exc, TimeoutError):
-                raise ChunkingTimeoutError(
-                    detail="Operation timed out",
-                    correlation_id=correlation_id,
-                    operation_id=operation_id,
-                    elapsed_time=time.time() - start_time,
-                    timeout_limit=CHUNKING_SOFT_TIME_LIMIT,
-                ) from exc
-            raise
-
-        finally:
-            # Clear memory usage metric
-            chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
+    return {
+        "operation_id": operation_id,
+        "status": status,
+        "chunks_created": total_chunks,
+        "documents_processed": documents_processed,
+        "documents_failed": len(failed_documents),
+        "duration_seconds": duration,
+    }
 
 
 def _handle_soft_timeout_sync(
@@ -1123,7 +951,6 @@ async def _handle_soft_timeout(
 
     except Exception as e:
         logger.error(f"Failed to handle soft timeout: {e}", exc_info=e)
-
 
 
 async def _get_documents_for_operation(
