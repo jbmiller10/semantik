@@ -13,9 +13,16 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+from packages.shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+    ValidationError,
+)
+from packages.shared.chunking.infrastructure.exceptions import (
+    PermissionDeniedError as InfraPermissionDeniedError,
+)
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
 from packages.webui.services.dtos import (
     ServiceChunkingStats,
     ServiceChunkPreview,
@@ -90,6 +97,30 @@ class ChunkingOrchestrator:
         incoming_config = config.copy() if config else None
         normalized_config = self._normalize_config(incoming_config)
 
+        if content is not None and len(content) > MAX_PREVIEW_CONTENT_SIZE:
+            raise DocumentTooLargeError(
+                size=len(content),
+                max_size=MAX_PREVIEW_CONTENT_SIZE,
+                correlation_id=correlation,
+            )
+
+        if normalized_config and "chunk_size" in normalized_config:
+            chunk_size_value = normalized_config["chunk_size"]
+            try:
+                chunk_size_int = int(chunk_size_value)
+            except (TypeError, ValueError):
+                chunk_size_int = None
+            if (
+                chunk_size_int is None
+                or chunk_size_int < 1
+                or chunk_size_int > 10_000
+            ):
+                raise ValidationError(
+                    field="chunk_size",
+                    value=chunk_size_value,
+                    reason="Must be between 1 and 10000",
+                )
+
         try:
             await self.validator.validate_preview_request(
                 content,
@@ -98,24 +129,22 @@ class ChunkingOrchestrator:
                 normalized_config,
             )
         except ValidationError as exc:
-            if (
-                exc.field == "content"
-                and isinstance(content, str)
-                and "exceeds maximum" in (exc.reason or "").lower()
-            ):
+            reason = (exc.reason or "").lower()
+            if exc.field == "content" and "exceeds" in reason and content is not None:
                 raise DocumentTooLargeError(
                     size=len(content),
-                    max_size=self.validator.MAX_CONTENT_SIZE,
+                    max_size=MAX_PREVIEW_CONTENT_SIZE,
                     correlation_id=correlation,
                 ) from exc
             raise
 
         if document_id:
             if user_id is None:
-                raise ValidationError(
-                    field="user_id",
-                    value=None,
-                    reason="User context required when previewing by document",
+                raise InfraPermissionDeniedError(
+                    user_id="anonymous",
+                    resource=f"document:{document_id}",
+                    action="read",
+                    correlation_id=correlation,
                 )
             await self.validator.validate_document_access(document_id, user_id)
             content = await self._load_document_content(document_id)
@@ -123,10 +152,10 @@ class ChunkingOrchestrator:
         if content is None:
             raise ValidationError(field="content", value=None, reason="Content is required for preview")
 
-        if len(content) > self.validator.MAX_CONTENT_SIZE:
+        if len(content) > MAX_PREVIEW_CONTENT_SIZE:
             raise DocumentTooLargeError(
                 size=len(content),
-                max_size=self.validator.MAX_CONTENT_SIZE,
+                max_size=MAX_PREVIEW_CONTENT_SIZE,
                 correlation_id=correlation,
             )
 
