@@ -13,19 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import (
-    CollectionStatus,
-    DocumentStatus,
-    OperationStatus,
-    OperationType,
-)
+from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.tasks import (
-    _process_append_operation,
-    _process_reindex_operation,
-)
+from packages.webui.tasks import _process_append_operation, _process_reindex_operation
 
 
 class TestExecuteIngestionChunking:

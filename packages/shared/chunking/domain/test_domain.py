@@ -5,12 +5,8 @@ Test script to verify the domain layer works without infrastructure dependencies
 This can be run directly to validate the pure domain implementation.
 """
 
-from packages.shared.chunking.domain.entities.chunking_operation import (
-    ChunkingOperation,
-)
-from packages.shared.chunking.domain.services.chunking_strategies import (
-    get_strategy,
-)
+from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+from packages.shared.chunking.domain.services.chunking_strategies import get_strategy
 from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 

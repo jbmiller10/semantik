@@ -16,16 +16,9 @@ import pytest
 import redis.asyncio as redis
 
 from packages.shared.database.models import OperationType
-from packages.webui.tasks import (
-    CeleryTaskWithOperationUpdates,
-    _process_index_operation,
-)
-from packages.webui.tasks import (
-    _process_append_operation_impl as _process_append_operation,
-)
-from packages.webui.tasks import (
-    _process_reindex_operation_impl as _process_reindex_operation,
-)
+from packages.webui.tasks import CeleryTaskWithOperationUpdates, _process_index_operation
+from packages.webui.tasks import _process_append_operation_impl as _process_append_operation
+from packages.webui.tasks import _process_reindex_operation_impl as _process_reindex_operation
 
 
 class TestWebSocketMessageFlow:

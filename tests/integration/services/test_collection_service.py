@@ -11,12 +11,8 @@ from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedEr
 from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from sqlalchemy import select
 
-from packages.shared.database.exceptions import (
-    AccessDeniedError as PackageAccessDeniedError,
-)
-from packages.shared.database.exceptions import (
-    InvalidStateError as PackageInvalidStateError,
-)
+from packages.shared.database.exceptions import AccessDeniedError as PackageAccessDeniedError
+from packages.shared.database.exceptions import InvalidStateError as PackageInvalidStateError
 from packages.shared.database.models import (
     Collection,
     CollectionStatus,

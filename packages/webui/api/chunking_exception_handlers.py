@@ -27,9 +27,7 @@ from packages.webui.api.chunking_exceptions import (
 )
 
 try:
-    from packages.shared.chunking.infrastructure.exception_translator import (
-        exception_translator,
-    )
+    from packages.shared.chunking.infrastructure.exception_translator import exception_translator
     from packages.shared.chunking.infrastructure.exceptions import (
         ApplicationException,
         BaseChunkingException,

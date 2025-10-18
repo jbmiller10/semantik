@@ -11,11 +11,7 @@ from typing import Any
 import pytest
 
 from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.webui.api.chunking_exceptions import (
-    ChunkingDependencyError,
-    ChunkingResourceLimitError,
-    ResourceType,
-)
+from packages.webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingResourceLimitError, ResourceType
 from packages.webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,
@@ -95,9 +91,7 @@ class TestChunkingErrorHandler:
         error = Exception("Some random error")
         assert error_handler.classify_error(error) == ChunkingErrorType.UNKNOWN_ERROR
 
-    def test_classify_error_chunking_specific_exceptions(
-        self, error_handler: ChunkingErrorHandler
-    ) -> None:
+    def test_classify_error_chunking_specific_exceptions(self, error_handler: ChunkingErrorHandler) -> None:
         """Chunking domain exceptions map to specialised error types and codes."""
 
         dependency_error = ChunkingDependencyError("Vector store unavailable", dependency="qdrant")

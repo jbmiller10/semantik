@@ -13,16 +13,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from redis import Redis
 
-from packages.shared.chunking.infrastructure.exceptions import (
-    DocumentTooLargeError,
-    ValidationError,
-)
+from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.dtos.chunking_dtos import (
-    ServicePreviewResponse,
-    ServiceStrategyRecommendation,
-)
+from packages.webui.services.dtos.chunking_dtos import ServicePreviewResponse, ServiceStrategyRecommendation
 
 
 class TestChunkingService:

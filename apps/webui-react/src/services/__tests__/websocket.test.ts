@@ -41,7 +41,7 @@ class TestMockWebSocket {
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ) => void;
-  dispatchEvent: (event: Event) => boolean;
+  dispatchEvent: (event: Event | { type: string }) => boolean;
   close: (code?: number, reason?: string) => void;
   CONNECTING = 0;
   OPEN = 1;
@@ -94,9 +94,13 @@ class TestMockWebSocket {
         );
       },
     );
-    this.dispatchEvent = vi.fn((event: Event) =>
-      this.eventTarget.dispatchEvent(event),
-    );
+    this.dispatchEvent = vi.fn((event: Event | { type: string }) => {
+      const toDispatch =
+        event instanceof Event
+          ? event
+          : this.createDomEvent<Event>(event?.type ?? "message");
+      return this.eventTarget.dispatchEvent(toDispatch);
+    });
 
     // Make send a spy from the start
     this.send = vi.fn((data: string) => {

@@ -26,22 +26,15 @@ from shared.config import settings as shared_settings
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.application.dto.requests import (
-    ChunkingStrategy as ChunkingStrategyEnum,
-)
+from packages.shared.chunking.application.dto.requests import ChunkingStrategy as ChunkingStrategyEnum
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     ChunkSizeViolationError,
     InvalidConfigurationError,
     StrategyNotFoundError,
 )
-from packages.shared.chunking.domain.services.chunking_strategies import (
-    STRATEGY_REGISTRY,
-    get_strategy,
-)
-from packages.shared.chunking.infrastructure.exception_translator import (
-    exception_translator,
-)
+from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
+from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import (
     ApplicationError,
     ChunkingStrategyError,
@@ -50,14 +43,15 @@ from packages.shared.chunking.infrastructure.exceptions import (
     ResourceNotFoundError,
     ValidationError,
 )
-from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedError as InfraPermissionDeniedError,
-)
+from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
 from packages.shared.database.models import Operation
-from packages.shared.database.repositories.collection_repository import (
-    CollectionRepository,
-)
+from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.chunking.strategy_registry import (
+    get_api_to_internal_map,
+    get_strategy_defaults,
+    resolve_internal_strategy_name,
+)
 from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 # All exceptions now come from the new infrastructure layer
@@ -150,31 +144,14 @@ class SimpleChunkingStrategyFactory:
 
     def get_default_config(self, strategy_type: str) -> dict[str, Any]:
         """Get default configuration for a strategy."""
-        defaults: dict[str, dict[str, Any]] = {
-            "character": {"chunk_size": 1000, "chunk_overlap": 200},
-            "recursive": {"chunk_size": 1000, "chunk_overlap": 200},
-            "markdown": {"chunk_size": 1000, "chunk_overlap": 200},
-            "semantic": {"buffer_size": 1, "breakpoint_percentile_threshold": 95},
-            "hierarchical": {"chunk_sizes": [2048, 512], "chunk_overlap": 50},
-            "hybrid": {"primary_strategy": "recursive", "fallback_strategy": "character"},
-        }
-        return defaults.get(strategy_type, {})
+        return get_strategy_defaults(strategy_type, context="factory")
 
 
 class ChunkingService:
     """Service for managing chunking operations."""
 
     # Mapping from API strategy names to factory strategy names
-    STRATEGY_MAPPING = {
-        "fixed_size": "character",
-        "sliding_window": "character",
-        "semantic": "semantic",
-        "recursive": "recursive",
-        "document_structure": "markdown",
-        "markdown": "markdown",
-        "hierarchical": "hierarchical",
-        "hybrid": "hybrid",
-    }
+    STRATEGY_MAPPING = get_api_to_internal_map().copy()
 
     def __init__(
         self,
@@ -369,13 +346,7 @@ class ChunkingService:
 
         # Find the requested strategy
         strategy_data = None
-        # Map public ID to internal ID for lookup
-        alias_to_internal = {
-            "fixed_size": "character",
-            "document_structure": "markdown",
-            "sliding_window": "character",
-        }
-        internal_id = alias_to_internal.get(strategy_id, strategy_id)
+        internal_id = resolve_internal_strategy_name(strategy_id) or strategy_id
         for s in strategies_data:
             if s["id"] == internal_id:
                 strategy_data = s
