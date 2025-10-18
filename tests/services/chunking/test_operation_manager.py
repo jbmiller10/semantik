@@ -145,7 +145,7 @@ def test_circuit_breaker_moves_to_half_open_after_timeout() -> None:
     assert manager.allow_execution()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_check_resource_limits_raises_on_memory_exhaustion() -> None:
     manager = _make_manager(
         psutil_module=_FakePsutil(memory_percent=95.0, cpu_percent_value=5.0),
@@ -156,7 +156,7 @@ async def test_check_resource_limits_raises_on_memory_exhaustion() -> None:
         await manager.check_resource_limits(operation_id="op-4", correlation_id="corr-4")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_monitor_resources_enforces_limits() -> None:
     manager = _make_manager()
     process = _FakeProcess(memory_rss=5 * 1024**3, cpu_user=2000, cpu_system=0)
@@ -169,4 +169,3 @@ async def test_monitor_resources_enforces_limits() -> None:
             initial_cpu_time=0,
             correlation_id="corr-5",
         )
-
