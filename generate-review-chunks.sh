@@ -1,529 +1,413 @@
 #!/bin/bash
 # Generate Semantik code review chunks with embedded review prompts
+# Updated: 2025-10-17 - Larger chunks (~500K tokens) with intentional overlap for better context
 
 set -e
 
-echo "Generating Semantik review chunks with review prompts..."
+echo "🔍 Generating Semantik review chunks (targeting ~500K tokens each)..."
 echo ""
 
-# Chunk 1: Shared Foundation (Models, Repos, Domain Logic)
-echo "[1/7] Generating Shared Foundation chunk..."
+# Chunk 1: Backend Core (Shared + WebUI)
+echo "[1/5] Generating Backend Core chunk (Shared + WebUI)..."
 repomix \
-  --include "packages/shared,alembic,pyproject.toml,uv.lock,CLAUDE.md,README.md" \
-  --ignore "**/__pycache__/**,**/.pytest_cache/**,**/*.pyc,**/.mypy_cache/**,**/.ruff_cache/**" \
-  --output review-chunk-1-shared-foundation.txt
+  --include "packages/shared,packages/webui,alembic,pyproject.toml,uv.lock,CLAUDE.md,README.md,docs/ARCH.md,docs/DATABASE_ARCH.md,docs/API_ARCHITECTURE.md,docs/API_REFERENCE.md,docs/SAFE_MIGRATION_GUIDE.md" \
+  --ignore "**/__pycache__/**,**/.pytest_cache/**,**/*.pyc,**/.mypy_cache/**,**/.ruff_cache/**,**/static/**" \
+  --output review-chunk-1-backend-core.txt
 
-cat >> review-chunk-1-shared-foundation.txt <<'EOF'
+cat >> review-chunk-1-backend-core.txt <<'EOF'
 
 ================================================================================
-# CODE REVIEW PROMPT - CHUNK 1: SHARED FOUNDATION
+# CODE REVIEW PROMPT - CHUNK 1: BACKEND CORE (SHARED + WEBUI)
 ================================================================================
 
 ## Context
-This is **Chunk 1 of 7** for reviewing Semantik, a self-hosted semantic search engine.
+This is **Chunk 1 of 5** for reviewing Semantik, a self-hosted semantic search engine.
 
-**Architecture**: FastAPI microservices (webui, vecpipe, worker) + React frontend
-**This Chunk Contains**:
-- Core database models (SQLAlchemy)
-- Repository pattern implementations
-- Domain logic (chunking, managers)
-- Configuration management
-- Database migrations (Alembic)
+**Total Codebase**: ~1.8M tokens across 748 files
+**This Chunk Contains** (~450K-500K tokens):
+- **Shared Foundation** (`packages/shared/`)
+  - Database models (SQLAlchemy ORM)
+  - Repository pattern implementations
+  - Chunking strategies (domain-driven design)
+  - Qdrant vector DB management
+  - Configuration (Pydantic settings)
+- **WebUI Service** (`packages/webui/`)
+  - API routers (FastAPI endpoints)
+  - Service layer (business logic)
+  - Celery tasks (background operations)
+  - WebSocket management
+  - Middleware (auth, rate limiting)
+- **Database Migrations** (`alembic/`)
+- **Architecture Documentation**
 
-**Dependencies**: This is the foundation layer. All other chunks depend on models and utilities here.
+**Note**: This chunk contains the COMPLETE backend - models, services, and APIs together for full context.
 
 ## Critical Architecture Patterns
 
-### 1. Repository Pattern
-All database access MUST go through repositories. Check for:
-- ✅ Clean separation: models vs repositories
-- ✅ Repositories use async sessions correctly
-- ✅ No direct SQLAlchemy queries outside repositories
-- ❌ Business logic in repositories (should be in services)
+### 1. Three-Layer Architecture (MANDATORY)
+
+```
+┌──────────────┐
+│  API Router  │ ← HTTP only, delegates to services
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│   Service    │ ← ALL business logic, orchestrates repos
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│  Repository  │ ← Data access only
+└──────────────┘
+```
+
+**Violations to Flag**:
+- ❌ Business logic in routers
+- ❌ Direct database access in routers (no SQLAlchemy imports)
+- ❌ Business logic in repositories
+- ❌ Routers calling other routers
+- ❌ Repositories calling other repositories
 
 ### 2. Partition-Aware Queries (CRITICAL)
-The `chunks` table uses 100 LIST partitions by `collection_id`:
-- ✅ ALL chunk queries include `collection_id` filter
-- ❌ Full table scans across all partitions
-- Check: `chunk_repository.py` methods
+The `chunks` table uses **100 LIST partitions** by `collection_id`:
+- ✅ **EVERY** chunk query MUST include `collection_id` filter
+- ❌ Missing `collection_id` = full scan across all 100 partitions (100x slower!)
+- Check ALL methods in: `packages/shared/database/repositories/chunk_repository.py`
 
-### 3. Domain-Driven Chunking
-Modern chunking in `packages/shared/chunking/`:
-- ✅ Strategy pattern with clear interfaces
-- ✅ Domain models separate from persistence
-- ❌ Legacy `text_processing.chunking` usage (deprecated)
+### 3. Transaction Order with Celery (CRITICAL)
+
+```python
+# ✅ CORRECT - Commit before dispatch
+async def trigger_operation():
+    operation = await repo.create(...)
+    await db.commit()              # 1. Commit FIRST
+    task.delay(operation.uuid)     # 2. Then dispatch
+    return operation
+
+# ❌ WRONG - Race condition!
+async def trigger_operation():
+    operation = await repo.create(...)
+    task.delay(operation.uuid)     # Worker starts before commit!
+    await db.commit()              # Too late - worker can't find record
+```
+
+### 4. Domain-Driven Chunking
+- ✅ Use `packages/shared/chunking/` (strategy pattern)
+- ❌ Avoid `packages/shared/text_processing/chunking/` (deprecated legacy)
 
 ## Review Checklist
 
 ### Database Models (`packages/shared/database/models/`)
-- [ ] Proper relationships and foreign keys
+- [ ] Proper relationships and foreign keys (cascading deletes)
 - [ ] Indexes on frequently queried columns
-- [ ] Partition keys included in unique constraints
-- [ ] Cascading deletes configured correctly
-- [ ] Enums match database types
+- [ ] Partition keys in unique constraints
+- [ ] No circular imports
 
 ### Repositories (`packages/shared/database/repositories/`)
 - [ ] All methods are async
-- [ ] Proper exception handling
+- [ ] **Partition pruning**: ALL chunk queries include `collection_id`
 - [ ] No business logic (pure data access)
-- [ ] Partition pruning for chunks table
-- [ ] Proper use of `joinedload`/`selectinload` for relationships
+- [ ] No repositories calling other repositories
+- [ ] Proper exception handling
+
+### Services (`packages/webui/services/`)
+- [ ] ALL business logic lives here (not in routers)
+- [ ] **CRITICAL**: DB commit BEFORE Celery dispatch (check every `.delay()` call)
+- [ ] Proper async/await (no blocking I/O)
+- [ ] Uses repositories (not direct SQLAlchemy)
+- [ ] State machine transitions validated
+
+### API Routers (`packages/webui/api/v2/`)
+- [ ] Zero business logic (just HTTP handling)
+- [ ] Delegates everything to services
+- [ ] No direct database access
+- [ ] Proper Pydantic models for validation
+- [ ] HTTP status codes correct (200, 201, 204, 400, 404, 500)
+
+### Celery Tasks (`packages/webui/tasks.py`, `chunking_tasks.py`)
+- [ ] Tasks are idempotent (safe to retry)
+- [ ] Progress reporting via WebSocket
+- [ ] Proper error handling
+- [ ] Database sessions properly scoped (create new per task)
+- [ ] Cleanup on failure
+
+### WebSocket (`packages/webui/websocket/`, `websocket_manager.py`)
+- [ ] JWT authentication enforced
+- [ ] Connection limits (10/user, 10k total)
+- [ ] Proper cleanup on disconnect
+- [ ] Redis pub/sub for scaling
 
 ### Migrations (`alembic/versions/`)
-- [ ] Reversible (down migrations implemented)
-- [ ] Safe for production (no data loss)
-- [ ] Partition maintenance scripts included
-- [ ] Indexes created concurrently for PostgreSQL
+- [ ] Reversible (down() implemented)
+- [ ] Safe for production (backup strategy)
+- [ ] Partition-aware scripts
 
-### Chunking System (`packages/shared/chunking/`)
-- [ ] Strategy implementations follow interface
-- [ ] No I/O in chunking logic (pure functions)
-- [ ] Proper validation of chunk boundaries
-- [ ] Test coverage for edge cases
+## Specific Review Questions
 
-### Configuration (`packages/shared/config/`)
-- [ ] No secrets in code (environment variables)
-- [ ] Validation for required settings
-- [ ] Sensible defaults
-
-## Specific Questions
-
-1. **Data Integrity**: Are there any race conditions in repository methods?
-2. **Performance**: Are there missing indexes or inefficient queries?
-3. **Migration Safety**: Can migrations be rolled back safely?
-4. **Partition Strategy**: Is the chunks table partitioning optimal?
-5. **Deprecated Code**: Any legacy patterns that need refactoring?
-6. **Job → Operation**: Flag any remaining "job" terminology (should be "operation")
+1. **Race Conditions**: Find ALL `task.delay()` calls - is there a `db.commit()` immediately before each one?
+2. **Partition Performance**: Are there any chunk queries missing `collection_id` filter?
+3. **Architecture Violations**: Any business logic in routers? Any direct DB access in routers?
+4. **Async Correctness**: Any blocking I/O in async functions? (file I/O, sync HTTP calls, etc.)
+5. **Job → Operation**: Flag any remaining "job" terminology (should be "operation")
+6. **Deprecated Code**: Any usage of `text_processing.chunking` module?
+7. **State Machine**: Are collection state transitions validated? Can invalid states occur?
 
 ## Output Format
 
 Please provide:
-1. **Critical Issues** (P0): Security, data loss, race conditions
-2. **Architecture Violations** (P1): Pattern breaks, coupling issues
-3. **Performance Concerns** (P2): Query optimization, indexing
-4. **Code Quality** (P3): Duplication, complexity, naming
-5. **Refactoring Opportunities**: Technical debt, modernization
+1. **Critical Issues** (P0): Race conditions, partition misses, security, data loss
+2. **Architecture Violations** (P1): Three-layer pattern breaks, coupling
+3. **Performance Concerns** (P2): Missing indexes, N+1 queries, full table scans
+4. **Code Quality** (P3): Duplication, complexity, missing type hints
+5. **Refactoring Opportunities**: Technical debt, deprecation candidates
 
-For each issue, include:
-- File path and line numbers
-- Current code snippet
-- Problem explanation
-- Recommended fix
-
-EOF
-
-# Chunk 2: WebUI API Layer
-echo "[2/7] Generating WebUI API Layer chunk..."
-repomix \
-  --include "packages/webui/api,packages/webui/middleware,packages/webui/websocket,CLAUDE.md" \
-  --ignore "**/__pycache__/**,**/*.pyc" \
-  --output review-chunk-2-webui-api.txt
-
-cat >> review-chunk-2-webui-api.txt <<'EOF'
-
-================================================================================
-# CODE REVIEW PROMPT - CHUNK 2: WEBUI API LAYER
-================================================================================
-
-## Context
-This is **Chunk 2 of 7** for reviewing Semantik.
-
-**This Chunk Contains**:
-- API routers (FastAPI endpoints)
-- Middleware (auth, rate limiting, CORS)
-- WebSocket management
-- Request/response schemas
-
-**Dependencies**:
-- **Chunk 1**: Models, repositories, config
-- **Chunk 3**: Services (business logic)
-- **Chunk 5**: Frontend (consumes these APIs)
-
-## Critical Architecture Pattern: API Layer Rules
-
-**API routers MUST**:
-- HTTP request/response handling ONLY
-- Input validation via Pydantic models
-- Delegate ALL logic to services
-- Return HTTP responses
-
-**API routers MUST NOT**:
-- Contain business logic
-- Access database directly
-- Perform calculations or transformations
-- Handle Celery tasks
-
-## Review Checklist
-
-### API Routers (`packages/webui/api/v2/`)
-- [ ] No business logic in routers
-- [ ] No direct database access
-- [ ] All logic delegated to services
-- [ ] Proper dependency injection
-- [ ] Input validation via Pydantic
-- [ ] Appropriate HTTP status codes
-- [ ] Consistent error responses
-
-**Anti-Pattern Example**:
-```python
-# ❌ BAD
-@router.post("/collections")
-async def create(data: dict, db: AsyncSession = Depends(get_db)):
-    collection = Collection(**data)
-    db.add(collection)
-    await db.commit()  # Business logic in router!
-    return collection
-```
-
-```python
-# ✅ GOOD
-@router.post("/collections")
-async def create(
-    data: CreateCollectionRequest,
-    service: CollectionService = Depends(get_collection_service)
-):
-    collection = await service.create_collection(data)
-    return collection
-```
-
-### WebSocket Management (`packages/webui/websocket/`)
-- [ ] Authentication via JWT in first message
-- [ ] Connection limits enforced (10/user, 10k total)
-- [ ] Proper cleanup on disconnect
-- [ ] Redis pub/sub for horizontal scaling
-- [ ] Channel naming conventions consistent
-- [ ] Error handling for malformed messages
-
-### Middleware (`packages/webui/middleware/`)
-- [ ] Authentication middleware validates JWTs
-- [ ] Rate limiting per endpoint
-- [ ] CORS configured securely
-- [ ] Request ID propagation
-- [ ] No sensitive data in logs
-
-## Specific Questions
-
-1. **Architecture Violations**: Any business logic in routers? Direct DB access?
-2. **WebSocket Security**: Is authentication enforced on all channels?
-3. **Error Handling**: Are errors propagated correctly to clients?
-4. **Rate Limiting**: Are critical endpoints protected?
-
-## Output Format
-
-Same as Chunk 1: Critical Issues → Architecture Violations → Performance → Code Quality → Refactoring
+For each issue:
+- File path + line numbers
+- Code snippet showing the problem
+- Clear explanation
+- Recommended fix with example
 
 EOF
 
-# Chunk 3: WebUI Services & Tasks
-echo "[3/7] Generating WebUI Services & Tasks chunk..."
+# Chunk 2: Vecpipe + Shared Context
+echo "[2/5] Generating Vecpipe Service chunk (with shared context)..."
 repomix \
-  --include "packages/webui/services,packages/webui/tasks.py,packages/webui/dependencies.py,CLAUDE.md" \
+  --include "packages/vecpipe,packages/shared,CLAUDE.md,docs/CHUNKING_IMPLEMENTATION_PLAN.md,docs/CHUNKING_FEATURE_OVERVIEW.md,docs/RERANKING.md,docs/SEARCH_SYSTEM.md" \
   --ignore "**/__pycache__/**,**/*.pyc" \
-  --output review-chunk-3-webui-services.txt
+  --output review-chunk-2-vecpipe.txt
 
-cat >> review-chunk-3-webui-services.txt <<'EOF'
+cat >> review-chunk-2-vecpipe.txt <<'EOF'
 
 ================================================================================
-# CODE REVIEW PROMPT - CHUNK 3: WEBUI SERVICES & TASKS
+# CODE REVIEW PROMPT - CHUNK 2: VECPIPE SERVICE
 ================================================================================
 
 ## Context
-This is **Chunk 3 of 7** for reviewing Semantik.
+This is **Chunk 2 of 5** for reviewing Semantik.
 
-**This Chunk Contains**:
-- Service layer (business logic)
-- Celery tasks (background operations)
-- Dependency injection setup
+**This Chunk Contains** (~350K-400K tokens):
+- **Vecpipe Service** (`packages/vecpipe/`)
+  - Document parsing (PDF, HTML, MD, TXT, DOCX)
+  - Embedding generation (sentence-transformers)
+  - Semantic search implementation
+  - Reranking (if implemented)
+- **Shared Libraries** (for context)
+  - Chunking strategies
+  - Qdrant management
+  - Database models
+  - Configuration
 
-**Dependencies**:
-- **Chunk 1**: Models and repositories
-- **Chunk 2**: API routers call these services
-- **Chunk 4**: Vecpipe service (HTTP calls)
-
-## Critical Pattern: Service Layer + Celery
-
-### Service Layer Rules
-- ALL business logic lives here
-- Transaction management
-- Orchestrates repository calls
-- **CRITICAL**: Commit BEFORE Celery dispatch
-
-### Transaction Order (CRITICAL)
-```python
-# ✅ CORRECT ORDER
-async def trigger_indexing(collection_id: str):
-    # 1. Create operation record
-    operation = await operation_repo.create(...)
-
-    # 2. Commit transaction FIRST
-    await db.commit()
-
-    # 3. THEN dispatch task
-    index_collection_task.delay(operation.uuid)
-
-    return operation
-
-# ❌ WRONG - Race condition
-async def trigger_indexing(collection_id: str):
-    operation = await operation_repo.create(...)
-    index_collection_task.delay(operation.uuid)  # Dispatched before commit!
-    await db.commit()  # Worker might not find operation
-```
-
-## Review Checklist
-
-### Service Layer (`packages/webui/services/`)
-- [ ] Contains all business logic
-- [ ] Proper async/await usage
-- [ ] No blocking I/O
-- [ ] Transaction management correct
-- [ ] **CRITICAL**: Commit BEFORE Celery dispatch
-- [ ] Error handling and validation
-- [ ] Proper logging
-- [ ] No direct SQLAlchemy usage (use repositories)
-
-### Celery Tasks (`packages/webui/tasks.py`)
-- [ ] Idempotent (safe to retry)
-- [ ] Proper error handling
-- [ ] Progress reporting via WebSocket
-- [ ] Database session management
-- [ ] No long-running blocking operations
-- [ ] Timeout configured appropriately
-
-## Specific Questions
-
-1. **Race Conditions**: Are transactions committed before async task dispatch?
-2. **Async Correctness**: Any blocking I/O in async functions?
-3. **Collection State Machine**: Are state transitions validated properly?
-4. **Error Recovery**: How do tasks handle failures?
-
-## Output Format
-
-Same as previous chunks: Critical Issues → Architecture → Performance → Code Quality → Refactoring
-
-EOF
-
-# Chunk 4: Vecpipe Service
-echo "[4/7] Generating Vecpipe Service chunk..."
-repomix \
-  --include "packages/vecpipe,CLAUDE.md" \
-  --ignore "**/__pycache__/**,**/*.pyc" \
-  --output review-chunk-4-vecpipe.txt
-
-cat >> review-chunk-4-vecpipe.txt <<'EOF'
-
-================================================================================
-# CODE REVIEW PROMPT - CHUNK 4: VECPIPE SERVICE
-================================================================================
-
-## Context
-This is **Chunk 4 of 7** for reviewing Semantik.
-
-**This Chunk Contains**:
-- Document parsing (PDF, HTML, Markdown, etc.)
-- Embedding generation (via sentence-transformers)
-- Semantic search implementation
-- Qdrant vector database management
-
-**Dependencies**:
-- **Chunk 1**: Models, repositories, chunking domain logic
-- **Chunk 3**: WebUI calls vecpipe via HTTP
+**Note**: Shared code included for full context on how vecpipe integrates with the system.
 
 ## Critical Patterns
 
 ### 1. Stateless Service Design
-Vecpipe is compute-intensive and stateless:
-- [ ] No session state stored in service
-- [ ] Each request is independent
-- [ ] Concurrent requests handled safely
-- [ ] Resource cleanup after requests
+Vecpipe MUST be stateless for horizontal scaling:
+- [ ] No session state stored
+- [ ] Thread-safe embedding model access
+- [ ] GPU memory properly managed
+- [ ] Resource cleanup after each request
 
-### 2. Embedding Pipeline
-- [ ] Model loaded once and cached
-- [ ] Batch processing for multiple documents
-- [ ] GPU utilization if available
-- [ ] Proper error handling for failed embeddings
-- [ ] Memory management for large documents
+### 2. Embedding Pipeline Optimization
+- [ ] Model loaded ONCE on startup (singleton pattern)
+- [ ] Batch processing (32-128 chunks at once, not one-by-one)
+- [ ] GPU utilization (`device='cuda'` when available)
+- [ ] Tensor cleanup after batches (`torch.cuda.empty_cache()`)
+- [ ] Memory limits enforced (prevent OOM)
+
+### 3. Qdrant Vector DB Management
+- [ ] Collections created with correct vector dimensions
+- [ ] Batch upserts (500-1000 vectors per batch)
+- [ ] Search filters use `collection_id`
+- [ ] HNSW indexing parameters optimized
+- [ ] Connection pooling (don't recreate client per request)
 
 ## Review Checklist
 
 ### Document Parsing
-- [ ] Support for common formats (PDF, HTML, MD, TXT, DOCX)
-- [ ] Character encoding detection
-- [ ] Large file handling (streaming)
+- [ ] Support for all formats (PDF, HTML, MD, TXT, DOCX)
+- [ ] Character encoding detection (chardet, UTF-8 fallback)
+- [ ] Large file handling (streaming, memory limits)
 - [ ] Error handling for corrupted files
-- [ ] No unsafe file operations
+- [ ] **Security**: No arbitrary code execution (safe PDF parsing)
+- [ ] **Security**: Path traversal prevention
+
+### Chunking Integration
+- [ ] Uses modern `packages/shared/chunking/` strategies
+- [ ] Strategy selection based on document type
+- [ ] Chunk boundaries respect semantic meaning
+- [ ] Metadata preserved (source, page number, etc.)
+- [ ] Token/character limits enforced
 
 ### Embedding Generation
-- [ ] Model loaded once and cached
-- [ ] Batching for efficiency
-- [ ] Proper tensor cleanup (memory leaks)
-- [ ] GPU vs CPU handling
-- [ ] Error handling for embedding failures
+- [ ] Model cached (not reloaded per request)
+- [ ] Efficient batching (what's the batch size?)
+- [ ] Proper tensor cleanup (check for GPU memory leaks)
+- [ ] Fallback to CPU if no GPU
+- [ ] Normalization if required (L2 norm for cosine similarity)
+- [ ] Model version tracked (for re-indexing)
 
-### Qdrant Operations
-- [ ] Collection lifecycle managed properly
-- [ ] Batch upserts for performance
-- [ ] Search uses filters (collection_id)
-- [ ] Proper error handling for Qdrant API
+### Search Implementation
+- [ ] Vector search efficient (HNSW parameters)
+- [ ] Metadata filtering works
+- [ ] Hybrid search (vector + keyword) if implemented
+- [ ] Result ranking and scoring
+- [ ] Pagination support
+
+### Reranking (if implemented)
+- [ ] Reranker model loaded correctly
+- [ ] Applied after initial vector search
+- [ ] Performance impact acceptable
+- [ ] See: `docs/RERANKING.md`
 
 ## Specific Questions
 
-1. **Performance**: Is embedding generation batched efficiently?
-2. **Memory**: Are there memory leaks in long-running processes?
-3. **Qdrant**: Is the vector database accessed optimally?
-4. **Parsing**: Can document parsing handle malicious files safely?
+1. **Performance**: What's the embedding batch size? Is it optimal?
+2. **Memory**: Are there GPU memory leaks? Check cleanup in long-running processes.
+3. **Qdrant**: Are collections created with optimal settings? Batch size for upserts?
+4. **Parsing**: Can it handle malicious files safely? Size limits enforced?
+5. **Chunking**: Are strategies matched to document types correctly?
+6. **Error Recovery**: What happens if Qdrant is down? Retry logic?
+7. **GPU**: Is GPU utilized when available? CPU fallback working?
 
 ## Output Format
 
-Same as previous chunks: Critical Issues → Architecture → Performance → Code Quality → Refactoring
+Same as Chunk 1: Critical Issues → Architecture → Performance → Code Quality → Refactoring
 
 EOF
 
-# Chunk 5: Frontend
-echo "[5/7] Generating Frontend chunk..."
+# Chunk 3: Frontend + Backend API Context
+echo "[3/5] Generating Frontend chunk (with backend API context)..."
 repomix \
-  --include "apps/webui-react,CLAUDE.md" \
-  --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.vite/**,**/coverage/**,**/*.test.tsx.snap" \
-  --output review-chunk-5-frontend.txt
+  --include "apps/webui-react,packages/webui/api,packages/shared/database/models,CLAUDE.md,docs/FRONTEND_ARCH.md,docs/API_REFERENCE.md,docs/WEBSOCKET_API.md" \
+  --ignore "**/node_modules/**,**/dist/**,**/build/**,**/.vite/**,**/coverage/**,**/*.test.tsx.snap,**/.turbo/**,**/__pycache__/**" \
+  --output review-chunk-3-frontend.txt
 
-cat >> review-chunk-5-frontend.txt <<'EOF'
+cat >> review-chunk-3-frontend.txt <<'EOF'
 
 ================================================================================
-# CODE REVIEW PROMPT - CHUNK 5: FRONTEND (REACT)
+# CODE REVIEW PROMPT - CHUNK 3: FRONTEND (REACT)
 ================================================================================
 
 ## Context
-This is **Chunk 5 of 7** for reviewing Semantik.
+This is **Chunk 3 of 5** for reviewing Semantik.
 
-**This Chunk Contains**:
-- React 19 application
-- Zustand state management
-- React Query for data fetching
-- TailwindCSS styling
-- API client implementations
+**This Chunk Contains** (~400K-450K tokens):
+- **React Frontend** (`apps/webui-react/`)
+  - React 19 application
+  - Zustand state management
+  - React Query (TanStack Query)
+  - TailwindCSS styling
+  - WebSocket client
+- **Backend API Context** (for understanding contracts)
+  - API routers (`packages/webui/api/v2/`)
+  - Database models (for type matching)
+  - API documentation
 
-**Dependencies**:
-- **Chunk 2**: Backend API endpoints this frontend consumes
+**Note**: Backend API code included so you can verify frontend types match backend schemas.
 
 ## Tech Stack
 - **React**: 19 with hooks
 - **TypeScript**: Strict mode
 - **State**: Zustand stores
-- **Data Fetching**: React Query (TanStack Query)
+- **Data Fetching**: React Query
 - **Routing**: React Router v6
 - **Styling**: TailwindCSS + Radix UI
+- **Build**: Vite
+- **Testing**: Vitest + React Testing Library + Playwright
 
-## Review Checklist
+## Critical Patterns
 
-### State Management (`src/stores/`)
-- [ ] Zustand stores organized by domain
-- [ ] Optimistic updates implemented correctly
-- [ ] Error rollback on failed mutations
-- [ ] Store actions are async-safe
+### 1. Optimistic Updates with Rollback
 
-**Optimistic Update Pattern**:
 ```typescript
 // ✅ CORRECT
 updateCollection: async (id, updates) => {
+  // 1. Update UI immediately
   get().optimisticUpdateCollection(id, updates);
+
   try {
+    // 2. Call API
     await collectionsV2Api.update(id, updates);
+
+    // 3. Re-fetch canonical state
     await get().fetchCollectionById(id);
   } catch (error) {
-    await get().fetchCollectionById(id);  // Rollback
+    // 4. Rollback on failure
+    await get().fetchCollectionById(id);
+    toast.error('Update failed');
     throw error;
   }
 }
 ```
 
-### API Client (`src/api/`)
-- [ ] JWT token attached to requests
-- [ ] Token refresh flow implemented
-- [ ] Proper error handling
-- [ ] TypeScript types match backend schemas
+### 2. Type Safety (Frontend ↔ Backend)
+- [ ] Frontend types match backend Pydantic models
+- [ ] Compare `src/types/` with `packages/shared/database/models/`
+- [ ] API response types match backend schemas
+- [ ] No `any` types (use `unknown` if truly unknown)
 
-### Components (`src/components/`)
-- [ ] Props properly typed
-- [ ] Accessibility (ARIA labels, keyboard nav)
-- [ ] Loading states shown
-- [ ] Error boundaries
-
-### Performance
-- [ ] Code splitting / lazy loading
-- [ ] Virtualization for long lists
-- [ ] Debouncing for search inputs
-
-### TypeScript
-- [ ] Strict mode enabled
-- [ ] No `any` types
-- [ ] Backend DTOs mirrored in frontend types
-
-## Specific Questions
-
-1. **State Sync**: Are optimistic updates properly rolled back on errors?
-2. **Performance**: Are there unnecessary re-renders?
-3. **Accessibility**: Can the app be used with keyboard only?
-4. **Type Safety**: Do frontend types match backend schemas?
-
-## Output Format
-
-Same format: Critical Issues → Architecture → Performance → Code Quality → Refactoring
-
-EOF
-
-# Chunk 6: Tests (Split into smaller chunks by excluding heavy integration tests)
-echo "[6/7] Generating Tests chunk..."
-repomix \
-  --include "tests/shared,tests/unit,tests/conftest.py,pytest.ini,CLAUDE.md" \
-  --ignore "**/__pycache__/**,**/.pytest_cache/**" \
-  --output review-chunk-6-tests.txt
-
-cat >> review-chunk-6-tests.txt <<'EOF'
-
-================================================================================
-# CODE REVIEW PROMPT - CHUNK 6: TESTS (UNIT & SHARED)
-================================================================================
-
-## Context
-This is **Chunk 6 of 7** for reviewing Semantik.
-
-**This Chunk Contains**:
-- Unit tests for shared components
-- Test fixtures and configuration
-- Testing utilities
-
-**Dependencies**: Tests reference code from Chunks 1-5
-
-**Note**: Integration and E2E tests for webui/vecpipe are excluded to keep size manageable. Focus on test quality patterns here.
+### 3. WebSocket Integration
+- [ ] JWT authentication on connection
+- [ ] Auto-reconnect on disconnect
+- [ ] Progress updates shown in real-time
+- [ ] Proper cleanup on unmount
 
 ## Review Checklist
 
-### Test Structure
-- [ ] Organized by service (webui, vecpipe, shared)
-- [ ] Unit tests vs integration tests clearly separated
-- [ ] Test isolation (no shared state)
+### State Management (`src/stores/`)
+- [ ] Optimistic updates implemented correctly
+- [ ] Error rollback on failure
+- [ ] No race conditions in store actions
+- [ ] Store organized by domain
 
-### Test Quality
-- [ ] Critical paths fully tested
-- [ ] Edge cases covered
-- [ ] Error scenarios tested
-- [ ] Async tests properly awaited
-- [ ] No flaky tests
+### API Client (`src/api/`)
+- [ ] JWT token attached to requests
+- [ ] Token refresh flow (intercept 401, refresh, retry)
+- [ ] Error handling (network + API errors)
+- [ ] **Type Safety**: Frontend types match backend
 
-### Test Fixtures (`conftest.py`)
-- [ ] Database fixtures (setup/teardown)
-- [ ] Mock Celery tasks
-- [ ] Mock Redis
-- [ ] Mock Qdrant
-- [ ] Proper cleanup after tests
+### Components (`src/components/`)
+- [ ] Props properly typed
+- [ ] Accessibility (ARIA, keyboard nav)
+- [ ] Loading states shown
+- [ ] Error boundaries
+- [ ] Memoization where needed
+
+### React Query
+- [ ] Query keys consistent
+- [ ] Cache invalidation correct
+- [ ] Optimistic updates via `setQueryData`
+- [ ] Error handling per query
+
+### WebSocket
+- [ ] JWT auth enforced
+- [ ] Reconnection logic
+- [ ] Real-time progress updates
+- [ ] Cleanup on unmount
+
+### Performance
+- [ ] Code splitting (`React.lazy`)
+- [ ] Virtualization for long lists
+- [ ] Debouncing for search (300ms)
+- [ ] Bundle size optimized
+
+### Testing
+- [ ] Unit tests for stores (Vitest)
+- [ ] Component tests (React Testing Library)
+- [ ] E2E tests (Playwright)
+- [ ] **Coverage Target**: ≥75%
 
 ## Specific Questions
 
-1. **Test Coverage**: Are critical paths fully tested?
-2. **Test Reliability**: Are there flaky tests?
-3. **Mocking**: Are external services properly mocked?
-4. **Fixtures**: Are test fixtures reusable and well-organized?
+1. **Type Safety**: Do frontend types match backend Pydantic models? Check API responses.
+2. **Optimistic Updates**: Are rollbacks implemented? Test error scenarios.
+3. **Token Refresh**: Is JWT refresh seamless? No 401 errors for users?
+4. **WebSocket**: Does reconnection work? Are progress updates shown?
+5. **Performance**: Any unnecessary re-renders? Check with React DevTools Profiler.
+6. **Accessibility**: Keyboard-only navigation working? Screen reader friendly?
+7. **Bundle Size**: What's the main bundle size? Code splitting implemented?
 
 ## Output Format
 
@@ -531,101 +415,306 @@ Same as previous chunks: Critical Issues → Architecture → Performance → Co
 
 EOF
 
-# Chunk 7: Infrastructure & Deployment
-echo "[7/7] Generating Infrastructure chunk..."
+# Chunk 4: Tests (All Types)
+echo "[4/5] Generating Tests chunk (with shared context)..."
 repomix \
-  --include "docker-compose.yml,docker-compose.dev.yml,Dockerfile,Dockerfile.dev,Dockerfile.vecpipe,.dockerignore,Makefile,.github,docs,.env.example,CLAUDE.md" \
-  --ignore "**/__pycache__/**" \
-  --output review-chunk-7-infrastructure.txt
+  --include "tests,packages/shared/database/models,pytest.ini,CLAUDE.md,docs/TESTING.md,docs/TEST_QUALITY_ACTION_PLAN.md,docs/TEST_QUALITY_TRACKING.md" \
+  --ignore "**/__pycache__/**,**/.pytest_cache/**,**/htmlcov/**,**/.coverage" \
+  --output review-chunk-4-tests.txt
 
-cat >> review-chunk-7-infrastructure.txt <<'EOF'
+cat >> review-chunk-4-tests.txt <<'EOF'
 
 ================================================================================
-# CODE REVIEW PROMPT - CHUNK 7: INFRASTRUCTURE & DEPLOYMENT
+# CODE REVIEW PROMPT - CHUNK 4: TESTS (ALL TYPES)
 ================================================================================
 
 ## Context
-This is **Chunk 7 of 7** for reviewing Semantik.
+This is **Chunk 4 of 5** for reviewing Semantik.
 
-**This Chunk Contains**:
-- Docker Compose orchestration
-- Dockerfiles for services
-- CI/CD workflows (GitHub Actions)
-- Makefile development commands
-- Documentation
+**This Chunk Contains** (~450K-500K tokens):
+- **All Tests** (`tests/`)
+  - Unit tests (`tests/unit/`)
+  - Integration tests (`tests/integration/`)
+  - E2E tests (`tests/e2e/`)
+  - Security tests (`tests/security/`)
+  - Performance tests (`tests/performance/`)
+  - Test fixtures (`conftest.py`, `fixtures/`)
+- **Models** (for understanding what's being tested)
+- **Test Documentation**
+
+**Coverage Targets**:
+- Backend: ≥80%
+- Frontend: ≥75%
+
+## Recent Test Refactoring (October 2025)
+
+Tests reorganized from monolithic structure to domain-driven:
+- ✅ Organized by type (unit, integration, e2e, security, performance)
+- ✅ Test quality improvements tracked in `TEST_QUALITY_ACTION_PLAN.md`
+- ✅ Contract tests added (`test_contracts.py`)
+- ✅ OWASP security tests added
+
+## Critical Test Patterns
+
+### Test Anti-Patterns to Flag
+
+❌ **The Mockery** - Excessive mocking that doesn't test real behavior
+❌ **The Giant** - Tests that test too many things at once
+❌ **The Slow Poke** - Tests that use `sleep()` instead of `freezegun`
+❌ **The Greedy** - Tests that modify global state
+❌ **The Flickering** - Flaky tests (non-deterministic)
+❌ **The Inspector** - Tests that check internal state instead of behavior
+
+### Good Test Pattern
+
+```python
+@pytest.mark.asyncio
+async def test_collection_creation_success(
+    async_session,
+    test_client,
+    mock_celery
+):
+    # Arrange
+    data = {"name": "Test Collection", "path": "/data"}
+
+    # Act
+    response = await test_client.post("/api/v2/collections", json=data)
+
+    # Assert
+    assert response.status_code == 201
+    assert response.json()["name"] == "Test Collection"
+```
 
 ## Review Checklist
 
-### Docker Compose (`docker-compose.yml`)
-- [ ] All services defined
-- [ ] Health checks configured
-- [ ] Network isolation
-- [ ] Volume mounts for persistence
-- [ ] Environment variables from .env
-- [ ] No hardcoded secrets
-- [ ] Resource limits set
+### Test Organization
+- [ ] Clear separation: unit vs integration vs e2e
+- [ ] E2E tests marked with `@pytest.mark.e2e`
+- [ ] Naming: `test_{what}_{condition}_{expected}`
+- [ ] One test file per module
+- [ ] Test isolation (no shared state)
 
-### Dockerfiles
-- [ ] Multi-stage builds for optimization
-- [ ] Minimal base images
-- [ ] Proper layer caching
-- [ ] Non-root user
-- [ ] Health check defined
-- [ ] Dependencies pinned
+### Test Quality
+- [ ] Coverage ≥80% backend, ≥75% frontend
+- [ ] Critical paths fully tested (happy + error paths)
+- [ ] Edge cases covered
+- [ ] Error scenarios tested
+- [ ] Async tests properly awaited
+- [ ] **No flaky tests** (run 10x to verify)
+- [ ] Fast execution (<5 min for unit tests)
 
-### CI/CD (`.github/workflows/`)
-- [ ] Run on PR and main branch
-- [ ] Linting checks (ruff, mypy)
-- [ ] Test execution
-- [ ] Coverage reporting
-- [ ] Docker build testing
-- [ ] Security scanning
+### Test Fixtures (`conftest.py`)
+- [ ] Database setup/teardown
+- [ ] Mock Celery tasks
+- [ ] Mock Redis (`fakeredis`)
+- [ ] Mock Qdrant
+- [ ] Auth fixtures (test users, tokens)
+- [ ] Proper cleanup
 
-### Makefile
-- [ ] Common commands documented
-- [ ] Consistent naming
-- [ ] Help command available
+### Unit Tests (`tests/unit/`)
+- [ ] Test single units in isolation
+- [ ] Mock all dependencies
+- [ ] Fast (<100ms per test)
+- [ ] Test business logic thoroughly
+- [ ] Test error handling
 
-### Documentation (`docs/`)
-- [ ] Architecture documented
-- [ ] API reference complete
-- [ ] Deployment guide available
-- [ ] Troubleshooting guide
+### Integration Tests (`tests/integration/`)
+- [ ] Test component interactions
+- [ ] Use test database (not production)
+- [ ] Transactions rolled back
+- [ ] API endpoints tested
+- [ ] Data consistency verified
+
+### E2E Tests (`tests/e2e/`)
+- [ ] Full user workflows
+- [ ] Require running services
+- [ ] WebSocket functionality tested
+- [ ] Background tasks verified
+- [ ] Cross-service interactions
+
+### Security Tests (`tests/security/`)
+- [ ] Path traversal prevention
+- [ ] SQL injection prevention
+- [ ] XSS prevention
+- [ ] Auth bypass attempts blocked
+- [ ] Rate limiting enforced
+- [ ] OWASP Top 10 covered
+
+### Performance Tests (`tests/performance/`)
+- [ ] Search latency benchmarks
+- [ ] Embedding throughput
+- [ ] Database query performance
+- [ ] Regression detection
+
+### Contract Tests (`test_contracts.py`)
+- [ ] API contract stability
+- [ ] Breaking changes detected
+- [ ] Backward compatibility
 
 ## Specific Questions
 
-1. **Docker**: Are images optimized for size and security?
-2. **CI/CD**: Does the pipeline catch common issues?
-3. **Deployment**: Is the process documented and automated?
-4. **Security**: Are secrets managed properly?
+1. **Coverage**: Are critical paths fully tested? Run `pytest --cov` to verify.
+2. **Flaky Tests**: Any non-deterministic tests? Run tests 10x to find them.
+3. **Mocking**: Are external services mocked properly? No live API calls?
+4. **Performance**: Do unit tests run fast? Can they be parallelized?
+5. **Security**: Are OWASP Top 10 vulnerabilities tested?
+6. **E2E Coverage**: Do E2E tests cover main user workflows?
+7. **CI**: Do tests pass consistently in CI? Check GitHub Actions.
 
-## Cross-Cutting Concerns
+## Output Format
 
-Since this is the final chunk, please also consider:
+Same as previous chunks: Critical Issues → Architecture → Performance → Code Quality → Refactoring
+
+EOF
+
+# Chunk 5: Infrastructure + Full Documentation
+echo "[5/5] Generating Infrastructure chunk (with full documentation)..."
+repomix \
+  --include "docker-compose.yml,docker-compose.dev.yml,Dockerfile,Dockerfile.dev,Dockerfile.vecpipe,.dockerignore,Makefile,.github,docs,.env.example,CLAUDE.md,README.md,alembic/alembic.ini" \
+  --ignore "**/__pycache__/**,**/node_modules/**,docs/api/**" \
+  --output review-chunk-5-infrastructure.txt
+
+cat >> review-chunk-5-infrastructure.txt <<'EOF'
+
+================================================================================
+# CODE REVIEW PROMPT - CHUNK 5: INFRASTRUCTURE & DOCUMENTATION (FINAL)
+================================================================================
+
+## Context
+This is **Chunk 5 of 5** (FINAL) for reviewing Semantik.
+
+**This Chunk Contains** (~400K-450K tokens):
+- Docker Compose orchestration
+- Dockerfiles for all services
+- Makefile (development commands)
+- CI/CD workflows (GitHub Actions)
+- **Complete Documentation** (`docs/`)
+- Environment configuration
+- Alembic configuration
+
+**This is the final chunk** - provide comprehensive cross-cutting recommendations.
+
+## Review Checklist
+
+### Docker Compose
+- [ ] All services defined (webui, vecpipe, worker, postgres, redis, qdrant)
+- [ ] Health checks configured
+- [ ] Network isolation
+- [ ] Volume mounts for persistence
+- [ ] Environment variables from `.env`
+- [ ] No hardcoded secrets
+- [ ] Resource limits set
+- [ ] Restart policies configured
+
+### Dockerfiles
+- [ ] Multi-stage builds
+- [ ] Minimal base images (python:3.11-slim)
+- [ ] Layer caching optimized
+- [ ] Non-root user
+- [ ] Health checks defined
+- [ ] Dependencies pinned
+
+### CI/CD (`.github/workflows/`)
+- [ ] Runs on PR + main
+- [ ] Linting (ruff, mypy, black, isort)
+- [ ] Tests with coverage
+- [ ] Docker build testing
+- [ ] Security scanning
+- [ ] Coverage reporting
+
+### Makefile
+- [ ] Commands documented (`make help`)
+- [ ] Consistent naming
+- [ ] Error handling
+- [ ] Dev vs prod targets separated
+
+### Documentation (`docs/`)
+- [ ] Architecture (`ARCH.md`)
+- [ ] API reference (`API_REFERENCE.md`)
+- [ ] Deployment (`DEPLOYMENT.md`)
+- [ ] Testing (`TESTING.md`)
+- [ ] Database (`DATABASE_ARCH.md`)
+- [ ] WebSocket (`WEBSOCKET_API.md`)
+- [ ] Chunking (`CHUNKING_IMPLEMENTATION_PLAN.md`)
+- [ ] **New docs**: `TEST_QUALITY_ACTION_PLAN.md`, `SAFE_MIGRATION_GUIDE.md`
+
+### Monitoring & Logging
+- [ ] Structured logging (JSON for production)
+- [ ] Appropriate log levels
+- [ ] No sensitive data logged
+- [ ] Health check endpoints
+
+## Cross-Cutting Concerns (FINAL CHUNK)
+
+Since this is the final chunk, please provide recommendations across all previous chunks:
 
 1. **Overall Architecture**: Does the codebase follow the three-layer pattern consistently?
-2. **Job → Operation Migration**: Any remaining "job" terminology to update?
-3. **Code Consistency**: Are naming conventions consistent across services?
-4. **Documentation**: Is the codebase well-documented?
-5. **Technical Debt**: What are the top refactoring priorities?
-6. **Security Posture**: Any security vulnerabilities discovered?
-7. **Performance**: Are there performance bottlenecks?
+2. **Job → Operation Migration**: Any remaining "job" terminology?
+3. **Code Consistency**: Naming conventions consistent across services?
+4. **Documentation Quality**: Is the codebase well-documented?
+5. **Technical Debt**: Top 10 refactoring priorities?
+6. **Security Posture**: Any vulnerabilities across all chunks?
+7. **Performance**: Bottlenecks identified across all chunks?
+8. **Maintainability**: Is code easy to understand? Onboarding docs sufficient?
+9. **Test Coverage**: Critical gaps in coverage?
+10. **Deprecated Code**: What needs to be removed? (`text_processing.chunking`, "job" terminology)
 
-## Final Output
+## Final Comprehensive Output
 
-Please provide a comprehensive review summary covering:
+Please provide:
 
-1. **Critical Issues** found across all areas
-2. **Top 5 Refactoring Priorities**
-3. **Security Recommendations**
-4. **Performance Optimization Opportunities**
-5. **Testing Gaps**
-6. **Overall Code Quality Assessment** (scale 1-10 with justification)
+### 1. Critical Issues (P0) - Across All Chunks
+List all P0 issues found in chunks 1-5:
+- Race conditions
+- Security vulnerabilities
+- Data integrity risks
+- Performance killers (partition misses, etc.)
+
+### 2. Top 10 Refactoring Priorities
+Ordered by impact:
+1. [Highest priority refactoring]
+2. ...
+10. [Lowest priority refactoring]
+
+### 3. Security Recommendations
+- Vulnerabilities found
+- Hardening suggestions
+- OWASP compliance gaps
+
+### 4. Performance Optimization Opportunities
+- Database query optimization
+- API performance
+- Frontend bundle size
+- Embedding/search optimization
+
+### 5. Testing Gaps
+- Critical paths not tested
+- Missing test types
+- Low coverage areas
+
+### 6. Documentation Improvements
+- Missing documentation
+- Outdated docs
+- Areas needing better explanation
+
+### 7. Overall Code Quality Assessment
+**Score**: X/10
+
+**Justification**:
+- Strengths: [what's done well]
+- Weaknesses: [what needs improvement]
+- Comparison to industry standards
+
+### 8. Architectural Recommendations
+Long-term improvements:
+- Scalability enhancements
+- Technology upgrades
+- Architecture evolution
 
 EOF
 
 echo ""
-echo "✅ All chunks generated with review prompts!"
+echo "✅ All 5 chunks generated with comprehensive review prompts!"
 echo ""
 echo "📊 Checking sizes..."
 echo ""
@@ -633,23 +722,71 @@ echo ""
 for file in review-chunk-*.txt; do
     if [ -f "$file" ]; then
         size=$(du -h "$file" | cut -f1)
+        # Extract token count from repomix metadata
         tokens=$(grep "Total Tokens:" "$file" | head -1 | awk '{print $3}' | tr -d ',')
         if [ -z "$tokens" ]; then
-            tokens="N/A"
+            # Fallback to word count estimation
+            words=$(wc -w < "$file")
+            tokens=$(echo "$words * 1.3" | bc 2>/dev/null | cut -d'.' -f1)
+            if [ -z "$tokens" ]; then
+                tokens="N/A"
+            fi
         fi
+
         echo "📄 $(basename $file)"
         echo "   Size: $size | Tokens: $tokens"
+
+        # Show status relative to 500K target
+        if [ "$tokens" != "N/A" ]; then
+            if [ "$tokens" -gt 600000 ]; then
+                echo "   ⚠️  Over 600K - consider splitting"
+            elif [ "$tokens" -gt 500000 ]; then
+                echo "   ✅ Good size (over 500K target)"
+            elif [ "$tokens" -gt 400000 ]; then
+                echo "   ✅ Acceptable (400K-500K)"
+            else
+                echo "   ℹ️  Under 400K - could add more context"
+            fi
+        fi
         echo ""
     fi
 done
 
-echo "✅ Done! Review chunks are ready for LLM analysis."
+echo "✅ Done! Review chunks ready for LLM analysis."
 echo ""
-echo "Chunk Organization:"
-echo "1. Shared Foundation - Models, repos, migrations, chunking (~233K tokens)"
-echo "2. WebUI API Layer - Routers, middleware, WebSocket"
-echo "3. WebUI Services - Business logic, Celery tasks"
-echo "4. Vecpipe Service - Embeddings, search, parsing"
-echo "5. Frontend - React app, stores, components"
-echo "6. Tests - Unit tests and shared test utilities (smaller subset)"
-echo "7. Infrastructure - Docker, CI/CD, docs (~177K tokens)"
+echo "📋 Chunk Organization (5 Chunks with Overlap):"
+echo ""
+echo "1️⃣  Backend Core (~450K-500K tokens)"
+echo "    • packages/shared (models, repos, chunking, config)"
+echo "    • packages/webui (API, services, tasks, websocket)"
+echo "    • alembic (migrations)"
+echo "    • Architecture docs"
+echo ""
+echo "2️⃣  Vecpipe Service (~350K-400K tokens)"
+echo "    • packages/vecpipe (embeddings, search, parsing)"
+echo "    • packages/shared (INCLUDED for context)"
+echo "    • Chunking & search documentation"
+echo ""
+echo "3️⃣  Frontend (~400K-450K tokens)"
+echo "    • apps/webui-react (React app, stores, components)"
+echo "    • packages/webui/api (INCLUDED to verify type contracts)"
+echo "    • packages/shared/database/models (INCLUDED for types)"
+echo "    • Frontend & API documentation"
+echo ""
+echo "4️⃣  Tests (~450K-500K tokens)"
+echo "    • tests/ (unit, integration, e2e, security, performance)"
+echo "    • packages/shared/database/models (INCLUDED for context)"
+echo "    • Test documentation & quality plans"
+echo ""
+echo "5️⃣  Infrastructure (~400K-450K tokens)"
+echo "    • Docker, CI/CD, Makefile"
+echo "    • Complete documentation (docs/)"
+echo "    • Provides final cross-cutting analysis"
+echo ""
+echo "✨ Key Features:"
+echo "   • Larger chunks (~500K tokens) for better context"
+echo "   • Intentional overlap (shared code appears in multiple chunks)"
+echo "   • Each chunk can be reviewed independently"
+echo "   • CLAUDE.md included in every chunk"
+echo ""
+echo "🎯 Send each chunk to your LLM with the embedded review prompt!"

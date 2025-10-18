@@ -6,6 +6,8 @@ This module provides comprehensive error handling, retry strategies,
 and recovery mechanisms for chunking failures.
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
@@ -13,17 +15,21 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psutil
-from redis.asyncio import Redis
 
 from packages.shared.database.models import CollectionStatus
-from packages.shared.text_processing.base_chunker import ChunkResult
 from packages.webui.api.chunking_exceptions import ResourceType
 from packages.webui.middleware.correlation import get_correlation_id
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from packages.shared.text_processing.base_chunker import ChunkResult
+    from packages.webui.utils.error_classifier import ErrorClassificationResult, ErrorClassifier
 
 
 class ChunkingErrorType(Enum):
@@ -37,6 +43,8 @@ class ChunkingErrorType(Enum):
     VALIDATION_ERROR = "validation_error"
     NETWORK_ERROR = "network_error"
     PERMISSION_ERROR = "permission_error"
+    DEPENDENCY_ERROR = "dependency_error"
+    RESOURCE_LIMIT_ERROR = "resource_limit_error"
     UNKNOWN_ERROR = "unknown_error"
 
 
@@ -202,19 +210,50 @@ class ChunkingErrorHandler:
                 "Continue with remaining documents",
             ],
         ),
+        ChunkingErrorType.DEPENDENCY_ERROR: RecoveryStrategy(
+            action="retry",
+            max_retries=2,
+            backoff_type="exponential",
+            recommendations=[
+                "Verify third-party services are reachable",
+                "Check API credentials or tokens",
+                "Consult dependency health dashboards",
+            ],
+        ),
+        ChunkingErrorType.RESOURCE_LIMIT_ERROR: RecoveryStrategy(
+            action="retry",
+            max_retries=2,
+            backoff_type="linear",
+            recommendations=[
+                "Scale worker resources or reduce concurrency",
+                "Lower batch sizes for chunking operations",
+                "Review resource quota alarms and thresholds",
+            ],
+            fallback_strategy="character",
+        ),
     }
 
-    def __init__(self, redis_client: Redis | None = None) -> None:
+    def __init__(
+        self,
+        redis_client: Redis | None = None,
+        *,
+        error_classifier: ErrorClassifier | None = None,
+    ) -> None:
         """Initialize the error handler.
 
         Args:
             redis_client: Optional Redis client for state management.
                          If not provided, state management features will be disabled.
+            error_classifier: Optional shared classifier instance. When not
+                provided the default chunking classifier will be used.
         """
+        from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+
         self.retry_counts: dict[str, int] = {}
         self.redis_client = redis_client
         self._resource_locks: dict[str, asyncio.Lock] = {}
         self._error_history: dict[str, list[dict[str, Any]]] = {}
+        self._error_classifier = error_classifier or get_default_chunking_error_classifier()
 
     async def handle_partial_failure(
         self,
@@ -389,30 +428,12 @@ class ChunkingErrorHandler:
         Returns:
             ChunkingErrorType classification
         """
-        error_str = str(error).lower()
+        return self._error_classifier.as_enum(error)
 
-        if isinstance(error, MemoryError) or "memory" in error_str:
-            return ChunkingErrorType.MEMORY_ERROR
+    def classify_error_detailed(self, error: Exception) -> ErrorClassificationResult:
+        """Return the detailed classification result for an error."""
 
-        if isinstance(error, UnicodeError | UnicodeDecodeError) or "encoding" in error_str:
-            return ChunkingErrorType.INVALID_ENCODING
-
-        if "permission" in error_str or "access denied" in error_str:
-            return ChunkingErrorType.PERMISSION_ERROR
-
-        if "connection" in error_str or "network" in error_str:
-            return ChunkingErrorType.NETWORK_ERROR
-
-        if isinstance(error, TimeoutError) or "timeout" in error_str:
-            return ChunkingErrorType.TIMEOUT_ERROR
-
-        if "validation" in error_str:
-            return ChunkingErrorType.VALIDATION_ERROR
-
-        if "strategy" in error_str or "chunker" in error_str:
-            return ChunkingErrorType.STRATEGY_ERROR
-
-        return ChunkingErrorType.UNKNOWN_ERROR
+        return self._error_classifier.classify(error)
 
     def get_retry_strategy(self, error_type: ChunkingErrorType) -> RecoveryStrategy:
         """Get retry strategy for an error type.
