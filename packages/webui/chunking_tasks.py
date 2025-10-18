@@ -562,15 +562,11 @@ async def _process_document_chunking(
     file_path = getattr(document, "file_path", "")
     text_blocks = await loop.run_in_executor(chunk_executor, extract_and_serialize_thread_safe, file_path)
     if not text_blocks:
-        raise ValueError(
-            f"No text content extracted for document {getattr(document, 'id', file_path)}"
-        )
+        raise ValueError(f"No text content extracted for document {getattr(document, 'id', file_path)}")
 
     combined_text, metadata = _combine_text_blocks(text_blocks)
     if not combined_text:
-        raise ValueError(
-            f"Extracted content empty for document {getattr(document, 'id', file_path)}"
-        )
+        raise ValueError(f"Extracted content empty for document {getattr(document, 'id', file_path)}")
 
     file_type = file_path.rsplit(".", 1)[-1] if "." in file_path else None
     chunking_result = await chunking_service.execute_ingestion_chunking(
@@ -583,15 +579,11 @@ async def _process_document_chunking(
 
     chunks = chunking_result.get("chunks") or []
     if not chunks:
-        raise ValueError(
-            f"No chunks produced for document {getattr(document, 'id', file_path)}"
-        )
+        raise ValueError(f"No chunks produced for document {getattr(document, 'id', file_path)}")
 
     chunk_rows = _build_chunk_rows(collection_id, document.id, chunks)
     if not chunk_rows:
-        raise ValueError(
-            f"No chunk rows generated for document {getattr(document, 'id', file_path)}"
-        )
+        raise ValueError(f"No chunk rows generated for document {getattr(document, 'id', file_path)}")
 
     await chunk_repo.create_chunks_bulk(chunk_rows)
     await document_repo.update_status(
@@ -653,9 +645,7 @@ async def _process_chunking_operation_async(
 
                 collection = await collection_repo.get_by_uuid(operation.collection_id)
                 if not collection:
-                    raise ValueError(
-                        f"Collection {operation.collection_id} not found for operation {operation_id}"
-                    )
+                    raise ValueError(f"Collection {operation.collection_id} not found for operation {operation_id}")
 
                 task_id = getattr(getattr(celery_task, "request", None), "id", None) or str(uuid.uuid4())
                 await operation_repo.set_task_id(operation_id, task_id)
