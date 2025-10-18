@@ -108,6 +108,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
     start_time = time.time()
     operation = None
+    collection: dict[str, Any] | None = None
 
     process = psutil.Process()
     initial_cpu_time = process.cpu_times().user + process.cpu_times().system
