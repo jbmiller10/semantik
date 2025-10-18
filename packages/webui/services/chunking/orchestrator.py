@@ -559,9 +559,7 @@ class ChunkingOrchestrator:
 
         preview_chunks_full = self._transform_chunks_to_preview(cached.get("chunks", []))
         display_chunks = (
-            preview_chunks_full
-            if max_chunks is None or max_chunks <= 0
-            else preview_chunks_full[:max_chunks]
+            preview_chunks_full if max_chunks is None or max_chunks <= 0 else preview_chunks_full[:max_chunks]
         )
         metrics = cached.get("performance_metrics") or cached.get("statistics") or cached.get("metrics") or {}
         strategy = cached.get("strategy", "unknown")
