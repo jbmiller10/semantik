@@ -1,0 +1,1217 @@
+diff --git a/.gitignore b/.gitignore
+index 069b855..6bb4042 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -251,3 +251,4 @@ nginx.conf.example
+ 
+ # Code review chunks (generated files only - scripts and guide are tracked)
+ review-chunk-*.txt
++.code/
+diff --git a/AGENTS.md b/AGENTS.md
+index 0793275..0ce3a8e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -11,6 +11,8 @@ Run `make dev-install` for a full `uv` sync of Python dependencies and tooling;
+ ## Coding Style & Naming Conventions
+ Python code follows 4-space indentation, 120-character lines, and exhaustive typing. Before pushing, run `make format` (Black + Isort) and `make lint` (Ruff) followed by `make type-check` (Mypy). Modules stay snake_case (`search_api.py`), pytest fixtures snake_case, and React components PascalCase inside `apps/webui-react/src`. Prefer descriptive folder names aligned with existing domains (e.g., `ingest`, `metrics`). JSON/YAML config files should remain kebab-case.
+ 
++Always ensure Black and Ruff pass before marking a ticket complete—rerun `make format` and `make lint` (or the equivalent `uv run` commands) after your final changes so reviewers never see style regressions.
++
+ ## Testing Guidelines
+ Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
+ 
+diff --git a/packages/webui/chunking_tasks.py b/packages/webui/chunking_tasks.py
+index 086582d..7a06336 100644
+--- a/packages/webui/chunking_tasks.py
++++ b/packages/webui/chunking_tasks.py
+@@ -57,6 +57,11 @@ from packages.webui.services.chunking_service import ChunkingService
+ from packages.webui.services.factory import (
+     get_redis_manager,
+ )
++from packages.webui.services.progress_manager import (
++    ProgressPayload,
++    ProgressSendResult,
++    ProgressUpdateManager,
++)
+ from packages.webui.services.type_guards import ensure_sync_redis
+ 
+ if TYPE_CHECKING:
+@@ -72,6 +77,25 @@ def get_redis_client() -> Redis:
+     return ensure_sync_redis(client)
+ 
+ 
++_progress_update_manager: ProgressUpdateManager | None = None
++
++
++def get_progress_update_manager() -> ProgressUpdateManager:
++    """Return a cached progress update manager for chunking tasks."""
++
++    global _progress_update_manager
++    if _progress_update_manager is None:
++        manager = ProgressUpdateManager(
++            sync_redis=get_redis_client(),
++            default_stream_template="stream:chunking:{operation_id}",
++            default_ttl=None,
++            default_maxlen=1000,
++            logger_=logger.getChild("progress"),
++        )
++        _progress_update_manager = manager
++    return _progress_update_manager
++
++
+ # Metrics
+ chunking_tasks_started = Counter(
+     "chunking_tasks_started_total",
+@@ -1220,31 +1244,32 @@ def _send_progress_update_sync(
+     if not redis_client:
+         return
+ 
+-    try:
+-        update = {
+-            "operation_id": operation_id,
+-            "correlation_id": correlation_id,
+-            "progress": str(progress),  # Redis requires string values
+-            "message": message,
+-            "timestamp": str(time.time()),
+-        }
+-
+-        # Send to Redis stream
+-        stream_key = f"stream:chunking:{operation_id}"
+-        redis_client.xadd(stream_key, update, maxlen=1000)
+-
+-        # Also update hash for current state
+-        redis_client.hset(
+-            f"operation:{operation_id}:progress",
+-            mapping={
+-                "progress": str(progress),
+-                "message": message,
+-                "updated_at": datetime.now(UTC).isoformat(),
+-            },
+-        )
++    manager = get_progress_update_manager()
++    payload = ProgressPayload(
++        operation_id=operation_id,
++        correlation_id=correlation_id,
++        progress=progress,
++        message=message,
++        extra={"timestamp": str(time.time())},
++    )
+ 
+-    except Exception as e:
+-        logger.warning(f"Failed to send progress update: {e}")
++    hash_mapping = {
++        "progress": progress,
++        "message": message,
++        "updated_at": datetime.now(UTC).isoformat(),
++        "correlation_id": correlation_id,
++    }
++
++    manager.send_sync_update(
++        payload,
++        stream_template="stream:chunking:{operation_id}",
++        maxlen=1000,
++        ttl=None,
++        hash_key_template="operation:{operation_id}:progress",
++        hash_mapping=hash_mapping,
++        use_throttle=False,
++        redis_client=redis_client,
++    )
+ 
+ 
+ async def _handle_soft_timeout(
+@@ -1465,25 +1490,29 @@ async def _send_progress_update(
+     if not redis_client:
+         return
+ 
+-    try:
+-        update = {
+-            "operation_id": operation_id,
+-            "correlation_id": correlation_id,
+-            "progress": progress,
+-            "message": message,
+-            "timestamp": datetime.now(UTC).isoformat(),
+-        }
+-
+-        # Send to Redis stream for WebSocket updates
+-        stream_key = f"chunking:progress:{operation_id}"
+-        # Redis client is sync, not async - need to use sync methods
+-        redis_client.xadd(stream_key, update)
++    payload = ProgressPayload(
++        operation_id=operation_id,
++        correlation_id=correlation_id,
++        progress=progress,
++        message=message,
++    )
+ 
+-        # Expire stream after 1 hour for progress updates
+-        redis_client.expire(stream_key, 3600)
++    manager = get_progress_update_manager()
++    loop = asyncio.get_running_loop()
++
++    def _send() -> ProgressSendResult:
++        return manager.send_sync_update(
++            payload,
++            stream_template="chunking:progress:{operation_id}",
++            ttl=3600,
++            maxlen=0,
++            use_throttle=False,
++            redis_client=redis_client,
++        )
+ 
+-    except Exception as e:
+-        logger.error(f"Failed to send progress update: {e}")
++    result = await loop.run_in_executor(None, _send)
++    if result is ProgressSendResult.FAILED:
++        logger.error("Failed to send progress update for operation %s", operation_id)
+ 
+ 
+ # Retry helper for specific operations
+diff --git a/packages/webui/services/__init__.py b/packages/webui/services/__init__.py
+index 5e3c3f1..34bddf2 100644
+--- a/packages/webui/services/__init__.py
++++ b/packages/webui/services/__init__.py
+@@ -1,6 +1,19 @@
+-"""Services module for business logic."""
++"""Services module for business logic.
+ 
+-from .collection_service import CollectionService
+-from .factory import create_collection_service
++This package exposes common service factories lazily to avoid import cycles
++between FastAPI routers and background task modules.
++"""
+ 
+ __all__ = ["CollectionService", "create_collection_service"]
++
++
++def __getattr__(name: str):  # pragma: no cover - thin import shim
++    if name == "CollectionService":
++        from .collection_service import CollectionService as _CollectionService
++
++        return _CollectionService
++    if name == "create_collection_service":
++        from .factory import create_collection_service as _create_collection_service
++
++        return _create_collection_service
++    raise AttributeError(f"module 'packages.webui.services' has no attribute {name!r}")
+diff --git a/packages/webui/services/progress_manager.py b/packages/webui/services/progress_manager.py
+new file mode 100644
+index 0000000..45ce862
+--- /dev/null
++++ b/packages/webui/services/progress_manager.py
+@@ -0,0 +1,338 @@
++"""Shared progress update utilities for Redis stream publishing.
++
++This module centralises the logic for building and publishing progress updates
++to Redis streams from both synchronous (Celery) and asynchronous (FastAPI /
++WebSocket) contexts.  It ensures consistent payload formatting, optional TTL
++handling, error reporting, and throttling.
++"""
++
++from __future__ import annotations
++
++import asyncio
++import json
++import logging
++import threading
++from dataclasses import dataclass, field
++from datetime import UTC, datetime
++from enum import Enum
++from typing import TYPE_CHECKING, Any
++
++if TYPE_CHECKING:
++    from collections.abc import Mapping
++
++    from redis import Redis
++    from redis.asyncio import Redis as AsyncRedis
++else:  # pragma: no cover - runtime duck typing suffices
++    Mapping = Any  # type: ignore[assignment]
++    Redis = Any
++    AsyncRedis = Any
++
++logger = logging.getLogger(__name__)
++
++
++class ProgressSendResult(Enum):
++    """Outcome returned by progress publishing operations."""
++
++    SENT = "sent"
++    SKIPPED = "skipped"
++    FAILED = "failed"
++
++
++def _stringify(value: Any) -> str:
++    """Convert a value to a Redis-compatible string representation."""
++
++    if isinstance(value, bytes):
++        return value.decode("utf-8", errors="ignore")
++    if isinstance(value, str):
++        return value
++    if isinstance(value, datetime):
++        return value.isoformat()
++    if isinstance(value, (int, float, bool)):  # noqa: UP038 - tuple needed for runtime compatibility
++        return str(value)
++    return json.dumps(value, default=str)
++
++
++@dataclass(slots=True)
++class ProgressPayload:
++    """Normalised description of a progress update."""
++
++    operation_id: str
++    correlation_id: str | None = None
++    progress: float | int | None = None
++    message: str | None = None
++    status: str | None = None
++    extra: Mapping[str, Any] = field(default_factory=dict)
++    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
++
++    def to_stream_fields(self) -> dict[str, str]:
++        """Render the payload as Redis stream fields."""
++
++        fields: dict[str, Any] = {"operation_id": self.operation_id}
++
++        if self.correlation_id is not None:
++            fields["correlation_id"] = self.correlation_id
++        if self.progress is not None:
++            fields["progress"] = self.progress
++        if self.message is not None:
++            fields["message"] = self.message
++        if self.status is not None:
++            fields["status"] = self.status
++
++        # Include timestamp for consumers that expect it in the stream entry.
++        fields.setdefault("timestamp", self.timestamp.isoformat())
++
++        for key, value in self.extra.items():
++            fields[key] = value
++
++        return {key: _stringify(value) for key, value in fields.items() if value is not None}
++
++    def to_hash_mapping(self) -> dict[str, str]:
++        """Build a sensible default hash mapping for progress tracking."""
++
++        mapping: dict[str, Any] = {"updated_at": self.timestamp.isoformat()}
++
++        if self.progress is not None:
++            mapping["progress"] = self.progress
++        if self.message is not None:
++            mapping["message"] = self.message
++        if self.status is not None:
++            mapping["status"] = self.status
++        if self.correlation_id is not None:
++            mapping["correlation_id"] = self.correlation_id
++
++        return {key: _stringify(value) for key, value in mapping.items() if value is not None}
++
++
++class _ThrottleController:
++    """Throttle helper that supports both sync and async producers."""
++
++    def __init__(
++        self,
++        *,
++        sync_interval_seconds: float | None = None,
++        async_interval_seconds: float | None = None,
++    ) -> None:
++        self._sync_interval = sync_interval_seconds
++        self._async_interval = async_interval_seconds
++        self._sync_last_sent: dict[str, datetime] = {}
++        self._async_last_sent: dict[str, datetime] = {}
++        self._sync_lock = threading.Lock()
++        self._async_lock = asyncio.Lock()
++
++    def allow_sync(self, key: str) -> bool:
++        """Return True if a sync update should be sent for *key*."""
++
++        if self._sync_interval is None or self._sync_interval <= 0:
++            return True
++
++        now = datetime.now(UTC)
++        with self._sync_lock:
++            last_sent = self._sync_last_sent.get(key)
++            if last_sent and (now - last_sent).total_seconds() < self._sync_interval:
++                return False
++            self._sync_last_sent[key] = now
++        return True
++
++    async def allow_async(self, key: str) -> bool:
++        """Return True if an async update should be sent for *key*."""
++
++        if self._async_interval is None or self._async_interval <= 0:
++            return True
++
++        now = datetime.now(UTC)
++        async with self._async_lock:
++            last_sent = self._async_last_sent.get(key)
++            if last_sent and (now - last_sent).total_seconds() < self._async_interval:
++                return False
++            self._async_last_sent[key] = now
++        return True
++
++    def reset_sync(self, key: str) -> None:
++        with self._sync_lock:
++            self._sync_last_sent.pop(key, None)
++
++    async def reset_async(self, key: str) -> None:
++        async with self._async_lock:
++            self._async_last_sent.pop(key, None)
++
++
++class ProgressUpdateManager:
++    """Unified manager for sending progress updates to Redis streams."""
++
++    def __init__(
++        self,
++        *,
++        sync_redis: Redis | None = None,
++        async_redis: AsyncRedis | None = None,
++        default_stream_template: str = "operation-progress:{operation_id}",
++        default_ttl: int | None = 86400,
++        default_maxlen: int | None = 1000,
++        sync_throttle_interval: float | None = None,
++        async_throttle_interval: float | None = None,
++        logger_: logging.Logger | None = None,
++    ) -> None:
++        self._sync_redis = sync_redis
++        self._async_redis = async_redis
++        self._default_stream_template = default_stream_template
++        self._default_ttl = default_ttl
++        self._default_maxlen = default_maxlen
++        self._throttle = _ThrottleController(
++            sync_interval_seconds=sync_throttle_interval,
++            async_interval_seconds=async_throttle_interval,
++        )
++        self._logger = logger_ or logger
++
++    def set_sync_client(self, client: Redis) -> None:
++        """Attach or replace the synchronous Redis client."""
++
++        self._sync_redis = client
++
++    def set_async_client(self, client: AsyncRedis) -> None:
++        """Attach or replace the asynchronous Redis client."""
++
++        self._async_redis = client
++
++    def _resolve_maxlen(self, override: int | None) -> int | None:
++        """Determine the effective maxlen to apply to XADD."""
++
++        if override is None:
++            return self._default_maxlen
++        if override <= 0:
++            return None
++        return override
++
++    def send_sync_update(
++        self,
++        payload: ProgressPayload,
++        *,
++        stream_fields: Mapping[str, Any] | None = None,
++        stream_template: str | None = None,
++        ttl: int | None = None,
++        maxlen: int | None = None,
++        hash_key_template: str | None = None,
++        hash_mapping: Mapping[str, Any] | None = None,
++        use_throttle: bool = False,
++        throttle_key: str | None = None,
++        redis_client: Redis | None = None,
++    ) -> ProgressSendResult:
++        """Publish a progress update using a synchronous Redis client."""
++
++        client = redis_client or self._sync_redis
++        if client is None:
++            self._logger.debug("No sync Redis client configured; skipping progress update")
++            return ProgressSendResult.FAILED
++
++        key = throttle_key or payload.operation_id
++        if use_throttle and not self._throttle.allow_sync(key):
++            return ProgressSendResult.SKIPPED
++
++        stream_key = (stream_template or self._default_stream_template).format(operation_id=payload.operation_id)
++        fields = (
++            {name: _stringify(value) for name, value in stream_fields.items()}
++            if stream_fields is not None
++            else payload.to_stream_fields()
++        )
++
++        try:
++            effective_maxlen = self._resolve_maxlen(maxlen)
++            if effective_maxlen is None:
++                client.xadd(stream_key, fields)
++            else:
++                client.xadd(stream_key, fields, maxlen=effective_maxlen)
++
++            ttl_value = ttl if ttl is not None else self._default_ttl
++            if ttl_value:
++                client.expire(stream_key, ttl_value)
++
++            if hash_key_template:
++                hash_key = hash_key_template.format(operation_id=payload.operation_id)
++                mapping = (
++                    {name: _stringify(value) for name, value in hash_mapping.items()}
++                    if hash_mapping is not None
++                    else payload.to_hash_mapping()
++                )
++                if mapping:
++                    client.hset(hash_key, mapping=mapping)
++
++            return ProgressSendResult.SENT
++        except Exception as exc:  # pragma: no cover - defensive logging
++            self._logger.warning(
++                "Failed to send sync progress update for %s: %s",
++                payload.operation_id,
++                exc,
++            )
++            try:
++                # If an exception occurred before throttling recorded the send,
++                # ensure future attempts are not blocked.
++                if use_throttle:
++                    self._throttle.reset_sync(key)
++            except Exception:  # pragma: no cover - safety
++                pass
++            return ProgressSendResult.FAILED
++
++    async def send_async_update(
++        self,
++        payload: ProgressPayload,
++        *,
++        stream_fields: Mapping[str, Any] | None = None,
++        stream_template: str | None = None,
++        ttl: int | None = None,
++        maxlen: int | None = None,
++        hash_key_template: str | None = None,
++        hash_mapping: Mapping[str, Any] | None = None,
++        use_throttle: bool = False,
++        throttle_key: str | None = None,
++        redis_client: AsyncRedis | None = None,
++    ) -> ProgressSendResult:
++        """Publish a progress update using an async Redis client."""
++
++        client = redis_client or self._async_redis
++        if client is None:
++            self._logger.debug("No async Redis client configured; skipping progress update")
++            return ProgressSendResult.FAILED
++
++        key = throttle_key or payload.operation_id
++        if use_throttle and not await self._throttle.allow_async(key):
++            return ProgressSendResult.SKIPPED
++
++        stream_key = (stream_template or self._default_stream_template).format(operation_id=payload.operation_id)
++        fields = (
++            {name: _stringify(value) for name, value in stream_fields.items()}
++            if stream_fields is not None
++            else payload.to_stream_fields()
++        )
++
++        try:
++            effective_maxlen = self._resolve_maxlen(maxlen)
++            if effective_maxlen is None:
++                await client.xadd(stream_key, fields)
++            else:
++                await client.xadd(stream_key, fields, maxlen=effective_maxlen)
++
++            ttl_value = ttl if ttl is not None else self._default_ttl
++            if ttl_value:
++                await client.expire(stream_key, ttl_value)
++
++            if hash_key_template:
++                hash_key = hash_key_template.format(operation_id=payload.operation_id)
++                mapping = (
++                    {name: _stringify(value) for name, value in hash_mapping.items()}
++                    if hash_mapping is not None
++                    else payload.to_hash_mapping()
++                )
++                if mapping:
++                    await client.hset(hash_key, mapping=mapping)
++
++            return ProgressSendResult.SENT
++        except Exception as exc:  # pragma: no cover - defensive logging
++            self._logger.warning(
++                "Failed to send async progress update for %s: %s",
++                payload.operation_id,
++                exc,
++            )
++            try:
++                if use_throttle:
++                    await self._throttle.reset_async(key)
++            except Exception:  # pragma: no cover - safety
++                pass
++            return ProgressSendResult.FAILED
+diff --git a/packages/webui/websocket_manager.py b/packages/webui/websocket_manager.py
+index 1c2d8c7..21b32e3 100644
+--- a/packages/webui/websocket_manager.py
++++ b/packages/webui/websocket_manager.py
+@@ -14,13 +14,19 @@ import redis.asyncio as aioredis
+ import redis.asyncio as redis
+ from fastapi import WebSocket
+ 
++from packages.webui.services.progress_manager import (
++    ProgressPayload,
++    ProgressSendResult,
++    ProgressUpdateManager,
++)
++
+ logger = logging.getLogger(__name__)
+ 
+ 
+ class RedisStreamWebSocketManager:
+     """WebSocket manager that uses Redis Streams for distributed state synchronization."""
+ 
+-    def __init__(self) -> None:
++    def __init__(self, progress_manager: ProgressUpdateManager | None = None) -> None:
+         """Initialize the WebSocket manager."""
+         self.redis: aioredis.Redis | None = None
+         self.connections: dict[str, set[WebSocket]] = {}
+@@ -33,6 +39,7 @@ class RedisStreamWebSocketManager:
+         self._get_operation_func = None  # Function to get operation by ID
+         self._chunking_progress_throttle: dict[str, datetime] = {}  # Track last progress update time per operation
+         self._chunking_progress_threshold = 0.5  # Minimum seconds between progress updates
++        self._progress_manager = progress_manager
+ 
+         # Add locks for thread-safe access to shared state
+         self._connections_lock = asyncio.Lock()
+@@ -68,6 +75,19 @@ class RedisStreamWebSocketManager:
+                     # Validate connection
+                     await redis_client.ping()
+                     self.redis = redis_client
++
++                    if self._progress_manager is None:
++                        self._progress_manager = ProgressUpdateManager(
++                            async_redis=redis_client,
++                            default_stream_template="operation-progress:{operation_id}",
++                            default_ttl=86400,
++                            default_maxlen=1000,
++                            async_throttle_interval=self._chunking_progress_threshold,
++                            logger_=logger.getChild("progress"),
++                        )
++                    else:
++                        self._progress_manager.set_async_client(redis_client)
++
+                     logger.info("WebSocket manager connected to Redis")
+                     return
+                 except Exception as e:
+@@ -115,6 +135,25 @@ class RedisStreamWebSocketManager:
+             await self.redis.close()
+             logger.info("WebSocket manager Redis connection closed")
+ 
++    async def _record_throttle_timestamp(self, operation_id: str, timestamp: datetime) -> None:
++        """Update the throttle bookkeeping for chunking progress events."""
++
++        async with self._throttle_lock:
++            self._chunking_progress_throttle[operation_id] = timestamp
++
++    @staticmethod
++    def _resolve_stream_ttl(update_type: str, data: dict[str, Any]) -> int:
++        """Determine TTL to apply to a Redis stream entry for *update_type*."""
++
++        ttl = 86400
++        if update_type == "status_update":
++            status = data.get("status", "")
++            if status in {"completed", "cancelled"}:
++                ttl = 300
++            elif status == "failed":
++                ttl = 60
++        return ttl
++
+     def set_operation_getter(self, get_operation_func: Any) -> None:
+         """Set the function to get operation by ID.
+ 
+@@ -251,48 +290,72 @@ class RedisStreamWebSocketManager:
+                     if operation_id in self.consumer_tasks:
+                         del self.consumer_tasks[operation_id]
+ 
+-    async def send_update(self, operation_id: str, update_type: str, data: dict) -> None:
++    async def send_update(
++        self,
++        operation_id: str,
++        update_type: str,
++        data: dict,
++        *,
++        throttle: bool = False,
++        throttle_key: str | None = None,
++    ) -> None:
+         """Send an update to Redis Stream for a specific operation.
+ 
+-        This method is called by Celery tasks to send updates.
+-        If Redis is not available, updates are sent directly to connected clients.
++        If Redis is unavailable or publishing fails, updates are sent directly to
++        connected WebSocket clients as a fallback.
+         """
+-        message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
+ 
+-        if self.redis:
+-            # Redis available - use streams for persistence
+-            stream_key = f"operation-progress:{operation_id}"
++        payload_timestamp = datetime.now(UTC)
++        message = {"timestamp": payload_timestamp.isoformat(), "type": update_type, "data": data}
++        manager = self._progress_manager
++        publish_result: ProgressSendResult | None = None
++
++        if manager is not None and self.redis is not None:
++            payload = ProgressPayload(
++                operation_id=operation_id,
++                correlation_id=data.get("correlation_id"),
++                status=data.get("status"),
++                message=data.get("message"),
++                progress=data.get("progress_percentage") or data.get("progress"),
++                extra={"type": update_type},
++                timestamp=payload_timestamp,
++            )
+ 
+-            try:
+-                # Add to stream with automatic ID and max length to prevent unbounded growth
+-                await self.redis.xadd(
+-                    stream_key,
+-                    {"message": json.dumps(message)},
+-                    maxlen=1000,  # Keep last 1000 messages
++            ttl = self._resolve_stream_ttl(update_type, data)
++            publish_result = await manager.send_async_update(
++                payload,
++                stream_fields={"message": json.dumps(message)},
++                stream_template="operation-progress:{operation_id}",
++                ttl=ttl,
++                maxlen=1000,
++                use_throttle=throttle,
++                throttle_key=throttle_key or operation_id,
++                redis_client=self.redis,
++            )
++
++            if publish_result is ProgressSendResult.SENT:
++                if throttle:
++                    await self._record_throttle_timestamp(operation_id, payload.timestamp)
++                logger.debug(
++                    "Sent update to stream operation-progress:%s: type=%s, TTL=%ss",
++                    operation_id,
++                    update_type,
++                    ttl,
+                 )
++                return
+ 
+-                # Set TTL based on operation status
+-                # Active operations get longer TTL, completed operations get shorter
+-                ttl = 86400  # Default: 24 hours for active operations
++            if publish_result is ProgressSendResult.SKIPPED:
++                return
+ 
+-                if update_type == "status_update":
+-                    status = data.get("status", "")
+-                    if status in ["completed", "cancelled"]:
+-                        ttl = 300  # 5 minutes for completed operations
+-                    elif status == "failed":
+-                        ttl = 60  # 1 minute for failed operations
++        if throttle:
++            await self._record_throttle_timestamp(operation_id, payload_timestamp)
+ 
+-                await self.redis.expire(stream_key, ttl)
++        if publish_result is ProgressSendResult.FAILED:
++            logger.error("Failed to send update to Redis stream for %s", operation_id)
++        elif manager is None or self.redis is None:
++            logger.debug("Redis not available, broadcasting directly for operation %s", operation_id)
+ 
+-                logger.debug(f"Sent update to stream {stream_key}: type={update_type}, TTL={ttl}s")
+-            except Exception as e:
+-                logger.error(f"Failed to send update to Redis stream: {e}")
+-                # Fall back to direct broadcast
+-                await self._broadcast(operation_id, message)
+-        else:
+-            # Redis not available - send directly to connected clients
+-            logger.debug(f"Redis not available, broadcasting directly for operation {operation_id}")
+-            await self._broadcast(operation_id, message)
++        await self._broadcast(operation_id, message)
+ 
+     async def _consume_updates(self, operation_id: str) -> None:
+         """Consume updates from Redis Stream for a specific operation."""
+@@ -675,19 +738,6 @@ class RedisStreamWebSocketManager:
+             current_document: Currently processing document name
+             throttle: Whether to throttle progress updates
+         """
+-        # Apply throttling to reduce WebSocket traffic
+-        async with self._throttle_lock:
+-            now = datetime.now(UTC)
+-            if throttle and operation_id in self._chunking_progress_throttle:
+-                time_since_last = (now - self._chunking_progress_throttle[operation_id]).total_seconds()
+-                if time_since_last < self._chunking_progress_threshold:
+-                    # Skip this update if too soon after the last one
+-                    return
+-
+-            # Update throttle timestamp
+-            self._chunking_progress_throttle[operation_id] = now
+-
+-        # Send the progress update
+         await self.send_update(
+             operation_id,
+             "chunking_progress",
+@@ -698,6 +748,8 @@ class RedisStreamWebSocketManager:
+                 "chunks_created": chunks_created,
+                 "current_document": current_document,
+             },
++            throttle=throttle,
++            throttle_key=operation_id,
+         )
+ 
+     async def send_chunking_event(
+diff --git a/tests/unit/test_websocket_manager.py b/tests/unit/test_websocket_manager.py
+index 6bc2447..73a4e98 100644
+--- a/tests/unit/test_websocket_manager.py
++++ b/tests/unit/test_websocket_manager.py
+@@ -14,6 +14,7 @@ import pytest
+ import redis.asyncio as redis
+ from fastapi import WebSocket
+ 
++from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
+ from packages.webui.websocket_manager import RedisStreamWebSocketManager
+ 
+ 
+@@ -249,8 +250,13 @@ class TestWebSocketManager:
+ 
+     @pytest.mark.asyncio()
+     async def test_send_update_with_redis(self, ws_manager, mock_redis) -> None:
+-        """Test sending update through Redis stream"""
++        """Test sending update delegates to the progress manager when Redis is available."""
++
++        progress_manager = AsyncMock(spec=ProgressUpdateManager)
++        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SENT)
++
+         ws_manager.redis = mock_redis
++        ws_manager._progress_manager = progress_manager
+ 
+         await ws_manager.send_update(
+             operation_id="op-123",
+@@ -258,14 +264,14 @@ class TestWebSocketManager:
+             data={"percentage": 50, "message": "Processing..."},
+         )
+ 
+-        # Verify Redis stream operations
+-        mock_redis.xadd.assert_called_once()
+-        call_args = mock_redis.xadd.call_args
+-        assert call_args[0][0] == "operation-progress:op-123"
+-        assert "message" in call_args[0][1]
+-        assert call_args[1]["maxlen"] == 1000
+-
+-        mock_redis.expire.assert_called_once_with("operation-progress:op-123", 86400)
++        progress_manager.send_async_update.assert_awaited_once()
++        _, kwargs = progress_manager.send_async_update.await_args
++        assert kwargs["stream_template"] == "operation-progress:{operation_id}"
++        assert kwargs["ttl"] == 86400
++        assert kwargs["maxlen"] == 1000
++        assert kwargs["use_throttle"] is False
++        payload = progress_manager.send_async_update.await_args.args[0]
++        assert payload.operation_id == "op-123"
+ 
+     @pytest.mark.asyncio()
+     async def test_send_update_without_redis(self, ws_manager, mock_websocket) -> None:
+@@ -288,22 +294,28 @@ class TestWebSocketManager:
+     @pytest.mark.asyncio()
+     @patch("packages.webui.websocket_manager.logger")
+     async def test_send_update_redis_failure(self, mock_logger, ws_manager, mock_redis, mock_websocket) -> None:
+-        """Test fallback to direct broadcast on Redis failure"""
++        """Test fallback to direct broadcast when the progress manager reports failure."""
++
++        progress_manager = AsyncMock(spec=ProgressUpdateManager)
++        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.FAILED)
++
+         ws_manager.redis = mock_redis
+         ws_manager.connections = {"user-123:operation:op-123": {mock_websocket}}
+-
+-        # Make Redis fail
+-        mock_redis.xadd.side_effect = Exception("Redis error")
++        ws_manager._progress_manager = progress_manager
++        ws_manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
++        ws_manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
+ 
+         await ws_manager.send_update(
+             operation_id="op-123",
+             update_type="error",
+             data={"message": "Something went wrong"},
++            throttle=True,
+         )
+ 
+-        # Should log error and broadcast directly
++        progress_manager.send_async_update.assert_awaited_once()
++        ws_manager._broadcast.assert_awaited_once()  # type: ignore[attr-defined]
++        ws_manager._record_throttle_timestamp.assert_awaited_once()  # type: ignore[attr-defined]
+         mock_logger.error.assert_called()
+-        mock_websocket.send_json.assert_called_once()
+ 
+     @pytest.mark.asyncio()
+     async def test_consume_updates_lifecycle(self, ws_manager, mock_redis) -> None:
+diff --git a/tests/webui/services/test_progress_manager.py b/tests/webui/services/test_progress_manager.py
+new file mode 100644
+index 0000000..d47caa9
+--- /dev/null
++++ b/tests/webui/services/test_progress_manager.py
+@@ -0,0 +1,176 @@
++"""Unit tests for the ProgressUpdateManager abstraction."""
++
++from __future__ import annotations
++
++from unittest.mock import AsyncMock, MagicMock
++
++import pytest
++
++from packages.webui.services.progress_manager import (
++    ProgressPayload,
++    ProgressSendResult,
++    ProgressUpdateManager,
++)
++
++
++def _payload(**overrides: object) -> ProgressPayload:
++    defaults: dict[str, object] = {
++        "operation_id": "op-123",
++        "correlation_id": "corr-456",
++        "progress": 50,
++        "message": "processing",
++    }
++    defaults.update(overrides)
++    return ProgressPayload(**defaults)
++
++
++def test_send_sync_update_with_hash_and_ttl() -> None:
++    """Sync updates should publish to stream, set TTL, and update the hash."""
++
++    sync_client = MagicMock()
++    manager = ProgressUpdateManager(
++        sync_redis=sync_client,
++        default_stream_template="stream:{operation_id}",
++        default_ttl=120,
++        default_maxlen=200,
++    )
++
++    payload = _payload()
++    result = manager.send_sync_update(payload, hash_key_template="hash:{operation_id}")
++
++    assert result is ProgressSendResult.SENT
++    sync_client.xadd.assert_called_once()
++    stream_key, fields = sync_client.xadd.call_args[0]
++    assert stream_key == "stream:op-123"
++    assert fields["operation_id"] == "op-123"
++    assert fields["progress"] == "50"
++    assert sync_client.xadd.call_args.kwargs["maxlen"] == 200
++
++    sync_client.expire.assert_called_once_with("stream:op-123", 120)
++    sync_client.hset.assert_called_once()
++    hash_key = sync_client.hset.call_args[0][0]
++    mapping = sync_client.hset.call_args.kwargs["mapping"]
++    assert hash_key == "hash:op-123"
++    assert mapping["progress"] == "50"
++
++
++def test_send_sync_update_without_ttl_or_maxlen() -> None:
++    """Passing explicit overrides should suppress expire/maxlen logic."""
++
++    sync_client = MagicMock()
++    manager = ProgressUpdateManager(
++        sync_redis=sync_client,
++        default_stream_template="stream:{operation_id}",
++        default_ttl=None,
++        default_maxlen=50,
++    )
++
++    payload = _payload()
++    result = manager.send_sync_update(payload, ttl=None, maxlen=0)
++
++    assert result is ProgressSendResult.SENT
++    _, kwargs = sync_client.xadd.call_args
++    assert "maxlen" not in kwargs
++    sync_client.expire.assert_not_called()
++
++
++def test_send_sync_update_respects_throttle() -> None:
++    """Second call within the throttle window should skip publishing."""
++
++    sync_client = MagicMock()
++    manager = ProgressUpdateManager(
++        sync_redis=sync_client,
++        default_stream_template="stream:{operation_id}",
++        default_ttl=None,
++        sync_throttle_interval=60,
++    )
++
++    payload = _payload()
++    first = manager.send_sync_update(payload, use_throttle=True)
++    second = manager.send_sync_update(payload, use_throttle=True)
++
++    assert first is ProgressSendResult.SENT
++    assert second is ProgressSendResult.SKIPPED
++    assert sync_client.xadd.call_count == 1
++
++
++def test_send_sync_update_handles_exceptions() -> None:
++    """Failures should return FAILED and avoid raising to the caller."""
++
++    sync_client = MagicMock()
++    sync_client.xadd.side_effect = RuntimeError("redis down")
++    manager = ProgressUpdateManager(sync_redis=sync_client)
++
++    payload = _payload()
++    result = manager.send_sync_update(payload)
++
++    assert result is ProgressSendResult.FAILED
++    sync_client.expire.assert_not_called()
++
++
++@pytest.mark.asyncio()
++async def test_send_async_update_success() -> None:
++    """Async updates should publish to the stream and set TTL when provided."""
++
++    async_client = AsyncMock()
++    manager = ProgressUpdateManager(
++        async_redis=async_client,
++        default_stream_template="stream:{operation_id}",
++        default_ttl=90,
++        default_maxlen=500,
++    )
++
++    payload = _payload()
++    result = await manager.send_async_update(payload)
++
++    assert result is ProgressSendResult.SENT
++    async_client.xadd.assert_awaited_once()
++    stream_key, fields = async_client.xadd.call_args[0]
++    assert stream_key == "stream:op-123"
++    assert fields["message"] == "processing"
++    assert async_client.xadd.call_args.kwargs["maxlen"] == 500
++    async_client.expire.assert_awaited_once_with("stream:op-123", 90)
++
++
++@pytest.mark.asyncio()
++async def test_send_async_update_throttle_skip() -> None:
++    """Async throttling should bypass subsequent sends within the window."""
++
++    async_client = AsyncMock()
++    manager = ProgressUpdateManager(
++        async_redis=async_client,
++        default_stream_template="stream:{operation_id}",
++        default_ttl=90,
++        async_throttle_interval=120,
++    )
++
++    payload = _payload()
++    first = await manager.send_async_update(payload, use_throttle=True)
++    second = await manager.send_async_update(payload, use_throttle=True)
++
++    assert first is ProgressSendResult.SENT
++    assert second is ProgressSendResult.SKIPPED
++    assert async_client.xadd.await_count == 1
++
++
++@pytest.mark.asyncio()
++async def test_send_async_update_without_client() -> None:
++    """When no async client is configured the call should fail gracefully."""
++
++    manager = ProgressUpdateManager(async_redis=None)
++    result = await manager.send_async_update(_payload())
++    assert result is ProgressSendResult.FAILED
++
++
++@pytest.mark.asyncio()
++async def test_send_async_update_handles_exceptions() -> None:
++    """Runtime errors in async publishing should be reported as FAILED."""
++
++    async_client = AsyncMock()
++    async_client.xadd.side_effect = RuntimeError("xadd failure")
++    manager = ProgressUpdateManager(async_redis=async_client)
++
++    result = await manager.send_async_update(_payload())
++
++    assert result is ProgressSendResult.FAILED
++    async_client.expire.assert_not_awaited()
+diff --git a/tests/webui/test_chunking_progress_tasks.py b/tests/webui/test_chunking_progress_tasks.py
+new file mode 100644
+index 0000000..ceec464
+--- /dev/null
++++ b/tests/webui/test_chunking_progress_tasks.py
+@@ -0,0 +1,92 @@
++"""Tests for chunking task progress helpers."""
++
++from __future__ import annotations
++
++from typing import Any
++from unittest.mock import MagicMock
++
++import pytest
++
++from packages.webui import chunking_tasks
++from packages.webui.services.progress_manager import ProgressSendResult
++
++
++class FakeProgressManager:
++    def __init__(self, result: ProgressSendResult = ProgressSendResult.SENT) -> None:
++        self.calls: list[tuple[Any, dict[str, Any]]] = []
++        self._result = result
++
++    def send_sync_update(self, payload, **kwargs):  # type: ignore[no-untyped-def]
++        self.calls.append((payload, kwargs))
++        return self._result
++
++
++def test_send_progress_update_sync_uses_shared_manager(monkeypatch: pytest.MonkeyPatch) -> None:
++    manager = FakeProgressManager()
++    redis_client = MagicMock()
++
++    monkeypatch.setattr(chunking_tasks, "get_progress_update_manager", lambda: manager)
++
++    chunking_tasks._send_progress_update_sync(
++        redis_client,
++        operation_id="op-1",
++        correlation_id="corr-1",
++        progress=10,
++        message="hello",
++    )
++
++    assert len(manager.calls) == 1
++    payload, kwargs = manager.calls[0]
++    assert payload.operation_id == "op-1"
++    assert payload.progress == 10
++    assert kwargs["redis_client"] is redis_client
++    assert kwargs["stream_template"] == "stream:chunking:{operation_id}"
++    assert kwargs["maxlen"] == 1000
++    assert kwargs["ttl"] is None
++
++
++@pytest.mark.asyncio()
++async def test_send_progress_update_async_delegates_and_logs(
++    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
++) -> None:
++    manager = FakeProgressManager(result=ProgressSendResult.FAILED)
++    redis_client = MagicMock()
++
++    monkeypatch.setattr(chunking_tasks, "get_progress_update_manager", lambda: manager)
++
++    caplog.set_level("ERROR")
++    await chunking_tasks._send_progress_update(
++        redis_client,
++        operation_id="op-2",
++        correlation_id="corr-2",
++        progress=55,
++        message="progress",
++    )
++
++    assert len(manager.calls) == 1
++    payload, kwargs = manager.calls[0]
++    assert payload.operation_id == "op-2"
++    assert kwargs["ttl"] == 3600
++    assert kwargs["maxlen"] == 0
++    assert "Failed to send progress update" in caplog.text
++
++
++@pytest.mark.asyncio()
++async def test_send_progress_update_async_success(monkeypatch: pytest.MonkeyPatch) -> None:
++    manager = FakeProgressManager()
++    redis_client = MagicMock()
++
++    monkeypatch.setattr(chunking_tasks, "get_progress_update_manager", lambda: manager)
++
++    await chunking_tasks._send_progress_update(
++        redis_client,
++        operation_id="op-3",
++        correlation_id="corr-3",
++        progress=90,
++        message="almost",
++    )
++
++    assert len(manager.calls) == 1
++    payload, kwargs = manager.calls[0]
++    assert payload.progress == 90
++    assert kwargs["redis_client"] is redis_client
+diff --git a/tests/webui/test_websocket_manager.py b/tests/webui/test_websocket_manager.py
+index 66e6b1c..59e679e 100644
+--- a/tests/webui/test_websocket_manager.py
++++ b/tests/webui/test_websocket_manager.py
+@@ -15,6 +15,7 @@ import pytest_asyncio
+ import redis.asyncio as redis
+ from fastapi import WebSocket
+ 
++from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
+ from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
+ from packages.webui.websocket_manager import ws_manager as _global_ws_manager
+ from packages.webui.websocket_manager import ws_manager as ws_manager1
+@@ -303,6 +304,12 @@ class TestRedisStreamWebSocketManager:
+     ) -> None:
+         """Test sending operation update via Redis stream."""
+         manager.redis = mock_redis
++        manager._progress_manager = ProgressUpdateManager(
++            async_redis=mock_redis,
++            default_stream_template="operation-progress:{operation_id}",
++            default_ttl=86400,
++            default_maxlen=1000,
++        )
+ 
+         update_data = {"progress": 50, "current_file": "test.pdf"}
+         await manager.send_update("operation1", "progress", update_data)
+@@ -324,6 +331,61 @@ class TestRedisStreamWebSocketManager:
+         # Verify TTL was set
+         mock_redis.expire.assert_called_once_with("operation-progress:operation1", 86400)
+ 
++    @pytest.mark.asyncio()
++    async def test_send_update_throttle_skip(self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock) -> None:
++        """If the progress manager throttles the update, no broadcast should occur."""
++
++        manager.redis = mock_redis
++        progress_manager = AsyncMock(spec=ProgressUpdateManager)
++        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SKIPPED)
++        manager._progress_manager = progress_manager
++        manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
++        manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
++
++        await manager.send_update("operation1", "chunking_progress", {}, throttle=True)
++
++        progress_manager.send_async_update.assert_awaited_once()
++        manager._broadcast.assert_not_awaited()
++        manager._record_throttle_timestamp.assert_not_awaited()
++
++    @pytest.mark.asyncio()
++    async def test_send_update_records_throttle_on_failure(
++        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
++    ) -> None:
++        """When publishing fails we still broadcast and track throttle timestamps."""
++
++        manager.redis = mock_redis
++        progress_manager = AsyncMock(spec=ProgressUpdateManager)
++        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.FAILED)
++        manager._progress_manager = progress_manager
++        manager._broadcast = AsyncMock()  # type: ignore[attr-defined]
++        manager._record_throttle_timestamp = AsyncMock()  # type: ignore[attr-defined]
++
++        await manager.send_update("operation1", "progress", {"progress": 10}, throttle=True)
++
++        progress_manager.send_async_update.assert_awaited_once()
++        manager._broadcast.assert_awaited_once()
++        manager._record_throttle_timestamp.assert_awaited_once()
++
++    @pytest.mark.asyncio()
++    async def test_send_update_applies_status_ttl(
++        self, manager: RedisStreamWebSocketManager, mock_redis: AsyncMock
++    ) -> None:
++        """Status updates should request shorter TTLs based on completion state."""
++
++        manager.redis = mock_redis
++        progress_manager = AsyncMock(spec=ProgressUpdateManager)
++        progress_manager.send_async_update = AsyncMock(return_value=ProgressSendResult.SENT)
++        manager._progress_manager = progress_manager
++
++        await manager.send_update("operation1", "status_update", {"status": "completed"})
++        ttl_completed = progress_manager.send_async_update.call_args.kwargs["ttl"]
++        assert ttl_completed == 300
++
++        await manager.send_update("operation1", "status_update", {"status": "failed"})
++        ttl_failed = progress_manager.send_async_update.call_args.kwargs["ttl"]
++        assert ttl_failed == 60
++
+     @pytest.mark.asyncio()
+     async def test_send_operation_update_without_redis(
+         self, manager: RedisStreamWebSocketManager, mock_websocket: AsyncMock
+@@ -655,6 +717,12 @@ class TestRedisStreamWebSocketManager:
+     ) -> None:
+         """Test send_update falls back to broadcast when Redis operations fail."""
+         manager.redis = mock_redis
++        manager._progress_manager = ProgressUpdateManager(
++            async_redis=mock_redis,
++            default_stream_template="operation-progress:{operation_id}",
++            default_ttl=86400,
++            default_maxlen=1000,
++        )
+         manager.connections["user1:operation:operation1"] = {mock_websocket}
+ 
+         # Make Redis operations fail

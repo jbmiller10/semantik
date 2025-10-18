@@ -1,0 +1,33 @@
+## Summary
+
+I've developed a **comprehensive 5-phase execution plan** for ENG-002 that addresses the error classification duplication between Celery tasks and the chunking error handler. Here are the highlights:
+
+### Key Architectural Decisions
+
+1. **Unified Classification Model**: `ErrorClassificationResult` dataclass captures both enum (for service layer) and string code (for Celery), plus debugging metadata
+
+2. **Ordered Rule Evaluation**: 
+   - Custom rules (extensibility)
+   - Type-based matches (high confidence, 1.0)
+   - Message heuristics (medium confidence, 0.8)
+   - Default fallback (low confidence, 0.5)
+
+3. **Zero Breaking Changes**: Existing APIs preserved through thin delegation wrappers
+
+### Risk Mitigation
+
+- **Comprehensive regression tests**: Verify all 19 exception types produce same codes/enums as before
+- **Type safety**: Full mypy coverage prevents API breakage
+- **Performance**: O(n) classifier with n≈20 rules, benchmarked <1ms
+- **Rollback**: Single commit revert + optional feature flag
+
+### Estimated Effort
+
+**18 hours total** across 5 phases:
+- Analysis & Design: 3h
+- Implementation: 5h  
+- Testing: 7h (most critical phase)
+- Rollout: 2h
+- Documentation: 1h
+
+The plan emphasizes **test-driven development** with 500+ lines of new tests covering type matches, message heuristics, edge cases, and backward compatibility. All acceptance criteria from the ticket are directly addressed with clear verification paths.
