@@ -57,6 +57,23 @@ Comprehensive test coverage for both components:
 - **`test_correlation_middleware.py`**: Tests for correlation ID generation, propagation, and logging
 - **`test_chunking_exception_handlers.py`**: Tests for all exception handlers and error responses
 
+### 4. Shared Error Classifier (`/packages/webui/utils/error_classifier.py`)
+
+The shared classifier centralises translation between raw exceptions, the
+`ChunkingErrorType` enum, and legacy Celery string codes.  It exposes a
+singleton (`get_default_chunking_error_classifier`) that both Celery tasks and
+`ChunkingErrorHandler` reuse so new rules apply everywhere automatically.
+
+Key features:
+
+- Ordered rule pipeline prioritising specific exception types before message
+  heuristics
+- Dual outputs (enum + string code) captured in `ErrorClassificationResult`
+- Optional metadata such as matched rule name and confidence score for future
+  telemetry
+- Extension hooks via `build_chunking_error_classifier(extra_rules=...)` to add
+  custom rules in tests or specialised deployments
+
 ## Integration Guide
 
 To integrate these components into the main application:

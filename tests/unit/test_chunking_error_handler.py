@@ -11,6 +11,11 @@ from typing import Any
 import pytest
 
 from packages.shared.text_processing.base_chunker import ChunkResult
+from packages.webui.api.chunking_exceptions import (
+    ChunkingDependencyError,
+    ChunkingResourceLimitError,
+    ResourceType,
+)
 from packages.webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,
@@ -89,6 +94,25 @@ class TestChunkingErrorHandler:
         """Test classification of unknown errors."""
         error = Exception("Some random error")
         assert error_handler.classify_error(error) == ChunkingErrorType.UNKNOWN_ERROR
+
+    def test_classify_error_chunking_specific_exceptions(
+        self, error_handler: ChunkingErrorHandler
+    ) -> None:
+        """Chunking domain exceptions map to specialised error types and codes."""
+
+        dependency_error = ChunkingDependencyError("Vector store unavailable", dependency="qdrant")
+        dependency_result = error_handler.classify_error_detailed(dependency_error)
+        assert dependency_result.error_type == ChunkingErrorType.DEPENDENCY_ERROR
+        assert dependency_result.code == "dependency_error"
+
+        resource_error = ChunkingResourceLimitError("Worker pool exhausted", resource_type=ResourceType.CPU)
+        resource_result = error_handler.classify_error_detailed(resource_error)
+        assert resource_result.error_type == ChunkingErrorType.RESOURCE_LIMIT_ERROR
+        assert resource_result.code == "resource_limit_error"
+
+        network_result = error_handler.classify_error_detailed(ConnectionError("Connection reset"))
+        assert network_result.error_type == ChunkingErrorType.NETWORK_ERROR
+        assert network_result.code == "connection_error"
 
     def test_get_retry_strategy(self, error_handler: ChunkingErrorHandler) -> None:
         """Test getting retry strategy for error types."""
