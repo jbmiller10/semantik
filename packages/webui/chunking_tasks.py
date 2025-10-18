@@ -637,6 +637,7 @@ async def _process_chunking_operation_async(
             collection_repo = CollectionRepository(db)
             document_repo = DocumentRepository(db)
             chunk_repo = ChunkRepository(db)
+            error_handler = celery_task._error_handler or ChunkingErrorHandler(redis_client=None)
 
             try:
                 operation = await operation_repo.get_by_uuid(operation_id)
@@ -791,8 +792,99 @@ async def _process_chunking_operation_async(
                     completed_at=datetime.now(UTC),
                 )
                 await db.commit()
-            except Exception:
+            except Exception as exc:  # pragma: no cover - exercised in integration
                 await db.rollback()
+                logger.exception(
+                    "Chunking operation %s failed",
+                    operation_id,
+                    extra={
+                        "operation_id": operation_id,
+                        "correlation_id": correlation_id,
+                        "documents_processed": documents_processed,
+                    },
+                )
+
+                failure_details = {
+                    "error": str(exc),
+                    "error_type": type(exc).__name__,
+                    "failed_at": datetime.now(UTC).isoformat(),
+                    "documents_processed": documents_processed,
+                    "documents_failed": len(failed_documents),
+                    "failed_documents": failed_documents,
+                    "chunks_created": total_chunks,
+                }
+
+                if redis_client:
+                    try:
+                        redis_client.hset(
+                            f"operation:{operation_id}",
+                            mapping={
+                                **failure_details,
+                                "status": "failed",
+                            },
+                        )
+                    except Exception as redis_error:  # pragma: no cover - defensive
+                        logger.warning(
+                            "Failed to record Redis failure state for %s: %s",
+                            operation_id,
+                            redis_error,
+                            extra={"correlation_id": correlation_id},
+                        )
+
+                try:
+                    failed_operation = await operation_repo.update_status(
+                        operation_id,
+                        OperationStatus.FAILED,
+                        error_message=str(exc),
+                        completed_at=datetime.now(UTC),
+                    )
+                    # Merge with existing metadata to preserve prior context.
+                    existing_meta = dict(getattr(failed_operation, "meta", {}) or {})
+                    existing_meta.update(failure_details)
+                    existing_meta["partial_failure"] = True
+                    failed_operation.meta = existing_meta
+                    await db.flush()
+                    await db.commit()
+                except Exception as status_error:  # pragma: no cover - defensive
+                    await db.rollback()
+                    logger.exception(
+                        "Failed to persist failure status for %s: %s",
+                        operation_id,
+                        status_error,
+                        extra={"correlation_id": correlation_id},
+                    )
+
+                try:
+                    progress = int((documents_processed / total_documents) * 100) if total_documents else 0
+                    await _send_progress_update(
+                        redis_client,
+                        operation_id,
+                        correlation_id,
+                        progress,
+                        "Chunking operation failed",
+                    )
+                except Exception as progress_error:  # pragma: no cover - defensive
+                    logger.debug(
+                        "Unable to send failure progress update for %s: %s",
+                        operation_id,
+                        progress_error,
+                    )
+
+                try:
+                    cleanup_strategy = "save_partial" if total_chunks > 0 else "rollback"
+                    await error_handler.cleanup_failed_operation(
+                        operation_id=operation_id,
+                        partial_results=None,
+                        cleanup_strategy=cleanup_strategy,
+                    )
+                except Exception as cleanup_error:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Cleanup failed for operation %s: %s",
+                        operation_id,
+                        cleanup_error,
+                        exc_info=True,
+                    )
+
                 raise
     finally:
         chunking_operation_memory_usage.labels(operation_id=operation_id).set(0)
