@@ -41,6 +41,7 @@ class TestChunkingService:
 
         document_repo = MagicMock()
         document_repo.list_by_collection = AsyncMock(return_value=([], 0))
+        document_repo.get_by_id = AsyncMock(return_value={"content": "mock"})
 
         return collection_repo, document_repo
 
@@ -209,12 +210,23 @@ Content under header 2.
 
         # Set up cached response
         cached_data = {
-            "chunks": [{"chunk_id": "test_0000", "text": "cached", "index": 0}],
+            "preview_id": "cached-preview",
+            "strategy": "recursive",
+            "config": {"strategy": "recursive", "chunk_size": 1000, "chunk_overlap": 200},
+            "chunks": [
+                {
+                    "index": 0,
+                    "content": "cached",
+                    "metadata": {"index": 0},
+                    "token_count": 10,
+                    "char_count": 6,
+                    "quality_score": 0.9,
+                }
+            ],
             "total_chunks": 1,
-            "strategy_used": "recursive",
-            "is_code_file": False,
-            "performance_metrics": {},
-            "recommendations": [],
+            "performance_metrics": {"total_chunks": 1},
+            "processing_time_ms": 1,
+            "expires_at": datetime.now(tz=UTC).isoformat(),
         }
         # Redis returns JSON string (not bytes in this mock)
         mock_redis.get.return_value = json.dumps(cached_data)

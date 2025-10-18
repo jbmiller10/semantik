@@ -30,7 +30,6 @@ from packages.shared.chunking.application.dto.requests import ChunkingStrategy a
 from packages.shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     ChunkSizeViolationError,
-    InvalidConfigurationError,
     StrategyNotFoundError,
 )
 from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
@@ -51,6 +50,15 @@ from packages.webui.services.chunking.strategy_registry import (
     get_api_to_internal_map,
     get_strategy_defaults,
     resolve_internal_strategy_name,
+)
+from packages.webui.services.chunking import (
+    ChunkingCache,
+    ChunkingConfigManager,
+    ChunkingMetrics,
+    ChunkingOrchestrator,
+    ChunkingProcessor,
+    ChunkingServiceAdapter,
+    ChunkingValidator,
 )
 from packages.webui.services.dtos.api_models import ChunkingStrategy
 
@@ -184,6 +192,28 @@ class ChunkingService:
         self.query_monitor = QueryMonitor()
         self._config_store_path = shared_settings.data_dir / "chunking_configs.json"
 
+        # Orchestrator-based architecture for preview/compare flows
+        self._orchestrator = ChunkingOrchestrator(
+            processor=ChunkingProcessor(),
+            cache=ChunkingCache(redis_client),
+            metrics=ChunkingMetrics(),
+            validator=ChunkingValidator(
+                db_session=db_session,
+                collection_repo=collection_repo,
+                document_repo=document_repo,
+            ),
+            config_manager=ChunkingConfigManager(),
+            db_session=db_session,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+        )
+        self._adapter = ChunkingServiceAdapter(
+            orchestrator=self._orchestrator,
+            db_session=db_session,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+        )
+
     async def _load_config_store(self) -> dict[str, list[dict[str, Any]]]:
         """Load saved configurations grouped by user."""
         data = await asyncio.to_thread(_read_json_file, self._config_store_path)
@@ -206,6 +236,14 @@ class ChunkingService:
         normalized_size = max(10, desired_chunk_size)
         base_tokens = max(10, normalized_size // 4)
         return min(DEFAULT_MIN_TOKEN_THRESHOLD, base_tokens)
+
+    @staticmethod
+    def _strategy_to_string(strategy: str | ChunkingStrategyEnum) -> str:
+        """Normalize strategy identifiers to string names."""
+
+        if isinstance(strategy, ChunkingStrategyEnum):
+            return strategy.value
+        return str(strategy)
 
     @staticmethod
     def _record_metric(method_name: str, *args: Any, **kwargs: Any) -> None:
@@ -516,200 +554,16 @@ class ChunkingService:
         user_id: int | None = None,
         correlation_id: str | None = None,
     ) -> dict[str, Any]:
-        """
-        Preview chunking results with all business logic.
+        """Delegate preview computation to orchestrator-backed adapter."""
 
-        This method contains all the business logic that was previously
-        in the router, ensuring proper separation of concerns.
-
-        Args:
-            strategy: Chunking strategy to use
-            content: Optional content to chunk
-            document_id: Optional document ID to load content from
-            config_overrides: Optional configuration overrides
-            user_id: Optional user ID for access validation
-            correlation_id: Optional correlation ID for request tracing
-
-        Returns:
-            Preview results with chunks and metadata
-
-        Raises:
-            ApplicationError: Translated application-level exceptions
-        """
-        correlation_id = correlation_id or str(uuid.uuid4())
-
-        try:
-            # Input validation - must have either content or document_id
-            if not content and not document_id:
-                raise ValidationError(
-                    field="input",
-                    value=None,
-                    reason="Either content or document_id must be provided",
-                    correlation_id=correlation_id,
-                )
-
-            if content and document_id:
-                raise ValidationError(
-                    field="input",
-                    value="both content and document_id",
-                    reason="Cannot provide both content and document_id",
-                    correlation_id=correlation_id,
-                )
-
-            # Document access validation if document_id provided
-            if document_id:
-                if not user_id:
-                    raise InfraPermissionDeniedError(
-                        user_id="anonymous",
-                        resource=f"document:{document_id}",
-                        action="read",
-                        correlation_id=correlation_id,
-                    )
-
-                # Validate document access with exception handling
-                try:
-                    await self._validate_document_access(document_id, user_id)
-                    content = await self._load_document_content(document_id)
-                except ResourceNotFoundError:
-                    # Already an infrastructure exception, just re-raise
-                    raise
-                except Exception as e:
-                    if isinstance(e, ApplicationError):
-                        raise
-                    # Translate infrastructure exception
-                    raise self.exception_translator.translate_infrastructure_to_application(
-                        e,
-                        {"resource_type": "Document", "resource_id": document_id},
-                    ) from e
-
-            # Validate content size
-            if content and len(content) > 10_000_000:  # 10MB limit
-                raise DocumentTooLargeError(
-                    size=len(content),
-                    max_size=10_000_000,
-                    correlation_id=correlation_id,
-                )
-
-            # Build and validate configuration
-            config_result = self.config_builder.build_config(
-                strategy=strategy,
-                user_config=config_overrides,
-            )
-
-            if config_result.validation_errors:
-                raise ValidationError(
-                    field="config",
-                    value=config_overrides,
-                    reason=f"Invalid configuration: {', '.join(config_result.validation_errors)}",
-                    correlation_id=correlation_id,
-                )
-
-            # Create strategy instance with domain exception handling
-            try:
-                chunking_strategy = self.strategy_factory.create_strategy(
-                    strategy_name=config_result.strategy,
-                    config=config_result.config,
-                    correlation_id=correlation_id,
-                )
-            except StrategyNotFoundError as e:
-                raise ChunkingStrategyError(
-                    strategy=str(strategy),
-                    reason=f"Strategy not found: {e.strategy_name}",
-                    correlation_id=correlation_id,
-                    cause=e,
-                ) from e
-            except ChunkingDomainError as e:
-                # Translate domain exception
-                # ChunkingDomainError is a subclass of DomainError
-                domain_error = cast(DomainError, e)
-                raise self.exception_translator.translate_domain_to_application(
-                    domain_error,
-                    correlation_id,
-                ) from e
-            except Exception as e:
-                raise ChunkingStrategyError(
-                    strategy=str(strategy),
-                    reason=str(e),
-                    correlation_id=correlation_id,
-                    cause=e,
-                ) from e
-
-            # Execute chunking with proper exception handling
-            try:
-                result = await self._execute_chunking(
-                    strategy=chunking_strategy,
-                    content=content or "",
-                    config=config_result.config,
-                    strategy_name=config_result.strategy,
-                )
-            except DomainError as e:
-                # Translate domain exception
-                raise self.exception_translator.translate_domain_to_application(
-                    e,
-                    correlation_id,
-                ) from e
-            except TimeoutError as e:
-                raise ChunkingStrategyError(
-                    strategy=str(strategy),
-                    reason="Processing timeout exceeded",
-                    correlation_id=correlation_id,
-                    cause=e,
-                ) from e
-            except MemoryError as e:
-                raise DocumentTooLargeError(
-                    size=len(content) if content else 0,
-                    max_size=10_000_000,
-                    correlation_id=correlation_id,
-                    cause=e,
-                ) from e
-            except Exception as e:
-                # Log unexpected error with full context
-                logger.exception(
-                    "Unexpected error during chunking",
-                    extra={
-                        "correlation_id": correlation_id,
-                        "strategy": str(strategy),
-                        "error_type": type(e).__name__,
-                    },
-                )
-                raise ApplicationError(
-                    message="Unexpected error during chunking",
-                    code="CHUNKING_ERROR",
-                    details={
-                        "strategy": str(strategy),
-                        "error": str(e),
-                        "type": type(e).__name__,
-                    },
-                    correlation_id=correlation_id,
-                    cause=e,
-                ) from e
-
-            # Cache preview result
-            preview_id = await self._cache_preview_result(result, str(strategy))
-            result["preview_id"] = preview_id
-            result["correlation_id"] = correlation_id
-
-            return result
-
-        except ApplicationError:
-            # Already translated, just re-raise
-            raise
-        except DomainError:
-            # Domain exceptions should be re-raised as-is
-            # They'll be translated at the API layer
-            raise
-        except Exception as e:
-            # Catch-all for unexpected errors
-            logger.exception(
-                "Unexpected error in preview_chunks",
-                extra={"correlation_id": correlation_id},
-            )
-            raise ApplicationError(
-                message="An unexpected error occurred",
-                code="INTERNAL_ERROR",
-                correlation_id=correlation_id,
-                cause=e,
-            ) from e
+        strategy_name = self._strategy_to_string(strategy)
+        return await self._adapter.preview_chunks(
+            content=content,
+            document_id=document_id,
+            strategy=strategy_name,
+            config=config_overrides,
+            user_id=user_id,
+        )
 
     async def _validate_document_access(self, document_id: str, _user_id: int) -> None:
         """Validate user has access to document."""
@@ -912,238 +766,15 @@ class ChunkingService:
         max_chunks: int | None = None,
         cache_result: bool = True,
     ) -> ServicePreviewResponse:
-        """Generate a preview of how content will be chunked.
-
-        Args:
-            content: Text content to chunk
-            strategy: Chunking strategy to use (optional, defaults to recursive)
-            config: Configuration for the strategy
-            file_type: File type for determining chunking behavior
-            max_chunks: Maximum number of chunks to return in preview
-            cache_result: Whether to cache the result
-
-        Returns:
-            ServicePreviewResponse DTO with chunks and metadata
-        """
-        from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-
-        # Check size limit
-        if len(content) > MAX_PREVIEW_CONTENT_SIZE:
-            raise DocumentTooLargeError(
-                size=len(content), max_size=MAX_PREVIEW_CONTENT_SIZE, correlation_id=str(uuid.uuid4())
-            )
-
-        # Validate chunk size if provided in config (do this before try block)
-        if config and "params" in config and "chunk_size" in config["params"]:
-            chunk_size = config["params"]["chunk_size"]
-            if chunk_size <= 0 or chunk_size > 10000:
-                raise ValidationError(
-                    field="chunk_size", value=chunk_size, reason=f"Must be between 1 and 10000, got {chunk_size}"
-                )
-
-        try:
-            # Check if cached result exists
-            if cache_result and self.redis_client:
-                # Get strategy string for cache key before conversion
-                cache_strategy = strategy.value if strategy and hasattr(strategy, "value") else strategy or "recursive"
-                cache_key = self._generate_cache_key(content, cache_strategy, config)
-                cached = await self.redis_client.get(cache_key)
-                if cached:
-                    import json
-
-                    result = json.loads(cached)
-                    # Convert cached dict result to DTO
-                    chunks = self._transform_chunks_to_preview(result.get("chunks", []))
-                    return ServicePreviewResponse(
-                        preview_id=result.get("preview_id", str(uuid.uuid4())),
-                        strategy=result.get("strategy", cache_strategy),
-                        config=result.get("config", {}),
-                        chunks=cast(list[ServiceChunkPreview | dict[str, Any]], chunks),
-                        total_chunks=result.get("total_chunks", len(chunks)),
-                        metrics=result.get("performance_metrics"),
-                        processing_time_ms=result.get("processing_time_ms", 0),
-                        cached=True,
-                        expires_at=(
-                            datetime.fromisoformat(result["expires_at"])
-                            if "expires_at" in result and isinstance(result["expires_at"], str)
-                            else datetime.now(UTC) + timedelta(minutes=15)
-                        ),
-                        correlation_id=None,
-                    )
-
-            # Default strategy if not provided
-            if not strategy:
-                strategy = ChunkingStrategyEnum.RECURSIVE
-
-            # Convert enum to string if necessary
-            strategy_str = strategy.value if hasattr(strategy, "value") else str(strategy)
-
-            # Map API strategy names to internal factory names
-            internal_strategy = self.STRATEGY_MAPPING.get(strategy_str, strategy_str)
-
-            # Use the actual strategy pattern for chunking
-            strategy_instance = get_strategy(internal_strategy)
-
-            import time
-
-            start_time = time.time()
-
-            # Create ChunkConfig from the provided config dictionary
-            from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-
-            # Use sensible defaults if no config provided
-            chunk_size = config.get("chunk_size", 1000) if config else 1000
-            chunk_overlap = config.get("chunk_overlap", 200) if config else 200
-
-            # Ensure overlap is not too large
-            if chunk_overlap >= chunk_size:
-                chunk_overlap = min(200, chunk_size // 4)
-
-            # Build ChunkConfig with proper parameters
-            # Ensure min_tokens is less than max_tokens and overlap_tokens is valid
-            min_tokens = min(DEFAULT_MIN_TOKEN_THRESHOLD, chunk_size // 2)  # Set reasonable min
-            max_tokens = max(chunk_size, min_tokens + 1)  # Ensure max > min
-            overlap_tokens = min(chunk_overlap, min_tokens - 1)  # Ensure overlap < min
-
-            chunk_config = ChunkConfig(
-                strategy_name=strategy,
-                min_tokens=min_tokens,
-                max_tokens=max_tokens,
-                overlap_tokens=max(0, overlap_tokens),  # Ensure non-negative
-                preserve_structure=config.get("preserve_structure", True) if config else True,
-                semantic_threshold=config.get("semantic_threshold", 0.7) if config else 0.7,
-                hierarchy_levels=config.get("hierarchy_levels", 3) if config else 3,
-            )
-
-            # Use the strategy to generate chunks properly
-            try:
-                chunk_entities = strategy_instance.chunk(
-                    content=content,
-                    config=chunk_config,
-                    progress_callback=None,  # Could add progress tracking if needed
-                )
-
-                # Convert chunk entities to ServiceChunkPreview objects
-                chunks = [
-                    ServiceChunkPreview(
-                        index=idx,
-                        content=chunk.content,
-                        text=None,
-                        token_count=len(chunk.content) // 4,  # Rough estimate
-                        char_count=len(chunk.content),
-                        metadata={"index": idx, "strategy": strategy_str},
-                        quality_score=0.8,
-                        overlap_info=None,
-                    )
-                    for idx, chunk in enumerate(chunk_entities)
-                ]
-
-            except Exception as strategy_error:
-                logger.warning(f"Strategy {strategy} failed, falling back to simple chunking: {strategy_error}")
-                # Fallback to simple chunking only if strategy fails
-                chunks = []
-                if chunk_overlap >= chunk_size:
-                    # If overlap is too large, reset to reasonable default
-                    chunk_overlap = min(chunk_overlap, chunk_size // 4)
-
-                step_size = max(1, chunk_size - chunk_overlap)  # Ensure positive step
-                chunk_idx = 0
-                for i in range(0, len(content), step_size):
-                    chunk_content = content[i : i + chunk_size]
-                    if chunk_content.strip():  # Only add non-empty chunks
-                        chunks.append(
-                            ServiceChunkPreview(
-                                index=chunk_idx,
-                                content=chunk_content,
-                                text=None,
-                                token_count=len(chunk_content) // 4,  # Rough estimate
-                                char_count=len(chunk_content),
-                                metadata={"index": chunk_idx, "strategy": strategy_str},
-                                quality_score=0.8,
-                                overlap_info=None,
-                            )
-                        )
-                        chunk_idx += 1
-
-            processing_time_ms = (time.time() - start_time) * 1000
-
-            # Limit chunks if max_chunks specified
-            preview_chunks = chunks
-            if max_chunks:
-                preview_chunks = chunks[:max_chunks]
-
-            # chunks are already ServiceChunkPreview objects
-            chunk_previews = preview_chunks
-
-            # Calculate metrics
-            metrics = self._calculate_metrics(chunks, len(content), processing_time_ms / 1000)
-
-            # Build the response DTO
-            preview_id = str(uuid.uuid4())
-            expires_at = datetime.now(UTC) + timedelta(minutes=30)
-
-            response = ServicePreviewResponse(
-                preview_id=preview_id,
-                strategy=strategy_str,
-                config=config or self._get_default_config(internal_strategy),
-                chunks=cast(list[ServiceChunkPreview | dict[str, Any]], chunk_previews),
-                total_chunks=len(chunks),
-                metrics=metrics,
-                processing_time_ms=int(processing_time_ms),
-                cached=False,
-                expires_at=expires_at,
-                correlation_id=None,
-            )
-
-            # Cache if requested and Redis is available
-            if cache_result and self.redis_client:
-                cache_key = self._generate_cache_key(content, cache_strategy, config)
-                # Convert DTO to dict for caching
-                cache_data = {
-                    "preview_id": preview_id,
-                    "strategy": strategy_str,
-                    "config": config or self._get_default_config(internal_strategy),
-                    "chunks": [
-                        {
-                            "index": chunk.index,
-                            "content": chunk.content,
-                            "text": chunk.content,
-                            "metadata": chunk.metadata,
-                            "token_count": chunk.token_count,
-                            "char_count": chunk.char_count,
-                            "quality_score": chunk.quality_score,
-                        }
-                        for chunk in preview_chunks
-                    ],
-                    "total_chunks": len(chunks),
-                    "performance_metrics": metrics,
-                    "processing_time_ms": int(processing_time_ms),
-                    "expires_at": expires_at.isoformat(),
-                }
-                await self._cache_preview(cache_key, cache_data)
-
-            return response
-
-        except InvalidConfigurationError as e:
-            logger.error(f"Invalid chunking configuration: {e}")
-            # Re-raise as ValidationError for proper API handling
-            raise ValidationError(
-                field="config", value=str(config), reason="Invalid chunking configuration provided"
-            ) from e
-        except ValueError as e:
-            logger.error(f"Invalid input value: {e}")
-            # Re-raise as ValidationError
-            raise ValidationError(field="input", value="", reason="Invalid input parameters") from e
-        except ConnectionError as e:
-            # Handle Redis connection errors - log but continue without cache
-            logger.warning(f"Redis connection error during preview chunking (non-fatal): {e}")
-            # Re-raise to let upper layer handle
-            raise
-        except Exception as e:
-            # Log the actual error internally
-            logger.error(f"Unexpected error during preview chunking: {type(e).__name__}: {e}")
-            # Re-raise to let upper layer handle
-            raise
+        strategy_name = self._strategy_to_string(strategy or ChunkingStrategyEnum.RECURSIVE)
+        response = await self._orchestrator.preview_chunks(
+            content=content,
+            strategy=strategy_name,
+            config=config,
+            use_cache=cache_result,
+            max_chunks=max_chunks,
+        )
+        return response
 
     async def validate_preview_content(self, content: str | None, document_id: str | None) -> None:
         """Validate preview request content.
@@ -1307,157 +938,15 @@ class ChunkingService:
         max_chunks_per_strategy: int = 5,
         _user_id: int | None = None,
     ) -> dict[str, Any]:
-        """Compare multiple chunking strategies with full business logic.
+        strategy_names = [self._strategy_to_string(strategy) for strategy in strategies]
+        config_map = configs.copy() if configs else None
 
-        This method contains all the comparison logic that was previously
-        in the router, ensuring proper separation of concerns.
-
-        Args:
-            content: Content to chunk
-            strategies: List of strategies to compare
-            configs: Optional per-strategy configurations
-            max_chunks_per_strategy: Maximum chunks to return per strategy
-            user_id: Optional user ID for access validation
-
-        Returns:
-            Full comparison results with recommendations
-        """
-        from datetime import UTC, datetime
-
-        correlation_id = str(uuid.uuid4())
-        comparisons = []
-        processing_start = datetime.now(UTC)
-
-        # Process each strategy
-        for strategy in strategies:
-            try:
-                # Get config for this strategy
-                config = None
-                if configs and strategy.value in configs:
-                    config = configs[strategy.value]
-
-                # Execute preview for this strategy
-                result = await self.preview_chunking(
-                    content=content,
-                    strategy=strategy,
-                    config=config,
-                    max_chunks=max_chunks_per_strategy,
-                )
-
-                # Get strategy definition from registry
-                # Convert shared enum to webui enum for registry lookup
-                from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as WebUIChunkingStrategy
-
-                webui_strategy = WebUIChunkingStrategy(strategy.value)
-                strategy_def = ChunkingStrategyRegistry.get_strategy_definition(webui_strategy)
-
-                # Calculate quality metrics
-                metrics = result.metrics or {}
-                if not metrics:
-                    # Calculate basic metrics if not provided
-                    chunks = result.chunks
-                    if chunks:
-                        sizes = [
-                            chunk.char_count or len(chunk.content or "")
-                            for chunk in chunks
-                            if isinstance(chunk, ServiceChunkPreview)
-                        ]
-                        avg_size = sum(sizes) / len(sizes) if sizes else 0
-                        variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0
-                        quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
-                    else:
-                        avg_size = 0
-                        variance = 0
-                        quality_score = 0.0
-
-                    metrics = {
-                        "avg_chunk_size": avg_size,
-                        "size_variance": variance,
-                        "quality_score": quality_score,
-                    }
-
-                # Build comparison entry
-                comparison_entry = {
-                    "strategy": strategy,
-                    "config": result.config or self._get_default_config(strategy.value),
-                    "sample_chunks": result.chunks[:max_chunks_per_strategy],
-                    "total_chunks": result.total_chunks,
-                    "avg_chunk_size": metrics.get("avg_chunk_size", 0),
-                    "size_variance": metrics.get("size_variance", 0),
-                    "quality_score": metrics.get("quality_score", 0),
-                    "processing_time_ms": result.processing_time_ms,
-                    "pros": strategy_def.get("pros", []),
-                    "cons": strategy_def.get("cons", []),
-                }
-
-                comparisons.append(comparison_entry)
-
-            except Exception as e:
-                logger.warning(f"Failed to process strategy {strategy}: {e}")
-                # Add failed strategy with error info
-                comparisons.append(
-                    {
-                        "strategy": strategy,
-                        "config": self._get_default_config(strategy.value) if hasattr(strategy, "value") else {},
-                        "sample_chunks": [],
-                        "total_chunks": 0,
-                        "avg_chunk_size": 0,
-                        "size_variance": 0,
-                        "quality_score": 0,
-                        "processing_time_ms": 0,
-                        "pros": [],
-                        "cons": [],
-                        "error": str(e),
-                    }
-                )
-
-        # Generate recommendation based on comparison
-        if comparisons:
-            # Filter out failed comparisons
-            valid_comparisons = [c for c in comparisons if "error" not in c]
-
-            if valid_comparisons:
-                # Find best strategy by quality score
-                best_comparison = max(valid_comparisons, key=lambda x: x.get("quality_score", 0))
-                best_strategy = best_comparison["strategy"]
-
-                # Build recommendation
-                recommendation = {
-                    "recommended_strategy": best_strategy,
-                    "confidence": best_comparison.get("quality_score", 0.5),
-                    "reasoning": f"Based on quality score analysis, {best_strategy.value} provides the best chunking for this content",
-                    "alternative_strategies": [
-                        c["strategy"] for c in valid_comparisons if c["strategy"] != best_strategy
-                    ],
-                    "suggested_config": best_comparison.get("config", {}),
-                }
-            else:
-                # All strategies failed
-                recommendation = {
-                    "recommended_strategy": ChunkingStrategyEnum.RECURSIVE,
-                    "confidence": 0.3,
-                    "reasoning": "Unable to properly compare strategies, using default recommendation",
-                    "alternative_strategies": [],
-                    "suggested_config": self._get_default_config("recursive"),
-                }
-        else:
-            # No comparisons at all
-            recommendation = {
-                "recommended_strategy": ChunkingStrategyEnum.RECURSIVE,
-                "confidence": 0.3,
-                "reasoning": "No strategies provided for comparison",
-                "alternative_strategies": [],
-                "suggested_config": self._get_default_config("recursive"),
-            }
-
-        processing_time = int((datetime.now(UTC) - processing_start).total_seconds() * 1000)
-
-        return {
-            "comparison_id": correlation_id,
-            "comparisons": comparisons,
-            "recommendation": recommendation,
-            "processing_time_ms": processing_time,
-        }
+        return await self._adapter.compare_strategies(
+            content=content,
+            strategies=strategy_names,
+            strategy_configs=config_map,
+            max_chunks_per_strategy=max_chunks_per_strategy,
+        )
 
     async def start_chunking_operation(
         self,
