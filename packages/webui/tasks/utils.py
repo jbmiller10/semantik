@@ -127,10 +127,11 @@ class CeleryTaskWithOperationUpdates:
                 "from_instance": self._publisher_id,
                 "timestamp": time.time(),
             }
-            await redis_client.publish(
+            publish_result = redis_client.publish(
                 f"operation:{self.operation_id}",
                 json.dumps(publish_payload),
             )
+            await await_if_awaitable(publish_result)
 
             # Set TTL for stream
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
