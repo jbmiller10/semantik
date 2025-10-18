@@ -11,75 +11,106 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from prometheus_client import Counter, Histogram, Summary
+from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
 from packages.shared.metrics.prometheus import registry
 
 logger = logging.getLogger(__name__)
 
 
+def _get_or_create_metric(
+    metric_cls,
+    name: str,
+    documentation: str,
+    *,
+    registry: CollectorRegistry,
+    labelnames: tuple[str, ...] | list[str] | None = None,
+    **kwargs,
+):
+    """Return existing metric from registry or create a new one."""
+
+    labels = tuple(labelnames or ())
+    existing = None
+    if hasattr(registry, "_names_to_collectors"):
+        existing = registry._names_to_collectors.get(name)  # type: ignore[attr-defined]
+
+    if existing is not None:
+        return existing
+
+    return metric_cls(name, documentation, labels, registry=registry, **kwargs)
+
+
 class ChunkingMetrics:
     """Service responsible for chunking metrics collection."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, registry_override: CollectorRegistry | None = None) -> None:
         """Initialize metrics collectors."""
+        self._registry = registry_override or registry
         # Operation metrics
-        self.operation_counter = Counter(
+        self.operation_counter = _get_or_create_metric(
+            Counter,
             "chunking_operations_total",
             "Total number of chunking operations",
-            ["strategy", "status"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("strategy", "status"),
         )
 
-        self.operation_duration = Histogram(
+        self.operation_duration = _get_or_create_metric(
+            Histogram,
             "chunking_operation_duration_seconds",
             "Duration of chunking operations",
-            ["strategy"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("strategy",),
         )
 
-        self.chunk_count = Summary(
+        self.chunk_count = _get_or_create_metric(
+            Summary,
             "chunking_chunks_produced",
             "Number of chunks produced per operation",
-            ["strategy"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("strategy",),
         )
 
-        self.chunk_sizes = Summary(
+        self.chunk_sizes = _get_or_create_metric(
+            Summary,
             "chunking_chunk_sizes_bytes",
             "Size of chunks produced",
-            ["strategy"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("strategy",),
         )
 
-        self.fallback_counter = Counter(
+        self.fallback_counter = _get_or_create_metric(
+            Counter,
             "chunking_fallbacks_total",
             "Number of times fallback strategy was used",
-            ["original_strategy"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("original_strategy",),
         )
 
         # Cache metrics
-        self.cache_hits = Counter(
+        self.cache_hits = _get_or_create_metric(
+            Counter,
             "chunking_cache_hits_total",
             "Number of cache hits",
-            ["operation_type"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("operation_type",),
         )
 
-        self.cache_misses = Counter(
+        self.cache_misses = _get_or_create_metric(
+            Counter,
             "chunking_cache_misses_total",
             "Number of cache misses",
-            ["operation_type"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("operation_type",),
         )
 
         # Error metrics
-        self.error_counter = Counter(
+        self.error_counter = _get_or_create_metric(
+            Counter,
             "chunking_errors_total",
             "Total number of chunking errors",
-            ["strategy", "error_type"],
-            registry=registry,
+            registry=self._registry,
+            labelnames=("strategy", "error_type"),
         )
 
         # In-memory statistics for quick access

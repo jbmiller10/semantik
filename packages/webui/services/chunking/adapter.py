@@ -6,7 +6,7 @@ interface as the old monolithic ChunkingService.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,9 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from .orchestrator import ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from packages.webui.services.chunking_service import ChunkingService
 
 
 class ChunkingServiceAdapter:
@@ -38,6 +41,7 @@ class ChunkingServiceAdapter:
         self.db_session = db_session or orchestrator.db_session
         self.collection_repo = collection_repo or orchestrator.collection_repo
         self.document_repo = document_repo or orchestrator.document_repo
+        self._legacy_service: ChunkingService | None = None
 
     async def preview_chunks(
         self,
@@ -206,35 +210,146 @@ class ChunkingServiceAdapter:
 
     async def execute_ingestion_chunking(
         self,
-        content: str,
-        strategy: str,
+        content: str | None = None,
+        strategy: str | None = None,
         config: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Execute chunking for ingestion - delegates to orchestrator."""
-        return await self.orchestrator.execute_ingestion_chunking(
+        *,
+        text: str | None = None,
+        document_id: str | None = None,
+        collection: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        _from_segment: bool = False,  # noqa: ARG002 - kept for legacy parity
+    ) -> dict[str, Any]:
+        """Execute chunking for ingestion.
+
+        The adapter accepts both the new orchestrator-oriented signature and the
+        legacy `ChunkingService` keyword arguments used by Celery tasks. Results
+        are normalised to the legacy dict structure containing `chunks` and
+        `stats` keys so existing ingestion code paths continue to work.
+        """
+
+        legacy_call = text is not None or collection is not None or document_id is not None
+
+        if legacy_call:
+            if text is None:
+                raise ValueError("Legacy ingestion calls must provide `text`.")
+
+            actual_content = text
+            actual_strategy = strategy
+            actual_config = config
+
+            if collection:
+                actual_strategy = actual_strategy or collection.get("chunking_strategy") or "recursive"
+                actual_config = actual_config or collection.get("chunking_config") or {}
+            else:
+                actual_strategy = actual_strategy or "recursive"
+                actual_config = actual_config or {}
+
+            base_metadata = dict(metadata or {})
+            if document_id:
+                base_metadata.setdefault("document_id", document_id)
+            if file_type:
+                base_metadata.setdefault("file_type", file_type)
+
+            orchestrator_chunks = await self.orchestrator.execute_ingestion_chunking(
+                content=actual_content,
+                strategy=actual_strategy,
+                config=actual_config,
+                metadata=base_metadata or None,
+            )
+
+            legacy_chunks: list[dict[str, Any]] = []
+            for idx, chunk in enumerate(orchestrator_chunks):
+                chunk_text = chunk.get("text") or chunk.get("content") or ""
+                chunk_metadata = dict(base_metadata)
+                chunk_metadata.update(chunk.get("metadata", {}))
+                chunk_metadata.setdefault("index", chunk.get("index", idx))
+                chunk_metadata.setdefault("strategy", chunk.get("strategy", actual_strategy))
+
+                if document_id:
+                    chunk_id = chunk.get("chunk_id") or f"{document_id}_{idx:04d}"
+                else:
+                    chunk_id = chunk.get("chunk_id") or f"chunk_{idx:04d}"
+
+                legacy_chunks.append(
+                    {
+                        "chunk_id": chunk_id,
+                        "text": chunk_text,
+                        "metadata": chunk_metadata,
+                    }
+                )
+
+            return {
+                "chunks": legacy_chunks,
+                "stats": {
+                    "strategy_used": actual_strategy,
+                    "chunk_count": len(legacy_chunks),
+                    "fallback": False,
+                    "fallback_reason": None,
+                    "duration_ms": None,
+                },
+            }
+
+        # New orchestrator-style signature expects `content` and `strategy`.
+        if content is None:
+            raise ValueError("Either `content` or legacy `text` must be provided.")
+        if strategy is None:
+            raise ValueError("`strategy` is required when using the new ingestion signature.")
+
+        orchestrator_chunks = await self.orchestrator.execute_ingestion_chunking(
             content=content,
             strategy=strategy,
             config=config,
             metadata=metadata,
         )
 
+        return {
+            "chunks": [
+                {
+                    "chunk_id": chunk.get("chunk_id") or f"chunk_{idx:04d}",
+                    "text": chunk.get("text") or chunk.get("content") or "",
+                    "metadata": chunk.get("metadata", {}),
+                }
+                for idx, chunk in enumerate(orchestrator_chunks)
+            ],
+            "stats": {
+                "strategy_used": strategy,
+                "chunk_count": len(orchestrator_chunks),
+                "fallback": False,
+                "fallback_reason": None,
+                "duration_ms": None,
+            },
+        }
+
     async def execute_ingestion_chunking_segmented(
         self,
-        content: str,
-        strategy: str,
+        content: str | None = None,
+        strategy: str | None = None,
         config: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
-        segment_size: int = 100000,  # noqa: ARG002
-    ) -> list[dict[str, Any]]:
-        """Execute chunking in segments for large documents."""
-        # For now, just delegate to regular chunking
-        # Segmentation can be added to processor if needed
+        *,
+        text: str | None = None,
+        document_id: str | None = None,
+        collection: dict[str, Any] | None = None,
+        file_type: str | None = None,
+        segment_size: int = 100000,  # noqa: ARG002 - kept for signature parity
+    ) -> dict[str, Any]:
+        """Compatibility shim for segmented ingestion.
+
+        Delegates to :meth:`execute_ingestion_chunking`. The orchestrator handles
+        segmentation internally when required, so we simply forward the call.
+        """
+
         return await self.execute_ingestion_chunking(
             content=content,
             strategy=strategy,
             config=config,
             metadata=metadata,
+            text=text,
+            document_id=document_id,
+            collection=collection,
+            file_type=file_type,
         )
 
     async def get_available_strategies(self) -> list[dict[str, Any]]:
@@ -295,14 +410,15 @@ class ChunkingServiceAdapter:
         user_id: int | None = None,
     ) -> Any:
         """Get chunking statistics for a collection."""
-        if user_id is None:
-            # Try to get from session or default
-            user_id = 0  # This should be properly handled in production
+        if user_id is not None:
+            return await self.orchestrator.get_collection_statistics(
+                collection_id=collection_id,
+                user_id=user_id,
+            )
 
-        return await self.orchestrator.get_collection_statistics(
-            collection_id=collection_id,
-            user_id=user_id,
-        )
+        # FastAPI dependencies already validated permissions, so reuse legacy
+        legacy = self._ensure_legacy_service()
+        return await legacy.get_collection_chunk_stats(collection_id)
 
     async def get_chunking_statistics(
         self,
@@ -403,3 +519,32 @@ class ChunkingServiceAdapter:
     ) -> dict[str, Any]:
         """Calculate metrics for chunks."""
         return self.orchestrator.processor.calculate_statistics(chunks)
+
+    def _ensure_legacy_service(self) -> "ChunkingService":
+        """Instantiate the legacy ChunkingService lazily for fallback paths."""
+
+        if self._legacy_service is not None:
+            return self._legacy_service
+
+        if self.db_session is None:
+            raise RuntimeError("ChunkingServiceAdapter requires db_session to build legacy service")
+
+        # Lazily import to avoid circular import at module load time
+        from packages.webui.services.chunking_service import ChunkingService
+
+        collection_repo = self.collection_repo or CollectionRepository(self.db_session)
+        document_repo = self.document_repo or DocumentRepository(self.db_session)
+
+        self._legacy_service = ChunkingService(
+            db_session=self.db_session,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+            redis_client=None,
+        )
+        return self._legacy_service
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to the legacy ChunkingService."""
+
+        legacy = self._ensure_legacy_service()
+        return getattr(legacy, name)

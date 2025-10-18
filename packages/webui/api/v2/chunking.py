@@ -5,13 +5,14 @@ This module provides comprehensive RESTful API endpoints for chunking operations
 including strategy management, preview operations, collection processing, and analytics.
 """
 
+from __future__ import annotations
+
 import inspect
 import logging
 import uuid
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
@@ -44,13 +45,23 @@ from packages.webui.api.v2.chunking_schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
-from packages.webui.dependencies import get_collection_for_user
+from packages.webui.dependencies import (
+    get_chunking_service_adapter_dependency,
+    get_collection_for_user,
+)
 from packages.webui.rate_limiter import check_circuit_breaker, limiter
+from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
 from packages.webui.services.chunking_service import ChunkingService
 
 # ChunkingStrategyRegistry removed - all strategy logic now in service layer
-from packages.webui.services.collection_service import CollectionService
-from packages.webui.services.factory import get_chunking_service, get_collection_service
+from packages.webui.services.factory import get_collection_service
+
+if TYPE_CHECKING:
+    from fastapi.responses import JSONResponse
+
+    from packages.webui.services.collection_service import CollectionService
+
+ChunkingServiceLike = ChunkingServiceAdapter | ChunkingService
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +105,7 @@ async def application_exception_handler(
 )
 async def list_strategies(
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> list[StrategyInfo]:
     """
     Get a list of all available chunking strategies with their descriptions,
@@ -125,7 +136,7 @@ async def list_strategies(
 async def get_strategy_details(
     strategy_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> StrategyInfo:
     """
     Get detailed information about a specific chunking strategy including
@@ -164,7 +175,7 @@ async def get_strategy_details(
 async def recommend_strategy(
     file_types: list[str] = Query(..., description="List of file types to analyze"),
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> StrategyRecommendation:
     """
     Get a strategy recommendation based on the provided file types.
@@ -203,9 +214,8 @@ async def recommend_strategy(
 @limiter.limit(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
     request: Request,  # Required for rate limiting
-    preview_request: PreviewRequest,
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
     correlation_id: str = Header(None, alias="X-Correlation-ID"),
 ) -> PreviewResponse:
     """
@@ -216,6 +226,9 @@ async def generate_preview(
 
     Router is now a thin controller - all logic in service!
     """
+    payload = await request.json()
+    preview_request = PreviewRequest.model_validate(payload)
+
     # Generate correlation ID if not provided
     if not correlation_id:
         correlation_id = str(uuid.uuid4())
@@ -224,25 +237,6 @@ async def generate_preview(
     check_circuit_breaker(request)
 
     try:
-        # Delegate validation to service
-        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
-
-        try:
-            await service.validate_preview_content(
-                content=preview_request.content,
-                document_id=preview_request.document_id,
-            )
-        except DocumentTooLargeError as e:
-            raise HTTPException(
-                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-                detail=str(e) if str(e) else "Content too large",
-            ) from e
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            ) from e
-
         # Get DTO from service
         preview_dto = await service.preview_chunking(
             strategy=preview_request.strategy,
@@ -292,9 +286,8 @@ async def generate_preview(
 @limiter.limit(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
     request: Request,  # Required for rate limiting
-    compare_request: CompareRequest,
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> CompareResponse:
     """
     Compare multiple chunking strategies on the same content.
@@ -306,6 +299,9 @@ async def compare_strategies(
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
+
+    payload = await request.json()
+    compare_request = CompareRequest.model_validate(payload)
 
     try:
         # Convert strategy enums to strings for service
@@ -350,7 +346,7 @@ async def get_cached_preview(
     request: Request,  # Required for rate limiting
     preview_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> PreviewResponse:
     """
     Retrieve cached preview results by preview ID.
@@ -391,11 +387,13 @@ async def get_cached_preview(
     "/preview/{preview_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Clear preview cache",
+    response_model=None,
+    response_class=Response,
 )
 async def clear_preview_cache(
     preview_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> None:
     """
     Clear cached preview results for a specific preview ID.
@@ -423,11 +421,10 @@ async def clear_preview_cache(
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
-    chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -439,6 +436,9 @@ async def start_chunking_operation(
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
+
+    payload = await request.json()
+    chunking_request = ChunkingOperationRequest.model_validate(payload)
 
     try:
         # First validate the configuration
@@ -528,11 +528,11 @@ async def start_chunking_operation(
 )
 async def update_chunking_strategy(
     collection_id: str,
-    update_request: ChunkingStrategyUpdate,
     background_tasks: BackgroundTasks,
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -541,6 +541,9 @@ async def update_chunking_strategy(
     """
     operation_id = str(uuid.uuid4())
     websocket_channel = f"chunking:{collection_id}:{operation_id}"
+
+    payload = await request.json()
+    update_request = ChunkingStrategyUpdate.model_validate(payload)
 
     try:
         # Update collection configuration
@@ -616,7 +619,7 @@ async def get_collection_chunks(
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> ChunkListResponse:
     """
     Get paginated list of chunks for a collection.
@@ -656,7 +659,7 @@ async def get_chunking_stats(
     collection_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> ChunkingStats:
     """
     Get detailed chunking statistics and metrics for a collection.
@@ -696,7 +699,7 @@ async def get_global_metrics(
     request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> GlobalMetrics:
     """
     Get global chunking metrics across all collections for the specified period.
@@ -731,7 +734,7 @@ async def get_global_metrics(
 async def get_metrics_by_strategy(
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> list[StrategyMetrics]:
     """
     Get chunking metrics grouped by strategy for the specified period.
@@ -764,7 +767,7 @@ async def get_metrics_by_strategy(
 async def get_quality_scores(
     collection_id: str | None = Query(None, description="Specific collection ID"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> QualityAnalysis:
     """
     Analyze chunk quality across collections or for a specific collection.
@@ -790,15 +793,18 @@ async def get_quality_scores(
     summary="Analyze document for strategy recommendation",
 )
 async def analyze_document(
-    analysis_request: DocumentAnalysisRequest,
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> DocumentAnalysisResponse:
     """
     Analyze a document to recommend the best chunking strategy.
     Provides detailed analysis of document structure and complexity.
 
     """
+    payload = await request.json()
+    analysis_request = DocumentAnalysisRequest.model_validate(payload)
+
     try:
         analysis_dto = await service.analyze_document(
             content=analysis_request.content,
@@ -827,15 +833,18 @@ async def analyze_document(
     status_code=status.HTTP_201_CREATED,
 )
 async def save_configuration(
-    config_request: CreateConfigurationRequest,
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> SavedConfiguration:
     """
     Save a custom chunking configuration for reuse.
     Configurations are user-specific and can be set as defaults.
 
     """
+    payload = await request.json()
+    config_request = CreateConfigurationRequest.model_validate(payload)
+
     try:
         user_id = _current_user.get("id") if _current_user else None
         if user_id is None:
@@ -871,7 +880,7 @@ async def list_configurations(
     strategy: ChunkingStrategy | None = Query(None, description="Filter by strategy"),  # noqa: ARG001
     is_default: bool | None = Query(None, description="Filter default configs"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> list[SavedConfiguration]:
     """
     List all saved chunking configurations for the current user.
@@ -912,7 +921,7 @@ async def list_configurations(
 async def get_operation_progress(
     operation_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingService = Depends(get_chunking_service),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> ChunkingProgress:
     """
     Get the current progress of a chunking operation.
