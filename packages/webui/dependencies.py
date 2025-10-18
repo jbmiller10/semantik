@@ -2,7 +2,7 @@
 Common FastAPI dependencies for the WebUI API.
 """
 
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,10 +25,6 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.auth import get_current_user
-if TYPE_CHECKING:
-    from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
-    from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-    from packages.webui.services.chunking_service import ChunkingService
 
 
 async def get_collection_for_user(
@@ -150,7 +146,9 @@ async def get_chunking_orchestrator_dependency(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Provide chunking orchestrator via composition root."""
-    from packages.webui.services.chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
+    from packages.webui.services.chunking.container import (
+        get_chunking_orchestrator as container_get_chunking_orchestrator,
+    )
 
     return await container_get_chunking_orchestrator(db)
 

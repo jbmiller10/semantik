@@ -61,7 +61,6 @@ from packages.webui.utils.error_classifier import get_default_chunking_error_cla
 
 if TYPE_CHECKING:
     from packages.shared.text_processing.base_chunker import ChunkResult
-    from packages.webui.services.chunking_service import ChunkingService
 
 logger = logging.getLogger(__name__)
 

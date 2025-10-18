@@ -10,10 +10,9 @@ from __future__ import annotations
 import inspect
 import logging
 import uuid
-from typing import Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Query, Request, Response, status
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
@@ -47,16 +46,20 @@ from packages.webui.api.v2.chunking_schemas import (
 from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
 from packages.webui.dependencies import (
-    get_collection_for_user,
     get_chunking_service_adapter_dependency,
+    get_collection_for_user,
 )
 from packages.webui.rate_limiter import check_circuit_breaker, limiter
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
 from packages.webui.services.chunking_service import ChunkingService
 
 # ChunkingStrategyRegistry removed - all strategy logic now in service layer
-from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
+
+if TYPE_CHECKING:
+    from fastapi.responses import JSONResponse
+
+    from packages.webui.services.collection_service import CollectionService
 
 ChunkingServiceLike = ChunkingServiceAdapter | ChunkingService
 
@@ -210,8 +213,8 @@ async def recommend_strategy(
 )
 @limiter.limit(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
+    preview_request: Annotated[PreviewRequest, Body(...)],
     request: Request,  # Required for rate limiting
-    preview_request: PreviewRequest,
     _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
     correlation_id: str = Header(None, alias="X-Correlation-ID"),
@@ -232,25 +235,6 @@ async def generate_preview(
     check_circuit_breaker(request)
 
     try:
-        # Delegate validation to service
-        from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
-
-        try:
-            await service.validate_preview_content(
-                content=preview_request.content,
-                document_id=preview_request.document_id,
-            )
-        except DocumentTooLargeError as e:
-            raise HTTPException(
-                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-                detail=str(e) if str(e) else "Content too large",
-            ) from e
-        except ValidationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            ) from e
-
         # Get DTO from service
         preview_dto = await service.preview_chunking(
             strategy=preview_request.strategy,
@@ -299,8 +283,8 @@ async def generate_preview(
 )
 @limiter.limit(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
+    compare_request: Annotated[CompareRequest, Body(...)],
     request: Request,  # Required for rate limiting
-    compare_request: CompareRequest,
     _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> CompareResponse:
@@ -431,9 +415,9 @@ async def clear_preview_cache(
 )
 @limiter.limit(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
+    chunking_request: Annotated[ChunkingOperationRequest, Body(...)],
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
-    chunking_request: ChunkingOperationRequest,
     background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
@@ -538,8 +522,8 @@ async def start_chunking_operation(
 )
 async def update_chunking_strategy(
     collection_id: str,
-    update_request: ChunkingStrategyUpdate,
     background_tasks: BackgroundTasks,
+    update_request: Annotated[ChunkingStrategyUpdate, Body(...)],
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
@@ -800,7 +784,7 @@ async def get_quality_scores(
     summary="Analyze document for strategy recommendation",
 )
 async def analyze_document(
-    analysis_request: DocumentAnalysisRequest,
+    analysis_request: Annotated[DocumentAnalysisRequest, Body(...)],
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> DocumentAnalysisResponse:
@@ -837,7 +821,7 @@ async def analyze_document(
     status_code=status.HTTP_201_CREATED,
 )
 async def save_configuration(
-    config_request: CreateConfigurationRequest,
+    config_request: Annotated[CreateConfigurationRequest, Body(...)],
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> SavedConfiguration:

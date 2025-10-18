@@ -3,28 +3,33 @@
 from __future__ import annotations
 
 import logging
-import redis.asyncio as aioredis
-from redis import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING
 
 from packages.shared.config import settings
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
+from packages.webui.services.chunking.cache import ChunkingCache
+from packages.webui.services.chunking.config_manager import ChunkingConfigManager
+from packages.webui.services.chunking.metrics import ChunkingMetrics
+from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
+from packages.webui.services.chunking.processor import ChunkingProcessor
+from packages.webui.services.chunking.validator import ChunkingValidator
+from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.redis_manager import RedisConfig, RedisManager
+from packages.webui.services.type_guards import ensure_async_redis, ensure_sync_redis
 
-from ..redis_manager import RedisConfig, RedisManager
-from ..type_guards import ensure_async_redis, ensure_sync_redis
-from ..chunking_service import ChunkingService
-from .adapter import ChunkingServiceAdapter
-from .cache import ChunkingCache
-from .config_manager import ChunkingConfigManager
-from .metrics import ChunkingMetrics
-from .orchestrator import ChunkingOrchestrator
-from .processor import ChunkingProcessor
-from .validator import ChunkingValidator
+if TYPE_CHECKING:
+    import redis.asyncio as aioredis
+    from redis import Redis
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 _redis_manager: RedisManager | None = None
+_chunking_metrics: ChunkingMetrics | None = None
+_chunking_processor: ChunkingProcessor | None = None
+_chunking_config_manager: ChunkingConfigManager | None = None
 
 
 def get_redis_manager() -> RedisManager:
@@ -72,7 +77,10 @@ def get_sync_redis_client() -> Redis | None:
 
 
 def build_chunking_processor() -> ChunkingProcessor:
-    return ChunkingProcessor()
+    global _chunking_processor
+    if _chunking_processor is None:
+        _chunking_processor = ChunkingProcessor()
+    return _chunking_processor
 
 
 def build_chunking_cache(redis_client: aioredis.Redis | None) -> ChunkingCache:
@@ -80,11 +88,17 @@ def build_chunking_cache(redis_client: aioredis.Redis | None) -> ChunkingCache:
 
 
 def build_chunking_metrics() -> ChunkingMetrics:
-    return ChunkingMetrics()
+    global _chunking_metrics
+    if _chunking_metrics is None:
+        _chunking_metrics = ChunkingMetrics()
+    return _chunking_metrics
 
 
 def build_chunking_config_manager() -> ChunkingConfigManager:
-    return ChunkingConfigManager()
+    global _chunking_config_manager
+    if _chunking_config_manager is None:
+        _chunking_config_manager = ChunkingConfigManager()
+    return _chunking_config_manager
 
 
 def build_chunking_validator(

@@ -11,17 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
 
+from .chunking.adapter import ChunkingServiceAdapter
 from .chunking.container import (
     get_chunking_orchestrator as container_get_chunking_orchestrator,
-    get_chunking_service_adapter,
-    get_legacy_chunking_service,
-    get_redis_manager as container_get_redis_manager,
-    resolve_api_chunking_dependency,
-    resolve_celery_chunking_service,
 )
+from .chunking.container import (
+    get_redis_manager as container_get_redis_manager,
+)
+from .chunking.container import resolve_api_chunking_dependency
 from .chunking.orchestrator import ChunkingOrchestrator
 from .chunking_service import ChunkingService
-from .chunking.adapter import ChunkingServiceAdapter
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
@@ -262,23 +261,32 @@ async def create_chunking_service(db: AsyncSession) -> ChunkingService | Chunkin
     return await resolve_api_chunking_dependency(db, prefer_adapter=True)
 
 
-async def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService | ChunkingServiceAdapter:
-    """Return chunking dependency for Celery execution."""
+def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
+    """Create ChunkingService for Celery tasks without Redis."""
 
-    return await resolve_celery_chunking_service(db_session)
+    collection_repo = CollectionRepository(db_session)
+    document_repo = DocumentRepository(db_session)
+
+    return ChunkingService(
+        db_session=db_session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        redis_client=None,
+    )
 
 
-async def create_celery_chunking_service_with_repos(
+def create_celery_chunking_service_with_repos(
     db_session: AsyncSession,
     collection_repo: CollectionRepository,
     document_repo: DocumentRepository,
-) -> ChunkingService | ChunkingServiceAdapter:
-    """Return Celery dependency using existing repositories."""
+) -> ChunkingService:
+    """Create ChunkingService using pre-built repositories."""
 
-    return await resolve_celery_chunking_service(
-        db_session,
+    return ChunkingService(
+        db_session=db_session,
         collection_repo=collection_repo,
         document_repo=document_repo,
+        redis_client=None,
     )
 
 
