@@ -105,13 +105,17 @@ class CeleryTaskWithOperationUpdates:
         try:
             redis_client = await self._get_redis()
             message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
+            message_json = json.dumps(message)
 
             # Add to stream with automatic ID
             await redis_client.xadd(
                 self.stream_key,
-                {"message": json.dumps(message)},
+                {"message": message_json},
                 maxlen=REDIS_STREAM_MAX_LEN,
             )
+
+            # Publish to pub/sub listeners so WebSocket clients receive live updates
+            await redis_client.publish(f"operation:{self.operation_id}", message_json)
 
             # Set TTL for stream
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
