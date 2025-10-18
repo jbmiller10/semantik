@@ -1,0 +1,954 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0 -- /home/john/semantik/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/john/semantik
+configfile: pyproject.toml
+plugins: xdist-3.8.0, anyio-4.9.0, base-url-2.1.0, cov-4.1.0, pyfakefs-5.9.1, asyncio-0.23.8
+asyncio: mode=Mode.AUTO
+collecting ... collected 49 items
+
+tests/unit/test_error_classifier.py::test_type_based_classification PASSED [  2%]
+tests/unit/test_error_classifier.py::test_keyword_classification FAILED  [  4%]
+tests/unit/test_error_classifier.py::test_unknown_classification_defaults FAILED [  6%]
+tests/unit/test_error_classifier.py::test_extra_rule_injection FAILED    [  8%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_memory FAILED [ 10%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_timeout FAILED [ 12%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_encoding FAILED [ 14%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_permission FAILED [ 16%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_network FAILED [ 18%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_validation FAILED [ 20%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_strategy FAILED [ 22%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_unknown FAILED [ 24%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_chunking_specific_exceptions FAILED [ 26%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_get_retry_strategy PASSED [ 28%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_should_retry PASSED [ 30%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_calculate_retry_delay_exponential PASSED [ 32%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_calculate_retry_delay_linear PASSED [ 34%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_memory FAILED [ 36%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_timeout FAILED [ 38%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_unrecoverable FAILED [ 40%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_partial_failure FAILED [ 42%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_analyze_failures FAILED [ 44%]
+tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_create_recovery_strategy PASSED [ 46%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHandleWithCorrelation::test_handle_with_correlation_success FAILED [ 48%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHandleWithCorrelation::test_handle_with_correlation_no_retry FAILED [ 51%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHandleResourceExhaustion::test_handle_memory_exhaustion PASSED [ 53%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHandleResourceExhaustion::test_handle_cpu_exhaustion PASSED [ 55%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHandleResourceExhaustion::test_queue_operation_on_exhaustion PASSED [ 57%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestCleanupFailedOperation::test_cleanup_save_partial PASSED [ 59%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestCleanupFailedOperation::test_cleanup_rollback PASSED [ 61%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestCreateErrorReport::test_create_error_report_with_history PASSED [ 63%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestCreateErrorReport::test_create_error_report_with_provided_errors FAILED [ 65%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHelperMethods::test_calculate_adaptive_batch_size PASSED [ 67%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHelperMethods::test_create_operation_fingerprint PASSED [ 69%]
+tests/unit/test_chunking_error_handler_enhanced.py::TestHelperMethods::test_save_operation_state PASSED [ 71%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_memory_limit_enforcement_preview PASSED [ 73%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_timeout_handling SKIPPED [ 75%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_strategy_fallback_on_error SKIPPED [ 77%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_validation_error_document_size PASSED [ 79%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_validation_error_chunk_params PASSED [ 81%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_process_collection_with_partial_failure SKIPPED [ 83%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_resource_limit_error_concurrent_operations SKIPPED [ 85%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_dependency_error_redis_unavailable PASSED [ 87%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_dependency_error_database_unavailable SKIPPED [ 89%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_configuration_error_invalid_strategy_params SKIPPED [ 91%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_memory_error_during_processing SKIPPED [ 93%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_error_context_propagation SKIPPED [ 95%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_validate_collection_config_with_errors SKIPPED [ 97%]
+tests/unit/test_chunking_service_errors.py::TestChunkingServiceErrorHandling::test_cleanup_after_error SKIPPED [100%]/home/john/semantik/.venv/lib/python3.12/site-packages/coverage/inorout.py:509: CoverageWarning: Module packages.vecpipe was never imported. (module-not-imported)
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
+
+
+=================================== FAILURES ===================================
+_________________________ test_keyword_classification __________________________
+
+    def test_keyword_classification() -> None:
+        """Keyword heuristics fall back when type matching fails."""
+    
+        classifier = get_default_chunking_error_classifier()
+    
+>       permission_result = classifier.classify(Exception("Permission denied for resource"))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_error_classifier.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Permission denied for resource')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+_____________________ test_unknown_classification_defaults _____________________
+
+    def test_unknown_classification_defaults() -> None:
+        """Unknown errors fall back to the default bucket."""
+    
+        classifier = get_default_chunking_error_classifier()
+>       result = classifier.classify(Exception("no hint here"))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_error_classifier.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = Exception('no hint here')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+__________________________ test_extra_rule_injection ___________________________
+
+    def test_extra_rule_injection() -> None:
+        """Additional rules can override the default behaviour."""
+    
+        extra_rule = ClassificationRule(
+            name="custom_logic",
+            predicate=lambda exc, _msg: str(exc) == "custom",
+            error_type=ChunkingErrorType.STRATEGY_ERROR,
+            confidence=0.95,
+            code="strategy_error",
+        )
+    
+        classifier = build_chunking_error_classifier(extra_rules=[extra_rule])
+>       result = classifier.classify(Exception("custom"))
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_error_classifier.py:62: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802934230>, key = Exception('custom')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+_____________ TestChunkingErrorHandler.test_classify_error_memory ______________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba7350>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029b8140>
+
+    def test_classify_error_memory(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of memory errors."""
+        # Direct MemoryError
+>       assert error_handler.classify_error(MemoryError()) == ChunkingErrorType.MEMORY_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError()
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+_____________ TestChunkingErrorHandler.test_classify_error_timeout _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6ea0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138080f4f80>
+
+    def test_classify_error_timeout(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of timeout errors."""
+        # Direct TimeoutError
+>       assert error_handler.classify_error(TimeoutError()) == ChunkingErrorType.TIMEOUT_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:47: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = TimeoutError()
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'TimeoutError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+____________ TestChunkingErrorHandler.test_classify_error_encoding _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba7260>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802be1790>
+
+    def test_classify_error_encoding(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of encoding errors."""
+        # UnicodeDecodeError
+        with pytest.raises(UnicodeDecodeError) as exc_info:
+            b"\xff".decode("utf-8")
+>       assert error_handler.classify_error(exc_info.value) == ChunkingErrorType.INVALID_ENCODING
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid start byte')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'UnicodeDecodeError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+___________ TestChunkingErrorHandler.test_classify_error_permission ____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6d80>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029b9dc0>
+
+    def test_classify_error_permission(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of permission errors."""
+        error = Exception("Permission denied")
+>       assert error_handler.classify_error(error) == ChunkingErrorType.PERMISSION_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:67: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Permission denied')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+_____________ TestChunkingErrorHandler.test_classify_error_network _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6b10>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802be1220>
+
+    def test_classify_error_network(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of network errors."""
+        error = Exception("Connection refused")
+>       assert error_handler.classify_error(error) == ChunkingErrorType.NETWORK_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:75: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Connection refused')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+___________ TestChunkingErrorHandler.test_classify_error_validation ____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6750>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029b9e80>
+
+    def test_classify_error_validation(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of validation errors."""
+        error = Exception("Validation failed: invalid parameters")
+>       assert error_handler.classify_error(error) == ChunkingErrorType.VALIDATION_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:83: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Validation failed: invalid parameters')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+____________ TestChunkingErrorHandler.test_classify_error_strategy _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6660>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802960680>
+
+    def test_classify_error_strategy(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of strategy errors."""
+        error = Exception("Strategy initialization failed")
+>       assert error_handler.classify_error(error) == ChunkingErrorType.STRATEGY_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:88: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Strategy initialization failed')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+_____________ TestChunkingErrorHandler.test_classify_error_unknown _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba6120>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802be19d0>
+
+    def test_classify_error_unknown(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test classification of unknown errors."""
+        error = Exception("Some random error")
+>       assert error_handler.classify_error(error) == ChunkingErrorType.UNKNOWN_ERROR
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:96: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Some random error')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+__ TestChunkingErrorHandler.test_classify_error_chunking_specific_exceptions ___
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba60f0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802961b80>
+
+    def test_classify_error_chunking_specific_exceptions(
+        self, error_handler: ChunkingErrorHandler
+    ) -> None:
+        """Chunking domain exceptions map to specialised error types and codes."""
+    
+        dependency_error = ChunkingDependencyError("Vector store unavailable", dependency="qdrant")
+        dependency_result = error_handler.classify_error_detailed(dependency_error)
+        assert dependency_result.error_type == ChunkingErrorType.DEPENDENCY_ERROR
+        assert dependency_result.code == "dependency_error"
+    
+        resource_error = ChunkingResourceLimitError("Worker pool exhausted", resource_type=ResourceType.CPU)
+        resource_result = error_handler.classify_error_detailed(resource_error)
+        assert resource_result.error_type == ChunkingErrorType.RESOURCE_LIMIT_ERROR
+        assert resource_result.code == "resource_limit_error"
+    
+>       network_result = error_handler.classify_error_detailed(ConnectionError("Connection reset"))
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:435: in classify_error_detailed
+    return self._error_classifier.classify(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = ConnectionError('Connection reset')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'ConnectionError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+________ TestChunkingErrorHandler.test_handle_streaming_failure_memory _________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba4ce0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802936120>
+
+    async def test_handle_streaming_failure_memory(
+        self,
+        error_handler: ChunkingErrorHandler,
+    ) -> None:
+        """Test handling streaming failure due to memory error."""
+>       result = await error_handler.handle_streaming_failure(
+            document_id="doc123",
+            bytes_processed=1000000,
+            error=MemoryError("Out of memory"),
+        )
+
+tests/unit/test_chunking_error_handler.py:204: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:375: in handle_streaming_failure
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError('Out of memory')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  packages.webui.services.chunking_error_handler:chunking_error_handler.py:364 Streaming failure for document doc123
+________ TestChunkingErrorHandler.test_handle_streaming_failure_timeout ________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba5910>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802be38f0>
+
+    async def test_handle_streaming_failure_timeout(
+        self,
+        error_handler: ChunkingErrorHandler,
+    ) -> None:
+        """Test handling streaming failure due to timeout."""
+>       result = await error_handler.handle_streaming_failure(
+            document_id="doc123",
+            bytes_processed=500000,
+            error=TimeoutError("Operation timed out"),
+        )
+
+tests/unit/test_chunking_error_handler.py:220: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:375: in handle_streaming_failure
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = TimeoutError('Operation timed out')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'TimeoutError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  packages.webui.services.chunking_error_handler:chunking_error_handler.py:364 Streaming failure for document doc123
+_____ TestChunkingErrorHandler.test_handle_streaming_failure_unrecoverable _____
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba4f20>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029cdfd0>
+
+    async def test_handle_streaming_failure_unrecoverable(
+        self,
+        error_handler: ChunkingErrorHandler,
+    ) -> None:
+        """Test handling unrecoverable streaming failure."""
+>       result = await error_handler.handle_streaming_failure(
+            document_id="doc123",
+            bytes_processed=100000,
+            error=Exception("Critical system error"),
+        )
+
+tests/unit/test_chunking_error_handler.py:235: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:375: in handle_streaming_failure
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>
+key = Exception('Critical system error')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'Exception' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+------------------------------ Captured log call -------------------------------
+WARNING  packages.webui.services.chunking_error_handler:chunking_error_handler.py:364 Streaming failure for document doc123
+_____________ TestChunkingErrorHandler.test_handle_partial_failure _____________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba5e80>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029356a0>
+
+    async def test_handle_partial_failure(
+        self,
+        error_handler: ChunkingErrorHandler,
+    ) -> None:
+        """Test handling partial chunking failures."""
+        # Mock successful chunks
+        processed_chunks = [
+            ChunkResult(
+                chunk_id="chunk_001",
+                text="Success 1",
+                start_offset=0,
+                end_offset=100,
+                metadata={},
+            ),
+            ChunkResult(
+                chunk_id="chunk_002",
+                text="Success 2",
+                start_offset=100,
+                end_offset=200,
+                metadata={},
+            ),
+        ]
+    
+        # Failed documents and errors
+        failed_documents = ["doc3", "doc4", "doc5"]
+        errors = [
+            MemoryError("Out of memory"),
+            MemoryError("Out of memory"),
+            TimeoutError("Timeout"),
+        ]
+    
+>       result = await error_handler.handle_partial_failure(
+            operation_id="op123",
+            processed_chunks=processed_chunks,
+            failed_documents=failed_documents,
+            errors=errors,
+        )
+
+tests/unit/test_chunking_error_handler.py:275: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:292: in handle_partial_failure
+    failure_analysis = self.analyze_failures(errors)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:544: in analyze_failures
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError('Out of memory')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+________________ TestChunkingErrorHandler.test_analyze_failures ________________
+
+self = <tests.unit.test_chunking_error_handler.TestChunkingErrorHandler object at 0x713802ba4bf0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x7138029cc5f0>
+
+    def test_analyze_failures(self, error_handler: ChunkingErrorHandler) -> None:
+        """Test failure analysis."""
+        errors = [
+            MemoryError(),
+            MemoryError(),
+            TimeoutError(),
+            Exception("Unknown"),
+        ]
+    
+>       analysis = error_handler.analyze_failures(errors)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler.py:301: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:544: in analyze_failures
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError()
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+________ TestHandleWithCorrelation.test_handle_with_correlation_success ________
+
+self = <tests.unit.test_chunking_error_handler_enhanced.TestHandleWithCorrelation object at 0x713802b75bb0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802935640>
+mock_redis = <AsyncMock spec='Redis' id='124485376555152'>
+
+    @pytest.mark.asyncio()
+    async def test_handle_with_correlation_success(self, error_handler, mock_redis) -> None:
+        """Test successful error handling with correlation ID."""
+        operation_id = "test_op_123"
+        correlation_id = "corr_456"
+        error = MemoryError("Out of memory")
+        context = {
+            "collection_id": "coll_789",
+            "document_ids": ["doc_1", "doc_2"],
+            "strategy": "semantic",
+        }
+    
+>       result = await error_handler.handle_with_correlation(
+            operation_id=operation_id,
+            correlation_id=correlation_id,
+            error=error,
+            context=context,
+        )
+
+tests/unit/test_chunking_error_handler_enhanced.py:76: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:671: in handle_with_correlation
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError('Out of memory')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+------------------------------ Captured log call -------------------------------
+ERROR    packages.webui.services.chunking_error_handler:chunking_error_handler.py:659 Chunking error for operation test_op_123
+MemoryError: Out of memory
+_______ TestHandleWithCorrelation.test_handle_with_correlation_no_retry ________
+
+self = <tests.unit.test_chunking_error_handler_enhanced.TestHandleWithCorrelation object at 0x713802b767b0>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802bb5ca0>
+
+    @pytest.mark.asyncio()
+    async def test_handle_with_correlation_no_retry(self, error_handler) -> None:
+        """Test error handling when retry limit exceeded."""
+        operation_id = "test_op_123"
+        correlation_id = "corr_456"
+        error = ValueError("Invalid input")
+    
+        # Simulate max retries reached
+        error_handler.retry_counts[f"{operation_id}:validation_error"] = 10
+    
+>       result = await error_handler.handle_with_correlation(
+            operation_id=operation_id,
+            correlation_id=correlation_id,
+            error=error,
+            context={},
+        )
+
+tests/unit/test_chunking_error_handler_enhanced.py:104: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:671: in handle_with_correlation
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = ValueError('Invalid input')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'ValueError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+------------------------------ Captured log call -------------------------------
+ERROR    packages.webui.services.chunking_error_handler:chunking_error_handler.py:659 Chunking error for operation test_op_123
+ValueError: Invalid input
+_____ TestCreateErrorReport.test_create_error_report_with_provided_errors ______
+
+self = <tests.unit.test_chunking_error_handler_enhanced.TestCreateErrorReport object at 0x713802bb7140>
+error_handler = <packages.webui.services.chunking_error_handler.ChunkingErrorHandler object at 0x713802a4d940>
+
+    def test_create_error_report_with_provided_errors(self, error_handler) -> None:
+        """Test creating error report with provided errors."""
+        operation_id = "test_op_123"
+        errors = [
+            MemoryError("Out of memory"),
+            TimeoutError("Timed out"),
+            ValueError("Bad value"),
+        ]
+    
+>       report = error_handler.create_error_report(operation_id, errors)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_chunking_error_handler_enhanced.py:277: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/webui/services/chunking_error_handler.py:880: in create_error_report
+    error_type = self.classify_error(error)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/services/chunking_error_handler.py:430: in classify_error
+    return self._error_classifier.as_enum(error)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:102: in as_enum
+    return self.classify(error).error_type
+           ^^^^^^^^^^^^^^^^^^^^
+packages/webui/utils/error_classifier.py:72: in classify
+    return self._cache[error]
+           ^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x713802be0920>, key = MemoryError('Out of memory')
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+                         ^^^^^^^^
+E       TypeError: cannot create weak reference to 'MemoryError' object
+
+../.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/weakref.py:415: TypeError
+=============================== warnings summary ===============================
+.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /home/john/semantik/.venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+---------- coverage: platform linux, python 3.12.11-final-0 ----------
+Name                                                              Stmts   Miss  Cover
+-------------------------------------------------------------------------------------
+packages/webui/__init__.py                                           21      8    62%
+packages/webui/api/__init__.py                                        2      0   100%
+packages/webui/api/auth.py                                           62     43    31%
+packages/webui/api/chunking_exception_handlers.py                   103    103     0%
+packages/webui/api/chunking_exceptions.py                           126     73    42%
+packages/webui/api/chunking_integration_example.py                   17     17     0%
+packages/webui/api/health.py                                        122    122     0%
+packages/webui/api/internal.py                                       78     78     0%
+packages/webui/api/metrics.py                                        58     58     0%
+packages/webui/api/models.py                                          8      8     0%
+packages/webui/api/root.py                                           32     32     0%
+packages/webui/api/schemas.py                                       228     15    93%
+packages/webui/api/settings.py                                       74     74     0%
+packages/webui/api/v2/__init__.py                                     6      6     0%
+packages/webui/api/v2/chunking.py                                   271    271     0%
+packages/webui/api/v2/chunking_schemas.py                           252      9    96%
+packages/webui/api/v2/collections.py                                165    128    22%
+packages/webui/api/v2/directory_scan.py                              64     64     0%
+packages/webui/api/v2/documents.py                                   44     29    34%
+packages/webui/api/v2/operations.py                                  92     72    22%
+packages/webui/api/v2/partition_monitoring.py                        61     61     0%
+packages/webui/api/v2/schemas.py                                     60      7    88%
+packages/webui/api/v2/search.py                                      43     25    42%
+packages/webui/api/v2/system.py                                      18      9    50%
+packages/webui/app.py                                                 2      2     0%
+packages/webui/auth.py                                              127    127     0%
+packages/webui/background_tasks.py                                  135    135     0%
+packages/webui/celery_app.py                                         42      7    83%
+packages/webui/chunking_tasks.py                                    432    432     0%
+packages/webui/config/__init__.py                                     2      0   100%
+packages/webui/config/rate_limits.py                                 37      9    76%
+packages/webui/dependencies.py                                       32     15    53%
+packages/webui/main.py                                              169     71    58%
+packages/webui/middleware/__init__.py                                 2      0   100%
+packages/webui/middleware/correlation.py                             70     48    31%
+packages/webui/middleware/csp.py                                     22     22     0%
+packages/webui/middleware/rate_limit.py                              33     33     0%
+packages/webui/rate_limiter.py                                      112     88    21%
+packages/webui/schemas.py                                             8      8     0%
+packages/webui/services/__init__.py                                   1      0   100%
+packages/webui/services/cache_manager.py                            115     78    32%
+packages/webui/services/chunking/__init__.py                          8      0   100%
+packages/webui/services/chunking/adapter.py                          76     46    39%
+packages/webui/services/chunking/cache.py                           128    106    17%
+packages/webui/services/chunking/config_manager.py                  127    111    13%
+packages/webui/services/chunking/metrics.py                         101     79    22%
+packages/webui/services/chunking/orchestrator.py                    170    142    16%
+packages/webui/services/chunking/processor.py                        72     54    25%
+packages/webui/services/chunking/validator.py                       119     94    21%
+packages/webui/services/chunking_config.py                           82     82     0%
+packages/webui/services/chunking_config_builder.py                  141    122    13%
+packages/webui/services/chunking_constants.py                        73      0   100%
+packages/webui/services/chunking_error_handler.py                   407    130    68%
+packages/webui/services/chunking_error_handler_usage_example.py      82     82     0%
+packages/webui/services/chunking_error_metrics.py                    46     46     0%
+packages/webui/services/chunking_metrics.py                          67     67     0%
+packages/webui/services/chunking_security.py                        154    154     0%
+packages/webui/services/chunking_service.py                        1207   1020    15%
+packages/webui/services/chunking_strategies.py                       22     11    50%
+packages/webui/services/chunking_strategy_factory.py                 93     66    29%
+packages/webui/services/chunking_strategy_service.py                 49     49     0%
+packages/webui/services/chunking_validation.py                       76     54    29%
+packages/webui/services/collection_service.py                       225    192    15%
+packages/webui/services/directory_scan_service.py                   154    128    17%
+packages/webui/services/document_scanning_service.py                124    103    17%
+packages/webui/services/dtos/__init__.py                              3      0   100%
+packages/webui/services/dtos/api_models.py                          156      3    98%
+packages/webui/services/dtos/chunking_dtos.py                       297    135    55%
+packages/webui/services/dtos/test_example.py                         18     18     0%
+packages/webui/services/factory.py                                   84     47    44%
+packages/webui/services/operation_service.py                         48     33    31%
+packages/webui/services/partition_monitoring_service.py             129     77    40%
+packages/webui/services/progress_manager.py                         163    123    25%
+packages/webui/services/redis_manager.py                             96     62    35%
+packages/webui/services/resource_manager.py                         139    117    16%
+packages/webui/services/search_service.py                           122    104    15%
+packages/webui/services/type_guards.py                               55     43    22%
+packages/webui/startup_tasks.py                                      20     20     0%
+packages/webui/tasks.py                                            1227   1227     0%
+packages/webui/utils/__init__.py                                      0      0   100%
+packages/webui/utils/error_classifier.py                             77      7    91%
+packages/webui/utils/qdrant_manager.py                               65     65     0%
+packages/webui/utils/retry.py                                        50     50     0%
+packages/webui/websocket/__init__.py                                  2      0   100%
+packages/webui/websocket/scalable_manager.py                        377    324    14%
+packages/webui/websocket_manager.py                                 453    453     0%
+-------------------------------------------------------------------------------------
+TOTAL                                                             10732   8233    23%
+Coverage HTML written to dir htmlcov
+Coverage XML written to file coverage.xml
+
+=========================== short test summary info ============================
+FAILED tests/unit/test_error_classifier.py::test_keyword_classification - Typ...
+FAILED tests/unit/test_error_classifier.py::test_unknown_classification_defaults
+FAILED tests/unit/test_error_classifier.py::test_extra_rule_injection - TypeE...
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_memory
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_timeout
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_encoding
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_permission
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_network
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_validation
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_strategy
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_unknown
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_classify_error_chunking_specific_exceptions
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_memory
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_timeout
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_streaming_failure_unrecoverable
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_handle_partial_failure
+FAILED tests/unit/test_chunking_error_handler.py::TestChunkingErrorHandler::test_analyze_failures
+FAILED tests/unit/test_chunking_error_handler_enhanced.py::TestHandleWithCorrelation::test_handle_with_correlation_success
+FAILED tests/unit/test_chunking_error_handler_enhanced.py::TestHandleWithCorrelation::test_handle_with_correlation_no_retry
+FAILED tests/unit/test_chunking_error_handler_enhanced.py::TestCreateErrorReport::test_create_error_report_with_provided_errors
+============ 20 failed, 19 passed, 10 skipped, 1 warning in 22.76s =============

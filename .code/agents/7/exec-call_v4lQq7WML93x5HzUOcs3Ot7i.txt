@@ -57,13 +57,7 @@ from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.factory import (
     get_redis_manager,
 )
-from packages.webui.services.progress_manager import (
-    ProgressPayload,
-    ProgressSendResult,
-    ProgressUpdateManager,
-)
 from packages.webui.services.type_guards import ensure_sync_redis
-from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     from packages.shared.text_processing.base_chunker import ChunkResult
@@ -76,25 +70,6 @@ def get_redis_client() -> Redis:
     redis_manager = get_redis_manager()
     client = redis_manager.sync_client
     return ensure_sync_redis(client)
-
-
-_progress_update_manager: ProgressUpdateManager | None = None
-
-
-def get_progress_update_manager() -> ProgressUpdateManager:
-    """Return a cached progress update manager for chunking tasks."""
-
-    global _progress_update_manager
-    if _progress_update_manager is None:
-        manager = ProgressUpdateManager(
-            sync_redis=get_redis_client(),
-            default_stream_template="stream:chunking:{operation_id}",
-            default_ttl=None,
-            default_maxlen=1000,
-            logger_=logger.getChild("progress"),
-        )
-        _progress_update_manager = manager
-    return _progress_update_manager
 
 
 # Metrics
@@ -187,7 +162,6 @@ class ChunkingTask(Task):
         self._graceful_shutdown = False
         self._redis_client: Redis | None = None
         self._error_handler: ChunkingErrorHandler | None = None
-        self._error_classifier = get_default_chunking_error_classifier()
 
     def before_start(self, task_id: str, args: tuple, kwargs: dict) -> None:
         """Set up task before execution starts.
@@ -420,7 +394,25 @@ class ChunkingTask(Task):
         Returns:
             Error type string
         """
-        return self._error_classifier.as_code(exc)
+        if isinstance(exc, ChunkingMemoryError):
+            return "memory_error"
+        if isinstance(exc, ChunkingTimeoutError):
+            return "timeout_error"
+        if isinstance(exc, ChunkingValidationError):
+            return "validation_error"
+        if isinstance(exc, ChunkingStrategyError):
+            return "strategy_error"
+        if isinstance(exc, ChunkingDependencyError):
+            return "dependency_error"
+        if isinstance(exc, ChunkingResourceLimitError):
+            return "resource_limit_error"
+        if isinstance(exc, ChunkingPartialFailureError):
+            return "partial_failure"
+        if isinstance(exc, ConnectionError):
+            return "connection_error"
+        if isinstance(exc, TimeoutError):
+            return "timeout_error"
+        return "unknown"
 
     def _check_circuit_breaker(self) -> bool:
         """Check if circuit breaker allows execution.
@@ -1228,32 +1220,31 @@ def _send_progress_update_sync(
     if not redis_client:
         return
 
-    manager = get_progress_update_manager()
-    payload = ProgressPayload(
-        operation_id=operation_id,
-        correlation_id=correlation_id,
-        progress=progress,
-        message=message,
-        extra={"timestamp": str(time.time())},
-    )
+    try:
+        update = {
+            "operation_id": operation_id,
+            "correlation_id": correlation_id,
+            "progress": str(progress),  # Redis requires string values
+            "message": message,
+            "timestamp": str(time.time()),
+        }
 
-    hash_mapping = {
-        "progress": progress,
-        "message": message,
-        "updated_at": datetime.now(UTC).isoformat(),
-        "correlation_id": correlation_id,
-    }
+        # Send to Redis stream
+        stream_key = f"stream:chunking:{operation_id}"
+        redis_client.xadd(stream_key, update, maxlen=1000)
 
-    manager.send_sync_update(
-        payload,
-        stream_template="stream:chunking:{operation_id}",
-        maxlen=1000,
-        ttl=None,
-        hash_key_template="operation:{operation_id}:progress",
-        hash_mapping=hash_mapping,
-        use_throttle=False,
-        redis_client=redis_client,
-    )
+        # Also update hash for current state
+        redis_client.hset(
+            f"operation:{operation_id}:progress",
+            mapping={
+                "progress": str(progress),
+                "message": message,
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
+        )
+
+    except Exception as e:
+        logger.warning(f"Failed to send progress update: {e}")
 
 
 async def _handle_soft_timeout(
@@ -1474,29 +1465,25 @@ async def _send_progress_update(
     if not redis_client:
         return
 
-    payload = ProgressPayload(
-        operation_id=operation_id,
-        correlation_id=correlation_id,
-        progress=progress,
-        message=message,
-    )
+    try:
+        update = {
+            "operation_id": operation_id,
+            "correlation_id": correlation_id,
+            "progress": progress,
+            "message": message,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
 
-    manager = get_progress_update_manager()
-    loop = asyncio.get_running_loop()
+        # Send to Redis stream for WebSocket updates
+        stream_key = f"chunking:progress:{operation_id}"
+        # Redis client is sync, not async - need to use sync methods
+        redis_client.xadd(stream_key, update)
 
-    def _send() -> ProgressSendResult:
-        return manager.send_sync_update(
-            payload,
-            stream_template="chunking:progress:{operation_id}",
-            ttl=3600,
-            maxlen=0,
-            use_throttle=False,
-            redis_client=redis_client,
-        )
+        # Expire stream after 1 hour for progress updates
+        redis_client.expire(stream_key, 3600)
 
-    result = await loop.run_in_executor(None, _send)
-    if result is ProgressSendResult.FAILED:
-        logger.error("Failed to send progress update for operation %s", operation_id)
+    except Exception as e:
+        logger.error(f"Failed to send progress update: {e}")
 
 
 # Retry helper for specific operations
