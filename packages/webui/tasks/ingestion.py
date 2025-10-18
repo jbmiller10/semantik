@@ -13,13 +13,13 @@ import asyncio
 import contextlib
 import time
 import uuid
+from datetime import UTC, datetime
 from importlib import import_module
 from typing import Any
 
 import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
-
 from shared.metrics.collection_metrics import (
     OperationTimer,
     QdrantOperationTimer,
@@ -32,25 +32,24 @@ from packages.webui.services.chunking.container import resolve_celery_chunking_s
 
 from . import reindex as reindex_tasks
 from .utils import (
-    CeleryTaskWithOperationUpdates,
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
     DOCUMENT_REMOVAL_BATCH_SIZE,
     EMBEDDING_BATCH_SIZE,
     OPERATION_HARD_TIME_LIMIT,
     OPERATION_SOFT_TIME_LIMIT,
-    await_if_awaitable,
-    executor,
-    extract_and_serialize_thread_safe,
-    resolve_qdrant_manager,
-    resolve_qdrant_manager_class,
+    VECTOR_UPLOAD_BATCH_SIZE,
+    CeleryTaskWithOperationUpdates,
     _audit_log_operation,
-    _build_internal_api_headers,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
+    await_if_awaitable,
     celery_app,
+    extract_and_serialize_thread_safe,
     logger,
+    resolve_qdrant_manager,
+    resolve_qdrant_manager_class,
 )
 
 
@@ -73,7 +72,9 @@ def test_task(self: Any) -> dict[str, str]:  # noqa: ARG001
     acks_late=True,  # Ensure message reliability
     soft_time_limit=OPERATION_SOFT_TIME_LIMIT,
     time_limit=OPERATION_HARD_TIME_LIMIT,
-    on_failure=lambda self, exc, task_id, args, kwargs, einfo: _handle_task_failure(self, exc, task_id, args, kwargs, einfo),
+    on_failure=lambda self, exc, task_id, args, kwargs, einfo: _handle_task_failure(
+        self, exc, task_id, args, kwargs, einfo
+    ),
 )
 def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]:
     """Process a collection operation (INDEX, APPEND, REINDEX, REMOVE_SOURCE)."""
@@ -91,7 +92,7 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
         return loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self))
     except Exception as exc:  # pragma: no cover - retry path
         logger.error("Task failed for operation %s: %s", operation_id, exc)
-        if isinstance(exc, (ValueError, TypeError)):
+        if isinstance(exc, ValueError | TypeError):
             raise
         raise self.retry(exc=exc, countdown=60) from exc
 
@@ -371,8 +372,8 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
             if not text or not blocks:
                 with contextlib.suppress(Exception):
-                    setattr(doc, "chunk_count", 0)
-                    setattr(doc, "status", DocumentStatus.COMPLETED)
+                    doc.chunk_count = 0
+                    doc.status = DocumentStatus.COMPLETED
                 processed += 1
                 continue
 
@@ -397,13 +398,13 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
 
             with contextlib.suppress(Exception):
-                setattr(doc, "chunk_count", len(chunks))
-                setattr(doc, "status", DocumentStatus.COMPLETED)
+                doc.chunk_count = len(chunks)
+                doc.status = DocumentStatus.COMPLETED
             processed += 1
 
         except Exception:
             with contextlib.suppress(Exception):
-                setattr(doc, "status", DocumentStatus.FAILED)
+                doc.status = DocumentStatus.FAILED
             if doc == docs[-1]:
                 raise
 
@@ -421,11 +422,11 @@ async def _process_index_operation(
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
+    from qdrant_client.models import Distance, VectorParams
+    from shared.database.collection_metadata import store_collection_metadata
     from shared.embedding.models import get_model_config
     from shared.embedding.validation import get_model_dimension
     from shared.metrics.collection_metrics import record_qdrant_operation
-    from qdrant_client.models import Distance, VectorParams
-    from shared.database.collection_metadata import store_collection_metadata
 
     try:
         manager = resolve_qdrant_manager()
@@ -724,7 +725,10 @@ async def _process_append_operation_impl(
 
                     if embeddings:
                         from shared.database.exceptions import DimensionMismatchError
-                        from shared.embedding.validation import get_collection_dimension, validate_dimension_compatibility
+                        from shared.embedding.validation import (
+                            get_collection_dimension,
+                            validate_dimension_compatibility,
+                        )
 
                         expected_dim = get_collection_dimension(qdrant_client, qdrant_collection_name)
                         if expected_dim is None:
@@ -769,8 +773,7 @@ async def _process_append_operation_impl(
                         batch_points = points[batch_start:batch_end]
 
                         points_data = [
-                            {"id": point.id, "vector": point.vector, "payload": point.payload}
-                            for point in batch_points
+                            {"id": point.id, "vector": point.vector, "payload": point.payload} for point in batch_points
                         ]
 
                         upsert_request = {
@@ -960,9 +963,7 @@ async def _process_remove_source_operation(
                                 points_selector=FilterSelector(filter=filter_condition),
                             )
 
-                            logger.info(
-                                "Deleted vectors for doc_id=%s from collection %s", doc_id, qdrant_collection
-                            )
+                            logger.info("Deleted vectors for doc_id=%s from collection %s", doc_id, qdrant_collection)
                             logger.debug(
                                 "Issued qdrant delete for doc_id=%s collection=%s",
                                 doc_id,

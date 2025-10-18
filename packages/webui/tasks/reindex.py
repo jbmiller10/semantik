@@ -15,7 +15,6 @@ import hashlib
 import json
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
 from typing import Any
@@ -25,22 +24,20 @@ from qdrant_client.models import PointStruct
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
 
-from .cleanup import cleanup_old_collections
 from .utils import (
     EMBEDDING_BATCH_SIZE,
     REINDEX_SCORE_DIFF_THRESHOLD,
     REINDEX_SEARCH_MISMATCH_THRESHOLD,
     REINDEX_VECTOR_COUNT_VARIANCE,
     CeleryTaskWithOperationUpdates,
-    extract_and_serialize_thread_safe,
-    qdrant_manager,
-    resolve_qdrant_manager,
-    resolve_qdrant_manager_class,
-    await_if_awaitable,
     _audit_log_operation,
     _build_internal_api_headers,
+    await_if_awaitable,
     calculate_cleanup_delay,
+    extract_and_serialize_thread_safe,
     logger,
+    resolve_qdrant_manager,
+    resolve_qdrant_manager_class,
     settings,
 )
 
@@ -126,8 +123,8 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
 
         if not text and not metadata:
             with contextlib.suppress(Exception):
-                setattr(doc, "chunk_count", 0)
-                setattr(doc, "status", DocumentStatus.COMPLETED)
+                doc.chunk_count = 0
+                doc.status = DocumentStatus.COMPLETED
             processed += 1
             continue
 
@@ -153,8 +150,8 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 )
 
         try:
-            setattr(doc, "chunk_count", len(chunks))
-            setattr(doc, "status", DocumentStatus.COMPLETED)
+            doc.chunk_count = len(chunks)
+            doc.status = DocumentStatus.COMPLETED
         except Exception:
             pass
         processed += 1
@@ -293,8 +290,6 @@ async def _process_reindex_operation_impl(
         instruction = new_config.get("instruction", collection.get("config", {}).get("instruction"))
         vector_dim = new_config.get("vector_dim", collection.get("config", {}).get("vector_dim"))
 
-        worker_count = new_config.get("worker_count", collection.get("config", {}).get("worker_count", 4))
-
         chunking_service = create_celery_chunking_service_with_repos(
             db_session=document_repo.session,
             collection_repo=collection_repo,
@@ -308,218 +303,213 @@ async def _process_reindex_operation_impl(
             batch = documents[i : i + batch_size]
 
             for doc in batch:
-                    document_id = doc.get("id") if hasattr(doc, "get") else getattr(doc, "id", None)
-                    file_path = doc.get("file_path", doc.get("path"))
+                document_id = doc.get("id") if hasattr(doc, "get") else getattr(doc, "id", None)
+                file_path = doc.get("file_path", doc.get("path"))
 
-                    try:
-                        loop = asyncio.get_event_loop()
+                try:
+                    loop = asyncio.get_event_loop()
 
-                        logger.info("Reprocessing document: %s", file_path)
+                    logger.info("Reprocessing document: %s", file_path)
 
-                        text_blocks = await asyncio.wait_for(
-                            loop.run_in_executor(executor_pool, extract_and_serialize_thread_safe, file_path),
-                            timeout=300,
+                    text_blocks = await asyncio.wait_for(
+                        loop.run_in_executor(executor_pool, extract_and_serialize_thread_safe, file_path),
+                        timeout=300,
+                    )
+
+                    doc_id = hashlib.md5(file_path.encode()).hexdigest()[:16]
+
+                    combined_text = ""
+                    combined_metadata = {}
+                    for text, metadata in text_blocks:
+                        if text.strip():
+                            combined_text += text + "\n\n"
+                            if metadata:
+                                combined_metadata.update(metadata)
+
+                    reindex_collection = collection.copy()
+                    if new_config.get("chunking_strategy"):
+                        reindex_collection["chunking_strategy"] = new_config["chunking_strategy"]
+                    if new_config.get("chunking_config"):
+                        reindex_collection["chunking_config"] = new_config["chunking_config"]
+                    if "chunk_size" in new_config:
+                        reindex_collection["chunk_size"] = new_config["chunk_size"]
+                    if "chunk_overlap" in new_config:
+                        reindex_collection["chunk_overlap"] = new_config["chunk_overlap"]
+
+                    chunking_result = await chunking_service.execute_ingestion_chunking(
+                        text=combined_text,
+                        document_id=doc_id,
+                        collection=reindex_collection,
+                        metadata=combined_metadata,
+                        file_type=file_path.split(".")[-1] if "." in file_path else None,
+                    )
+
+                    all_chunks = chunking_result["chunks"]
+                    chunking_stats = chunking_result["stats"]
+
+                    logger.info(
+                        "Reprocessed document %s: %s chunks using %s strategy (fallback: %s, duration: %sms)",
+                        file_path,
+                        len(all_chunks),
+                        chunking_stats["strategy_used"],
+                        chunking_stats["fallback"],
+                        chunking_stats["duration_ms"],
+                    )
+
+                    if not all_chunks:
+                        logger.warning("No chunks created for document: %s", file_path)
+                        continue
+
+                    texts = [chunk["text"] for chunk in all_chunks]
+
+                    vecpipe_url = "http://vecpipe:8000/embed"
+                    embed_request = {
+                        "texts": texts,
+                        "model_name": model_name,
+                        "quantization": quantization,
+                        "instruction": instruction,
+                        "batch_size": batch_size,
+                    }
+
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        logger.info("Calling vecpipe /embed for %s texts (reindex)", len(texts))
+                        response = await client.post(vecpipe_url, json=embed_request)
+
+                        if response.status_code != 200:
+                            raise Exception(
+                                f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
+                            )
+
+                        embed_response = response.json()
+                        embeddings_array = embed_response["embeddings"]
+
+                    if embeddings_array is None:
+                        raise Exception("Failed to generate embeddings")
+
+                    embeddings = embeddings_array
+
+                    if embeddings:
+                        from shared.database.exceptions import DimensionMismatchError
+                        from shared.embedding.validation import (
+                            adjust_embeddings_dimension,
+                            get_collection_dimension,
+                            validate_dimension_compatibility,
                         )
 
-                        doc_id = hashlib.md5(file_path.encode()).hexdigest()[:16]
+                        expected_dim = get_collection_dimension(qdrant_client, staging_collection_name)
+                        if expected_dim is None:
+                            logger.warning("Could not get dimension for staging collection %s", staging_collection_name)
+                        else:
+                            actual_dim = len(embeddings[0]) if embeddings else 0
 
-                        combined_text = ""
-                        combined_metadata = {}
-                        for text, metadata in text_blocks:
-                            if text.strip():
-                                combined_text += text + "\n\n"
-                                if metadata:
-                                    combined_metadata.update(metadata)
+                            try:
+                                validate_dimension_compatibility(
+                                    expected_dimension=expected_dim,
+                                    actual_dimension=actual_dim,
+                                    collection_name=staging_collection_name,
+                                    model_name=model_name,
+                                )
+                            except DimensionMismatchError as exc:
+                                if vector_dim and vector_dim == expected_dim:
+                                    logger.warning(
+                                        "Dimension mismatch during reindexing: %s. Adjusting embeddings from %s to %s dimensions.",
+                                        exc,
+                                        actual_dim,
+                                        expected_dim,
+                                    )
+                                    embeddings = adjust_embeddings_dimension(
+                                        embeddings, target_dimension=expected_dim, normalize=True
+                                    )
+                                else:
+                                    error_msg = (
+                                        "Embedding dimension mismatch during reindexing: {}. Staging collection {} expects {}-dimensional vectors, "
+                                        "but model {} produced {}-dimensional vectors."
+                                    ).format(exc, staging_collection_name, expected_dim, model_name, actual_dim)
+                                    logger.error(error_msg)
+                                    raise ValueError(error_msg) from exc
 
-                        reindex_collection = collection.copy()
-                        if new_config.get("chunking_strategy"):
-                            reindex_collection["chunking_strategy"] = new_config["chunking_strategy"]
-                        if new_config.get("chunking_config"):
-                            reindex_collection["chunking_config"] = new_config["chunking_config"]
-                        if "chunk_size" in new_config:
-                            reindex_collection["chunk_size"] = new_config["chunk_size"]
-                        if "chunk_overlap" in new_config:
-                            reindex_collection["chunk_overlap"] = new_config["chunk_overlap"]
-
-                        chunking_result = await chunking_service.execute_ingestion_chunking(
-                            text=combined_text,
-                            document_id=doc_id,
-                            collection=reindex_collection,
-                            metadata=combined_metadata,
-                            file_type=file_path.split(".")[-1] if "." in file_path else None,
+                    points = []
+                    for i, chunk in enumerate(all_chunks):
+                        point = PointStruct(
+                            id=str(uuid.uuid4()),
+                            vector=embeddings[i],
+                            payload={
+                                "collection_id": collection["id"],
+                                "doc_id": doc_id,
+                                "chunk_id": chunk["chunk_id"],
+                                "path": file_path,
+                                "content": chunk["text"],
+                                "metadata": chunk.get("metadata", {}),
+                            },
                         )
+                        points.append(point)
 
-                        all_chunks = chunking_result["chunks"]
-                        chunking_stats = chunking_result["stats"]
+                    with QdrantOperationTimer("upsert_staging_vectors"):
+                        points_data = [
+                            {"id": point.id, "vector": point.vector, "payload": point.payload} for point in points
+                        ]
 
-                        logger.info(
-                            "Reprocessed document %s: %s chunks using %s strategy (fallback: %s, duration: %sms)",
-                            file_path,
-                            len(all_chunks),
-                            chunking_stats["strategy_used"],
-                            chunking_stats["fallback"],
-                            chunking_stats["duration_ms"],
-                        )
-
-                        if not all_chunks:
-                            logger.warning("No chunks created for document: %s", file_path)
-                            continue
-
-                        texts = [chunk["text"] for chunk in all_chunks]
-
-                        vecpipe_url = "http://vecpipe:8000/embed"
-                        embed_request = {
-                            "texts": texts,
-                            "model_name": model_name,
-                            "quantization": quantization,
-                            "instruction": instruction,
-                            "batch_size": batch_size,
+                        upsert_request = {
+                            "collection_name": staging_collection_name,
+                            "points": points_data,
+                            "wait": True,
                         }
 
-                        async with httpx.AsyncClient(timeout=300.0) as client:
-                            logger.info("Calling vecpipe /embed for %s texts (reindex)", len(texts))
-                            response = await client.post(vecpipe_url, json=embed_request)
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            vecpipe_upsert_url = "http://vecpipe:8000/upsert"
+                            response = await client.post(vecpipe_upsert_url, json=upsert_request)
 
                             if response.status_code != 200:
                                 raise Exception(
-                                    f"Failed to generate embeddings via vecpipe: {response.status_code} - {response.text}"
+                                    f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
                                 )
 
-                            embed_response = response.json()
-                            embeddings_array = embed_response["embeddings"]
+                    vector_count += len(points)
+                    processed_count += 1
 
-                        if embeddings_array is None:
-                            raise Exception("Failed to generate embeddings")
+                    logger.info(
+                        "Successfully reprocessed document %s: %s vectors created",
+                        file_path,
+                        len(points),
+                    )
 
-                        embeddings = embeddings_array
-
-                        if embeddings:
-                            from shared.database.exceptions import DimensionMismatchError
-                            from shared.embedding.validation import (
-                                adjust_embeddings_dimension,
-                                get_collection_dimension,
-                                validate_dimension_compatibility,
-                            )
-
-                            expected_dim = get_collection_dimension(qdrant_client, staging_collection_name)
-                            if expected_dim is None:
-                                logger.warning(
-                                    "Could not get dimension for staging collection %s", staging_collection_name
-                                )
-                            else:
-                                actual_dim = len(embeddings[0]) if embeddings else 0
-
-                                try:
-                                    validate_dimension_compatibility(
-                                        expected_dimension=expected_dim,
-                                        actual_dimension=actual_dim,
-                                        collection_name=staging_collection_name,
-                                        model_name=model_name,
-                                    )
-                                except DimensionMismatchError as exc:
-                                    if vector_dim and vector_dim == expected_dim:
-                                        logger.warning(
-                                            "Dimension mismatch during reindexing: %s. Adjusting embeddings from %s to %s dimensions.",
-                                            exc,
-                                            actual_dim,
-                                            expected_dim,
-                                        )
-                                        embeddings = adjust_embeddings_dimension(
-                                            embeddings, target_dimension=expected_dim, normalize=True
-                                        )
-                                    else:
-                                        error_msg = (
-                                            "Embedding dimension mismatch during reindexing: {}. Staging collection {} expects {}-dimensional vectors, "
-                                            "but model {} produced {}-dimensional vectors."
-                                        ).format(exc, staging_collection_name, expected_dim, model_name, actual_dim)
-                                        logger.error(error_msg)
-                                        raise ValueError(error_msg) from exc
-
-                        points = []
-                        for i, chunk in enumerate(all_chunks):
-                            point = PointStruct(
-                                id=str(uuid.uuid4()),
-                                vector=embeddings[i],
-                                payload={
-                                    "collection_id": collection["id"],
-                                    "doc_id": doc_id,
-                                    "chunk_id": chunk["chunk_id"],
-                                    "path": file_path,
-                                    "content": chunk["text"],
-                                    "metadata": chunk.get("metadata", {}),
-                                },
-                            )
-                            points.append(point)
-
-                        with QdrantOperationTimer("upsert_staging_vectors"):
-                            points_data = [
-                                {"id": point.id, "vector": point.vector, "payload": point.payload}
-                                for point in points
-                            ]
-
-                            upsert_request = {
-                                "collection_name": staging_collection_name,
-                                "points": points_data,
-                                "wait": True,
-                            }
-
-                            async with httpx.AsyncClient(timeout=60.0) as client:
-                                vecpipe_upsert_url = "http://vecpipe:8000/upsert"
-                                response = await client.post(vecpipe_upsert_url, json=upsert_request)
-
-                                if response.status_code != 200:
-                                    raise Exception(
-                                        f"Failed to upsert vectors via vecpipe: {response.status_code} - {response.text}"
-                                    )
-
-                        vector_count += len(points)
-                        processed_count += 1
-
-                        logger.info(
-                            "Successfully reprocessed document %s: %s vectors created",
-                            file_path,
-                            len(points),
+                    if document_id and all_chunks:
+                        await document_repo.update_status(
+                            document_id,
+                            DocumentStatus.COMPLETED,
+                            chunk_count=len(all_chunks),
                         )
+                        logger.info("Updated document %s with chunk_count=%s", document_id, len(all_chunks))
 
-                        if document_id and all_chunks:
+                    del text_blocks, all_chunks, texts, embeddings_array, embeddings, points
+                    gc.collect()
+
+                except Exception as exc:
+                    logger.error("Failed to reprocess document %s: %s", file_path, exc)
+                    failed_count += 1
+
+                    if document_id:
+                        try:
                             await document_repo.update_status(
                                 document_id,
-                                DocumentStatus.COMPLETED,
-                                chunk_count=len(all_chunks),
+                                DocumentStatus.FAILED,
+                                error_message=str(exc)[:500],
                             )
-                            logger.info("Updated document %s with chunk_count=%s", document_id, len(all_chunks))
-
-                        del text_blocks, all_chunks, texts, embeddings_array, embeddings, points
-                        gc.collect()
-
-                    except Exception as exc:
-                        logger.error("Failed to reprocess document %s: %s", file_path, exc)
-                        failed_count += 1
-
-                        if document_id:
-                            try:
-                                await document_repo.update_status(
-                                    document_id,
-                                    DocumentStatus.FAILED,
-                                    error_message=str(exc)[:500],
-                                )
-                                logger.info(
-                                    "Marked document %s as FAILED due to reprocessing error", document_id
-                                )
-                            except Exception as update_error:
-                                logger.error("Failed to update document status to FAILED: %s", update_error)
+                            logger.info("Marked document %s as FAILED due to reprocessing error", document_id)
+                        except Exception as update_error:
+                            logger.error("Failed to update document status to FAILED: %s", update_error)
 
             progress = (processed_count / total_documents) * 100 if total_documents > 0 else 0
             await updater.send_update(
-                    "reprocessing_progress",
-                    {
-                        "processed": processed_count,
-                        "total": total_documents,
-                        "failed": failed_count,
-                        "progress_percent": progress,
-                        "vectors_created": vector_count,
-                    },
-                )
+                "reprocessing_progress",
+                {
+                    "processed": processed_count,
+                    "total": total_documents,
+                    "failed": failed_count,
+                    "progress_percent": progress,
+                    "vectors_created": vector_count,
+                },
+            )
 
         record_reindex_checkpoint(collection["id"], "reprocessing_complete")
         checkpoints.append(("reprocessing_complete", time.time()))

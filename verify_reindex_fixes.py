@@ -27,7 +27,7 @@ def verify_reindex_chunk_count_update():
 
         checks = [
             "chunk_count=len(all_chunks)" in content,
-            "logger.info(\"Updated document" in content,
+            'logger.info("Updated document' in content,
         ]
 
         if all(checks):
@@ -71,7 +71,10 @@ def verify_transaction_boundaries():
     try:
         content = REINDEX_PATH.read_text()
 
-        if "create_celery_chunking_service_with_repos" in content and "DocumentRepository(document_repo.session)" not in content:
+        if (
+            "create_celery_chunking_service_with_repos" in content
+            and "DocumentRepository(document_repo.session)" not in content
+        ):
             print("✅ Transaction boundaries properly maintained - reusing existing repository instances")
             return True
         print("⚠️  Transaction boundaries may have issues - check repository instantiation")
