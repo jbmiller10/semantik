@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import pg_connection_manager
 from packages.shared.database.database import AsyncSessionLocal
-from packages.shared.database.models import DocumentStatus, OperationStatus, OperationType
+from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
 from packages.shared.database.repositories.chunk_repository import ChunkRepository
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
@@ -684,6 +684,10 @@ async def _process_chunking_operation_async(
                         OperationStatus.COMPLETED,
                         completed_at=datetime.now(UTC),
                     )
+                    await collection_repo.update_status(
+                        collection_identifier,
+                        CollectionStatus.READY,
+                    )
                     await db.commit()
                     duration = time.time() - start_time
                     chunking_task_duration.labels(operation_type="chunking").observe(duration)
@@ -790,6 +794,10 @@ async def _process_chunking_operation_async(
                     operation_id,
                     OperationStatus.COMPLETED,
                     completed_at=datetime.now(UTC),
+                )
+                await collection_repo.update_status(
+                    collection_identifier,
+                    CollectionStatus.READY,
                 )
                 await db.commit()
             except Exception as exc:  # pragma: no cover - exercised in integration

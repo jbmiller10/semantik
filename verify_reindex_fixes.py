@@ -13,21 +13,21 @@ from pathlib import Path
 # Add packages to path
 sys.path.insert(0, str(Path(__file__).parent))
 
+INGESTION_PATH = Path("packages/webui/tasks/ingestion.py")
+REINDEX_PATH = Path("packages/webui/tasks/reindex.py")
+
 
 def verify_reindex_chunk_count_update():
     """Verify that REINDEX updates Document.chunk_count."""
     print("\n🔍 Verifying REINDEX chunk_count Update...")
 
-    # Check the code in tasks.py
+    # Check the code in reindex module
     try:
-        content = Path("packages/webui/tasks.py").read_text()
+        content = REINDEX_PATH.read_text()
 
-        # Check for chunk_count update after successful reprocessing
         checks = [
-            "# Update document with chunk count after successful reprocessing" in content,
-            'await document_repo.update_status(\n                                doc["id"],\n                                DocumentStatus.COMPLETED,\n                                chunk_count=len(all_chunks),'
-            in content,
-            "logger.info(f\"Updated document {doc['id']} with chunk_count={len(all_chunks)}\")" in content,
+            "chunk_count=len(all_chunks)" in content,
+            'logger.info("Updated document' in content,
         ]
 
         if all(checks):
@@ -46,14 +46,11 @@ def verify_failed_document_marking():
     print("\n🔍 Verifying Failed Document Status Update...")
 
     try:
-        content = Path("packages/webui/tasks.py").read_text()
+        content = REINDEX_PATH.read_text()
 
-        # Check for failed document status update
         checks = [
-            "# Mark failed document status" in content,
-            'await document_repo.update_status(\n                                    doc["id"],\n                                    DocumentStatus.FAILED,'
-            in content,
-            "logger.info(f\"Marked document {doc['id']} as FAILED due to reprocessing error\")" in content,
+            "DocumentStatus.FAILED" in content,
+            "Marked document" in content,
         ]
 
         if all(checks):
@@ -72,20 +69,12 @@ def verify_transaction_boundaries():
     print("\n🔍 Verifying Transaction Boundaries...")
 
     try:
-        content = Path("packages/webui/tasks.py").read_text()
+        content = REINDEX_PATH.read_text()
 
-        # Check that we're reusing existing repos instead of creating new ones
-        checks = [
-            "# Reuse the existing collection_repo passed to this function instead of creating a new one" in content,
-            "collection_repo=collection_repo,  # Use existing repo with same session" in content,
-        ]
-
-        # Verify we're NOT creating unnecessary new repository instances
-        bad_patterns = [
-            "collection_repo_for_chunking = CollectionRepository(document_repo.session)" in content,
-        ]
-
-        if all(checks) and not any(bad_patterns):
+        if (
+            "create_celery_chunking_service_with_repos" in content
+            and "DocumentRepository(document_repo.session)" not in content
+        ):
             print("✅ Transaction boundaries properly maintained - reusing existing repository instances")
             return True
         print("⚠️  Transaction boundaries may have issues - check repository instantiation")
@@ -101,11 +90,11 @@ def verify_consistency_between_operations():
     print("\n🔍 Verifying Consistency Between APPEND and REINDEX...")
 
     try:
-        content = Path("packages/webui/tasks.py").read_text()
+        append_content = INGESTION_PATH.read_text()
+        reindex_content = REINDEX_PATH.read_text()
 
-        # Check for chunk_count updates in both operations
-        append_chunk_count = "chunk_count=len(chunks)" in content  # APPEND uses 'chunks'
-        reindex_chunk_count = "chunk_count=len(all_chunks)" in content  # REINDEX uses 'all_chunks'
+        append_chunk_count = "chunk_count=len(chunks)" in append_content
+        reindex_chunk_count = "chunk_count=len(all_chunks)" in reindex_content
 
         if append_chunk_count and reindex_chunk_count:
             print("✅ Both APPEND and REINDEX operations update chunk_count consistently")
@@ -128,12 +117,11 @@ def check_imports():
     print("\n🔍 Verifying Required Imports...")
 
     try:
-        content = Path("packages/webui/tasks.py").read_text()
+        content = REINDEX_PATH.read_text()
 
-        # Check for necessary imports
         imports = [
             "from shared.database.models import DocumentStatus",
-            "from webui.services.chunking_service import ChunkingService",
+            "from packages.webui.services.chunking.container import resolve_celery_chunking_service",
         ]
 
         missing = []
