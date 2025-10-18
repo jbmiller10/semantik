@@ -242,6 +242,7 @@ async def generate_preview(
             strategy=preview_request.strategy,
             content=preview_request.content or "",  # Provide empty string if content is None
             config=preview_request.config.model_dump() if preview_request.config else None,
+            max_chunks=preview_request.max_chunks,
         )
 
         # Convert DTO to API response model and add correlation ID
@@ -320,7 +321,7 @@ async def compare_strategies(
             content=compare_request.content or "",
             strategies=strategy_names,
             configs=configs_dict,
-            max_chunks_per_strategy=5,
+            max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
         )
 
         # Convert DTO to API response model
