@@ -9,58 +9,35 @@ from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.config import settings
 from packages.shared.database import get_db
 
-# Import new chunking services
-from .chunking import (
-    ChunkingCache,
-    ChunkingConfigManager,
-    ChunkingMetrics,
-    ChunkingOrchestrator,
-    ChunkingProcessor,
-    ChunkingValidator,
+from .chunking.container import (
+    get_chunking_orchestrator as container_get_chunking_orchestrator,
+    get_chunking_service_adapter,
+    get_legacy_chunking_service,
+    get_redis_manager as container_get_redis_manager,
+    resolve_api_chunking_dependency,
+    resolve_celery_chunking_service,
 )
+from .chunking.orchestrator import ChunkingOrchestrator
 from .chunking_service import ChunkingService
+from .chunking.adapter import ChunkingServiceAdapter
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
-from .redis_manager import RedisConfig, RedisManager
+from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
-from .type_guards import ensure_async_redis
 
 logger = logging.getLogger(__name__)
 
-# Singleton Redis manager
-_redis_manager: RedisManager | None = None
-
-
 def get_redis_manager() -> RedisManager:
-    """Get or create the Redis manager singleton.
+    """Backward-compatible wrapper over chunking container Redis manager."""
 
-    This ensures we have a single manager handling both async and sync
-    Redis clients with proper connection pooling.
-
-    Returns:
-        RedisManager instance
-    """
-    global _redis_manager
-    if _redis_manager is None:
-        config = RedisConfig(
-            url=settings.REDIS_URL,
-            max_connections=50,
-            decode_responses=True,
-            socket_timeout=5,
-            socket_connect_timeout=5,
-            retry_on_timeout=True,
-            health_check_interval=30,
-            socket_keepalive=True,
-        )
-        _redis_manager = RedisManager(config)
-        logger.info("Initialized Redis manager with URL: %s", settings.REDIS_URL)
-    return _redis_manager
+    manager = container_get_redis_manager()
+    logger.debug("Reusing Redis manager from chunking container")
+    return manager
 
 
 def create_collection_service(db: AsyncSession) -> CollectionService:
@@ -274,182 +251,48 @@ async def get_directory_scan_service() -> DirectoryScanService:
 
 
 async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
-    """Create a ChunkingOrchestrator instance with all required services.
+    """Create orchestrator using composition root."""
 
-    This factory function creates the new orchestrator-based chunking architecture.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured ChunkingOrchestrator instance
-    """
-    # Create repository instances
-    collection_repo = CollectionRepository(db)
-    document_repo = DocumentRepository(db)
-
-    # Get async Redis client from manager
-    redis_manager = get_redis_manager()
-    redis_client = await redis_manager.async_client()
-    redis_client = ensure_async_redis(redis_client)
-
-    # Create individual services
-    processor = ChunkingProcessor()
-    cache = ChunkingCache(redis_client)
-    metrics = ChunkingMetrics()
-    validator = ChunkingValidator(db, collection_repo, document_repo)
-    config_manager = ChunkingConfigManager()
-
-    # Create and return orchestrator
-    return ChunkingOrchestrator(
-        processor=processor,
-        cache=cache,
-        metrics=metrics,
-        validator=validator,
-        config_manager=config_manager,
-        db_session=db,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-    )
+    return await container_get_chunking_orchestrator(db)
 
 
-async def create_chunking_service(db: AsyncSession) -> ChunkingService:
-    """Create a ChunkingService instance with required dependencies.
+async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter:
+    """Return chunking dependency that emulates legacy service."""
 
-    DEPRECATED: This function maintains backward compatibility.
-    New code should use create_chunking_orchestrator instead.
-
-    This factory function creates a chunking service for managing document
-    chunking strategies and operations.
-
-    Args:
-        db: AsyncSession instance from FastAPI's dependency injection
-
-    Returns:
-        Configured ChunkingService instance
-
-    Example:
-        ```python
-        from fastapi import Depends
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from shared.database import get_db
-        from webui.services.factory import create_chunking_service
-
-        async def get_chunking_service(
-            db: AsyncSession = Depends(get_db)
-        ) -> ChunkingService:
-            return create_chunking_service(db)
-
-        # In your endpoint
-        async def preview_chunking(
-            request: PreviewRequest,
-            service: ChunkingService = Depends(get_chunking_service),
-        ):
-            result = await service.preview_chunking(
-                content=request.content,
-                strategy=request.strategy,
-                config=request.config
-            )
-            return result
-        ```
-    """
-    # Create repository instances
-    collection_repo = CollectionRepository(db)
-    document_repo = DocumentRepository(db)
-
-    # Get async Redis client from manager
-    redis_manager = get_redis_manager()
-    redis_client = await redis_manager.async_client()
-
-    # Validate client type
-    redis_client = ensure_async_redis(redis_client)
-
-    # Create and return service
-    return ChunkingService(
-        db_session=db,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=redis_client,
-    )
+    return await resolve_api_chunking_dependency(db, prefer_adapter=True)
 
 
-def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
-    """Create ChunkingService for Celery tasks without Redis.
+async def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService | ChunkingServiceAdapter:
+    """Return chunking dependency for Celery execution."""
 
-    This factory creates a chunking service specifically for use in Celery tasks.
-    Since Celery tasks use sync Redis directly and ChunkingService expects async Redis,
-    we pass None for redis_client to avoid type conflicts. The Celery task will
-    handle Redis operations directly using sync client.
-
-    Args:
-        db_session: Database session (can be async, service handles it)
-
-    Returns:
-        ChunkingService configured without Redis client
-
-    Raises:
-        RuntimeError: If Redis manager is not initialized
-    """
-    # Create repository instances
-    collection_repo = CollectionRepository(db_session)
-    document_repo = DocumentRepository(db_session)
-
-    # For Celery tasks, we don't pass Redis client to ChunkingService
-    # The task itself will handle Redis operations using sync client
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=None,  # Celery tasks handle Redis directly
-    )
+    return await resolve_celery_chunking_service(db_session)
 
 
-def create_celery_chunking_service_with_repos(
+async def create_celery_chunking_service_with_repos(
     db_session: AsyncSession,
     collection_repo: CollectionRepository,
     document_repo: DocumentRepository,
-) -> ChunkingService:
-    """Create ChunkingService for Celery tasks with existing repositories.
+) -> ChunkingService | ChunkingServiceAdapter:
+    """Return Celery dependency using existing repositories."""
 
-    This factory creates a chunking service using existing repository instances,
-    which is essential for maintaining transaction boundaries in Celery tasks.
-    This pattern ensures that all database operations within a task use the same
-    session and transaction context.
-
-    Args:
-        db_session: Database session (can be async, service handles it)
-        collection_repo: Existing collection repository instance
-        document_repo: Existing document repository instance
-
-    Returns:
-        ChunkingService configured with provided repositories and no Redis client
-
-    Example:
-        ```python
-        # In a Celery task with existing repositories
-        chunking_service = create_celery_chunking_service_with_repos(
-            db_session=document_repo.session,
-            collection_repo=collection_repo,
-            document_repo=document_repo,
-        )
-        ```
-    """
-    # Use the provided repositories directly to maintain transaction boundaries
-    return ChunkingService(
-        db_session=db_session,
+    return await resolve_celery_chunking_service(
+        db_session,
         collection_repo=collection_repo,
         document_repo=document_repo,
-        redis_client=None,  # Celery tasks handle Redis directly
     )
 
 
 async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
-    """FastAPI dependency for ChunkingOrchestrator injection (new architecture)."""
-    return await create_chunking_orchestrator(db)
+    """FastAPI dependency for orchestrator injection (new architecture)."""
+
+    return await container_get_chunking_orchestrator(db)
 
 
-async def get_chunking_service(db: AsyncSession = Depends(get_db)) -> ChunkingService:
-    """FastAPI dependency for ChunkingService injection (backward compatibility)."""
+async def get_chunking_service(
+    db: AsyncSession = Depends(get_db),
+) -> ChunkingService | ChunkingServiceAdapter:
+    """FastAPI dependency for legacy ChunkingService consumers."""
+
     return await create_chunking_service(db)
 
 
