@@ -1,0 +1,400 @@
+[2025-10-17T23:51:46] OpenAI Codex v0.0.0 (research preview)
+--------
+workdir: /home/john/semantik
+model: gpt-5-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: auto
+--------
+[2025-10-17T23:51:46] User instructions:
+Context: Repository: /home/john/semantik (polyglot monorepo). Branch: progress-update-manager. Ticket ENG-002 summary: create shared ErrorClassifier to unify existing duplication between `packages/webui/chunking_tasks.py::_classify_error_sync` (string codes) and `packages/webui/services/chunking_error_handler.py::classify_error` (ChunkingErrorType enums). Needs new module `packages/webui/utils/error_classifier.py` providing ErrorClassificationResult dataclass with enum/string/metadata, ErrorClassifier class with ordered rules (type checks like ChunkingMemoryError, message heuristics like "timeout"), extension hooks. Tasks include refactoring celery task wrapper to use classifier string output, updating ChunkingErrorHandler to delegate to classifier for enums, wiring dependencies, updating unit tests (`tests/unit/test_chunking_service_errors.py`, celery task tests), adding new tests for classifier, ensuring type hints and docs updated. Acceptance criteria: Celery tasks still emit same string codes, handler returns same enums, new tests cover rules, lint/type-check/test pass. Key files: `packages/webui/chunking_tasks.py`, `packages/webui/services/chunking_error_handler.py`, `packages/shared/chunking/domain/exceptions.py`. Investigate other modules referencing `_classify_error_sync` or classification logic. Read ticket file `tickets/ENG-002.txt` for details. Produce a phased plan (analysis, design, implementation, testing, rollout) with rationale.
+
+Agent: Develop a detailed execution plan for ticket ENG-002 (centralize error classification logic) in the Semantik monorepo. Outline the implementation phases, affected modules, risks, and required tests. Focus on unifying error classification logic between celery tasks and the chunking error handler, per ticket requirements.
+
+[Running in read-only mode - no modifications allowed]
+[2025-10-17T23:51:48] OpenAI Codex v0.0.0 (research preview)
+--------
+workdir: /home/john/semantik
+model: gpt-5-codex
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: auto
+--------
+[2025-10-17T23:51:48] User instructions:
+Context: Repository: /home/john/semantik (polyglot monorepo). Branch: progress-update-manager. Ticket ENG-002 summary: create shared ErrorClassifier to unify existing duplication between `packages/webui/chunking_tasks.py::_classify_error_sync` (string codes) and `packages/webui/services/chunking_error_handler.py::classify_error` (ChunkingErrorType enums). Needs new module `packages/webui/utils/error_classifier.py` providing ErrorClassificationResult dataclass with enum/string/metadata, ErrorClassifier class with ordered rules (type checks like ChunkingMemoryError, message heuristics like "timeout"), extension hooks. Tasks include refactoring celery task wrapper to use classifier string output, updating ChunkingErrorHandler to delegate to classifier for enums, wiring dependencies, updating unit tests (`tests/unit/test_chunking_service_errors.py`, celery task tests), adding new tests for classifier, ensuring type hints and docs updated. Acceptance criteria: Celery tasks still emit same string codes, handler returns same enums, new tests cover rules, lint/type-check/test pass. Key files: `packages/webui/chunking_tasks.py`, `packages/webui/services/chunking_error_handler.py`, `packages/shared/chunking/domain/exceptions.py`. Investigate other modules referencing `_classify_error_sync` or classification logic. Read ticket file `tickets/ENG-002.txt` for details. Produce a phased plan (analysis, design, implementation, testing, rollout) with rationale.
+
+Agent: Develop a detailed execution plan for ticket ENG-002 (centralize error classification logic) in the Semantik monorepo. Outline the implementation phases, affected modules, risks, and required tests. Focus on unifying error classification logic between celery tasks and the chunking error handler, per ticket requirements.
+
+[Running in read-only mode - no modifications allowed]
+
+[2025-10-17T23:51:53] thinking
+
+**Outlining phased project plan**
+[2025-10-17T23:51:53] exec bash -lc ls in /home/john/semantik/.
+[2025-10-17T23:51:53] bash -lc ls succeeded in 19ms:
+AGENTS.md
+alembic
+alembic.ini
+apps
+AUDIT_DETAILED_FINDINGS.md
+AUDIT_INDEX.md
+AUDIT_README.txt
+AUDIT_SUMMARY.txt
+CLAUDE_DOCKER.md
+CLAUDE.md
+cleanup.md
+CODE_AUDIT_REPORT.md
+coverage.xml
+data
+docker-compose-cuda.sh
+docker-compose.cuda.yml
+docker-compose.dev.yml
+docker-compose.prod.yml
+docker-compose.yml
+docker-entrypoint.sh
+[2025-10-17T23:51:53] tokens used: 9,402
+
+[2025-10-17T23:52:00] thinking
+
+**Locating ticket file**
+[2025-10-17T23:52:00] exec bash -lc "sed -n '1,160p' tickets/ENG-002.txt" in /home/john/semantik/.
+[2025-10-17T23:52:00] bash -lc "sed -n '1,160p' tickets/ENG-002.txt" succeeded in 18ms:
+Ticket: ENG-002 – Centralize Error Classification Logic
+Phase: 1 – Shared Utilities (Sprint 1)
+Owner Type: Backend engineer with expertise in exception handling and typing
+
+Repository Context:
+- Monorepo root: /home/john/semantik
+- Backend: `packages/webui/`
+- Current error classification is split between Celery task helpers (string tags) and `ChunkingErrorHandler` (enum-based heuristics)
+
+Problem Statement:
+- `packages/webui/chunking_tasks.py:388-415` defines `_classify_error_sync` returning string identifiers for internal exception classes (e.g., `ChunkingMemoryError`).
+- `packages/webui/services/chunking_error_handler.py:383-415` implements `classify_error` converting raw Exceptions into `ChunkingErrorType` enums using string heuristics.
+- Divergent logic creates inconsistent outcomes and forces multiple code paths to evolve separately. The audit flagged this as critical duplication even though semantics differ.
+
+Goal:
+Provide a single authoritative `ErrorClassifier` that encapsulates rule evaluation. Offer lightweight adapters so Celery tasks can retain simple string outputs while service layer obtains enums. Ensure future rule extensions propagate everywhere automatically.
+
+Implementation Steps:
+1. Create `packages/webui/utils/error_classifier.py` with:
+   - `ErrorClassificationResult` dataclass capturing `enum_type`, `string_code`, and optional metadata (e.g., `confidence`, `matched_rule`).
+[2025-10-17T23:52:00] tokens used: 9,890
+
+[2025-10-17T23:52:03] thinking
+
+**Outlining phased plan and gathering context**
+[2025-10-17T23:52:04] exec bash -lc "sed -n '360,460p' packages/webui/chunking_tasks.py" in /home/john/semantik/.
+[2025-10-17T23:52:04] bash -lc "sed -n '360,460p' packages/webui/chunking_tasks.py" succeeded in 18ms:
+                "error": str(exc),
+            },
+        )
+
+        # Save state for retry if error handler available
+        if self._redis_client:
+            # Use sync Redis client directly to save retry state
+            try:
+                retry_state: "Mapping[str | bytes, bytes | float | int | str]" = {
+                    "operation_id": operation_id,
+                    "correlation_id": correlation_id,
+                    "task_id": task_id,
+                    "retry_count": str(self.request.retries),
+                    "last_error": str(exc),
+                    "error_type": self._classify_error_sync(exc),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                self._redis_client.hset(
+                    f"operation:{operation_id}:retry_state",
+                    mapping=retry_state,
+[2025-10-17T23:52:04] tokens used: 11,031
+
+[2025-10-17T23:52:07] thinking
+
+**Identifying additional functions needed**
+[2025-10-17T23:52:07] exec bash -lc "sed -n '360,480p' packages/webui/services/chunking_error_handler.py" in /home/john/semantik/.
+[2025-10-17T23:52:07] bash -lc "sed -n '360,480p' packages/webui/services/chunking_error_handler.py" succeeded in 18ms:
+            )
+
+        if error_type == ChunkingErrorType.TIMEOUT_ERROR:
+            # Progressive timeout increase based on retry count
+            retry_key = f"{operation_id}:{error_type.value}" if operation_id else f"{document_id}:{error_type.value}"
+            retry_count = self.retry_counts.get(retry_key, 0)
+
+            # Exponential timeout increase: 450s, 675s, 1012s
+            base_timeout = self.calculate_extended_timeout()
+            new_timeout = int(base_timeout * (1.5**retry_count))
+
+            return StreamRecoveryAction(
+                action="retry_with_extended_timeout",
+                checkpoint=bytes_processed,
+                new_timeout=new_timeout,
+            )
+
+        # Unrecoverable - mark document as failed
+        return StreamRecoveryAction(
+            action="mark_failed",
+[2025-10-17T23:52:07] tokens used: 12,697
+
+[2025-10-17T23:52:10] thinking
+
+**Searching for classification logic references**
+[2025-10-17T23:52:10] exec bash -lc 'rg "_classify_error_sync" -n' in /home/john/semantik/.
+[2025-10-17T23:52:10] bash -lc 'rg "_classify_error_sync" -n' exited 127 in 19ms:
+ERROR
+bash: line 1: rg: command not found
+[2025-10-17T23:52:10] tokens used: 14,382
+
+[2025-10-17T23:52:13] thinking
+
+**Choosing text search tool**
+[2025-10-17T23:52:14] exec bash -lc 'grep -R "_classify_error_sync" -n' in /home/john/semantik/.
+[2025-10-17T23:52:15] bash -lc 'grep -R "_classify_error_sync" -n' exited 124 in 1.00s:
+ERROR
+[2025-10-17T23:52:15] tokens used: 14,508
+
+[2025-10-17T23:52:18] thinking
+
+**Reporting grep search duration and path**
+[2025-10-17T23:52:18] exec bash -lc 'grep -R "_classify_error_sync" packages/webui -n' in /home/john/semantik/.
+[2025-10-17T23:52:18] bash -lc 'grep -R "_classify_error_sync" packages/webui -n' succeeded in 22ms:
+packages/webui/chunking_tasks.py:374:                    "error_type": self._classify_error_sync(exc),
+packages/webui/chunking_tasks.py:412:    def _classify_error_sync(self, exc: Exception) -> str:
+[2025-10-17T23:52:18] tokens used: 15,385
+
+[2025-10-17T23:52:20] thinking
+
+**Reviewing chunking error types**
+[2025-10-17T23:52:20] exec bash -lc "sed -n '1,200p' packages/shared/chunking/domain/exceptions.py" in /home/john/semantik/.
+[2025-10-17T23:52:20] bash -lc "sed -n '1,200p' packages/shared/chunking/domain/exceptions.py" succeeded in 19ms:
+#!/usr/bin/env python3
+"""
+Domain-specific exceptions for chunking operations.
+
+These exceptions represent business rule violations and domain errors,
+not technical infrastructure failures.
+"""
+
+from typing import Any
+
+
+class ChunkingDomainError(Exception):
+    """Base exception for all chunking domain errors."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        """Initialize domain error with message and optional details."""
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+[2025-10-17T23:52:20] tokens used: 15,663
+
+[2025-10-17T23:52:22] thinking
+
+**Searching for ChunkingMemoryError**
+[2025-10-17T23:52:23] exec bash -lc 'grep -n "ChunkingMemoryError" -n packages -R' in /home/john/semantik/.
+[2025-10-17T23:52:23] bash -lc 'grep -n "ChunkingMemoryError" -n packages -R' succeeded in 28ms:
+packages/webui/services/chunking_error_handler_usage_example.py:15:from packages.webui.api.chunking_exceptions import ChunkingMemoryError
+packages/webui/services/chunking_error_handler_usage_example.py:38:        raise ChunkingMemoryError(
+packages/webui/CHUNKING_EXCEPTION_HANDLING_README.md:37:| `ChunkingMemoryError` | 507 (Insufficient Storage) | Memory limits exceeded |
+packages/webui/CHUNKING_EXCEPTION_HANDLING_README.md:103:from ..api.chunking_exceptions import ChunkingMemoryError
+packages/webui/CHUNKING_EXCEPTION_HANDLING_README.md:109:        raise ChunkingMemoryError(
+packages/webui/CHUNKING_EXCEPTION_HANDLING_README.md:147:  "type": "ChunkingMemoryError",
+packages/webui/api/chunking_exceptions.py:69:class ChunkingMemoryError(ChunkingError):
+packages/webui/api/chunking_exception_handlers.py:21:    ChunkingMemoryError,
+packages/webui/api/chunking_exception_handlers.py:243:async def handle_chunking_memory_error(request: Request, exc: ChunkingMemoryError) -> JSONResponse:
+packages/webui/api/chunking_exception_handlers.py:302:    app.add_exception_handler(ChunkingMemoryError, handle_chunking_memory_error)  # type: ignore[arg-type]
+packages/webui/api/chunking_integration_example.py:54:from packages.webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
+packages/webui/api/chunking_integration_example.py:95:            raise ChunkingMemoryError(
+packages/webui/chunking_tasks.py:45:    ChunkingMemoryError,
+packages/webui/chunking_tasks.py:163:        ChunkingMemoryError,
+packages/webui/chunking_tasks.py:284:        if isinstance(exc, ChunkingMemoryError):
+packages/webui/chunking_tasks.py:421:        if isinstance(exc, ChunkingMemoryError):
+packages/webui/chunking_tasks.py:710:                raise ChunkingMemoryError(
+packages/webui/chunking_tasks.py:843:            raise ChunkingMemoryError(
+packages/webui/chunking_tasks.py:1168:                raise ChunkingMemoryError(
+packages/webui/chunking_tasks.py:1386:        ChunkingMemoryError: If memory limit exceeded
+[2025-10-17T23:52:23] tokens used: 16,641
+
+[2025-10-17T23:52:25] thinking
+
+**Searching for error enums**
+[2025-10-17T23:52:25] exec bash -lc 'grep -R "class ChunkingErrorType" -n packages' in /home/john/semantik/.
+[2025-10-17T23:52:25] bash -lc 'grep -R "class ChunkingErrorType" -n packages' succeeded in 27ms:
+packages/webui/services/chunking_error_handler.py:29:class ChunkingErrorType(Enum):
+[2025-10-17T23:52:25] tokens used: 17,449
+[2025-10-17T23:52:28] exec bash -lc "sed -n '1,120p' packages/webui/services/chunking_error_handler.py" in /home/john/semantik/.
+[2025-10-17T23:52:28] bash -lc "sed -n '1,120p' packages/webui/services/chunking_error_handler.py" succeeded in 18ms:
+#!/usr/bin/env python3
+"""
+Error handling framework for chunking operations.
+
+This module provides comprehensive error handling, retry strategies,
+and recovery mechanisms for chunking failures.
+"""
+
+import asyncio
+import hashlib
+import json
+import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any
+
+import psutil
+from redis.asyncio import Redis
+
+[2025-10-17T23:52:28] tokens used: 17,603
+
+[2025-10-17T23:52:38] thinking
+
+**Outlining phased plan for error classification**
+[2025-10-17T23:52:38] exec bash -lc 'grep -R "classify_error" tests -n' in /home/john/semantik/.
+[2025-10-17T23:52:38] bash -lc 'grep -R "classify_error" tests -n' succeeded in 41ms:
+tests/unit/test_chunking_error_handler.py:30:    def test_classify_error_memory(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:33:        assert error_handler.classify_error(MemoryError()) == ChunkingErrorType.MEMORY_ERROR
+tests/unit/test_chunking_error_handler.py:37:        assert error_handler.classify_error(error) == ChunkingErrorType.MEMORY_ERROR
+tests/unit/test_chunking_error_handler.py:39:    def test_classify_error_timeout(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:42:        assert error_handler.classify_error(TimeoutError()) == ChunkingErrorType.TIMEOUT_ERROR
+tests/unit/test_chunking_error_handler.py:46:        assert error_handler.classify_error(error) == ChunkingErrorType.TIMEOUT_ERROR
+tests/unit/test_chunking_error_handler.py:48:    def test_classify_error_encoding(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:53:        assert error_handler.classify_error(exc_info.value) == ChunkingErrorType.INVALID_ENCODING
+tests/unit/test_chunking_error_handler.py:57:        assert error_handler.classify_error(error) == ChunkingErrorType.INVALID_ENCODING
+tests/unit/test_chunking_error_handler.py:59:    def test_classify_error_permission(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:62:        assert error_handler.classify_error(error) == ChunkingErrorType.PERMISSION_ERROR
+tests/unit/test_chunking_error_handler.py:65:        assert error_handler.classify_error(error) == ChunkingErrorType.PERMISSION_ERROR
+tests/unit/test_chunking_error_handler.py:67:    def test_classify_error_network(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:70:        assert error_handler.classify_error(error) == ChunkingErrorType.NETWORK_ERROR
+tests/unit/test_chunking_error_handler.py:73:        assert error_handler.classify_error(error) == ChunkingErrorType.NETWORK_ERROR
+tests/unit/test_chunking_error_handler.py:75:    def test_classify_error_validation(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:78:        assert error_handler.classify_error(error) == ChunkingErrorType.VALIDATION_ERROR
+tests/unit/test_chunking_error_handler.py:80:    def test_classify_error_strategy(self, error_handler: ChunkingErrorHandler) -> None:
+tests/unit/test_chunking_error_handler.py:83:        assert error_handler.classify_error(error) == ChunkingErrorType.STRATEGY_ERROR
+tests/unit/test_chunking_error_handler.py:86:        assert error_handler.classify_error(error) == ChunkingErrorType.STRATEGY_ERROR
+[2025-10-17T23:52:38] tokens used: 19,877
+
+[2025-10-17T23:52:40] thinking
+
+**Searching for chunking_tasks tests**
+[2025-10-17T23:52:41] exec bash -lc 'grep -R "error_type" tests/unit -n | head' in /home/john/semantik/.
+[2025-10-17T23:52:41] bash -lc 'grep -R "error_type" tests/unit -n | head' succeeded in 26ms:
+tests/unit/test_chunking_error_handler.py:141:        error_type = ChunkingErrorType.MEMORY_ERROR
+tests/unit/test_chunking_error_handler.py:144:        error_handler.retry_counts[f"{operation_id}:{error_type.value}"] = 1
+tests/unit/test_chunking_error_handler.py:145:        assert error_handler.calculate_retry_delay(operation_id, error_type) == 10
+tests/unit/test_chunking_error_handler.py:147:        error_handler.retry_counts[f"{operation_id}:{error_type.value}"] = 2
+tests/unit/test_chunking_error_handler.py:148:        assert error_handler.calculate_retry_delay(operation_id, error_type) == 20
+tests/unit/test_chunking_error_handler.py:150:        error_handler.retry_counts[f"{operation_id}:{error_type.value}"] = 3
+tests/unit/test_chunking_error_handler.py:151:        assert error_handler.calculate_retry_delay(operation_id, error_type) == 40
+tests/unit/test_chunking_error_handler.py:154:        error_handler.retry_counts[f"{operation_id}:{error_type.value}"] = 10
+tests/unit/test_chunking_error_handler.py:155:        assert error_handler.calculate_retry_delay(operation_id, error_type) == 300
+tests/unit/test_chunking_error_handler.py:163:        error_type = ChunkingErrorType.TIMEOUT_ERROR
+[2025-10-17T23:52:41] tokens used: 20,789
+
+[2025-10-17T23:52:43] thinking
+
+**Reviewing tests for chunking tasks**
+[2025-10-17T23:52:44] exec bash -lc "sed -n '1,200p' tests/unit/test_chunking_tasks.py" in /home/john/semantik/.
+[2025-10-17T23:52:44] bash -lc "sed -n '1,200p' tests/unit/test_chunking_tasks.py" exited 2 in 18ms:
+ERROR
+sed: can't read tests/unit/test_chunking_tasks.py: No such file or directory
+[2025-10-17T23:52:44] tokens used: 22,426
+
+[2025-10-17T23:52:45] thinking
+
+**Checking for related test files**
+[2025-10-17T23:52:46] exec bash -lc 'ls tests/unit' in /home/john/semantik/.
+[2025-10-17T23:52:46] bash -lc 'ls tests/unit' succeeded in 19ms:
+chunking
+__init__.py
+__pycache__
+test_async_sqlalchemy_patterns.py
+test_auth.py
+test_chunking_error_handler_enhanced.py
+test_chunking_error_handler.py
+test_chunking_exception_handlers.py
+test_chunking_exceptions.py
+test_chunking_integration_example.py
+test_chunking_security.py
+test_chunking_service_errors.py
+test_chunking_service.py
+test_chunking_strategies.py
+test_collection_service_instantiation.py
+test_collection_service_mock_integration.py
+test_correlation_middleware.py
+test_dependencies.py
+test_document_repository.py
+test_extract_chunks.py
+[2025-10-17T23:52:46] tokens used: 22,620
+
+[2025-10-17T23:52:48] thinking
+
+**Inspecting test_chunking_service_errors.py**
+[2025-10-17T23:52:49] exec bash -lc "sed -n '1,200p' tests/unit/test_chunking_service_errors.py" in /home/john/semantik/.
+[2025-10-17T23:52:49] bash -lc "sed -n '1,200p' tests/unit/test_chunking_service_errors.py" succeeded in 18ms:
+#!/usr/bin/env python3
+
+"""
+Unit tests for ChunkingService error handling.
+
+This module tests error handling in the ChunkingService including
+memory limit enforcement, timeout handling, strategy fallback,
+validation errors, and mock external dependencies.
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from redis import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from packages.shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+    ValidationError,
+)
+[2025-10-17T23:52:49] tokens used: 23,083
+
+[2025-10-17T23:52:56] thinking
+
+**Outlining phased plan for error classifier**
+
+I'll create a detailed phased plan with consistent bullet points for Analysis, Design, Implementation, Testing, and Rollout stages, noting risks and relevant modules while emphasizing the read-only environment and no actual code changes.
+[2025-10-17T23:52:57] codex
+
+**Analysis**
+- Inventory current heuristics in `packages/webui/chunking_tasks.py:412` and `packages/webui/services/chunking_error_handler.py:383` to catalog all emitted string codes, enum values, and implicit fallbacks, ensuring none are lost during unification.  
+- Audit exception sources under `packages/shared/chunking/domain/exceptions.py` plus infrastructure exceptions to understand which types must be matched by the classifier and where message-based rules are still required.  
+- Trace downstream consumers of the string codes (Redis retry state, metrics, logging) and enum outputs (retry strategies, recovery actions) to confirm contracts that must remain stable.  
+- Map existing unit coverage in `tests/unit/test_chunking_error_handler.py` and `tests/unit/test_chunking_service_errors.py` to identify scenarios needing migration or expansion once `_classify_error_sync` disappears.  
+- Flag any other modules or fixtures that patch `_classify_error_sync` or `ChunkingErrorHandler.classify_error` to plan dependency rewiring and avoid brittle imports.
+
+**Design**
+- Define `ErrorClassificationResult` with mandatory enum and string code plus optional metadata (matched rule id, confidence) so future telemetry can consume richer context without altering call sites.  
+- Specify `ErrorClassifier` with an ordered rule pipeline (type checks first, then keyword heuristics, finally a default) and provide a constructor hook to append custom rules for tests or specialized deployments.  
+- Establish a canonical mapping between `ChunkingErrorType` values and historical string codes, documenting any one-to-many relationships (e.g., enum `NETWORK_ERROR` → string `connection_error`) to preserve external behaviour.  
+- Plan helper methods `classify`, `as_enum`, and `as_code`, each returning cached results to avoid double evaluation when both code paths need answers.  
+- Decide dependency access pattern: expose a singleton factory in `packages/webui/dependencies.py` (or a local module-level `get_error_classifier`) to centralize configuration while enabling overrides in unit tests.
+
+**Implementation**
+- Introduce `packages/webui/utils/error_classifier.py` with dataclass, rule definitions, optional rule injection, and conversion helpers, pulling exception types from `packages/webui/api/chunking_exceptions.py` and shared modules.  
+- Replace `_classify_error_sync` in `packages/webui/chunking_tasks.py:412` with a lightweight wrapper around the shared classifier, maintaining the same Redis payload schema and log messages.  
+- Refactor `ChunkingErrorHandler` to inject or lazily instantiate the classifier, delegating `classify_error` and updating internal callers to consume the shared result while keeping retry logic untouched.  
+- Update dependency wiring (service constructors, factories, or FastAPI dependency providers) so existing components receive the classifier without circular imports, adjusting mocks and fixtures accordingly.  
+- Sweep the codebase for direct string comparisons or patched classification functions, aligning them with the new API or providing shim adapters where immediate migration is risky.
+
+**Testing**
+- Add a dedicated test module (e.g., `tests/unit/test_error_classifier.py`) covering type-based rules, keyword heuristics, unknown fallbacks, metadata population, and extension hook behaviour using representative exceptions.  
+- Update `tests/unit/test_chunking_error_handler.py` to instantiate the handler with a real or stub classifier and assert both enum outputs and delegation wiring.  
+- Refresh Celery-related tests (if present) to verify string codes returned by the classifier match legacy expectations, including timeout and connection scenarios.  
+- Exercise integration touchpoints in `tests/unit/test_chunking_service_errors.py` (and any chunking workflow tests) to ensure mock error handlers still receive expected enums and that retry state serialization remains unchanged.  
+- Run `make lint`, `make type-check`, `make test` locally after changes, capturing artefacts or logs for reviewers since the shared classifier impacts broad error-handling paths.
+
+**Rollout**
+- Document the new classifier in `packages/webui/CHUNKING_EXCEPTION_HANDLING_README.md` (or adjacent docs) so future rule additions follow the central extension pattern.  
+- Communicate to teammates that new error categories must be added through the classifier, removing old guidance about editing multiple files.  
+- Monitor initial deployments for mismatches in Redis-stored error codes or retry strategy triggers, adding temporary logging if needed to confirm parity.  
+- Plan a follow-up backlog item to evaluate telemetry or metrics once the unified classifier is stable, leveraging the metadata field introduced in the result dataclass.
+[2025-10-17T23:53:06] tokens used: 26,496

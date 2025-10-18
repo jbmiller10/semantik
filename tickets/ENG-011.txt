@@ -1,0 +1,53 @@
+Ticket: ENG-011 – Migrate Preview & Compare Workflows to Orchestrator
+Phase: 2 – Backend Refactor (Sprints 2–3)
+Owner Type: Senior backend engineer with async Python and caching expertise
+
+Repository Context:
+- `ChunkingService` currently implements preview/compare logic, handling cache lookups, metrics, strategy recommendations, and DTO conversions (`packages/webui/services/chunking_service.py` large methods such as `preview_chunking`, `compare_strategies` around lines 600+).
+- Modular components exist under `packages/webui/services/chunking/` but are not yet the source of truth.
+- Clients (API, Celery tasks) use `ChunkingService.preview_chunking`, `preview_chunks`, `compare_strategies` etc.
+
+Problem Statement:
+The orchestration workflow is tightly coupled to the monolithic service, preventing incremental modernization and making it hard to test in isolation. We must move preview/compare responsibilities into orchestrator/processor modules while preserving API contracts during migration.
+
+Goal:
+Port preview and strategy comparison flows to `ChunkingOrchestrator` and supporting modules, expose adapter methods for legacy call sites, and eliminate duplicated logic in `ChunkingService`.
+
+Implementation Steps:
+1. Analyse current behaviour:
+   - Identify data transformations (e.g., DTO conversions to dict) within `ChunkingService` methods.
+   - Map cache usage (`CacheManager`, `QueryMonitor`) and metrics recording sequences.
+2. Extend orchestrator modules:
+   - Ensure `ChunkingOrchestrator.preview_chunks` and `compare_strategies` implement the full behaviour: validation, content loading, cache check, metrics, recommending strategies, building response objects.
+   - Move reusable logic (e.g., `_build_preview_response`) from `ChunkingService` into orchestrator/processor helper modules.
+3. Provide backward-compatible adapter:
+   - Implement `ChunkingServiceAdapter` or update existing `packages/webui/services/chunking/adapter.py` to mirror legacy return shapes (dicts with `chunks`, `statistics`, etc.).
+   - Replace old method bodies in `ChunkingService` with calls to the adapter/orchestrator to keep interface stable during transition.
+4. Update call sites:
+   - API endpoints and Celery tasks should obtain orchestrator or adapter via container (ENG-010). Ensure they no longer rely on legacy internal methods.
+5. Remove redundant code:
+   - Delete or drastically simplify now-obsolete helper methods in `ChunkingService` once tests confirm equivalence.
+6. Testing plan:
+   - Add focused unit tests for orchestrator preview/compare flows (mock cache, metrics, validator) verifying same outputs for given inputs.
+   - Update existing tests (e.g., `tests/webui/services/test_chunking_refactored.py`, `tests/unit/test_chunking_service.py`) to point to new implementation while preserving contract expectations.
+   - Include integration test hitting API endpoints to ensure JSON payload unchanged (compare to stored fixture or snapshot).
+7. Migration safety:
+   - Maintain logging and metrics (names, labels) identical to current behaviour.
+   - Confirm fallback behaviour (cache miss, validator failure, strategy not found) still bubbles up with same error types.
+
+Acceptance Criteria:
+- Preview and compare flows are implemented in orchestrator/processor modules; `ChunkingService` no longer contains bespoke logic for these operations beyond compatibility delegation.
+- API responses for preview and strategy comparison remain identical to pre-change outputs.
+- All tests (existing and new) pass, particularly ones checking chunk counts, metadata, strategy recommendation.
+- Documentation/comments describe new responsibilities and note deprecation of legacy code paths.
+- Repository commands `make lint`, `make type-check`, `make test` succeed.
+
+Out of Scope:
+- Removing the `ChunkingService` class entirely (dependent on ENG-012/ENG-013).
+- Altering front-end payload structure or adding new response fields.
+
+References:
+- packages/webui/services/chunking_service.py (preview/compare methods)
+- packages/webui/services/chunking/orchestrator.py, processor.py, cache.py, metrics.py
+- packages/webui/services/chunking/adapter.py
+- tests/unit/test_chunking_service.py, tests/webui/services/test_chunking_refactored.py

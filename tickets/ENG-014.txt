@@ -1,0 +1,52 @@
+Ticket: ENG-014 – Phase 2 Backend Refactor Review & Stabilization
+Phase: 2 – Backend Refactor (Sprints 2–3) Review
+Owner Type: Tech lead/architect with deep knowledge of chunking pipeline and Celery infrastructure
+
+Purpose:
+Validate completion of Phase 2 tickets (ENG-010 through ENG-013) and ensure the modernized backend architecture is production-ready before initiating Phase 3 frontend work. Focus on dependency injection, orchestrator migration, operation manager extraction, and Celery modularization.
+
+Scope to Review:
+- New composition root/container for chunking services.
+- Preview/compare workflow migration into orchestrator modules and adapter usage.
+- `OperationManager` handling retries, circuit breaker, DLQ.
+- Modularized Celery task package structure and registration.
+
+Review Checklist:
+1. Architecture & Dependency Graph
+   - Inspect container module to confirm single source of truth for wiring; ensure no stray instantiations of legacy `ChunkingService` remain.
+   - Verify orchestrator responsibilities align with design goals (no domain logic left in adapter shims beyond translation).
+   - Ensure `OperationManager` integrates cleanly without circular imports.
+2. Behavioural Testing
+   - Run full backend suites: `make test`, targeted integration tests (e.g., `uv run pytest tests/webui/services/test_chunking_refactored.py`, Celery-related tests).
+   - Spin up dev stack (`make dev`) and manually execute chunking operations to observe:
+     * Progress streaming (hooks into ENG-001).
+     * Retry behaviour and DLQ logging.
+     * API responses for preview/compare endpoints.
+   - Optionally run `make test-e2e` if available to cover Celery/task flows end-to-end.
+3. Migration Safety
+   - Confirm Celery task names, queues, and schedules unchanged (compare to pre-refactor `celery_app.tasks.keys()`).
+   - Review logs for deprecated warnings; ensure adapters annotate future removal plans.
+   - Check for documentation updates describing new module layout and migration pathway away from legacy service.
+4. Code Quality & Observability
+   - Ensure logging/metrics still fire with same identifiers (important for existing dashboards).
+   - Validate new modules carry exhaustive typing and docstrings consistent with repo standards.
+5. Regression Sweep
+   - Verify there are no lingering references to removed helpers (search for removed method names or TODO markers).
+   - Run `rg` searches for `ChunkingService` usage to confirm only adapters remain; note outstanding call sites for future removal.
+   - Check Celery worker startup logs for errors due to module reorganization.
+6. Follow-up Tracking
+   - Create tickets for issues or tech debt uncovered (e.g., further adapter removal, test gaps) and link to this review ticket.
+
+Deliverables:
+- Formal sign-off note summarizing review findings, test runs, and any caveats, stored in ticket or shared doc.
+- List of follow-up issues with owners and priorities (if needed).
+- Confirmation that production runbooks have been updated to reflect new module layout and DI expectations.
+
+Acceptance Criteria:
+- All Phase 2 PRs merged with documented review; no critical regressions outstanding.
+- CI pipelines green; manual verification steps recorded (command output or logs attached).
+- Celery workers and API routes operate using the new orchestrator/container without runtime errors.
+- Clear go/no-go decision captured for moving into Phase 3.
+
+Out of Scope:
+- Implementing additional refactors beyond the reviewed tickets (log as separate tasks).
