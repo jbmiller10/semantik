@@ -110,11 +110,7 @@ class ChunkingOrchestrator:
                 chunk_size_int = int(chunk_size_value)
             except (TypeError, ValueError):
                 chunk_size_int = None
-            if (
-                chunk_size_int is None
-                or chunk_size_int < 1
-                or chunk_size_int > 10_000
-            ):
+            if chunk_size_int is None or chunk_size_int < 1 or chunk_size_int > 10_000:
                 raise ValidationError(
                     field="chunk_size",
                     value=chunk_size_value,
@@ -260,9 +256,7 @@ class ChunkingOrchestrator:
         chunk_limit = max_chunks_per_strategy or 5
         normalized_base_config = self._normalize_config(base_config)
         normalized_strategy_configs = (
-            {name: self._normalize_config(cfg) for name, cfg in strategy_configs.items()}
-            if strategy_configs
-            else None
+            {name: self._normalize_config(cfg) for name, cfg in strategy_configs.items()} if strategy_configs else None
         )
 
         for strategy in selected_strategies:
@@ -282,10 +276,14 @@ class ChunkingOrchestrator:
                 )
 
                 preview_chunks = self._transform_chunks_to_preview(preview.chunks)
-                metrics = dict(preview.metrics) if preview.metrics else self._calculate_preview_metrics(
-                    preview_chunks,
-                    len(content),
-                    preview.processing_time_ms / 1000 if preview.processing_time_ms else 0,
+                metrics = (
+                    dict(preview.metrics)
+                    if preview.metrics
+                    else self._calculate_preview_metrics(
+                        preview_chunks,
+                        len(content),
+                        preview.processing_time_ms / 1000 if preview.processing_time_ms else 0,
+                    )
                 )
 
                 strategy_info = self.config_manager.get_strategy_info(strategy)
@@ -554,12 +552,7 @@ class ChunkingOrchestrator:
             expires_at = raw_expires
 
         preview_chunks = self._transform_chunks_to_preview(cached.get("chunks", []))
-        metrics = (
-            cached.get("performance_metrics")
-            or cached.get("statistics")
-            or cached.get("metrics")
-            or {}
-        )
+        metrics = cached.get("performance_metrics") or cached.get("statistics") or cached.get("metrics") or {}
         strategy = cached.get("strategy", "unknown")
         config = cached.get("config", {})
         total_chunks = cached.get("total_chunks", len(preview_chunks))

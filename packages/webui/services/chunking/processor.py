@@ -217,19 +217,11 @@ class ChunkingProcessor:
                 "quality_score": 0.0,
             }
 
-        sizes = [
-            chunk.get("char_count")
-            or len(chunk.get("content", ""))
-            for chunk in chunks
-        ]
+        sizes = [chunk.get("char_count") or len(chunk.get("content", "")) for chunk in chunks]
 
         total_size = sum(sizes)
         avg_size = total_size / len(sizes) if sizes else 0
-        variance = (
-            sum((s - avg_size) ** 2 for s in sizes) / len(sizes)
-            if len(sizes) > 1
-            else 0.0
-        )
+        variance = sum((s - avg_size) ** 2 for s in sizes) / len(sizes) if len(sizes) > 1 else 0.0
         quality_score = 1.0 - min(1.0, variance / (avg_size**2)) if avg_size > 0 else 0.0
 
         return {
