@@ -18,7 +18,6 @@ import json
 import logging
 import signal
 import time
-import traceback
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
@@ -52,7 +51,11 @@ from packages.webui.api.chunking_exceptions import (
 )
 from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
-from packages.webui.services.chunking.container import resolve_celery_chunking_service
+from packages.webui.services.chunking.container import (
+    build_chunking_operation_manager,
+    resolve_celery_chunking_service,
+)
+from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.factory import get_redis_manager
 from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
@@ -136,11 +139,6 @@ CHUNKING_RETRY_BACKOFF_MAX = 600  # 10 minutes max backoff
 CHUNKING_MEMORY_LIMIT_GB = 4
 CHUNKING_CPU_TIME_LIMIT = 1800  # 30 minutes of CPU time
 
-# Circuit breaker configuration
-CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5
-CIRCUIT_BREAKER_RECOVERY_TIMEOUT = 300  # 5 minutes
-CIRCUIT_BREAKER_EXPECTED_EXCEPTION = (ChunkingDependencyError,)
-
 
 class ChunkingTask(Task):
     """Base task class for chunking operations with enhanced error handling.
@@ -169,11 +167,6 @@ class ChunkingTask(Task):
     track_started = True
     reject_on_worker_lost = True
 
-    # Circuit breaker state
-    _circuit_breaker_failures = 0
-    _circuit_breaker_last_failure_time = None
-    _circuit_breaker_state = "closed"  # closed, open, half_open
-
     def __init__(self) -> None:
         """Initialize the chunking task."""
         super().__init__()
@@ -182,6 +175,7 @@ class ChunkingTask(Task):
         self._redis_client: Redis | None = None
         self._error_handler: ChunkingErrorHandler | None = None
         self._error_classifier = get_default_chunking_error_classifier()
+        self._operation_manager: ChunkingOperationManager | None = None
 
     def before_start(self, task_id: str, args: tuple, kwargs: dict) -> None:
         """Set up task before execution starts.
@@ -206,6 +200,9 @@ class ChunkingTask(Task):
         except Exception as e:
             logger.error(f"Failed to initialize task resources: {e}")
 
+        # Ensure operation manager is ready with current dependencies
+        self._ensure_operation_manager()
+
         # Extract operation ID from args
         operation_id = args[0] if args else kwargs.get("operation_id", "unknown")
 
@@ -223,6 +220,20 @@ class ChunkingTask(Task):
                 "correlation_id": correlation_id,
             },
         )
+
+    def _ensure_operation_manager(self) -> ChunkingOperationManager:
+        """Initialise or return the operation manager bound to this task."""
+
+        if self._operation_manager is None:
+            self._operation_manager = build_chunking_operation_manager(
+                redis_client=self._redis_client,
+                error_handler=self._error_handler or ChunkingErrorHandler(redis_client=None),
+                error_classifier=self._error_classifier,
+                logger_=logger.getChild("operation_manager"),
+                expected_circuit_breaker_exceptions=(ChunkingDependencyError,),
+                memory_usage_gauge=chunking_operation_memory_usage,
+            )
+        return self._operation_manager
 
     def on_success(self, retval: Any, task_id: str, args: tuple, kwargs: dict) -> None:
         """Handle successful task completion.
@@ -242,18 +253,8 @@ class ChunkingTask(Task):
         ).inc()
         chunking_active_operations.dec()
 
-        # Reset circuit breaker on success
-        self._circuit_breaker_failures = 0
-        self._circuit_breaker_state = "closed"
-
-        logger.info(
-            f"Chunking task {task_id} completed successfully",
-            extra={
-                "task_id": task_id,
-                "operation_id": operation_id,
-                "result": retval,
-            },
-        )
+        manager = self._ensure_operation_manager()
+        manager.handle_success(task_id=task_id, operation_id=operation_id, result=retval)
 
     def on_failure(
         self,
@@ -274,57 +275,23 @@ class ChunkingTask(Task):
         """
         operation_id = args[0] if args else kwargs.get("operation_id", "unknown")
         correlation_id = kwargs.get("correlation_id") or get_or_generate_correlation_id()
+        manager = self._ensure_operation_manager()
+        error_type = manager.handle_failure(
+            exc=exc,
+            task_id=task_id,
+            operation_id=operation_id,
+            correlation_id=correlation_id,
+            retry_count=self.request.retries,
+            max_retries=self.max_retries,
+            args=args,
+            kwargs=kwargs,
+        )
 
-        # Classify error type
-        error_type = "unknown"
-        if isinstance(exc, ChunkingMemoryError):
-            error_type = "memory_error"
-        elif isinstance(exc, ChunkingTimeoutError):
-            error_type = "timeout_error"
-        elif isinstance(exc, ChunkingValidationError):
-            error_type = "validation_error"
-        elif isinstance(exc, ChunkingStrategyError):
-            error_type = "strategy_error"
-        elif isinstance(exc, ChunkingDependencyError):
-            error_type = "dependency_error"
-
-        # Track failure metrics
         chunking_tasks_failed.labels(
             operation_type="chunking",
             error_type=error_type,
         ).inc()
         chunking_active_operations.dec()
-
-        # Update circuit breaker state
-        if isinstance(exc, CIRCUIT_BREAKER_EXPECTED_EXCEPTION):
-            self._update_circuit_breaker_state()
-
-        # Log comprehensive error
-        logger.error(
-            f"Chunking task {task_id} failed after {self.request.retries} retries",
-            extra={
-                "task_id": task_id,
-                "operation_id": operation_id,
-                "correlation_id": correlation_id,
-                "error_type": error_type,
-                "retries": self.request.retries,
-                "max_retries": self.max_retries,
-                "traceback": traceback.format_exc(),
-            },
-            exc_info=exc,
-        )
-
-        # Send to dead letter queue if max retries exceeded
-        if self.request.retries >= self.max_retries:
-            self._send_to_dead_letter_queue(
-                task_id=task_id,
-                operation_id=operation_id,
-                correlation_id=correlation_id,
-                error=exc,
-                error_type=error_type,
-                args=args,
-                kwargs=kwargs,
-            )
 
     def on_retry(
         self,
@@ -345,39 +312,14 @@ class ChunkingTask(Task):
         """
         operation_id = args[0] if args else kwargs.get("operation_id", "unknown")
         correlation_id = kwargs.get("correlation_id") or get_or_generate_correlation_id()
-
-        logger.warning(
-            f"Retrying chunking task {task_id}",
-            extra={
-                "task_id": task_id,
-                "operation_id": operation_id,
-                "correlation_id": correlation_id,
-                "retry_count": self.request.retries,
-                "error": str(exc),
-            },
+        manager = self._ensure_operation_manager()
+        manager.handle_retry(
+            exc=exc,
+            task_id=task_id,
+            operation_id=operation_id,
+            correlation_id=correlation_id,
+            retry_count=self.request.retries,
         )
-
-        # Save state for retry if error handler available
-        if self._redis_client:
-            # Use sync Redis client directly to save retry state
-            try:
-                retry_state: "Mapping[str | bytes, bytes | float | int | str]" = {
-                    "operation_id": operation_id,
-                    "correlation_id": correlation_id,
-                    "task_id": task_id,
-                    "retry_count": str(self.request.retries),
-                    "last_error": str(exc),
-                    "error_type": self._classify_error_sync(exc),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-                self._redis_client.hset(
-                    f"operation:{operation_id}:retry_state",
-                    mapping=retry_state,
-                )
-                # Set expiry for 24 hours
-                self._redis_client.expire(f"operation:{operation_id}:retry_state", 86400)
-            except Exception as e:
-                logger.warning(f"Failed to save retry state: {e}")
 
     def _handle_shutdown(self, signum: int, frame: Any) -> None:  # noqa: ARG002
         """Handle graceful shutdown on SIGTERM.
@@ -388,121 +330,6 @@ class ChunkingTask(Task):
         """
         logger.info("Received shutdown signal, initiating graceful shutdown")
         self._graceful_shutdown = True
-
-    def _update_circuit_breaker_state(self) -> None:
-        """Update circuit breaker state based on failures."""
-        current_time = time.time()
-
-        # Increment failure count
-        self._circuit_breaker_failures += 1
-        self._circuit_breaker_last_failure_time = current_time
-
-        # Check if we should open the circuit
-        if (
-            self._circuit_breaker_failures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD
-            and self._circuit_breaker_state == "closed"
-        ):
-            self._circuit_breaker_state = "open"
-            logger.warning(f"Circuit breaker opened after {self._circuit_breaker_failures} failures")
-
-    def _classify_error_sync(self, exc: Exception) -> str:
-        """Classify error type synchronously.
-
-        Args:
-            exc: Exception to classify
-
-        Returns:
-            Error type string
-        """
-        return self._error_classifier.as_code(exc)
-
-    def _check_circuit_breaker(self) -> bool:
-        """Check if circuit breaker allows execution.
-
-        Returns:
-            True if execution is allowed, False otherwise
-        """
-        if self._circuit_breaker_state == "closed":
-            return True
-
-        current_time = time.time()
-
-        # Check if we should try half-open state
-        if (
-            self._circuit_breaker_state == "open"
-            and self._circuit_breaker_last_failure_time
-            and current_time - self._circuit_breaker_last_failure_time > CIRCUIT_BREAKER_RECOVERY_TIMEOUT
-        ):
-            self._circuit_breaker_state = "half_open"
-            logger.info("Circuit breaker entering half-open state")
-            return True
-
-        # Half-open state allows one request through
-        if self._circuit_breaker_state == "half_open":
-            return True
-
-        # Circuit is open - reject request
-        return False
-
-    def _send_to_dead_letter_queue(
-        self,
-        task_id: str,
-        operation_id: str,
-        correlation_id: str,
-        error: Exception,
-        error_type: str,
-        args: tuple,
-        kwargs: dict,
-    ) -> None:
-        """Send failed task to dead letter queue for manual processing.
-
-        Args:
-            task_id: Celery task ID
-            operation_id: Operation identifier
-            correlation_id: Correlation ID for tracing
-            error: Exception that caused the failure
-            error_type: Classified error type
-            args: Original task arguments
-            kwargs: Original task keyword arguments
-        """
-        if not self._redis_client:
-            logger.error("Cannot send to DLQ: Redis client not available")
-            return
-
-        try:
-            dlq_entry = {
-                "task_id": task_id,
-                "operation_id": operation_id,
-                "correlation_id": correlation_id,
-                "error_type": error_type,
-                "error_message": str(error),
-                "error_class": type(error).__name__,
-                "args": args,
-                "kwargs": kwargs,
-                "timestamp": datetime.now(UTC).isoformat(),
-                "retries": self.request.retries,
-            }
-
-            # Add to dead letter queue
-            dlq_key = "chunking:dlq:tasks"
-            self._redis_client.rpush(dlq_key, json.dumps(dlq_entry))
-
-            # Expire old entries (keep for 7 days)
-            self._redis_client.expire(dlq_key, 604800)
-
-            logger.error(
-                f"Task {task_id} sent to dead letter queue",
-                extra={
-                    "task_id": task_id,
-                    "operation_id": operation_id,
-                    "correlation_id": correlation_id,
-                    "dlq_key": dlq_key,
-                },
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to send task to DLQ: {e}", exc_info=e)
-
 
 @celery_app.task(
     base=ChunkingTask,
@@ -537,7 +364,8 @@ def process_chunking_operation(
         Various chunking exceptions based on failure type
     """
     # Check circuit breaker before proceeding
-    if not self._check_circuit_breaker():
+    operation_manager = self._ensure_operation_manager()
+    if not operation_manager.allow_execution():
         raise ChunkingDependencyError(
             detail="Circuit breaker is open - external service unavailable",
             correlation_id=correlation_id,
@@ -868,6 +696,16 @@ async def _process_chunking_operation_async(
     async_redis = AsyncRedis.from_url(settings.REDIS_URL)
     error_handler = ChunkingErrorHandler(async_redis)
 
+    operation_manager = build_chunking_operation_manager(
+        redis_client=redis_client,
+        error_handler=error_handler,
+        error_classifier=celery_task._error_classifier,
+        logger_=logger.getChild("operation_manager"),
+        expected_circuit_breaker_exceptions=(ChunkingDependencyError,),
+        memory_usage_gauge=chunking_operation_memory_usage,
+    )
+    celery_task._operation_manager = operation_manager
+
     # Track resources
     process = psutil.Process()
     initial_memory = process.memory_info().rss
@@ -924,11 +762,9 @@ async def _process_chunking_operation_async(
             )
 
             # Check resource limits before processing
-            await _check_resource_limits(
-                error_handler,
-                operation_id,
-                correlation_id,
-                initial_memory,
+            await operation_manager.check_resource_limits(
+                operation_id=operation_id,
+                correlation_id=correlation_id,
             )
 
             # Process documents with progress tracking
@@ -953,7 +789,7 @@ async def _process_chunking_operation_async(
             chunks: list[ChunkResult] = []
 
             # Process documents in batches with resource monitoring
-            batch_size = await _calculate_batch_size(error_handler, initial_memory)
+            batch_size = await operation_manager.calculate_batch_size()
 
             for i in range(0, total_documents, batch_size):
                 # Check for graceful shutdown
@@ -964,13 +800,12 @@ async def _process_chunking_operation_async(
                 batch = documents[i : i + batch_size]
 
                 # Monitor resources
-                await _monitor_resources(
-                    process,
-                    operation_id,
-                    initial_memory,
-                    initial_cpu_time,
-                    error_handler,
-                    correlation_id,
+                await operation_manager.monitor_resources(
+                    process=process,
+                    operation_id=operation_id,
+                    initial_memory=initial_memory,
+                    initial_cpu_time=initial_cpu_time,
+                    correlation_id=correlation_id,
                 )
 
                 # Process batch
@@ -1289,130 +1124,6 @@ async def _handle_soft_timeout(
     except Exception as e:
         logger.error(f"Failed to handle soft timeout: {e}", exc_info=e)
 
-
-async def _check_resource_limits(
-    error_handler: ChunkingErrorHandler,
-    operation_id: str,
-    correlation_id: str,
-    initial_memory: int,  # noqa: ARG001
-) -> None:
-    """Check system resource limits before processing.
-
-    Args:
-        error_handler: Error handler instance
-        operation_id: Operation identifier
-        correlation_id: Correlation ID
-        initial_memory: Initial memory usage in bytes
-
-    Raises:
-        ChunkingResourceLimitError: If resources are exhausted
-    """
-    # Check memory
-    memory = psutil.virtual_memory()
-    if memory.percent > 90:
-        recovery_action = await error_handler.handle_resource_exhaustion(
-            operation_id=operation_id,
-            resource_type=ResourceType.MEMORY,
-            current_usage=memory.percent,
-            limit=100,
-        )
-
-        if recovery_action.action == "fail":
-            raise ChunkingResourceLimitError(
-                detail="System memory exhausted",
-                correlation_id=correlation_id,
-                resource_type=ResourceType.MEMORY,
-                current_usage=memory.percent,
-                limit=100,
-                operation_id=operation_id,
-            )
-
-    # Check CPU
-    cpu_percent = psutil.cpu_percent(interval=0.1)
-    if cpu_percent > 90:
-        recovery_action = await error_handler.handle_resource_exhaustion(
-            operation_id=operation_id,
-            resource_type=ResourceType.CPU,
-            current_usage=cpu_percent,
-            limit=100,
-        )
-
-        if recovery_action.action == "wait_and_retry":
-            await asyncio.sleep(recovery_action.wait_time or 30)
-
-
-async def _monitor_resources(
-    process: psutil.Process,
-    operation_id: str,
-    initial_memory: int,
-    initial_cpu_time: float,
-    error_handler: ChunkingErrorHandler,  # noqa: ARG001
-    correlation_id: str,
-) -> None:
-    """Monitor resource usage during processing.
-
-    Args:
-        process: Process object for monitoring
-        operation_id: Operation identifier
-        initial_memory: Initial memory usage
-        initial_cpu_time: Initial CPU time
-        error_handler: Error handler instance
-        correlation_id: Correlation ID
-
-    Raises:
-        ChunkingMemoryError: If memory limit exceeded
-        ChunkingTimeoutError: If CPU time limit exceeded
-    """
-    current_memory = process.memory_info().rss
-    memory_increase = current_memory - initial_memory
-
-    # Update memory metric
-    chunking_operation_memory_usage.labels(operation_id=operation_id).set(current_memory)
-
-    # Check memory limit
-    if memory_increase > CHUNKING_MEMORY_LIMIT_GB * 1024**3:
-        raise ChunkingMemoryError(
-            detail="Operation memory usage exceeded limit",
-            correlation_id=correlation_id,
-            operation_id=operation_id,
-            memory_used=current_memory,
-            memory_limit=CHUNKING_MEMORY_LIMIT_GB * 1024**3,
-        )
-
-    # Check CPU time
-    current_cpu_time = process.cpu_times().user + process.cpu_times().system
-    cpu_time_used = current_cpu_time - initial_cpu_time
-
-    if cpu_time_used > CHUNKING_CPU_TIME_LIMIT:
-        raise ChunkingTimeoutError(
-            detail="Operation CPU time exceeded limit",
-            correlation_id=correlation_id,
-            operation_id=operation_id,
-            elapsed_time=cpu_time_used,
-            timeout_limit=CHUNKING_CPU_TIME_LIMIT,
-        )
-
-
-async def _calculate_batch_size(
-    error_handler: ChunkingErrorHandler,
-    initial_memory: int,  # noqa: ARG001
-) -> int:
-    """Calculate optimal batch size based on available resources.
-
-    Args:
-        error_handler: Error handler instance
-        initial_memory: Initial memory usage
-
-    Returns:
-        Optimal batch size
-    """
-    memory = psutil.virtual_memory()
-
-    # Use error handler's adaptive calculation
-    return error_handler._calculate_adaptive_batch_size(
-        current_usage=memory.percent,
-        limit=100,
-    )
 
 
 async def _get_documents_for_operation(

@@ -9,15 +9,25 @@ from packages.shared.config import settings
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
+from prometheus_client import Gauge
+
 from packages.webui.services.chunking.cache import ChunkingCache
 from packages.webui.services.chunking.config_manager import ChunkingConfigManager
 from packages.webui.services.chunking.metrics import ChunkingMetrics
+from packages.webui.services.chunking.operation_manager import (
+    ChunkingOperationManager,
+    DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+    DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
+    DEFAULT_DEAD_LETTER_TTL_SECONDS,
+)
 from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 from packages.webui.services.chunking.processor import ChunkingProcessor
 from packages.webui.services.chunking.validator import ChunkingValidator
 from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.redis_manager import RedisConfig, RedisManager
 from packages.webui.services.type_guards import ensure_async_redis, ensure_sync_redis
+from packages.webui.utils.error_classifier import ErrorClassifier, get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis
@@ -74,6 +84,39 @@ def get_sync_redis_client() -> Redis | None:
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Sync Redis unavailable for chunking tasks: %s", exc)
         return None
+
+
+def build_chunking_operation_manager(
+    *,
+    redis_client: Redis | None = None,
+    error_handler: ChunkingErrorHandler | None = None,
+    error_classifier: ErrorClassifier | None = None,
+    logger_: logging.Logger | None = None,
+    expected_circuit_breaker_exceptions: tuple[type[Exception], ...] | None = None,
+    failure_threshold: int | None = None,
+    recovery_timeout: int | None = None,
+    dead_letter_ttl_seconds: int | None = None,
+    memory_usage_gauge: Gauge | None = None,
+) -> ChunkingOperationManager:
+    """Construct a ChunkingOperationManager with dependency defaults."""
+
+    resolved_logger = logger_ or logger.getChild("operation_manager")
+
+    resolved_redis = ensure_sync_redis(redis_client) if redis_client else get_sync_redis_client()
+    resolved_error_handler = error_handler or ChunkingErrorHandler(redis_client=None)
+    resolved_classifier = error_classifier or get_default_chunking_error_classifier()
+
+    return ChunkingOperationManager(
+        redis_client=resolved_redis,
+        error_handler=resolved_error_handler,
+        error_classifier=resolved_classifier,
+        logger=resolved_logger,
+        expected_circuit_breaker_exceptions=expected_circuit_breaker_exceptions,
+        failure_threshold=failure_threshold or DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+        recovery_timeout=recovery_timeout or DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
+        dead_letter_ttl_seconds=dead_letter_ttl_seconds or DEFAULT_DEAD_LETTER_TTL_SECONDS,
+        memory_usage_gauge=memory_usage_gauge,
+    )
 
 
 def build_chunking_processor() -> ChunkingProcessor:
