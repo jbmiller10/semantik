@@ -7,35 +7,26 @@ removing the direct dependency and logic from routers.
 
 from typing import Any
 
-from packages.shared.chunking.domain.services.chunking_strategies import (
-    STRATEGY_REGISTRY,
-    get_strategy,
-)
+from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
 from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
+from packages.webui.services.chunking.strategy_registry import (
+    get_api_to_internal_map,
+    get_internal_to_primary_api_map,
+    get_strategy_metadata,
+    resolve_api_identifier,
+    resolve_internal_strategy_name,
+)
 
 
 class ChunkingStrategyFactory:
     """Factory for creating chunking strategy instances."""
 
-    # Mapping from API strategy names to internal strategy names
-    _strategy_mapping = {
-        ChunkingStrategyEnum.FIXED_SIZE: "character",
-        ChunkingStrategyEnum.RECURSIVE: "recursive",
-        ChunkingStrategyEnum.DOCUMENT_STRUCTURE: "markdown",
-        ChunkingStrategyEnum.SEMANTIC: "semantic",
-        ChunkingStrategyEnum.SLIDING_WINDOW: "character",  # Uses character with overlap
-        ChunkingStrategyEnum.HYBRID: "hybrid",
-    }
-
-    # Reverse mapping for convenience
-    _reverse_mapping = {
-        "character": ChunkingStrategyEnum.FIXED_SIZE,
-        "recursive": ChunkingStrategyEnum.RECURSIVE,
-        "markdown": ChunkingStrategyEnum.DOCUMENT_STRUCTURE,
-        "semantic": ChunkingStrategyEnum.SEMANTIC,
-        "hierarchical": ChunkingStrategyEnum.HYBRID,  # Map hierarchical to hybrid
-        "hybrid": ChunkingStrategyEnum.HYBRID,
+    _api_to_internal: dict[str, str] = get_api_to_internal_map().copy()
+    _internal_to_api_enum: dict[str, ChunkingStrategyEnum] = {
+        internal: ChunkingStrategyEnum(api_id)
+        for internal, api_id in get_internal_to_primary_api_map().items()
+        if api_id in ChunkingStrategyEnum._value2member_map_
     }
 
     @classmethod
@@ -61,7 +52,7 @@ class ChunkingStrategyFactory:
         """
         # Convert enum to internal name if needed
         if isinstance(strategy_name, ChunkingStrategyEnum):
-            internal_name = cls._strategy_mapping.get(strategy_name)
+            internal_name = cls._api_to_internal.get(strategy_name.value)
             if not internal_name:
                 raise ChunkingStrategyError(
                     strategy=strategy_name.value,
@@ -71,7 +62,8 @@ class ChunkingStrategyFactory:
             strategy_key = internal_name
         else:
             # Handle string input
-            strategy_key = cls._normalize_strategy_name(strategy_name)
+            internal = resolve_internal_strategy_name(strategy_name)
+            strategy_key = internal or cls._normalize_strategy_name(str(strategy_name))
 
         # Check if strategy exists in registry
         if strategy_key not in STRATEGY_REGISTRY:
@@ -128,8 +120,8 @@ class ChunkingStrategyFactory:
 
         # Update mappings if API enum provided
         if api_enum:
-            cls._strategy_mapping[api_enum] = name
-            cls._reverse_mapping[name] = api_enum
+            cls._api_to_internal[api_enum.value] = name
+            cls._internal_to_api_enum[name] = api_enum
 
     @classmethod
     def normalize_strategy_name(cls, name: str) -> str:
@@ -169,31 +161,10 @@ class ChunkingStrategyFactory:
         Returns:
             Normalized internal strategy name (may not be valid)
         """
-        name = name.lower().strip()
-
-        # Direct mapping
-        direct_mappings = {
-            "fixed": "character",
-            "fixed_size": "character",
-            "character": "character",
-            "char": "character",
-            "recursive": "recursive",
-            "recursive_text": "recursive",
-            "markdown": "markdown",
-            "document": "markdown",
-            "document_structure": "markdown",
-            "semantic": "semantic",
-            "ai": "semantic",
-            "sliding": "character",
-            "sliding_window": "character",
-            "window": "character",
-            "hybrid": "hybrid",
-            "mixed": "hybrid",
-            "hierarchical": "hierarchical",
-        }
-
-        # Return mapped name or original (validation happens in public method)
-        return direct_mappings.get(name, name)
+        internal = resolve_internal_strategy_name(name)
+        if internal:
+            return internal
+        return str(name).lower().strip()
 
     @classmethod
     def get_strategy_info(cls, strategy_name: str | ChunkingStrategyEnum) -> dict[str, Any]:
@@ -208,33 +179,30 @@ class ChunkingStrategyFactory:
         """
         # Normalize name
         if isinstance(strategy_name, ChunkingStrategyEnum):
-            internal_name = cls._strategy_mapping.get(strategy_name, "")
+            api_enum = strategy_name
             api_name = strategy_name.value
+            internal_name = cls._api_to_internal.get(api_name, api_name)
         else:
             internal_name = cls._normalize_strategy_name(strategy_name)
-            api_name = cls._reverse_mapping.get(internal_name, strategy_name)
-            if isinstance(api_name, ChunkingStrategyEnum):
-                api_name = api_name.value
+            resolved_api = resolve_api_identifier(strategy_name)
+            if resolved_api:
+                api_name = resolved_api
+                try:
+                    api_enum = ChunkingStrategyEnum(resolved_api)
+                except ValueError:
+                    api_enum = None
+            else:
+                api_enum = cls._internal_to_api_enum.get(internal_name)
+                api_name = api_enum.value if api_enum else str(strategy_name)
+
+        metadata = get_strategy_metadata(api_enum if api_enum else api_name)
 
         return {
             "api_name": api_name,
             "internal_name": internal_name,
             "available": internal_name in STRATEGY_REGISTRY,
-            "description": cls._get_strategy_description(internal_name),
+            "description": metadata.get("description", "Custom strategy"),
         }
-
-    @classmethod
-    def _get_strategy_description(cls, internal_name: str) -> str:
-        """Get description for a strategy."""
-        descriptions = {
-            "character": "Simple fixed-size chunking with configurable overlap",
-            "recursive": "Recursively splits text using multiple separators",
-            "markdown": "Splits based on markdown/document structure",
-            "semantic": "Uses embeddings to find natural semantic boundaries",
-            "hierarchical": "Creates parent-child chunk relationships",
-            "hybrid": "Combines multiple strategies based on content",
-        }
-        return descriptions.get(internal_name, "Custom strategy")
 
     @classmethod
     def validate_strategy_compatibility(
@@ -260,7 +228,7 @@ class ChunkingStrategyFactory:
         else:
             # Try to map string to enum
             internal = cls._normalize_strategy_name(strategy_name)
-            strategy = cls._reverse_mapping.get(internal)
+            strategy = cls._internal_to_api_enum.get(internal)
             if not strategy:
                 return {
                     "compatible": False,
@@ -326,7 +294,7 @@ class ChunkingStrategyFactory:
             strategy: ChunkingStrategyEnum | None = failed_strategy
         else:
             internal = cls._normalize_strategy_name(failed_strategy)
-            strategy = cls._reverse_mapping.get(internal)
+            strategy = cls._internal_to_api_enum.get(internal)
 
         fallback_map = {
             ChunkingStrategyEnum.SEMANTIC: ChunkingStrategyEnum.RECURSIVE,

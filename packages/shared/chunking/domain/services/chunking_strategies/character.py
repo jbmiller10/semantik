@@ -6,10 +6,7 @@ This module provides a wrapper around the unified character chunking strategy
 to make it compatible with domain tests.
 """
 
-from packages.shared.chunking.unified.factory import (
-    DomainStrategyAdapter,
-    UnifiedChunkingFactory,
-)
+from packages.shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
 
 
 class CharacterChunkingStrategy(DomainStrategyAdapter):

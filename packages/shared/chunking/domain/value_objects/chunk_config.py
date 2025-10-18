@@ -8,9 +8,7 @@ validation and business rule enforcement.
 
 from typing import Any
 
-from packages.shared.chunking.domain.exceptions import (
-    InvalidConfigurationError,
-)
+from packages.shared.chunking.domain.exceptions import InvalidConfigurationError
 
 
 class ChunkConfig:

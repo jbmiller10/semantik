@@ -8,17 +8,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import redis.asyncio as aioredis
-
 # Make redis available at module level for backward compatibility with tests
+import redis.asyncio as aioredis
 import redis.asyncio as redis
 from fastapi import WebSocket
 
-from packages.webui.services.progress_manager import (
-    ProgressPayload,
-    ProgressSendResult,
-    ProgressUpdateManager,
-)
+from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 
 logger = logging.getLogger(__name__)
 
