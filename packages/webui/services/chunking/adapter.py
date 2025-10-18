@@ -6,7 +6,7 @@ interface as the old monolithic ChunkingService.
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,9 @@ from packages.shared.database.repositories.document_repository import DocumentRe
 from .orchestrator import ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from packages.webui.services.chunking_service import ChunkingService
 
 
 class ChunkingServiceAdapter:
@@ -38,6 +41,7 @@ class ChunkingServiceAdapter:
         self.db_session = db_session or orchestrator.db_session
         self.collection_repo = collection_repo or orchestrator.collection_repo
         self.document_repo = document_repo or orchestrator.document_repo
+        self._legacy_service: ChunkingService | None = None
 
     async def preview_chunks(
         self,
@@ -295,14 +299,15 @@ class ChunkingServiceAdapter:
         user_id: int | None = None,
     ) -> Any:
         """Get chunking statistics for a collection."""
-        if user_id is None:
-            # Try to get from session or default
-            user_id = 0  # This should be properly handled in production
+        if user_id is not None:
+            return await self.orchestrator.get_collection_statistics(
+                collection_id=collection_id,
+                user_id=user_id,
+            )
 
-        return await self.orchestrator.get_collection_statistics(
-            collection_id=collection_id,
-            user_id=user_id,
-        )
+        # FastAPI dependencies already validated permissions, so reuse legacy
+        legacy = self._ensure_legacy_service()
+        return await legacy.get_collection_chunk_stats(collection_id)
 
     async def get_chunking_statistics(
         self,
@@ -403,3 +408,32 @@ class ChunkingServiceAdapter:
     ) -> dict[str, Any]:
         """Calculate metrics for chunks."""
         return self.orchestrator.processor.calculate_statistics(chunks)
+
+    def _ensure_legacy_service(self) -> "ChunkingService":
+        """Instantiate the legacy ChunkingService lazily for fallback paths."""
+
+        if self._legacy_service is not None:
+            return self._legacy_service
+
+        if self.db_session is None:
+            raise RuntimeError("ChunkingServiceAdapter requires db_session to build legacy service")
+
+        # Lazily import to avoid circular import at module load time
+        from packages.webui.services.chunking_service import ChunkingService
+
+        collection_repo = self.collection_repo or CollectionRepository(self.db_session)
+        document_repo = self.document_repo or DocumentRepository(self.db_session)
+
+        self._legacy_service = ChunkingService(
+            db_session=self.db_session,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+            redis_client=None,
+        )
+        return self._legacy_service
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to the legacy ChunkingService."""
+
+        legacy = self._ensure_legacy_service()
+        return getattr(legacy, name)
