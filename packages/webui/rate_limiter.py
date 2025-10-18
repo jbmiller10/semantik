@@ -427,13 +427,13 @@ def ensure_limiter_runtime_state(limiter_instance: Limiter | None = None) -> Non
         desired_enabled = not disabled
         if limiter_ref.enabled != desired_enabled:
             limiter_ref.enabled = desired_enabled
-        desired_swallow = disabled
+        desired_swallow = not disabled
         if limiter_ref._swallow_errors != desired_swallow:  # noqa: SLF001
             limiter_ref._swallow_errors = desired_swallow  # noqa: SLF001
         return
 
     limiter_ref.enabled = not disabled
-    limiter_ref._swallow_errors = disabled  # noqa: SLF001
+    limiter_ref._swallow_errors = not disabled  # noqa: SLF001
 
     try:
         limiter_ref.reset()
