@@ -12,7 +12,7 @@ import jwt
 from fastapi import Request
 from jwt.exceptions import InvalidTokenError
 from shared.config import settings
-from slowapi.middleware import _find_route_handler, sync_check_limits
+from slowapi.middleware import _find_route_handler, _should_exempt, sync_check_limits
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from packages.webui.rate_limiter import ensure_limiter_runtime_state
@@ -57,6 +57,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
             handler = _find_route_handler(request.app.routes, request.scope)
+            if _should_exempt(limiter, handler):
+                logger.debug("Skipping middleware rate limit check due to exemption")
+                return await call_next(request)
+
             error_response, inject_headers = sync_check_limits(
                 limiter,
                 request,

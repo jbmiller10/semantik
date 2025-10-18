@@ -16,7 +16,17 @@ Always ensure Black and Ruff pass before marking a ticket complete—rerun `make
 ## Testing Guidelines
 Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
 
-The Docker setup wizard can optionally emit a host-side `.env.test` that hardcodes localhost Postgres credentials (`semantik_test` DB) for integration tests; if the file is absent, `tests/conftest.py` falls back to safe defaults but will never touch remote credentials.
+### Dedicated Test Database
+The project includes a dedicated PostgreSQL instance for integration and API tests to ensure test isolation. Start it using the `testing` Docker Compose profile:
+
+```bash
+# Start the dedicated test database
+docker compose --profile testing up -d postgres_test
+```
+
+The `postgres_test` service uses separate credentials defined in `.env` or `.env.test` (e.g., `POSTGRES_TEST_PORT=55432`, `POSTGRES_TEST_DB=semantik_test`, `POSTGRES_TEST_USER=semantik`, `POSTGRES_TEST_PASSWORD=semantik_test_password`). This prevents test data pollution and allows parallel test execution without interfering with the development database. The test database runs on port 55432 by default to avoid conflicts.
+
+The Docker setup wizard can optionally emit a host-side `.env.test` that hardcodes localhost Postgres credentials for integration tests; if the file is absent, `tests/conftest.py` falls back to safe defaults but will never touch remote credentials.
 
 ## Commit & Pull Request Guidelines
 Aim for Conventional Commit formatting: `feat(search): add reranker fallback`, `fix(webui): guard empty filter`, etc.; reference tracking numbers or PR IDs like `(#212)` when merging. Squash local WIP commits. PRs should outline scope, highlight touchpoints (`vecpipe`, `webui`, `frontend`), list validation commands executed, and include screenshots or API traces for user-visible changes. Confirm linting, typing, and relevant tests before requesting review.
