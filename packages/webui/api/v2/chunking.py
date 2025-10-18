@@ -10,9 +10,9 @@ from __future__ import annotations
 import inspect
 import logging
 import uuid
-from typing import TYPE_CHECKING, Annotated, Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
@@ -213,7 +213,6 @@ async def recommend_strategy(
 )
 @limiter.limit(RateLimitConfig.PREVIEW_RATE)
 async def generate_preview(
-    preview_request: Annotated[PreviewRequest, Body(...)],
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
@@ -227,6 +226,9 @@ async def generate_preview(
 
     Router is now a thin controller - all logic in service!
     """
+    payload = await request.json()
+    preview_request = PreviewRequest.model_validate(payload)
+
     # Generate correlation ID if not provided
     if not correlation_id:
         correlation_id = str(uuid.uuid4())
@@ -283,7 +285,6 @@ async def generate_preview(
 )
 @limiter.limit(RateLimitConfig.COMPARE_RATE)
 async def compare_strategies(
-    compare_request: Annotated[CompareRequest, Body(...)],
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
@@ -298,6 +299,9 @@ async def compare_strategies(
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
+
+    payload = await request.json()
+    compare_request = CompareRequest.model_validate(payload)
 
     try:
         # Convert strategy enums to strings for service
@@ -415,7 +419,6 @@ async def clear_preview_cache(
 )
 @limiter.limit(RateLimitConfig.PROCESS_RATE)
 async def start_chunking_operation(
-    chunking_request: Annotated[ChunkingOperationRequest, Body(...)],
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
     background_tasks: BackgroundTasks,
@@ -433,6 +436,9 @@ async def start_chunking_operation(
     """
     # Check circuit breaker first
     check_circuit_breaker(request)
+
+    payload = await request.json()
+    chunking_request = ChunkingOperationRequest.model_validate(payload)
 
     try:
         # First validate the configuration
@@ -523,7 +529,7 @@ async def start_chunking_operation(
 async def update_chunking_strategy(
     collection_id: str,
     background_tasks: BackgroundTasks,
-    update_request: Annotated[ChunkingStrategyUpdate, Body(...)],
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
@@ -535,6 +541,9 @@ async def update_chunking_strategy(
     """
     operation_id = str(uuid.uuid4())
     websocket_channel = f"chunking:{collection_id}:{operation_id}"
+
+    payload = await request.json()
+    update_request = ChunkingStrategyUpdate.model_validate(payload)
 
     try:
         # Update collection configuration
@@ -784,7 +793,7 @@ async def get_quality_scores(
     summary="Analyze document for strategy recommendation",
 )
 async def analyze_document(
-    analysis_request: Annotated[DocumentAnalysisRequest, Body(...)],
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
 ) -> DocumentAnalysisResponse:
@@ -793,6 +802,9 @@ async def analyze_document(
     Provides detailed analysis of document structure and complexity.
 
     """
+    payload = await request.json()
+    analysis_request = DocumentAnalysisRequest.model_validate(payload)
+
     try:
         analysis_dto = await service.analyze_document(
             content=analysis_request.content,
@@ -821,7 +833,7 @@ async def analyze_document(
     status_code=status.HTTP_201_CREATED,
 )
 async def save_configuration(
-    config_request: Annotated[CreateConfigurationRequest, Body(...)],
+    request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
 ) -> SavedConfiguration:
@@ -830,6 +842,9 @@ async def save_configuration(
     Configurations are user-specific and can be set as defaults.
 
     """
+    payload = await request.json()
+    config_request = CreateConfigurationRequest.model_validate(payload)
+
     try:
         user_id = _current_user.get("id") if _current_user else None
         if user_id is None:

@@ -21,6 +21,9 @@ from packages.webui.main import app
 from packages.webui.rate_limiter import circuit_breaker
 from packages.webui.services.dtos import ServicePreviewResponse
 
+# Ensure rate limiting is active for these tests
+os.environ["DISABLE_RATE_LIMITING"] = "false"
+
 
 @pytest.fixture()
 def mock_redis() -> Generator[Any, None, None]:
@@ -63,6 +66,7 @@ def _reset_circuit_breaker() -> Generator[Any, None, None]:
 async def test_preview_rate_limit(async_client: AsyncClient, auth_headers: dict) -> None:
     """Test that preview endpoint enforces rate limits."""
     from packages.webui.main import app
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
@@ -129,6 +133,7 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
         ServiceStrategyComparison,
         ServiceStrategyRecommendation,
     )
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.compare_strategies_for_api = AsyncMock(
@@ -194,6 +199,7 @@ async def test_compare_rate_limit(async_client: AsyncClient, auth_headers: dict)
 async def test_admin_bypass_token(async_client: AsyncClient, bypass_token: str) -> None:
     """Test that admin bypass token allows unlimited requests."""
     from packages.webui.main import app
+
     # Create a mock chunking service
     mock_chunking_service = AsyncMock()
     mock_chunking_service.preview_chunking = AsyncMock(
