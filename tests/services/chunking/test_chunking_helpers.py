@@ -90,7 +90,7 @@ class _DocumentRepoStub:
         return self.collection_docs, len(self.collection_docs)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_resolve_documents_for_operation_with_ids_filters_processed() -> None:
     doc_ready = SimpleNamespace(id="doc-1", status=DocumentStatus.PENDING, chunk_count=0)
     doc_completed = SimpleNamespace(id="doc-2", status=DocumentStatus.COMPLETED, chunk_count=0)
@@ -114,7 +114,7 @@ async def test_resolve_documents_for_operation_with_ids_filters_processed() -> N
     assert [doc.id for doc in documents] == ["doc-1", "doc-2"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_resolve_documents_for_operation_uses_collection_listing() -> None:
     doc_pending = SimpleNamespace(id="doc-10", status=DocumentStatus.PENDING, chunk_count=0)
     doc_deleted = SimpleNamespace(id="doc-11", status=DocumentStatus.DELETED, chunk_count=0)

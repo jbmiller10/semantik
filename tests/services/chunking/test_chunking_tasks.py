@@ -9,7 +9,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from celery.exceptions import SoftTimeLimitExceeded
 
 from packages.shared.database.models import (

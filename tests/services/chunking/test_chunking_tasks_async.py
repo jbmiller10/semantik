@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 import pytest
 
@@ -188,7 +191,7 @@ class _ChunkingTestContext:
     progress_events: list[tuple[int, str]] = field(default_factory=list)
 
 
-@pytest.fixture
+@pytest.fixture()
 def chunking_test_context(monkeypatch: pytest.MonkeyPatch) -> _ChunkingTestContext:
     manager = _ManagerStub()
     operation = SimpleNamespace(
@@ -251,10 +254,22 @@ def chunking_test_context(monkeypatch: pytest.MonkeyPatch) -> _ChunkingTestConte
         return session_context
 
     monkeypatch.setattr("packages.webui.chunking_tasks.AsyncSessionLocal", _session_factory)
-    monkeypatch.setattr("packages.webui.chunking_tasks.OperationRepository", lambda *args, **kwargs: operation_repo)
-    monkeypatch.setattr("packages.webui.chunking_tasks.CollectionRepository", lambda *args, **kwargs: collection_repo)
-    monkeypatch.setattr("packages.webui.chunking_tasks.DocumentRepository", lambda *args, **kwargs: document_repo)
-    monkeypatch.setattr("packages.webui.chunking_tasks.ChunkRepository", lambda *args, **kwargs: chunk_repo)
+    monkeypatch.setattr(
+        "packages.webui.chunking_tasks.OperationRepository",
+        lambda *_args, **_kwargs: operation_repo,
+    )
+    monkeypatch.setattr(
+        "packages.webui.chunking_tasks.CollectionRepository",
+        lambda *_args, **_kwargs: collection_repo,
+    )
+    monkeypatch.setattr(
+        "packages.webui.chunking_tasks.DocumentRepository",
+        lambda *_args, **_kwargs: document_repo,
+    )
+    monkeypatch.setattr(
+        "packages.webui.chunking_tasks.ChunkRepository",
+        lambda *_args, **_kwargs: chunk_repo,
+    )
 
     def _default_extract(file_path: str) -> list[tuple[str, dict[str, Any]]]:
         return [(f"content:{file_path}", {"path": file_path})]
@@ -272,7 +287,7 @@ def chunking_test_context(monkeypatch: pytest.MonkeyPatch) -> _ChunkingTestConte
 
     monkeypatch.setattr("packages.webui.chunking_tasks.resolve_celery_chunking_service", _resolve_service)
 
-    context = _ChunkingTestContext(
+    return _ChunkingTestContext(
         operation_id=operation.id,
         celery_task=task,
         manager=manager,
@@ -288,14 +303,14 @@ def chunking_test_context(monkeypatch: pytest.MonkeyPatch) -> _ChunkingTestConte
         progress_events=progress_events,
     )
 
-    return context
 
-
-def _make_document(doc_id: str, *, status: DocumentStatus = DocumentStatus.PENDING, chunk_count: int = 0) -> SimpleNamespace:
+def _make_document(
+    doc_id: str, *, status: DocumentStatus = DocumentStatus.PENDING, chunk_count: int = 0
+) -> SimpleNamespace:
     return SimpleNamespace(id=doc_id, file_path=f"/tmp/{doc_id}.txt", status=status, chunk_count=chunk_count)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_process_chunking_operation_async_success(chunking_test_context: _ChunkingTestContext) -> None:
     ctx = chunking_test_context
 
@@ -344,8 +359,10 @@ async def test_process_chunking_operation_async_success(chunking_test_context: _
     assert not ctx.operation.meta["partial_failure"]
 
 
-@pytest.mark.asyncio
-async def test_process_chunking_operation_async_returns_when_no_documents(chunking_test_context: _ChunkingTestContext) -> None:
+@pytest.mark.asyncio()
+async def test_process_chunking_operation_async_returns_when_no_documents(
+    chunking_test_context: _ChunkingTestContext,
+) -> None:
     ctx = chunking_test_context
     ctx.operation.meta = {}
     ctx.document_repo.collection_docs = []
@@ -367,8 +384,10 @@ async def test_process_chunking_operation_async_returns_when_no_documents(chunki
     assert ctx.chunk_repo.rows == []
 
 
-@pytest.mark.asyncio
-async def test_process_chunking_operation_async_handles_partial_failure(chunking_test_context: _ChunkingTestContext) -> None:
+@pytest.mark.asyncio()
+async def test_process_chunking_operation_async_handles_partial_failure(
+    chunking_test_context: _ChunkingTestContext,
+) -> None:
     ctx = chunking_test_context
 
     doc_one = _make_document("doc-1")
@@ -399,8 +418,10 @@ async def test_process_chunking_operation_async_handles_partial_failure(chunking
     assert all(update[0] != doc_one.id for update in ctx.document_repo.status_updates)
 
 
-@pytest.mark.asyncio
-async def test_process_chunking_operation_async_honors_graceful_shutdown(chunking_test_context: _ChunkingTestContext) -> None:
+@pytest.mark.asyncio()
+async def test_process_chunking_operation_async_honors_graceful_shutdown(
+    chunking_test_context: _ChunkingTestContext,
+) -> None:
     ctx = chunking_test_context
 
     doc_one = _make_document("doc-1")
@@ -426,7 +447,7 @@ async def test_process_chunking_operation_async_honors_graceful_shutdown(chunkin
     assert ctx.progress_events[-1][0] == 100
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 @pytest.mark.parametrize(
     "exception_factory",
     [
@@ -457,8 +478,10 @@ async def test_process_chunking_operation_async_raises_on_resource_monitoring(
     assert ctx.chunk_repo.rows == []
 
 
-@pytest.mark.asyncio
-async def test_process_chunking_operation_async_marks_failed_documents(chunking_test_context: _ChunkingTestContext) -> None:
+@pytest.mark.asyncio()
+async def test_process_chunking_operation_async_marks_failed_documents(
+    chunking_test_context: _ChunkingTestContext,
+) -> None:
     ctx = chunking_test_context
 
     doc_one = _make_document("doc-1")
@@ -478,15 +501,11 @@ async def test_process_chunking_operation_async_marks_failed_documents(chunking_
     assert result["documents_failed"] == 1
     assert ctx.operation.meta["failed_documents"] == [doc_one.id]
     assert len(ctx.chunk_repo.rows) == 2
-    assert (
-        (doc_one.id, DocumentStatus.FAILED)
-        in [(doc_id, status) for doc_id, status, _ in ctx.document_repo.status_updates]
-    )
-    assert (
-        (doc_two.id, DocumentStatus.COMPLETED)
-        in [(doc_id, status) for doc_id, status, _ in ctx.document_repo.status_updates]
-    )
-    failed_entry = next(
-        kwargs for doc_id, status, kwargs in ctx.document_repo.status_updates if doc_id == doc_one.id
-    )
+    assert (doc_one.id, DocumentStatus.FAILED) in [
+        (doc_id, status) for doc_id, status, _ in ctx.document_repo.status_updates
+    ]
+    assert (doc_two.id, DocumentStatus.COMPLETED) in [
+        (doc_id, status) for doc_id, status, _ in ctx.document_repo.status_updates
+    ]
+    failed_entry = next(kwargs for doc_id, status, kwargs in ctx.document_repo.status_updates if doc_id == doc_one.id)
     assert failed_entry["error_message"] == "boom"
