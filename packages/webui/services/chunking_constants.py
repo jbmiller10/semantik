@@ -8,7 +8,7 @@ to make them easily maintainable and configurable.
 from datetime import timedelta
 
 # Size limits (in bytes)
-MAX_PREVIEW_CONTENT_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_PREVIEW_CONTENT_SIZE = 10_000_000  # 10MB limit (decimal) for legacy compatibility
 MAX_DOCUMENT_SIZE = 100 * 1024 * 1024  # 100MB
 MIN_CHUNK_SIZE = 100
 MAX_CHUNK_SIZE = 4096

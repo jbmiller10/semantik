@@ -28,17 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.chunking.application.dto.requests import ChunkingStrategy as ChunkingStrategyEnum
 from packages.shared.chunking.domain.exceptions import (
-    ChunkingDomainError,
     ChunkSizeViolationError,
-    StrategyNotFoundError,
 )
 from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import (
-    ApplicationError,
     ChunkingStrategyError,
     DocumentTooLargeError,
-    DomainError,
     ResourceNotFoundError,
     ValidationError,
 )
@@ -46,11 +42,6 @@ from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedE
 from packages.shared.database.models import Operation
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.webui.services.chunking.strategy_registry import (
-    get_api_to_internal_map,
-    get_strategy_defaults,
-    resolve_internal_strategy_name,
-)
 from packages.webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,
@@ -59,6 +50,11 @@ from packages.webui.services.chunking import (
     ChunkingProcessor,
     ChunkingServiceAdapter,
     ChunkingValidator,
+)
+from packages.webui.services.chunking.strategy_registry import (
+    get_api_to_internal_map,
+    get_strategy_defaults,
+    resolve_internal_strategy_name,
 )
 from packages.webui.services.dtos.api_models import ChunkingStrategy
 
