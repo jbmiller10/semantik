@@ -388,7 +388,7 @@ class TestChunkingServiceAdapter:
     async def test_execute_ingestion_chunking_reports_fallback(self, adapter, orchestrator, monkeypatch):
         """Adapter should surface fallback metadata when orchestrator falls back."""
 
-        async def fake_process(content, strategy, config, use_fallback=False):
+        async def fake_process(_content, _strategy, _config, use_fallback=False):
             if not use_fallback:
                 raise RuntimeError("boom")
             return [
@@ -411,7 +411,7 @@ class TestChunkingServiceAdapter:
     async def test_execute_ingestion_chunking_legacy_reports_fallback(self, adapter, orchestrator, monkeypatch):
         """Legacy ingestion pathway should also propagate fallback stats."""
 
-        async def fake_process(content, strategy, config, use_fallback=False):
+        async def fake_process(_content, _strategy, _config, use_fallback=False):
             if not use_fallback:
                 raise RuntimeError("legacy boom")
             return [

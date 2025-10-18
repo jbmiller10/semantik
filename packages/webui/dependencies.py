@@ -69,9 +69,7 @@ async def get_collection_for_user(
         raise HTTPException(status_code=403, detail="You do not have permission to access this collection") from e
     except Exception as exc:
         if os.getenv("TESTING", "false").lower() == "true":
-            logger.warning(
-                "Falling back to stub collection %s due to database error: %s", collection_uuid, exc
-            )
+            logger.warning("Falling back to stub collection %s due to database error: %s", collection_uuid, exc)
             return {
                 "id": collection_uuid,
                 "owner_id": current_user.get("id"),

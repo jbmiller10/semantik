@@ -9,12 +9,12 @@ dictionaries that are later converted to JSON responses. Rate limit headers
 are only added to rate limit exceeded responses via the error handler.
 """
 
+import functools
+import inspect
 import logging
 import os
 import time
 import unittest.mock as mock
-import functools
-import inspect
 from collections.abc import Callable
 from typing import Any
 
@@ -126,21 +126,21 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
 
     # Check if circuit breaker should be triggered
     current_time = time.time()
-    if key in circuit_breaker.blocked_until:
-        if current_time < circuit_breaker.blocked_until[key]:
-            remaining = int(circuit_breaker.blocked_until[key] - current_time)
-            return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                content={
-                    "detail": f"Circuit breaker open. Service temporarily unavailable. Retry after {remaining} seconds.",
-                    "error": "circuit_breaker_open",
-                    "retry_after": remaining,
-                },
-                headers={
-                    "Retry-After": str(remaining),
-                    "X-Circuit-Breaker": "open",
-                },
-            )
+    blocked_until = circuit_breaker.blocked_until.get(key)
+    if blocked_until and current_time < blocked_until:
+        remaining = int(blocked_until - current_time)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "detail": f"Circuit breaker open. Service temporarily unavailable. Retry after {remaining} seconds.",
+                "error": "circuit_breaker_open",
+                "retry_after": remaining,
+            },
+            headers={
+                "Retry-After": str(remaining),
+                "X-Circuit-Breaker": "open",
+            },
+        )
 
     # Track circuit breaker failures BEFORE returning 429
     track_circuit_breaker_failure(key)
@@ -316,6 +316,7 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
             and os.getenv("TESTING", "false").lower() == "true"
             and pg_connection_manager._sessionmaker is None
         ):
+
             class _ProcessLimit:
                 def __init__(self, limit_str: str) -> None:
                     self.limit = limit_str
@@ -325,6 +326,7 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
 
         limit_callable = limiter.limit
         if isinstance(limit_callable, mock.Mock):
+
             class _DummyLimit:
                 def __init__(self, limit_str: str) -> None:
                     self.limit = limit_str
@@ -360,9 +362,7 @@ def get_limit_for_key(key: str) -> list[str]:
 
 # Initialize the limiter with Redis backend or in-memory fallback
 TESTING_MODE = os.getenv("TESTING", "false").lower() == "true"
-USE_REDIS_LIMITER = (
-    os.getenv("USE_REDIS_RATE_LIMITER", "true").lower() == "true" and not TESTING_MODE
-)
+USE_REDIS_LIMITER = os.getenv("USE_REDIS_RATE_LIMITER", "true").lower() == "true" and not TESTING_MODE
 
 if is_rate_limiting_disabled():
     # Use very high limits for testing - effectively disabling rate limiting
