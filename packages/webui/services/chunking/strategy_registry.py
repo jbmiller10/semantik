@@ -7,12 +7,14 @@ utilities, and factories can share a single source of truth.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
-from typing import Any, Dict, Iterable, Literal, Mapping, MutableMapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal
 
-from copy import deepcopy
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 
 from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 
@@ -523,4 +525,3 @@ def list_api_strategy_ids() -> list[str]:
     """Return the ordered list of API strategy identifiers."""
 
     return [definition.api_id.value for definition in list_strategy_definitions()]
-
