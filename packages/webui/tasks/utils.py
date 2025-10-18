@@ -7,6 +7,7 @@ domain-specific task implementations are split across multiple files.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -125,10 +126,38 @@ class CeleryTaskWithOperationUpdates:
         return self
 
     async def __aexit__(self, *_args: Any) -> None:
-        if self._redis_client:
-            with contextlib.suppress(Exception):
-                await self._redis_client.close()
+        close_result = self.close()
+        await await_if_awaitable(close_result)
+
+    def close(self) -> Any:
+        """Close the Redis client gracefully, supporting sync and async callers."""
+
+        async def _close_async() -> None:
+            if self._redis_client is None:
+                return
+
+            client = self._redis_client
             self._redis_client = None
+
+            try:
+                close_result = client.close()
+                await await_if_awaitable(close_result)
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.warning("Failed to close Redis client: %s", exc)
+
+        close_coro = _close_async()
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            resolve_awaitable_sync(close_coro)
+            return None
+
+        if loop.is_running():
+            return close_coro
+
+        resolve_awaitable_sync(close_coro)
+        return None
 
 
 def _get_internal_api_key() -> str:
@@ -286,7 +315,9 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
 async def _update_collection_metrics(collection_id: str, documents: int, vectors: int, size_bytes: int) -> None:
     """Update collection metrics in Prometheus."""
     try:
-        update_collection_stats(collection_id, documents, vectors, size_bytes)
+        tasks_module = import_module("packages.webui.tasks")
+        update_stats = getattr(tasks_module, "update_collection_stats", update_collection_stats)
+        update_stats(collection_id, documents, vectors, size_bytes)
     except Exception as exc:
         logger.warning("Failed to update collection metrics: %s", exc)
 

@@ -36,17 +36,21 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
     """Clean up old Celery results and operation records."""
     stats: dict[str, Any] = {"celery_results_deleted": 0, "old_operations_marked": 0, "errors": []}
 
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+    datetime_module = getattr(tasks_ns, "datetime", datetime)
+
     try:
-        cutoff_time = datetime.now(UTC) - timedelta(days=days_to_keep)
+        cutoff_time = datetime_module.now(UTC) - timedelta(days=days_to_keep)
 
-        logger.info("Starting cleanup of results older than %s days", days_to_keep)
-        logger.info("Cleanup of operations older than %s is handled by operation lifecycle", cutoff_time)
+        log.info("Starting cleanup of results older than %s days", days_to_keep)
+        log.info("Cleanup of operations older than %s is handled by operation lifecycle", cutoff_time)
 
-        logger.info("Cleanup completed: %s", stats)
+        log.info("Cleanup completed: %s", stats)
         return stats
 
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.error("Cleanup task failed: %s", exc)
+        log.error("Cleanup task failed: %s", exc)
         stats["errors"].append(str(exc))
         return stats
 
@@ -61,10 +65,11 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
     stats: dict[str, Any] = {"status": "success", "duration_seconds": 0.0, "error": None}
     start_time = time.time()
 
-    try:
-        logger.info("Starting refresh of collection_chunking_stats materialized view")
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
 
-        tasks_ns = _tasks_namespace()
+    try:
+        log.info("Starting refresh of collection_chunking_stats materialized view")
 
         async def _refresh_view() -> None:
             async with AsyncSessionLocal() as session:
@@ -74,7 +79,7 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
         tasks_ns.asyncio.run(_refresh_view())
 
         stats["duration_seconds"] = time.time() - start_time
-        logger.info(
+        log.info(
             "Successfully refreshed collection_chunking_stats in %.2f seconds",
             stats["duration_seconds"],
         )
@@ -83,7 +88,7 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
         stats["status"] = "failed"
         stats["error"] = str(exc)
         stats["duration_seconds"] = time.time() - start_time
-        logger.error("Failed to refresh collection_chunking_stats: %s", exc)
+        log.error(f"Failed to refresh collection_chunking_stats: {exc}")
         raise
 
     return stats
@@ -95,10 +100,11 @@ def monitor_partition_health() -> dict[str, Any]:
     from shared.database.database import AsyncSessionLocal
     from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
 
-    try:
-        logger.info("Starting partition health monitoring")
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
 
-        tasks_ns = _tasks_namespace()
+    try:
+        log.info("Starting partition health monitoring")
 
         async def _check_health() -> dict[str, Any]:
             async with AsyncSessionLocal() as session:
@@ -116,7 +122,7 @@ def monitor_partition_health() -> dict[str, Any]:
         results = tasks_ns.asyncio.run(_check_health())
 
     except Exception as exc:  # pragma: no cover - defensive logging
-        logger.error("Partition health monitoring failed: %s", exc)
+        log.error(f"Partition health monitoring failed: {exc}")
         raise
 
     return results
@@ -212,14 +218,16 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
         "timestamp": datetime.now(UTC).isoformat(),
     }
 
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+
     if not collection_names:
-        logger.info("No collections provided for cleanup")
+        log.info("No collections provided for cleanup")
         return stats
 
-    logger.info("Starting enhanced cleanup of %s collections", len(collection_names))
+    log.info("Starting enhanced cleanup of %s collections", len(collection_names))
 
     try:
-        tasks_ns = _tasks_namespace()
         active_collections = resolve_awaitable_sync(_get_active_collections())
         stats["safety_checks"]["active_collections_found"] = len(active_collections)
 
@@ -232,24 +240,24 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
 
         for collection_name in collection_names:
             try:
-                with QdrantOperationTimer("check_collection_exists"):
-                    exists_result = qdrant_manager_instance.collection_exists(collection_name)
-                    exists = bool(resolve_awaitable_sync(exists_result))
-                    logger.debug("collection_exists(%s) -> %s", collection_name, exists)
-                    if not exists:
-                        logger.info("Collection %s does not exist, skipping", collection_name)
-                        stats["collections_skipped"] += 1
-                        stats["safety_checks"][collection_name] = "not_found"
-                        continue
-
                 if collection_name.startswith("_"):
-                    logger.warning("Skipping system collection: %s", collection_name)
+                    log.warning("Skipping system collection: %s", collection_name)
                     stats["collections_skipped"] += 1
                     stats["safety_checks"][collection_name] = "system_collection"
                     continue
 
+                with QdrantOperationTimer("check_collection_exists"):
+                    exists_result = qdrant_manager_instance.collection_exists(collection_name)
+                    exists = bool(resolve_awaitable_sync(exists_result))
+                    log.debug("collection_exists(%s) -> %s", collection_name, exists)
+                    if not exists:
+                        log.info("Collection %s does not exist, skipping", collection_name)
+                        stats["collections_skipped"] += 1
+                        stats["safety_checks"][collection_name] = "not_found"
+                        continue
+
                 if collection_name in active_collections:
-                    logger.warning("Skipping active collection: %s", collection_name)
+                    log.warning("Skipping active collection: %s", collection_name)
                     stats["collections_skipped"] += 1
                     stats["safety_checks"][collection_name] = "active_collection"
                     continue
@@ -266,12 +274,12 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
                 )
 
                 if collection_name.startswith("staging_") and not staging_is_old:
-                    logger.warning("Skipping recent staging collection: %s", collection_name)
+                    log.warning("Skipping recent staging collection: %s", collection_name)
                     stats["collections_skipped"] += 1
                     stats["safety_checks"][collection_name] = "staging_too_recent"
                     continue
 
-                logger.info("Deleting collection %s with %s vectors", collection_name, vector_count)
+                log.info("Deleting collection %s with %s vectors", collection_name, vector_count)
 
                 with QdrantOperationTimer("delete_collection_safe"):
                     qdrant_client.delete_collection(collection_name)
@@ -283,7 +291,7 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
 
             except Exception as exc:
                 error_msg = f"Failed to delete collection {collection_name}: {str(exc)}"
-                logger.error(error_msg)
+                log.error(error_msg)
                 stats["collections_failed"] += 1
                 stats["errors"].append(error_msg)
                 stats["safety_checks"][collection_name] = f"error: {str(exc)}"
@@ -291,7 +299,7 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
         if deletions_for_audit:
             resolve_awaitable_sync(_audit_collection_deletions_batch(deletions_for_audit))
 
-        logger.info(
+        log.info(
             "Enhanced cleanup completed: deleted=%s, skipped=%s, failed=%s",
             stats["collections_deleted"],
             stats["collections_skipped"],
@@ -304,7 +312,7 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
         return stats
 
     except Exception as exc:
-        logger.error("Enhanced cleanup task failed: %s", exc)
+        log.error("Enhanced cleanup task failed: %s", exc)
         stats["errors"].append(str(exc))
         record_metric_safe("qdrant_cleanup_total", {"status": "failed", "type": "enhanced"})
 

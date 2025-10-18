@@ -319,6 +319,10 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
         except Exception:
             return getattr(obj, name, default)
 
+    tasks_ns = _tasks_namespace()
+    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
+
     op = (await db.execute(None)).scalar_one()
     collection_obj = (await db.execute(None)).scalar_one_or_none()
     docs = (await db.execute(None)).scalars().all()
@@ -340,10 +344,12 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
-    cs = await resolve_celery_chunking_service(
-        db,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
+    cs = await await_if_awaitable(
+        chunking_resolver(
+            db,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+        )
     )
 
     processed = 0
@@ -352,9 +358,11 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     for doc in docs:
         try:
             try:
-                blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
+                blocks_result = extract_fn(_get(doc, "file_path", ""))
+                blocks = await await_if_awaitable(blocks_result)
             except Exception:
                 blocks = []
+
             text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
             metadata: dict[str, Any] = {}
             for _t, m in blocks or []:
@@ -363,18 +371,20 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
             if not text or not blocks:
                 with contextlib.suppress(Exception):
-                    doc.chunk_count = 0
-                    doc.status = DocumentStatus.COMPLETED
+                    setattr(doc, "chunk_count", 0)
+                    setattr(doc, "status", DocumentStatus.COMPLETED)
                 processed += 1
                 continue
 
-            res = await cs.execute_ingestion_chunking(
+            chunk_response = cs.execute_ingestion_chunking(
                 text=text,
                 document_id=_get(doc, "id"),
                 collection=collection,
                 metadata=metadata,
                 file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
             )
+
+            res = await await_if_awaitable(chunk_response)
 
             chunks = res.get("chunks", [])
 
@@ -387,13 +397,13 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
 
             with contextlib.suppress(Exception):
-                doc.chunk_count = len(chunks)
-                doc.status = DocumentStatus.COMPLETED
+                setattr(doc, "chunk_count", len(chunks))
+                setattr(doc, "status", DocumentStatus.COMPLETED)
             processed += 1
 
         except Exception:
             with contextlib.suppress(Exception):
-                doc.status = DocumentStatus.FAILED
+                setattr(doc, "status", DocumentStatus.FAILED)
             if doc == docs[-1]:
                 raise
 

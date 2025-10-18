@@ -36,6 +36,7 @@ from .utils import (
     qdrant_manager,
     resolve_qdrant_manager,
     resolve_qdrant_manager_class,
+    await_if_awaitable,
     _audit_log_operation,
     _build_internal_api_headers,
     calculate_cleanup_delay,
@@ -57,6 +58,11 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
             return obj.get(name, default)
         except Exception:
             return getattr(obj, name, default)
+
+    tasks_ns = _tasks_namespace()
+    log = getattr(tasks_ns, "logger", logger)
+    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
+    chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
 
     op = (await db.execute(None)).scalar_one()
     source_collection = (await db.execute(None)).scalar_one_or_none()
@@ -91,30 +97,48 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
 
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
-    cs = await resolve_celery_chunking_service(
-        db,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
+    cs = await await_if_awaitable(
+        chunking_resolver(
+            db,
+            collection_repo=collection_repo,
+            document_repo=document_repo,
+        )
     )
 
     processed = 0
     from shared.database.models import DocumentStatus
 
     for doc in docs:
-        blocks = extract_and_serialize_thread_safe(_get(doc, "file_path", ""))
+        try:
+            blocks_result = extract_fn(_get(doc, "file_path", ""))
+            blocks = await await_if_awaitable(blocks_result)
+        except FileNotFoundError:
+            blocks = []
+        except Exception as exc:
+            log.warning("Failed to extract document %s: %s", _get(doc, "file_path", ""), exc)
+            blocks = []
+
         text = "".join((t for t, _m in (blocks or []) if isinstance(t, str)))
         metadata: dict[str, Any] = {}
         for _t, m in blocks or []:
             if isinstance(m, dict):
                 metadata.update(m)
 
-        res = await cs.execute_ingestion_chunking(
+        if not text and not metadata:
+            with contextlib.suppress(Exception):
+                setattr(doc, "chunk_count", 0)
+                setattr(doc, "status", DocumentStatus.COMPLETED)
+            processed += 1
+            continue
+
+        chunk_response = cs.execute_ingestion_chunking(
             text=text,
             document_id=_get(doc, "id"),
             collection=collection,
             metadata=metadata,
             file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
         )
+        res = await await_if_awaitable(chunk_response)
         chunks = res.get("chunks", [])
 
         if chunks:
@@ -129,8 +153,8 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 )
 
         try:
-            doc.chunk_count = len(chunks)
-            doc.status = DocumentStatus.COMPLETED
+            setattr(doc, "chunk_count", len(chunks))
+            setattr(doc, "status", DocumentStatus.COMPLETED)
         except Exception:
             pass
         processed += 1
