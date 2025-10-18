@@ -38,6 +38,9 @@ class WebuiConfig(BaseConfig):
     # CORS Configuration
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # Feature toggles
+    USE_CHUNKING_ORCHESTRATOR: bool = True
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration with JWT secret key validation."""
         super().__init__(**kwargs)

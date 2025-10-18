@@ -62,6 +62,8 @@ from shared.metrics.collection_metrics import (
 from webui.celery_app import celery_app
 from webui.utils.qdrant_manager import qdrant_manager
 
+from packages.webui.services.chunking.container import resolve_celery_chunking_service
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -311,10 +313,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
 
-    # Instantiate repositories and ChunkingService (tests patch this constructor)
+    # Instantiate repositories and resolve chunking dependency via container
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
-    cs = ChunkingService(db, collection_repo, document_repo)
+    cs = await resolve_celery_chunking_service(
+        db,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
 
     processed = 0
     from shared.database.models import DocumentStatus
@@ -430,10 +436,14 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
 
-    # Instantiate repositories and ChunkingService
+    # Instantiate repositories and resolve chunking dependency
     collection_repo = CollectionRepository(db)
     document_repo = DocumentRepository(db)
-    cs = ChunkingService(db, collection_repo, document_repo)
+    cs = await resolve_celery_chunking_service(
+        db,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+    )
 
     processed = 0
     from shared.database.models import DocumentStatus

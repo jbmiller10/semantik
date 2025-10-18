@@ -52,8 +52,8 @@ from packages.webui.api.chunking_exceptions import (
 )
 from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
+from packages.webui.services.chunking.container import resolve_celery_chunking_service
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.chunking_service import ChunkingService
 from packages.webui.services.factory import get_redis_manager
 from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 from packages.webui.services.type_guards import ensure_sync_redis
@@ -61,6 +61,7 @@ from packages.webui.utils.error_classifier import get_default_chunking_error_cla
 
 if TYPE_CHECKING:
     from packages.shared.text_processing.base_chunker import ChunkResult
+    from packages.webui.services.chunking_service import ChunkingService
 
 logger = logging.getLogger(__name__)
 
@@ -916,12 +917,11 @@ async def _process_chunking_operation_async(
                 "Starting chunking operation",
             )
 
-            # Initialize chunking service
-            chunking_service = ChunkingService(
-                db_session=db,
+            # Initialize chunking service via composition root (no Redis in Celery context)
+            chunking_service = await resolve_celery_chunking_service(
+                db,
                 collection_repo=collection_repo,
                 document_repo=DocumentRepository(db),
-                redis_client=None,  # Redis client type mismatch - TODO: use async redis
             )
 
             # Check resource limits before processing

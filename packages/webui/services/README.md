@@ -276,3 +276,12 @@ async def test_create_collection():
 4. Create collection list/search endpoints
 5. Add operation history endpoint
 6. Implement batch operations
+## Chunking Composition Root
+
+Phase 2 introduces `packages/webui/services/chunking/container.py` as the central wiring module for chunking workflows. The container assembles cache, metrics, validator, processor, and config manager collaborators around the orchestrator and exposes helpers tailored to each execution context.
+
+- **FastAPI**: depend on `packages/webui.dependencies.get_chunking_service_adapter_dependency` for legacy-compatible routes or `get_chunking_orchestrator_dependency` when working directly with service DTOs.
+- **Celery/tasks**: call `packages/webui.services.chunking.container.resolve_celery_chunking_service` so workers receive an adapter (or the legacy service) without manual wiring.
+- **Tests**: patch the resolver functions rather than instantiating `ChunkingService` directly; this keeps fixtures aligned with production wiring and honors the feature toggle.
+
+The rollout toggle `settings.USE_CHUNKING_ORCHESTRATOR` controls whether the container yields the orchestrator-backed adapter or falls back to the monolithic `ChunkingService`. Callers should use the container entry points exclusively so flipping the flag requires no further code changes.
