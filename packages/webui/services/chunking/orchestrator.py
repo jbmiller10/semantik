@@ -253,7 +253,7 @@ class ChunkingOrchestrator:
                 )
 
                 preview_chunks = self._transform_chunks_to_preview(preview.chunks)
-                metrics = self._calculate_preview_metrics(
+                metrics = dict(preview.metrics) if preview.metrics else self._calculate_preview_metrics(
                     preview_chunks,
                     len(content),
                     preview.processing_time_ms / 1000 if preview.processing_time_ms else 0,
