@@ -10,14 +10,16 @@ test surface.
 from __future__ import annotations
 
 import copy
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 from packages.webui.services.chunking.strategy_registry import (
     build_metadata_by_enum,
     get_strategy_definition,
     recommend_strategy,
 )
+
+if TYPE_CHECKING:
+    from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
 
 
 class ChunkingStrategyRegistry:
@@ -43,4 +45,3 @@ class ChunkingStrategyRegistry:
         """Recommend a strategy based on the provided file types."""
 
         return recommend_strategy(file_types)
-

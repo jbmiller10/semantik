@@ -58,6 +58,11 @@ from packages.shared.database.repositories.collection_repository import (
     CollectionRepository,
 )
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.chunking.strategy_registry import (
+    get_api_to_internal_map,
+    get_strategy_defaults,
+    resolve_internal_strategy_name,
+)
 from packages.webui.services.dtos.api_models import ChunkingStrategy
 
 # All exceptions now come from the new infrastructure layer
@@ -68,11 +73,6 @@ from .chunking_error_handler import ChunkingErrorHandler
 from .chunking_strategies import ChunkingStrategyRegistry
 from .chunking_strategy_factory import ChunkingStrategyFactory
 from .chunking_validation import ChunkingInputValidator
-from packages.webui.services.chunking.strategy_registry import (
-    get_api_to_internal_map,
-    get_strategy_defaults,
-    resolve_internal_strategy_name,
-)
 from .dtos import (
     ServiceChunkingStats,
     ServiceChunkList,
