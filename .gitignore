@@ -251,3 +251,4 @@ nginx.conf.example
 
 # Code review chunks (generated files only - scripts and guide are tracked)
 review-chunk-*.txt
+.code/

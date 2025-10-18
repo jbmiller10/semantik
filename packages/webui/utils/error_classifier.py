@@ -8,9 +8,10 @@ categories are introduced.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any
 
 RulePredicate = Callable[[Exception, str], bool]
 MetadataFactory = Callable[[Exception], dict[str, Any] | None]
@@ -97,7 +98,7 @@ class ErrorClassifier:
 
         return self.classify(error).code
 
-    def with_rules(self, extra_rules: Iterable[ClassificationRule]) -> "ErrorClassifier":
+    def with_rules(self, extra_rules: Iterable[ClassificationRule]) -> ErrorClassifier:
         """Return a new classifier with additional rules prepended."""
 
         combined_rules = list(extra_rules) + self._rules
@@ -113,6 +114,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
     """Construct the canonical rule list for chunking errors."""
 
     from celery.exceptions import SoftTimeLimitExceeded
+
     from packages.webui.api.chunking_exceptions import (
         ChunkingDependencyError,
         ChunkingMemoryError,
@@ -130,7 +132,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
     def _contains(*needles: str) -> RulePredicate:
         lowered_needles = tuple(needle.lower() for needle in needles)
 
-        def predicate(exc: Exception, message: str) -> bool:
+        def predicate(_exc: Exception, message: str) -> bool:
             lowered = message.lower()
             return any(needle in lowered for needle in lowered_needles)
 
