@@ -1,6 +1,8 @@
 import '@testing-library/jest-dom';
 import { vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { server } from './src/tests/mocks/server';
+import { disconnectChunkingWebSocket } from './src/services/websocket';
+import { useAuthStore } from './src/stores/authStore';
 
 // Suppress console errors in tests by default
 const originalError = console.error;
@@ -66,11 +68,15 @@ afterEach(() => {
   activeTimeouts.clear();
   activeIntervals.forEach((id) => originalClearInterval(id));
   activeIntervals.clear();
+
+  useAuthStore.setState({ token: null, refreshToken: null, user: null });
+  localStorage.removeItem('auth-storage');
+  disconnectChunkingWebSocket();
 });
 
 // Clean up after all tests
-afterAll(() => {
-  server.close();
+afterAll(async () => {
+  await server.close();
   // Restore original console methods
   console.error = originalError;
   console.warn = originalWarn;
@@ -84,16 +90,7 @@ afterAll(() => {
   window.setInterval = originalSetInterval;
   window.clearInterval = originalClearInterval;
 
-  const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
-  if (typeof getActiveHandles === 'function') {
-    const handles = getActiveHandles();
-    if (handles.length > 0) {
-      console.warn(
-        'Warning: active handles remain after tests:',
-        handles.map((handle) => handle && (handle as any).constructor ? (handle as any).constructor.name : typeof handle)
-      );
-    }
-  }
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 // Mock window.matchMedia
@@ -117,6 +114,56 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),
 }));
+
+class MockWebSocket extends EventTarget {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readonly CONNECTING = MockWebSocket.CONNECTING;
+  readonly OPEN = MockWebSocket.OPEN;
+  readonly CLOSING = MockWebSocket.CLOSING;
+  readonly CLOSED = MockWebSocket.CLOSED;
+
+  readyState = MockWebSocket.CONNECTING;
+  url: string;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(url: string) {
+    super();
+    this.url = url;
+
+    // Immediately fail the connection so production code sees a closed socket.
+    queueMicrotask(() => {
+      if (this.readyState !== MockWebSocket.CONNECTING) return;
+      const errorEvent = new Event('error');
+      this.readyState = MockWebSocket.CLOSING;
+      this.onerror?.(errorEvent);
+      this.dispatchEvent(errorEvent);
+
+      const closeEvent = new Event('close');
+      this.readyState = MockWebSocket.CLOSED;
+      this.onclose?.(closeEvent as CloseEvent);
+      this.dispatchEvent(closeEvent);
+    });
+  }
+
+  send = vi.fn();
+
+  close = vi.fn(() => {
+    if (this.readyState === MockWebSocket.CLOSED) return;
+    const closeEvent = new Event('close');
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.(closeEvent as CloseEvent);
+    this.dispatchEvent(closeEvent);
+  });
+}
+
+global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
 // Mock scrollTo
 window.scrollTo = vi.fn();
