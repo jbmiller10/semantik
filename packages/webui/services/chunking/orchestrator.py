@@ -10,7 +10,7 @@ import time
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -280,9 +280,7 @@ class ChunkingOrchestrator:
                     max_chunks=chunk_limit,
                 )
 
-                preview_chunks = self._transform_chunks_to_preview(
-                    cast(list[ServiceChunkPreview | dict[str, Any]], preview.chunks)
-                )
+                preview_chunks = self._transform_chunks_to_preview(preview.chunks)
                 metrics = (
                     dict(preview.metrics)
                     if preview.metrics
@@ -295,11 +293,12 @@ class ChunkingOrchestrator:
 
                 strategy_info = self.config_manager.get_strategy_info(strategy)
                 sample_chunks = preview_chunks[:chunk_limit]
+                sample_chunks_union: list[ServiceChunkPreview | dict[str, Any]] = list(sample_chunks)
 
                 comparison = ServiceStrategyComparison(
                     strategy=strategy,
                     config=preview.config,
-                    sample_chunks=cast(list[ServiceChunkPreview | dict[str, Any]], sample_chunks),
+                    sample_chunks=sample_chunks_union,
                     total_chunks=preview.total_chunks,
                     avg_chunk_size=metrics.get("avg_chunk_size", metrics.get("average_chunk_size", 0)),
                     size_variance=metrics.get("size_variance", 0),
@@ -330,11 +329,11 @@ class ChunkingOrchestrator:
         recommendation = self._get_recommendation(comparisons, content)
         elapsed_ms = int((time.perf_counter() - comparison_start) * 1000)
 
-        comparisons_typed = cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons)
+        comparisons_union: list[ServiceStrategyComparison | dict[str, Any]] = list(comparisons)
 
         return ServiceCompareResponse(
             comparison_id=str(uuid.uuid4()),
-            comparisons=comparisons_typed,
+            comparisons=comparisons_union,
             recommendation=recommendation,
             processing_time_ms=elapsed_ms,
         )
@@ -389,10 +388,10 @@ class ChunkingOrchestrator:
 
         if fallback_used:
             for chunk in chunks:
-                metadata = chunk.setdefault("metadata", {})
-                metadata.setdefault("fallback", True)
-                metadata.setdefault("fallback_reason", fallback_reason)
-                metadata.setdefault("original_strategy", strategy)
+                chunk_metadata = chunk.setdefault("metadata", {})
+                chunk_metadata.setdefault("fallback", True)
+                chunk_metadata.setdefault("fallback_reason", fallback_reason)
+                chunk_metadata.setdefault("original_strategy", strategy)
 
         # Add metadata to chunks
         if metadata:
@@ -544,7 +543,7 @@ class ChunkingOrchestrator:
         expires_at: datetime | None,
         correlation_id: str | None,
     ) -> ServicePreviewResponse:
-        preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], chunks)
+        preview_chunks_typed: list[ServiceChunkPreview | dict[str, Any]] = list(chunks)
 
         return ServicePreviewResponse(
             preview_id=preview_id,

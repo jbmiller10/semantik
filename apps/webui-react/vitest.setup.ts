@@ -74,7 +74,7 @@ afterAll(() => {
   // Restore original console methods
   console.error = originalError;
   console.warn = originalWarn;
-
+  
   global.setTimeout = originalSetTimeout;
   global.clearTimeout = originalClearTimeout;
   global.setInterval = originalSetInterval;
@@ -83,6 +83,17 @@ afterAll(() => {
   window.clearTimeout = originalClearTimeout;
   window.setInterval = originalSetInterval;
   window.clearInterval = originalClearInterval;
+
+  const getActiveHandles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles;
+  if (typeof getActiveHandles === 'function') {
+    const handles = getActiveHandles();
+    if (handles.length > 0) {
+      console.warn(
+        'Warning: active handles remain after tests:',
+        handles.map((handle) => handle && (handle as any).constructor ? (handle as any).constructor.name : typeof handle)
+      );
+    }
+  }
 });
 
 // Mock window.matchMedia
