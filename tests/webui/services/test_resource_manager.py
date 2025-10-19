@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -83,3 +84,125 @@ async def test_reserve_and_release_reindex(monkeypatch):
 
     await manager.release_reindex_reservation("col-1")
     assert not manager._reserved_resources
+
+
+@pytest.fixture()
+def frozen_resource_manager_clock(monkeypatch):
+    """Freeze resource manager wall clock to control cache expiry in tests."""
+
+    class FrozenDateTime(datetime):
+        _now = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return cls._now.replace(tzinfo=None)
+            return cls._now.astimezone(tz)
+
+        @classmethod
+        def utcnow(cls):
+            return cls._now
+
+        @classmethod
+        def advance(cls, seconds: float) -> None:
+            cls._now = cls._now + timedelta(seconds=seconds)
+
+    monkeypatch.setattr("packages.webui.services.resource_manager.datetime", FrozenDateTime)
+    return FrozenDateTime
+
+
+@pytest.mark.asyncio()
+async def test_get_resource_usage_prefers_qdrant_metrics():
+    collection_repo = AsyncMock()
+    collection_repo.get_by_id.return_value = {
+        "id": "col-123",
+        "vector_store_name": "collection_col-123",
+        "document_count": 5,
+        "vector_count": 50,
+        "total_size_bytes": 1024,
+    }
+    operation_repo = AsyncMock()
+    qdrant_manager = AsyncMock()
+    qdrant_manager.get_collection_usage.return_value = {
+        "documents": 42,
+        "vectors": 84,
+        "storage_bytes": 65_536,
+    }
+
+    manager = ResourceManager(collection_repo, operation_repo)
+    manager.qdrant_manager = qdrant_manager
+
+    usage = await manager.get_resource_usage("col-123")
+
+    qdrant_manager.get_collection_usage.assert_awaited_once_with("collection_col-123")
+    assert usage["documents"] == 42
+    assert usage["vectors"] == 84
+    assert usage["storage_bytes"] == 65_536
+    assert usage["storage_gb"] == pytest.approx(65_536 / 1024 / 1024 / 1024)
+
+
+@pytest.mark.asyncio()
+async def test_get_resource_usage_falls_back_when_qdrant_errors():
+    collection_repo = AsyncMock()
+    collection_repo.get_by_id.return_value = {
+        "id": "col-456",
+        "vector_store_name": "collection_col-456",
+        "document_count": 8,
+        "vector_count": 16,
+        "total_size_bytes": 131_072,
+    }
+    operation_repo = AsyncMock()
+    qdrant_manager = AsyncMock()
+    qdrant_manager.get_collection_usage.side_effect = RuntimeError("boom")
+
+    manager = ResourceManager(collection_repo, operation_repo)
+    manager.qdrant_manager = qdrant_manager
+
+    usage = await manager.get_resource_usage("col-456")
+
+    qdrant_manager.get_collection_usage.assert_awaited_once_with("collection_col-456")
+    assert usage["documents"] == 8
+    assert usage["vectors"] == 16
+    assert usage["storage_bytes"] == 131_072
+    assert usage["storage_gb"] == pytest.approx(131_072 / 1024 / 1024 / 1024)
+
+
+@pytest.mark.asyncio()
+async def test_get_resource_usage_caches_qdrant_metrics(frozen_resource_manager_clock):
+    collection_repo = AsyncMock()
+    collection_repo.get_by_id.return_value = {
+        "id": "col-789",
+        "vector_store_name": "collection_col-789",
+        "document_count": 1,
+        "vector_count": 2,
+        "total_size_bytes": 512,
+    }
+    operation_repo = AsyncMock()
+    qdrant_manager = AsyncMock()
+    qdrant_manager.get_collection_usage.return_value = {
+        "documents": 33,
+        "vectors": 44,
+        "storage_bytes": 55_000,
+    }
+
+    manager = ResourceManager(collection_repo, operation_repo)
+    manager.qdrant_manager = qdrant_manager
+
+    # Ensure any future cache implementation respects a short TTL for the test.
+    if hasattr(manager, "RESOURCE_USAGE_CACHE_TTL_SECONDS"):
+        setattr(manager, "RESOURCE_USAGE_CACHE_TTL_SECONDS", 30)
+    else:
+        setattr(manager, "_usage_cache_ttl_seconds", 30)
+
+    first_usage = await manager.get_resource_usage("col-789")
+    qdrant_manager.get_collection_usage.assert_awaited_once_with("collection_col-789")
+
+    second_usage = await manager.get_resource_usage("col-789")
+    assert qdrant_manager.get_collection_usage.await_count == 1
+    assert second_usage == first_usage
+
+    frozen_resource_manager_clock.advance(31)
+
+    third_usage = await manager.get_resource_usage("col-789")
+    assert qdrant_manager.get_collection_usage.await_count == 2
+    assert third_usage == first_usage

@@ -849,15 +849,19 @@ class TestUpdate:
         updated_collection = MagicMock()
         mock_collection_repo.update.return_value = updated_collection
 
-        result = await collection_service.update(
-            collection_id=str(mock_collection.uuid),
-            user_id=mock_collection.owner_id,
-            updates={
-                "name": "Updated Name",
-                "description": "Updated description",
-                "is_public": True,
-            },
-        )
+        with patch("packages.webui.services.collection_service.qdrant_manager") as mock_qdrant_manager:
+            mock_qdrant_client = MagicMock()
+            mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+
+            result = await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={
+                    "name": "Updated Name",
+                    "description": "Updated description",
+                    "is_public": True,
+                },
+            )
 
         # Verify permission check
         mock_collection_repo.get_by_uuid_with_permission_check.assert_called_once_with(
@@ -876,6 +880,8 @@ class TestUpdate:
 
         # Verify commit
         mock_db_session.commit.assert_called_once()
+        mock_qdrant_manager.get_client.assert_called_once()
+        mock_qdrant_client.update_collection_aliases.assert_called_once()
 
         assert result == updated_collection
 
@@ -1061,6 +1067,77 @@ class TestListOperations:
         with pytest.raises(EntityNotFoundError):
             await collection_service.list_operations(collection_id="nonexistent-uuid", user_id=1)
 
+
+class TestRenameCollectionWithQdrantSync:
+    """Tests ensuring collection rename stays in sync with Qdrant."""
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_updates_qdrant_and_database(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Renaming should update Qdrant alias and commit DB changes."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        updated_collection.name = "Renamed"
+        updated_collection.vector_store_name = mock_collection.vector_store_name
+        mock_collection_repo.update.return_value = updated_collection
+
+        with patch("packages.webui.services.collection_service.qdrant_manager") as mock_qdrant_manager:
+            mock_qdrant_client = MagicMock()
+            mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+
+            result = await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"name": "Renamed"},
+            )
+
+        mock_qdrant_manager.get_client.assert_called_once()
+        mock_qdrant_client.update_collection_aliases.assert_called_once()
+        mock_collection_repo.update.assert_called_once_with(
+            str(mock_collection.id),
+            {"name": "Renamed"},
+        )
+        mock_db_session.commit.assert_called_once()
+        assert result == updated_collection
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_qdrant_failure_triggers_rollback(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """If Qdrant alias update fails, the DB transaction should roll back."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_repo.update.return_value = mock_collection
+
+        with patch("packages.webui.services.collection_service.qdrant_manager") as mock_qdrant_manager:
+            mock_qdrant_client = MagicMock()
+            mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+            mock_qdrant_client.update_collection_aliases.side_effect = RuntimeError("Qdrant rename failed")
+
+            with pytest.raises(RuntimeError, match="Qdrant rename failed"):
+                await collection_service.update(
+                    collection_id=str(mock_collection.uuid),
+                    user_id=mock_collection.owner_id,
+                    updates={"name": "Renamed"},
+                )
+
+        mock_qdrant_manager.get_client.assert_called_once()
+        mock_qdrant_client.update_collection_aliases.assert_called_once()
+        mock_db_session.rollback.assert_called_once()
+        mock_db_session.commit.assert_not_called()
 
 class TestCollectionServiceEdgeCases:
     """Test edge cases and special scenarios."""
