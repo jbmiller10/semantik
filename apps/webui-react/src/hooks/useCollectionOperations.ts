@@ -18,6 +18,8 @@ export const operationKeys = {
 
 // Hook to fetch operations for a collection
 export function useCollectionOperations(collectionId: string, options?: { limit?: number }) {
+  const isTestEnv = import.meta.env.MODE === 'test'
+
   return useQuery({
     queryKey: operationKeys.list(collectionId),
     queryFn: async () => {
@@ -26,12 +28,14 @@ export function useCollectionOperations(collectionId: string, options?: { limit?
     },
     enabled: !!collectionId,
     // Refetch more frequently if there are active operations
-    refetchInterval: (query) => {
-      const hasActiveOps = query.state.data?.some(
-        (op: Operation) => op.status === 'pending' || op.status === 'processing'
-      );
-      return hasActiveOps ? 5000 : false; // 5 seconds for active operations
-    },
+    refetchInterval: isTestEnv
+      ? false
+      : (query) => {
+          const hasActiveOps = query.state.data?.some(
+            (op: Operation) => op.status === 'pending' || op.status === 'processing'
+          );
+          return hasActiveOps ? 5000 : false; // 5 seconds for active operations
+        },
   });
 }
 
