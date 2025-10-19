@@ -3,7 +3,7 @@ Comprehensive tests for CollectionService covering all methods and edge cases.
 """
 
 import uuid
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -1143,6 +1143,46 @@ class TestRenameCollectionWithQdrantSync:
         )
         mock_db_session.rollback.assert_called_once()
         mock_db_session.commit.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_commit_failure_reverts_qdrant(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """If the DB commit fails, revert the Qdrant rename to keep state consistent."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        new_name = "Renamed"
+        expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), new_name)
+        updated_collection.name = new_name
+        updated_collection.vector_store_name = expected_vector_store
+        mock_collection_repo.update.return_value = updated_collection
+
+        mock_db_session.commit.side_effect = RuntimeError("DB commit failed")
+
+        with pytest.raises(RuntimeError, match="DB commit failed"):
+            await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"name": new_name},
+            )
+
+        mock_collection_repo.update.assert_called_once_with(
+            str(mock_collection.id),
+            {"name": new_name, "vector_store_name": expected_vector_store},
+        )
+        assert collection_service.qdrant_manager.rename_collection.await_args_list == [
+            call(old_name=mock_collection.vector_store_name, new_name=expected_vector_store),
+            call(old_name=expected_vector_store, new_name=mock_collection.vector_store_name),
+        ]
+        mock_db_session.rollback.assert_called_once()
+        mock_db_session.commit.assert_called_once()
 
 
 class TestCollectionServiceEdgeCases:
