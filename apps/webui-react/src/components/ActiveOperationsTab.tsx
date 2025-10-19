@@ -30,6 +30,13 @@ function ActiveOperationsTab() {
   }, [collections]);
 
   // Fetch active operations across all collections
+  const pollingPreference =
+    typeof window !== 'undefined'
+      ? (window as Window & { __activeOperationsPolling?: boolean }).__activeOperationsPolling
+      : undefined;
+
+  const shouldPollActiveOperations = pollingPreference ?? true;
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['active-operations'],
     queryFn: async () => {
@@ -39,7 +46,7 @@ function ActiveOperationsTab() {
       });
       return response.data;
     },
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    refetchInterval: shouldPollActiveOperations ? 5000 : false,
   });
 
   // Get collection name for an operation
