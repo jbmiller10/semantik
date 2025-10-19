@@ -434,32 +434,33 @@ export function useChunkingWebSocket(
    * Auto-connect on mount if enabled
    */
   useEffect(() => {
+    const listenersSnapshot = listenersRef.current;
+
     if (autoConnect) {
       connect();
     }
 
     return () => {
-      // Clean up on unmount - inline cleanup to avoid stale closure
-      if (wsRef.current) {
-        // Remove all event listeners
-        listenersRef.current.forEach((handler, event) => {
-          const ws = wsRef.current;
-          if (ws) {
-            if (typeof ws.off === 'function') {
-              ws.off(event, handler);
-            } else if (typeof ws.removeListener === 'function') {
-              ws.removeListener(event, handler);
-            }
+      // Capture latest WebSocket instance at cleanup time
+      const wsInstance = wsRef.current;
+
+      if (wsInstance) {
+        listenersSnapshot.forEach((handler, event) => {
+          if (typeof wsInstance.off === 'function') {
+            wsInstance.off(event, handler);
+          } else if (typeof wsInstance.removeListener === 'function') {
+            wsInstance.removeListener(event, handler);
           }
         });
-        listenersRef.current.clear();
-        
+
         // Disconnect WebSocket
         disconnectChunkingWebSocket();
-        wsRef.current = null;
       }
+
+      listenersSnapshot.clear();
+      wsRef.current = null;
     };
-  }, [autoConnect]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoConnect, connect]);
 
   return {
     // Connection management
