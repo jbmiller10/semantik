@@ -270,6 +270,7 @@ class TestMultiCollectionSearch:
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
         assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in call_kwargs
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
@@ -1163,6 +1164,7 @@ class TestHybridSearchParameters:
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
         assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in call_kwargs
 
         assert isinstance(response, CollectionSearchResponse)
         assert response.total_results == 2
@@ -1229,6 +1231,7 @@ class TestHybridSearchParameters:
         assert call_args.kwargs["search_type"] == "hybrid"
         assert call_args.kwargs["hybrid_alpha"] == 0.3
         assert call_args.kwargs["hybrid_mode"] == "filter"
+        assert "hybrid_search_mode" not in call_args.kwargs
 
         assert response.search_type == "hybrid"
         assert len(response.results) == 1
