@@ -19,10 +19,10 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.shared.managers import QdrantManager
-from packages.webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
 from packages.webui.celery_app import celery_app
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from packages.webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -637,12 +637,7 @@ class CollectionService:
             return cast(Collection, updated_collection)
         except Exception as exc:  # pragma: no cover - covered via explicit tests
             await self.db_session.rollback()
-            if (
-                qdrant_rename_performed
-                and requires_qdrant_sync
-                and new_vector_store_name
-                and old_vector_store_name
-            ):
+            if qdrant_rename_performed and requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
                 try:
                     assert qdrant_manager_for_rename is not None  # mypy assurance
                     await qdrant_manager_for_rename.rename_collection(
