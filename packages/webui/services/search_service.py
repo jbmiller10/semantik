@@ -115,10 +115,13 @@ class SearchService:
 
         # Build search request for this collection
         base_params = dict(search_params)
-        if base_params.get("search_type") == "hybrid":
-            legacy_hybrid_mode = base_params.pop("hybrid_search_mode", None)
-            canonical_hybrid_mode = base_params.get("hybrid_mode") or legacy_hybrid_mode
+        legacy_hybrid_mode = base_params.pop("hybrid_search_mode", None)
+        canonical_hybrid_mode = base_params.get("hybrid_mode") or legacy_hybrid_mode
+
+        if canonical_hybrid_mode is not None:
             base_params["hybrid_mode"] = normalize_hybrid_mode(canonical_hybrid_mode)
+
+        if "keyword_mode" in base_params or canonical_hybrid_mode is not None:
             base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
 
         collection_search_params = {
