@@ -239,9 +239,6 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     # Add CSP middleware for XSS prevention
     app.add_middleware(CSPMiddleware)
 
-    # Add rate limit middleware to set user in request.state
-    app.add_middleware(RateLimitMiddleware)
-
     # Configure CORS with more restrictive settings
     app.add_middleware(
         CORSMiddleware,
@@ -260,6 +257,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
+    # Add rate limit middleware to set user in request.state after SlowAPI middleware so user context is available
+    app.add_middleware(RateLimitMiddleware)
 
     # Register chunking exception handlers
     register_chunking_exception_handlers(app)
