@@ -351,7 +351,7 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
                 raise RateLimitExceeded(_DummyLimit(limit)) from exc
             raise
         else:
-            setattr(request.state, "_rate_limit_dependency_enforced", True)
+            request.state._rate_limit_dependency_enforced = True
 
     return _dependency
 
