@@ -423,7 +423,7 @@ class TestSearchReranking:
             use_reranker=False,
             rerank_model=None,
             hybrid_alpha=0.7,
-            hybrid_search_mode="weighted",
+            hybrid_mode="weighted",
             keyword_mode="any",
         )
 
@@ -513,7 +513,7 @@ class TestSearchReranking:
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             hybrid_alpha=0.7,
-            hybrid_search_mode="weighted",
+            hybrid_mode="weighted",
             keyword_mode="any",
         )
 
@@ -1161,7 +1161,7 @@ class TestHybridSearchParameters:
 
         mock_search_service.multi_collection_search.assert_awaited_once()
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
-        assert call_kwargs["hybrid_search_mode"] == "weighted"
+        assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
 
         assert isinstance(response, CollectionSearchResponse)
@@ -1228,7 +1228,7 @@ class TestHybridSearchParameters:
         call_args = mock_search_service.multi_collection_search.call_args
         assert call_args.kwargs["search_type"] == "hybrid"
         assert call_args.kwargs["hybrid_alpha"] == 0.3
-        assert call_args.kwargs["hybrid_search_mode"] == "filter"
+        assert call_args.kwargs["hybrid_mode"] == "filter"
 
         assert response.search_type == "hybrid"
         assert len(response.results) == 1
