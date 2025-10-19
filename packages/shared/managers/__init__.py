@@ -1,3 +1,3 @@
-from .qdrant_manager import QdrantManager
+from .qdrant_manager import QdrantCollectionNotFoundError, QdrantManager
 
-__all__ = ["QdrantManager"]
+__all__ = ["QdrantManager", "QdrantCollectionNotFoundError"]

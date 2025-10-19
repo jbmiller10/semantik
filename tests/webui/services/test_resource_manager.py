@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from packages.shared.managers import QdrantCollectionNotFoundError
 from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
 
 
@@ -12,7 +13,7 @@ async def test_can_create_collection_respects_limit():
     collection_repo.list_for_user.return_value = ([MagicMock(status="ready") for _ in range(3)], 3)
     operation_repo = AsyncMock()
 
-    manager = ResourceManager(collection_repo, operation_repo)
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=None)
     assert await manager.can_create_collection(user_id=1) is True
 
     # Simulate hitting limit
@@ -26,7 +27,7 @@ async def test_can_allocate_checks_system_resources(monkeypatch):
     collection_repo.list_for_user.return_value = ([], 0)
     operation_repo = AsyncMock()
 
-    manager = ResourceManager(collection_repo, operation_repo)
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=None)
 
     class FakeVM:
         available = 8 * 1024 * 1024 * 1024  # 8GB
@@ -55,7 +56,7 @@ async def test_estimate_resources_directory(tmp_path):
     file = tmp_path / "sample.txt"
     file.write_bytes(b"a" * 2048)
 
-    manager = ResourceManager(AsyncMock(), AsyncMock())
+    manager = ResourceManager(AsyncMock(), AsyncMock(), qdrant_manager=None)
     estimate = await manager.estimate_resources(str(tmp_path), "sentence-transformers/all-MiniLM-L6-v2")
 
     assert estimate.memory_mb > 0
@@ -72,7 +73,7 @@ async def test_reserve_and_release_reindex(monkeypatch):
     }
     operation_repo = AsyncMock()
 
-    manager = ResourceManager(collection_repo, operation_repo)
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=None)
 
     async def always_ok(_estimate: ResourceEstimate) -> bool:  # noqa: ARG001
         return True
@@ -129,8 +130,7 @@ async def test_get_resource_usage_prefers_qdrant_metrics():
         "storage_bytes": 65_536,
     }
 
-    manager = ResourceManager(collection_repo, operation_repo)
-    manager.qdrant_manager = qdrant_manager
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=qdrant_manager)
 
     usage = await manager.get_resource_usage("col-123")
 
@@ -139,6 +139,8 @@ async def test_get_resource_usage_prefers_qdrant_metrics():
     assert usage["vectors"] == 84
     assert usage["storage_bytes"] == 65_536
     assert usage["storage_gb"] == pytest.approx(65_536 / 1024 / 1024 / 1024)
+    assert usage["metrics_status"] == "available"
+    assert usage["metrics_source"] == "qdrant"
 
 
 @pytest.mark.asyncio()
@@ -155,8 +157,7 @@ async def test_get_resource_usage_falls_back_when_qdrant_errors():
     qdrant_manager = AsyncMock()
     qdrant_manager.get_collection_usage.side_effect = RuntimeError("boom")
 
-    manager = ResourceManager(collection_repo, operation_repo)
-    manager.qdrant_manager = qdrant_manager
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=qdrant_manager)
 
     usage = await manager.get_resource_usage("col-456")
 
@@ -165,6 +166,32 @@ async def test_get_resource_usage_falls_back_when_qdrant_errors():
     assert usage["vectors"] == 16
     assert usage["storage_bytes"] == 131_072
     assert usage["storage_gb"] == pytest.approx(131_072 / 1024 / 1024 / 1024)
+    assert usage["metrics_status"] == "unavailable"
+    assert usage["metrics_source"] == "postgres"
+    assert usage["metrics_reason"] == "qdrant_unreachable"
+
+
+@pytest.mark.asyncio()
+async def test_get_resource_usage_marks_missing_collection():
+    collection_repo = AsyncMock()
+    collection_repo.get_by_id.return_value = {
+        "id": "col-000",
+        "vector_store_name": "collection_col-000",
+        "document_count": 0,
+        "vector_count": 0,
+        "total_size_bytes": 0,
+    }
+    operation_repo = AsyncMock()
+    qdrant_manager = AsyncMock()
+    qdrant_manager.get_collection_usage.side_effect = QdrantCollectionNotFoundError("collection_col-000")
+
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=qdrant_manager)
+
+    usage = await manager.get_resource_usage("col-000")
+
+    assert usage["metrics_status"] == "unavailable"
+    assert usage["metrics_source"] == "postgres"
+    assert usage["metrics_reason"] == "collection_not_found"
 
 
 @pytest.mark.asyncio()
@@ -185,8 +212,7 @@ async def test_get_resource_usage_caches_qdrant_metrics(frozen_resource_manager_
         "storage_bytes": 55_000,
     }
 
-    manager = ResourceManager(collection_repo, operation_repo)
-    manager.qdrant_manager = qdrant_manager
+    manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=qdrant_manager)
 
     # Ensure any future cache implementation respects a short TTL for the test.
     if hasattr(manager, "RESOURCE_USAGE_CACHE_TTL_SECONDS"):
