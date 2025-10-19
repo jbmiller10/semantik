@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.shared.contracts.search import normalize_keyword_mode
+from packages.shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from packages.webui.api.schemas import SearchResult as BaseSearchResult
 
 
@@ -36,6 +36,11 @@ class CollectionSearchRequest(BaseModel):
     @classmethod
     def normalize_keyword_mode(cls, value: str) -> str:
         return normalize_keyword_mode(value)
+
+    @field_validator("hybrid_mode", mode="before")
+    @classmethod
+    def normalize_hybrid_mode(cls, value: str) -> str:
+        return normalize_hybrid_mode(value)
 
     @field_validator("collection_uuids")
     @classmethod
