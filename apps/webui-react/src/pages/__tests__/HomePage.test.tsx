@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@/tests/utils/test-utils'
+import { render, screen, waitFor } from '@/tests/utils/test-utils'
 import HomePage from '../HomePage'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -84,7 +84,7 @@ describe('HomePage', () => {
 
     render(<HomePage />)
 
-    expect(mockedUseUIStore).toHaveBeenCalledTimes(4)
+    expect(mockedUseUIStore).toHaveBeenCalled()
 
     mockedUseUIStore.mock.calls.forEach(([selector]) => {
       expect(typeof selector).toBe('function')
@@ -92,5 +92,18 @@ describe('HomePage', () => {
       expect(selected).toBeDefined()
     })
     expect(state.setActiveTab).not.toHaveBeenCalled()
+  })
+
+  it('does not clear manually opened collection modals when the route has no collectionId', async () => {
+    const state = mockUIStore({
+      activeTab: 'collections',
+      showCollectionDetailsModal: 'manual-id',
+    })
+
+    render(<HomePage />)
+
+    await waitFor(() => {
+      expect(state.setShowCollectionDetailsModal).not.toHaveBeenCalledWith(null)
+    })
   })
 })

@@ -15,18 +15,36 @@ function HomePage() {
   const setShowCollectionDetailsModal = useUIStore((state: UIState) => state.setShowCollectionDetailsModal);
   const showCollectionDetailsModal = useUIStore((state: UIState) => state.showCollectionDetailsModal);
   const hasSyncedRouteRef = useRef(false);
+  const routeControlledCollectionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (collectionId) {
       if (activeTab !== 'collections') {
+        hasSyncedRouteRef.current = false;
         setActiveTab('collections');
+        return;
       }
+
       if (showCollectionDetailsModal !== collectionId) {
+        hasSyncedRouteRef.current = false;
         setShowCollectionDetailsModal(collectionId);
       }
-    } else if (showCollectionDetailsModal !== null) {
-      setShowCollectionDetailsModal(null);
+
+      routeControlledCollectionIdRef.current = collectionId;
+      hasSyncedRouteRef.current = true;
+      return;
     }
+
+    const routeControlledCollectionId = routeControlledCollectionIdRef.current;
+
+    if (routeControlledCollectionId !== null) {
+      if (showCollectionDetailsModal === routeControlledCollectionId) {
+        setShowCollectionDetailsModal(null);
+      }
+
+      routeControlledCollectionIdRef.current = null;
+    }
+
     hasSyncedRouteRef.current = true;
   }, [
     collectionId,
@@ -37,11 +55,11 @@ function HomePage() {
   ]);
 
   useEffect(() => {
-    if (!hasSyncedRouteRef.current) {
+    if (!hasSyncedRouteRef.current || collectionId) {
       return;
     }
 
-    if (activeTab !== 'collections' && collectionId) {
+    if (activeTab !== 'collections') {
       navigate('/', { replace: true });
     }
   }, [activeTab, collectionId, navigate]);
