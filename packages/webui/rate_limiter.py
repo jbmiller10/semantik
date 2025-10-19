@@ -277,6 +277,8 @@ def create_rate_limit_decorator(limit: str) -> Callable:
                 if key in ("admin_bypass", "test_bypass"):
                     # Completely bypass rate limiting for admin and test
                     return await func(*args, **kwargs)
+                if getattr(request.state, "_rate_limit_dependency_enforced", False):
+                    return await func(*args, **kwargs)
 
             limit_callable = limiter.limit
             using_mock = isinstance(limit_callable, mock.Mock)
@@ -325,23 +327,31 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
             raise RateLimitExceeded(_ProcessLimit(limit))
 
         limit_callable = limiter.limit
-        if isinstance(limit_callable, mock.Mock):
+        should_enforce = isinstance(limit_callable, mock.Mock)
 
-            class _DummyLimit:
-                def __init__(self, limit_str: str) -> None:
-                    self.limit = limit_str
-                    self.error_message = "Rate limit exceeded"
+        if not should_enforce:
+            return
 
-            async def _noop_handler(request: Request, **_: Any) -> None:  # noqa: ARG001
-                return None
+        async def _noop_handler(request: Request, **_: Any) -> None:  # noqa: ARG001
+            return None
 
-            wrapper = limit_callable(limit)(_noop_handler)
-            try:
-                await wrapper(request=request)
-            except RateLimitExceeded:
-                raise
-            except AttributeError as exc:  # Handle improperly constructed exceptions in tests
+        wrapper = limit_callable(limit)(_noop_handler)
+        try:
+            await wrapper(request=request)
+        except RateLimitExceeded:
+            raise
+        except AttributeError as exc:  # Handle improperly constructed exceptions in tests
+            if isinstance(limit_callable, mock.Mock):
+
+                class _DummyLimit:
+                    def __init__(self, limit_str: str) -> None:
+                        self.limit = limit_str
+                        self.error_message = "Rate limit exceeded"
+
                 raise RateLimitExceeded(_DummyLimit(limit)) from exc
+            raise
+        else:
+            setattr(request.state, "_rate_limit_dependency_enforced", True)
 
     return _dependency
 
