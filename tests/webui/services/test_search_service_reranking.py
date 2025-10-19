@@ -269,7 +269,7 @@ class TestSearchServiceReranking:
                 search_type="hybrid",
                 use_reranker=True,
                 hybrid_alpha=0.5,
-                hybrid_search_mode="weighted",
+                hybrid_mode="weighted",
             )
 
             # Verify the request includes hybrid search params
@@ -277,7 +277,7 @@ class TestSearchServiceReranking:
             assert request_data["search_type"] == "hybrid"
             assert request_data["use_reranker"] is True
             assert request_data["hybrid_alpha"] == 0.5
-            assert request_data["hybrid_search_mode"] == "weighted"
+            assert request_data["hybrid_mode"] == "weighted"
 
     @pytest.mark.asyncio()
     async def test_search_reranking_error_handling(

@@ -268,7 +268,7 @@ class TestMultiCollectionSearch:
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
-        assert call_kwargs["hybrid_search_mode"] == "weighted"
+        assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
 
     @pytest.mark.asyncio()

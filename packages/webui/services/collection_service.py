@@ -52,6 +52,20 @@ class CollectionService:
         self.document_repo = document_repo
         self.qdrant_manager = qdrant_manager
 
+    def _ensure_qdrant_manager(self) -> QdrantManager | None:
+        """Lazily resolve a Qdrant manager, honoring test monkeypatches."""
+        if self.qdrant_manager is not None:
+            return self.qdrant_manager
+
+        try:
+            client = qdrant_manager.get_client()
+            self.qdrant_manager = QdrantManager(client)
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.warning("Qdrant manager unavailable: %s", exc)
+            return None
+
+        return self.qdrant_manager
+
     async def create_collection(
         self,
         user_id: int,
@@ -405,12 +419,14 @@ class CollectionService:
             )
 
         try:
+            manager = self._ensure_qdrant_manager()
+
             # Delete from Qdrant if collection exists
-            if collection.vector_store_name and self.qdrant_manager is not None:
+            if collection.vector_store_name and manager is not None:
                 try:
-                    collection_names = self.qdrant_manager.list_collections()
+                    collection_names = manager.list_collections()
                     if collection.vector_store_name in collection_names:
-                        self.qdrant_manager.client.delete_collection(collection.vector_store_name)
+                        manager.client.delete_collection(collection.vector_store_name)
                         logger.info(f"Deleted Qdrant collection: {collection.vector_store_name}")
                 except Exception as e:
                     logger.error(f"Failed to delete Qdrant collection: {e}")
@@ -596,8 +612,10 @@ class CollectionService:
 
         new_vector_store_name: str | None = None
         old_vector_store_name = getattr(collection, "vector_store_name", None)
+        qdrant_manager_for_rename: QdrantManager | None = None
         if requires_qdrant_sync:
-            if self.qdrant_manager is None:
+            qdrant_manager_for_rename = self._ensure_qdrant_manager()
+            if qdrant_manager_for_rename is None:
                 raise RuntimeError("Qdrant manager is not available to rename collection")
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name
@@ -608,7 +626,8 @@ class CollectionService:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)
 
             if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
-                await self.qdrant_manager.rename_collection(
+                assert qdrant_manager_for_rename is not None  # mypy assurance
+                await qdrant_manager_for_rename.rename_collection(
                     old_name=old_vector_store_name,
                     new_name=new_vector_store_name,
                 )
@@ -625,7 +644,8 @@ class CollectionService:
                 and old_vector_store_name
             ):
                 try:
-                    await self.qdrant_manager.rename_collection(
+                    assert qdrant_manager_for_rename is not None  # mypy assurance
+                    await qdrant_manager_for_rename.rename_collection(
                         old_name=new_vector_store_name,
                         new_name=old_vector_store_name,
                     )

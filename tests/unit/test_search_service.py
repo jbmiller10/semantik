@@ -407,7 +407,7 @@ class TestSearchService:
             k=10,
             search_type="hybrid",
             hybrid_alpha=0.7,
-            hybrid_search_mode="weighted",
+            hybrid_mode="weighted",
         )
 
         # Verify hybrid parameters were included
@@ -415,7 +415,7 @@ class TestSearchService:
         request_data = call_args[1]["json"]
         assert request_data["search_type"] == "hybrid"
         assert request_data["hybrid_alpha"] == 0.7
-        assert request_data["hybrid_search_mode"] == "weighted"
+        assert request_data["hybrid_mode"] == "weighted"
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
@@ -600,7 +600,7 @@ class TestSearchService:
         )
 
         request_data = mock_client.post.call_args.kwargs["json"]
-        assert request_data["hybrid_search_mode"] == "weighted"
+        assert request_data["hybrid_mode"] == "weighted"
         assert request_data["keyword_mode"] == "any"
 
     @pytest.mark.asyncio()
@@ -662,13 +662,13 @@ class TestSearchService:
             query="mixed",
             k=10,
             search_type="hybrid",
-            hybrid_search_mode="weighted",
+            hybrid_mode="weighted",
             keyword_mode="bm25",
         )
 
         call_args = search_service.search_single_collection.call_args_list[0][0]
         search_params = call_args[3]
-        assert search_params["hybrid_search_mode"] == "weighted"
+        assert search_params["hybrid_mode"] == "weighted"
         assert search_params["keyword_mode"] == "any"
 
         assert result["results"][0]["doc_id"] == "d1"
