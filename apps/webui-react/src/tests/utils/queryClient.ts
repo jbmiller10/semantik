@@ -6,6 +6,10 @@ export const createTestQueryClient = () => new QueryClient({
     queries: {
       retry: false,
       staleTime: Infinity,
+      refetchInterval: false,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      refetchOnMount: false,
     },
     mutations: {
       retry: false,
