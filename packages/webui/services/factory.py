@@ -44,13 +44,18 @@ def get_redis_manager() -> RedisManager:
     return manager
 
 
-def create_collection_service(db: AsyncSession) -> CollectionService:
+def create_collection_service(
+    db: AsyncSession,
+    *,
+    qdrant_manager_override: QdrantManager | None = None,
+) -> CollectionService:
     """Create a CollectionService instance with all required dependencies.
 
     This factory function simplifies dependency injection for FastAPI endpoints.
 
     Args:
         db: AsyncSession instance from FastAPI's dependency injection
+        qdrant_manager_override: Optional pre-built manager, useful for tests
 
     Returns:
         Configured CollectionService instance
@@ -81,12 +86,13 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
 
-    qdrant_manager_instance = None
-    try:
-        qdrant_client = qdrant_connection_manager.get_client()
-        qdrant_manager_instance = QdrantManager(qdrant_client)
-    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
-        logger.warning("Qdrant client unavailable for collection service: %s", exc)
+    qdrant_manager_instance = qdrant_manager_override
+    if qdrant_manager_instance is None:
+        try:
+            qdrant_client = qdrant_connection_manager.get_client()
+            qdrant_manager_instance = QdrantManager(qdrant_client)
+        except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+            logger.warning("Qdrant client unavailable for collection service: %s", exc)
 
     # Create and return service
     return CollectionService(

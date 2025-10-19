@@ -25,7 +25,7 @@ class CollectionRepoAdapter:
     async def list_for_user(self, user_id: int):
         return await self.repo.list_for_user(user_id, include_public=False)
 
-    async def get_by_id(self, collection_id: str) -> dict[str, Any] | None:
+    async def get_by_uuid(self, collection_id: str) -> dict[str, Any] | None:
         collection = await self.repo.get_by_uuid(collection_id)
         if not collection:
             return None

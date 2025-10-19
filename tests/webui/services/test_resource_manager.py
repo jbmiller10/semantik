@@ -67,7 +67,7 @@ async def test_estimate_resources_directory(tmp_path):
 @pytest.mark.asyncio()
 async def test_reserve_and_release_reindex(monkeypatch):
     collection_repo = AsyncMock()
-    collection_repo.get_by_id.return_value = {
+    collection_repo.get_by_uuid.return_value = {
         "total_size_bytes": 5 * 1024 * 1024 * 1024,
         "id": "col-1",
     }
@@ -115,7 +115,7 @@ def frozen_resource_manager_clock(monkeypatch):
 @pytest.mark.asyncio()
 async def test_get_resource_usage_prefers_qdrant_metrics():
     collection_repo = AsyncMock()
-    collection_repo.get_by_id.return_value = {
+    collection_repo.get_by_uuid.return_value = {
         "id": "col-123",
         "vector_store_name": "collection_col-123",
         "document_count": 5,
@@ -146,7 +146,7 @@ async def test_get_resource_usage_prefers_qdrant_metrics():
 @pytest.mark.asyncio()
 async def test_get_resource_usage_falls_back_when_qdrant_errors():
     collection_repo = AsyncMock()
-    collection_repo.get_by_id.return_value = {
+    collection_repo.get_by_uuid.return_value = {
         "id": "col-456",
         "vector_store_name": "collection_col-456",
         "document_count": 8,
@@ -174,7 +174,7 @@ async def test_get_resource_usage_falls_back_when_qdrant_errors():
 @pytest.mark.asyncio()
 async def test_get_resource_usage_marks_missing_collection():
     collection_repo = AsyncMock()
-    collection_repo.get_by_id.return_value = {
+    collection_repo.get_by_uuid.return_value = {
         "id": "col-000",
         "vector_store_name": "collection_col-000",
         "document_count": 0,
@@ -197,7 +197,7 @@ async def test_get_resource_usage_marks_missing_collection():
 @pytest.mark.asyncio()
 async def test_get_resource_usage_caches_qdrant_metrics(frozen_resource_manager_clock):
     collection_repo = AsyncMock()
-    collection_repo.get_by_id.return_value = {
+    collection_repo.get_by_uuid.return_value = {
         "id": "col-789",
         "vector_store_name": "collection_col-789",
         "document_count": 1,
