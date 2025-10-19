@@ -616,10 +616,7 @@ class ServiceDocumentAnalysis:
         estimated: dict[ChunkingStrategy, int] = {}
         for strategy, count in self.estimated_chunks.items():
             try:
-                if isinstance(strategy, str):
-                    strategy_enum = ChunkingStrategy(strategy)
-                else:
-                    strategy_enum = strategy
+                strategy_enum = ChunkingStrategy(strategy) if isinstance(strategy, str) else strategy
             except ValueError:
                 strategy_enum = ChunkingStrategy.FIXED_SIZE
             estimated[strategy_enum] = max(int(count), 0)

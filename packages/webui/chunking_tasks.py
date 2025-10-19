@@ -827,9 +827,11 @@ async def _process_chunking_operation_async(
                         redis_client.hset(
                             f"operation:{operation_id}",
                             mapping={
-                                key: value
-                                if isinstance(value, (str, bytes, int, float))
-                                else json.dumps(value, default=str)
+                                key: (
+                                    value
+                                    if isinstance(value, str | bytes | int | float)
+                                    else json.dumps(value, default=str)
+                                )
                                 for key, value in {
                                     **failure_details,
                                     "status": "failed",

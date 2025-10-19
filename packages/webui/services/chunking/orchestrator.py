@@ -458,27 +458,30 @@ class ChunkingOrchestrator:
         rec_data["alternatives"] = alternatives_list
 
         # Enhance recommendation with sample analysis if provided
-        if sample_content and ("```" in sample_content or "def " in sample_content or "class " in sample_content):
-            if rec_data["strategy"] != "recursive":
-                reasoning_list.append("Code patterns detected in sample")
-                alternatives_list.append(rec_data["strategy"])
-                rec_data["strategy"] = "recursive"
+        if (
+            sample_content
+            and ("```" in sample_content or "def " in sample_content or "class " in sample_content)
+            and rec_data["strategy"] != "recursive"
+        ):
+            reasoning_list.append("Code patterns detected in sample")
+            alternatives_list.append(rec_data["strategy"])
+            rec_data["strategy"] = "recursive"
 
-        elif sample_content and (sample_content.startswith("#") or "## " in sample_content):
-            if rec_data["strategy"] != "markdown":
-                reasoning_list.append("Markdown headers detected in sample")
-                alternatives_list.append(rec_data["strategy"])
-                rec_data["strategy"] = "markdown"
+        elif (
+            sample_content
+            and (sample_content.startswith("#") or "## " in sample_content)
+            and rec_data["strategy"] != "markdown"
+        ):
+            reasoning_list.append("Markdown headers detected in sample")
+            alternatives_list.append(rec_data["strategy"])
+            rec_data["strategy"] = "markdown"
 
         strategy_value = rec_data.get("strategy", "recursive")
         if not isinstance(strategy_value, str):
             strategy_value = str(strategy_value)
 
         suggested_config_raw = rec_data.get("suggested_config")
-        if isinstance(suggested_config_raw, dict):
-            suggested_config = suggested_config_raw.copy()
-        else:
-            suggested_config = {}
+        suggested_config = suggested_config_raw.copy() if isinstance(suggested_config_raw, dict) else {}
 
         # Ensure suggested config aligns with final strategy
         suggested_config["strategy"] = strategy_value

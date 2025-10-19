@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.dtos import ServiceStrategyRecommendation
 
-from ..dtos import ServiceStrategyRecommendation
 from .orchestrator import ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
