@@ -293,7 +293,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             used_mock_last = using_mock
             return await limited_func(*args, **kwargs)
 
-        wrapper.__signature__ = sig
+        setattr(wrapper, "__signature__", sig)
 
         return wrapper
 
