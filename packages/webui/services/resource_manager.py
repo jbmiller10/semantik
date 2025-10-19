@@ -12,6 +12,8 @@ from typing import Any
 
 import psutil
 
+from packages.shared.managers import QdrantCollectionNotFoundError
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ class ResourceManager:
         self,
         collection_repo: Any,
         operation_repo: Any,
-        qdrant_manager: Any | None = None,
+        qdrant_manager: Any | None,
     ) -> None:
         self.collection_repo = collection_repo
         self.operation_repo = operation_repo
@@ -224,23 +226,38 @@ class ResourceManager:
             vector_store_name = self._get_collection_value(collection, "vector_store_name")
             qdrant_collection_name = vector_store_name or f"collection_{collection_id}"
 
+            qdrant_error: Exception | None = None
             if self.qdrant_manager is not None:
                 try:
                     qdrant_usage = await self.qdrant_manager.get_collection_usage(qdrant_collection_name)
                     normalized = self._normalize_usage(qdrant_usage, collection)
+                    normalized.setdefault("metrics_status", "available")
+                    normalized.setdefault("metrics_source", "qdrant")
 
                     async with self._usage_cache_lock:
                         self._usage_cache[collection_id] = (normalized, datetime.now(UTC))
 
                     return normalized
                 except Exception as exc:  # pragma: no cover - defensive logging
+                    qdrant_error = exc
                     logger.warning(
                         "Failed to retrieve Qdrant metrics for %s: %s -- using repository statistics",
                         qdrant_collection_name,
                         exc,
                     )
 
-            return self._normalize_usage({}, collection)
+            fallback = self._normalize_usage({}, collection)
+            fallback["metrics_source"] = "postgres"
+            fallback["metrics_status"] = "unavailable"
+            if isinstance(qdrant_error, QdrantCollectionNotFoundError):
+                fallback["metrics_reason"] = "collection_not_found"
+            elif qdrant_error is not None:
+                fallback["metrics_reason"] = "qdrant_unreachable"
+
+            async with self._usage_cache_lock:
+                self._usage_cache[collection_id] = (fallback, datetime.now(UTC))
+
+            return fallback
 
         except Exception as e:
             logger.error(f"Failed to get resource usage: {e}")
@@ -308,12 +325,19 @@ class ResourceManager:
 
         storage_gb = storage_bytes / 1024 / 1024 / 1024
 
-        return {
+        normalized = {
             "documents": documents,
             "vectors": vectors,
             "storage_bytes": storage_bytes,
             "storage_gb": storage_gb,
         }
+
+        if "metrics_status" not in usage:
+            normalized["metrics_status"] = usage.get("metrics_status", "available")
+        if "metrics_source" not in usage and usage:
+            normalized["metrics_source"] = usage.get("metrics_source", "qdrant")
+
+        return normalized
 
     async def _check_system_resources(self, estimate: ResourceEstimate) -> bool:
         """Check if system has enough resources."""

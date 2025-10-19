@@ -10,6 +10,7 @@ from shared.database.repositories.operation_repository import OperationRepositor
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
+from packages.shared.managers import QdrantManager
 
 from .chunking.adapter import ChunkingServiceAdapter
 from .chunking.container import (
@@ -28,6 +29,7 @@ from .operation_service import OperationService
 from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
+from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 logger = logging.getLogger(__name__)
 
@@ -169,10 +171,18 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
     collection_repo = CollectionRepository(db)
     operation_repo = OperationRepository(db)
 
+    qdrant_manager_instance = None
+    try:
+        qdrant_client = qdrant_connection_manager.get_client()
+        qdrant_manager_instance = QdrantManager(qdrant_client)
+    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+        logger.warning("Qdrant client unavailable for resource metrics: %s", exc)
+
     # Create and return resource manager
     return ResourceManager(
         collection_repo=collection_repo,
         operation_repo=operation_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 

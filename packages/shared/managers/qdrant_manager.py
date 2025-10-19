@@ -1,10 +1,8 @@
-"""
-Qdrant Management Service for managing vector storage resources.
+"""Utilities for managing Qdrant collections used across Semantik services."""
 
-This service provides methods for managing Qdrant collections with a focus on
-supporting blue-green deployment strategies for zero-downtime reindexing.
-"""
+from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import time
@@ -15,7 +13,18 @@ from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance, VectorParams
 
+from shared.metrics.collection_metrics import QdrantOperationTimer
+
 logger = logging.getLogger(__name__)
+
+
+class QdrantCollectionNotFoundError(RuntimeError):
+    """Raised when the requested Qdrant collection cannot be located."""
+
+    def __init__(self, collection_name: str, message: str | None = None) -> None:
+        msg = message or f"Collection {collection_name} not found in Qdrant"
+        super().__init__(msg)
+        self.collection_name = collection_name
 
 
 class QdrantManager:
@@ -232,6 +241,38 @@ class QdrantManager:
             logger.error(f"Error checking collection existence: {str(e)}")
             return False
 
+    async def get_collection_usage(self, collection_name: str) -> dict[str, int]:
+        """Return document, vector, and storage usage metrics for a collection.
+
+        The underlying Qdrant client is synchronous, so calls are executed in a
+        thread executor to avoid blocking the event loop.
+        """
+
+        loop = asyncio.get_running_loop()
+
+        def _fetch_usage() -> dict[str, int]:
+            with QdrantOperationTimer("get_collection_usage"):
+                try:
+                    info = self.client.get_collection(collection_name)
+                except UnexpectedResponse as exc:
+                    if getattr(exc, "status_code", None) == 404:
+                        raise QdrantCollectionNotFoundError(collection_name) from exc
+                    raise
+
+                stats: Any | None = None
+                try:
+                    stats = self.client.get_collection_stats(collection_name)
+                except UnexpectedResponse as exc:
+                    if getattr(exc, "status_code", None) == 404:
+                        raise QdrantCollectionNotFoundError(collection_name) from exc
+                    logger.warning("Failed to fetch stats for %s: %s", collection_name, exc)
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning("Unexpected error fetching stats for %s: %s", collection_name, exc)
+
+            return self._normalize_usage_payload(info, stats)
+
+        return await loop.run_in_executor(None, _fetch_usage)
+
     def rename_collection(self, old_name: str, new_name: str) -> None:
         """
         Rename a collection by creating a new one and copying data.
@@ -366,3 +407,68 @@ class QdrantManager:
 
         except Exception as e:
             return {"healthy": False, "exists": None, "error": str(e)}
+
+    @staticmethod
+    def _sum_vectors(value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, dict):
+            return int(sum(v for v in value.values() if isinstance(v, (int, float))))
+        if isinstance(value, (list, tuple)):
+            return int(sum(v for v in value if isinstance(v, (int, float))))
+        if isinstance(value, (int, float)):
+            return int(value)
+        return 0
+
+    def _normalize_usage_payload(self, info: CollectionInfo, stats: Any | None) -> dict[str, int]:
+        """Coerce Qdrant collection info/stat structures into simple counters."""
+
+        documents = None
+        if stats is not None:
+            documents = getattr(stats, "points_count", None)
+            if documents is None:
+                documents = getattr(stats, "points", None)
+        if documents is None:
+            documents = getattr(info, "points_count", None)
+        if documents is None:
+            documents = getattr(info, "vectors_count", None)
+        documents_count = self._sum_vectors(documents)
+
+        vectors = None
+        if stats is not None:
+            vectors = getattr(stats, "vectors_count", None)
+        if vectors is None:
+            vectors = getattr(info, "vectors_count", None)
+        vectors_count = self._sum_vectors(vectors)
+
+        storage_bytes = None
+        for candidate in (
+            getattr(info, "disk_data_size", None),
+            getattr(info, "storage_data_bytes", None),
+            getattr(info, "data_size", None),
+            getattr(stats, "disk_data_size", None) if stats is not None else None,
+        ):
+            if isinstance(candidate, (int, float)) and candidate >= 0:
+                storage_bytes = int(candidate)
+                break
+
+        if storage_bytes is None:
+            status = getattr(info, "status", None)
+            if status is not None:
+                disk_data = getattr(status, "disk_data", None)
+                if isinstance(disk_data, dict):
+                    storage_bytes = int(sum(v for v in disk_data.values() if isinstance(v, (int, float))))
+                else:
+                    storage_bytes = getattr(disk_data, "data_files_size", None)
+                    if isinstance(storage_bytes, (int, float)):
+                        storage_bytes = int(storage_bytes)
+
+        documents_count = documents_count or vectors_count
+        vectors_count = vectors_count or documents_count
+        storage_bytes = int(storage_bytes) if isinstance(storage_bytes, (int, float)) and storage_bytes >= 0 else 0
+
+        return {
+            "documents": int(documents_count or 0),
+            "vectors": int(vectors_count or 0),
+            "storage_bytes": storage_bytes,
+        }
