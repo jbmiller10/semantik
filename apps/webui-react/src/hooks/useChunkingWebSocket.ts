@@ -439,27 +439,9 @@ export function useChunkingWebSocket(
     }
 
     return () => {
-      // Clean up on unmount - inline cleanup to avoid stale closure
-      if (wsRef.current) {
-        // Remove all event listeners
-        listenersRef.current.forEach((handler, event) => {
-          const ws = wsRef.current;
-          if (ws) {
-            if (typeof ws.off === 'function') {
-              ws.off(event, handler);
-            } else if (typeof ws.removeListener === 'function') {
-              ws.removeListener(event, handler);
-            }
-          }
-        });
-        listenersRef.current.clear();
-        
-        // Disconnect WebSocket
-        disconnectChunkingWebSocket();
-        wsRef.current = null;
-      }
+      disconnect();
     };
-  }, [autoConnect]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoConnect, connect, disconnect]);
 
   return {
     // Connection management

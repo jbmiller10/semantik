@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.dtos import ServiceStrategyRecommendation
 
 from .orchestrator import ChunkingOrchestrator
 
@@ -447,22 +448,14 @@ class ChunkingServiceAdapter:
         content_length: int | None = None,
         document_type: str | None = None,
         sample_content: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ServiceStrategyRecommendation:
         """Get strategy recommendation."""
-        result = await self.orchestrator.recommend_strategy(
+        return await self.orchestrator.recommend_strategy(
             file_type=file_type,
             content_length=content_length,
             document_type=document_type,
             sample_content=sample_content,
         )
-
-        return {
-            "recommended_strategy": result.strategy,
-            "confidence": result.confidence,
-            "reasoning": result.reasoning,
-            "alternative_strategies": result.alternatives,
-            "suggested_config": {},
-        }
 
     async def get_collection_chunk_stats(
         self,

@@ -21,8 +21,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  console.log('App component rendering');
-  
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
@@ -39,6 +37,7 @@ function App() {
               }
             >
               <Route index element={<HomePage />} />
+              <Route path="collections/:collectionId" element={<HomePage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Routes>

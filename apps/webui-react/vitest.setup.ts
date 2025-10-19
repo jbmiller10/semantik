@@ -1,10 +1,51 @@
 import '@testing-library/jest-dom';
 import { vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { server } from './src/tests/mocks/server';
+import { disconnectChunkingWebSocket } from './src/services/websocket';
+import { useAuthStore } from './src/stores/authStore';
 
 // Suppress console errors in tests by default
 const originalError = console.error;
 const originalWarn = console.warn;
+
+// Track timers created during tests so we can clean them up explicitly
+const activeTimeouts = new Set<ReturnType<typeof setTimeout>>();
+const activeIntervals = new Set<ReturnType<typeof setInterval>>();
+
+const originalSetTimeout = global.setTimeout;
+const originalClearTimeout = global.clearTimeout;
+const originalSetInterval = global.setInterval;
+const originalClearInterval = global.clearInterval;
+
+global.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+  const id = originalSetTimeout(handler, timeout, ...args);
+  activeTimeouts.add(id);
+  return id;
+}) as typeof setTimeout;
+window.setTimeout = global.setTimeout;
+
+global.clearTimeout = ((id?: number | NodeJS.Timeout) => {
+  if (id !== undefined && id !== null) {
+    activeTimeouts.delete(id as ReturnType<typeof setTimeout>);
+  }
+  return originalClearTimeout(id as ReturnType<typeof setTimeout>);
+}) as typeof clearTimeout;
+window.clearTimeout = global.clearTimeout;
+
+global.setInterval = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+  const id = originalSetInterval(handler, timeout, ...args);
+  activeIntervals.add(id);
+  return id;
+}) as typeof setInterval;
+window.setInterval = global.setInterval;
+
+global.clearInterval = ((id?: number | NodeJS.Timeout) => {
+  if (id !== undefined && id !== null) {
+    activeIntervals.delete(id as ReturnType<typeof setInterval>);
+  }
+  return originalClearInterval(id as ReturnType<typeof setInterval>);
+}) as typeof clearInterval;
+window.clearInterval = global.clearInterval;
 
 beforeAll(() => {
   // Start MSW server before all tests
@@ -21,14 +62,35 @@ afterEach(() => {
   // Clear mock calls but keep the mocks in place
   vi.mocked(console.error).mockClear();
   vi.mocked(console.warn).mockClear();
+
+  // Ensure all timers created during the test are cleared
+  activeTimeouts.forEach((id) => originalClearTimeout(id));
+  activeTimeouts.clear();
+  activeIntervals.forEach((id) => originalClearInterval(id));
+  activeIntervals.clear();
+
+  useAuthStore.setState({ token: null, refreshToken: null, user: null });
+  localStorage.removeItem('auth-storage');
+  disconnectChunkingWebSocket();
 });
 
 // Clean up after all tests
-afterAll(() => {
-  server.close();
+afterAll(async () => {
+  await server.close();
   // Restore original console methods
   console.error = originalError;
   console.warn = originalWarn;
+  
+  global.setTimeout = originalSetTimeout;
+  global.clearTimeout = originalClearTimeout;
+  global.setInterval = originalSetInterval;
+  global.clearInterval = originalClearInterval;
+  window.setTimeout = originalSetTimeout;
+  window.clearTimeout = originalClearTimeout;
+  window.setInterval = originalSetInterval;
+  window.clearInterval = originalClearInterval;
+
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 // Mock window.matchMedia
@@ -52,6 +114,56 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),
 }));
+
+class MockWebSocket extends EventTarget {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readonly CONNECTING = MockWebSocket.CONNECTING;
+  readonly OPEN = MockWebSocket.OPEN;
+  readonly CLOSING = MockWebSocket.CLOSING;
+  readonly CLOSED = MockWebSocket.CLOSED;
+
+  readyState = MockWebSocket.CONNECTING;
+  url: string;
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(url: string) {
+    super();
+    this.url = url;
+
+    // Immediately fail the connection so production code sees a closed socket.
+    queueMicrotask(() => {
+      if (this.readyState !== MockWebSocket.CONNECTING) return;
+      const errorEvent = new Event('error');
+      this.readyState = MockWebSocket.CLOSING;
+      this.onerror?.(errorEvent);
+      this.dispatchEvent(errorEvent);
+
+      const closeEvent = new Event('close');
+      this.readyState = MockWebSocket.CLOSED;
+      this.onclose?.(closeEvent as CloseEvent);
+      this.dispatchEvent(closeEvent);
+    });
+  }
+
+  send = vi.fn();
+
+  close = vi.fn(() => {
+    if (this.readyState === MockWebSocket.CLOSED) return;
+    const closeEvent = new Event('close');
+    this.readyState = MockWebSocket.CLOSED;
+    this.onclose?.(closeEvent as CloseEvent);
+    this.dispatchEvent(closeEvent);
+  });
+}
+
+global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 
 // Mock scrollTo
 window.scrollTo = vi.fn();

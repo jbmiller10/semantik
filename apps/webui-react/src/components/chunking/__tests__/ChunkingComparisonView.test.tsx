@@ -5,6 +5,28 @@ import { ChunkingComparisonView } from '../ChunkingComparisonView'
 import { useChunkingStore } from '@/stores/chunkingStore'
 import type { ChunkingComparisonResult, ChunkingStrategyType } from '@/types/chunking'
 
+const mockUseChunkingWebSocket = vi.hoisted(() => vi.fn())
+
+const createMockWebSocketApi = () => ({
+  connectionStatus: 'disconnected' as const,
+  connect: vi.fn(),
+  disconnect: vi.fn(),
+  isConnected: false,
+  reconnectAttempts: 0,
+  chunks: [],
+  progress: null,
+  statistics: null,
+  performance: null,
+  error: null,
+  startPreview: vi.fn(),
+  startComparison: vi.fn(),
+  clearData: vi.fn(),
+})
+
+vi.mock('@/hooks/useChunkingWebSocket', () => ({
+  useChunkingWebSocket: mockUseChunkingWebSocket,
+}))
+
 // Mock the chunking store
 vi.mock('@/stores/chunkingStore', () => ({
   useChunkingStore: vi.fn(),
@@ -173,6 +195,7 @@ describe('ChunkingComparisonView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseChunkingWebSocket.mockImplementation(() => createMockWebSocketApi())
     ;(useChunkingStore as ReturnType<typeof vi.fn>).mockReturnValue(defaultMockStore)
   })
 

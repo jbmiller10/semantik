@@ -17,12 +17,15 @@ import time
 import uuid
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from qdrant_client.models import PointStruct
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from .utils import (
     EMBEDDING_BATCH_SIZE,
@@ -42,7 +45,7 @@ from .utils import (
 )
 
 
-def _tasks_namespace():
+def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("packages.webui.tasks")
 

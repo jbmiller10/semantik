@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { documentsV2Api } from '../services/api/v2';
 import { getErrorMessage } from '../utils/errorUtils';
+import PdfViewer from './PdfViewer';
 
 // Declare global types for external libraries
 declare global {
@@ -105,10 +106,10 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
-  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
 
   // Load document content
   useEffect(() => {
@@ -116,6 +117,12 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
       try {
         setLoading(true);
         setError(null);
+        setIsPdf(false);
+        setBlobUrl(null);
+
+        if (contentRef.current) {
+          contentRef.current.innerHTML = '';
+        }
 
         // Get the document content URL and headers
         const { url, headers } = documentsV2Api.getContent(collectionId, docId);
@@ -180,25 +187,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
           setBlobUrl(objectUrl);
-          
-          if (contentRef.current) {
-            // If PDF.js is available, use it; otherwise use object tag
-            if (window.pdfjsLib) {
-              // TODO: Implement PDF.js rendering
-              contentRef.current.innerHTML = `
-                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
-                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
-                </object>
-              `;
-            } else {
-              // Fallback to object tag
-              contentRef.current.innerHTML = `
-                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
-                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
-                </object>
-              `;
-            }
-          }
+          setIsPdf(true);
         } else if (
           contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
           contentType.includes('application/msword')
@@ -327,16 +316,11 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
 
   // Cleanup on unmount
   useEffect(() => {
-    // Copy ref values to local variables to avoid React hooks warnings
     const markInstance = markInstanceRef.current;
-    const pdfDoc = pdfDocRef.current;
-    
+
     return () => {
       if (markInstance) {
         markInstance.unmark();
-      }
-      if (pdfDoc) {
-        pdfDoc.destroy();
       }
     };
   }, []);
@@ -389,11 +373,19 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
               </div>
             )}
             
-            <div
-              ref={contentRef}
-              className="prose max-w-none"
-              style={{ minHeight: '400px' }}
-            />
+            {isPdf && blobUrl ? (
+              <PdfViewer
+                src={blobUrl}
+                className="space-y-6"
+                onError={(message) => setError(message)}
+              />
+            ) : (
+              <div
+                ref={contentRef}
+                className="prose max-w-none"
+                style={{ minHeight: '400px' }}
+              />
+            )}
           </div>
         </div>
       </div>

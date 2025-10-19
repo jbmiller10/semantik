@@ -4,6 +4,14 @@ import userEvent from '@testing-library/user-event';
 import DocumentViewer from '../DocumentViewer';
 import { documentsV2Api } from '../../services/api/v2';
 
+const { mockPdfViewer } = vi.hoisted(() => ({
+  mockPdfViewer: vi.fn(() => <div data-testid="pdf-viewer" />),
+}))
+
+vi.mock('../PdfViewer', () => ({
+  default: mockPdfViewer,
+}));
+
 // Mock the documents API
 vi.mock('../../services/api/v2', () => ({
   documentsV2Api: {
@@ -77,6 +85,7 @@ beforeEach(() => {
   
   // Reset all mocks
   vi.clearAllMocks();
+  mockPdfViewer.mockClear();
 });
 
 afterEach(() => {
@@ -210,6 +219,32 @@ describe('DocumentViewer', () => {
     });
   });
 
+  it('should render PDFs using the PdfViewer component', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders
+    });
+
+    const mockBlob = new Blob(['fake pdf data'], { type: 'application/pdf' });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/pdf' }),
+      blob: () => Promise.resolve(mockBlob)
+    });
+
+    render(<DocumentViewer {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockPdfViewer).toHaveBeenCalled();
+      const [props] = mockPdfViewer.mock.calls[0];
+      expect(props.src).toBe('blob:mock-url');
+      expect(screen.getByTestId('pdf-viewer')).toBeInTheDocument();
+    });
+  });
+
   it('should clean up blob URLs on unmount', async () => {
     const mockUrl = 'http://api.test/document';
     const mockHeaders = { Authorization: 'Bearer test-token' };
@@ -264,6 +299,7 @@ describe('DocumentViewer', () => {
     // Wait for document to load
     await waitFor(() => {
       expect(screen.getByTitle('Download')).toBeInTheDocument();
+      expect(mockPdfViewer).toHaveBeenCalled();
     });
 
     // Mock createElement and click only when needed

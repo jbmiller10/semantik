@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import psutil
@@ -29,6 +29,9 @@ from shared.metrics.collection_metrics import (
 )
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from . import reindex as reindex_tasks
 from .utils import (
@@ -53,7 +56,7 @@ from .utils import (
 )
 
 
-def _tasks_namespace():
+def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("packages.webui.tasks")
 
@@ -89,7 +92,10 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
         tasks_ns.asyncio.set_event_loop(loop)
 
     try:
-        return loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self))
+        return cast(
+            dict[str, Any],
+            loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self)),
+        )
     except Exception as exc:  # pragma: no cover - retry path
         logger.error("Task failed for operation %s: %s", operation_id, exc)
         if isinstance(exc, ValueError | TypeError):

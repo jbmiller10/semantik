@@ -377,6 +377,16 @@ class TestChunkingServiceAdapter:
         assert "comparisons" in result
         assert "recommendation" in result
 
+    async def test_recommend_strategy_populates_config(self, adapter):
+        """Adapter recommend_strategy should surface suggested config."""
+
+        result = await adapter.recommend_strategy(file_type=".md", content_length=2048)
+        api_model = result.to_api_model()
+
+        assert api_model.suggested_config.strategy == api_model.recommended_strategy
+        assert api_model.suggested_config.chunk_size > 0
+        assert 0 <= api_model.suggested_config.chunk_overlap < api_model.suggested_config.chunk_size
+
     async def test_get_available_strategies_compatibility(self, adapter):
         """Test get_available_strategies compatibility."""
         strategies = await adapter.get_available_strategies()

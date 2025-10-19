@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
@@ -19,6 +20,7 @@ interface SourceInfo {
 }
 
 function CollectionDetailsModal() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showCollectionDetailsModal, setShowCollectionDetailsModal, addToast } = useUIStore();
   const [showAddDataModal, setShowAddDataModal] = useState(false);
@@ -84,6 +86,7 @@ function CollectionDetailsModal() {
     setShowCollectionDetailsModal(null);
     setActiveTab('overview');
     setFilesPage(1);
+    navigate('/', { replace: true });
   };
 
   const formatNumber = (num: number | null | undefined) => {
