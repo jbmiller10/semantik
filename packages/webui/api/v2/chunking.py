@@ -82,6 +82,9 @@ async def _resolve_service_payload(payload: Any) -> Any:
         result = to_api()
         if inspect.isawaitable(result):
             result = await result
+        model_dump = getattr(result, "model_dump", None)
+        if callable(model_dump):
+            result = model_dump()
         return result
 
     return payload
