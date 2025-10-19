@@ -240,8 +240,7 @@ class ResourceManager:
                         exc,
                     )
 
-            fallback_usage = self._normalize_usage({}, collection)
-            return fallback_usage
+            return self._normalize_usage({}, collection)
 
         except Exception as e:
             logger.error(f"Failed to get resource usage: {e}")
