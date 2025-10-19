@@ -384,3 +384,49 @@ class TestChunkingServiceAdapter:
         assert isinstance(strategies, list)
         assert all(isinstance(s, dict) for s in strategies)
         assert all("id" in s for s in strategies)
+
+    async def test_execute_ingestion_chunking_reports_fallback(self, adapter, orchestrator, monkeypatch):
+        """Adapter should surface fallback metadata when orchestrator falls back."""
+
+        async def fake_process(_content, _strategy, _config, use_fallback=False):
+            if not use_fallback:
+                raise RuntimeError("boom")
+            return [
+                {
+                    "chunk_id": "chunk_0000",
+                    "text": "fallback chunk",
+                    "strategy": "fallback",
+                    "metadata": {},
+                }
+            ]
+
+        monkeypatch.setattr(orchestrator.processor, "process_document", fake_process)
+
+        result = await adapter.execute_ingestion_chunking(content="payload", strategy="recursive")
+
+        assert result["stats"]["fallback"] is True
+        assert result["stats"]["fallback_reason"] == "RuntimeError"
+        assert result["stats"]["strategy_used"] == "fallback"
+
+    async def test_execute_ingestion_chunking_legacy_reports_fallback(self, adapter, orchestrator, monkeypatch):
+        """Legacy ingestion pathway should also propagate fallback stats."""
+
+        async def fake_process(_content, _strategy, _config, use_fallback=False):
+            if not use_fallback:
+                raise RuntimeError("legacy boom")
+            return [
+                {
+                    "chunk_id": "chunk_0000",
+                    "text": "fallback chunk",
+                    "strategy": "fallback",
+                    "metadata": {},
+                }
+            ]
+
+        monkeypatch.setattr(orchestrator.processor, "process_document", fake_process)
+
+        result = await adapter.execute_ingestion_chunking(text="payload", document_id="doc1")
+
+        assert result["stats"]["fallback"] is True
+        assert result["stats"]["fallback_reason"] == "RuntimeError"
+        assert result["stats"]["strategy_used"] == "fallback"
