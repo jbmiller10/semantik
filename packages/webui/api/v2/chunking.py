@@ -558,11 +558,7 @@ async def start_chunking_operation(
             user_id=_current_user["id"],
         )
 
-        task_service = (
-            service
-            if isinstance(service, ChunkingService)
-            else service._ensure_legacy_service()
-        )
+        task_service = service if isinstance(service, ChunkingService) else service._ensure_legacy_service()
 
         # Queue the chunking task
         background_tasks.add_task(
@@ -653,11 +649,7 @@ async def update_chunking_strategy(
                 user_id=_current_user["id"],
             )
 
-            task_service = (
-                service
-                if isinstance(service, ChunkingService)
-                else service._ensure_legacy_service()
-            )
+            task_service = service if isinstance(service, ChunkingService) else service._ensure_legacy_service()
 
             # Queue reprocessing task
             background_tasks.add_task(
