@@ -268,7 +268,7 @@ async def generate_preview(
                 document_id=preview_request.document_id,
                 strategy=preview_request.strategy.value,
                 config=preview_request.config.model_dump() if preview_request.config else None,
-                user_id=None,
+                user_id=_current_user["id"],
                 use_cache=True,
                 max_chunks=preview_request.max_chunks,
             )

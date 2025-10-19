@@ -6,10 +6,10 @@ Handles metrics collection, tracking, and reporting for chunking operations.
 
 import logging
 import time
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
