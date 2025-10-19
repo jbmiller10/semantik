@@ -6,12 +6,12 @@ blue-green deployment support.
 """
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import CollectionInfo, Distance, PayloadIndexInfo, PayloadSchemaType
 from qdrant_client.http.models import IntegerIndexParams
+from qdrant_client.models import CollectionInfo, Distance, PayloadIndexInfo, PayloadSchemaType
 
 from packages.shared.managers.qdrant_manager import QdrantManager
 
@@ -455,5 +455,5 @@ class TestQdrantManager:
 
             # Should have small delays between deletions
             assert mock_sleep.call_count == 2
-            for call in mock_sleep.call_args_list:
-                assert call[0][0] == 0.1  # 100ms delay
+            for sleep_call in mock_sleep.call_args_list:
+                assert sleep_call[0][0] == 0.1  # 100ms delay
