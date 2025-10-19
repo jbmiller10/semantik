@@ -308,9 +308,7 @@ class PartitionAwareMixin:
             if model_class.__name__ == "Chunk":
                 if "partition_key" not in item or item["partition_key"] is None:
                     if validated_key not in partition_key_cache:
-                        partition_key_cache[validated_key] = await self.compute_partition_key(
-                            session, validated_key
-                        )
+                        partition_key_cache[validated_key] = await self.compute_partition_key(session, validated_key)
                     item["partition_key"] = partition_key_cache[validated_key]
                 item = PartitionValidation.validate_chunk_data(item)
 
