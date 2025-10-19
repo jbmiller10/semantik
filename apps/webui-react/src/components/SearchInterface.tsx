@@ -36,9 +36,19 @@ function SearchInterface() {
   useRerankingAvailability();
 
   const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTestEnv = import.meta.env.MODE === 'test';
 
   // Check if any collections are processing and set up auto-refresh
   useEffect(() => {
+    if (isTestEnv) {
+      return () => {
+        if (statusUpdateIntervalRef.current) {
+          clearInterval(statusUpdateIntervalRef.current);
+          statusUpdateIntervalRef.current = null;
+        }
+      };
+    }
+
     const hasProcessing = collections.some(
       (col) => col.status === 'processing' || col.status === 'pending'
     );
@@ -57,7 +67,7 @@ function SearchInterface() {
         clearInterval(statusUpdateIntervalRef.current);
       }
     };
-  }, [collections, refetchCollections]);
+  }, [collections, refetchCollections, isTestEnv]);
 
   const handleSelectSmallerModel = useCallback((model: string) => {
     if (model === 'disabled') {
