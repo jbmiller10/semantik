@@ -173,10 +173,7 @@ class ChunkingProcessor:
                 metadata.setdefault("chunk_size", len(content))
                 metadata["position"] = i
                 token_candidate = chunk.get("token_count")
-                if token_candidate is None:
-                    token_count = len(content) // 4
-                else:
-                    token_count = int(token_candidate)
+                token_count = len(content) // 4 if token_candidate is None else int(token_candidate)
                 quality_score = chunk.get("quality_score", 0.8)
             else:
                 content = str(chunk)

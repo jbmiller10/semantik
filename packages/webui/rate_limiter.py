@@ -293,7 +293,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             used_mock_last = using_mock
             return await limited_func(*args, **kwargs)
 
-        setattr(wrapper, "__signature__", sig)
+        wrapper.__signature__ = sig
 
         return wrapper
 
@@ -475,6 +475,8 @@ def add_rate_limit_headers(response: Response, limit: str, remaining: int, reset
     response.headers["X-RateLimit-Remaining"] = str(remaining)
     response.headers["X-RateLimit-Reset"] = str(reset)
     return response
+
+
 def _placeholder_limit(limit_str: str, message: str) -> Any:
     """Create a lightweight object satisfying the Limit protocol for tests."""
 

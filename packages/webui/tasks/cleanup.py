@@ -11,10 +11,12 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
-from types import ModuleType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 from .utils import (
     DEFAULT_DAYS_TO_KEEP,
