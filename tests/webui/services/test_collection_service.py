@@ -3,7 +3,7 @@ Comprehensive tests for CollectionService covering all methods and edge cases.
 """
 
 import uuid
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -14,9 +14,19 @@ from packages.shared.database.exceptions import (
     InvalidStateError,
 )
 from packages.shared.database.models import CollectionStatus, OperationType
+from packages.shared.managers import QdrantManager
 from packages.webui.services.collection_service import CollectionService
 
 # Fixtures are now imported from conftest.py
+
+
+@pytest.fixture()
+def mock_qdrant_manager() -> MagicMock:
+    manager = MagicMock(spec=QdrantManager)
+    manager.rename_collection = AsyncMock()
+    manager.list_collections.return_value = []
+    manager.client = MagicMock()
+    return manager
 
 
 @pytest.fixture()
@@ -25,6 +35,7 @@ def collection_service(
     mock_collection_repo: AsyncMock,
     mock_operation_repo: AsyncMock,
     mock_document_repo: AsyncMock,
+    mock_qdrant_manager: AsyncMock,
 ) -> CollectionService:
     """Create a CollectionService instance with mocked dependencies."""
     return CollectionService(
@@ -32,6 +43,7 @@ def collection_service(
         collection_repo=mock_collection_repo,
         operation_repo=mock_operation_repo,
         document_repo=mock_document_repo,
+        qdrant_manager=mock_qdrant_manager,
     )
 
 
@@ -54,6 +66,7 @@ class TestCollectionServiceInit:
             collection_repo=mock_collection_repo,
             operation_repo=mock_operation_repo,
             document_repo=mock_document_repo,
+            qdrant_manager=AsyncMock(),
         )
 
         assert service.db_session == mock_db_session
@@ -562,24 +575,19 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
-            mock_qdrant_client = MagicMock()
-            mock_get_client.return_value = mock_qdrant_client
-            mock_collections = MagicMock()
-            # Create collection mocks with proper name attribute
-            collection1 = MagicMock()
-            collection1.name = mock_collection.vector_store_name
-            collection2 = MagicMock()
-            collection2.name = "other_collection"
-            mock_collections.collections = [collection1, collection2]
-            mock_qdrant_client.get_collections.return_value = mock_collections
+        collection_service.qdrant_manager.list_collections.return_value = [
+            mock_collection.vector_store_name,
+            "other_collection",
+        ]
 
-            await collection_service.delete_collection(
-                collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
-            )
+        await collection_service.delete_collection(
+            collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
+        )
 
         # Verify Qdrant deletion
-        mock_qdrant_client.delete_collection.assert_called_once_with(mock_collection.vector_store_name)
+        collection_service.qdrant_manager.client.delete_collection.assert_called_once_with(
+            mock_collection.vector_store_name
+        )
 
         # Verify database deletion
         mock_collection_repo.delete.assert_called_once_with(mock_collection.id, mock_collection.owner_id)
@@ -631,19 +639,14 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
-            mock_qdrant_client = MagicMock()
-            mock_get_client.return_value = mock_qdrant_client
-            mock_collections = MagicMock()
-            mock_collections.collections = []  # No collections in Qdrant
-            mock_qdrant_client.get_collections.return_value = mock_collections
+        collection_service.qdrant_manager.list_collections.return_value = []
 
-            await collection_service.delete_collection(
-                collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
-            )
+        await collection_service.delete_collection(
+            collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
+        )
 
         # Verify Qdrant deletion was not called
-        mock_qdrant_client.delete_collection.assert_not_called()
+        collection_service.qdrant_manager.client.delete_collection.assert_not_called()
 
         # Verify database deletion was still called
         mock_collection_repo.delete.assert_called_once()
@@ -660,14 +663,11 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
-            mock_qdrant_client = MagicMock()
-            mock_get_client.return_value = mock_qdrant_client
-            mock_qdrant_client.get_collections.side_effect = Exception("Qdrant error")
+        collection_service.qdrant_manager.list_collections.side_effect = Exception("Qdrant error")
 
-            await collection_service.delete_collection(
-                collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
-            )
+        await collection_service.delete_collection(
+            collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
+        )
 
         # Verify database deletion was still called despite Qdrant error
         mock_collection_repo.delete.assert_called_once()
@@ -685,13 +685,13 @@ class TestDeleteCollection:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations_count.return_value = 0
 
-        with patch("packages.webui.services.collection_service.qdrant_manager.get_client") as mock_get_client:
-            await collection_service.delete_collection(
-                collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
-            )
+        await collection_service.delete_collection(
+            collection_id=str(mock_collection.uuid), user_id=mock_collection.owner_id
+        )
 
-        # Verify Qdrant client was not even created
-        mock_get_client.assert_not_called()
+        # Verify Qdrant helper was not touched
+        collection_service.qdrant_manager.list_collections.assert_not_called()
+        collection_service.qdrant_manager.client.delete_collection.assert_not_called()
 
         # Verify database deletion was called
         mock_collection_repo.delete.assert_called_once()
@@ -849,11 +849,13 @@ class TestUpdate:
         updated_collection = MagicMock()
         mock_collection_repo.update.return_value = updated_collection
 
+        new_name = "Updated Name"
+        expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), new_name)
         result = await collection_service.update(
             collection_id=str(mock_collection.uuid),
             user_id=mock_collection.owner_id,
             updates={
-                "name": "Updated Name",
+                "name": new_name,
                 "description": "Updated description",
                 "is_public": True,
             },
@@ -868,14 +870,19 @@ class TestUpdate:
         mock_collection_repo.update.assert_called_once_with(
             str(mock_collection.id),
             {
-                "name": "Updated Name",
+                "name": new_name,
                 "description": "Updated description",
                 "is_public": True,
+                "vector_store_name": expected_vector_store,
             },
         )
 
         # Verify commit
         mock_db_session.commit.assert_called_once()
+        collection_service.qdrant_manager.rename_collection.assert_awaited_once_with(
+            old_name=mock_collection.vector_store_name,
+            new_name=expected_vector_store,
+        )
 
         assert result == updated_collection
 
@@ -1060,6 +1067,122 @@ class TestListOperations:
 
         with pytest.raises(EntityNotFoundError):
             await collection_service.list_operations(collection_id="nonexistent-uuid", user_id=1)
+
+
+class TestRenameCollectionWithQdrantSync:
+    """Tests ensuring collection rename stays in sync with Qdrant."""
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_updates_qdrant_and_database(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Renaming should update Qdrant and commit DB changes."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        new_name = "Renamed"
+        expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), new_name)
+        updated_collection.name = new_name
+        updated_collection.vector_store_name = expected_vector_store
+        mock_collection_repo.update.return_value = updated_collection
+
+        result = await collection_service.update(
+            collection_id=str(mock_collection.uuid),
+            user_id=mock_collection.owner_id,
+            updates={"name": new_name},
+        )
+
+        mock_collection_repo.update.assert_called_once_with(
+            str(mock_collection.id),
+            {"name": new_name, "vector_store_name": expected_vector_store},
+        )
+        mock_db_session.commit.assert_called_once()
+        collection_service.qdrant_manager.rename_collection.assert_awaited_once_with(
+            old_name=mock_collection.vector_store_name,
+            new_name=expected_vector_store,
+        )
+        assert result == updated_collection
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_qdrant_failure_triggers_rollback(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """If Qdrant rename fails, the DB transaction should roll back."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_repo.update.return_value = mock_collection
+
+        expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), "Renamed")
+        collection_service.qdrant_manager.rename_collection.side_effect = RuntimeError("Qdrant rename failed")
+
+        with pytest.raises(RuntimeError, match="Qdrant rename failed"):
+            await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"name": "Renamed"},
+            )
+
+        mock_collection_repo.update.assert_called_once_with(
+            str(mock_collection.id),
+            {"name": "Renamed", "vector_store_name": expected_vector_store},
+        )
+        collection_service.qdrant_manager.rename_collection.assert_awaited_once_with(
+            old_name=mock_collection.vector_store_name,
+            new_name=expected_vector_store,
+        )
+        mock_db_session.rollback.assert_called_once()
+        mock_db_session.commit.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_rename_collection_commit_failure_reverts_qdrant(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """If the DB commit fails, revert the Qdrant rename to keep state consistent."""
+
+        mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        new_name = "Renamed"
+        expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), new_name)
+        updated_collection.name = new_name
+        updated_collection.vector_store_name = expected_vector_store
+        mock_collection_repo.update.return_value = updated_collection
+
+        mock_db_session.commit.side_effect = RuntimeError("DB commit failed")
+
+        with pytest.raises(RuntimeError, match="DB commit failed"):
+            await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"name": new_name},
+            )
+
+        mock_collection_repo.update.assert_called_once_with(
+            str(mock_collection.id),
+            {"name": new_name, "vector_store_name": expected_vector_store},
+        )
+        assert collection_service.qdrant_manager.rename_collection.await_args_list == [
+            call(old_name=mock_collection.vector_store_name, new_name=expected_vector_store),
+            call(old_name=expected_vector_store, new_name=mock_collection.vector_store_name),
+        ]
+        mock_db_session.rollback.assert_called_once()
+        mock_db_session.commit.assert_called_once()
 
 
 class TestCollectionServiceEdgeCases:

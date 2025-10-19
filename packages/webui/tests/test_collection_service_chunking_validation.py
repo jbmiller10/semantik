@@ -45,11 +45,21 @@ def mock_document_repo() -> Any:
 
 
 @pytest.fixture()
+def mock_qdrant_manager() -> MagicMock:
+    manager = MagicMock()
+    manager.rename_collection = AsyncMock()
+    manager.list_collections.return_value = []
+    manager.client = MagicMock()
+    return manager
+
+
+@pytest.fixture()
 def collection_service(
     mock_db_session: Any,
     mock_collection_repo: Any,
     mock_operation_repo: Any,
     mock_document_repo: Any,
+    mock_qdrant_manager: MagicMock,
 ) -> CollectionService:
     """Create a CollectionService instance with mocked dependencies."""
     return CollectionService(
@@ -57,6 +67,7 @@ def collection_service(
         collection_repo=mock_collection_repo,
         operation_repo=mock_operation_repo,
         document_repo=mock_document_repo,
+        qdrant_manager=mock_qdrant_manager,
     )
 
 

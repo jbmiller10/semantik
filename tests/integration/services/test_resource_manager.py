@@ -25,7 +25,7 @@ class CollectionRepoAdapter:
     async def list_for_user(self, user_id: int):
         return await self.repo.list_for_user(user_id, include_public=False)
 
-    async def get_by_id(self, collection_id: str) -> dict[str, Any] | None:
+    async def get_by_uuid(self, collection_id: str) -> dict[str, Any] | None:
         collection = await self.repo.get_by_uuid(collection_id)
         if not collection:
             return None
@@ -53,7 +53,16 @@ class TestResourceManagerIntegration:
     def manager(self, db_session):
         collection_repo = CollectionRepoAdapter(CollectionRepository(db_session))
         operation_repo = OperationRepoAdapter(OperationRepository(db_session))
-        return ResourceManager(collection_repo=collection_repo, operation_repo=operation_repo)
+
+        class _StubQdrantManager:
+            async def get_collection_usage(self, _name: str) -> dict[str, int]:  # pragma: no cover - simple stub
+                raise RuntimeError("stubbed qdrant unavailable")
+
+        return ResourceManager(
+            collection_repo=collection_repo,
+            operation_repo=operation_repo,
+            qdrant_manager=_StubQdrantManager(),
+        )
 
     async def test_can_create_collection_respects_limit(self, manager, collection_factory, test_user_db, db_session):
         for _ in range(10):
@@ -115,6 +124,17 @@ class TestResourceManagerIntegration:
 
         usage = await manager._get_user_resource_usage(test_user_db.id)
         assert usage["collections"] == 1
+        assert usage["storage_bytes"] == collection.total_size_bytes
+
+    async def test_get_resource_usage_fallback_flags_metrics(
+        self, manager, collection_factory, test_user_db, db_session
+    ):
+        collection = await collection_factory(owner_id=test_user_db.id, total_size_bytes=2048)
+        await db_session.commit()
+
+        usage = await manager.get_resource_usage(str(collection.id))
+        assert usage["metrics_status"] == "unavailable"
+        assert usage["metrics_source"] == "postgres"
         assert usage["storage_bytes"] == collection.total_size_bytes
 
     async def test_recent_operations_count_reads_from_repository(
