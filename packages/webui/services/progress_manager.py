@@ -15,7 +15,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -246,13 +246,17 @@ class ProgressUpdateManager:
 
             if hash_key_template:
                 hash_key = hash_key_template.format(operation_id=payload.operation_id)
-                mapping = (
+                mapping_raw = (
                     {name: _stringify(value) for name, value in hash_mapping.items()}
                     if hash_mapping is not None
                     else payload.to_hash_mapping()
                 )
-                if mapping:
-                    client.hset(hash_key, mapping=mapping)
+                if mapping_raw:
+                    mapping_typed = cast(
+                        "Mapping[str | bytes, bytes | float | int | str]",
+                        mapping_raw,
+                    )
+                    client.hset(hash_key, mapping=mapping_typed)
 
             return ProgressSendResult.SENT
         except Exception as exc:  # pragma: no cover - defensive logging
@@ -315,13 +319,17 @@ class ProgressUpdateManager:
 
             if hash_key_template:
                 hash_key = hash_key_template.format(operation_id=payload.operation_id)
-                mapping = (
+                mapping_raw = (
                     {name: _stringify(value) for name, value in hash_mapping.items()}
                     if hash_mapping is not None
                     else payload.to_hash_mapping()
                 )
-                if mapping:
-                    await client.hset(hash_key, mapping=mapping)
+                if mapping_raw:
+                    mapping_typed = cast(
+                        "Mapping[str | bytes, bytes | float | int | str]",
+                        mapping_raw,
+                    )
+                    await client.hset(hash_key, mapping=mapping_typed)
 
             return ProgressSendResult.SENT
         except Exception as exc:  # pragma: no cover - defensive logging

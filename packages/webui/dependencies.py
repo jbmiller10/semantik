@@ -4,7 +4,7 @@ Common FastAPI dependencies for the WebUI API.
 
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,10 +70,13 @@ async def get_collection_for_user(
     except Exception as exc:
         if os.getenv("TESTING", "false").lower() == "true":
             logger.warning("Falling back to stub collection %s due to database error: %s", collection_uuid, exc)
-            return {
-                "id": collection_uuid,
-                "owner_id": current_user.get("id"),
-            }
+            return cast(
+                Collection,
+                {
+                    "id": collection_uuid,
+                    "owner_id": current_user.get("id"),
+                },
+            )
         raise
 
 

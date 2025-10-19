@@ -609,12 +609,13 @@ class ServiceDocumentAnalysis:
 
     def to_api_model(self) -> DocumentAnalysisResponse:
         """Convert to API response model."""
-        estimated = {}
+        estimated: dict[ChunkingStrategy, int] = {}
         for strategy, count in self.estimated_chunks.items():
             try:
-                strategy_enum = (
-                    ChunkingStrategy(strategy) if isinstance(strategy, str) else strategy  # type: ignore[arg-type]
-                )
+                if isinstance(strategy, str):
+                    strategy_enum = ChunkingStrategy(strategy)
+                else:
+                    strategy_enum = strategy
             except ValueError:
                 strategy_enum = ChunkingStrategy.FIXED_SIZE
             estimated[strategy_enum] = max(int(count), 0)

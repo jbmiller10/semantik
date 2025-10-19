@@ -11,7 +11,8 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 
@@ -25,7 +26,7 @@ from .utils import (
 )
 
 
-def _tasks_namespace():
+def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("packages.webui.tasks")
 
@@ -118,7 +119,7 @@ def monitor_partition_health() -> dict[str, Any]:
                     "error": monitoring_result.error,
                 }
 
-        results = resolve_awaitable_sync(_check_health())
+        results = cast(dict[str, Any], resolve_awaitable_sync(_check_health()))
 
     except Exception as exc:  # pragma: no cover - defensive logging
         log.error(f"Partition health monitoring failed: {exc}")

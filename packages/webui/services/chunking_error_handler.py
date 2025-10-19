@@ -15,7 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import psutil
 
@@ -428,7 +428,7 @@ class ChunkingErrorHandler:
         Returns:
             ChunkingErrorType classification
         """
-        return self._error_classifier.as_enum(error)
+        return cast(ChunkingErrorType, self._error_classifier.as_enum(error))
 
     def classify_error_detailed(self, error: Exception) -> ErrorClassificationResult:
         """Return the detailed classification result for an error."""

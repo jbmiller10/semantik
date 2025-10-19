@@ -25,9 +25,9 @@ from packages.webui.api.chunking_exceptions import (
 )
 
 try:  # pragma: no cover - psutil always available in production, but tests can mock it
-    import psutil  # type: ignore
+    import psutil
 except ModuleNotFoundError:  # pragma: no cover - fallback for minimal environments
-    psutil = None  # type: ignore
+    psutil = None
 
 import time as _time
 
@@ -228,7 +228,7 @@ class ChunkingOperationManager:
     def classify_error(self, exc: Exception) -> str:
         """Return the stable error code for metrics/logging."""
 
-        return self._error_classifier.as_code(exc)
+        return str(self._error_classifier.as_code(exc))
 
     # ------------------------------------------------------------------
     # Resource monitoring helpers
@@ -321,10 +321,11 @@ class ChunkingOperationManager:
             return 1
 
         memory = self._psutil.virtual_memory()
-        return self._error_handler._calculate_adaptive_batch_size(
+        batch_size = self._error_handler._calculate_adaptive_batch_size(
             current_usage=memory.percent,
             limit=100,
         )
+        return int(batch_size)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -8,6 +8,7 @@ import contextlib
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -279,7 +280,9 @@ class ChunkingOrchestrator:
                     max_chunks=chunk_limit,
                 )
 
-                preview_chunks = self._transform_chunks_to_preview(preview.chunks)
+                preview_chunks = self._transform_chunks_to_preview(
+                    cast(list[ServiceChunkPreview | dict[str, Any]], preview.chunks)
+                )
                 metrics = (
                     dict(preview.metrics)
                     if preview.metrics
@@ -645,7 +648,7 @@ class ChunkingOrchestrator:
 
     def _transform_chunks_to_preview(
         self,
-        chunks: list[dict[str, Any]] | list[ServiceChunkPreview],
+        chunks: Sequence[ServiceChunkPreview | dict[str, Any]],
     ) -> list[ServiceChunkPreview]:
         preview_chunks: list[ServiceChunkPreview] = []
 

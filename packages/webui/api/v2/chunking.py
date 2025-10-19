@@ -118,10 +118,19 @@ async def list_strategies(
     """
     try:
         # Get DTOs from service and convert to API models
-        strategy_dtos = await service.get_available_strategies_for_api()
+        strategy_payloads = await service.get_available_strategies_for_api()
 
-        # Convert DTOs to API response models
-        return [cast(StrategyInfo, dto.to_api_model()) for dto in strategy_dtos]
+        strategy_infos: list[StrategyInfo] = []
+        for payload in strategy_payloads:
+            resolved = await _resolve_service_payload(payload)
+            if isinstance(resolved, StrategyInfo):
+                strategy_infos.append(resolved)
+            elif isinstance(resolved, dict):
+                strategy_infos.append(StrategyInfo.model_validate(resolved))
+            else:  # pragma: no cover - defensive programming for unexpected payloads
+                raise TypeError(f"Unsupported strategy payload type: {type(resolved)!r}")
+
+        return strategy_infos
 
     except Exception as e:
         logger.error(f"Failed to list strategies: {e}")
@@ -149,16 +158,20 @@ async def get_strategy_details(
     """
     try:
         # Get DTO from service
-        strategy_dto = await service.get_strategy_details(strategy_id)
+        strategy_payload = await service.get_strategy_details(strategy_id)
 
-        if not strategy_dto:
+        if not strategy_payload:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Strategy '{strategy_id}' not found",
             )
 
-        # Convert DTO to API response model
-        return cast(StrategyInfo, strategy_dto.to_api_model())
+        resolved = await _resolve_service_payload(strategy_payload)
+        if isinstance(resolved, StrategyInfo):
+            return resolved
+        if isinstance(resolved, dict):
+            return StrategyInfo.model_validate(resolved)
+        raise TypeError(f"Unsupported strategy payload type: {type(resolved)!r}")
 
     except HTTPException:
         raise
@@ -188,12 +201,19 @@ async def recommend_strategy(
     """
     try:
         # Get DTO from service
-        recommendation_dto = await service.recommend_strategy(
-            file_types=file_types,
-        )
+        recommendation_payload: Any
+        if isinstance(service, ChunkingServiceAdapter):
+            primary_type = file_types[0] if file_types else None
+            recommendation_payload = await service.recommend_strategy(file_type=primary_type)
+        else:
+            recommendation_payload = await service.recommend_strategy(file_types=file_types)
 
-        # Convert DTO to API response model
-        return cast(StrategyRecommendation, recommendation_dto.to_api_model())
+        resolved = await _resolve_service_payload(recommendation_payload)
+        if isinstance(resolved, StrategyRecommendation):
+            return resolved
+        if isinstance(resolved, dict):
+            return StrategyRecommendation.model_validate(resolved)
+        raise TypeError(f"Unsupported recommendation payload type: {type(resolved)!r}")
 
     except Exception as e:
         logger.error(f"Failed to get strategy recommendation: {e}")
@@ -241,16 +261,34 @@ async def generate_preview(
     check_circuit_breaker(request)
 
     try:
-        # Get DTO from service
-        preview_dto = await service.preview_chunking(
-            strategy=preview_request.strategy,
-            content=preview_request.content or "",  # Provide empty string if content is None
-            config=preview_request.config.model_dump() if preview_request.config else None,
-            max_chunks=preview_request.max_chunks,
-        )
+        preview_payload: Any
+        if isinstance(service, ChunkingServiceAdapter):
+            preview_payload = await service.orchestrator.preview_chunks(
+                content=preview_request.content,
+                document_id=preview_request.document_id,
+                strategy=preview_request.strategy.value,
+                config=preview_request.config.model_dump() if preview_request.config else None,
+                user_id=None,
+                use_cache=True,
+                max_chunks=preview_request.max_chunks,
+            )
+        else:
+            preview_payload = await service.preview_chunking(
+                content=preview_request.content or "",
+                strategy=preview_request.strategy.value,
+                config=preview_request.config.model_dump() if preview_request.config else None,
+                max_chunks=preview_request.max_chunks,
+                cache_result=True,
+            )
 
-        # Convert DTO to API response model and add correlation ID
-        response = cast(PreviewResponse, preview_dto.to_api_model())
+        resolved = await _resolve_service_payload(preview_payload)
+        if isinstance(resolved, PreviewResponse):
+            response = resolved
+        elif isinstance(resolved, dict):
+            response = PreviewResponse.model_validate(resolved)
+        else:
+            raise TypeError(f"Unsupported preview payload type: {type(resolved)!r}")
+
         response.correlation_id = correlation_id
         return response
 
@@ -321,16 +359,30 @@ async def compare_strategies(
                 # strategy is already a string key from the dict, not an enum
                 configs_dict[strategy] = config.model_dump()
 
-        # Get DTO from service
-        compare_dto = await service.compare_strategies_for_api(
-            content=compare_request.content or "",
-            strategies=strategy_names,
-            configs=configs_dict,
-            max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
-        )
+        compare_payload: Any
+        if isinstance(service, ChunkingServiceAdapter):
+            compare_payload = await service.orchestrator.compare_strategies(
+                content=compare_request.content or "",
+                strategies=strategy_names,
+                base_config=None,
+                strategy_configs=configs_dict,
+                user_id=None,
+                max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
+            )
+        else:
+            compare_payload = await service.compare_strategies_for_api(
+                content=compare_request.content or "",
+                strategies=strategy_names,
+                configs=configs_dict,
+                max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
+            )
 
-        # Convert DTO to API response model
-        return cast(CompareResponse, compare_dto.to_api_model())
+        resolved = await _resolve_service_payload(compare_payload)
+        if isinstance(resolved, CompareResponse):
+            return resolved
+        if isinstance(resolved, dict):
+            return CompareResponse.model_validate(resolved)
+        raise TypeError(f"Unsupported comparison payload type: {type(resolved)!r}")
 
     except HTTPException:
         raise
@@ -365,20 +417,27 @@ async def get_cached_preview(
     check_circuit_breaker(request)
 
     try:
-        # Get DTO from service
-        preview_dto = await service.get_cached_preview_by_id(
-            preview_id=preview_id,
-            user_id=_current_user.get("id") if _current_user else None,
-        )
+        preview_payload: Any
+        if isinstance(service, ChunkingServiceAdapter):
+            preview_payload = await service.get_cached_preview_by_id(preview_id)
+        else:
+            preview_payload = await service.get_cached_preview_by_id(
+                preview_id=preview_id,
+                user_id=_current_user.get("id") if _current_user else None,
+            )
 
-        if not preview_dto:
+        if not preview_payload:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Preview not found or expired",
             )
 
-        # Convert DTO to API response model
-        return cast(PreviewResponse, preview_dto.to_api_model())
+        resolved = await _resolve_service_payload(preview_payload)
+        if isinstance(resolved, PreviewResponse):
+            return resolved
+        if isinstance(resolved, dict):
+            return PreviewResponse.model_validate(resolved)
+        raise TypeError(f"Unsupported preview payload type: {type(resolved)!r}")
 
     except HTTPException:
         raise
@@ -449,12 +508,21 @@ async def start_chunking_operation(
     chunking_request = ChunkingOperationRequest.model_validate(payload)
 
     try:
-        # First validate the configuration
-        validation_result = await service.validate_config_for_collection(
-            collection_id=collection_uuid,
-            strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else {},
-        )
+        config_payload = chunking_request.config.model_dump() if chunking_request.config else {}
+        if isinstance(service, ChunkingServiceAdapter):
+            user_id = _current_user.get("id") if _current_user else None
+            validation_result = await service.validate_config_for_collection(
+                collection_id=collection_uuid,
+                strategy=chunking_request.strategy.value,
+                config=config_payload,
+                user_id=int(user_id) if user_id is not None else 0,
+            )
+        else:
+            validation_result = await service.validate_config_for_collection(
+                collection_id=collection_uuid,
+                strategy=chunking_request.strategy.value,
+                config=config_payload,
+            )
 
         # Check if configuration is valid
         if not validation_result.get("valid", True):
@@ -487,6 +555,12 @@ async def start_chunking_operation(
             user_id=_current_user["id"],
         )
 
+        task_service = (
+            service
+            if isinstance(service, ChunkingService)
+            else service._ensure_legacy_service()
+        )
+
         # Queue the chunking task
         background_tasks.add_task(
             process_chunking_operation,
@@ -497,7 +571,7 @@ async def start_chunking_operation(
             chunking_request.document_ids,
             _current_user["id"],
             websocket_channel,
-            service,
+            task_service,
         )
 
         return ChunkingOperationResponse(
@@ -576,6 +650,12 @@ async def update_chunking_strategy(
                 user_id=_current_user["id"],
             )
 
+            task_service = (
+                service
+                if isinstance(service, ChunkingService)
+                else service._ensure_legacy_service()
+            )
+
             # Queue reprocessing task
             background_tasks.add_task(
                 process_chunking_operation,
@@ -586,7 +666,7 @@ async def update_chunking_strategy(
                 None,  # Process all documents
                 _current_user["id"],
                 websocket_channel,
-                service,
+                task_service,
             )
 
             return ChunkingOperationResponse(
