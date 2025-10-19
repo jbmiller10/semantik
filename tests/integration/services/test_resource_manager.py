@@ -126,7 +126,9 @@ class TestResourceManagerIntegration:
         assert usage["collections"] == 1
         assert usage["storage_bytes"] == collection.total_size_bytes
 
-    async def test_get_resource_usage_fallback_flags_metrics(self, manager, collection_factory, test_user_db, db_session):
+    async def test_get_resource_usage_fallback_flags_metrics(
+        self, manager, collection_factory, test_user_db, db_session
+    ):
         collection = await collection_factory(owner_id=test_user_db.id, total_size_bytes=2048)
         await db_session.commit()
 

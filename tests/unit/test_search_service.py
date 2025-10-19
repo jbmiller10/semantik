@@ -565,16 +565,11 @@ class TestSearchService:
         high_reranked = {"score": 0.2, "reranked_score": 0.95}
         high_score = {"score": 0.9}
 
-        assert (
-            SearchService._result_sort_key(high_reranked)
-            > SearchService._result_sort_key(high_score)
-        )
+        assert SearchService._result_sort_key(high_reranked) > SearchService._result_sort_key(high_score)
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_normalizes_legacy_modes(
-        self, mock_httpx_client, search_service
-    ) -> None:
+    async def test_search_single_collection_normalizes_legacy_modes(self, mock_httpx_client, search_service) -> None:
         """Legacy hybrid/keyword modes are mapped to supported values."""
 
         mock_collection = Mock(spec=Collection)
@@ -609,9 +604,7 @@ class TestSearchService:
         assert request_data["keyword_mode"] == "any"
 
     @pytest.mark.asyncio()
-    async def test_multi_collection_search_normalizes_modes_and_sorts(
-        self, search_service
-    ) -> None:
+    async def test_multi_collection_search_normalizes_modes_and_sorts(self, search_service) -> None:
         """Legacy modes normalize and results sort by reranked_score."""
 
         collection1 = Mock(spec=Collection)

@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance, PointStruct, VectorParams
-
 from shared.metrics.collection_metrics import QdrantOperationTimer
 
 if TYPE_CHECKING:
@@ -427,7 +426,10 @@ class QdrantManager:
         kwargs: dict[str, Any] = {"vectors_config": vectors_config}
 
         optional_mappings: list[tuple[str, Any]] = [
-            ("sparse_vectors_config", getattr(config, "sparse_vectors_config", None) or getattr(params, "sparse_vectors", None)),
+            (
+                "sparse_vectors_config",
+                getattr(config, "sparse_vectors_config", None) or getattr(params, "sparse_vectors", None),
+            ),
             ("optimizers_config", getattr(config, "optimizer_config", None)),
             ("hnsw_config", getattr(config, "hnsw_config", None)),
             ("wal_config", getattr(config, "wal_config", None)),
@@ -467,7 +469,9 @@ class QdrantManager:
                 break
 
             points = [
-                PointStruct(id=record.id, vector=getattr(record, "vector", None), payload=getattr(record, "payload", None))
+                PointStruct(
+                    id=record.id, vector=getattr(record, "vector", None), payload=getattr(record, "payload", None)
+                )
                 for record in records
             ]
 
