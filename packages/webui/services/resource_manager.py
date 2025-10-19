@@ -308,20 +308,29 @@ class ResourceManager:
         return getattr(collection, key, default)
 
     def _normalize_usage(self, usage: dict[str, Any], collection: Any) -> dict[str, Any]:
-        documents = usage.get("documents") or usage.get("points")
+        documents = usage.get("documents")
         if documents is None:
-            documents = self._get_collection_value(collection, "document_count", 0) or 0
+            documents = usage.get("points")
+        if documents is None:
+            documents = self._get_collection_value(collection, "document_count", None)
+        if documents is None:
+            documents = 0
 
-        vectors = usage.get("vectors") or usage.get("points")
+        vectors = usage.get("vectors")
         if vectors is None:
-            vectors = self._get_collection_value(collection, "vector_count", 0) or 0
+            vectors = usage.get("points")
+        if vectors is None:
+            vectors = self._get_collection_value(collection, "vector_count", None)
+        if vectors is None:
+            vectors = 0
 
-        storage_bytes = (
-            usage.get("storage_bytes")
-            or usage.get("disk_usage_bytes")
-            or self._get_collection_value(collection, "total_size_bytes", 0)
-            or 0
-        )
+        storage_bytes = usage.get("storage_bytes")
+        if storage_bytes is None:
+            storage_bytes = usage.get("disk_usage_bytes")
+        if storage_bytes is None:
+            storage_bytes = self._get_collection_value(collection, "total_size_bytes", None)
+        if storage_bytes is None:
+            storage_bytes = 0
 
         storage_gb = storage_bytes / 1024 / 1024 / 1024
 

@@ -7,13 +7,15 @@ import contextlib
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance, PointStruct, VectorParams
 
 from shared.metrics.collection_metrics import QdrantOperationTimer
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
 
 logger = logging.getLogger(__name__)
 
@@ -502,10 +504,10 @@ class QdrantManager:
         if value is None:
             return 0
         if isinstance(value, dict):
-            return int(sum(v for v in value.values() if isinstance(v, (int, float))))
-        if isinstance(value, (list, tuple)):
-            return int(sum(v for v in value if isinstance(v, (int, float))))
-        if isinstance(value, (int, float)):
+            return int(sum(v for v in value.values() if isinstance(v, int | float)))
+        if isinstance(value, list | tuple):
+            return int(sum(v for v in value if isinstance(v, int | float)))
+        if isinstance(value, int | float):
             return int(value)
         return 0
 
@@ -537,7 +539,7 @@ class QdrantManager:
             getattr(info, "data_size", None),
             getattr(stats, "disk_data_size", None) if stats is not None else None,
         ):
-            if isinstance(candidate, (int, float)) and candidate >= 0:
+            if isinstance(candidate, int | float) and candidate >= 0:
                 storage_bytes = int(candidate)
                 break
 
@@ -546,15 +548,15 @@ class QdrantManager:
             if status is not None:
                 disk_data = getattr(status, "disk_data", None)
                 if isinstance(disk_data, dict):
-                    storage_bytes = int(sum(v for v in disk_data.values() if isinstance(v, (int, float))))
+                    storage_bytes = int(sum(v for v in disk_data.values() if isinstance(v, int | float)))
                 else:
                     storage_bytes = getattr(disk_data, "data_files_size", None)
-                    if isinstance(storage_bytes, (int, float)):
+                    if isinstance(storage_bytes, int | float):
                         storage_bytes = int(storage_bytes)
 
         documents_count = documents_count or vectors_count
         vectors_count = vectors_count or documents_count
-        storage_bytes = int(storage_bytes) if isinstance(storage_bytes, (int, float)) and storage_bytes >= 0 else 0
+        storage_bytes = int(storage_bytes) if isinstance(storage_bytes, int | float) and storage_bytes >= 0 else 0
 
         return {
             "documents": int(documents_count or 0),
