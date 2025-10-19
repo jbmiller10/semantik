@@ -1139,6 +1139,7 @@ class TestRenameCollectionWithQdrantSync:
         mock_db_session.rollback.assert_called_once()
         mock_db_session.commit.assert_not_called()
 
+
 class TestCollectionServiceEdgeCases:
     """Test edge cases and special scenarios."""
 

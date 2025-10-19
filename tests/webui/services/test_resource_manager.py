@@ -190,9 +190,9 @@ async def test_get_resource_usage_caches_qdrant_metrics(frozen_resource_manager_
 
     # Ensure any future cache implementation respects a short TTL for the test.
     if hasattr(manager, "RESOURCE_USAGE_CACHE_TTL_SECONDS"):
-        setattr(manager, "RESOURCE_USAGE_CACHE_TTL_SECONDS", 30)
+        manager.RESOURCE_USAGE_CACHE_TTL_SECONDS = 30
     else:
-        setattr(manager, "_usage_cache_ttl_seconds", 30)
+        manager._usage_cache_ttl_seconds = 30
 
     first_usage = await manager.get_resource_usage("col-789")
     qdrant_manager.get_collection_usage.assert_awaited_once_with("collection_col-789")
