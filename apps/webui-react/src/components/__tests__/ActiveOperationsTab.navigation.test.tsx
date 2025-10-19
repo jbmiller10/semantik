@@ -31,16 +31,12 @@ function CollectionRoute() {
   return <div data-testid="collection-route">{collectionId}</div>
 }
 
+let queryClient: QueryClient | undefined
+
 const renderComponent = () => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        cacheTime: 0,
-        staleTime: 0,
-      },
-    },
-  })
+  if (!queryClient) {
+    throw new Error('QueryClient not initialized')
+  }
 
   const user = userEvent.setup()
 
@@ -61,6 +57,15 @@ const renderComponent = () => {
 describe('ActiveOperationsTab navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+          cacheTime: 0,
+          staleTime: 0,
+        },
+      },
+    })
     useUIStore.setState({
       activeTab: 'operations',
       showCollectionDetailsModal: null,
@@ -94,11 +99,16 @@ describe('ActiveOperationsTab navigation', () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     useUIStore.setState({
       activeTab: 'collections',
       showCollectionDetailsModal: null,
     })
+    if (queryClient) {
+      await queryClient.cancelQueries()
+      queryClient.clear()
+      queryClient = undefined
+    }
   })
 
   it('routes to the collection details path when a collection name is clicked', async () => {
