@@ -434,33 +434,14 @@ export function useChunkingWebSocket(
    * Auto-connect on mount if enabled
    */
   useEffect(() => {
-    const listenersSnapshot = listenersRef.current;
-
     if (autoConnect) {
       connect();
     }
 
     return () => {
-      // Capture latest WebSocket instance at cleanup time
-      const wsInstance = wsRef.current;
-
-      if (wsInstance) {
-        listenersSnapshot.forEach((handler, event) => {
-          if (typeof wsInstance.off === 'function') {
-            wsInstance.off(event, handler);
-          } else if (typeof wsInstance.removeListener === 'function') {
-            wsInstance.removeListener(event, handler);
-          }
-        });
-
-        // Disconnect WebSocket
-        disconnectChunkingWebSocket();
-      }
-
-      listenersSnapshot.clear();
-      wsRef.current = null;
+      disconnect();
     };
-  }, [autoConnect, connect]);
+  }, [autoConnect, connect, disconnect]);
 
   return {
     // Connection management
