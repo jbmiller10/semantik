@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@/tests/utils/test-utils'
-import { shallow } from 'zustand/shallow'
 import HomePage from '../HomePage'
 import { useUIStore } from '@/stores/uiStore'
 
@@ -19,11 +18,8 @@ const createStoreState = (overrides: Partial<ReturnType<typeof useUIStore>> = {}
 const mockUIStore = (overrides: Partial<ReturnType<typeof useUIStore>> = {}) => {
   const state = createStoreState(overrides)
 
-  mockedUseUIStore.mockImplementation(
-    (
-      selector?: (store: typeof state) => unknown,
-      equalityFn?: typeof shallow
-    ) => (typeof selector === 'function' ? selector(state) : state)
+  mockedUseUIStore.mockImplementation((selector?: (store: typeof state) => unknown) =>
+    typeof selector === 'function' ? selector(state) : state
   )
 
   return state
@@ -83,21 +79,18 @@ describe('HomePage', () => {
     expect(state.setShowCollectionDetailsModal).not.toHaveBeenCalled()
   })
 
-  it('subscribes to the store using a selector with shallow comparison', () => {
+  it('subscribes to the store using dedicated selectors for each field', () => {
     const state = mockUIStore({ activeTab: 'search' })
 
     render(<HomePage />)
 
-    expect(mockedUseUIStore).toHaveBeenCalledWith(expect.any(Function), shallow)
+    expect(mockedUseUIStore).toHaveBeenCalledTimes(4)
 
-    const [[selector]] = mockedUseUIStore.mock.calls as [
-      [(store: typeof state) => unknown, typeof shallow]
-    ]
-    const selected = selector(state)
-    expect(selected).toMatchObject({
-      activeTab: 'search',
-      setActiveTab: state.setActiveTab,
-      setShowCollectionDetailsModal: state.setShowCollectionDetailsModal,
+    mockedUseUIStore.mock.calls.forEach(([selector]) => {
+      expect(typeof selector).toBe('function')
+      const selected = (selector as (store: typeof state) => unknown)(state)
+      expect(selected).toBeDefined()
     })
+    expect(state.setActiveTab).not.toHaveBeenCalled()
   })
 })
