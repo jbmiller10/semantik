@@ -488,13 +488,39 @@ class QdrantManager:
             return
 
         for field_name, field_schema in schema.items():
+            data_type = None
+            params = None
+
+            if isinstance(field_schema, dict):
+                data_type = field_schema.get("data_type")
+                params = field_schema.get("params")
+            else:
+                data_type = getattr(field_schema, "data_type", None)
+                params = getattr(field_schema, "params", None)
+
+            create_kwargs: dict[str, Any] = {
+                "collection_name": destination,
+                "field_name": field_name,
+                "wait": True,
+            }
+
+            if params is not None:
+                create_kwargs["field_schema"] = params
+                if data_type is not None:
+                    create_kwargs["field_type"] = data_type
+            elif data_type is not None:
+                create_kwargs["field_schema"] = data_type
+            else:
+                logger.warning(
+                    "Skipping payload index %s on %s due to missing schema metadata",
+                    field_name,
+                    destination,
+                )
+                continue
+
             try:
                 with QdrantOperationTimer("rename_collection_index"):
-                    self.client.create_payload_index(
-                        collection_name=destination,
-                        field_name=field_name,
-                        field_schema=field_schema,
-                    )
+                    self.client.create_payload_index(**create_kwargs)
             except Exception as exc:
                 logger.error("Failed to recreate payload index %s on %s: %s", field_name, destination, exc)
                 raise
