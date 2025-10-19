@@ -194,6 +194,7 @@ class ServiceStrategyRecommendation:
     chunk_size: int = 512
     chunk_overlap: int = 50
     preserve_sentences: bool = True
+    metadata: dict[str, Any] | None = None
 
     def to_api_model(self) -> StrategyRecommendation:
         """Convert to API response model."""
@@ -217,17 +218,20 @@ class ServiceStrategyRecommendation:
                 # Skip invalid alternatives
 
         # Build suggested config
+        metadata = self.metadata if isinstance(self.metadata, dict) else None
+
         try:
             suggested_config = ChunkingConfigBase(
                 strategy=strategy,
                 chunk_size=self.chunk_size,
                 chunk_overlap=self.chunk_overlap,
                 preserve_sentences=self.preserve_sentences,
+                metadata=metadata,
             )
         except ValidationError as e:
             logger.warning(f"Invalid suggested config: {e}")
             # Use minimal valid config as fallback
-            suggested_config = ChunkingConfigBase(strategy=strategy)
+            suggested_config = ChunkingConfigBase(strategy=strategy, metadata=metadata)
 
         return StrategyRecommendation(
             recommended_strategy=strategy,
