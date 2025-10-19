@@ -233,6 +233,46 @@ class TestMultiCollectionSearch:
         assert len(response.results) == 1  # Only results from successful collection
 
     @pytest.mark.asyncio()
+    async def test_multi_collection_search_normalizes_legacy_modes(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy hybrid/keyword modes are normalized before delegating to SearchService."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.0,
+                "collection_details": [],
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[str(uuid.uuid4())],
+            query="legacy",
+            search_type="hybrid",
+            hybrid_mode="weighted",
+            keyword_mode="bm25",
+        )
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["hybrid_mode"] == "weighted"
+        assert call_kwargs["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in call_kwargs
+
+    @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
         self, mock_user: dict[str, Any], mock_collections: list[MagicMock]
     ) -> None:
@@ -384,7 +424,8 @@ class TestSearchReranking:
             use_reranker=False,
             rerank_model=None,
             hybrid_alpha=0.7,
-            hybrid_search_mode="rerank",
+            hybrid_mode="weighted",
+            keyword_mode="any",
         )
 
         assert response.reranking_used is False
@@ -473,7 +514,8 @@ class TestSearchReranking:
             use_reranker=True,
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             hybrid_alpha=0.7,
-            hybrid_search_mode="rerank",
+            hybrid_mode="weighted",
+            keyword_mode="any",
         )
 
         assert response.reranking_used is True
@@ -1044,6 +1086,93 @@ class TestHybridSearchParameters:
     """Test hybrid search functionality."""
 
     @pytest.mark.asyncio()
+    async def test_hybrid_search_with_legacy_relative_score_mode(
+        self,
+        mock_user: dict[str, Any],
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Legacy hybrid params should be mapped and results sorted by reranked score."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[c.id for c in mock_collections],
+            query="hybrid legacy mapping",
+            k=3,
+            search_type="hybrid",
+            hybrid_mode="relative_score",
+            keyword_mode="bm25",
+            use_reranker=True,
+        )
+
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [
+                {
+                    "doc_id": "doc_high_rerank",
+                    "chunk_id": "chunk_high",
+                    "score": 0.40,
+                    "reranked_score": 0.92,
+                    "content": "legacy high rerank",
+                    "path": "/legacy_high.md",
+                    "metadata": {},
+                    "collection_id": mock_collections[1].id,
+                    "collection_name": mock_collections[1].name,
+                    "embedding_model": mock_collections[1].embedding_model,
+                },
+                {
+                    "doc_id": "doc_low_rerank",
+                    "chunk_id": "chunk_low",
+                    "score": 0.78,
+                    "reranked_score": 0.52,
+                    "content": "legacy low rerank",
+                    "path": "/legacy_low.md",
+                    "metadata": {},
+                    "collection_id": mock_collections[0].id,
+                    "collection_name": mock_collections[0].name,
+                    "embedding_model": mock_collections[0].embedding_model,
+                },
+            ],
+            "metadata": {
+                "total_results": 2,
+                "processing_time": 0.11,
+                "collection_details": [
+                    {
+                        "collection_id": mock_collections[0].id,
+                        "collection_name": mock_collections[0].name,
+                        "result_count": 1,
+                    },
+                    {
+                        "collection_id": mock_collections[1].id,
+                        "collection_name": mock_collections[1].name,
+                        "result_count": 1,
+                    },
+                ],
+            },
+        }
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        mock_search_service.multi_collection_search.assert_awaited_once()
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["hybrid_mode"] == "weighted"
+        assert call_kwargs["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in call_kwargs
+
+        assert isinstance(response, CollectionSearchResponse)
+        assert response.total_results == 2
+
+        scores = [result.score for result in response.results]
+        assert scores == [0.92, 0.52]
+
+    @pytest.mark.asyncio()
     async def test_hybrid_search_with_custom_alpha(
         self, mock_user: dict[str, Any], mock_collections: list[MagicMock]
     ) -> None:
@@ -1101,7 +1230,8 @@ class TestHybridSearchParameters:
         call_args = mock_search_service.multi_collection_search.call_args
         assert call_args.kwargs["search_type"] == "hybrid"
         assert call_args.kwargs["hybrid_alpha"] == 0.3
-        assert call_args.kwargs["hybrid_search_mode"] == "filter"
+        assert call_args.kwargs["hybrid_mode"] == "filter"
+        assert "hybrid_search_mode" not in call_args.kwargs
 
         assert response.search_type == "hybrid"
         assert len(response.results) == 1

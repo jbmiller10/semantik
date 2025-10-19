@@ -10,6 +10,8 @@ from shared.database.repositories.operation_repository import OperationRepositor
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
+from packages.shared.managers import QdrantManager
+from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 from .chunking.adapter import ChunkingServiceAdapter
 from .chunking.container import (
@@ -18,7 +20,9 @@ from .chunking.container import (
 from .chunking.container import (
     get_redis_manager as container_get_redis_manager,
 )
-from .chunking.container import resolve_api_chunking_dependency
+from .chunking.container import (
+    resolve_api_chunking_dependency,
+)
 from .chunking.orchestrator import ChunkingOrchestrator
 from .chunking_service import ChunkingService
 from .collection_service import CollectionService
@@ -40,13 +44,18 @@ def get_redis_manager() -> RedisManager:
     return manager
 
 
-def create_collection_service(db: AsyncSession) -> CollectionService:
+def create_collection_service(
+    db: AsyncSession,
+    *,
+    qdrant_manager_override: QdrantManager | None = None,
+) -> CollectionService:
     """Create a CollectionService instance with all required dependencies.
 
     This factory function simplifies dependency injection for FastAPI endpoints.
 
     Args:
         db: AsyncSession instance from FastAPI's dependency injection
+        qdrant_manager_override: Optional pre-built manager, useful for tests
 
     Returns:
         Configured CollectionService instance
@@ -77,12 +86,21 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
 
+    qdrant_manager_instance = qdrant_manager_override
+    if qdrant_manager_instance is None:
+        try:
+            qdrant_client = qdrant_connection_manager.get_client()
+            qdrant_manager_instance = QdrantManager(qdrant_client)
+        except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+            logger.warning("Qdrant client unavailable for collection service: %s", exc)
+
     # Create and return service
     return CollectionService(
         db_session=db,
         collection_repo=collection_repo,
         operation_repo=operation_repo,
         document_repo=document_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 
@@ -169,10 +187,18 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
     collection_repo = CollectionRepository(db)
     operation_repo = OperationRepository(db)
 
+    qdrant_manager_instance = None
+    try:
+        qdrant_client = qdrant_connection_manager.get_client()
+        qdrant_manager_instance = QdrantManager(qdrant_client)
+    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+        logger.warning("Qdrant client unavailable for resource metrics: %s", exc)
+
     # Create and return resource manager
     return ResourceManager(
         collection_repo=collection_repo,
         operation_repo=operation_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 

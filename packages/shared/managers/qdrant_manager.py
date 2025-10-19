@@ -1,21 +1,31 @@
-"""
-Qdrant Management Service for managing vector storage resources.
+"""Utilities for managing Qdrant collections used across Semantik services."""
 
-This service provides methods for managing Qdrant collections with a focus on
-supporting blue-green deployment strategies for zero-downtime reindexing.
-"""
+from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import CollectionInfo, Distance, VectorParams
+from qdrant_client.models import CollectionInfo, Distance, PointStruct, VectorParams
+from shared.metrics.collection_metrics import QdrantOperationTimer
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient
 
 logger = logging.getLogger(__name__)
+
+
+class QdrantCollectionNotFoundError(RuntimeError):
+    """Raised when the requested Qdrant collection cannot be located."""
+
+    def __init__(self, collection_name: str, message: str | None = None) -> None:
+        msg = message or f"Collection {collection_name} not found in Qdrant"
+        super().__init__(msg)
+        self.collection_name = collection_name
 
 
 class QdrantManager:
@@ -232,50 +242,47 @@ class QdrantManager:
             logger.error(f"Error checking collection existence: {str(e)}")
             return False
 
-    def rename_collection(self, old_name: str, new_name: str) -> None:
+    async def get_collection_usage(self, collection_name: str) -> dict[str, int]:
+        """Return document, vector, and storage usage metrics for a collection.
+
+        The underlying Qdrant client is synchronous, so calls are executed in a
+        thread executor to avoid blocking the event loop.
         """
-        Rename a collection by creating a new one and copying data.
 
-        Note: Qdrant doesn't support direct renaming, so this creates a new
-        collection and copies all data.
+        loop = asyncio.get_running_loop()
 
-        Args:
-            old_name: Current collection name
-            new_name: New collection name
+        def _fetch_usage() -> dict[str, int]:
+            with QdrantOperationTimer("get_collection_usage"):
+                try:
+                    info = self.client.get_collection(collection_name)
+                except UnexpectedResponse as exc:
+                    if getattr(exc, "status_code", None) == 404:
+                        raise QdrantCollectionNotFoundError(collection_name) from exc
+                    raise
 
-        Raises:
-            Exception: If rename operation fails
-        """
-        logger.info(f"Renaming collection {old_name} to {new_name}")
+                stats: Any | None = None
+                try:
+                    stats = self.client.get_collection_stats(collection_name)
+                except UnexpectedResponse as exc:
+                    if getattr(exc, "status_code", None) == 404:
+                        raise QdrantCollectionNotFoundError(collection_name) from exc
+                    logger.warning("Failed to fetch stats for %s: %s", collection_name, exc)
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning("Unexpected error fetching stats for %s: %s", collection_name, exc)
 
-        try:
-            # Get old collection info
-            old_info = self.get_collection_info(old_name)
+            return self._normalize_usage_payload(info, stats)
 
-            # Create new collection with same configuration
-            self.client.create_collection(
-                collection_name=new_name,
-                vectors_config=old_info.config.params.vectors,
-                optimizers_config=old_info.config.optimizer_config,
-            )
+        return await loop.run_in_executor(None, _fetch_usage)
 
-            # Note: Actual data migration would require scrolling through points
-            # and copying them. This is a placeholder for the structure.
-            # In production, you might want to use Qdrant's snapshot feature
-            # or implement point-by-point copying.
+    async def rename_collection(self, old_name: str, new_name: str, batch_size: int = 256) -> None:
+        """Rename a collection by cloning config + data to a new name then removing the old one."""
 
-            logger.warning(
-                f"Collection {new_name} created. Data migration from {old_name} "
-                "needs to be implemented based on specific requirements."
-            )
+        loop = asyncio.get_running_loop()
 
-        except Exception as e:
-            logger.error(f"Failed to rename collection: {str(e)}")
-            # Cleanup new collection if it was created
-            with contextlib.suppress(Exception):
-                if self.collection_exists(new_name):
-                    self.client.delete_collection(new_name)
-            raise
+        def _rename() -> None:
+            self._rename_collection_sync(old_name, new_name, batch_size=batch_size)
+
+        await loop.run_in_executor(None, _rename)
 
     def _is_staging_collection_old(self, collection_name: str, hours: int = 24) -> bool:
         """
@@ -366,3 +373,223 @@ class QdrantManager:
 
         except Exception as e:
             return {"healthy": False, "exists": None, "error": str(e)}
+
+    def _rename_collection_sync(self, old_name: str, new_name: str, batch_size: int) -> None:
+        if old_name == new_name:
+            logger.info("Requested rename for %s to identical name; skipping", old_name)
+            return
+
+        if not self.collection_exists(old_name):
+            raise QdrantCollectionNotFoundError(old_name)
+
+        if self.collection_exists(new_name):
+            raise ValueError(f"Target collection {new_name} already exists")
+
+        with QdrantOperationTimer("rename_collection_prepare"):
+            old_info = self.get_collection_info(old_name)
+
+        create_kwargs = self._build_collection_create_kwargs(old_info)
+
+        logger.info("Creating replacement collection %s for %s", new_name, old_name)
+        with QdrantOperationTimer("rename_collection_create"):
+            self.client.create_collection(collection_name=new_name, **create_kwargs)
+
+        try:
+            copied = self._copy_collection_points(old_name, new_name, batch_size=batch_size)
+            self._copy_payload_indexes(old_info, new_name)
+
+            logger.info(
+                "Deleting old collection %s after migrating %d points to %s",
+                old_name,
+                copied,
+                new_name,
+            )
+            with QdrantOperationTimer("rename_collection_delete_old"):
+                self.client.delete_collection(old_name)
+
+        except Exception:
+            logger.error("Rename failed; rolling back new collection %s", new_name)
+            with contextlib.suppress(Exception):
+                self.client.delete_collection(new_name)
+            raise
+
+    def _build_collection_create_kwargs(self, info: CollectionInfo) -> dict[str, Any]:
+        config = getattr(info, "config", None)
+        if config is None or getattr(config, "params", None) is None:
+            raise RuntimeError("Collection config missing vector parameters; cannot rename")
+
+        params = config.params
+        vectors_config = getattr(params, "vectors", None)
+        if vectors_config is None:
+            raise RuntimeError("Collection vectors configuration unavailable")
+
+        kwargs: dict[str, Any] = {"vectors_config": vectors_config}
+
+        optional_mappings: list[tuple[str, Any]] = [
+            (
+                "sparse_vectors_config",
+                getattr(config, "sparse_vectors_config", None) or getattr(params, "sparse_vectors", None),
+            ),
+            ("optimizers_config", getattr(config, "optimizer_config", None)),
+            ("hnsw_config", getattr(config, "hnsw_config", None)),
+            ("wal_config", getattr(config, "wal_config", None)),
+            ("quantization_config", getattr(config, "quantization_config", None)),
+            ("shard_number", getattr(params, "shard_number", None)),
+            ("replication_factor", getattr(params, "replication_factor", None)),
+            ("write_consistency_factor", getattr(params, "write_consistency_factor", None)),
+            ("on_disk_payload", getattr(params, "on_disk_payload", None)),
+            ("on_disk_vector", getattr(params, "on_disk_vector", None)),
+            ("sharding_method", getattr(params, "sharding_method", None)),
+            ("disabled", getattr(params, "disabled", None)),
+        ]
+
+        for key, value in optional_mappings:
+            if value is not None:
+                kwargs[key] = value
+
+        return kwargs
+
+    def _copy_collection_points(self, source: str, destination: str, batch_size: int) -> int:
+        logger.info("Copying points from %s to %s", source, destination)
+
+        offset: Any | None = None
+        copied = 0
+
+        while True:
+            with QdrantOperationTimer("rename_collection_scroll"):
+                records, next_offset = self.client.scroll(
+                    collection_name=source,
+                    offset=offset,
+                    limit=batch_size,
+                    with_payload=True,
+                    with_vectors=True,
+                )
+
+            if not records:
+                break
+
+            points = [
+                PointStruct(
+                    id=record.id, vector=getattr(record, "vector", None), payload=getattr(record, "payload", None)
+                )
+                for record in records
+            ]
+
+            with QdrantOperationTimer("rename_collection_upsert"):
+                self.client.upsert(collection_name=destination, points=points, wait=True)
+
+            copied += len(points)
+            offset = next_offset
+            if not next_offset:
+                break
+
+        logger.info("Copied %d points from %s to %s", copied, source, destination)
+        return copied
+
+    def _copy_payload_indexes(self, info: CollectionInfo, destination: str) -> None:
+        schema = getattr(info, "payload_schema", None)
+        if not schema:
+            return
+
+        for field_name, field_schema in schema.items():
+            data_type = None
+            params = None
+
+            if isinstance(field_schema, dict):
+                data_type = field_schema.get("data_type")
+                params = field_schema.get("params")
+            else:
+                data_type = getattr(field_schema, "data_type", None)
+                params = getattr(field_schema, "params", None)
+
+            create_kwargs: dict[str, Any] = {
+                "collection_name": destination,
+                "field_name": field_name,
+                "wait": True,
+            }
+
+            if params is not None:
+                create_kwargs["field_schema"] = params
+                if data_type is not None:
+                    create_kwargs["field_type"] = data_type
+            elif data_type is not None:
+                create_kwargs["field_schema"] = data_type
+            else:
+                logger.warning(
+                    "Skipping payload index %s on %s due to missing schema metadata",
+                    field_name,
+                    destination,
+                )
+                continue
+
+            try:
+                with QdrantOperationTimer("rename_collection_index"):
+                    self.client.create_payload_index(**create_kwargs)
+            except Exception as exc:
+                logger.error("Failed to recreate payload index %s on %s: %s", field_name, destination, exc)
+                raise
+
+    @staticmethod
+    def _sum_vectors(value: Any) -> int:
+        if value is None:
+            return 0
+        if isinstance(value, dict):
+            return int(sum(v for v in value.values() if isinstance(v, int | float)))
+        if isinstance(value, list | tuple):
+            return int(sum(v for v in value if isinstance(v, int | float)))
+        if isinstance(value, int | float):
+            return int(value)
+        return 0
+
+    def _normalize_usage_payload(self, info: CollectionInfo, stats: Any | None) -> dict[str, int]:
+        """Coerce Qdrant collection info/stat structures into simple counters."""
+
+        documents = None
+        if stats is not None:
+            documents = getattr(stats, "points_count", None)
+            if documents is None:
+                documents = getattr(stats, "points", None)
+        if documents is None:
+            documents = getattr(info, "points_count", None)
+        if documents is None:
+            documents = getattr(info, "vectors_count", None)
+        documents_count = self._sum_vectors(documents)
+
+        vectors = None
+        if stats is not None:
+            vectors = getattr(stats, "vectors_count", None)
+        if vectors is None:
+            vectors = getattr(info, "vectors_count", None)
+        vectors_count = self._sum_vectors(vectors)
+
+        storage_bytes = None
+        for candidate in (
+            getattr(info, "disk_data_size", None),
+            getattr(info, "storage_data_bytes", None),
+            getattr(info, "data_size", None),
+            getattr(stats, "disk_data_size", None) if stats is not None else None,
+        ):
+            if isinstance(candidate, int | float) and candidate >= 0:
+                storage_bytes = int(candidate)
+                break
+
+        if storage_bytes is None:
+            status = getattr(info, "status", None)
+            if status is not None:
+                disk_data = getattr(status, "disk_data", None)
+                if isinstance(disk_data, dict):
+                    storage_bytes = int(sum(v for v in disk_data.values() if isinstance(v, int | float)))
+                else:
+                    storage_bytes = getattr(disk_data, "data_files_size", None)
+                    if isinstance(storage_bytes, int | float):
+                        storage_bytes = int(storage_bytes)
+
+        documents_count = documents_count or vectors_count
+        vectors_count = vectors_count or documents_count
+        storage_bytes = int(storage_bytes) if isinstance(storage_bytes, int | float) and storage_bytes >= 0 else 0
+
+        return {
+            "documents": int(documents_count or 0),
+            "vectors": int(vectors_count or 0),
+            "storage_bytes": storage_bytes,
+        }

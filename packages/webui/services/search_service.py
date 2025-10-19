@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.config import settings
+from packages.shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
@@ -40,6 +41,21 @@ class SearchService:
         self.collection_repo = collection_repo
         self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
         self.retry_timeout_multiplier = retry_timeout_multiplier
+
+    @staticmethod
+    def _result_sort_key(result: dict[str, Any]) -> float:
+        """Sort by reranked_score when present, otherwise fall back to base score."""
+
+        reranked = result.get("reranked_score")
+        if reranked is not None:
+            try:
+                return float(reranked)
+            except (TypeError, ValueError):
+                return 0.0
+        try:
+            return float(result.get("score", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
 
     async def validate_collection_access(self, collection_uuids: list[str], user_id: int) -> list[Collection]:
         """Validate user has access to all requested collections.
@@ -98,8 +114,18 @@ class SearchService:
             timeout = self.default_timeout
 
         # Build search request for this collection
+        base_params = dict(search_params)
+        legacy_hybrid_mode = base_params.pop("hybrid_search_mode", None)
+        canonical_hybrid_mode = base_params.get("hybrid_mode") or legacy_hybrid_mode
+
+        if canonical_hybrid_mode is not None:
+            base_params["hybrid_mode"] = normalize_hybrid_mode(canonical_hybrid_mode)
+
+        if "keyword_mode" in base_params or canonical_hybrid_mode is not None:
+            base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
+
         collection_search_params = {
-            **search_params,
+            **base_params,
             "query": query,
             "k": k,  # Request exactly k results (vecpipe will handle candidate multiplier if reranking)
             "collection": collection.vector_store_name,
@@ -107,6 +133,8 @@ class SearchService:
             "quantization": collection.quantization,
             "include_content": True,
         }
+        # Ensure legacy hybrid_search_mode never leaks into the payload we send to vecpipe
+        collection_search_params.pop("hybrid_search_mode", None)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -206,7 +234,8 @@ class SearchService:
         use_reranker: bool = True,
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
-        hybrid_search_mode: str = "weighted",
+        hybrid_mode: str = "weighted",
+        keyword_mode: str = "any",
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -221,7 +250,8 @@ class SearchService:
             use_reranker: Whether to use reranking
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
-            hybrid_search_mode: Mode for hybrid search
+            hybrid_mode: Mode for hybrid search
+            keyword_mode: Keyword matching mode when using hybrid search
 
         Returns:
             Dictionary with search results and metadata
@@ -230,6 +260,10 @@ class SearchService:
 
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
+
+        # Normalize legacy hybrid/keyword modes for backward compatibility
+        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
+        keyword_mode = normalize_keyword_mode(keyword_mode)
 
         # Build common search parameters
         search_params = {
@@ -245,7 +279,8 @@ class SearchService:
             search_params.update(
                 {
                     "hybrid_alpha": hybrid_alpha,
-                    "hybrid_search_mode": hybrid_search_mode,
+                    "hybrid_mode": hybrid_mode,
+                    "keyword_mode": keyword_mode,
                 }
             )
 
@@ -296,7 +331,7 @@ class SearchService:
                 )
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
-        all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        all_results.sort(key=self._result_sort_key, reverse=True)
 
         # Limit to requested k results
         final_results = all_results[:k]
@@ -326,7 +361,8 @@ class SearchService:
         use_reranker: bool = True,
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
-        hybrid_search_mode: str = "weighted",
+        hybrid_mode: str = "weighted",
+        keyword_mode: str = "any",
         include_content: bool = True,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
@@ -342,7 +378,8 @@ class SearchService:
             use_reranker: Whether to use re-ranking
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
-            hybrid_search_mode: Mode for hybrid search
+            hybrid_mode: Mode for hybrid search
+            keyword_mode: Keyword matching mode when using hybrid search
             include_content: Whether to include document content
 
         Returns:
@@ -353,6 +390,9 @@ class SearchService:
         collection = collections[0]
 
         # Build search parameters
+        hybrid_mode = normalize_hybrid_mode(hybrid_mode)
+        keyword_mode = normalize_keyword_mode(keyword_mode)
+
         search_params = {
             "query": query,
             "k": k,
@@ -372,7 +412,8 @@ class SearchService:
             search_params.update(
                 {
                     "hybrid_alpha": hybrid_alpha,
-                    "hybrid_search_mode": hybrid_search_mode,
+                    "hybrid_mode": hybrid_mode,
+                    "keyword_mode": keyword_mode,
                 }
             )
 

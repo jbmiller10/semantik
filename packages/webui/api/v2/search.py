@@ -65,7 +65,8 @@ async def multi_collection_search(
             use_reranker=search_request.use_reranker,
             rerank_model=search_request.rerank_model,
             hybrid_alpha=search_request.hybrid_alpha,
-            hybrid_search_mode=search_request.hybrid_mode,
+            hybrid_mode=search_request.hybrid_mode,
+            keyword_mode=search_request.keyword_mode,
         )
 
         # Convert service result to API response format
