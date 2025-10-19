@@ -43,6 +43,7 @@ from .api.v2.operations import operation_websocket  # noqa: E402
 from .background_tasks import start_background_tasks, stop_background_tasks  # noqa: E402
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
 from .middleware.csp import CSPMiddleware  # noqa: E402
+from .middleware.exception_handlers import register_global_exception_handlers  # noqa: E402
 from .middleware.rate_limit import RateLimitMiddleware  # noqa: E402
 from .rate_limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
 
@@ -260,6 +261,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
 
     # Add rate limit middleware to set user in request.state after SlowAPI middleware so user context is available
     app.add_middleware(RateLimitMiddleware)
+
+    # Register global exception handlers
+    register_global_exception_handlers(app)
 
     # Register chunking exception handlers
     register_chunking_exception_handlers(app)

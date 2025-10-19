@@ -46,10 +46,7 @@ from packages.webui.api.chunking_exceptions import (
 )
 from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
-from packages.webui.services.chunking.container import (
-    build_chunking_operation_manager,
-    resolve_celery_chunking_service,
-)
+from packages.webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_service
 from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.factory import get_redis_manager

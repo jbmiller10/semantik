@@ -45,10 +45,7 @@ from packages.webui.api.v2.chunking_schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
-from packages.webui.dependencies import (
-    get_chunking_service_adapter_dependency,
-    get_collection_for_user_safe,
-)
+from packages.webui.dependencies import get_chunking_service_adapter_dependency, get_collection_for_user_safe
 from packages.webui.rate_limiter import check_circuit_breaker, create_rate_limit_decorator, rate_limit_dependency
 from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
 from packages.webui.services.chunking_service import ChunkingService

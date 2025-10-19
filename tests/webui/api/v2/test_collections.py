@@ -89,7 +89,6 @@ async def test_get_collection_returns_owned_details(
     assert body["name"] == collection.name
 
 
-@pytest.mark.xfail(reason="AccessDeniedError currently surfaces as 500; API bug tracked separately", strict=False)
 @pytest.mark.asyncio()
 async def test_get_collection_forbidden_for_non_owner(
     api_client: AsyncClient,

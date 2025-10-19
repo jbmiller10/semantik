@@ -114,6 +114,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
         # Set correlation ID in context for the duration of the request
         if correlation_id:
             correlation_id_var.set(correlation_id)
+            request.state.correlation_id = correlation_id
 
         try:
             # Log the incoming request with correlation ID

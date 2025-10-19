@@ -1,11 +1,5 @@
-"""
-Tests for v2 document content API endpoints.
+"""Security and behaviour tests for the v2 document content endpoint."""
 
-Tests focus on security aspects including authentication, authorization,
-and path traversal protection.
-"""
-
-import tempfile
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -16,20 +10,23 @@ from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.config import settings
 from packages.shared.database.exceptions import EntityNotFoundError
 from packages.shared.database.models import Collection, Document, DocumentStatus
 from packages.webui.api.v2.documents import get_document_content
 
 
 @pytest.fixture()
-def mock_user() -> None:
+def mock_user() -> dict[str, Any]:
     """Mock authenticated user."""
+
     return {"id": 1, "username": "testuser"}
 
 
 @pytest.fixture()
-def mock_collection() -> None:
+def mock_collection() -> MagicMock:
     """Mock collection object."""
+
     collection = MagicMock(spec=Collection)
     collection.id = "123e4567-e89b-12d3-a456-426614174000"
     collection.name = "Test Collection"
@@ -38,8 +35,20 @@ def mock_collection() -> None:
 
 
 @pytest.fixture()
-def mock_document() -> None:
-    """Mock document object."""
+def document_root(tmp_path, monkeypatch) -> Path:
+    """Provision an isolated document root for each test."""
+
+    root = tmp_path / "documents"
+    root.mkdir()
+    monkeypatch.setattr(settings, "_document_root", root, raising=False)
+    monkeypatch.setattr(settings, "_document_allowed_roots", (), raising=False)
+    return root
+
+
+@pytest.fixture()
+def mock_document() -> MagicMock:
+    """Mock document model with a default path inside the root."""
+
     document = MagicMock(spec=Document)
     document.id = "456e7890-e89b-12d3-a456-426614174001"
     document.collection_id = "123e4567-e89b-12d3-a456-426614174000"
@@ -51,26 +60,32 @@ def mock_document() -> None:
 
 
 @pytest.fixture()
-def temp_file() -> Generator[Any, None, None]:
-    """Create a temporary test file."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".pdf", delete=False) as f:
-        f.write("Test PDF content")
-        temp_path = f.name
+def temp_file(document_root: Path) -> Generator[Path, None, None]:
+    """Create a temporary test file inside the document root."""
 
-    yield temp_path
+    file_path = document_root / "safe" / "test_document.pdf"
+    file_path.parent.mkdir(exist_ok=True)
+    file_path.write_text("Test PDF content")
 
-    # Cleanup
-    Path(temp_path).unlink(missing_ok=True)
+    yield file_path
+
+    file_path.unlink(missing_ok=True)
 
 
 class TestGetDocumentContent:
     """Test document content retrieval endpoint."""
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_success(self, mock_user, mock_collection, mock_document, temp_file) -> None:
+    async def test_get_document_content_success(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        temp_file: Path,
+    ) -> None:
         """Test successful document content retrieval."""
-        # Update document to use temp file path
-        mock_document.file_path = temp_file
+        mock_document.file_path = str(temp_file)
+        mock_document.file_name = temp_file.name
 
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
@@ -85,15 +100,16 @@ class TestGetDocumentContent:
                 db=mock_db,
             )
 
-        # Verify result is a FileResponse
         assert isinstance(result, FileResponse)
-        assert result.path == temp_file
+        assert result.path == str(temp_file)
         assert result.media_type == "application/pdf"
-        assert result.filename == "test_document.pdf"
-        assert result.headers["Content-Disposition"] == 'inline; filename="test_document.pdf"'
+        assert result.filename == temp_file.name
+        assert result.headers["Content-Disposition"] == f'inline; filename="{temp_file.name}"'
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_document_not_found(self, mock_user, mock_collection) -> None:
+    async def test_get_document_content_document_not_found(
+        self, mock_user: dict[str, Any], mock_collection: MagicMock, document_root: Path
+    ) -> None:
         """Test 404 when document doesn't exist."""
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
@@ -116,7 +132,10 @@ class TestGetDocumentContent:
 
     @pytest.mark.asyncio()
     async def test_get_document_content_cross_collection_access(
-        self, mock_user, mock_collection, mock_document
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
     ) -> None:
         """Test 403 when document belongs to different collection."""
         # Set document to belong to a different collection
@@ -142,10 +161,15 @@ class TestGetDocumentContent:
         assert "Document does not belong to the specified collection" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_file_not_found(self, mock_user, mock_collection, mock_document) -> None:
+    async def test_get_document_content_file_not_found(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        document_root: Path,
+    ) -> None:
         """Test 404 when document file doesn't exist on disk."""
-        # Use a non-existent file path
-        mock_document.file_path = "/tmp/nonexistent_file.pdf"
+        mock_document.file_path = str(document_root / "nonexistent_file.pdf")
 
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
@@ -167,14 +191,61 @@ class TestGetDocumentContent:
         assert "Document file not found on disk" in str(exc_info.value.detail)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_path_is_directory(self, mock_user, mock_collection, mock_document) -> None:
-        """Test 500 when document path points to a directory."""
-        # Use temp directory instead of file
-        with tempfile.TemporaryDirectory() as temp_dir:
-            mock_document.file_path = temp_dir
+    async def test_get_document_content_path_is_directory(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        document_root: Path,
+    ) -> None:
+        """Test 400 when document path points to a directory."""
+        subdir = document_root / "nested"
+        subdir.mkdir()
+        mock_document.file_path = str(subdir)
 
-            mock_db = AsyncMock(spec=AsyncSession)
-            mock_document_repo = AsyncMock()
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id.return_value = mock_document
+
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "Invalid document path" in str(exc_info.value.detail)
+
+    @pytest.mark.asyncio()
+    async def test_get_document_content_path_traversal_blocked(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        document_root: Path,
+    ) -> None:
+        """Ensure attempts to escape the document root are rejected."""
+
+        outside_file = (document_root.parent / "outside.txt").resolve()
+        outside_file.write_text("classified")
+
+        traversal_paths = [
+            str(outside_file),
+            "../../etc/passwd",
+            str(document_root / ".." / outside_file.name),
+        ]
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_document_repo = AsyncMock()
+
+        for malicious_path in traversal_paths:
+            mock_document.file_path = malicious_path
             mock_document_repo.get_by_id.return_value = mock_document
 
             with (
@@ -189,51 +260,98 @@ class TestGetDocumentContent:
                     db=mock_db,
                 )
 
-            assert exc_info.value.status_code == 400
-            assert "Invalid document path" in str(exc_info.value.detail)
+            assert exc_info.value.status_code == 403
+            assert "Access to the requested document is forbidden" in str(exc_info.value.detail)
+
+        outside_file.unlink(missing_ok=True)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_path_traversal_attempt(self, mock_user, mock_collection, mock_document) -> None:
-        """Test that path traversal attempts are properly handled."""
-        # Try various path traversal patterns
-        # Use paths that definitely won't exist to ensure we get 404
-        path_traversal_attempts = [
-            "/definitely/does/not/exist/passwd",
-            "/tmp/nonexistent/../../../etc/passwd_fake",
-            "/fakepath/sensitive_file.txt",
-            "/bogus/path/to/nowhere",
-        ]
+    async def test_get_document_content_without_document_root_rejects_outside_paths(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """Default configuration still restricts access to the loaded_dir mount."""
+
+        monkeypatch.setattr(settings, "_document_root", None, raising=False)
+        monkeypatch.setattr(settings, "_document_allowed_roots", (), raising=False)
+
+        outside_file = tmp_path / "legacy.pdf"
+        outside_file.write_text("legacy content")
+
+        mock_document.file_path = str(outside_file)
+        mock_document.file_name = outside_file.name
 
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id.return_value = mock_document
 
-        for malicious_path in path_traversal_attempts:
-            mock_document.file_path = malicious_path
-            mock_document_repo.get_by_id.return_value = mock_document
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
 
-            with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-                # The endpoint should either:
-                # 1. Return 404 if the resolved path doesn't exist
-                # 2. Return 500 for invalid paths
-                # But should never serve files outside allowed directories
-                with pytest.raises(HTTPException) as exc_info:
-                    await get_document_content(
-                        collection_uuid=mock_collection.id,
-                        document_uuid=mock_document.id,
-                        collection=mock_collection,
-                        current_user=mock_user,
-                        db=mock_db,
-                    )
+        assert exc_info.value.status_code == 403
+        outside_file.unlink(missing_ok=True)
 
-                # Should get 404 (file not found) or 500 (error), never 200
-                assert exc_info.value.status_code in (404, 500)
+    @pytest.mark.asyncio()
+    async def test_get_document_content_respects_additional_allowed_roots(
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """Ensure DOCUMENT_ALLOWED_ROOTS entries permit additional locations."""
+
+        extra_root = (tmp_path / "external").resolve()
+        extra_root.mkdir()
+        allowed_file = extra_root / "external.pdf"
+        allowed_file.write_text("extra content")
+
+        monkeypatch.setattr(settings, "_document_root", None, raising=False)
+        monkeypatch.setattr(settings, "_document_allowed_roots", (extra_root,), raising=False)
+
+        mock_document.file_path = str(allowed_file)
+        mock_document.file_name = allowed_file.name
+
+        mock_db = AsyncMock(spec=AsyncSession)
+        mock_document_repo = AsyncMock()
+        mock_document_repo.get_by_id.return_value = mock_document
+
+        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+            result = await get_document_content(
+                collection_uuid=mock_collection.id,
+                document_uuid=mock_document.id,
+                collection=mock_collection,
+                current_user=mock_user,
+                db=mock_db,
+            )
+
+        assert result.path == str(allowed_file)
+        allowed_file.unlink(missing_ok=True)
 
     @pytest.mark.asyncio()
     async def test_get_document_content_default_mime_type(
-        self, mock_user, mock_collection, mock_document, temp_file
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        temp_file: Path,
     ) -> None:
         """Test that default mime type is used when document has no mime type."""
-        mock_document.file_path = temp_file
+        mock_document.file_path = str(temp_file)
         mock_document.mime_type = None  # No mime type set
 
         mock_db = AsyncMock(spec=AsyncSession)
@@ -254,10 +372,14 @@ class TestGetDocumentContent:
 
     @pytest.mark.asyncio()
     async def test_get_document_content_cache_headers(
-        self, mock_user, mock_collection, mock_document, temp_file
+        self,
+        mock_user: dict[str, Any],
+        mock_collection: MagicMock,
+        mock_document: MagicMock,
+        temp_file: Path,
     ) -> None:
         """Test that appropriate cache headers are set."""
-        mock_document.file_path = temp_file
+        mock_document.file_path = str(temp_file)
 
         mock_db = AsyncMock(spec=AsyncSession)
         mock_document_repo = AsyncMock()

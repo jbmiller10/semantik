@@ -1,0 +1,30 @@
+# Security Checklist
+
+Semantik validates essential secrets for every service at startup. If a placeholder value is detected the process terminates with actionable guidance. Run `make wizard` (or `make docker-up`) to generate compliant secrets before launching the stack.
+
+## Required Secrets
+
+| Service | Variables | Notes |
+| --- | --- | --- |
+| WebUI / API | `JWT_SECRET_KEY`, `INTERNAL_API_KEY` | 64 hex chars recommended for JWT, rotate internal keys regularly. |
+| Postgres | `POSTGRES_PASSWORD` | Required for all database containers and local instances. |
+| Flower | `FLOWER_USERNAME`, `FLOWER_PASSWORD` | Enforced on monitoring UI to prevent anonymous access. |
+
+## Development Flow
+
+1. Copy `.env.example` (root or `packages/webui/.env.example`).
+2. Run `make wizard` to replace values with strong random secrets.
+3. Start services via `make dev` or Docker targets.
+
+If any secret is missing or left as a placeholder the startup scripts exit with a message like:
+
+```
+ERROR: Environment validation failed for service 'webui'.
+Fix the configuration issues reported above and try again.
+```
+
+Correct the variables listed in the error, regenerate as needed, and rerun the command.
+
+## Document Storage Roots
+
+By default the WebUI only serves files that reside under the service’s `loaded_dir` mount (the path exported inside the container). To expose a different directory, set `DOCUMENT_ROOT` to the canonical location; requests for files outside that tree are rejected. You can allow additional locations by setting `DOCUMENT_ALLOWED_ROOTS` to a colon-separated list of absolute paths (for example, `/data/docs:/mnt/archive`). Any configured roots automatically include the `loaded_dir` mount so files copied there remain accessible.

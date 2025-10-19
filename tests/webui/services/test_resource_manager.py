@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -67,10 +68,10 @@ async def test_estimate_resources_directory(tmp_path):
 @pytest.mark.asyncio()
 async def test_reserve_and_release_reindex(monkeypatch):
     collection_repo = AsyncMock()
-    collection_repo.get_by_uuid.return_value = {
-        "total_size_bytes": 5 * 1024 * 1024 * 1024,
-        "id": "col-1",
-    }
+    collection_repo.get_by_uuid.return_value = SimpleNamespace(
+        total_size_bytes=5 * 1024 * 1024 * 1024,
+        id="col-1",
+    )
     operation_repo = AsyncMock()
 
     manager = ResourceManager(collection_repo, operation_repo, qdrant_manager=None)

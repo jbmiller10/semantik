@@ -13,14 +13,11 @@ Import Organization:
 - Utilities: Password hashing, user ID parsing, and metadata management
 """
 
-# Password hashing context
 from passlib.context import CryptContext
 
 from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
-
-# Async database session management
 from .database import AsyncSessionLocal, get_db
 from .exceptions import (
     AccessDeniedError,
@@ -46,14 +43,8 @@ from .factory import (
     create_user_repository,
     get_db_session,
 )
-
-# Partition utilities for working with partitioned tables
 from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
-
-# PostgreSQL database management
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
-
-# Utilities
 from .utils import parse_user_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

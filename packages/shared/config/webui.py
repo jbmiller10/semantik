@@ -1,6 +1,7 @@
 # shared/config/webui.py
 
 import secrets
+from pathlib import Path
 from typing import Any
 
 from .base import BaseConfig
@@ -41,9 +42,30 @@ class WebuiConfig(BaseConfig):
     # Feature toggles
     USE_CHUNKING_ORCHESTRATOR: bool = False
 
+    # Document storage configuration
+    DOCUMENT_ROOT: str | None = None
+    DOCUMENT_ALLOWED_ROOTS: str | None = None
+
     def __init__(self, **kwargs: Any) -> None:
         """Initialize configuration with JWT secret key validation."""
         super().__init__(**kwargs)
+
+        # Determine document root directory and ensure it exists
+        self._document_root: Path | None = None
+        self._document_allowed_roots: tuple[Path, ...] = ()
+        if self.DOCUMENT_ROOT:
+            raw_document_root = Path(self.DOCUMENT_ROOT).expanduser()
+            raw_document_root.mkdir(parents=True, exist_ok=True)
+            self._document_root = raw_document_root.resolve()
+        extra_roots = []
+        raw_allowed = kwargs.get("DOCUMENT_ALLOWED_ROOTS") or self.DOCUMENT_ALLOWED_ROOTS
+        if raw_allowed:
+            for entry in str(raw_allowed).split(":"):
+                entry = entry.strip()
+                if not entry:
+                    continue
+                extra_roots.append(Path(entry).expanduser().resolve())
+        self._document_allowed_roots = tuple(extra_roots)
 
         # JWT Secret Key file path (in the data directory)
         jwt_secret_file = self.data_dir / ".jwt_secret"
@@ -84,3 +106,24 @@ class WebuiConfig(BaseConfig):
                             f"Generated JWT secret key but failed to save to {jwt_secret_file}: {e}. "
                             "The key will be regenerated on next startup unless JWT_SECRET_KEY is set."
                         )
+
+    @property
+    def document_root(self) -> Path | None:
+        """Root directory where document content is stored when configured."""
+
+        return self._document_root
+
+    @property
+    def document_allowed_roots(self) -> tuple[Path, ...]:
+        """Additional directories allowed for serving document content."""
+
+        roots: list[Path] = []
+        if self._document_root is not None:
+            roots.append(self._document_root)
+        if self._document_allowed_roots:
+            roots.extend(self._document_allowed_roots)
+
+        roots.append(self.loaded_dir.resolve())
+
+        # Preserve order while removing duplicates
+        return tuple(dict.fromkeys(roots))

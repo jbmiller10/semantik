@@ -181,7 +181,8 @@ class ResourceManager:
                     return False
 
                 # Estimate resources (2x current size for blue-green)
-                size_gb = (collection.get("total_size_bytes", 0) / 1024 / 1024 / 1024) * 2
+                total_size_bytes = self._get_collection_value(collection, "total_size_bytes", 0) or 0
+                size_gb = (total_size_bytes / 1024 / 1024 / 1024) * 2
                 memory_mb = int(size_gb * 1024 + 1000)  # Add 1GB overhead
 
                 estimate = ResourceEstimate(memory_mb=memory_mb, storage_gb=size_gb, cpu_cores=2.0)

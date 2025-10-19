@@ -17,9 +17,10 @@ from fastapi import WebSocket
 
 from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
 from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
-from packages.webui.websocket_manager import ws_manager as _global_ws_manager
-from packages.webui.websocket_manager import ws_manager as ws_manager1
-from packages.webui.websocket_manager import ws_manager as ws_manager2
+
+_global_ws_manager = ws_manager
+ws_manager1 = ws_manager
+ws_manager2 = ws_manager
 
 # Clean up the global singleton before tests start to prevent interference
 try:

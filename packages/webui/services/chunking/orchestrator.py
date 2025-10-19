@@ -14,13 +14,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import (
-    DocumentTooLargeError,
-    ValidationError,
-)
-from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedError as InfraPermissionDeniedError,
-)
+from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError
+from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
+from packages.shared.chunking.infrastructure.exceptions import ValidationError
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
