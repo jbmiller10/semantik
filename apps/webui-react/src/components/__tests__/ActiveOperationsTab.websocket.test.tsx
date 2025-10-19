@@ -21,8 +21,6 @@ vi.mock('../../services/api/v2/collections', () => ({
 }))
 
 describe('ActiveOperationsTab - WebSocket Error Handling', () => {
-  const mockUpdateOperationProgress = vi.fn()
-  
   const mockActiveOperations = [
     {
       id: 'op-1',
