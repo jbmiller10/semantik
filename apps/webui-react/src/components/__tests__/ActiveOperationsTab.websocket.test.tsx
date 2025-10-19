@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import ActiveOperationsTab from '../ActiveOperationsTab'
 import { useOperationProgress } from '../../hooks/useOperationProgress'
-import { useCollectionStore } from '../../stores/collectionStore'
+import { useCollections } from '../../hooks/useCollections'
 import { 
   renderWithErrorHandlers,
   mockWebSocket
@@ -13,7 +13,7 @@ import { operationsV2Api } from '../../services/api/v2/collections'
 
 // Mock the hooks and APIs
 vi.mock('../../hooks/useOperationProgress')
-vi.mock('../../stores/collectionStore')
+vi.mock('../../hooks/useCollections')
 vi.mock('../../services/api/v2/collections', () => ({
   operationsV2Api: {
     list: vi.fn()
@@ -55,25 +55,70 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     }
   ]
 
-  const mockCollections = new Map([
-    ['coll-1', { uuid: 'coll-1', name: 'Collection 1' }],
-    ['coll-2', { uuid: 'coll-2', name: 'Collection 2' }],
-    ['coll-3', { uuid: 'coll-3', name: 'Collection 3' }]
-  ])
-
   let mockWs: { restore: () => void }
 
   beforeEach(() => {
     vi.clearAllMocks()
     mockWs = mockWebSocket()
     
-    vi.mocked(useCollectionStore).mockReturnValue({
-      updateOperationProgress: mockUpdateOperationProgress,
-      collections: mockCollections,
-      getCollectionOperations: vi.fn().mockReturnValue(mockActiveOperations),
-      activeOperations: [],
-      lastUpdateTime: null
-    } as ReturnType<typeof useCollectionStore>)
+    vi.mocked(useCollections).mockReturnValue({
+      data: [
+        {
+          id: 'coll-1',
+          name: 'Collection 1',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec1',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'processing',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'coll-2',
+          name: 'Collection 2',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec2',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'processing',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'coll-3',
+          name: 'Collection 3',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec3',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'pending',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCollections>)
   })
 
   afterEach(() => {

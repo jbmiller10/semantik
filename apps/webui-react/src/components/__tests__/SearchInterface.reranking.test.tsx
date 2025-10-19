@@ -273,11 +273,10 @@ describe('SearchInterface Reranking Tests', () => {
       // SearchInterface sets error to 'GPU_MEMORY_ERROR' for insufficient memory
       expect(state.error).toBe('GPU_MEMORY_ERROR');
       
-      // Check that the detailed error info was stored
-      const gpuError = (window as unknown as { __gpuMemoryError?: { message: string; suggestion: string } }).__gpuMemoryError;
-      expect(gpuError).toBeDefined();
-      expect(gpuError.message).toContain('Insufficient GPU memory for reranking');
-      expect(gpuError.suggestion).toContain('Try using a smaller model or different quantization');
+      // Check that the detailed error info was stored in the search store
+      expect(state.gpuMemoryError).toBeDefined();
+      expect(state.gpuMemoryError?.message).toContain('Insufficient GPU memory for reranking');
+      expect(state.gpuMemoryError?.suggestion).toContain('Try using a smaller model or different quantization');
     });
 
     // Verify toast notification

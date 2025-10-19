@@ -18,6 +18,7 @@ import {
 import { server } from '../../tests/mocks/server'
 import { handlers } from '../../tests/mocks/handlers'
 import { useDeleteCollection } from '../../hooks/useCollections'
+import { registerNavigationHandler, navigateTo } from '../../services/navigation'
 
 // Mock navigation
 vi.mock('react-router-dom', async () => {
@@ -44,10 +45,7 @@ vi.mock('../../services/api/v2/client', async () => {
       if (error.response?.status === 401) {
         const authStore = await import('../../stores/authStore')
         await authStore.useAuthStore.getState().logout()
-        const navigate = (window as unknown as { __navigate?: (path: string) => void }).__navigate
-        if (navigate && window.location.pathname !== '/login') {
-          navigate('/login')
-        }
+        navigateTo('/login')
       }
       return Promise.reject(error)
     }
@@ -118,9 +116,9 @@ describe('Collections - Permission Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(useNavigate).mockReturnValue(mockNavigate)
+    registerNavigationHandler(mockNavigate)
     
     // Set up navigation mock for axios interceptor
-    ;(window as unknown as { __navigate: typeof mockNavigate }).__navigate = mockNavigate
     
     // Set up default mock implementations for hooks
     vi.mocked(useCollections).mockReturnValue({
@@ -199,7 +197,6 @@ describe('Collections - Permission Error Handling', () => {
   
   afterEach(() => {
     // Clean up navigation mock
-    delete (window as unknown as { __navigate?: unknown }).__navigate
   })
 
   describe('Unauthorized Access (401)', () => {

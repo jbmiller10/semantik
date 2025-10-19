@@ -20,6 +20,7 @@ function SearchInterface() {
     setResults,
     setLoading,
     setError,
+    setGpuMemoryError,
     setRerankingMetrics,
     setFailedCollections,
     setPartialFailure,
@@ -34,7 +35,7 @@ function SearchInterface() {
   // Check reranking availability
   useRerankingAvailability();
 
-  const statusUpdateIntervalRef = useRef<number | null>(null);
+  const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Check if any collections are processing and set up auto-refresh
   useEffect(() => {
@@ -43,17 +44,17 @@ function SearchInterface() {
     );
 
     if (hasProcessing && !statusUpdateIntervalRef.current) {
-      statusUpdateIntervalRef.current = window.setInterval(() => {
+      statusUpdateIntervalRef.current = setInterval(() => {
         refetchCollections();
       }, 5000);
     } else if (!hasProcessing && statusUpdateIntervalRef.current) {
-      window.clearInterval(statusUpdateIntervalRef.current);
+      clearInterval(statusUpdateIntervalRef.current);
       statusUpdateIntervalRef.current = null;
     }
 
     return () => {
       if (statusUpdateIntervalRef.current) {
-        window.clearInterval(statusUpdateIntervalRef.current);
+        clearInterval(statusUpdateIntervalRef.current);
       }
     };
   }, [collections, refetchCollections]);
@@ -63,7 +64,7 @@ function SearchInterface() {
       // Disable reranking entirely
       updateSearchParams({ useReranker: false });
       setError(null);
-      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
+      setGpuMemoryError(null);
       addToast({ 
         type: 'info', 
         message: 'Reranking disabled. Try searching again.' 
@@ -72,21 +73,13 @@ function SearchInterface() {
       // Switch to a smaller model
       updateSearchParams({ rerankModel: model });
       setError(null);
-      delete (window as Window & { __gpuMemoryError?: unknown }).__gpuMemoryError;
+      setGpuMemoryError(null);
       addToast({ 
         type: 'info', 
         message: `Switched to ${model.split('/').pop()}. Try searching again.` 
       });
     }
-  }, [updateSearchParams, setError, addToast]);
-
-  // Make the handler available globally for SearchResults
-  useEffect(() => {
-    (window as Window & { __handleSelectSmallerModel?: typeof handleSelectSmallerModel }).__handleSelectSmallerModel = handleSelectSmallerModel;
-    return () => {
-      delete (window as Window & { __handleSelectSmallerModel?: unknown }).__handleSelectSmallerModel;
-    };
-  }, [handleSelectSmallerModel]);
+  }, [updateSearchParams, setError, setGpuMemoryError, addToast]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +104,7 @@ function SearchInterface() {
     setError(null);
     setFailedCollections([]);
     setPartialFailure(false);
+    setGpuMemoryError(null);
 
     try {
       // Use v2 search API with multiple collections
@@ -173,12 +167,11 @@ function SearchInterface() {
         // Handle insufficient memory error specifically
         // Store a special error marker that SearchResults can detect
         setError('GPU_MEMORY_ERROR');
-        // Store the memory error details in a way SearchResults can access
-        (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError = {
+        setGpuMemoryError({
           message: memoryErrorDetails.message,
           suggestion: memoryErrorDetails.suggestion,
           currentModel: searchParams.rerankModel || ''
-        };
+        });
         addToast({ 
           type: 'error', 
           message: 'Insufficient GPU memory for reranking. See below for options.' 
@@ -187,6 +180,7 @@ function SearchInterface() {
         // Handle other errors
         const errorMessage = getErrorMessage(error);
         setError(errorMessage);
+        setGpuMemoryError(null);
         addToast({ type: 'error', message: isAxiosError(error) ? 'Search failed' : errorMessage });
       }
     } finally {
@@ -491,7 +485,7 @@ function SearchInterface() {
       </div>
 
       {/* Search Results */}
-      <SearchResults />
+      <SearchResults onSelectSmallerModel={handleSelectSmallerModel} />
     </div>
   );
 }
