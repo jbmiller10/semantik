@@ -49,7 +49,7 @@ describe('SearchInterface - Network Error Handling', () => {
 
   it('sends normalized hybrid enums in request payload', async () => {
     const user = userEvent.setup()
-    let capturedBody: any = null
+    let capturedBody: Record<string, unknown> | null = null
 
     server.use(
       http.post('/api/v2/search', async ({ request }) => {
