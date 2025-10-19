@@ -4,7 +4,11 @@ import { useUIStore } from '../stores/uiStore';
 import { AlertTriangle, ChevronRight, FileText, Layers } from 'lucide-react';
 import { GPUMemoryError } from './GPUMemoryError';
 
-function SearchResults() {
+interface SearchResultsProps {
+  onSelectSmallerModel?: (model: string) => void;
+}
+
+function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
   const { 
     results, 
     loading, 
@@ -13,6 +17,7 @@ function SearchResults() {
     failedCollections,
     partialFailure
   } = useSearchStore();
+  const gpuMemoryError = useSearchStore((state) => state.gpuMemoryError);
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
@@ -30,21 +35,13 @@ function SearchResults() {
 
   if (error) {
     // Check if this is a GPU memory error
-    if (error === 'GPU_MEMORY_ERROR' && (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError) {
-      const gpuError = (window as Window & { __gpuMemoryError?: { message: string; suggestion: string; currentModel: string } }).__gpuMemoryError;
+    if (error === 'GPU_MEMORY_ERROR' && gpuMemoryError) {
       return (
         <div className="bg-white rounded-lg shadow-md p-6">
           <GPUMemoryError
-            suggestion={gpuError?.suggestion || ''}
-            currentModel={gpuError?.currentModel || ''}
-            onSelectSmallerModel={(model) => {
-              // This will be handled by the parent component
-              // We need to pass this handler from SearchInterface
-              const handler = (window as Window & { __handleSelectSmallerModel?: (model: string) => void }).__handleSelectSmallerModel;
-              if (handler) {
-                handler(model);
-              }
-            }}
+            suggestion={gpuMemoryError.suggestion}
+            currentModel={gpuMemoryError.currentModel}
+            onSelectSmallerModel={(model) => onSelectSmallerModel?.(model)}
           />
         </div>
       );

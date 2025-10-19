@@ -83,7 +83,8 @@ The frontend dynamically detects the backend URL based on the current location. 
 - Vector similarity search
 - Hybrid search (vector + keyword)
 - Search result visualization
-- Document preview with multiple format support
+- Document preview with multiple format support, including inline PDF rendering via pdf.js with loading/error fallback
+- GPU memory guidance when reranking exceeds resources, with quick model switching or reranker disable flows
 
 ### 3. Authentication
 - JWT-based authentication
@@ -128,14 +129,11 @@ This generates optimized static files in the `dist/` directory, which are then c
 Run the test suite with:
 
 ```bash
-# Open test files in browser
-open tests/*.html
+npm run test
 
-# Run API tests
-python tests/api_test_suite.py
+# Or run the suite in watch mode during development
+npm run test:watch
 ```
-
-See the [tests README](tests/README.md) for comprehensive testing documentation.
 
 ## Contributing
 

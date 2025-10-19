@@ -1,15 +1,21 @@
+import { useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useUIStore } from '../stores/uiStore';
 import Toast from './Toast';
 import DocumentViewerModal from './DocumentViewerModal';
 import CollectionDetailsModal from './CollectionDetailsModal';
+import { registerNavigationHandler } from '../services/navigation';
 
 function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { activeTab, setActiveTab } = useUIStore();
+
+  useEffect(() => {
+    registerNavigationHandler(navigate);
+  }, [navigate]);
   
   // Check if we're on the settings page
   const isSettingsPage = location.pathname === '/settings';

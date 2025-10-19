@@ -1,9 +1,13 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { operationsV2Api } from '../services/api/v2/collections';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useUIStore } from '../stores/uiStore';
+import { useCollections } from '../hooks/useCollections';
 
 // Helper to safely get source_path from config
 function getSourcePath(config: Record<string, unknown> | undefined): string | null {
@@ -13,6 +17,17 @@ function getSourcePath(config: Record<string, unknown> | undefined): string | nu
 }
 
 function ActiveOperationsTab() {
+  const navigate = useNavigate();
+  const setActiveTab = useUIStore((state) => state.setActiveTab);
+  const setShowCollectionDetailsModal = useUIStore((state) => state.setShowCollectionDetailsModal);
+  const { data: collections = [] } = useCollections();
+
+  const collectionNameById = useMemo(() => {
+    return collections.reduce<Record<string, string>>((acc, collection) => {
+      acc[collection.id] = collection.name;
+      return acc;
+    }, {});
+  }, [collections]);
 
   // Fetch active operations across all collections
   const { data, isLoading, error, refetch } = useQuery({
@@ -29,16 +44,14 @@ function ActiveOperationsTab() {
 
   // Get collection name for an operation
   const getCollectionName = (collectionId: string) => {
-    // Collection names should be included in the operation data
-    // For now, return a placeholder
-    return `Collection ${collectionId}`;
+    return collectionNameById[collectionId] ?? `Collection ${collectionId}`;
   };
 
   // Navigate to collection details
   const navigateToCollection = (collectionId: string) => {
-    // TODO: Implement proper navigation using React Router
-    // For now, this is a no-op since we removed UI state from the store
-    console.log('Navigate to collection:', collectionId);
+    setActiveTab('collections');
+    setShowCollectionDetailsModal(collectionId);
+    navigate(`/collections/${collectionId}`);
   };
 
   if (isLoading) {
