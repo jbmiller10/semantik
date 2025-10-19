@@ -19,6 +19,7 @@ from packages.shared.database.repositories.collection_repository import Collecti
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.shared.managers import QdrantManager
+from packages.webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
 from packages.webui.celery_app import celery_app
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
@@ -28,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Configuration constants
 QDRANT_COLLECTION_PREFIX = "collection_"
 DEFAULT_VECTOR_DIMENSION = 1536  # Default vector dimension for embeddings
+
+# Backward compatibility for tests that monkeypatch the module-level manager
+qdrant_manager = _legacy_qdrant_manager
 
 
 class CollectionService:

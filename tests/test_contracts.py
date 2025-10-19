@@ -178,7 +178,7 @@ class TestSearchContractsExtended:
         req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
         assert req.query == "test query"
         assert req.k == 15
-        assert req.mode == "rerank"
+        assert req.mode == "weighted"
         assert req.keyword_mode == "all"
 
     def test_preload_model_request_response(self) -> None:

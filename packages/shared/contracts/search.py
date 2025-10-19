@@ -9,13 +9,13 @@ def normalize_hybrid_mode(value: str | None) -> str:
     """Map legacy hybrid modes to supported values."""
 
     if value is None:
-        return "rerank"
+        return "weighted"
 
     value_normalized = value.strip().lower()
     legacy_map = {
-        "weighted": "rerank",
-        "reciprocal_rank": "rerank",
-        "relative_score": "rerank",
+        "rerank": "weighted",
+        "reciprocal_rank": "weighted",
+        "relative_score": "weighted",
     }
     return legacy_map.get(value_normalized, value_normalized)
 
@@ -52,7 +52,7 @@ class SearchRequest(BaseModel):
     score_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     # Hybrid search specific parameters
     hybrid_alpha: float = Field(0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
-    hybrid_mode: str = Field("rerank", description="Hybrid search mode: 'filter' or 'rerank'")
+    hybrid_mode: str = Field("weighted", description="Hybrid search mode: 'filter' or 'weighted'")
     keyword_mode: str = Field("any", description="Keyword matching: 'any' or 'all'")
 
     class Config:
@@ -82,7 +82,7 @@ class SearchRequest(BaseModel):
     def validate_hybrid_mode(cls, v: str) -> str:
         """Validate hybrid mode."""
         v = normalize_hybrid_mode(v)
-        valid_modes = {"filter", "rerank"}
+        valid_modes = {"filter", "weighted"}
         if v not in valid_modes:
             raise ValueError(f"Invalid hybrid_mode: {v}. Must be one of {valid_modes}")
         return v
@@ -207,7 +207,7 @@ class HybridSearchResponse(BaseModel):
     results: list[HybridSearchResult]
     num_results: int
     keywords_extracted: list[str]
-    search_mode: str  # "filter" or "rerank"
+    search_mode: str  # "filter" or "weighted"
     api_version: str = Field(default="1.0", description="API version")
 
 
@@ -217,12 +217,17 @@ class HybridSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000)
     k: int = Field(default=10, ge=1, le=100)
     operation_uuid: str | None = Field(None, max_length=200)
-    mode: str = Field(default="filter", max_length=20, description="Hybrid search mode: 'filter' or 'rerank'")
+    mode: str = Field(default="filter", max_length=20, description="Hybrid search mode: 'filter' or 'weighted'")
     keyword_mode: str = Field(default="any", max_length=20, description="Keyword matching: 'any' or 'all'")
     score_threshold: float | None = None
     collection: str | None = Field(None, max_length=200)
     model_name: str | None = Field(None, max_length=500)
     quantization: str | None = Field(None, max_length=20)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def normalize_mode(cls, value: str) -> str:
+        return normalize_hybrid_mode(value)
 
 
 # Additional models for specialized endpoints
