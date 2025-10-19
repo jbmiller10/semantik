@@ -176,7 +176,7 @@ class ResourceManager:
         async with self._lock:
             try:
                 # Get collection info
-                collection = await self.collection_repo.get_by_id(collection_id)
+                collection = await self.collection_repo.get_by_uuid(collection_id)
                 if not collection:
                     return False
 
@@ -219,7 +219,7 @@ class ResourceManager:
                         return cached_usage
                     self._usage_cache.pop(collection_id, None)
 
-            collection = await self.collection_repo.get_by_id(collection_id)
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
                 return {}
 

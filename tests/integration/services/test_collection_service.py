@@ -34,9 +34,12 @@ class TestCollectionServiceIntegration:
     ACCESS_DENIED_ERRORS = (PackageAccessDeniedError, SharedAccessDeniedError)
 
     @pytest.fixture()
-    def service(self, db_session):
+    def service(self, db_session, fake_qdrant):
         """Provide a CollectionService wired to the real repositories."""
-        return create_collection_service(db_session)
+        return create_collection_service(
+            db_session,
+            qdrant_manager_override=fake_qdrant.manager,
+        )
 
     @pytest.fixture()
     def capture_celery(self, monkeypatch):
@@ -58,8 +61,8 @@ class TestCollectionServiceIntegration:
         capture_celery.clear()
 
     @pytest.fixture()
-    def fake_qdrant(self, monkeypatch):
-        """Stub out qdrant_manager to avoid external calls."""
+    def fake_qdrant(self):
+        """Stub out Qdrant interactions for predictable assertions."""
         deleted: list[str] = []
 
         class FakeClient:
@@ -75,9 +78,17 @@ class TestCollectionServiceIntegration:
             def delete_collection(self, name: str) -> None:
                 deleted.append(name)
 
+        class FakeManager:
+            def __init__(self, client: FakeClient):
+                self.client = client
+
+            def list_collections(self) -> list[str]:
+                collections = self.client.get_collections()
+                return [col.name for col in collections.collections]
+
         client = FakeClient()
-        monkeypatch.setattr(collection_service_module.qdrant_manager, "get_client", lambda: client)
-        return client, deleted
+        manager = FakeManager(client)
+        return SimpleNamespace(client=client, deleted=deleted, manager=manager)
 
     @pytest.fixture()
     def user_factory(self, db_session):
@@ -147,7 +158,7 @@ class TestCollectionServiceIntegration:
         fake_qdrant,
     ) -> None:
         """Collection deletion should cascade and notify Qdrant."""
-        client, deleted_names = fake_qdrant
+        client = fake_qdrant.client
 
         owner = await user_factory()
 
@@ -181,7 +192,7 @@ class TestCollectionServiceIntegration:
         assert op_result.scalars().first() is None
 
         # Qdrant deletion was requested
-        assert deleted_names == [collection_dict["vector_store_name"]]
+        assert fake_qdrant.deleted == [collection_dict["vector_store_name"]]
 
     async def test_update_collection_applies_field_changes(
         self,
