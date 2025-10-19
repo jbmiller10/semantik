@@ -4,22 +4,21 @@ import logging
 
 import httpx
 from fastapi import Depends
-from shared.database.repositories.collection_repository import CollectionRepository
-from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
 from packages.shared.managers import QdrantManager
+from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
 
 from .chunking.adapter import ChunkingServiceAdapter
 from .chunking.container import (
     get_chunking_orchestrator as container_get_chunking_orchestrator,
-)
-from .chunking.container import (
     get_redis_manager as container_get_redis_manager,
+    resolve_api_chunking_dependency,
 )
-from .chunking.container import resolve_api_chunking_dependency
 from .chunking.orchestrator import ChunkingOrchestrator
 from .chunking_service import ChunkingService
 from .collection_service import CollectionService
@@ -29,7 +28,6 @@ from .operation_service import OperationService
 from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
-from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 logger = logging.getLogger(__name__)
 

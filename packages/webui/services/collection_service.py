@@ -617,10 +617,7 @@ class CollectionService:
     def _build_vector_store_name(collection_id: str, new_name: str) -> str:
         base = collection_id.replace("-", "_")
         slug = re.sub(r"[^a-z0-9]+", "_", new_name.lower()).strip("_")
-        if slug:
-            candidate = f"col_{base}_{slug}"
-        else:
-            candidate = f"col_{base}"
+        candidate = f"col_{base}_{slug}" if slug else f"col_{base}"
 
         # Qdrant currently allows up to 255 chars; keep buffer for safety
         if len(candidate) > 120:

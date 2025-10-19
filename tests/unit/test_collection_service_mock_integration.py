@@ -17,19 +17,12 @@ class TestCollectionServiceMockIntegration:
         # Mock database session
         db_session = AsyncMock()
 
-        # Mock Qdrant manager at the module level where it's imported
-        with patch("packages.webui.services.collection_service.qdrant_manager") as mock_qdrant_manager:
+        # Mock the qdrant_connection_manager.get_client() in factory to return a mock client
+        with patch("packages.webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
             mock_qdrant_client = MagicMock()
-            # Create a proper collection object with name attribute
-            mock_collection_obj = MagicMock()
-            mock_collection_obj.name = "test_vector_store"
-            mock_collections_response = MagicMock()
-            mock_collections_response.collections = [mock_collection_obj]
-            mock_qdrant_client.get_collections.return_value = mock_collections_response
-            mock_qdrant_client.delete_collection = MagicMock()
-            mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+            mock_connection_manager.get_client.return_value = mock_qdrant_client
 
-            # Create service using factory
+            # Create service using factory (which will now get our mock client)
             service = create_collection_service(db_session)
 
             # Mock collection
@@ -43,6 +36,10 @@ class TestCollectionServiceMockIntegration:
             service.operation_repo.get_active_operations_count = AsyncMock(return_value=0)
             service.collection_repo.delete = AsyncMock()
 
+            # Mock qdrant_manager methods (service.qdrant_manager exists now)
+            service.qdrant_manager.list_collections = MagicMock(return_value=["test_vector_store"])
+            service.qdrant_manager.client.delete_collection = MagicMock()
+
             # Act
             await service.delete_collection("test-collection-id", 1)
 
@@ -53,7 +50,7 @@ class TestCollectionServiceMockIntegration:
             service.operation_repo.get_active_operations_count.assert_called_once_with("test-collection-id")
             service.collection_repo.delete.assert_called_once_with("test-collection-id", 1)
             db_session.commit.assert_called_once()
-            mock_qdrant_client.delete_collection.assert_called_once_with("test_vector_store")
+            service.qdrant_manager.client.delete_collection.assert_called_once_with("test_vector_store")
 
     @pytest.mark.asyncio()
     async def test_collection_deletion_handles_missing_qdrant_collection(self) -> None:
@@ -61,14 +58,10 @@ class TestCollectionServiceMockIntegration:
         # Mock database session
         db_session = AsyncMock()
 
-        # Mock Qdrant manager to throw exception
-        with patch("packages.webui.services.collection_service.qdrant_manager") as mock_qdrant_manager:
+        # Mock the qdrant_connection_manager.get_client() in factory to return a mock client
+        with patch("packages.webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
             mock_qdrant_client = MagicMock()
-            mock_collections_response = MagicMock()
-            mock_collections_response.collections = []  # No collections
-            mock_qdrant_client.get_collections.return_value = mock_collections_response
-            mock_qdrant_client.delete_collection.side_effect = Exception("Collection not found")
-            mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+            mock_connection_manager.get_client.return_value = mock_qdrant_client
 
             # Create service using factory
             service = create_collection_service(db_session)
@@ -83,6 +76,10 @@ class TestCollectionServiceMockIntegration:
             service.collection_repo.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_collection)
             service.operation_repo.get_active_operations_count = AsyncMock(return_value=0)
             service.collection_repo.delete = AsyncMock()
+
+            # Mock qdrant_manager methods - list shows no collections, and delete throws exception
+            service.qdrant_manager.list_collections = MagicMock(return_value=[])  # Collection doesn't exist
+            service.qdrant_manager.client.delete_collection.side_effect = Exception("Collection not found")
 
             # Act - should not raise exception
             await service.delete_collection("test-collection-id", 1)

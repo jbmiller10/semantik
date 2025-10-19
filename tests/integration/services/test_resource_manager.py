@@ -53,7 +53,7 @@ class TestResourceManagerIntegration:
     def manager(self, db_session):
         collection_repo = CollectionRepoAdapter(CollectionRepository(db_session))
         operation_repo = OperationRepoAdapter(OperationRepository(db_session))
-        
+
         class _StubQdrantManager:
             async def get_collection_usage(self, _name: str) -> dict[str, int]:  # pragma: no cover - simple stub
                 raise RuntimeError("stubbed qdrant unavailable")
