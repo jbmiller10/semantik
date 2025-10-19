@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../../../stores/authStore';
+import { navigateTo } from '../../navigation';
 
 /**
  * Axios instance configured for v2 API endpoints
@@ -37,17 +38,7 @@ apiClient.interceptors.response.use(
       // Clear auth state
       await useAuthStore.getState().logout();
       
-      // Use navigation instead of window.location for better testing
-      // Check if we're in a test environment
-      if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-        // In tests, this will be mocked via useNavigate
-        const navigate = (window as unknown as { __navigate?: (path: string) => void }).__navigate;
-        if (navigate) {
-          navigate('/login');
-        } else {
-          window.location.href = '/login';
-        }
-      }
+      navigateTo('/login');
     }
     return Promise.reject(error);
   }

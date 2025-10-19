@@ -8,8 +8,9 @@ import contextlib
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -292,11 +293,12 @@ class ChunkingOrchestrator:
 
                 strategy_info = self.config_manager.get_strategy_info(strategy)
                 sample_chunks = preview_chunks[:chunk_limit]
+                sample_chunks_union: list[ServiceChunkPreview | dict[str, Any]] = list(sample_chunks)
 
                 comparison = ServiceStrategyComparison(
                     strategy=strategy,
                     config=preview.config,
-                    sample_chunks=cast(list[ServiceChunkPreview | dict[str, Any]], sample_chunks),
+                    sample_chunks=sample_chunks_union,
                     total_chunks=preview.total_chunks,
                     avg_chunk_size=metrics.get("avg_chunk_size", metrics.get("average_chunk_size", 0)),
                     size_variance=metrics.get("size_variance", 0),
@@ -327,11 +329,11 @@ class ChunkingOrchestrator:
         recommendation = self._get_recommendation(comparisons, content)
         elapsed_ms = int((time.perf_counter() - comparison_start) * 1000)
 
-        comparisons_typed = cast(list[ServiceStrategyComparison | dict[str, Any]], comparisons)
+        comparisons_union: list[ServiceStrategyComparison | dict[str, Any]] = list(comparisons)
 
         return ServiceCompareResponse(
             comparison_id=str(uuid.uuid4()),
-            comparisons=comparisons_typed,
+            comparisons=comparisons_union,
             recommendation=recommendation,
             processing_time_ms=elapsed_ms,
         )
@@ -386,10 +388,10 @@ class ChunkingOrchestrator:
 
         if fallback_used:
             for chunk in chunks:
-                metadata = chunk.setdefault("metadata", {})
-                metadata.setdefault("fallback", True)
-                metadata.setdefault("fallback_reason", fallback_reason)
-                metadata.setdefault("original_strategy", strategy)
+                chunk_metadata = chunk.setdefault("metadata", {})
+                chunk_metadata.setdefault("fallback", True)
+                chunk_metadata.setdefault("fallback_reason", fallback_reason)
+                chunk_metadata.setdefault("original_strategy", strategy)
 
         # Add metadata to chunks
         if metadata:
@@ -444,29 +446,89 @@ class ChunkingOrchestrator:
         # Get base recommendation from config manager
         rec_data = self.config_manager.recommend_strategy(file_type, content_length, document_type)
 
-        # Enhance recommendation with sample analysis if provided
-        if sample_content and ("```" in sample_content or "def " in sample_content or "class " in sample_content):
-            if rec_data["strategy"] != "recursive":
-                rec_data["reasoning"].append("Code patterns detected in sample")
-                rec_data["alternatives"].append(rec_data["strategy"])
-                rec_data["strategy"] = "recursive"
+        # Normalize mutable fields for downstream updates
+        reasoning_list = rec_data.get("reasoning")
+        if not isinstance(reasoning_list, list):
+            reasoning_list = [str(reasoning_list)] if reasoning_list else []
+        rec_data["reasoning"] = reasoning_list
 
-            elif sample_content.startswith("#") or "## " in sample_content:
-                if rec_data["strategy"] != "markdown":
-                    rec_data["reasoning"].append("Markdown headers detected in sample")
-                    rec_data["alternatives"].append(rec_data["strategy"])
-                    rec_data["strategy"] = "markdown"
+        alternatives_list = rec_data.get("alternatives")
+        if not isinstance(alternatives_list, list):
+            alternatives_list = [alternatives_list] if alternatives_list else []
+        rec_data["alternatives"] = alternatives_list
+
+        # Enhance recommendation with sample analysis if provided
+        if (
+            sample_content
+            and ("```" in sample_content or "def " in sample_content or "class " in sample_content)
+            and rec_data["strategy"] != "recursive"
+        ):
+            reasoning_list.append("Code patterns detected in sample")
+            alternatives_list.append(rec_data["strategy"])
+            rec_data["strategy"] = "recursive"
+
+        elif (
+            sample_content
+            and (sample_content.startswith("#") or "## " in sample_content)
+            and rec_data["strategy"] != "markdown"
+        ):
+            reasoning_list.append("Markdown headers detected in sample")
+            alternatives_list.append(rec_data["strategy"])
+            rec_data["strategy"] = "markdown"
+
+        strategy_value = rec_data.get("strategy", "recursive")
+        if not isinstance(strategy_value, str):
+            strategy_value = str(strategy_value)
+
+        suggested_config_raw = rec_data.get("suggested_config")
+        suggested_config = suggested_config_raw.copy() if isinstance(suggested_config_raw, dict) else {}
+
+        # Ensure suggested config aligns with final strategy
+        suggested_config["strategy"] = strategy_value
+
+        def _safe_int(value: Any, default: int) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        chunk_size = _safe_int(suggested_config.get("chunk_size"), 512)
+        chunk_overlap = _safe_int(suggested_config.get("chunk_overlap"), 50)
+        preserve_sentences_raw = suggested_config.get("preserve_sentences", True)
+        preserve_sentences = bool(preserve_sentences_raw) if preserve_sentences_raw is not None else True
+
+        if chunk_overlap >= chunk_size:
+            chunk_overlap = max(0, chunk_size // 2)
+
+        metadata = {
+            key: value
+            for key, value in suggested_config.items()
+            if key not in {"strategy", "chunk_size", "chunk_overlap", "preserve_sentences"}
+        }
+        metadata = metadata or None
+
+        suggested_config["chunk_size"] = chunk_size
+        suggested_config["chunk_overlap"] = chunk_overlap
+        suggested_config["preserve_sentences"] = preserve_sentences
+        rec_data["suggested_config"] = suggested_config
+
+        try:
+            confidence = float(rec_data.get("confidence", 0.5))
+        except (TypeError, ValueError):
+            confidence = 0.5
 
         # Build recommendation object
         return ServiceStrategyRecommendation(
-            strategy=rec_data["strategy"],
-            confidence=rec_data["confidence"],
-            reasoning=(
-                "\n".join(rec_data["reasoning"]) if isinstance(rec_data["reasoning"], list) else rec_data["reasoning"]
-            ),
+            strategy=strategy_value,
+            confidence=confidence,
+            reasoning=("\n".join(reasoning_list) if reasoning_list else ""),
             alternatives=[
                 alt.get("strategy", alt) if isinstance(alt, dict) else alt for alt in rec_data.get("alternatives", [])
             ],
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            preserve_sentences=preserve_sentences,
+            metadata=metadata,
         )
 
     async def get_collection_statistics(
@@ -541,7 +603,7 @@ class ChunkingOrchestrator:
         expires_at: datetime | None,
         correlation_id: str | None,
     ) -> ServicePreviewResponse:
-        preview_chunks_typed = cast(list[ServiceChunkPreview | dict[str, Any]], chunks)
+        preview_chunks_typed: list[ServiceChunkPreview | dict[str, Any]] = list(chunks)
 
         return ServicePreviewResponse(
             preview_id=preview_id,
@@ -645,7 +707,7 @@ class ChunkingOrchestrator:
 
     def _transform_chunks_to_preview(
         self,
-        chunks: list[dict[str, Any]] | list[ServiceChunkPreview],
+        chunks: Sequence[ServiceChunkPreview | dict[str, Any]],
     ) -> list[ServiceChunkPreview]:
         preview_chunks: list[ServiceChunkPreview] = []
 

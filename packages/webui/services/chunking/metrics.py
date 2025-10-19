@@ -6,33 +6,37 @@ Handles metrics collection, tracking, and reporting for chunking operations.
 
 import logging
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
 from packages.shared.metrics.prometheus import registry
 
+MetricT = TypeVar("MetricT")
+
 logger = logging.getLogger(__name__)
 
 
 def _get_or_create_metric(
-    metric_cls,
+    metric_cls: Callable[..., MetricT],
     name: str,
     documentation: str,
     *,
     registry: CollectorRegistry,
     labelnames: tuple[str, ...] | list[str] | None = None,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> MetricT:
     """Return existing metric from registry or create a new one."""
 
     labels = tuple(labelnames or ())
-    existing = None
+    existing: MetricT | None = None
     if hasattr(registry, "_names_to_collectors"):
-        existing = registry._names_to_collectors.get(name)  # type: ignore[attr-defined]
+        names_to_collectors = getattr(registry, "_names_to_collectors", None)
+        if isinstance(names_to_collectors, Mapping):
+            existing = cast(MetricT | None, names_to_collectors.get(name))
 
     if existing is not None:
         return existing
