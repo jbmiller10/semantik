@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Add parent directory to path
@@ -124,10 +125,18 @@ async def get_database_stats(
     document_count_query = select(func.count()).select_from(Document)
     document_count = await db.scalar(document_count_query) or 0
 
-    # Get database size estimate (PostgreSQL)
-    # Note: For PostgreSQL, we can't get file size directly
-    # This is a placeholder - actual size would require a DB query
-    db_size = 0  # TODO: Implement PostgreSQL database size query
+    # Get database size from PostgreSQL when available
+    database_size_bytes = 0
+    size_query = select(func.pg_database_size(func.current_database()))
+
+    try:
+        size_result = await db.scalar(size_query)
+        if size_result is not None:
+            database_size_bytes = int(size_result)
+    except OperationalError as exc:
+        logger.warning("Failed querying database size: %s", exc)
+    except Exception as exc:  # pragma: no cover - unexpected error path
+        logger.warning("Unexpected error while querying database size: %s", exc)
 
     # Get total parquet files size
     output_path = Path(OUTPUT_DIR)
@@ -137,7 +146,7 @@ async def get_database_stats(
     return {
         "collection_count": collection_count,
         "file_count": document_count,
-        "database_size_mb": round(db_size / 1024 / 1024, 2),
+        "database_size_mb": round(database_size_bytes / 1024 / 1024, 2),
         "parquet_files_count": len(parquet_files),
         "parquet_size_mb": round(parquet_size / 1024 / 1024, 2),
     }

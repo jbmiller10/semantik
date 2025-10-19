@@ -1,14 +1,15 @@
-"""
-Common FastAPI dependencies for the WebUI API.
-"""
+"""Common FastAPI dependencies for the WebUI API."""
 
 import logging
 import os
-from typing import Any, cast
+from datetime import UTC, datetime
+from typing import Annotated, Any, cast
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.config import settings
 from packages.shared.database import (
     ApiKeyRepository,
     AuthRepository,
@@ -22,12 +23,14 @@ from packages.shared.database import (
     get_db,
     pg_connection_manager,
 )
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
+from packages.shared.database.exceptions import EntityNotFoundError
 from packages.shared.database.models import Collection
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.auth import get_current_user
+from packages.webui.auth import security as http_bearer_security
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +68,7 @@ async def get_collection_for_user(
         return collection
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Collection with UUID '{collection_uuid}' not found") from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(status_code=403, detail="You do not have permission to access this collection") from e
     except Exception as exc:
         if os.getenv("TESTING", "false").lower() == "true":
@@ -202,3 +205,65 @@ async def get_chunking_service_adapter_dependency(
     from packages.webui.services.chunking.container import resolve_api_chunking_dependency
 
     return await resolve_api_chunking_dependency(db, prefer_adapter=True)
+
+
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer_security),
+) -> dict[str, Any] | None:
+    """Retrieve the current user if bearer credentials are supplied."""
+
+    if credentials is None:
+        if settings.DISABLE_AUTH:
+            now = datetime.now(UTC).isoformat()
+            return {
+                "id": 0,
+                "username": "dev_user",
+                "email": "dev@example.com",
+                "full_name": "Development User",
+                "is_active": True,
+                "is_superuser": True,
+                "created_at": now,
+                "last_login": now,
+            }
+        return None
+
+    return await get_current_user(credentials)
+
+
+async def require_admin_or_internal_key(
+    request: Request,
+    current_user: dict[str, Any] | None = Depends(get_current_user_optional),
+    x_internal_api_key: Annotated[str | None, Header(alias="X-Internal-Api-Key")] = None,
+) -> None:
+    """Ensure the request is authorized by admin role or internal API key."""
+
+    if settings.DISABLE_AUTH:
+        return
+
+    if current_user and current_user.get("is_superuser", False):
+        return
+
+    expected_key = settings.INTERNAL_API_KEY
+    if expected_key and x_internal_api_key == expected_key:
+        return
+
+    method = request.method
+    path = request.url.path
+    logger.warning(
+        "Partition monitoring access denied: method=%s path=%s authenticated=%s",
+        method,
+        path,
+        bool(current_user),
+    )
+
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+
+try:
+    from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError  # type: ignore[import]
+except Exception:  # pragma: no cover
+    SharedAccessDeniedError = None  # type: ignore[assignment]
+
+_ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError,)
+if SharedAccessDeniedError and SharedAccessDeniedError is not PackagesAccessDeniedError:
+    _ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError, SharedAccessDeniedError)

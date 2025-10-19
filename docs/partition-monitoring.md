@@ -2,6 +2,10 @@
 
 This guide describes the operational improvements implemented for monitoring and maintaining the partitioned chunk table system in Semantik.
 
+> **Access control**
+>
+> Partition monitoring endpoints require an authenticated admin user or a request signed with a valid `X-Internal-Api-Key` header. Ensure the proper credentials are configured before calling these APIs in scripts or dashboards.
+
 ## Overview
 
 The chunking system uses 16 partitions (configurable via `CHUNK_PARTITION_COUNT`) to distribute chunks across multiple tables for better performance. To ensure optimal performance and detect imbalances early, we've implemented comprehensive monitoring and alerting capabilities.
