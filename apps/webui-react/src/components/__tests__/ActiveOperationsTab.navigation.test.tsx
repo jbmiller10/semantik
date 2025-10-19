@@ -57,6 +57,7 @@ const renderComponent = () => {
 describe('ActiveOperationsTab navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    ;(window as Window & { __activeOperationsPolling?: boolean }).__activeOperationsPolling = false
     queryClient = new QueryClient({
       defaultOptions: {
         queries: {
@@ -104,6 +105,7 @@ describe('ActiveOperationsTab navigation', () => {
       activeTab: 'collections',
       showCollectionDetailsModal: null,
     })
+    delete (window as Window & { __activeOperationsPolling?: boolean }).__activeOperationsPolling
     if (queryClient) {
       await queryClient.cancelQueries()
       queryClient.clear()
