@@ -1,6 +1,6 @@
 import { useUIStore } from '../stores/uiStore';
 import type { UIState } from '../stores/uiStore';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import SearchInterface from '../components/SearchInterface';
 import CollectionsDashboard from '../components/CollectionsDashboard';
@@ -14,6 +14,7 @@ function HomePage() {
   const setActiveTab = useUIStore((state: UIState) => state.setActiveTab);
   const setShowCollectionDetailsModal = useUIStore((state: UIState) => state.setShowCollectionDetailsModal);
   const showCollectionDetailsModal = useUIStore((state: UIState) => state.showCollectionDetailsModal);
+  const hasSyncedRouteRef = useRef(false);
 
   useEffect(() => {
     if (collectionId) {
@@ -26,6 +27,7 @@ function HomePage() {
     } else if (showCollectionDetailsModal !== null) {
       setShowCollectionDetailsModal(null);
     }
+    hasSyncedRouteRef.current = true;
   }, [
     collectionId,
     activeTab,
@@ -35,6 +37,10 @@ function HomePage() {
   ]);
 
   useEffect(() => {
+    if (!hasSyncedRouteRef.current) {
+      return;
+    }
+
     if (activeTab !== 'collections' && collectionId) {
       navigate('/', { replace: true });
     }
