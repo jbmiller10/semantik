@@ -416,6 +416,7 @@ class TestSearchService:
         assert request_data["search_type"] == "hybrid"
         assert request_data["hybrid_alpha"] == 0.7
         assert request_data["hybrid_mode"] == "weighted"
+        assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
@@ -602,6 +603,7 @@ class TestSearchService:
         request_data = mock_client.post.call_args.kwargs["json"]
         assert request_data["hybrid_mode"] == "weighted"
         assert request_data["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_normalizes_modes_and_sorts(self, search_service) -> None:
@@ -670,6 +672,7 @@ class TestSearchService:
         search_params = call_args[3]
         assert search_params["hybrid_mode"] == "weighted"
         assert search_params["keyword_mode"] == "any"
+        assert "hybrid_search_mode" not in search_params
 
         assert result["results"][0]["doc_id"] == "d1"
 

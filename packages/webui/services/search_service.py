@@ -130,6 +130,8 @@ class SearchService:
             "quantization": collection.quantization,
             "include_content": True,
         }
+        # Ensure legacy hybrid_search_mode never leaks into the payload we send to vecpipe
+        collection_search_params.pop("hybrid_search_mode", None)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

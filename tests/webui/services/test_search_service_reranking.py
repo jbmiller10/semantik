@@ -278,6 +278,7 @@ class TestSearchServiceReranking:
             assert request_data["use_reranker"] is True
             assert request_data["hybrid_alpha"] == 0.5
             assert request_data["hybrid_mode"] == "weighted"
+            assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
     async def test_search_reranking_error_handling(
