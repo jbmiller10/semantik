@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ActiveOperationsTab from '../ActiveOperationsTab'
 import { operationsV2Api } from '../../services/api/v2/collections'
 import { useCollections } from '../../hooks/useCollections'
+import { useOperationProgress } from '../../hooks/useOperationProgress'
 import { useUIStore } from '../../stores/uiStore'
 import { createMockCollectionsQuery } from '../../tests/types/hook-mocks'
 import { createMockCollection } from '../../tests/types/test-types'
@@ -17,13 +18,7 @@ vi.mock('../../services/api/v2/collections', () => ({
 }))
 
 vi.mock('../../hooks/useCollections')
-vi.mock('../../hooks/useOperationProgress', () => ({
-  useOperationProgress: vi.fn(() => ({
-    isConnected: false,
-    readyState: 0,
-    sendMessage: vi.fn(),
-  })),
-}))
+vi.mock('../../hooks/useOperationProgress')
 
 function CollectionRoute() {
   const { collectionId } = useParams<{ collectionId: string }>()
@@ -63,6 +58,12 @@ describe('ActiveOperationsTab navigation', () => {
     useUIStore.setState({
       activeTab: 'operations',
       showCollectionDetailsModal: null,
+    })
+
+    vi.mocked(useOperationProgress).mockReturnValue({
+      isConnected: false,
+      readyState: 0,
+      sendMessage: vi.fn(),
     })
 
     vi.mocked(useCollections).mockReturnValue(
