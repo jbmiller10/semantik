@@ -293,6 +293,7 @@ class TestSearchRerankingIntegration:
             assert kwargs["hybrid_alpha"] == 0.5
             assert kwargs["hybrid_mode"] == "weighted"
             assert kwargs["use_reranker"] is True
+            assert "hybrid_search_mode" not in kwargs
 
             return {
                 "results": [
