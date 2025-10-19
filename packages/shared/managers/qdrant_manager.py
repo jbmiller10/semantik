@@ -11,7 +11,7 @@ from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import CollectionInfo, Distance, VectorParams
+from qdrant_client.models import CollectionInfo, Distance, PointStruct, VectorParams
 
 from shared.metrics.collection_metrics import QdrantOperationTimer
 
@@ -273,50 +273,15 @@ class QdrantManager:
 
         return await loop.run_in_executor(None, _fetch_usage)
 
-    def rename_collection(self, old_name: str, new_name: str) -> None:
-        """
-        Rename a collection by creating a new one and copying data.
+    async def rename_collection(self, old_name: str, new_name: str, batch_size: int = 256) -> None:
+        """Rename a collection by cloning config + data to a new name then removing the old one."""
 
-        Note: Qdrant doesn't support direct renaming, so this creates a new
-        collection and copies all data.
+        loop = asyncio.get_running_loop()
 
-        Args:
-            old_name: Current collection name
-            new_name: New collection name
+        def _rename() -> None:
+            self._rename_collection_sync(old_name, new_name, batch_size=batch_size)
 
-        Raises:
-            Exception: If rename operation fails
-        """
-        logger.info(f"Renaming collection {old_name} to {new_name}")
-
-        try:
-            # Get old collection info
-            old_info = self.get_collection_info(old_name)
-
-            # Create new collection with same configuration
-            self.client.create_collection(
-                collection_name=new_name,
-                vectors_config=old_info.config.params.vectors,
-                optimizers_config=old_info.config.optimizer_config,
-            )
-
-            # Note: Actual data migration would require scrolling through points
-            # and copying them. This is a placeholder for the structure.
-            # In production, you might want to use Qdrant's snapshot feature
-            # or implement point-by-point copying.
-
-            logger.warning(
-                f"Collection {new_name} created. Data migration from {old_name} "
-                "needs to be implemented based on specific requirements."
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to rename collection: {str(e)}")
-            # Cleanup new collection if it was created
-            with contextlib.suppress(Exception):
-                if self.collection_exists(new_name):
-                    self.client.delete_collection(new_name)
-            raise
+        await loop.run_in_executor(None, _rename)
 
     def _is_staging_collection_old(self, collection_name: str, hours: int = 24) -> bool:
         """
@@ -407,6 +372,130 @@ class QdrantManager:
 
         except Exception as e:
             return {"healthy": False, "exists": None, "error": str(e)}
+
+    def _rename_collection_sync(self, old_name: str, new_name: str, batch_size: int) -> None:
+        if old_name == new_name:
+            logger.info("Requested rename for %s to identical name; skipping", old_name)
+            return
+
+        if not self.collection_exists(old_name):
+            raise QdrantCollectionNotFoundError(old_name)
+
+        if self.collection_exists(new_name):
+            raise ValueError(f"Target collection {new_name} already exists")
+
+        with QdrantOperationTimer("rename_collection_prepare"):
+            old_info = self.get_collection_info(old_name)
+
+        create_kwargs = self._build_collection_create_kwargs(old_info)
+
+        logger.info("Creating replacement collection %s for %s", new_name, old_name)
+        with QdrantOperationTimer("rename_collection_create"):
+            self.client.create_collection(collection_name=new_name, **create_kwargs)
+
+        try:
+            copied = self._copy_collection_points(old_name, new_name, batch_size=batch_size)
+            self._copy_payload_indexes(old_info, new_name)
+
+            logger.info(
+                "Deleting old collection %s after migrating %d points to %s",
+                old_name,
+                copied,
+                new_name,
+            )
+            with QdrantOperationTimer("rename_collection_delete_old"):
+                self.client.delete_collection(old_name)
+
+        except Exception:
+            logger.error("Rename failed; rolling back new collection %s", new_name)
+            with contextlib.suppress(Exception):
+                self.client.delete_collection(new_name)
+            raise
+
+    def _build_collection_create_kwargs(self, info: CollectionInfo) -> dict[str, Any]:
+        config = getattr(info, "config", None)
+        if config is None or getattr(config, "params", None) is None:
+            raise RuntimeError("Collection config missing vector parameters; cannot rename")
+
+        params = config.params
+        vectors_config = getattr(params, "vectors", None)
+        if vectors_config is None:
+            raise RuntimeError("Collection vectors configuration unavailable")
+
+        kwargs: dict[str, Any] = {"vectors_config": vectors_config}
+
+        optional_mappings: list[tuple[str, Any]] = [
+            ("sparse_vectors_config", getattr(config, "sparse_vectors_config", None) or getattr(params, "sparse_vectors", None)),
+            ("optimizers_config", getattr(config, "optimizer_config", None)),
+            ("hnsw_config", getattr(config, "hnsw_config", None)),
+            ("wal_config", getattr(config, "wal_config", None)),
+            ("quantization_config", getattr(config, "quantization_config", None)),
+            ("shard_number", getattr(params, "shard_number", None)),
+            ("replication_factor", getattr(params, "replication_factor", None)),
+            ("write_consistency_factor", getattr(params, "write_consistency_factor", None)),
+            ("on_disk_payload", getattr(params, "on_disk_payload", None)),
+            ("on_disk_vector", getattr(params, "on_disk_vector", None)),
+            ("sharding_method", getattr(params, "sharding_method", None)),
+            ("disabled", getattr(params, "disabled", None)),
+        ]
+
+        for key, value in optional_mappings:
+            if value is not None:
+                kwargs[key] = value
+
+        return kwargs
+
+    def _copy_collection_points(self, source: str, destination: str, batch_size: int) -> int:
+        logger.info("Copying points from %s to %s", source, destination)
+
+        offset: Any | None = None
+        copied = 0
+
+        while True:
+            with QdrantOperationTimer("rename_collection_scroll"):
+                records, next_offset = self.client.scroll(
+                    collection_name=source,
+                    offset=offset,
+                    limit=batch_size,
+                    with_payload=True,
+                    with_vectors=True,
+                )
+
+            if not records:
+                break
+
+            points = [
+                PointStruct(id=record.id, vector=getattr(record, "vector", None), payload=getattr(record, "payload", None))
+                for record in records
+            ]
+
+            with QdrantOperationTimer("rename_collection_upsert"):
+                self.client.upsert(collection_name=destination, points=points, wait=True)
+
+            copied += len(points)
+            offset = next_offset
+            if not next_offset:
+                break
+
+        logger.info("Copied %d points from %s to %s", copied, source, destination)
+        return copied
+
+    def _copy_payload_indexes(self, info: CollectionInfo, destination: str) -> None:
+        schema = getattr(info, "payload_schema", None)
+        if not schema:
+            return
+
+        for field_name, field_schema in schema.items():
+            try:
+                with QdrantOperationTimer("rename_collection_index"):
+                    self.client.create_payload_index(
+                        collection_name=destination,
+                        field_name=field_name,
+                        field_schema=field_schema,
+                    )
+            except Exception as exc:
+                logger.error("Failed to recreate payload index %s on %s: %s", field_name, destination, exc)
+                raise
 
     @staticmethod
     def _sum_vectors(value: Any) -> int:

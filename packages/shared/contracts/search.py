@@ -5,6 +5,34 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 
+def normalize_hybrid_mode(value: str | None) -> str:
+    """Map legacy hybrid modes to supported values."""
+
+    if value is None:
+        return "rerank"
+
+    value_normalized = value.strip().lower()
+    legacy_map = {
+        "weighted": "rerank",
+        "reciprocal_rank": "rerank",
+        "relative_score": "rerank",
+    }
+    return legacy_map.get(value_normalized, value_normalized)
+
+
+def normalize_keyword_mode(value: str | None) -> str:
+    """Map legacy keyword modes to supported values."""
+
+    if value is None:
+        return "any"
+
+    value_normalized = value.strip().lower()
+    legacy_map = {
+        "bm25": "any",
+    }
+    return legacy_map.get(value_normalized, value_normalized)
+
+
 class SearchRequest(BaseModel):
     """Unified search API request model."""
 
@@ -53,6 +81,7 @@ class SearchRequest(BaseModel):
     @classmethod
     def validate_hybrid_mode(cls, v: str) -> str:
         """Validate hybrid mode."""
+        v = normalize_hybrid_mode(v)
         valid_modes = {"filter", "rerank"}
         if v not in valid_modes:
             raise ValueError(f"Invalid hybrid_mode: {v}. Must be one of {valid_modes}")
@@ -62,6 +91,7 @@ class SearchRequest(BaseModel):
     @classmethod
     def validate_keyword_mode(cls, v: str) -> str:
         """Validate keyword mode."""
+        v = normalize_keyword_mode(v)
         valid_modes = {"any", "all"}
         if v not in valid_modes:
             raise ValueError(f"Invalid keyword_mode: {v}. Must be one of {valid_modes}")

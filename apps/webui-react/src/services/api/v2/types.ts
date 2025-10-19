@@ -53,8 +53,8 @@ export interface SearchRequest {
   use_reranker?: boolean;
   rerank_model?: string | null;
   hybrid_alpha?: number;
-  hybrid_mode?: 'reciprocal_rank' | 'relative_score';
-  keyword_mode?: 'bm25';
+  hybrid_mode?: 'filter' | 'rerank';
+  keyword_mode?: 'any' | 'all';
 }
 
 export interface SearchResult {

@@ -30,8 +30,8 @@ export interface SearchParams {
   rerankQuantization?: string;
   useReranker: boolean;
   hybridAlpha?: number;
-  hybridMode?: 'reciprocal_rank' | 'relative_score';
-  keywordMode?: 'bm25';
+  hybridMode?: 'filter' | 'rerank';
+  keywordMode?: 'any' | 'all';
 }
 
 interface FailedCollection {
@@ -91,8 +91,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     searchType: 'semantic',
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'reciprocal_rank',
-    keywordMode: 'bm25',
+    hybridMode: 'rerank',
+    keywordMode: 'any',
   },
   collections: [],
   failedCollections: [],

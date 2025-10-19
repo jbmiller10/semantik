@@ -397,13 +397,13 @@ function SearchInterface() {
                     </label>
                     <select
                       id="hybrid-mode"
-                      value={searchParams.hybridMode || 'reciprocal_rank'}
-                      onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'reciprocal_rank' | 'relative_score' })}
+                      value={searchParams.hybridMode || 'rerank'}
+                      onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'filter' | 'rerank' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       aria-label="Hybrid search mode"
                     >
-                      <option value="reciprocal_rank">Reciprocal Rank Fusion</option>
-                      <option value="relative_score">Relative Score Fusion</option>
+                      <option value="rerank">Rerank (vector + keyword)</option>
+                      <option value="filter">Filter (keyword only)</option>
                     </select>
                   </div>
 
@@ -414,12 +414,13 @@ function SearchInterface() {
                     </label>
                     <select
                       id="keyword-mode"
-                      value={searchParams.keywordMode || 'bm25'}
-                      onChange={(e) => validateAndUpdateSearchParams({ keywordMode: e.target.value as 'bm25' })}
+                      value={searchParams.keywordMode || 'any'}
+                      onChange={(e) => validateAndUpdateSearchParams({ keywordMode: e.target.value as 'any' | 'all' })}
                       className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                       aria-label="Keyword matching algorithm"
                     >
-                      <option value="bm25">BM25 Ranking</option>
+                      <option value="any">Match Any Keyword</option>
+                      <option value="all">Require All Keywords</option>
                     </select>
                   </div>
                 </div>
