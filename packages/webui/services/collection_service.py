@@ -602,6 +602,8 @@ class CollectionService:
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name
 
+        qdrant_rename_performed = False
+
         try:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)
 
@@ -610,11 +612,30 @@ class CollectionService:
                     old_name=old_vector_store_name,
                     new_name=new_vector_store_name,
                 )
+                qdrant_rename_performed = True
 
             await self.db_session.commit()
             return cast(Collection, updated_collection)
         except Exception as exc:  # pragma: no cover - covered via explicit tests
             await self.db_session.rollback()
+            if (
+                qdrant_rename_performed
+                and requires_qdrant_sync
+                and new_vector_store_name
+                and old_vector_store_name
+            ):
+                try:
+                    await self.qdrant_manager.rename_collection(
+                        old_name=new_vector_store_name,
+                        new_name=old_vector_store_name,
+                    )
+                except Exception as revert_exc:  # best effort rollback; log and continue raising
+                    logger.error(
+                        "Failed to revert Qdrant rename from %s back to %s after DB rollback: %s",
+                        new_vector_store_name,
+                        old_vector_store_name,
+                        revert_exc,
+                    )
             raise exc
 
     @staticmethod
