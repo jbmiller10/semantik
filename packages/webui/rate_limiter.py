@@ -293,7 +293,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
             used_mock_last = using_mock
             return await limited_func(*args, **kwargs)
 
-        wrapper.__signature__ = sig
+        setattr(wrapper, "__signature__", sig)
 
         return wrapper
 
@@ -319,12 +319,11 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
             and pg_connection_manager._sessionmaker is None
         ):
 
-            class _ProcessLimit:
-                def __init__(self, limit_str: str) -> None:
-                    self.limit = limit_str
-                    self.error_message = "Rate limit enforced while database is unavailable"
-
-            raise RateLimitExceeded(_ProcessLimit(limit))
+            placeholder = _placeholder_limit(
+                limit,
+                "Rate limit enforced while database is unavailable",
+            )
+            raise RateLimitExceeded(placeholder)
 
         limit_callable = limiter.limit
         should_enforce = isinstance(limit_callable, mock.Mock)
@@ -343,12 +342,8 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
         except AttributeError as exc:  # Handle improperly constructed exceptions in tests
             if isinstance(limit_callable, mock.Mock):
 
-                class _DummyLimit:
-                    def __init__(self, limit_str: str) -> None:
-                        self.limit = limit_str
-                        self.error_message = "Rate limit exceeded"
-
-                raise RateLimitExceeded(_DummyLimit(limit)) from exc
+                placeholder = _placeholder_limit(limit, "Rate limit exceeded")
+                raise RateLimitExceeded(placeholder) from exc
             raise
         else:
             request.state._rate_limit_dependency_enforced = True
@@ -480,3 +475,12 @@ def add_rate_limit_headers(response: Response, limit: str, remaining: int, reset
     response.headers["X-RateLimit-Remaining"] = str(remaining)
     response.headers["X-RateLimit-Reset"] = str(reset)
     return response
+def _placeholder_limit(limit_str: str, message: str) -> Any:
+    """Create a lightweight object satisfying the Limit protocol for tests."""
+
+    class _LimitPlaceholder:  # noqa: D106 - internal helper
+        def __init__(self, limit_value: str, error_message: str) -> None:
+            self.limit = limit_value
+            self.error_message = error_message
+
+    return _LimitPlaceholder(limit_str, message)

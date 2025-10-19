@@ -15,7 +15,8 @@ import time
 import uuid
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any
+from types import ModuleType
+from typing import Any, cast
 
 import httpx
 import psutil
@@ -53,7 +54,7 @@ from .utils import (
 )
 
 
-def _tasks_namespace():
+def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("packages.webui.tasks")
 
@@ -89,7 +90,11 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
         tasks_ns.asyncio.set_event_loop(loop)
 
     try:
-        return loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self))
+        result = cast(
+            dict[str, Any],
+            loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self)),
+        )
+        return result
     except Exception as exc:  # pragma: no cover - retry path
         logger.error("Task failed for operation %s: %s", operation_id, exc)
         if isinstance(exc, ValueError | TypeError):

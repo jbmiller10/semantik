@@ -17,6 +17,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 from importlib import import_module
+from types import ModuleType
 from typing import Any
 
 import httpx
@@ -42,7 +43,7 @@ from .utils import (
 )
 
 
-def _tasks_namespace():
+def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("packages.webui.tasks")
 

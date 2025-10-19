@@ -256,7 +256,7 @@ async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator
     return await container_get_chunking_orchestrator(db)
 
 
-async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter:
+async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
     """Return chunking dependency that emulates legacy service."""
 
     return await resolve_api_chunking_dependency(db, prefer_adapter=True)

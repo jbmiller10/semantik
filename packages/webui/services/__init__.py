@@ -4,10 +4,12 @@ This package exposes common service factories lazily to avoid import cycles
 between FastAPI routers and background task modules.
 """
 
+from typing import Any
+
 __all__ = ["CollectionService", "create_collection_service"]
 
 
-def __getattr__(name: str):  # pragma: no cover - thin import shim
+def __getattr__(name: str) -> Any:  # pragma: no cover - thin import shim
     if name == "CollectionService":
         from .collection_service import CollectionService as _CollectionService
 

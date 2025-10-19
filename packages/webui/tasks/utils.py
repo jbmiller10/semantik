@@ -18,7 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
@@ -181,7 +181,7 @@ class CeleryTaskWithOperationUpdates:
 
 def _get_internal_api_key() -> str:
     """Return the configured internal API key, raising if unavailable."""
-    key = settings.INTERNAL_API_KEY
+    key = cast(str | None, getattr(settings, "INTERNAL_API_KEY", None))
     if not key:
         raise RuntimeError("Internal API key is not configured")
     return key

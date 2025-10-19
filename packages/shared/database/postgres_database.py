@@ -7,7 +7,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
@@ -159,7 +159,7 @@ async def get_postgres_db() -> AsyncGenerator[AsyncSession, None]:
         logger.warning("PostgreSQL session unavailable in testing mode; using async stub: %s", exc)
         from unittest.mock import AsyncMock
 
-        stub_session: AsyncSession = AsyncMock(name="TestAsyncSession")  # type: ignore[assignment]
+        stub_session = cast(AsyncSession, AsyncMock(name="TestAsyncSession"))
         yield stub_session
 
 

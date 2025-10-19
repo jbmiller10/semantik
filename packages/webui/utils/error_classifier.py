@@ -70,7 +70,8 @@ class ErrorClassifier:
         message = str(error)
         for rule in self._rules:
             if rule.predicate(error, message):
-                code = rule.code or self._enum_to_code.get(rule.error_type, self._default_code)
+                code_candidate = rule.code or self._enum_to_code.get(rule.error_type)
+                code = code_candidate or self._default_code
                 metadata = rule.metadata_factory(error) if rule.metadata_factory else None
                 return ErrorClassificationResult(
                     error_type=rule.error_type,

@@ -94,7 +94,7 @@ def _read_json_file(path: Path) -> dict[str, Any]:
     try:
         if not path.exists():
             return {"configs": {}}
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
     except json.JSONDecodeError as exc:
         logger.warning("Failed to decode JSON from %s: %s", path, exc)
         return {"configs": {}}
@@ -1139,20 +1139,24 @@ class ChunkingService:
         chunk_rows = await self.db_session.execute(chunk_query)
         chunk_objects = chunk_rows.scalars().all()
 
-        records = [
-            ServiceChunkRecord(
-                id=chunk.id,
-                collection_id=chunk.collection_id,
-                document_id=chunk.document_id,
-                chunk_index=chunk.chunk_index,
-                content=chunk.content or "",
-                token_count=chunk.token_count,
-                metadata=getattr(chunk, "meta", {}) or {},
-                created_at=chunk.created_at,
-                updated_at=chunk.updated_at,
+        records: list[ServiceChunkRecord] = []
+        for chunk in chunk_objects:
+            metadata_raw = getattr(chunk, "meta", {}) or {}
+            metadata = cast(dict[str, Any], metadata_raw) if isinstance(metadata_raw, dict) else {}
+
+            records.append(
+                ServiceChunkRecord(
+                    id=cast(int, chunk.id),
+                    collection_id=cast(str, chunk.collection_id),
+                    document_id=cast(str | None, chunk.document_id),
+                    chunk_index=cast(int, chunk.chunk_index),
+                    content=cast(str, chunk.content) if chunk.content is not None else "",
+                    token_count=cast(int | None, getattr(chunk, "token_count", None)),
+                    metadata=metadata,
+                    created_at=cast(datetime | None, getattr(chunk, "created_at", None)),
+                    updated_at=cast(datetime | None, getattr(chunk, "updated_at", None)),
+                )
             )
-            for chunk in chunk_objects
-        ]
 
         return ServiceChunkList(
             chunks=records,
@@ -1545,9 +1549,11 @@ class ChunkingService:
 
         builder_result = self.config_builder.build_config(strategy, config)
         if builder_result.validation_errors:
+            summary = ", ".join(builder_result.validation_errors)
             raise InfraValidationError(
-                "Chunking configuration validation failed",
-                builder_result.validation_errors,
+                field="config",
+                value=config,
+                reason=f"Invalid configuration: {summary}",
             )
 
         sanitized_tags = [tag.strip() for tag in tags if tag and isinstance(tag, str)]
