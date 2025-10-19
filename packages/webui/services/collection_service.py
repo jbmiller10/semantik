@@ -34,6 +34,17 @@ DEFAULT_VECTOR_DIMENSION = 1536  # Default vector dimension for embeddings
 qdrant_manager = _legacy_qdrant_manager
 
 
+class _LightweightQdrantManager:
+    """Minimal adapter that mirrors the list/delete surface of QdrantManager."""
+
+    def __init__(self, client):
+        self.client = client
+
+    def list_collections(self) -> list[str]:  # pragma: no cover - thin wrapper
+        collections = self.client.get_collections()
+        return [col.name for col in collections.collections]
+
+
 class CollectionService:
     """Service for managing collection operations."""
 
@@ -52,14 +63,18 @@ class CollectionService:
         self.document_repo = document_repo
         self.qdrant_manager = qdrant_manager
 
-    def _ensure_qdrant_manager(self) -> QdrantManager | None:
+    def _ensure_qdrant_manager(self) -> QdrantManager | _LightweightQdrantManager | None:
         """Lazily resolve a Qdrant manager, honoring test monkeypatches."""
         if self.qdrant_manager is not None:
             return self.qdrant_manager
 
         try:
             client = qdrant_manager.get_client()
-            self.qdrant_manager = QdrantManager(client)
+            try:
+                self.qdrant_manager = QdrantManager(client)
+            except Exception:
+                # Fall back to a lightweight adapter when the shared manager cannot be built
+                self.qdrant_manager = _LightweightQdrantManager(client)
         except Exception as exc:  # pragma: no cover - network dependent
             logger.warning("Qdrant manager unavailable: %s", exc)
             return None
@@ -612,10 +627,10 @@ class CollectionService:
 
         new_vector_store_name: str | None = None
         old_vector_store_name = getattr(collection, "vector_store_name", None)
-        qdrant_manager_for_rename: QdrantManager | None = None
+        qdrant_manager_for_rename: QdrantManager | _LightweightQdrantManager | None = None
         if requires_qdrant_sync:
             qdrant_manager_for_rename = self._ensure_qdrant_manager()
-            if qdrant_manager_for_rename is None:
+            if qdrant_manager_for_rename is None or not hasattr(qdrant_manager_for_rename, "rename_collection"):
                 raise RuntimeError("Qdrant manager is not available to rename collection")
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name

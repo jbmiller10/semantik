@@ -606,6 +606,43 @@ class TestSearchService:
         assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
+    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    async def test_search_single_collection_handles_missing_search_type_for_legacy_mode(
+        self, mock_httpx_client, search_service
+    ) -> None:
+        """Legacy hybrid mode is normalized even when search_type is absent."""
+
+        mock_collection = Mock(spec=Collection)
+        mock_collection.status = CollectionStatus.READY
+        mock_collection.vector_store_name = "collection_legacy"
+        mock_collection.embedding_model = "test-model"
+        mock_collection.quantization = "float16"
+        mock_collection.name = "Legacy Collection"
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = Mock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_httpx_client.return_value.__aenter__.return_value = mock_client
+
+        await search_service.search_single_collection(
+            collection=mock_collection,
+            query="legacy modes",
+            k=5,
+            search_params={
+                "hybrid_search_mode": "filter",
+                "keyword_mode": "all",
+            },
+        )
+
+        request_data = mock_client.post.call_args.kwargs["json"]
+        assert request_data["hybrid_mode"] == "filter"
+        assert request_data["keyword_mode"] == "all"
+        assert "hybrid_search_mode" not in request_data
+
+    @pytest.mark.asyncio()
     async def test_multi_collection_search_normalizes_modes_and_sorts(self, search_service) -> None:
         """Legacy modes normalize and results sort by reranked_score."""
 
