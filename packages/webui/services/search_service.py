@@ -207,6 +207,7 @@ class SearchService:
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_search_mode: str = "weighted",
+        keyword_mode: str = "any",
     ) -> dict[str, Any]:
         """Search across multiple collections with result aggregation and re-ranking.
 
@@ -222,6 +223,7 @@ class SearchService:
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
             hybrid_search_mode: Mode for hybrid search
+            keyword_mode: Keyword matching mode when using hybrid search
 
         Returns:
             Dictionary with search results and metadata
@@ -246,6 +248,7 @@ class SearchService:
                 {
                     "hybrid_alpha": hybrid_alpha,
                     "hybrid_search_mode": hybrid_search_mode,
+                    "keyword_mode": keyword_mode,
                 }
             )
 
@@ -296,7 +299,13 @@ class SearchService:
                 )
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
-        all_results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+        def _result_sort_key(result: dict[str, Any]) -> float:
+            reranked = result.get("reranked_score")
+            if reranked is not None:
+                return float(reranked)
+            return float(result.get("score", 0.0))
+
+        all_results.sort(key=_result_sort_key, reverse=True)
 
         # Limit to requested k results
         final_results = all_results[:k]
@@ -327,6 +336,7 @@ class SearchService:
         rerank_model: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_search_mode: str = "weighted",
+        keyword_mode: str = "any",
         include_content: bool = True,
     ) -> dict[str, Any]:
         """Search a single collection with optional re-ranking.
@@ -343,6 +353,7 @@ class SearchService:
             rerank_model: Optional reranker model
             hybrid_alpha: Weight for hybrid search
             hybrid_search_mode: Mode for hybrid search
+            keyword_mode: Keyword matching mode when using hybrid search
             include_content: Whether to include document content
 
         Returns:
@@ -373,6 +384,7 @@ class SearchService:
                 {
                     "hybrid_alpha": hybrid_alpha,
                     "hybrid_search_mode": hybrid_search_mode,
+                    "keyword_mode": keyword_mode,
                 }
             )
 

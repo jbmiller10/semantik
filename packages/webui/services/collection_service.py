@@ -583,13 +583,35 @@ class CollectionService:
                 except Exception as e:
                     raise ValueError(f"Invalid chunking config: {e}") from e
 
-        # Perform the update
-        updated_collection = await self.collection_repo.update(str(collection.id), updates)
+        requires_qdrant_sync = (
+            "name" in updates
+            and updates["name"]
+            and updates["name"] != collection.name
+            and getattr(collection, "vector_store_name", None)
+        )
 
-        # Commit the transaction
-        await self.db_session.commit()
+        try:
+            updated_collection = await self.collection_repo.update(str(collection.id), updates)
 
-        return cast(Collection, updated_collection)
+            if requires_qdrant_sync:
+                qdrant_client = qdrant_manager.get_client()
+                new_name = updates["name"]
+                qdrant_client.update_collection_aliases(
+                    change_aliases_operations=[
+                        {
+                            "create_alias": {
+                                "alias_name": new_name,
+                                "collection_name": collection.vector_store_name,
+                            }
+                        }
+                    ]
+                )
+
+            await self.db_session.commit()
+            return cast(Collection, updated_collection)
+        except Exception as exc:  # pragma: no cover - covered via explicit tests
+            await self.db_session.rollback()
+            raise exc
 
     async def list_documents(
         self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50
