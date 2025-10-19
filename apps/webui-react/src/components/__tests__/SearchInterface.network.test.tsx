@@ -21,8 +21,8 @@ describe('SearchInterface - Network Error Handling', () => {
         searchType: 'semantic' as const,
         useReranker: false,
         hybridAlpha: 0.7,
-        hybridMode: 'reciprocal_rank' as const,
-        keywordMode: 'bm25' as const,
+        hybridMode: 'rerank' as const,
+        keywordMode: 'any' as const,
         rerankModel: null,
         rerankQuantization: null,
       },
@@ -45,6 +45,58 @@ describe('SearchInterface - Network Error Handling', () => {
   
   afterEach(() => {
     cleanup()
+  })
+
+  it('sends normalized hybrid enums in request payload', async () => {
+    const user = userEvent.setup()
+    let capturedBody: any = null
+
+    server.use(
+      http.post('/api/v2/search', async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({
+          results: [],
+          total_results: 0,
+          partial_failure: false,
+          failed_collections: [],
+          search_time_ms: 10,
+          total_time_ms: 10,
+        })
+      })
+    )
+
+    render(<SearchInterface />)
+
+    const collectionDropdown = screen.getByRole('button', { name: /select collections/i })
+    await user.click(collectionDropdown)
+
+    const collections = await screen.findAllByText('Test Collection 1')
+    const collection = collections.find(el => el.classList.contains('font-medium'))
+    await user.click(collection!)
+
+    const searchInput = screen.getByPlaceholderText(/Enter your search query/i)
+    await user.click(searchInput)
+    await user.type(searchInput, 'hybrid query')
+
+    const hybridToggle = screen.getByLabelText(/Use Hybrid Search/i)
+    await user.click(hybridToggle)
+
+    const hybridModeSelect = screen.getByLabelText(/Hybrid mode/i)
+    await user.selectOptions(hybridModeSelect, 'filter')
+
+    const keywordModeSelect = screen.getByRole('combobox', { name: /keyword matching/i })
+    await user.selectOptions(keywordModeSelect, 'all')
+
+    const searchButton = screen.getByRole('button', { name: /search/i })
+    await user.click(searchButton)
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull()
+    })
+
+    expect(capturedBody.hybrid_mode).toBe('filter')
+    expect(capturedBody.keyword_mode).toBe('all')
+    expect(capturedBody.search_type).toBe('hybrid')
   })
   
   it('should show error toast when search fails due to network error', async () => {

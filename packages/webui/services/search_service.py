@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.config import settings
+from packages.shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from packages.shared.database.models import Collection, CollectionStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
@@ -40,6 +41,21 @@ class SearchService:
         self.collection_repo = collection_repo
         self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
         self.retry_timeout_multiplier = retry_timeout_multiplier
+
+    @staticmethod
+    def _result_sort_key(result: dict[str, Any]) -> float:
+        """Sort by reranked_score when present, otherwise fall back to base score."""
+
+        reranked = result.get("reranked_score")
+        if reranked is not None:
+            try:
+                return float(reranked)
+            except (TypeError, ValueError):
+                return 0.0
+        try:
+            return float(result.get("score", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
 
     async def validate_collection_access(self, collection_uuids: list[str], user_id: int) -> list[Collection]:
         """Validate user has access to all requested collections.
@@ -98,8 +114,13 @@ class SearchService:
             timeout = self.default_timeout
 
         # Build search request for this collection
+        base_params = dict(search_params)
+        if base_params.get("search_type") == "hybrid":
+            base_params["hybrid_search_mode"] = normalize_hybrid_mode(base_params.get("hybrid_search_mode"))
+            base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
+
         collection_search_params = {
-            **search_params,
+            **base_params,
             "query": query,
             "k": k,  # Request exactly k results (vecpipe will handle candidate multiplier if reranking)
             "collection": collection.vector_store_name,
@@ -233,6 +254,10 @@ class SearchService:
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
+        # Normalize legacy hybrid/keyword modes for backward compatibility
+        hybrid_search_mode = normalize_hybrid_mode(hybrid_search_mode)
+        keyword_mode = normalize_keyword_mode(keyword_mode)
+
         # Build common search parameters
         search_params = {
             "search_type": search_type,
@@ -299,13 +324,7 @@ class SearchService:
                 )
 
         # Sort merged results by score (results are already reranked by vecpipe if reranking was enabled)
-        def _result_sort_key(result: dict[str, Any]) -> float:
-            reranked = result.get("reranked_score")
-            if reranked is not None:
-                return float(reranked)
-            return float(result.get("score", 0.0))
-
-        all_results.sort(key=_result_sort_key, reverse=True)
+        all_results.sort(key=self._result_sort_key, reverse=True)
 
         # Limit to requested k results
         final_results = all_results[:k]
@@ -364,6 +383,9 @@ class SearchService:
         collection = collections[0]
 
         # Build search parameters
+        hybrid_search_mode = normalize_hybrid_mode(hybrid_search_mode)
+        keyword_mode = normalize_keyword_mode(keyword_mode)
+
         search_params = {
             "query": query,
             "k": k,

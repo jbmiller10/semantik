@@ -233,6 +233,45 @@ class TestMultiCollectionSearch:
         assert len(response.results) == 1  # Only results from successful collection
 
     @pytest.mark.asyncio()
+    async def test_multi_collection_search_normalizes_legacy_modes(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Legacy hybrid/keyword modes are normalized before delegating to SearchService."""
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        mock_search_service.multi_collection_search.return_value = {
+            "results": [],
+            "metadata": {
+                "total_results": 0,
+                "processing_time": 0.0,
+                "collection_details": [],
+            },
+        }
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[str(uuid.uuid4())],
+            query="legacy",
+            search_type="hybrid",
+            hybrid_mode="weighted",
+            keyword_mode="bm25",
+        )
+
+        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
+        assert call_kwargs["hybrid_search_mode"] == "rerank"
+        assert call_kwargs["keyword_mode"] == "any"
+
+    @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
         self, mock_user: dict[str, Any], mock_collections: list[MagicMock]
     ) -> None:
@@ -385,6 +424,7 @@ class TestSearchReranking:
             rerank_model=None,
             hybrid_alpha=0.7,
             hybrid_search_mode="rerank",
+            keyword_mode="any",
         )
 
         assert response.reranking_used is False
@@ -474,6 +514,7 @@ class TestSearchReranking:
             rerank_model="Qwen/Qwen3-Reranker-0.6B",
             hybrid_alpha=0.7,
             hybrid_search_mode="rerank",
+            keyword_mode="any",
         )
 
         assert response.reranking_used is True
@@ -1120,8 +1161,8 @@ class TestHybridSearchParameters:
 
         mock_search_service.multi_collection_search.assert_awaited_once()
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
-        assert call_kwargs["hybrid_search_mode"] == "relative_score"
-        assert call_kwargs["keyword_mode"] == "bm25"
+        assert call_kwargs["hybrid_search_mode"] == "rerank"
+        assert call_kwargs["keyword_mode"] == "any"
 
         assert isinstance(response, CollectionSearchResponse)
         assert response.total_results == 2

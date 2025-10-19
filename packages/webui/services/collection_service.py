@@ -1,6 +1,7 @@
 """Collection Service for managing collection operations."""
 
 import logging
+import re
 import uuid
 from typing import Any, cast
 
@@ -17,10 +18,10 @@ from packages.shared.database.models import Collection, CollectionStatus, Operat
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.operation_repository import OperationRepository
+from packages.shared.managers import QdrantManager
 from packages.webui.celery_app import celery_app
 from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
-from packages.webui.utils.qdrant_manager import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,14 @@ class CollectionService:
         collection_repo: CollectionRepository,
         operation_repo: OperationRepository,
         document_repo: DocumentRepository,
+        qdrant_manager: QdrantManager | None,
     ):
         """Initialize the collection service."""
         self.db_session = db_session
         self.collection_repo = collection_repo
         self.operation_repo = operation_repo
         self.document_repo = document_repo
+        self.qdrant_manager = qdrant_manager
 
     async def create_collection(
         self,
@@ -399,14 +402,11 @@ class CollectionService:
 
         try:
             # Delete from Qdrant if collection exists
-            if collection.vector_store_name:
+            if collection.vector_store_name and self.qdrant_manager is not None:
                 try:
-                    qdrant_client = qdrant_manager.get_client()
-                    # Check if collection exists in Qdrant
-                    collections = qdrant_client.get_collections().collections
-                    collection_names = [c.name for c in collections]
+                    collection_names = self.qdrant_manager.list_collections()
                     if collection.vector_store_name in collection_names:
-                        qdrant_client.delete_collection(collection.vector_store_name)
+                        self.qdrant_manager.client.delete_collection(collection.vector_store_name)
                         logger.info(f"Deleted Qdrant collection: {collection.vector_store_name}")
                 except Exception as e:
                     logger.error(f"Failed to delete Qdrant collection: {e}")
@@ -590,21 +590,21 @@ class CollectionService:
             and getattr(collection, "vector_store_name", None)
         )
 
+        new_vector_store_name: str | None = None
+        old_vector_store_name = getattr(collection, "vector_store_name", None)
+        if requires_qdrant_sync:
+            if self.qdrant_manager is None:
+                raise RuntimeError("Qdrant manager is not available to rename collection")
+            new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
+            updates["vector_store_name"] = new_vector_store_name
+
         try:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)
 
-            if requires_qdrant_sync:
-                qdrant_client = qdrant_manager.get_client()
-                new_name = updates["name"]
-                qdrant_client.update_collection_aliases(
-                    change_aliases_operations=[
-                        {
-                            "create_alias": {
-                                "alias_name": new_name,
-                                "collection_name": collection.vector_store_name,
-                            }
-                        }
-                    ]
+            if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
+                await self.qdrant_manager.rename_collection(
+                    old_name=old_vector_store_name,
+                    new_name=new_vector_store_name,
                 )
 
             await self.db_session.commit()
@@ -612,6 +612,21 @@ class CollectionService:
         except Exception as exc:  # pragma: no cover - covered via explicit tests
             await self.db_session.rollback()
             raise exc
+
+    @staticmethod
+    def _build_vector_store_name(collection_id: str, new_name: str) -> str:
+        base = collection_id.replace("-", "_")
+        slug = re.sub(r"[^a-z0-9]+", "_", new_name.lower()).strip("_")
+        if slug:
+            candidate = f"col_{base}_{slug}"
+        else:
+            candidate = f"col_{base}"
+
+        # Qdrant currently allows up to 255 chars; keep buffer for safety
+        if len(candidate) > 120:
+            candidate = candidate[:120].rstrip("_")
+
+        return candidate
 
     async def list_documents(
         self, collection_id: str, user_id: int, offset: int = 0, limit: int = 50

@@ -415,7 +415,7 @@ class TestSearchService:
         request_data = call_args[1]["json"]
         assert request_data["search_type"] == "hybrid"
         assert request_data["hybrid_alpha"] == 0.7
-        assert request_data["hybrid_search_mode"] == "weighted"
+        assert request_data["hybrid_search_mode"] == "rerank"
 
     @pytest.mark.asyncio()
     @patch("packages.webui.services.search_service.httpx.AsyncClient")
@@ -558,6 +558,127 @@ class TestSearchService:
 
         # Verify timing
         assert result["metadata"]["processing_time"] == 1.5
+
+    def test_result_sort_key_prefers_reranked_score(self, search_service) -> None:
+        """Ensure reranked_score takes precedence when ordering results."""
+
+        high_reranked = {"score": 0.2, "reranked_score": 0.95}
+        high_score = {"score": 0.9}
+
+        assert (
+            SearchService._result_sort_key(high_reranked)
+            > SearchService._result_sort_key(high_score)
+        )
+
+    @pytest.mark.asyncio()
+    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    async def test_search_single_collection_normalizes_legacy_modes(
+        self, mock_httpx_client, search_service
+    ) -> None:
+        """Legacy hybrid/keyword modes are mapped to supported values."""
+
+        mock_collection = Mock(spec=Collection)
+        mock_collection.status = CollectionStatus.READY
+        mock_collection.vector_store_name = "collection_legacy"
+        mock_collection.embedding_model = "test-model"
+        mock_collection.quantization = "float16"
+        mock_collection.name = "Legacy Collection"
+
+        mock_response = Mock()
+        mock_response.json.return_value = {"results": []}
+        mock_response.raise_for_status = Mock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_httpx_client.return_value.__aenter__.return_value = mock_client
+
+        await search_service.search_single_collection(
+            collection=mock_collection,
+            query="legacy modes",
+            k=5,
+            search_params={
+                "search_type": "hybrid",
+                "hybrid_search_mode": "weighted",
+                "keyword_mode": "bm25",
+                "hybrid_alpha": 0.7,
+            },
+        )
+
+        request_data = mock_client.post.call_args.kwargs["json"]
+        assert request_data["hybrid_search_mode"] == "rerank"
+        assert request_data["keyword_mode"] == "any"
+
+    @pytest.mark.asyncio()
+    async def test_multi_collection_search_normalizes_modes_and_sorts(
+        self, search_service
+    ) -> None:
+        """Legacy modes normalize and results sort by reranked_score."""
+
+        collection1 = Mock(spec=Collection)
+        collection1.id = "col-1"
+        collection1.name = "One"
+        collection1.status = CollectionStatus.READY
+        collection1.vector_store_name = "collection_one"
+        collection1.embedding_model = "model-1"
+        collection1.quantization = "float16"
+
+        collection2 = Mock(spec=Collection)
+        collection2.id = "col-2"
+        collection2.name = "Two"
+        collection2.status = CollectionStatus.READY
+        collection2.vector_store_name = "collection_two"
+        collection2.embedding_model = "model-2"
+        collection2.quantization = "float16"
+
+        search_service.validate_collection_access = AsyncMock(return_value=[collection1, collection2])
+
+        search_service.search_single_collection = AsyncMock(
+            side_effect=[
+                (
+                    collection1,
+                    [
+                        {
+                            "doc_id": "d1",
+                            "chunk_id": "c1",
+                            "score": 0.4,
+                            "reranked_score": 0.95,
+                            "content": "high rerank",
+                        }
+                    ],
+                    None,
+                ),
+                (
+                    collection2,
+                    [
+                        {
+                            "doc_id": "d2",
+                            "chunk_id": "c2",
+                            "score": 0.9,
+                            "reranked_score": 0.5,
+                            "content": "high raw",
+                        }
+                    ],
+                    None,
+                ),
+            ]
+        )
+
+        result = await search_service.multi_collection_search(
+            user_id=42,
+            collection_uuids=["col-1", "col-2"],
+            query="mixed",
+            k=10,
+            search_type="hybrid",
+            hybrid_search_mode="weighted",
+            keyword_mode="bm25",
+        )
+
+        call_args = search_service.search_single_collection.call_args_list[0][0]
+        search_params = call_args[3]
+        assert search_params["hybrid_search_mode"] == "rerank"
+        assert search_params["keyword_mode"] == "any"
+
+        assert result["results"][0]["doc_id"] == "d1"
 
 
 class TestSearchServiceErrorHandling:

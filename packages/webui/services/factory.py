@@ -79,12 +79,20 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
 
+    qdrant_manager_instance = None
+    try:
+        qdrant_client = qdrant_connection_manager.get_client()
+        qdrant_manager_instance = QdrantManager(qdrant_client)
+    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+        logger.warning("Qdrant client unavailable for collection service: %s", exc)
+
     # Create and return service
     return CollectionService(
         db_session=db,
         collection_repo=collection_repo,
         operation_repo=operation_repo,
         document_repo=document_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 
