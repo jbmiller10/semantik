@@ -260,10 +260,10 @@ async def require_admin_or_internal_key(
 
 
 try:
-    from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError  # type: ignore[import]
+    from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
 except Exception:  # pragma: no cover
-    SharedAccessDeniedError = None  # type: ignore[assignment]
+    SharedAccessDeniedError = None
 
-_ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError,)
+_ACCESS_DENIED_ERRORS: tuple[type[Exception], ...] = (PackagesAccessDeniedError,)
 if SharedAccessDeniedError and SharedAccessDeniedError is not PackagesAccessDeniedError:
     _ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError, SharedAccessDeniedError)

@@ -126,7 +126,16 @@ def _is_weak_secret(value: str, minimum_length: int = 16) -> bool:
         "digit": any(c.isdigit() for c in value),
         "symbol": any(not c.isalnum() for c in value),
     }
-    return sum(categories.values()) < 3
+    category_count = sum(categories.values())
+
+    if category_count >= 3:
+        return False
+
+    # Accept long random-looking tokens (e.g., 32+ char hex strings)
+    if len(value) >= 32 and category_count >= 2:
+        return False
+
+    return True
 
 
 def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
