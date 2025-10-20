@@ -64,8 +64,8 @@ def test_detect_placeholder_errors_for_known_values() -> None:
         "JWT_SECRET_KEY": "CHANGE_THIS_TO_A_STRONG_SECRET_KEY",
         "POSTGRES_PASSWORD": "CHANGE_THIS_TO_A_STRONG_PASSWORD",
         "INTERNAL_API_KEY": "your-internal-api-key-here",
-        "FLOWER_USERNAME": "admin",
-        "FLOWER_PASSWORD": "admin",
+        "FLOWER_USERNAME": "replace-me-with-flower-user",
+        "FLOWER_PASSWORD": "replace-me-with-strong-flower-password",
     }
 
     errors = validate_env.detect_placeholder_issues(env)
