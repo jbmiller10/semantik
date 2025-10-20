@@ -5,6 +5,7 @@ This module provides RESTful API endpoints for operation management
 in the new collection-centric architecture.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -263,10 +264,36 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         # Keep the connection alive and handle any incoming messages
         while True:
             # We don't expect the client to send data, but we need to keep receiving
-            # to detect disconnections properly
+            # to detect disconnections properly. Some legacy clients send plain
+            # "ping" strings instead of JSON – handle those gracefully so we don't
+            # tear down the socket and trigger reconnect loops.
             try:
-                data = await websocket.receive_json()
-                # Handle ping messages to keep connection alive
+                message = await websocket.receive()
+
+                if message.get("type") == "websocket.disconnect":
+                    break
+
+                raw_text = message.get("text")
+                if raw_text is None:
+                    # Ignore binary payloads or unexpected message formats
+                    continue
+
+                if not raw_text:
+                    continue
+
+                try:
+                    data = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    if raw_text.strip().lower() == "ping":
+                        await websocket.send_json({"type": "pong"})
+                    else:
+                        logger.debug(
+                            "Ignoring non-JSON WebSocket payload for operation %s: %s",
+                            operation_id,
+                            raw_text[:128],
+                        )
+                    continue
+
                 if data.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
             except Exception:

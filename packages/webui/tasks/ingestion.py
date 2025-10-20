@@ -233,7 +233,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         doc_stats["total_size_bytes"],
                     )
                 else:
-                    new_status = CollectionStatus.PARTIALLY_READY
+                    new_status = CollectionStatus.DEGRADED
                     await collection_repo.update_status(collection["id"], new_status)
 
                 if old_status != new_status:
@@ -337,8 +337,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     from shared.database.models import Operation as _Operation
     from sqlalchemy import select
 
-    # Fetch the operation by internal integer id
-    op = (await db.execute(select(_Operation).where(_Operation.id == _operation_id))).scalar_one()
+    # Fetch the operation using whichever identifier the caller supplied
+    op_lookup = select(_Operation)
+    try:
+        op_lookup = op_lookup.where(_Operation.id == int(_operation_id))
+    except (TypeError, ValueError):
+        op_lookup = op_lookup.where(_Operation.uuid == _operation_id)
+
+    op = (await db.execute(op_lookup)).scalar_one()
 
     # Fetch the parent collection
     collection_obj = (
@@ -490,15 +496,14 @@ async def _process_index_operation(
 
         try:
             store_collection_metadata(
-                qdrant_client,
-                vector_store_name,
-                {
-                    "model_name": actual_model_name,
-                    "quantization": collection.get("quantization", "float16"),
-                    "instruction": config.get("instruction"),
-                    "dimension": vector_dim,
-                    "created_at": datetime.now(UTC).isoformat(),
-                },
+                qdrant=qdrant_client,
+                collection_name=vector_store_name,
+                model_name=actual_model_name,
+                quantization=collection.get("quantization", "float16"),
+                vector_dim=vector_dim,
+                chunk_size=config.get("chunk_size"),
+                chunk_overlap=config.get("chunk_overlap"),
+                instruction=config.get("instruction"),
             )
         except Exception as exc:
             logger.warning("Failed to store collection metadata: %s", exc)
@@ -1151,13 +1156,13 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                     if collection_obj.status != CollectionStatus.ERROR:
                         await collection_repo.update_status(
                             collection_obj.uuid,
-                            CollectionStatus.PARTIALLY_READY,
+                            CollectionStatus.DEGRADED,
                             status_message=f"Append operation failed: {sanitized_error}",
                         )
                 elif operation_type == OperationType.REMOVE_SOURCE:
                     await collection_repo.update_status(
                         collection_obj.id,
-                        CollectionStatus.PARTIALLY_READY,
+                        CollectionStatus.DEGRADED,
                         status_message=f"Remove source operation failed: {sanitized_error}",
                     )
 
