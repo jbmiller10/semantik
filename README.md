@@ -1,9 +1,6 @@
 🚨🚨🚨
 
-** Dev's Note:**  Semantik is currently in a **pre-release state**, and under heavy development. While you are encouraged to use it and file issues and feature requests, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment. 
-
-While we will do our best to avoid any breaking changes, we do not gurantee backwards compatibility between releases at this time. This is in the interest of providing the strongest long-term foundation for Semantik by the time of release.
-
+** Dev's Note:**  Semantik is currently in a **pre-release state**, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment. 
 
 🚨🚨🚨
 
