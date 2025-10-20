@@ -74,6 +74,25 @@ describe('errorUtils', () => {
       expect(getErrorMessage(error)).toBe('Error field message');
     });
 
+    it('should extract messages from AxiosError with validation detail array', () => {
+      const error = new AxiosError('Validation error');
+      error.response = {
+        data: {
+          detail: [
+            { loc: ['body', 'username'], msg: 'Username must contain only alphanumeric characters and underscores' },
+            { loc: ['body', 'password'], msg: 'Password must be at least 8 characters long' },
+          ],
+        },
+        status: 422,
+        statusText: 'Unprocessable Entity',
+        headers: {},
+        config: {} as InternalAxiosRequestConfig,
+      };
+      expect(getErrorMessage(error)).toBe(
+        'username: Username must contain only alphanumeric characters and underscores; password: Password must be at least 8 characters long'
+      );
+    });
+
     it('should fallback to statusText for AxiosError', () => {
       const error = new AxiosError('Network error');
       error.response = {

@@ -103,12 +103,16 @@ function LoginPage() {
                 type="text"
                 autoComplete="username"
                 required
+                minLength={3}
+                pattern="^[A-Za-z0-9_]+$"
+                title="Use at least 3 characters. Letters, numbers, and underscores only."
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className={`appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 ${
                   isLogin ? 'rounded-t-md' : ''
                 } focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm`}
                 placeholder="Username"
+                aria-describedby={!isLogin ? 'username-help' : undefined}
               />
             </div>
             {!isLogin && (
@@ -156,15 +160,25 @@ function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                minLength={isLogin ? undefined : 8}
+                title={isLogin ? undefined : 'Use at least 8 characters.'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={`appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 ${
                   isLogin ? 'rounded-b-md' : 'rounded-b-md'
                 } focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm`}
                 placeholder="Password"
+                aria-describedby={!isLogin ? 'password-help' : undefined}
               />
             </div>
           </div>
+
+          {!isLogin && (
+            <div className="text-xs text-gray-500 space-y-1">
+              <p id="username-help">Usernames can include letters, numbers, or underscores and must be at least 3 characters.</p>
+              <p id="password-help">Passwords must be at least 8 characters long.</p>
+            </div>
+          )}
 
           <div>
             <button
