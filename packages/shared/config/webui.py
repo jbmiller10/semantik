@@ -53,6 +53,7 @@ class WebuiConfig(BaseConfig):
         # Determine document root directory and ensure it exists
         self._document_root: Path | None = None
         self._document_allowed_roots: tuple[Path, ...] = ()
+        self._default_document_mounts: tuple[Path, ...] = ()
         if self.DOCUMENT_ROOT:
             raw_document_root = Path(self.DOCUMENT_ROOT).expanduser()
             raw_document_root.mkdir(parents=True, exist_ok=True)
@@ -66,6 +67,12 @@ class WebuiConfig(BaseConfig):
                     continue
                 extra_roots.append(Path(entry).expanduser().resolve())
         self._document_allowed_roots = tuple(extra_roots)
+
+        default_mounts: list[Path] = []
+        for candidate in (Path("/mnt/docs"),):
+            if candidate.exists():
+                default_mounts.append(candidate.resolve())
+        self._default_document_mounts = tuple(default_mounts)
 
         # JWT Secret Key file path (in the data directory)
         jwt_secret_file = self.data_dir / ".jwt_secret"
@@ -117,11 +124,17 @@ class WebuiConfig(BaseConfig):
     def document_allowed_roots(self) -> tuple[Path, ...]:
         """Additional directories allowed for serving document content."""
 
-        roots: list[Path] = []
+        explicit_roots: list[Path] = []
         if self._document_root is not None:
-            roots.append(self._document_root)
+            explicit_roots.append(self._document_root)
         if self._document_allowed_roots:
-            roots.extend(self._document_allowed_roots)
+            explicit_roots.extend(self._document_allowed_roots)
+
+        roots: list[Path] = []
+        if explicit_roots:
+            roots.extend(explicit_roots)
+        else:
+            roots.extend(self._default_document_mounts)
 
         roots.append(self.loaded_dir.resolve())
 
