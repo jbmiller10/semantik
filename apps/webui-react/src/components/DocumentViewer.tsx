@@ -110,6 +110,16 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
 
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  const updateBlobUrl = (newUrl: string | null) => {
+    if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
+      URL.revokeObjectURL(blobUrlRef.current);
+    }
+
+    blobUrlRef.current = newUrl;
+    setBlobUrl(newUrl);
+  };
 
   // Load document content
   useEffect(() => {
@@ -118,7 +128,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
         setLoading(true);
         setError(null);
         setIsPdf(false);
-        setBlobUrl(null);
+        updateBlobUrl(null);
 
         if (contentRef.current) {
           contentRef.current.innerHTML = '';
@@ -173,7 +183,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // Images - create blob URL
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
+          updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
             contentRef.current.innerHTML = `
@@ -186,7 +196,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // PDFs - create blob URL for PDF.js or fallback display
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
+          updateBlobUrl(objectUrl);
           setIsPdf(true);
         } else if (
           contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
@@ -217,7 +227,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
               console.error('Failed to render DOCX:', docxError);
               // Fallback to download
               const objectUrl = URL.createObjectURL(blob);
-              setBlobUrl(objectUrl);
+              updateBlobUrl(objectUrl);
               contentRef.current.innerHTML = `
                 <div style="text-align: center; padding: 2rem;">
                   <p style="margin-bottom: 1rem;">Unable to preview this Word document.</p>
@@ -232,7 +242,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // Other binary content - provide download link
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
+          updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
             contentRef.current.innerHTML = `
@@ -308,11 +318,12 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   // Cleanup blob URLs
   useEffect(() => {
     return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
-  }, [blobUrl]);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
