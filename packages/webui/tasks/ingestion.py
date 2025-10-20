@@ -173,6 +173,12 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     "name": collection_obj.name,
                     "vector_store_name": collection_obj.vector_store_name,
                     "config": getattr(collection_obj, "config", {}),
+                    "embedding_model": getattr(collection_obj, "embedding_model", None),
+                    "quantization": getattr(collection_obj, "quantization", None),
+                    "chunk_size": getattr(collection_obj, "chunk_size", None),
+                    "chunk_overlap": getattr(collection_obj, "chunk_overlap", None),
+                    "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
+                    "chunking_config": getattr(collection_obj, "chunking_config", None) or {},
                 }
 
                 tasks_ns = _tasks_namespace()
@@ -187,7 +193,13 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             operation, collection, collection_repo, document_repo, updater
                         )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await tasks_ns._process_append_operation(db, updater, operation["id"])
+                        result = await tasks_ns._process_append_operation_impl(
+                            operation,
+                            collection,
+                            collection_repo,
+                            document_repo,
+                            updater,
+                        )
                     elif operation["type"] == OperationType.REINDEX:
                         result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
