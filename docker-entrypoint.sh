@@ -13,8 +13,9 @@ fi
 # Function to run strict environment validation via scripts.validate_env
 run_strict_env_validation() {
     local service=$1
+    local flower_enabled=${2:-true}
 
-    if ! python -m scripts.validate_env --strict; then
+    if ! FLOWER_ENABLED="$flower_enabled" python -m scripts.validate_env --strict; then
         echo "ERROR: Environment validation failed for service '$service'." >&2
         echo "Fix the configuration issues reported above and try again." >&2
         exit 1
@@ -50,7 +51,7 @@ SERVICE=${1:-webui}
 
 case "$SERVICE" in
     webui)
-        run_strict_env_validation "webui"
+        run_strict_env_validation "webui" false
         echo "Starting WebUI service..."
         
         # Wait for Search API to be ready
@@ -82,7 +83,7 @@ case "$SERVICE" in
         ;;
         
     vecpipe)
-        run_strict_env_validation "vecpipe"
+        run_strict_env_validation "vecpipe" false
 
         if [ -z "${QDRANT_HOST:-}" ] || [ -z "${QDRANT_PORT:-}" ]; then
             echo "ERROR: Vecpipe requires both QDRANT_HOST and QDRANT_PORT to be set." >&2
@@ -113,7 +114,7 @@ case "$SERVICE" in
         ;;
         
     worker)
-        run_strict_env_validation "worker"
+        run_strict_env_validation "worker" false
         echo "Starting Celery worker..."
         exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY:-1}"
         ;;

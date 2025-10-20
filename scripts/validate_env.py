@@ -143,16 +143,21 @@ def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
 
     errors: list[str] = []
 
-    # Flower credentials must always be provided explicitly
-    for required_var in ("FLOWER_USERNAME", "FLOWER_PASSWORD"):
-        raw_value = env.get(required_var)
-        if raw_value is None or not raw_value.strip():
-            errors.append(
-                f"{required_var}: Flower credentials must be defined – run the setup wizard to generate secure values."
-            )
+    # Flower credentials make sense only when the Flower service is running
+    wants_flower = env.get("FLOWER_ENABLED", "true").lower() not in {"0", "false", "no"}
+
+    if wants_flower:
+        for required_var in ("FLOWER_USERNAME", "FLOWER_PASSWORD"):
+            raw_value = env.get(required_var)
+            if raw_value is None or not raw_value.strip():
+                errors.append(
+                    f"{required_var}: Flower credentials must be defined – run the setup wizard to generate secure values."
+                )
 
     for rule in PLACEHOLDER_RULES:
         raw_value = env.get(rule.env_var)
+        if rule.env_var in {"FLOWER_USERNAME", "FLOWER_PASSWORD"} and not wants_flower:
+            continue
         if rule.matches(raw_value):
             errors.append(f"{rule.env_var}: {rule.message}")
         elif raw_value:
