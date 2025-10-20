@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 ARG PYTHON_VERSION="3.11"
 ARG NODE_VERSION="20"
 ARG CUDA_VERSION="12.1.0"
