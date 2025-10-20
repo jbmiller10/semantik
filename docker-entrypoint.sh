@@ -15,7 +15,7 @@ run_strict_env_validation() {
     local service=$1
     local flower_enabled=${2:-true}
 
-    if ! FLOWER_ENABLED="$flower_enabled" python -m scripts.validate_env --strict; then
+    if ! FLOWER_ENABLED="$flower_enabled" python /app/scripts/validate_env.py --strict; then
         echo "ERROR: Environment validation failed for service '$service'." >&2
         echo "Fix the configuration issues reported above and try again." >&2
         exit 1
