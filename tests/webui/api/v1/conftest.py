@@ -1,3 +1,3 @@
-"""Fixtures for v1 API tests reuse the v2 setup."""
+"""Reuse the v2 API fixtures for v1 endpoints."""
 
-from tests.webui.api.v2.conftest import *  # noqa: F401,F403
+pytest_plugins = ["tests.webui.api.v2.conftest"]

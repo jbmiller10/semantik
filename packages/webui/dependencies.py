@@ -1,9 +1,10 @@
 """Common FastAPI dependencies for the WebUI API."""
 
+import inspect
 import logging
 import os
 from datetime import UTC, datetime
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Awaitable, Callable, cast
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -208,6 +209,7 @@ async def get_chunking_service_adapter_dependency(
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer_security),
 ) -> dict[str, Any] | None:
     """Retrieve the current user if bearer credentials are supplied."""
@@ -227,7 +229,22 @@ async def get_current_user_optional(
             }
         return None
 
-    return await get_current_user(credentials)
+    override = request.app.dependency_overrides.get(get_current_user)
+
+    if override is None:
+        return await get_current_user(credentials)
+
+    call_target = cast(Callable[..., Any], override)
+
+    try:
+        candidate = call_target(credentials)
+    except TypeError:
+        candidate = call_target()
+
+    if inspect.isawaitable(candidate):
+        return cast(dict[str, Any] | None, await cast(Awaitable[Any], candidate))
+
+    return cast(dict[str, Any] | None, candidate)
 
 
 async def require_admin_or_internal_key(
