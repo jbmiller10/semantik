@@ -89,7 +89,7 @@ async def get_document_content(
 
         # Ensure the resolved path stays within the configured document root when one is set
         allowed_roots = settings.document_allowed_roots
-        if allowed_roots:
+        if settings.should_enforce_document_roots and allowed_roots:
             for root in allowed_roots:
                 try:
                     file_path.relative_to(root)

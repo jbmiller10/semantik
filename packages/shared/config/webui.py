@@ -140,3 +140,15 @@ class WebuiConfig(BaseConfig):
 
         # Preserve order while removing duplicates
         return tuple(dict.fromkeys(roots))
+
+    @property
+    def should_enforce_document_roots(self) -> bool:
+        """Return True when document access must be constrained to known roots."""
+
+        if self._document_root is not None:
+            return True
+        if self._document_allowed_roots:
+            return True
+        if self._default_document_mounts:
+            return True
+        return False
