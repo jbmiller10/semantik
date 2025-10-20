@@ -76,7 +76,7 @@ flowchart LR
     C[Celery Tasks]
   end
   subgraph Vector
-    V[Vecpipe (Embeddings/Search)]
+    V[Vecpipe: Embeddings and Search]
   end
 
   UI -->|HTTP/WebSocket| WebUI
