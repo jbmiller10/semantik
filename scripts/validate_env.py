@@ -12,10 +12,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, MutableMapping, Sequence
-
 
 # ---------------------------------------------------------------------------
 # Placeholder configuration
@@ -77,13 +76,6 @@ PLACEHOLDER_RULES: tuple[PlaceholderRule, ...] = (
     ),
 )
 
-FLOWER_BASIC_AUTH_ENV = "FLOWER_BASIC_AUTH"
-FLOWER_BASIC_AUTH_PLACEHOLDERS = (
-    "admin:admin",
-    "user:password",
-)
-
-
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------
@@ -142,6 +134,14 @@ def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
 
     errors: list[str] = []
 
+    # Flower credentials must always be provided explicitly
+    for required_var in ("FLOWER_USERNAME", "FLOWER_PASSWORD"):
+        raw_value = env.get(required_var)
+        if raw_value is None or not raw_value.strip():
+            errors.append(
+                f"{required_var}: Flower credentials must be defined – run the setup wizard to generate secure values."
+            )
+
     for rule in PLACEHOLDER_RULES:
         raw_value = env.get(rule.env_var)
         if rule.matches(raw_value):
@@ -154,30 +154,6 @@ def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
                 errors.append(f"{rule.env_var}: password is too weak – use at least 12 mixed characters.")
             if rule.env_var == "FLOWER_PASSWORD" and _is_weak_secret(raw_value, minimum_length=12):
                 errors.append(f"{rule.env_var}: password is too weak – use at least 12 mixed characters.")
-
-    # Special handling for FLOWER_BASIC_AUTH
-    basic_auth = env.get(FLOWER_BASIC_AUTH_ENV)
-    if basic_auth:
-        user, sep, password = basic_auth.partition(":")
-        if not sep:
-            errors.append(
-                f"{FLOWER_BASIC_AUTH_ENV}: must be in username:password format; received '{basic_auth}'."
-            )
-        else:
-            if f"{user}:{password}".lower() in FLOWER_BASIC_AUTH_PLACEHOLDERS:
-                errors.append(
-                    f"{FLOWER_BASIC_AUTH_ENV}: do not use default credentials ('{basic_auth}')."
-                )
-            env_user = env.get("FLOWER_USERNAME")
-            env_password = env.get("FLOWER_PASSWORD")
-            if env_user and env_user != user:
-                errors.append(
-                    f"FLOWER_USERNAME '{env_user}' does not match username from {FLOWER_BASIC_AUTH_ENV}."
-                )
-            if env_password and env_password != password:
-                errors.append(
-                    f"FLOWER_PASSWORD does not match password from {FLOWER_BASIC_AUTH_ENV}."
-                )
 
     return errors
 
@@ -241,4 +217,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
-

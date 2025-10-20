@@ -30,9 +30,13 @@ from packages.shared.chunking.application.dto.requests import ChunkingStrategy a
 from packages.shared.chunking.domain.exceptions import ChunkSizeViolationError
 from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
-from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError, DocumentTooLargeError
+from packages.shared.chunking.infrastructure.exceptions import (
+    ChunkingStrategyError,
+    DocumentTooLargeError,
+    ResourceNotFoundError,
+    ValidationError,
+)
 from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
-from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError, ValidationError
 from packages.shared.database.models import Operation
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository

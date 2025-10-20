@@ -6,7 +6,7 @@ the new collection-centric architecture.
 """
 
 import logging
-from typing import Any, Type
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -34,7 +34,7 @@ from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
 
-SharedAccessDeniedError: Type[BaseException] | None = None
+SharedAccessDeniedError: type[BaseException] | None = None
 try:  # pragma: no cover - shared module may not be installed in all environments
     from shared.database.exceptions import AccessDeniedError as _SharedAccessDeniedError
 except Exception:  # pragma: no cover
@@ -43,7 +43,7 @@ else:
     SharedAccessDeniedError = _SharedAccessDeniedError
 
 if SharedAccessDeniedError is not None and SharedAccessDeniedError is not AccessDeniedError:
-    _ACCESS_DENIED_ERRORS: tuple[Type[BaseException], ...] = (AccessDeniedError, SharedAccessDeniedError)
+    _ACCESS_DENIED_ERRORS: tuple[type[BaseException], ...] = (AccessDeniedError, SharedAccessDeniedError)
 else:
     _ACCESS_DENIED_ERRORS = (AccessDeniedError,)
 

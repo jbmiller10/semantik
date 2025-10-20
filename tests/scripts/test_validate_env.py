@@ -1,11 +1,38 @@
 from __future__ import annotations
 
 import pathlib
-from typing import Sequence
+from collections.abc import Sequence
+from typing import Callable
 
 import pytest
 
 from scripts import validate_env
+
+
+@pytest.fixture
+def secure_env(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, str] | None], None]:
+    """Provide a helper that seeds strong defaults for secrets before validation tests."""
+
+    def apply(overrides: dict[str, str] | None = None) -> None:
+        base_values: dict[str, str] = {
+            "JWT_SECRET_KEY": "Sup3rStrongJWTSecretKey!123",
+            "POSTGRES_PASSWORD": "Sup3rStrongDBPass!123",
+            "INTERNAL_API_KEY": "internal-api-key-1234-STRONG!",
+        }
+        if overrides:
+            base_values.update(overrides)
+
+        for key, value in base_values.items():
+            monkeypatch.setenv(key, value)
+
+        # Ensure Flower-related env vars start clean unless explicitly overridden
+        if not overrides or "FLOWER_USERNAME" not in overrides:
+            monkeypatch.delenv("FLOWER_USERNAME", raising=False)
+        if not overrides or "FLOWER_PASSWORD" not in overrides:
+            monkeypatch.delenv("FLOWER_PASSWORD", raising=False)
+
+    apply(None)
+    return apply
 
 
 def run_main(args: Sequence[str]) -> int:
@@ -37,15 +64,15 @@ def test_detect_placeholder_errors_for_known_values() -> None:
         "INTERNAL_API_KEY": "your-internal-api-key-here",
         "FLOWER_USERNAME": "admin",
         "FLOWER_PASSWORD": "admin",
-        "FLOWER_BASIC_AUTH": "admin:admin",
     }
 
     errors = validate_env.detect_placeholder_issues(env)
-    assert len(errors) >= 6
+    assert len(errors) >= 5
     summary = " ".join(errors)
     assert "JWT_SECRET_KEY" in summary
     assert "POSTGRES_PASSWORD" in summary
-    assert "FLOWER_BASIC_AUTH" in summary
+    assert "FLOWER_USERNAME" in summary
+    assert "FLOWER_PASSWORD" in summary
 
 
 def test_detect_placeholder_allows_secure_values() -> None:
@@ -55,21 +82,18 @@ def test_detect_placeholder_allows_secure_values() -> None:
         "INTERNAL_API_KEY": "internal-key-123456789",
         "FLOWER_USERNAME": "floweruser",
         "FLOWER_PASSWORD": "Sup3rSecret!",
-        "FLOWER_BASIC_AUTH": "floweruser:Sup3rSecret!",
     }
 
     errors = validate_env.detect_placeholder_issues(env)
     assert errors == []
 
 
-def test_flow_basic_auth_mismatch_detected() -> None:
-    env = {
-        "FLOWER_USERNAME": "alice",
-        "FLOWER_PASSWORD": "Sup3rSecret!",
-        "FLOWER_BASIC_AUTH": "bob:Sup3rSecret!",
-    }
-    errors = validate_env.detect_placeholder_issues(env)
-    assert any("FLOWER_USERNAME" in msg for msg in errors)
+def test_flow_credentials_missing_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FLOWER_USERNAME", raising=False)
+    monkeypatch.delenv("FLOWER_PASSWORD", raising=False)
+
+    code = run_main(["--strict"])
+    assert code == 1
 
 
 def test_main_with_missing_file_returns_error(tmp_path: pathlib.Path) -> None:
@@ -90,7 +114,6 @@ def test_main_reports_errors_for_placeholder_file(
 def test_main_returns_zero_when_clean(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET_KEY", "A1b!2c#3d$4e%5f^")
     monkeypatch.setenv("POSTGRES_PASSWORD", "Sup3rSecret12!")
-    monkeypatch.delenv("FLOWER_BASIC_AUTH", raising=False)
     monkeypatch.delenv("FLOWER_USERNAME", raising=False)
     monkeypatch.delenv("FLOWER_PASSWORD", raising=False)
     monkeypatch.delenv("INTERNAL_API_KEY", raising=False)
@@ -108,3 +131,47 @@ def test_is_weak_secret_helpers() -> None:
     assert validate_env._is_weak_secret("short", minimum_length=6)
     assert validate_env._is_weak_secret("aaaaaaaaaaaaaa")
     assert not validate_env._is_weak_secret("Abcdef1234!@#$xx")
+
+
+def test_flower_credentials_missing_fails(secure_env: Callable[[dict[str, str] | None], None]) -> None:
+    secure_env()
+
+    code = run_main(["--strict"])
+    assert code == 1
+
+
+def test_flower_admin_credentials_rejected(
+    secure_env: Callable[[dict[str, str] | None], None]
+) -> None:
+    secure_env(
+        overrides={
+            "FLOWER_USERNAME": "admin",
+            "FLOWER_PASSWORD": "admin",
+        }
+    )
+
+    code = run_main(["--strict"])
+    assert code == 1
+
+
+def test_flower_strong_credentials_pass(
+    secure_env: Callable[[dict[str, str] | None], None]
+) -> None:
+    secure_env(
+        overrides={
+            "FLOWER_USERNAME": "flower_ops",
+            "FLOWER_PASSWORD": "S3cureFlowerPwd!",
+        }
+    )
+
+    code = run_main(["--strict"])
+    assert code == 0
+
+
+def test_flower_basic_auth_only_is_insufficient(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FLOWER_USERNAME", raising=False)
+    monkeypatch.delenv("FLOWER_PASSWORD", raising=False)
+    monkeypatch.setenv("FLOWER_BASIC_AUTH", "inspector:S3cureFlowerPwd!")
+
+    code = run_main(["--strict"])
+    assert code == 1
