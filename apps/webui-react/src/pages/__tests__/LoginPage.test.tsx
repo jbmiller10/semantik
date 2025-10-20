@@ -167,7 +167,7 @@ describe('LoginPage', () => {
     await user.type(screen.getByPlaceholderText('Username'), 'newuser')
     await user.type(screen.getByPlaceholderText('Email address'), 'new@example.com')
     await user.type(screen.getByPlaceholderText('Full Name (optional)'), 'New User')
-    await user.type(screen.getByPlaceholderText('Password'), 'newpass')
+    await user.type(screen.getByPlaceholderText('Password'), 'newpass1')
     
     // Submit form
     await user.click(screen.getByRole('button', { name: 'Register' }))
