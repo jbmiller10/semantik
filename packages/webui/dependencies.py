@@ -3,8 +3,9 @@
 import inspect
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, Awaitable, Callable, cast
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
