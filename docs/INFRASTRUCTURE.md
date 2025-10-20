@@ -94,7 +94,7 @@
 - **Purpose**: Task monitoring dashboard
 - **Technology**: Flower (Celery monitoring)
 - **Profile**: backend
-- **Access**: http://localhost:5555 (admin:admin)
+- **Access**: http://localhost:5555 (authenticate with `FLOWER_USERNAME`/`FLOWER_PASSWORD` from `.env`; rotate via `make wizard`)
 
 ### Data Layer Services
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Type
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -11,7 +10,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 
 from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 
-SharedAccessDeniedError: Type[BaseException] | None = None
+SharedAccessDeniedError: type[BaseException] | None = None
 try:  # pragma: no cover - shared may not be importable outside runtime
     from shared.database.exceptions import AccessDeniedError as _SharedAccessDeniedError
 except Exception:  # pragma: no cover

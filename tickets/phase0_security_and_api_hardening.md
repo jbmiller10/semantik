@@ -21,7 +21,7 @@ The codebase uses FastAPI with SQLAlchemy, async services, and a Docker-driven d
 ### 2. Default Secret Enforcement Across Services
 - Extend `docker-entrypoint.sh` so **every** service (webui, vecpipe, worker, flower) exits early if `JWT_SECRET_KEY` or `INTERNAL_API_KEY` match known placeholders (see `.env.docker.example`).
 - Guard against `POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD` during startup. Provide a clear error message guiding users to rerun `make docker-up` or regenerate secrets via `wizard.sh`.
-- Ensure Flower credentials are never `admin:admin`. Update `docker-compose.yml` and the wizard so unique credentials are generated/stored via env vars (e.g., `FLOWER_USERNAME`, `FLOWER_PASSWORD`).
+- Ensure Flower credentials are provisioned via `FLOWER_USERNAME`/`FLOWER_PASSWORD` and validation fails for placeholders (e.g., `admin`). Update the wizard/docker configs to generate rotate-able values and document the `make wizard` regeneration path.
 - Add `.env.example` (root) and `packages/webui/.env.example` showing compliant values and linking to the Makefile wizard.
 
 ### 3. Accurate Database Size Metric

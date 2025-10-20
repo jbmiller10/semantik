@@ -41,6 +41,8 @@ Semantik consists of the following services:
 make wizard
 ```
 
+`scripts/validate_env.py` enforces that `FLOWER_USERNAME` and `FLOWER_PASSWORD` are present and not left as placeholders (for example, `admin`). The interactive setup (`make wizard`) generates compliant values automatically and can be re-run whenever you need to rotate the Flower credentials.
+
 The wizard will:
 - Detect GPU availability
 - Generate secure passwords
@@ -371,15 +373,14 @@ server {
 #### 1. Generate Secure Secrets
 
 ```bash
-# Generate secrets
+# Generate secrets (wizard will do this automatically in most cases)
 JWT_SECRET=$(openssl rand -hex 32)
 POSTGRES_PASSWORD=$(openssl rand -hex 32)
-FLOWER_PASSWORD=$(openssl rand -hex 16)
-
-# Store in Docker secrets
-echo "$JWT_SECRET" | docker secret create jwt_secret -
-echo "$POSTGRES_PASSWORD" | docker secret create postgres_password -
+FLOWER_USERNAME="flower_$(openssl rand -hex 4)"
+FLOWER_PASSWORD=$(openssl rand -base64 24)
 ```
+
+If you keep credentials in `.env`, update `FLOWER_USERNAME` and `FLOWER_PASSWORD` to match these values. Runtime validation fails when either credential is missing or left at placeholders (for example, `admin`). Re-run `make wizard` whenever you need to rotate the Flower credentials. (If you prefer Docker secrets, make sure your Compose overrides export the values back into these environment variables before starting the containers.)
 
 #### 2. Network Isolation
 
