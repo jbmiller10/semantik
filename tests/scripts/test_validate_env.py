@@ -102,9 +102,7 @@ def test_main_with_missing_file_returns_error(tmp_path: pathlib.Path) -> None:
     assert run_main(["--env-file", str(tmp_path / "missing.env")]) == 2
 
 
-def test_main_reports_errors_for_placeholder_file(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_main_reports_errors_for_placeholder_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_file = tmp_path / "env"
     env_file.write_text("JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY\n", encoding="utf-8")
     monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
@@ -144,9 +142,7 @@ def test_flower_credentials_missing_fails(secure_env: Callable[[dict[str, str] |
     assert code == 1
 
 
-def test_flower_admin_credentials_rejected(
-    secure_env: Callable[[dict[str, str] | None], None]
-) -> None:
+def test_flower_admin_credentials_rejected(secure_env: Callable[[dict[str, str] | None], None]) -> None:
     secure_env(
         overrides={
             "FLOWER_USERNAME": "admin",
@@ -158,9 +154,7 @@ def test_flower_admin_credentials_rejected(
     assert code == 1
 
 
-def test_flower_strong_credentials_pass(
-    secure_env: Callable[[dict[str, str] | None], None]
-) -> None:
+def test_flower_strong_credentials_pass(secure_env: Callable[[dict[str, str] | None], None]) -> None:
     secure_env(
         overrides={
             "FLOWER_USERNAME": "flower_ops",
