@@ -1,6 +1,6 @@
 🚨🚨🚨
 
-** Dev's Note:**  Semantik is currently in a **pre-release state**, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment. 
+Semantik is currently in a **pre-release state**, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment. 
 
 🚨🚨🚨
 
