@@ -64,10 +64,107 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
     chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
 
-    op = (await db.execute(None)).scalar_one()
-    source_collection = (await db.execute(None)).scalar_one_or_none()
-    staging_collection = (await db.execute(None)).scalar_one_or_none()
-    docs = (await db.execute(None)).scalars().all()
+    # Replace placeholder executes with real queries while preserving
+    # the number/order of db.execute(...) calls that tests expect.
+    from shared.database.models import Collection as _Collection
+    from shared.database.models import Document as _Document
+    from shared.database.models import Operation as _Operation
+    from sqlalchemy import select
+
+    # Fetch the operation using whichever identifier the caller supplied
+    op_lookup = select(_Operation)
+    try:
+        op_lookup = op_lookup.where(_Operation.id == int(_operation_id))
+    except (TypeError, ValueError):
+        op_lookup = op_lookup.where(_Operation.uuid == _operation_id)
+
+    op = (await db.execute(op_lookup)).scalar_one()
+
+    # Source collection is the operation's collection
+    source_collection = (
+        await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
+    ).scalar_one_or_none()
+
+    def _extract_staging_collection_name(value: Any) -> str | None:
+        """Best-effort extraction of the staging collection identifier."""
+        if not value:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return text
+            return _extract_staging_collection_name(parsed)
+        if isinstance(value, dict):
+            for key in (
+                "collection_name",
+                "staging_collection_name",
+                "vector_collection_id",
+                "vector_store_name",
+            ):
+                candidate = value.get(key)
+                if isinstance(candidate, str) and candidate:
+                    return candidate
+            for nested_key in ("staging_collection", "staging", "info"):
+                nested = value.get(nested_key)
+                name = _extract_staging_collection_name(nested)
+                if name:
+                    return name
+            for nested_value in value.values():
+                if isinstance(nested_value, (dict, list, tuple)):
+                    name = _extract_staging_collection_name(nested_value)
+                    if name:
+                        return name
+            return None
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                name = _extract_staging_collection_name(item)
+                if name:
+                    return name
+        return None
+
+    op_config = _get(op, "config", {}) or {}
+    staging_name = (
+        _extract_staging_collection_name(op_config)
+        or _extract_staging_collection_name(_get(op, "meta", None))
+        or _extract_staging_collection_name(_get(source_collection, "qdrant_staging", None))
+    )
+
+    if not staging_name:
+        raise RuntimeError("Missing staging collection metadata; refusing to reindex against the primary collection")
+
+    staging_collection = (
+        await db.execute(select(_Collection).where(_Collection.vector_store_name == staging_name))
+    ).scalar_one_or_none()
+
+    staging_vector_store_name = None
+    if staging_collection is not None:
+        staging_vector_store_name = _get(staging_collection, "vector_collection_id") or _get(
+            staging_collection, "vector_store_name"
+        )
+
+    if not staging_vector_store_name:
+        staging_vector_store_name = staging_name
+
+    if not staging_vector_store_name:
+        raise RuntimeError(
+            "Resolved staging metadata is missing a vector store identifier; refusing to target the primary collection"
+        )
+
+    primary_identifiers = {
+        _get(source_collection, "vector_collection_id"),
+        _get(source_collection, "vector_store_name"),
+    }
+    if staging_vector_store_name in {value for value in primary_identifiers if value}:
+        raise RuntimeError(
+            "Resolved staging identifier matches the primary collection; refusing to bypass the blue/green workflow"
+        )
+
+    # Documents associated to source collection (fourth execute)
+    docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
 
     collection = {
         "id": _get(source_collection, "id"),
@@ -78,8 +175,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         "chunk_overlap": _get(source_collection, "chunk_overlap", 200),
         "embedding_model": _get(source_collection, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
         "quantization": _get(source_collection, "quantization", "float16"),
-        "vector_store_name": _get(staging_collection, "vector_collection_id")
-        or _get(staging_collection, "vector_store_name"),
+        "vector_store_name": staging_vector_store_name,
     }
 
     new_cfg = _get(op, "config", {}) or {}
@@ -257,6 +353,27 @@ async def _process_reindex_operation_impl(
 
         staging_info = await tasks_ns.reindex_handler(collection, new_config, qdrant_manager_instance)
         staging_collection_name = staging_info["collection_name"]
+
+        try:
+            from shared.database.collection_metadata import store_collection_metadata
+
+            store_collection_metadata(
+                qdrant=qdrant_client,
+                collection_name=staging_collection_name,
+                model_name=new_config.get(
+                    "model_name",
+                    collection.get("config", {}).get("model_name", collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")),
+                ),
+                quantization=new_config.get(
+                    "quantization", collection.get("config", {}).get("quantization", collection.get("quantization", "float32"))
+                ),
+                vector_dim=staging_info.get("vector_dim"),
+                chunk_size=new_config.get("chunk_size", collection.get("config", {}).get("chunk_size")),
+                chunk_overlap=new_config.get("chunk_overlap", collection.get("config", {}).get("chunk_overlap")),
+                instruction=new_config.get("instruction", collection.get("config", {}).get("instruction")),
+            )
+        except Exception as exc:
+            logger.warning("Failed to store staging collection metadata: %s", exc)
 
         await collection_repo.update(
             collection["id"],

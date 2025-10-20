@@ -173,12 +173,6 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     "name": collection_obj.name,
                     "vector_store_name": collection_obj.vector_store_name,
                     "config": getattr(collection_obj, "config", {}),
-                    "embedding_model": getattr(collection_obj, "embedding_model", None),
-                    "quantization": getattr(collection_obj, "quantization", None),
-                    "chunk_size": getattr(collection_obj, "chunk_size", None),
-                    "chunk_overlap": getattr(collection_obj, "chunk_overlap", None),
-                    "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
-                    "chunking_config": getattr(collection_obj, "chunking_config", None) or {},
                 }
 
                 tasks_ns = _tasks_namespace()
@@ -193,13 +187,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             operation, collection, collection_repo, document_repo, updater
                         )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await tasks_ns._process_append_operation_impl(
-                            operation,
-                            collection,
-                            collection_repo,
-                            document_repo,
-                            updater,
-                        )
+                        result = await tasks_ns._process_append_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REINDEX:
                         result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
@@ -245,7 +233,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         doc_stats["total_size_bytes"],
                     )
                 else:
-                    new_status = CollectionStatus.PARTIALLY_READY
+                    new_status = CollectionStatus.DEGRADED
                     await collection_repo.update_status(collection["id"], new_status)
 
                 if old_status != new_status:
@@ -343,9 +331,49 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
     chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
 
-    op = (await db.execute(None)).scalar_one()
-    collection_obj = (await db.execute(None)).scalar_one_or_none()
-    docs = (await db.execute(None)).scalars().all()
+    # Replace placeholder executes with real queries
+    from shared.database.models import Collection as _Collection
+    from shared.database.models import Document as _Document
+    from shared.database.models import Operation as _Operation
+    from sqlalchemy import select
+
+    # Fetch the operation using whichever identifier the caller supplied
+    op_lookup = select(_Operation)
+    try:
+        op_lookup = op_lookup.where(_Operation.id == int(_operation_id))
+    except (TypeError, ValueError):
+        op_lookup = op_lookup.where(_Operation.uuid == _operation_id)
+
+    op = (await db.execute(op_lookup)).scalar_one()
+
+    # Normalize config for downstream lookups (MagicMock instances expose .config but not .get reliably)
+    op_config = _get(op, "config", {}) or {}
+    if not isinstance(op_config, dict):
+        op_config = getattr(op, "config", {}) or {}
+    source_path = op_config.get("source_path")
+
+    # Fetch the parent collection
+    collection_obj = (
+        await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
+    ).scalar_one_or_none()
+
+    # Fetch only unprocessed documents for this collection
+    unprocessed_query = select(_Document).where(
+        _Document.collection_id == op.collection_id,
+        _Document.chunk_count == 0,
+    )
+    candidate_docs = (await db.execute(unprocessed_query)).scalars().all()
+
+    def _should_process(doc: Any) -> bool:
+        if _get(doc, "chunk_count", 0) not in (0, None):
+            return False
+        if source_path:
+            doc_path = _get(doc, "file_path", "") or ""
+            normalized_source = source_path.rstrip("/")
+            return doc_path.startswith(normalized_source)
+        return True
+
+    docs = [doc for doc in candidate_docs if _should_process(doc)]
 
     collection = {
         "id": _get(collection_obj, "id"),
@@ -489,15 +517,14 @@ async def _process_index_operation(
 
         try:
             store_collection_metadata(
-                qdrant_client,
-                vector_store_name,
-                {
-                    "model_name": actual_model_name,
-                    "quantization": collection.get("quantization", "float16"),
-                    "instruction": config.get("instruction"),
-                    "dimension": vector_dim,
-                    "created_at": datetime.now(UTC).isoformat(),
-                },
+                qdrant=qdrant_client,
+                collection_name=vector_store_name,
+                model_name=actual_model_name,
+                quantization=collection.get("quantization", "float16"),
+                vector_dim=vector_dim,
+                chunk_size=config.get("chunk_size"),
+                chunk_overlap=config.get("chunk_overlap"),
+                instruction=config.get("instruction"),
             )
         except Exception as exc:
             logger.warning("Failed to store collection metadata: %s", exc)
@@ -1150,13 +1177,13 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                     if collection_obj.status != CollectionStatus.ERROR:
                         await collection_repo.update_status(
                             collection_obj.uuid,
-                            CollectionStatus.PARTIALLY_READY,
+                            CollectionStatus.DEGRADED,
                             status_message=f"Append operation failed: {sanitized_error}",
                         )
                 elif operation_type == OperationType.REMOVE_SOURCE:
                     await collection_repo.update_status(
                         collection_obj.id,
-                        CollectionStatus.PARTIALLY_READY,
+                        CollectionStatus.DEGRADED,
                         status_message=f"Remove source operation failed: {sanitized_error}",
                     )
 
