@@ -325,7 +325,7 @@ async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> Chunk
 
 async def get_chunking_service(
     db: AsyncSession = Depends(get_db),
-) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
+) -> ChunkingService | ChunkingServiceAdapter:
     """FastAPI dependency for legacy ChunkingService consumers."""
 
     return await create_chunking_service(db)

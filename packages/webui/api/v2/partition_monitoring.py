@@ -17,7 +17,7 @@ from packages.webui.services.partition_monitoring_service import PartitionMonito
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/api/v2/partitions",
+    prefix="/v2/partitions",
     tags=["partition-monitoring"],
 )
 

@@ -6,15 +6,15 @@ import os
 import platform
 import re
 import secrets
-import shutil
 import string
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 from textwrap import dedent
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
 import questionary

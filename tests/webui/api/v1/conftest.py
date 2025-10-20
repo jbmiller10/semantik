@@ -1,11 +1,3 @@
-"""Reuse the v2 API fixtures for v1 endpoints without pytest_plugins."""
+"""Fixtures for v1 API tests reuse the v2 setup."""
 
-from tests.webui.api.v2.conftest import (
-    _reset_redis_manager as reset_redis_manager,
-)
-from tests.webui.api.v2.conftest import (
-    api_auth_headers,
-    api_client,
-)
-
-__all__ = ["api_auth_headers", "api_client", "reset_redis_manager"]
+from tests.webui.api.v2.conftest import *  # noqa: F401,F403

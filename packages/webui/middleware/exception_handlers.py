@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.status import HTTP_403_FORBIDDEN
 
 from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 
-from .correlation import get_or_generate_correlation_id
-
-if TYPE_CHECKING:
-    from fastapi import FastAPI, Request
-
-SharedAccessDeniedError: type[Exception] | None = None
+SharedAccessDeniedError: type[BaseException] | None = None
 try:  # pragma: no cover - shared may not be importable outside runtime
     from shared.database.exceptions import AccessDeniedError as _SharedAccessDeniedError
 except Exception:  # pragma: no cover
     _SharedAccessDeniedError = None
 else:
     SharedAccessDeniedError = _SharedAccessDeniedError
+
+from .correlation import get_or_generate_correlation_id
 
 logger = logging.getLogger(__name__)
 

@@ -156,9 +156,8 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
 async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
     # Check if auth is disabled for development
-    if settings.DISABLE_AUTH and credentials is None:
-        # Return a dummy user for development when auth is disabled and no credentials were provided
-        now = datetime.now(UTC).isoformat()
+    if settings.DISABLE_AUTH:
+        # Return a dummy user for development when auth is disabled
         return {
             "id": 0,
             "username": "dev_user",
@@ -166,11 +165,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             "full_name": "Development User",
             "is_active": True,
             "is_superuser": True,
-            "created_at": now,
-            "last_login": now,
+            "created_at": datetime.now(UTC).isoformat(),
+            "last_login": datetime.now(UTC).isoformat(),
         }
 
-    if credentials is None:
+    if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",

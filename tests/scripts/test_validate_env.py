@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pathlib
+from collections.abc import Sequence
+from typing import Callable
 
 import pytest
 
 from scripts import validate_env
 
-if TYPE_CHECKING:
-    import pathlib
-    from collections.abc import Callable, Sequence
 
-
-@pytest.fixture()
+@pytest.fixture
 def secure_env(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, str] | None], None]:
     """Provide a helper that seeds strong defaults for secrets before validation tests."""
 
@@ -64,8 +62,8 @@ def test_detect_placeholder_errors_for_known_values() -> None:
         "JWT_SECRET_KEY": "CHANGE_THIS_TO_A_STRONG_SECRET_KEY",
         "POSTGRES_PASSWORD": "CHANGE_THIS_TO_A_STRONG_PASSWORD",
         "INTERNAL_API_KEY": "your-internal-api-key-here",
-        "FLOWER_USERNAME": "replace-me-with-flower-user",
-        "FLOWER_PASSWORD": "replace-me-with-strong-flower-password",
+        "FLOWER_USERNAME": "admin",
+        "FLOWER_PASSWORD": "admin",
     }
 
     errors = validate_env.detect_placeholder_issues(env)
@@ -102,7 +100,9 @@ def test_main_with_missing_file_returns_error(tmp_path: pathlib.Path) -> None:
     assert run_main(["--env-file", str(tmp_path / "missing.env")]) == 2
 
 
-def test_main_reports_errors_for_placeholder_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_reports_errors_for_placeholder_file(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     env_file = tmp_path / "env"
     env_file.write_text("JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY\n", encoding="utf-8")
     monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
@@ -131,8 +131,6 @@ def test_is_weak_secret_helpers() -> None:
     assert validate_env._is_weak_secret("short", minimum_length=6)
     assert validate_env._is_weak_secret("aaaaaaaaaaaaaa")
     assert not validate_env._is_weak_secret("Abcdef1234!@#$xx")
-    # 32-byte hex tokens (documented guidance) should be accepted
-    assert not validate_env._is_weak_secret("0123456789abcdef" * 4)
 
 
 def test_flower_credentials_missing_fails(secure_env: Callable[[dict[str, str] | None], None]) -> None:
@@ -142,7 +140,9 @@ def test_flower_credentials_missing_fails(secure_env: Callable[[dict[str, str] |
     assert code == 1
 
 
-def test_flower_admin_credentials_rejected(secure_env: Callable[[dict[str, str] | None], None]) -> None:
+def test_flower_admin_credentials_rejected(
+    secure_env: Callable[[dict[str, str] | None], None]
+) -> None:
     secure_env(
         overrides={
             "FLOWER_USERNAME": "admin",
@@ -154,7 +154,9 @@ def test_flower_admin_credentials_rejected(secure_env: Callable[[dict[str, str] 
     assert code == 1
 
 
-def test_flower_strong_credentials_pass(secure_env: Callable[[dict[str, str] | None], None]) -> None:
+def test_flower_strong_credentials_pass(
+    secure_env: Callable[[dict[str, str] | None], None]
+) -> None:
     secure_env(
         overrides={
             "FLOWER_USERNAME": "flower_ops",

@@ -3,7 +3,7 @@
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,9 +24,6 @@ from packages.webui.services.chunking_config_builder import ChunkingConfigBuilde
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 from packages.webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
 
-if TYPE_CHECKING:
-    from qdrant_client import QdrantClient
-
 logger = logging.getLogger(__name__)
 
 # Configuration constants
@@ -40,7 +37,7 @@ qdrant_manager = _legacy_qdrant_manager
 class _LightweightQdrantManager:
     """Minimal adapter that mirrors the list/delete surface of QdrantManager."""
 
-    def __init__(self, client: "QdrantClient") -> None:
+    def __init__(self, client):
         self.client = client
 
     def list_collections(self) -> list[str]:  # pragma: no cover - thin wrapper
@@ -57,7 +54,7 @@ class CollectionService:
         collection_repo: CollectionRepository,
         operation_repo: OperationRepository,
         document_repo: DocumentRepository,
-        qdrant_manager: QdrantManager | _LightweightQdrantManager | None,
+        qdrant_manager: QdrantManager | None,
     ):
         """Initialize the collection service."""
         self.db_session = db_session
@@ -630,13 +627,11 @@ class CollectionService:
 
         new_vector_store_name: str | None = None
         old_vector_store_name = getattr(collection, "vector_store_name", None)
-        qdrant_manager_for_rename: QdrantManager | None = None
+        qdrant_manager_for_rename: QdrantManager | _LightweightQdrantManager | None = None
         if requires_qdrant_sync:
-            manager = self._ensure_qdrant_manager()
-            if manager is None or not hasattr(manager, "rename_collection"):
+            qdrant_manager_for_rename = self._ensure_qdrant_manager()
+            if qdrant_manager_for_rename is None or not hasattr(qdrant_manager_for_rename, "rename_collection"):
                 raise RuntimeError("Qdrant manager is not available to rename collection")
-            # After hasattr check, we know this is a QdrantManager, not _LightweightQdrantManager
-            qdrant_manager_for_rename = cast(QdrantManager, manager)
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name
 
