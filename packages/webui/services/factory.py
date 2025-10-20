@@ -14,9 +14,15 @@ from packages.shared.managers import QdrantManager
 from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 from .chunking.adapter import ChunkingServiceAdapter
-from .chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
-from .chunking.container import get_redis_manager as container_get_redis_manager
-from .chunking.container import resolve_api_chunking_dependency
+from .chunking.container import (
+    get_chunking_orchestrator as container_get_chunking_orchestrator,
+)
+from .chunking.container import (
+    get_redis_manager as container_get_redis_manager,
+)
+from .chunking.container import (
+    resolve_api_chunking_dependency,
+)
 from .chunking.orchestrator import ChunkingOrchestrator
 from .chunking_service import ChunkingService
 from .collection_service import CollectionService
