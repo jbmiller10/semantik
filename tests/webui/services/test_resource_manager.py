@@ -1,7 +1,8 @@
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
+
 from packages.shared.managers import QdrantCollectionNotFoundError
 from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
 
