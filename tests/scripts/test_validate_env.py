@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import pathlib
-from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
 import pytest
 
 from scripts import validate_env
+
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import Callable, Sequence
 
 
 @pytest.fixture()
@@ -130,6 +133,8 @@ def test_is_weak_secret_helpers() -> None:
     assert validate_env._is_weak_secret("short", minimum_length=6)
     assert validate_env._is_weak_secret("aaaaaaaaaaaaaa")
     assert not validate_env._is_weak_secret("Abcdef1234!@#$xx")
+    # 32-byte hex tokens (documented guidance) should be accepted
+    assert not validate_env._is_weak_secret("0123456789abcdef" * 4)
 
 
 def test_flower_credentials_missing_fails(secure_env: Callable[[dict[str, str] | None], None]) -> None:

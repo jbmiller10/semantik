@@ -260,17 +260,7 @@ class QdrantManager:
                         raise QdrantCollectionNotFoundError(collection_name) from exc
                     raise
 
-                stats: Any | None = None
-                try:
-                    stats = self.client.get_collection_stats(collection_name)
-                except UnexpectedResponse as exc:
-                    if getattr(exc, "status_code", None) == 404:
-                        raise QdrantCollectionNotFoundError(collection_name) from exc
-                    logger.warning("Failed to fetch stats for %s: %s", collection_name, exc)
-                except Exception as exc:  # pragma: no cover - defensive logging
-                    logger.warning("Unexpected error fetching stats for %s: %s", collection_name, exc)
-
-            return self._normalize_usage_payload(info, stats)
+            return self._normalize_usage_payload(info, None)
 
         return await loop.run_in_executor(None, _fetch_usage)
 
