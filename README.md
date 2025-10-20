@@ -42,23 +42,9 @@ Private, self‑hosted semantic search that fits on your own hardware. Designed 
 - Worker (`packages/webui` Celery): ingestion/chunking/reindex orchestration
 - Infra: Postgres (state), Redis (broker/results + progress streams), Qdrant (vectors)
 
-Data flow (summary):
+Data flow :
 1) API request → 2) DB operation row → 3) Celery task → 4) extract + chunk → 5) embed via vecpipe → 6) upsert to Qdrant → 7) progress via Redis/WebSocket → 8) status persisted.
 
-### Design Notes
-- Commit‑before‑dispatch task pattern eliminates operation/task race conditions
-- Partition‑aware Postgres schema with helper‑computed partition keys
-- Scalable WebSocket manager suited for horizontal scaling
-- Chunking tasks include circuit breaker, DLQ, and resource limits
-- Metrics and health checks across services
-
-### Security Snapshot
-- JWT auth with rate limiting (SlowAPI) and validated CORS
-- CSP headers enabled at the API layer
-- Internal API key for service‑to‑service calls
-- Data stays local by default (no external model calls)
-
-### Architecture Diagram (Mermaid)
 ```mermaid
 flowchart LR
   subgraph Client
@@ -88,6 +74,20 @@ flowchart LR
   C -->|embed/search| V
   V <--> Q
 ```
+
+
+### Design Notes
+- Commit‑before‑dispatch task pattern eliminates operation/task race conditions
+- Partition‑aware Postgres schema with helper‑computed partition keys
+- Scalable WebSocket manager suited for horizontal scaling
+- Chunking tasks include circuit breaker, DLQ, and resource limits
+- Metrics and health checks across services
+
+### Security Snapshot
+- JWT auth with rate limiting (SlowAPI) and validated CORS
+- CSP headers enabled at the API layer
+- Internal API key for service‑to‑service calls
+- Data stays local by default (no external model calls)
 
 ## Quickstart (Docker)
 Prereqs: Docker + Compose; NVIDIA runtime for GPU.
