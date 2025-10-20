@@ -114,10 +114,9 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 if name:
                     return name
             for nested_value in value.values():
-                if isinstance(nested_value, (dict, list, tuple)):
-                    name = _extract_staging_collection_name(nested_value)
-                    if name:
-                        return name
+                name = _extract_staging_collection_name(nested_value)
+                if name:
+                    return name
             return None
         if isinstance(value, (list, tuple)):
             for item in value:
@@ -139,32 +138,19 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     staging_collection = (
         await db.execute(select(_Collection).where(_Collection.vector_store_name == staging_name))
     ).scalar_one_or_none()
-
-    staging_vector_store_name = None
-    if staging_collection is not None:
-        staging_vector_store_name = _get(staging_collection, "vector_collection_id") or _get(
-            staging_collection, "vector_store_name"
-        )
-
-    if not staging_vector_store_name:
-        staging_vector_store_name = staging_name
-
-    if not staging_vector_store_name:
-        raise RuntimeError(
-            "Resolved staging metadata is missing a vector store identifier; refusing to target the primary collection"
-        )
-
-    primary_identifiers = {
-        _get(source_collection, "vector_collection_id"),
-        _get(source_collection, "vector_store_name"),
-    }
-    if staging_vector_store_name in {value for value in primary_identifiers if value}:
-        raise RuntimeError(
-            "Resolved staging identifier matches the primary collection; refusing to bypass the blue/green workflow"
-        )
+    if staging_collection is None:
+        raise RuntimeError(f"Unable to resolve staging collection '{staging_name}' for safe reindexing")
 
     # Documents associated to source collection (fourth execute)
     docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
+
+    staging_vector_store_name = _get(staging_collection, "vector_collection_id") or _get(
+        staging_collection, "vector_store_name"
+    )
+    if not staging_vector_store_name:
+        raise RuntimeError(
+            "Resolved staging collection is missing a vector store identifier; refusing to target the primary collection"
+        )
 
     collection = {
         "id": _get(source_collection, "id"),
