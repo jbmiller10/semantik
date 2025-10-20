@@ -121,6 +121,7 @@ COPY --from=python-builder /app/.venv /app/.venv
 
 # Copy application code
 COPY packages/ ./packages/
+COPY scripts/ ./scripts/
 
 # Copy alembic configuration and migrations
 COPY alembic.ini ./

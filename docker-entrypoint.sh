@@ -10,35 +10,14 @@ if [ -z "$CC" ]; then
     export CXX=g++
 fi
 
-# Function to validate required environment variables
-validate_env_vars() {
+# Function to run strict environment validation via scripts.validate_env
+run_strict_env_validation() {
     local service=$1
-    local missing_vars=()
-    
-    case "$service" in
-        webui)
-            # Critical environment variables for webui
-            if [ -z "$JWT_SECRET_KEY" ] || [ "$JWT_SECRET_KEY" = "CHANGE_THIS_TO_A_STRONG_SECRET_KEY" ]; then
-                echo "ERROR: JWT_SECRET_KEY must be set to a secure value for webui service"
-                echo "Generate one with: openssl rand -hex 32"
-                exit 1
-            fi
-            ;;
-        vecpipe)
-            # Validate Qdrant connection
-            if [ -z "$QDRANT_HOST" ]; then
-                missing_vars+=("QDRANT_HOST")
-            fi
-            if [ -z "$QDRANT_PORT" ]; then
-                missing_vars+=("QDRANT_PORT")
-            fi
-            ;;
-    esac
-    
-    # Check for common required variables
-    if [ ${#missing_vars[@]} -gt 0 ]; then
-        echo "ERROR: Missing required environment variables for $service:"
-        printf '%s\n' "${missing_vars[@]}"
+    local flower_enabled=${2:-true}
+
+    if ! FLOWER_ENABLED="$flower_enabled" python /app/scripts/validate_env.py --strict; then
+        echo "ERROR: Environment validation failed for service '$service'." >&2
+        echo "Fix the configuration issues reported above and try again." >&2
         exit 1
     fi
 }
@@ -70,11 +49,9 @@ wait_for_service() {
 # Determine which service to run based on the first argument
 SERVICE=${1:-webui}
 
-# Validate environment variables for the service
-validate_env_vars "$SERVICE"
-
 case "$SERVICE" in
     webui)
+        run_strict_env_validation "webui" false
         echo "Starting WebUI service..."
         
         # Wait for Search API to be ready
@@ -106,6 +83,14 @@ case "$SERVICE" in
         ;;
         
     vecpipe)
+        run_strict_env_validation "vecpipe" false
+
+        if [ -z "${QDRANT_HOST:-}" ] || [ -z "${QDRANT_PORT:-}" ]; then
+            echo "ERROR: Vecpipe requires both QDRANT_HOST and QDRANT_PORT to be set." >&2
+            echo "Provide the Qdrant connection details via environment variables and try again." >&2
+            exit 1
+        fi
+
         echo "Starting Search API service..."
 
         # Wait for Qdrant to be ready
@@ -129,13 +114,23 @@ case "$SERVICE" in
         ;;
         
     worker)
+        run_strict_env_validation "worker" false
         echo "Starting Celery worker..."
         exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY:-1}"
         ;;
         
     flower)
+        run_strict_env_validation "flower"
+
+        if [ -z "${FLOWER_USERNAME:-}" ] || [ -z "${FLOWER_PASSWORD:-}" ]; then
+            echo "ERROR: Flower requires FLOWER_USERNAME and FLOWER_PASSWORD to be set." >&2
+            echo "Run 'make wizard' to generate secure credentials and re-run the container." >&2
+            exit 1
+        fi
         echo "Starting Flower monitoring..."
-        exec celery -A webui.celery_app flower --broker=redis://redis:6379/0 --basic_auth="${FLOWER_BASIC_AUTH:-admin:admin}"
+        exec celery -A webui.celery_app flower \
+            --broker=redis://redis:6379/0 \
+            --basic_auth="${FLOWER_USERNAME}:${FLOWER_PASSWORD}"
         ;;
         
     *)

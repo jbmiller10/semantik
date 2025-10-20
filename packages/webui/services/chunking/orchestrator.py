@@ -14,13 +14,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import (
-    DocumentTooLargeError,
-    ValidationError,
-)
-from packages.shared.chunking.infrastructure.exceptions import (
-    PermissionDeniedError as InfraPermissionDeniedError,
-)
+from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
@@ -500,12 +495,12 @@ class ChunkingOrchestrator:
         if chunk_overlap >= chunk_size:
             chunk_overlap = max(0, chunk_size // 2)
 
-        metadata = {
+        metadata_dict = {
             key: value
             for key, value in suggested_config.items()
             if key not in {"strategy", "chunk_size", "chunk_overlap", "preserve_sentences"}
         }
-        metadata = metadata or None
+        metadata: dict[Any, Any] | None = metadata_dict or None
 
         suggested_config["chunk_size"] = chunk_size
         suggested_config["chunk_overlap"] = chunk_overlap

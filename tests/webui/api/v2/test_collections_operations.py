@@ -63,7 +63,6 @@ async def test_list_collection_operations_supports_status_filter(
     assert all(item["status"] == OperationStatus.COMPLETED.value for item in payload)
 
 
-@pytest.mark.xfail(reason="Collection operations endpoint returns 500 for forbidden access (pending fix)", strict=False)
 @pytest.mark.asyncio()
 async def test_collection_operations_forbidden_for_non_owner(
     api_client: AsyncClient,

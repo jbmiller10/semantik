@@ -34,6 +34,19 @@ from packages.webui.rate_limiter import limiter
 from packages.webui.services.collection_service import CollectionService
 from packages.webui.services.factory import get_collection_service
 
+SharedAccessDeniedError: type[BaseException] | None = None
+try:  # pragma: no cover - shared module may not be installed in all environments
+    from shared.database.exceptions import AccessDeniedError as _SharedAccessDeniedError
+except Exception:  # pragma: no cover
+    _SharedAccessDeniedError = None
+else:
+    SharedAccessDeniedError = _SharedAccessDeniedError
+
+if SharedAccessDeniedError is not None and SharedAccessDeniedError is not AccessDeniedError:
+    _ACCESS_DENIED_ERRORS: tuple[type[BaseException], ...] = (AccessDeniedError, SharedAccessDeniedError)
+else:
+    _ACCESS_DENIED_ERRORS = (AccessDeniedError,)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/collections", tags=["collections-v2"])
@@ -239,7 +252,7 @@ async def update_collection(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="Only the collection owner can update it",
@@ -296,7 +309,7 @@ async def delete_collection(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="Only the collection owner can delete it",
@@ -367,7 +380,7 @@ async def add_source(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="You don't have permission to modify this collection",
@@ -434,7 +447,7 @@ async def remove_source(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="You don't have permission to modify this collection",
@@ -502,7 +515,7 @@ async def reindex_collection(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="You don't have permission to reindex this collection",
@@ -582,7 +595,7 @@ async def list_collection_operations(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="You don't have access to this collection",
@@ -667,7 +680,7 @@ async def list_collection_documents(
             status_code=404,
             detail=f"Collection '{collection_uuid}' not found",
         ) from e
-    except AccessDeniedError as e:
+    except _ACCESS_DENIED_ERRORS as e:
         raise HTTPException(
             status_code=403,
             detail="You don't have access to this collection",

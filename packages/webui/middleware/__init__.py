@@ -7,6 +7,7 @@ from .correlation import (
     get_or_generate_correlation_id,
     set_correlation_id,
 )
+from .exception_handlers import register_global_exception_handlers
 
 __all__ = [
     "CorrelationMiddleware",
@@ -14,4 +15,5 @@ __all__ = [
     "get_correlation_id",
     "get_or_generate_correlation_id",
     "set_correlation_id",
+    "register_global_exception_handlers",
 ]

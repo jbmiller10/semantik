@@ -390,7 +390,8 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       # Flower configuration
       - FLOWER_PORT=5555
-      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-admin:admin}
+      - FLOWER_USERNAME=${FLOWER_USERNAME}
+      - FLOWER_PASSWORD=${FLOWER_PASSWORD}
     depends_on:
       - redis
     security_opt:

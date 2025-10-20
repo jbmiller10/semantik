@@ -27,9 +27,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.chunking.application.dto.requests import ChunkingStrategy as ChunkingStrategyEnum
-from packages.shared.chunking.domain.exceptions import (
-    ChunkSizeViolationError,
-)
+from packages.shared.chunking.domain.exceptions import ChunkSizeViolationError
 from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import (
@@ -1482,7 +1480,7 @@ class ChunkingService:
         if deep_analysis:
             complexity_score = min(1.0, complexity_score + 0.1)
 
-        content_structure = {
+        content_structure: dict[str, Any] = {
             "paragraphs": len(paragraphs),
             "sentences": len(sentences),
             "words": len(words),
