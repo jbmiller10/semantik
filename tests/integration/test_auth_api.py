@@ -128,20 +128,12 @@ def client(mock_repositories) -> Generator[TestClient, None, None]:
             async def override_get_db() -> Generator[Any, None, None]:
                 yield mock_db
 
-            async def mock_get_db_session() -> Generator[Any, None, None]:
-                yield mock_db
+            # Override repository dependencies
+            app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
+            app.dependency_overrides[get_auth_repository] = lambda: mock_auth_repo
+            app.dependency_overrides[get_db] = override_get_db
 
-            with (
-                patch("webui.auth.get_db_session", new=mock_get_db_session),
-                patch("webui.auth.create_user_repository", return_value=mock_user_repo),
-                patch("webui.auth.create_auth_repository", return_value=mock_auth_repo),
-            ):
-                # Override repository dependencies
-                app.dependency_overrides[get_user_repository] = lambda: mock_user_repo
-                app.dependency_overrides[get_auth_repository] = lambda: mock_auth_repo
-                app.dependency_overrides[get_db] = override_get_db
-
-                yield TestClient(app)
+            yield TestClient(app)
 
             # Clear overrides after test
             app.dependency_overrides.clear()
@@ -314,15 +306,15 @@ def test_get_me_protected(client, monkeypatch, mock_repositories) -> None:  # no
     assert login_response.status_code == 200
     access_token = login_response.json()["access_token"]
 
-    # Test with valid token - when auth is disabled, authenticated requests fall back to mocked user repo
+    # Test with valid token - when auth is disabled, it should use dev user
     headers = {"Authorization": f"Bearer {access_token}"}
     response = client.get("/api/auth/me", headers=headers)
 
     assert response.status_code == 200
     data = response.json()
-    # When DISABLE_AUTH is True but a valid token is supplied, we return the stored user
-    assert data["username"] == "protecteduser"
-    assert data["email"] == "protected@example.com"
+    # When DISABLE_AUTH is True, it returns the dev user
+    assert data["username"] == "dev_user"
+    assert data["email"] == "dev@example.com"
     assert "id" in data
     assert "created_at" in data
     assert "is_active" in data

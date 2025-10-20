@@ -495,12 +495,12 @@ class ChunkingOrchestrator:
         if chunk_overlap >= chunk_size:
             chunk_overlap = max(0, chunk_size // 2)
 
-        metadata_dict = {
+        metadata = {
             key: value
             for key, value in suggested_config.items()
             if key not in {"strategy", "chunk_size", "chunk_overlap", "preserve_sentences"}
         }
-        metadata: dict[Any, Any] | None = metadata_dict or None
+        metadata = metadata or None
 
         suggested_config["chunk_size"] = chunk_size
         suggested_config["chunk_overlap"] = chunk_overlap

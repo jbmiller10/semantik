@@ -1480,7 +1480,7 @@ class ChunkingService:
         if deep_analysis:
             complexity_score = min(1.0, complexity_score + 0.1)
 
-        content_structure: dict[str, Any] = {
+        content_structure = {
             "paragraphs": len(paragraphs),
             "sentences": len(sentences),
             "words": len(words),

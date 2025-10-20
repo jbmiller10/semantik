@@ -266,7 +266,7 @@ class TestGetDocumentContent:
         outside_file.unlink(missing_ok=True)
 
     @pytest.mark.asyncio()
-    async def test_get_document_content_without_document_restrictions_allows_outside_paths(
+    async def test_get_document_content_without_document_root_rejects_outside_paths(
         self,
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
@@ -274,11 +274,10 @@ class TestGetDocumentContent:
         tmp_path: Path,
         monkeypatch,
     ) -> None:
-        """When no roots are configured and no default mount exists, allow legacy paths."""
+        """Default configuration still restricts access to the loaded_dir mount."""
 
         monkeypatch.setattr(settings, "_document_root", None, raising=False)
         monkeypatch.setattr(settings, "_document_allowed_roots", (), raising=False)
-        monkeypatch.setattr(settings, "_default_document_mounts", (), raising=False)
 
         outside_file = tmp_path / "legacy.pdf"
         outside_file.write_text("legacy content")
@@ -290,8 +289,11 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-            result = await get_document_content(
+        with (
+            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
                 collection=mock_collection,
@@ -299,47 +301,8 @@ class TestGetDocumentContent:
                 db=mock_db,
             )
 
-        assert result.path == str(outside_file)
+        assert exc_info.value.status_code == 403
         outside_file.unlink(missing_ok=True)
-
-    @pytest.mark.asyncio()
-    async def test_get_document_content_allows_default_mount_without_explicit_config(
-        self,
-        mock_user: dict[str, Any],
-        mock_collection: MagicMock,
-        mock_document: MagicMock,
-        tmp_path: Path,
-        monkeypatch,
-    ) -> None:
-        """Default docker mount remains accessible when no roots are configured."""
-
-        default_mount = (tmp_path / "default_mount").resolve()
-        default_mount.mkdir()
-        allowed_file = default_mount / "docker.pdf"
-        allowed_file.write_text("docker content")
-
-        monkeypatch.setattr(settings, "_document_root", None, raising=False)
-        monkeypatch.setattr(settings, "_document_allowed_roots", (), raising=False)
-        monkeypatch.setattr(settings, "_default_document_mounts", (default_mount,), raising=False)
-
-        mock_document.file_path = str(allowed_file)
-        mock_document.file_name = allowed_file.name
-
-        mock_db = AsyncMock(spec=AsyncSession)
-        mock_document_repo = AsyncMock()
-        mock_document_repo.get_by_id.return_value = mock_document
-
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
-            result = await get_document_content(
-                collection_uuid=mock_collection.id,
-                document_uuid=mock_document.id,
-                collection=mock_collection,
-                current_user=mock_user,
-                db=mock_db,
-            )
-
-        assert result.path == str(allowed_file)
-        allowed_file.unlink(missing_ok=True)
 
     @pytest.mark.asyncio()
     async def test_get_document_content_respects_additional_allowed_roots(

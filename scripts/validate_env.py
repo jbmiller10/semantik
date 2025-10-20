@@ -12,12 +12,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
 
 # ---------------------------------------------------------------------------
 # Placeholder configuration
@@ -67,20 +64,14 @@ PLACEHOLDER_RULES: tuple[PlaceholderRule, ...] = (
     ),
     PlaceholderRule(
         env_var="FLOWER_USERNAME",
-        placeholders=(
-            "admin",
-            "replace-me-with-flower-user",
-        ),
-        message="Flower username must not use a default placeholder; generate unique credentials via the setup wizard.",
+        placeholders=("admin",),
+        message="Flower username must not be the default `admin`.",
         case_insensitive=True,
     ),
     PlaceholderRule(
         env_var="FLOWER_PASSWORD",
-        placeholders=(
-            "admin",
-            "replace-me-with-strong-flower-password",
-        ),
-        message="Flower password must not use a default placeholder; set a unique password.",
+        placeholders=("admin",),
+        message="Flower password must not remain `admin`; set a unique password.",
         case_insensitive=True,
     ),
 )
@@ -135,16 +126,7 @@ def _is_weak_secret(value: str, minimum_length: int = 16) -> bool:
         "digit": any(c.isdigit() for c in value),
         "symbol": any(not c.isalnum() for c in value),
     }
-    category_count = sum(categories.values())
-
-    if category_count >= 3:
-        return False
-
-    # Accept long random-looking tokens (e.g., 32+ char hex strings)
-    if len(value) >= 32 and category_count >= 2:
-        return False
-
-    return True
+    return sum(categories.values()) < 3
 
 
 def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
@@ -152,21 +134,16 @@ def detect_placeholder_issues(env: Mapping[str, str]) -> list[str]:
 
     errors: list[str] = []
 
-    # Flower credentials make sense only when the Flower service is running
-    wants_flower = env.get("FLOWER_ENABLED", "true").lower() not in {"0", "false", "no"}
-
-    if wants_flower:
-        for required_var in ("FLOWER_USERNAME", "FLOWER_PASSWORD"):
-            raw_value = env.get(required_var)
-            if raw_value is None or not raw_value.strip():
-                errors.append(
-                    f"{required_var}: Flower credentials must be defined – run the setup wizard to generate secure values."
-                )
+    # Flower credentials must always be provided explicitly
+    for required_var in ("FLOWER_USERNAME", "FLOWER_PASSWORD"):
+        raw_value = env.get(required_var)
+        if raw_value is None or not raw_value.strip():
+            errors.append(
+                f"{required_var}: Flower credentials must be defined – run the setup wizard to generate secure values."
+            )
 
     for rule in PLACEHOLDER_RULES:
         raw_value = env.get(rule.env_var)
-        if rule.env_var in {"FLOWER_USERNAME", "FLOWER_PASSWORD"} and not wants_flower:
-            continue
         if rule.matches(raw_value):
             errors.append(f"{rule.env_var}: {rule.message}")
         elif raw_value:

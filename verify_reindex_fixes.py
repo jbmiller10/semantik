@@ -17,7 +17,7 @@ INGESTION_PATH = Path("packages/webui/tasks/ingestion.py")
 REINDEX_PATH = Path("packages/webui/tasks/reindex.py")
 
 
-def verify_reindex_chunk_count_update() -> bool:
+def verify_reindex_chunk_count_update():
     """Verify that REINDEX updates Document.chunk_count."""
     print("\n🔍 Verifying REINDEX chunk_count Update...")
 
@@ -41,7 +41,7 @@ def verify_reindex_chunk_count_update() -> bool:
         return False
 
 
-def verify_failed_document_marking() -> bool:
+def verify_failed_document_marking():
     """Verify that failed documents are marked as FAILED in REINDEX."""
     print("\n🔍 Verifying Failed Document Status Update...")
 
@@ -64,7 +64,7 @@ def verify_failed_document_marking() -> bool:
         return False
 
 
-def verify_transaction_boundaries() -> bool:
+def verify_transaction_boundaries():
     """Verify proper transaction boundaries in REINDEX."""
     print("\n🔍 Verifying Transaction Boundaries...")
 
@@ -85,7 +85,7 @@ def verify_transaction_boundaries() -> bool:
         return False
 
 
-def verify_consistency_between_operations() -> bool:
+def verify_consistency_between_operations():
     """Verify that both APPEND and REINDEX have consistent fixes."""
     print("\n🔍 Verifying Consistency Between APPEND and REINDEX...")
 
@@ -112,7 +112,7 @@ def verify_consistency_between_operations() -> bool:
         return False
 
 
-def check_imports() -> bool:
+def check_imports():
     """Verify necessary imports are present."""
     print("\n🔍 Verifying Required Imports...")
 
@@ -140,7 +140,7 @@ def check_imports() -> bool:
         return False
 
 
-def main() -> None:
+def main():
     """Run all verification checks."""
     print("=" * 60)
     print("REINDEX Operation Fixes Verification")

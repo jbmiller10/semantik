@@ -1,9 +1,7 @@
 """Common FastAPI dependencies for the WebUI API."""
 
-import inspect
 import logging
 import os
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
@@ -210,7 +208,6 @@ async def get_chunking_service_adapter_dependency(
 
 
 async def get_current_user_optional(
-    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer_security),
 ) -> dict[str, Any] | None:
     """Retrieve the current user if bearer credentials are supplied."""
@@ -230,22 +227,7 @@ async def get_current_user_optional(
             }
         return None
 
-    override = request.app.dependency_overrides.get(get_current_user)
-
-    if override is None:
-        return await get_current_user(credentials)
-
-    call_target = cast(Callable[..., Any], override)
-
-    try:
-        candidate = call_target(credentials)
-    except TypeError:
-        candidate = call_target()
-
-    if inspect.isawaitable(candidate):
-        return cast(dict[str, Any] | None, await cast(Awaitable[Any], candidate))
-
-    return cast(dict[str, Any] | None, candidate)
+    return await get_current_user(credentials)
 
 
 async def require_admin_or_internal_key(
@@ -255,9 +237,10 @@ async def require_admin_or_internal_key(
 ) -> None:
     """Ensure the request is authorized by admin role or internal API key."""
 
-    user_is_superuser = bool(current_user and current_user.get("is_superuser", False))
+    if settings.DISABLE_AUTH:
+        return
 
-    if user_is_superuser:
+    if current_user and current_user.get("is_superuser", False):
         return
 
     expected_key = settings.INTERNAL_API_KEY
@@ -266,26 +249,21 @@ async def require_admin_or_internal_key(
 
     method = request.method
     path = request.url.path
-    logger_context = {
-        "method": method,
-        "path": path,
-        "authenticated": bool(current_user),
-        "disable_auth": settings.DISABLE_AUTH,
-    }
     logger.warning(
-        "Partition monitoring access denied: method=%(method)s path=%(path)s authenticated=%(authenticated)s "
-        "disable_auth=%(disable_auth)s",
-        logger_context,
+        "Partition monitoring access denied: method=%s path=%s authenticated=%s",
+        method,
+        path,
+        bool(current_user),
     )
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 
 
 try:
-    from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
+    from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError  # type: ignore[import]
 except Exception:  # pragma: no cover
-    SharedAccessDeniedError = None
+    SharedAccessDeniedError = None  # type: ignore[assignment]
 
-_ACCESS_DENIED_ERRORS: tuple[type[Exception], ...] = (PackagesAccessDeniedError,)
+_ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError,)
 if SharedAccessDeniedError and SharedAccessDeniedError is not PackagesAccessDeniedError:
     _ACCESS_DENIED_ERRORS = (PackagesAccessDeniedError, SharedAccessDeniedError)
