@@ -20,7 +20,6 @@ try {
       <App />
     </StrictMode>
   );
-  console.log('React app rendered successfully');
 } catch (error) {
   console.error('Failed to render React app:', error);
 }

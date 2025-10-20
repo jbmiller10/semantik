@@ -107,6 +107,9 @@ def mock_collection() -> MagicMock:
     collection.status = CollectionStatus.READY
     collection.created_at = MagicMock()
     collection.updated_at = MagicMock()
+    # Add document and vector counts - these are expected by the service
+    collection.document_count = 0
+    collection.vector_count = 0
 
     # Add to_dict method
     def collection_to_dict() -> dict[str, Any]:
@@ -126,6 +129,8 @@ def mock_collection() -> MagicMock:
             "status": collection.status.value,
             "created_at": "2024-01-01T00:00:00",
             "updated_at": "2024-01-01T00:00:00",
+            "document_count": collection.document_count,
+            "vector_count": collection.vector_count,
         }
 
     collection.to_dict = MagicMock(side_effect=collection_to_dict)

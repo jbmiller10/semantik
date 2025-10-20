@@ -1,9 +1,9 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import ActiveOperationsTab from '../ActiveOperationsTab'
 import { useOperationProgress } from '../../hooks/useOperationProgress'
-import { useCollectionStore } from '../../stores/collectionStore'
+import { useCollections } from '../../hooks/useCollections'
 import { 
   renderWithErrorHandlers,
   mockWebSocket
@@ -13,7 +13,7 @@ import { operationsV2Api } from '../../services/api/v2/collections'
 
 // Mock the hooks and APIs
 vi.mock('../../hooks/useOperationProgress')
-vi.mock('../../stores/collectionStore')
+vi.mock('../../hooks/useCollections')
 vi.mock('../../services/api/v2/collections', () => ({
   operationsV2Api: {
     list: vi.fn()
@@ -21,8 +21,6 @@ vi.mock('../../services/api/v2/collections', () => ({
 }))
 
 describe('ActiveOperationsTab - WebSocket Error Handling', () => {
-  const mockUpdateOperationProgress = vi.fn()
-  
   const mockActiveOperations = [
     {
       id: 'op-1',
@@ -55,29 +53,78 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     }
   ]
 
-  const mockCollections = new Map([
-    ['coll-1', { uuid: 'coll-1', name: 'Collection 1' }],
-    ['coll-2', { uuid: 'coll-2', name: 'Collection 2' }],
-    ['coll-3', { uuid: 'coll-3', name: 'Collection 3' }]
-  ])
-
   let mockWs: { restore: () => void }
 
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.clearAllMocks()
     mockWs = mockWebSocket()
     
-    vi.mocked(useCollectionStore).mockReturnValue({
-      updateOperationProgress: mockUpdateOperationProgress,
-      collections: mockCollections,
-      getCollectionOperations: vi.fn().mockReturnValue(mockActiveOperations),
-      activeOperations: [],
-      lastUpdateTime: null
-    } as ReturnType<typeof useCollectionStore>)
+    vi.mocked(useCollections).mockReturnValue({
+      data: [
+        {
+          id: 'coll-1',
+          name: 'Collection 1',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec1',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'processing',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'coll-2',
+          name: 'Collection 2',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec2',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'processing',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        {
+          id: 'coll-3',
+          name: 'Collection 3',
+          description: '',
+          owner_id: 1,
+          vector_store_name: 'vec3',
+          embedding_model: 'model',
+          quantization: 'float16',
+          chunk_size: 1000,
+          chunk_overlap: 200,
+          is_public: false,
+          status: 'pending',
+          document_count: 0,
+          vector_count: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCollections>)
   })
 
   afterEach(() => {
     mockWs.restore()
+    vi.runOnlyPendingTimers()
+    vi.clearAllTimers()
+    vi.useRealTimers()
   })
 
   describe('Multiple WebSocket Connection Management', () => {
@@ -120,9 +167,9 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
       
       // Only op-1 should show live indicator
       const operationItems = screen.getAllByRole('listitem')
@@ -133,7 +180,7 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       expect(liveIndicators.length).toBeLessThanOrEqual(1)
     })
 
-    it('should handle WebSocket failures without affecting UI refresh', { timeout: 15000 }, async () => {
+    it('should handle WebSocket failures without affecting UI refresh', async () => {
       let apiCallCount = 0
       
       vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
@@ -160,35 +207,26 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      // Operations should still display
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-        expect(screen.getByText('Re-index')).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
+      expect(screen.getByText('Re-index')).toBeInTheDocument()
       
       // Store initial call count
       const initialCallCount = apiCallCount
       
-      // Auto-refresh should continue working - wait for at least one more API call
-      await waitFor(() => {
-        expect(apiCallCount).toBeGreaterThan(initialCallCount)
-      }, { timeout: 10000 }) // 5s refresh interval + buffer
+      // Auto-refresh should continue working - advance polling interval
+      await vi.advanceTimersByTimeAsync(300)
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(apiCallCount).toBeGreaterThan(initialCallCount)
     })
 
     it('should handle rapid operation status changes with WebSocket errors', async () => {
-      // const operationStatus = 'processing' // Unused variable
-      
       vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
         if (operationId === 'op-1' && options) {
-          // Simulate rapid progress updates with intermittent errors
-          const interval = setInterval(() => {
-            const random = Math.random()
-            if (random < 0.3) {
-              options.onError?.('Temporary connection issue')
-            } else if (random > 0.9) {
-              options.onComplete?.()
-              clearInterval(interval)
-            }
+          setTimeout(() => {
+            options.onError?.('Temporary connection issue')
+            options.onComplete?.()
           }, 100)
         }
         
@@ -205,13 +243,11 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      // Should handle rapid updates without crashing
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
       
-      // Let it run for a bit
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await vi.advanceTimersByTimeAsync(500)
       
       // The hook should have been called for the processing operation
       expect(vi.mocked(useOperationProgress)).toHaveBeenCalledWith('op-1', expect.any(Object))
@@ -240,13 +276,12 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
-      // All operations should still display
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-        expect(screen.getByText('Re-index')).toBeInTheDocument()
-        expect(screen.getByText('Add Source')).toBeInTheDocument()
-      })
+
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
+      expect(screen.getByText('Re-index')).toBeInTheDocument()
+      expect(screen.getByText('Add Source')).toBeInTheDocument()
       
       // op-2 should not have live indicator
       // But should still show progress from API polling
@@ -283,16 +318,13 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
       
       const { rerender } = renderWithErrorHandlers(<ActiveOperationsTab />, [])
+
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
       
-      // Wait for initial data to load
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      })
-      
-      // Wait for API polling to detect completion
-      await waitFor(() => {
-        rerender(<ActiveOperationsTab />)
-      })
+      await vi.advanceTimersByTimeAsync(5000)
+      rerender(<ActiveOperationsTab />)
       
       // The test expects the operation to be completed and removed
       // but the mock is not changing the data, so the operation remains
@@ -323,10 +355,9 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      // Should still show operations from polling
-      await waitFor(() => {
-        expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('Initial Index')).toBeInTheDocument()
       
       // No live indicators should be shown
       expect(screen.queryByText(/live/i)).not.toBeInTheDocument()
@@ -334,10 +365,8 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       // Store initial call count
       const initialCallCount = apiCallCount
       
-      // Polling should continue - wait for at least one more API call
-      await waitFor(() => {
-        expect(apiCallCount).toBeGreaterThan(initialCallCount)
-      }, { timeout: 10000 })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(apiCallCount).toBeGreaterThan(initialCallCount)
     })
 
     it('should handle empty operations list with WebSocket errors gracefully', async () => {
@@ -347,10 +376,9 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      // Should show empty state
-      await waitFor(() => {
-        expect(screen.getByText('No active operations')).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText('No active operations')).toBeInTheDocument()
       
       // No WebSocket connections should be attempted for empty list
       expect(vi.mocked(useOperationProgress)).not.toHaveBeenCalled()
@@ -369,10 +397,9 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      // Should show error state
-      await waitFor(() => {
-        expect(screen.getByText(/Failed to load active operations/i)).toBeInTheDocument()
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(screen.getByText(/Failed to load active operations/i)).toBeInTheDocument()
       
       // Should show retry button
       expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
@@ -395,10 +422,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
       
-      await waitFor(() => {
-        const initialIndexElements = screen.getAllByText('Initial Index')
-        expect(initialIndexElements.length).toBeGreaterThan(0)
-      })
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+      const initialIndexElements = screen.getAllByText('Initial Index')
+      expect(initialIndexElements.length).toBeGreaterThan(0)
       
       // Should limit WebSocket connections (implementation specific)
       // Only processing operations should connect

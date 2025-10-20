@@ -12,13 +12,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 
 from packages.shared.database import get_db
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
-from packages.shared.database.models import OperationStatus, OperationType
 from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.api.schemas import ErrorResponse, OperationResponse
 from packages.webui.auth import get_current_user, get_current_user_websocket
 from packages.webui.services.factory import get_operation_service
 from packages.webui.services.operation_service import OperationService
-from packages.webui.websocket_manager import ws_manager
+
+# Use the scalable WebSocket manager for horizontal scaling
+from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -163,35 +164,11 @@ async def list_operations(
     try:
         offset = (page - 1) * per_page
 
-        # Convert string parameters to enums if provided
-        status_list = None
-        if status:
-            status_list = []
-            # Split comma-separated statuses
-            for s in status.split(","):
-                s = s.strip()
-                try:
-                    status_list.append(OperationStatus(s))
-                except ValueError:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid status: {s}. Valid values are: {[st.value for st in OperationStatus]}",
-                    ) from None
-
-        type_enum = None
-        if operation_type:
-            try:
-                type_enum = OperationType(operation_type)
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid operation type: {operation_type}. Valid values are: {[t.value for t in OperationType]}",
-                ) from None
-
-        operations, total = await service.list_operations(
+        # Delegate all parsing and filtering logic to service
+        operations, total = await service.list_operations_with_filters(
             user_id=int(current_user["id"]),
-            status_list=status_list,
-            operation_type=type_enum,
+            status=status,
+            operation_type=operation_type,
             offset=offset,
             limit=per_page,
         )
@@ -212,6 +189,12 @@ async def list_operations(
             for op in operations
         ]
 
+    except ValueError as e:
+        # Service method raises ValueError for invalid filters
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -274,7 +257,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         return
 
     # Authentication and authorization successful, connect the WebSocket
-    await ws_manager.connect(websocket, operation_id, user_id)
+    connection_id = await ws_manager.connect(websocket, user_id, operation_id)
 
     try:
         # Keep the connection alive and handle any incoming messages
@@ -293,4 +276,4 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         pass
     finally:
         # Ensure we always disconnect properly to clean up resources
-        await ws_manager.disconnect(websocket, operation_id, user_id)
+        await ws_manager.disconnect(connection_id)

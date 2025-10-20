@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { documentsV2Api } from '../services/api/v2';
 import { getErrorMessage } from '../utils/errorUtils';
+import PdfViewer from './PdfViewer';
 
 // Declare global types for external libraries
 declare global {
@@ -105,10 +106,20 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
-  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+
+  const updateBlobUrl = (newUrl: string | null) => {
+    if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
+      URL.revokeObjectURL(blobUrlRef.current);
+    }
+
+    blobUrlRef.current = newUrl;
+    setBlobUrl(newUrl);
+  };
 
   // Load document content
   useEffect(() => {
@@ -116,6 +127,12 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
       try {
         setLoading(true);
         setError(null);
+        setIsPdf(false);
+        updateBlobUrl(null);
+
+        if (contentRef.current) {
+          contentRef.current.innerHTML = '';
+        }
 
         // Get the document content URL and headers
         const { url, headers } = documentsV2Api.getContent(collectionId, docId);
@@ -166,7 +183,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // Images - create blob URL
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
+          updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
             contentRef.current.innerHTML = `
@@ -179,26 +196,8 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // PDFs - create blob URL for PDF.js or fallback display
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
-          
-          if (contentRef.current) {
-            // If PDF.js is available, use it; otherwise use object tag
-            if (window.pdfjsLib) {
-              // TODO: Implement PDF.js rendering
-              contentRef.current.innerHTML = `
-                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
-                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
-                </object>
-              `;
-            } else {
-              // Fallback to object tag
-              contentRef.current.innerHTML = `
-                <object data="${objectUrl}" type="application/pdf" style="width: 100%; height: 600px;">
-                  <p>Unable to display PDF. <a href="${objectUrl}" download>Download PDF</a></p>
-                </object>
-              `;
-            }
-          }
+          updateBlobUrl(objectUrl);
+          setIsPdf(true);
         } else if (
           contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
           contentType.includes('application/msword')
@@ -228,7 +227,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
               console.error('Failed to render DOCX:', docxError);
               // Fallback to download
               const objectUrl = URL.createObjectURL(blob);
-              setBlobUrl(objectUrl);
+              updateBlobUrl(objectUrl);
               contentRef.current.innerHTML = `
                 <div style="text-align: center; padding: 2rem;">
                   <p style="margin-bottom: 1rem;">Unable to preview this Word document.</p>
@@ -243,7 +242,7 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
           // Other binary content - provide download link
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
-          setBlobUrl(objectUrl);
+          updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
             contentRef.current.innerHTML = `
@@ -319,24 +318,20 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   // Cleanup blob URLs
   useEffect(() => {
     return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
-  }, [blobUrl]);
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
-    // Copy ref values to local variables to avoid React hooks warnings
     const markInstance = markInstanceRef.current;
-    const pdfDoc = pdfDocRef.current;
-    
+
     return () => {
       if (markInstance) {
         markInstance.unmark();
-      }
-      if (pdfDoc) {
-        pdfDoc.destroy();
       }
     };
   }, []);
@@ -389,11 +384,19 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
               </div>
             )}
             
-            <div
-              ref={contentRef}
-              className="prose max-w-none"
-              style={{ minHeight: '400px' }}
-            />
+            {isPdf && blobUrl ? (
+              <PdfViewer
+                src={blobUrl}
+                className="space-y-6"
+                onError={(message) => setError(message)}
+              />
+            ) : (
+              <div
+                ref={contentRef}
+                className="prose max-w-none"
+                style={{ minHeight: '400px' }}
+              />
+            )}
           </div>
         </div>
       </div>

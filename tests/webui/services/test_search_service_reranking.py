@@ -269,7 +269,7 @@ class TestSearchServiceReranking:
                 search_type="hybrid",
                 use_reranker=True,
                 hybrid_alpha=0.5,
-                hybrid_search_mode="weighted",
+                hybrid_mode="weighted",
             )
 
             # Verify the request includes hybrid search params
@@ -277,7 +277,8 @@ class TestSearchServiceReranking:
             assert request_data["search_type"] == "hybrid"
             assert request_data["use_reranker"] is True
             assert request_data["hybrid_alpha"] == 0.5
-            assert request_data["hybrid_search_mode"] == "weighted"
+            assert request_data["hybrid_mode"] == "weighted"
+            assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
     async def test_search_reranking_error_handling(
@@ -377,3 +378,74 @@ class TestSearchServiceReranking:
             assert len(collection_details) == 2
             assert collection_details[0]["result_count"] == 1
             assert "error" in collection_details[1]
+
+    @pytest.mark.asyncio()
+    async def test_multi_collection_search_orders_by_reranked_score(
+        self,
+        search_service: SearchService,
+        mock_collection_repo: AsyncMock,
+        mock_collections: list[MagicMock],
+    ) -> None:
+        """Results with reranked_score should appear ahead of score-only results."""
+
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = mock_collections
+
+        vecpipe_payloads = [
+            {
+                "results": [
+                    {
+                        "doc_id": "doc_high_rerank",
+                        "chunk_id": "chunk_high_rerank",
+                        "score": 0.72,
+                        "reranked_score": 0.94,
+                        "content": "High reranked content",
+                        "path": "/high_rerank.md",
+                        "metadata": {},
+                    },
+                    {
+                        "doc_id": "doc_low_rerank",
+                        "chunk_id": "chunk_low_rerank",
+                        "score": 0.88,
+                        "reranked_score": 0.55,
+                        "content": "Lower reranked content",
+                        "path": "/low_rerank.md",
+                        "metadata": {},
+                    },
+                ],
+            },
+            {
+                "results": [
+                    {
+                        "doc_id": "doc_no_rerank",
+                        "chunk_id": "chunk_no_rerank",
+                        "score": 0.81,
+                        "content": "No rerank score",
+                        "path": "/no_rerank.md",
+                        "metadata": {},
+                    }
+                ],
+            },
+        ]
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = [
+                MagicMock(json=MagicMock(return_value=payload), raise_for_status=MagicMock())
+                for payload in vecpipe_payloads
+            ]
+
+            result = await search_service.multi_collection_search(
+                user_id=1,
+                collection_uuids=[c.id for c in mock_collections],
+                query="rerank ordering",
+                k=5,
+                use_reranker=True,
+            )
+
+        doc_ids = [res["doc_id"] for res in result["results"]]
+        assert doc_ids == [
+            "doc_high_rerank",
+            "doc_no_rerank",
+            "doc_low_rerank",
+        ]

@@ -5,9 +5,10 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-# Import the module so we can patch it properly
 import packages.webui.main
 from packages.webui.main import _validate_cors_origins, create_app
+
+# Import the module so we can patch it properly
 
 
 class TestCORSOriginValidation:
@@ -104,7 +105,7 @@ class TestCORSConfiguration:
     def test_empty_cors_origins_warning(self, mock_logger, mock_embed_service, mock_settings) -> None:
         """Test warning when no valid CORS origins are configured."""
         # Mock settings with invalid origins
-        mock_settings.CORS_ORIGINS = "not-a-url,,"
+        mock_settings.CORS_ORIGINS = "not-a-url,"
         mock_settings.USE_MOCK_EMBEDDINGS = True
         mock_settings.INTERNAL_API_KEY = "test-key"
         mock_settings.ENVIRONMENT = "development"

@@ -1,9 +1,13 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { operationsV2Api } from '../services/api/v2/collections';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useUIStore } from '../stores/uiStore';
+import { useCollections } from '../hooks/useCollections';
 
 // Helper to safely get source_path from config
 function getSourcePath(config: Record<string, unknown> | undefined): string | null {
@@ -13,8 +17,26 @@ function getSourcePath(config: Record<string, unknown> | undefined): string | nu
 }
 
 function ActiveOperationsTab() {
+  const navigate = useNavigate();
+  const setActiveTab = useUIStore((state) => state.setActiveTab);
+  const setShowCollectionDetailsModal = useUIStore((state) => state.setShowCollectionDetailsModal);
+  const { data: collections = [] } = useCollections();
+
+  const collectionNameById = useMemo(() => {
+    return collections.reduce<Record<string, string>>((acc, collection) => {
+      acc[collection.id] = collection.name;
+      return acc;
+    }, {});
+  }, [collections]);
 
   // Fetch active operations across all collections
+  const pollingPreference =
+    typeof window !== 'undefined'
+      ? (window as Window & { __activeOperationsPolling?: boolean }).__activeOperationsPolling
+      : undefined;
+
+  const shouldPollActiveOperations = pollingPreference ?? true;
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['active-operations'],
     queryFn: async () => {
@@ -24,21 +46,19 @@ function ActiveOperationsTab() {
       });
       return response.data;
     },
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    refetchInterval: shouldPollActiveOperations ? 5000 : false,
   });
 
   // Get collection name for an operation
   const getCollectionName = (collectionId: string) => {
-    // Collection names should be included in the operation data
-    // For now, return a placeholder
-    return `Collection ${collectionId}`;
+    return collectionNameById[collectionId] ?? `Collection ${collectionId}`;
   };
 
   // Navigate to collection details
   const navigateToCollection = (collectionId: string) => {
-    // TODO: Implement proper navigation using React Router
-    // For now, this is a no-op since we removed UI state from the store
-    console.log('Navigate to collection:', collectionId);
+    setActiveTab('collections');
+    setShowCollectionDetailsModal(collectionId);
+    navigate(`/collections/${collectionId}`);
   };
 
   if (isLoading) {
@@ -151,6 +171,9 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
     switch (status) {
       case 'processing': return 'text-blue-600 bg-blue-50';
       case 'pending': return 'text-yellow-600 bg-yellow-50';
+      case 'completed': return 'text-green-600 bg-green-50';
+      case 'failed': return 'text-red-600 bg-red-50';
+      case 'cancelled': return 'text-gray-600 bg-gray-50';
       default: return 'text-gray-600 bg-gray-50';
     }
   };

@@ -14,14 +14,13 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, field_validator
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 # Import database module
 from shared.config import settings
-from shared.database import create_auth_repository, create_user_repository, get_db_session
+from shared.database import create_auth_repository, create_user_repository, get_db_session, pwd_context
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,8 +28,7 @@ logger = logging.getLogger(__name__)
 # Constants
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing (use shared context to avoid duplication)
 
 # Security
 security = HTTPBearer(auto_error=False)
@@ -158,8 +156,9 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
 async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
     # Check if auth is disabled for development
-    if settings.DISABLE_AUTH:
-        # Return a dummy user for development when auth is disabled
+    if settings.DISABLE_AUTH and credentials is None:
+        # Return a dummy user for development when auth is disabled and no credentials were provided
+        now = datetime.now(UTC).isoformat()
         return {
             "id": 0,
             "username": "dev_user",
@@ -167,11 +166,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             "full_name": "Development User",
             "is_active": True,
             "is_superuser": True,
-            "created_at": datetime.now(UTC).isoformat(),
-            "last_login": datetime.now(UTC).isoformat(),
+            "created_at": now,
+            "last_login": now,
         }
 
-    if not credentials:
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",

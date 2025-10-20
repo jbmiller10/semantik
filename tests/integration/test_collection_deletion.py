@@ -5,26 +5,24 @@ including proper cascade deletion and transaction handling.
 """
 
 import pytest
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import (
-    Collection,
-    Document,
-    Operation,
-    OperationType,
-)
+from packages.shared.database.exceptions import InvalidStateError
+from packages.shared.database.models import Collection, Document, Operation, OperationType
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("_db_isolation")
 class TestCollectionDeletion:
     """Test suite for collection deletion functionality."""
 
     async def test_collection_deletion_removes_from_database(
         self, db_session: AsyncSession, test_user_db, collection_factory
-    ):
+    ) -> None:
         """Test that collection deletion actually removes the collection from the database."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
@@ -43,7 +41,7 @@ class TestCollectionDeletion:
 
     async def test_collection_deletion_cascades_to_documents(
         self, db_session: AsyncSession, test_user_db, collection_factory, document_factory
-    ):
+    ) -> None:
         """Test that deleting a collection cascades to delete all its documents."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
@@ -67,7 +65,7 @@ class TestCollectionDeletion:
 
     async def test_collection_deletion_cascades_to_operations(
         self, db_session: AsyncSession, test_user_db, collection_factory, operation_factory
-    ):
+    ) -> None:
         """Test that deleting a collection cascades to delete all its operations."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
@@ -90,21 +88,20 @@ class TestCollectionDeletion:
 
     async def test_collection_deletion_requires_owner_permission(
         self, db_session: AsyncSession, test_user_db, other_user_db, collection_factory
-    ):
+    ) -> None:
         """Test that only the owner can delete a collection."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
         repo = CollectionRepository(db_session)
 
         # Act & Assert
-        from shared.database.exceptions import AccessDeniedError
 
         with pytest.raises(AccessDeniedError):
             await repo.delete(collection.id, other_user_db.id)
 
     async def test_collection_deletion_via_service_commits_transaction(
         self, db_session: AsyncSession, test_user_db, collection_factory, mock_qdrant_deletion
-    ):
+    ) -> None:
         """Test that CollectionService.delete_collection properly commits the transaction."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
@@ -124,7 +121,7 @@ class TestCollectionDeletion:
 
     async def test_collection_deletion_handles_missing_qdrant_collection(
         self, db_session: AsyncSession, test_user_db, collection_factory, mock_qdrant_deletion
-    ):
+    ) -> None:
         """Test that deletion succeeds even if Qdrant collection doesn't exist."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id, vector_store_name="col_test_123")
@@ -143,27 +140,28 @@ class TestCollectionDeletion:
 
     async def test_collection_deletion_fails_with_active_operations(
         self, db_session: AsyncSession, test_user_db, collection_factory, operation_factory
-    ):
+    ) -> None:
         """Test that collection cannot be deleted while operations are active."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
 
         # Create an active operation
         await operation_factory(
-            collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="processing"
+            collection_id=collection.id, user_id=test_user_db.id, type=OperationType.INDEX, status="PROCESSING"
         )
 
         service = create_collection_service(db_session)
 
         # Act & Assert
-        from packages.shared.database.exceptions import InvalidStateError
 
         with pytest.raises(InvalidStateError) as exc_info:
             await service.delete_collection(collection.id, test_user_db.id)
 
         assert "operations are in progress" in str(exc_info.value)
 
-    async def test_async_delete_pattern_in_repository(self, db_session: AsyncSession, test_user_db, collection_factory):
+    async def test_async_delete_pattern_in_repository(
+        self, db_session: AsyncSession, test_user_db, collection_factory
+    ) -> None:
         """Test that the repository uses correct async SQLAlchemy delete pattern."""
         # Arrange
         collection = await collection_factory(owner_id=test_user_db.id)
@@ -174,7 +172,7 @@ class TestCollectionDeletion:
         original_execute = db_session.execute
         execute_calls = []
 
-        async def spy_execute(statement):
+        async def spy_execute(statement) -> None:
             execute_calls.append(statement)
             return await original_execute(statement)
 
@@ -204,16 +202,16 @@ class TestCollectionDeletion:
 class TestCollectionDeletionEdgeCases:
     """Test edge cases and error scenarios for collection deletion."""
 
-    async def test_delete_nonexistent_collection(self, db_session: AsyncSession, test_user_db):
+    async def test_delete_nonexistent_collection(self, db_session: AsyncSession, test_user_db) -> None:
         """Test deleting a collection that doesn't exist."""
         repo = CollectionRepository(db_session)
-
-        from shared.database.exceptions import EntityNotFoundError
 
         with pytest.raises(EntityNotFoundError):
             await repo.delete("nonexistent-uuid", test_user_db.id)
 
-    async def test_concurrent_deletion_attempts(self, db_session: AsyncSession, test_user_db, collection_factory):
+    async def test_concurrent_deletion_attempts(
+        self, db_session: AsyncSession, test_user_db, collection_factory
+    ) -> None:
         """Test that concurrent deletion attempts are handled gracefully."""
         # This test would require more sophisticated setup with multiple sessions
         # For now, we'll just ensure the second delete fails appropriately
@@ -225,7 +223,6 @@ class TestCollectionDeletionEdgeCases:
         await db_session.commit()
 
         # Second deletion should fail
-        from shared.database.exceptions import EntityNotFoundError
 
         with pytest.raises(EntityNotFoundError):
             await repo.delete(collection.id, test_user_db.id)

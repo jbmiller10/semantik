@@ -1,0 +1,52 @@
+Ticket: ENG-013 – Modularize Celery Task Definitions
+Phase: 2 – Backend Refactor (Sprints 2–3)
+Owner Type: Backend engineer with Celery task orchestration experience
+
+Repository Context:
+- `packages/webui/tasks.py` spans 2,983 LOC and combines multiple concerns: task registration, queue configuration, ingestion/reindex/cleanup workflows, retry policies, progress updates, and API integration.
+- Audit identifies this file as a god object with mixed concerns, hindering maintainability and testing.
+- Earlier tickets (ENG-001, ENG-010, ENG-012) establish shared utilities and operation manager to support decomposition.
+
+Problem Statement:
+Having every task in a single module complicates navigation, encourages tight coupling to shared state, and makes partial refactors risky. We need to split tasks into cohesive modules (e.g., ingestion, reindex, cleanup) that import shared utilities instead of reimplementing logic.
+
+Goal:
+Restructure Celery task definitions into domain-specific modules, leaving a thin registration layer. Ensure tasks continue to register with Celery under existing names and maintain current behaviour.
+
+Implementation Steps:
+1. Sketch target module layout under `packages/webui/tasks/` (directory):
+   - `__init__.py` for shared Celery app import and task registration.
+   - `ingestion.py` for INDEX/APPEND operations.
+   - `reindex.py` for REINDEX/maintenance operations.
+   - `cleanup.py` for deletion/cleanup tasks.
+   - `utils.py` for shared helper functions (e.g., request building) if not already covered by other tickets.
+2. Move existing task functions from `tasks.py` into the new modules:
+   - Preserve Celery decorators (`@celery_app.task`) and names; ensure import side effects register tasks at module import time.
+   - Update imports to use shared utilities (ProgressUpdateManager, OperationManager) and orchestrator container (ENG-010/ENG-012).
+3. Keep compatibility:
+   - Provide a lightweight `tasks.py` shim that imports from new modules to maintain import paths consumed elsewhere (`from packages.webui import tasks`).
+   - Update references throughout repo to point to new module paths where appropriate.
+4. Update tests and scripts:
+   - Adjust tests under `tests/webui/` or others to import new module structure.
+   - Ensure maintenance scripts or CLI utilities referencing task names still function.
+5. Documentation:
+   - Add module docstrings explaining responsibilities and how to add future tasks.
+6. Testing & Validation:
+   - Run unit/integration tests covering tasks (existing suites) to ensure no regressions.
+   - Optionally add a smoke test verifying Celery app lists expected task names (`celery_app.tasks` contains previous identifiers).
+
+Acceptance Criteria:
+- Task definitions are reorganized into multiple modules under `packages/webui/tasks/` with clear responsibility boundaries.
+- Legacy `packages/webui/tasks.py` is reduced to a shim or orchestrator that imports new modules, keeping backwards-compatible import path.
+- All Celery tasks retain existing names, queue bindings, and behaviour.
+- Tests referencing tasks succeed without modification or with minimal updates; `make lint`, `make type-check`, `make test` pass.
+- Documentation/comments explain new layout for future contributors.
+
+Out of Scope:
+- Redesigning task algorithms or behaviours beyond module relocation and dependency cleanup.
+- Creating new Celery queues or altering task retry policies beyond necessary adjustments for extraction.
+
+References:
+- packages/webui/tasks.py (current monolithic file)
+- tickets ENG-001, ENG-010, ENG-012 for prerequisite shared utilities
+- tests/webui/ (Celery-related tests)

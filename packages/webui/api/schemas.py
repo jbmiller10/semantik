@@ -87,10 +87,31 @@ class CollectionBase(BaseModel):
         pattern="^(float32|float16|int8)$",
         description="Model quantization level (float32, float16, or int8)",
     )
-    chunk_size: int = Field(default=1000, ge=100, le=10000)
-    chunk_overlap: int = Field(default=200, ge=0, le=1000)
+    # Deprecated fields for backward compatibility
+    # Use Annotated with custom validators for optional fields with constraints
+    chunk_size: int | None = Field(default=None, description="Chunk size (100-10000)")
+    chunk_overlap: int | None = Field(default=None, description="Chunk overlap (0-1000)")
+    # New chunking strategy fields
+    chunking_strategy: str | None = Field(default=None, description="Chunking strategy type")
+    chunking_config: dict[str, Any] | None = Field(default=None, description="Strategy-specific configuration")
     is_public: bool = False
     metadata: dict[str, Any] | None = None
+
+    @field_validator("chunk_size")
+    @classmethod
+    def validate_chunk_size(cls, v: int | None) -> int | None:
+        """Validate chunk_size only if not None."""
+        if v is not None and (v < 100 or v > 10000):
+            raise ValueError("chunk_size must be between 100 and 10000")
+        return v
+
+    @field_validator("chunk_overlap")
+    @classmethod
+    def validate_chunk_overlap(cls, v: int | None) -> int | None:
+        """Validate chunk_overlap only if not None."""
+        if v is not None and (v < 0 or v > 1000):
+            raise ValueError("chunk_overlap must be between 0 and 1000")
+        return v
 
     @field_validator("name", mode="after")
     @classmethod
@@ -158,6 +179,14 @@ class CollectionResponse(CollectionBase):
     @classmethod
     def from_collection(cls, collection: Any) -> "CollectionResponse":
         """Create response from ORM Collection object."""
+        # Safely coerce new chunking fields to expected types or None to avoid
+        # MagicMock leakage in tests where attributes exist but aren't set.
+        raw_strategy = getattr(collection, "chunking_strategy", None)
+        chunking_strategy = raw_strategy if isinstance(raw_strategy, str | type(None)) else None
+
+        raw_config = getattr(collection, "chunking_config", None)
+        chunking_config = raw_config if isinstance(raw_config, dict | type(None)) else None
+
         return cls(
             id=collection.id,
             name=collection.name,
@@ -166,8 +195,10 @@ class CollectionResponse(CollectionBase):
             vector_store_name=collection.vector_store_name,
             embedding_model=collection.embedding_model,
             quantization=collection.quantization,
-            chunk_size=collection.chunk_size,
-            chunk_overlap=collection.chunk_overlap,
+            chunk_size=getattr(collection, "chunk_size", None),
+            chunk_overlap=getattr(collection, "chunk_overlap", None),
+            chunking_strategy=chunking_strategy,
+            chunking_config=chunking_config,
             is_public=collection.is_public,
             metadata=collection.meta,
             created_at=collection.created_at,

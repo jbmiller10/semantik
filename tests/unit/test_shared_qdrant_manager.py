@@ -5,16 +5,17 @@ Tests the QdrantManager service for managing Qdrant collections with
 blue-green deployment support.
 """
 
-# mypy: ignore-errors
-
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.models import CollectionInfo, Distance
+from qdrant_client.http.models import IntegerIndexParams
+from qdrant_client.models import CollectionInfo, Distance, PayloadIndexInfo, PayloadSchemaType
 
 from packages.shared.managers.qdrant_manager import QdrantManager
+
+# mypy: ignore-errors
 
 
 class TestQdrantManager:
@@ -363,32 +364,74 @@ class TestQdrantManager:
             # Should return True (consider old) for invalid formats
             assert qdrant_manager._is_staging_collection_old(name) is True
 
-    def test_rename_collection_warning(self, qdrant_manager, mock_qdrant_client) -> None:
-        """Test rename collection creates new collection but warns about data migration"""
-        # Create proper mock structure for CollectionInfo
+    @pytest.mark.asyncio()
+    async def test_rename_collection_warning(self, qdrant_manager, mock_qdrant_client) -> None:
+        """Test rename collection creates a replacement and removes the original."""
+
         mock_info = Mock(spec=CollectionInfo)
         mock_config = Mock()
         mock_params = Mock()
         mock_vectors = Mock(size=768, distance=Distance.COSINE)
 
-        # Set up the nested structure
         mock_params.vectors = mock_vectors
         mock_config.params = mock_params
         mock_config.optimizer_config = {"indexing_threshold": 20000}
         mock_info.config = mock_config
+        mock_info.payload_schema = {}
 
-        mock_qdrant_client.get_collection.return_value = mock_info
+        mock_qdrant_client.get_collection.side_effect = [
+            mock_info,  # collection_exists(old_collection)
+            UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={}),  # new missing
+            mock_info,  # get_collection_info(old_collection)
+        ]
 
-        # Test rename operation
-        qdrant_manager.rename_collection("old_collection", "new_collection")
+        mock_qdrant_client.scroll.return_value = ([], None)
 
-        # Should create new collection with same config
+        await qdrant_manager.rename_collection("old_collection", "new_collection")
+
         mock_qdrant_client.create_collection.assert_called_once()
-        call_args = mock_qdrant_client.create_collection.call_args
-        assert call_args.kwargs["collection_name"] == "new_collection"
+        create_call = mock_qdrant_client.create_collection.call_args
+        assert create_call.kwargs["collection_name"] == "new_collection"
 
-        # Should not delete old collection (data migration not implemented)
-        mock_qdrant_client.delete_collection.assert_not_called()
+        mock_qdrant_client.delete_collection.assert_called_once_with("old_collection")
+
+    def test_copy_payload_indexes_recreates_schema(self, qdrant_manager, mock_qdrant_client) -> None:
+        """Ensure payload indexes are recreated with compatible schema arguments."""
+
+        info = Mock(spec=CollectionInfo)
+        info.payload_schema = {
+            "tags": PayloadIndexInfo(data_type=PayloadSchemaType.KEYWORD, params=None, points=10),
+            "price": PayloadIndexInfo(
+                data_type=PayloadSchemaType.INTEGER,
+                params=IntegerIndexParams(type="integer"),
+                points=5,
+            ),
+        }
+
+        destination = "collection_new"
+
+        with patch("packages.shared.managers.qdrant_manager.QdrantOperationTimer") as mock_timer:
+            mock_timer.return_value.__enter__.return_value = None
+            mock_timer.return_value.__exit__.return_value = None
+            qdrant_manager._copy_payload_indexes(info, destination)
+
+        expected_calls = [
+            call(
+                collection_name=destination,
+                field_name="tags",
+                field_schema=PayloadSchemaType.KEYWORD,
+                wait=True,
+            ),
+            call(
+                collection_name=destination,
+                field_name="price",
+                field_schema=info.payload_schema["price"].params,
+                field_type=PayloadSchemaType.INTEGER,
+                wait=True,
+            ),
+        ]
+
+        mock_qdrant_client.create_payload_index.assert_has_calls(expected_calls, any_order=True)
 
     def test_sleep_calls_in_cleanup(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test that cleanup includes delays between deletions"""
@@ -412,5 +455,5 @@ class TestQdrantManager:
 
             # Should have small delays between deletions
             assert mock_sleep.call_count == 2
-            for call in mock_sleep.call_args_list:
-                assert call[0][0] == 0.1  # 100ms delay
+            for sleep_call in mock_sleep.call_args_list:
+                assert sleep_call[0][0] == 0.1  # 100ms delay

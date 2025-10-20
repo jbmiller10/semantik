@@ -109,7 +109,6 @@ RERANKING_TEST_SCENARIOS = {
     },
 }
 
-
 # Reranker model configurations for testing
 RERANKER_MODELS = {
     "Qwen/Qwen3-Reranker-0.6B": {
@@ -131,7 +130,6 @@ RERANKER_MODELS = {
         "typical_latency_ms": 200,
     },
 }
-
 
 # Error scenarios for testing
 RERANKING_ERROR_SCENARIOS = {

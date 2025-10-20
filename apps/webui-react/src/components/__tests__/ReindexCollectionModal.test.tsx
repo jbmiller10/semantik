@@ -101,23 +101,17 @@ describe('ReindexCollectionModal', () => {
     expect(screen.getByText(`Re-process all documents (${mockCollection.document_count} documents) with new settings`)).toBeInTheDocument();
     expect(screen.getByText('Make the collection unavailable during processing')).toBeInTheDocument();
 
-    // Check configuration changes section
-    expect(screen.getByText('Configuration Changes (3 changes):')).toBeInTheDocument();
+    // Check configuration changes section (pre-release: only model change counted)
+    expect(screen.getByText('Configuration Changes (1 change):')).toBeInTheDocument();
 
     // Check embedding model change
     expect(screen.getByText('Embedding Model:')).toBeInTheDocument();
     expect(screen.getByText(mockCollection.embedding_model)).toBeInTheDocument();
     expect(screen.getByText(mockConfigChanges.embedding_model!)).toBeInTheDocument();
 
-    // Check chunk size change
-    expect(screen.getByText('Chunk Size:')).toBeInTheDocument();
-    expect(screen.getByText(mockCollection.chunk_size.toString())).toBeInTheDocument();
-    expect(screen.getByText(mockConfigChanges.chunk_size!.toString())).toBeInTheDocument();
-
-    // Check chunk overlap change
-    expect(screen.getByText('Chunk Overlap:')).toBeInTheDocument();
-    expect(screen.getByText(mockCollection.chunk_overlap.toString())).toBeInTheDocument();
-    expect(screen.getByText(mockConfigChanges.chunk_overlap!.toString())).toBeInTheDocument();
+    // Chunk size/overlap no longer surfaced as separate changes
+    expect(screen.queryByText('Chunk Size:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chunk Overlap:')).not.toBeInTheDocument();
 
     // Check estimated impact
     expect(screen.getByText('Estimated impact:')).toBeInTheDocument();
@@ -125,13 +119,11 @@ describe('ReindexCollectionModal', () => {
   });
 
   it('renders with partial configuration changes', () => {
-    const partialChanges = { chunk_size: 750 };
+    const partialChanges = { embedding_model: 'text-embedding-3-small' };
     renderComponent({ configChanges: partialChanges });
 
     expect(screen.getByText('Configuration Changes (1 change):')).toBeInTheDocument();
-    expect(screen.getByText('Chunk Size:')).toBeInTheDocument();
-    expect(screen.queryByText('Embedding Model:')).not.toBeInTheDocument();
-    expect(screen.queryByText('Chunk Overlap:')).not.toBeInTheDocument();
+    expect(screen.getByText('Embedding Model:')).toBeInTheDocument();
   });
 
   it('highlights model change warning', () => {
@@ -446,7 +438,7 @@ describe('ReindexCollectionModal', () => {
   });
 
   it('shows correct singular/plural for single change', () => {
-    const singleChange = { chunk_size: 750 };
+    const singleChange = { embedding_model: 'text-embedding-3-small' };
     renderComponent({ configChanges: singleChange });
 
     expect(screen.getByText('Configuration Changes (1 change):')).toBeInTheDocument();

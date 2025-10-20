@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Add parent directory to path
@@ -116,28 +117,71 @@ async def get_database_stats(
 ) -> dict[str, Any]:
     """Get database statistics"""
     # Get collection and document counts by querying directly
-    # Get collection count
+    collection_count = 0
     collection_count_query = select(func.count()).select_from(Collection)
-    collection_count = await db.scalar(collection_count_query) or 0
 
-    # Get document count
+    try:
+        collection_count = await db.scalar(collection_count_query) or 0
+    except SQLAlchemyError as exc:
+        logger.warning("Failed querying collection count: %s", exc)
+        if db.in_transaction():  # pragma: no branch - defensive rollback
+            await db.rollback()
+
+    document_count = 0
     document_count_query = select(func.count()).select_from(Document)
-    document_count = await db.scalar(document_count_query) or 0
 
-    # Get database size estimate (PostgreSQL)
-    # Note: For PostgreSQL, we can't get file size directly
-    # This is a placeholder - actual size would require a DB query
-    db_size = 0  # TODO: Implement PostgreSQL database size query
+    try:
+        document_count = await db.scalar(document_count_query) or 0
+    except SQLAlchemyError as exc:
+        logger.warning("Failed querying document count: %s", exc)
+        if db.in_transaction():  # pragma: no branch - defensive rollback
+            await db.rollback()
+
+    # Get database size from PostgreSQL when available
+    database_size_mb: float | None = None
+    size_query = select(func.pg_database_size(func.current_database()))
+
+    try:
+        size_result = await db.scalar(size_query)
+        if size_result is not None:
+            database_size_mb = round(int(size_result) / 1024 / 1024, 2)
+    except OperationalError as exc:
+        logger.warning("Failed querying database size: %s", exc)
+        if db.in_transaction():
+            await db.rollback()
+    except SQLAlchemyError as exc:
+        logger.warning("Unexpected SQL error while querying database size: %s", exc)
+        if db.in_transaction():
+            await db.rollback()
+    except Exception as exc:  # pragma: no cover - unexpected error path
+        logger.warning("Unexpected error while querying database size: %s", exc)
+        if db.in_transaction():
+            await db.rollback()
 
     # Get total parquet files size
     output_path = Path(OUTPUT_DIR)
-    parquet_files = list(output_path.glob("*.parquet"))
-    parquet_size = sum(f.stat().st_size for f in parquet_files)
+    parquet_files: list[Path] = []
+    parquet_size_bytes = 0
+
+    try:
+        if output_path.exists():
+            parquet_files = list(output_path.glob("*.parquet"))
+            for parquet_file in parquet_files:
+                try:
+                    parquet_size_bytes += parquet_file.stat().st_size
+                except OSError as exc:
+                    logger.warning("Failed to stat parquet file %s: %s", parquet_file, exc)
+        else:
+            logger.debug("Parquet output directory does not exist: %s", output_path)
+    except Exception as exc:  # pragma: no cover - filesystem errors are unexpected
+        logger.warning("Unexpected error while scanning parquet files: %s", exc)
+
+    parquet_size_mb = round(parquet_size_bytes / 1024 / 1024, 2) if parquet_size_bytes else 0.0
 
     return {
         "collection_count": collection_count,
         "file_count": document_count,
-        "database_size_mb": round(db_size / 1024 / 1024, 2),
+        "database_size_mb": database_size_mb,
         "parquet_files_count": len(parquet_files),
-        "parquet_size_mb": round(parquet_size / 1024 / 1024, 2),
+        "parquet_size_mb": parquet_size_mb,
     }

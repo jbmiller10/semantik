@@ -18,7 +18,6 @@ vi.mock('../../stores/uiStore')
 
 describe('OperationProgress - WebSocket Error Handling', () => {
   const mockAddToast = vi.fn()
-  const mockUpdateOperationProgress = vi.fn()
   
   const mockOperation: MockOperation = {
     id: 'test-op-id',
@@ -42,7 +41,7 @@ describe('OperationProgress - WebSocket Error Handling', () => {
     } as ReturnType<typeof useUIStore>)
     
     vi.mocked(useCollectionStore).mockReturnValue({
-      updateOperationProgress: mockUpdateOperationProgress
+      updateOperationProgress: vi.fn()
     } as ReturnType<typeof useCollectionStore>)
   })
 

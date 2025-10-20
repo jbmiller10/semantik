@@ -26,13 +26,14 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
     searchType: 'semantic' as const,
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'reciprocal_rank' as const,
-    keywordMode: 'bm25' as const,
+    hybridMode: 'rerank' as const,
+    keywordMode: 'any' as const,
   },
   collections: [],
   failedCollections: [],
   partialFailure: false,
   rerankingMetrics: null,
+  gpuMemoryError: null,
   validationErrors: [],
   rerankingAvailable: true,
   rerankingModelsLoading: false,
@@ -45,6 +46,7 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
   setPartialFailure: vi.fn(),
   clearResults: vi.fn(),
   setRerankingMetrics: vi.fn(),
+  setGpuMemoryError: vi.fn(),
   validateAndUpdateSearchParams: vi.fn(),
   clearValidationErrors: vi.fn(),
   hasValidationErrors: vi.fn(),
@@ -53,6 +55,17 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
   setRerankingModelsLoading: vi.fn(),
   ...overrides
 })
+
+const mockSearchStore = (overrides?: Partial<ReturnType<typeof useSearchStore>>) => {
+  const state = createSearchStoreMock(overrides)
+
+  vi.mocked(useSearchStore).mockImplementation((selector?: (store: typeof state) => unknown) => {
+    if (typeof selector === 'function') {
+      return selector(state as never)
+    }
+    return state as never
+  })
+}
 
 describe('Search Results - Validation and Partial Failure Handling', () => {
   const mockAddToast = vi.fn()
@@ -98,7 +111,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: mockResults,
         partialFailure: true,
         failedCollections: mockFailedCollections,
@@ -110,10 +123,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -151,7 +164,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: [],
         partialFailure: true,
         failedCollections: mockFailedCollections,
@@ -163,10 +176,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -212,7 +225,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: mockResults,
         partialFailure: true,
         failedCollections: mockFailedCollections,
@@ -224,10 +237,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -248,7 +261,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
   describe('Search Query Validation', () => {
     it('should handle empty search query appropriately', async () => {
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         error: 'Search query cannot be empty',
         searchParams: { 
           query: '',
@@ -258,10 +271,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -272,7 +285,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
     it('should handle query length validation', async () => {
       const veryLongQuery = 'a'.repeat(1000)
       
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         error: 'Search query too long (max 500 characters)',
         searchParams: { 
           query: veryLongQuery,
@@ -282,10 +295,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -296,7 +309,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
       // This tests how the UI handles searches with special regex characters
       const specialQuery = '[test] (query) {with} $pecial* chars?'
       
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: [
           {
             collection_id: 'coll-1',
@@ -319,10 +332,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -340,7 +353,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
 
   describe('Collection Selection Validation', () => {
     it('should show message when no collections are selected', async () => {
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         error: 'Please select at least one collection to search',
         searchParams: { 
           query: 'test',
@@ -350,10 +363,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -369,7 +382,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         partialFailure: true,
         failedCollections: mockFailedCollections,
         searchParams: { 
@@ -380,10 +393,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -423,7 +436,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: malformedResults as unknown as SearchResult[],
         searchParams: { 
           query: 'test',
@@ -433,10 +446,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -479,7 +492,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: resultsWithInvalidScores as SearchResult[],
         searchParams: { 
           query: 'test',
@@ -489,10 +502,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -523,7 +536,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         total_chunks: 10
       }))
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: largeResults,
         searchParams: { 
           query: 'test',
@@ -533,10 +546,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 
@@ -587,7 +600,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
         }
       ]
 
-      vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock({
+      mockSearchStore({
         results: mixedModelResults as SearchResult[],
         rerankingMetrics: {
           rerankingUsed: true,
@@ -602,10 +615,10 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: true,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
-      }))
+      })
 
       renderWithErrorHandlers(<SearchResults />, [])
 

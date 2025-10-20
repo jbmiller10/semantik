@@ -2,6 +2,7 @@
 
 import os
 import time
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -69,7 +70,6 @@ class TestCurrentSystemBehavior:
         headers = self._get_auth_headers()
 
         # 1. Create collection
-        import uuid
 
         collection_name = f"E2E Test Collection {uuid.uuid4().hex[:8]}"
         response = requests.post(
