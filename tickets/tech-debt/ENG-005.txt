@@ -1,0 +1,46 @@
+Ticket: ENG-005 – Phase 1 Implementation Review & Hardening
+Phase: 1 – Shared Utilities (Sprint 1) Review
+Owner Type: Staff backend engineer or tech lead performing code reviews/QA sign-off
+
+Purpose:
+Ensure Phase 1 deliverables (ENG-001 through ENG-004) have been implemented correctly, integrated cleanly, and are ready for handoff to the Phase 2 team. This ticket focuses on verification, cross-cutting QA, documentation, and follow-up issue capture.
+
+Scope to Review:
+- `ProgressUpdateManager` integration across Celery tasks and WebSocket manager.
+- `ErrorClassifier` centralization and adapters.
+- Consolidated chunking strategy defaults/mappings.
+- Shared chunking validation helpers and resulting refactors.
+
+Review Checklist:
+1. Code Quality & Consistency
+   - Confirm duplicated logic in original files (`chunking_tasks.py`, `websocket_manager.py`, `chunking_service.py`, `chunking/config_manager.py`, `chunking_validation.py`, `chunking/validator.py`) has been removed or replaced by shared modules.
+   - Verify new modules follow repository style guidelines (typing, docstrings, logging).
+2. Behavioural Validation
+   - Run `make test`, `make lint`, `make type-check` and confirm clean results.
+   - Review unit tests added in Phase 1 to ensure coverage is meaningful (positive/negative cases, error handling, async pathways).
+   - Execute targeted manual tests if feasible:
+     * Trigger a chunking operation locally (via `make dev` stack) to observe Redis stream updates.
+     * Confirm WebSocket UI still receives progress updates.
+3. Backwards Compatibility
+   - Ensure stream keys, payload schemas, and error codes are unchanged (compare to logs/fixtures pre-refactor if available).
+   - Confirm API responses for strategy metadata and validation error messages remain identical (use existing regression tests or manual calls).
+4. Documentation & DX
+   - Check that module docs and READMEs reference new utilities.
+   - Ensure developer onboarding notes (if any) mention the shared modules as source of truth.
+5. Follow-up Work
+   - Log new tickets for any gaps, TODOs, or edge cases uncovered during review.
+   - Provide summary notes for Phase 2 engineers (e.g., "ProgressUpdateManager exposes X API"), ideally in project wiki or central doc.
+
+Deliverables:
+- Review findings documented in PR comments and a short summary posted to engineering channel or shared doc.
+- List of follow-up tickets/issues (if needed) with owners.
+- Confirmation that CI pipelines remain green after Phase 1 merges.
+
+Acceptance Criteria:
+- Review completed with explicit sign-off recorded (link to PR review or written approval).
+- No unresolved high-severity regressions identified; any medium/low findings have tracked follow-up tickets.
+- QA evidence attached (command outputs, screenshots of tests, manual verification notes).
+- Handoff note prepared for Phase 2 team summarizing utilities they will rely on.
+
+Out of Scope:
+- Implementing additional refactors beyond Phase 1 scope (should be logged as new work).

@@ -84,8 +84,8 @@ describe('Search Store Reranking Tests', () => {
       searchType: 'hybrid',
       useReranker: true,
       hybridAlpha: 0.5,
-      hybridMode: 'relative_score',
-      keywordMode: 'bm25',
+      hybridMode: 'filter',
+      keywordMode: 'all',
       rerankModel: 'Qwen/Qwen3-Reranker-4B',
     });
 
@@ -93,8 +93,8 @@ describe('Search Store Reranking Tests', () => {
     expect(state.searchParams.searchType).toBe('hybrid');
     expect(state.searchParams.useReranker).toBe(true);
     expect(state.searchParams.hybridAlpha).toBe(0.5);
-    expect(state.searchParams.hybridMode).toBe('relative_score');
-    expect(state.searchParams.keywordMode).toBe('bm25');
+    expect(state.searchParams.hybridMode).toBe('filter');
+    expect(state.searchParams.keywordMode).toBe('all');
     expect(state.searchParams.rerankModel).toBe('Qwen/Qwen3-Reranker-4B');
   });
 

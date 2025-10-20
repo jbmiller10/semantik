@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.config import settings
 from packages.shared.database import get_db
 from packages.shared.database.exceptions import EntityNotFoundError
 from packages.shared.database.models import Collection
@@ -85,6 +86,24 @@ async def get_document_content(
                 status_code=500,
                 detail="Error accessing document",
             ) from e
+
+        # Ensure the resolved path stays within the configured document root when one is set
+        allowed_roots = settings.document_allowed_roots
+        if settings.should_enforce_document_roots and allowed_roots:
+            for root in allowed_roots:
+                try:
+                    file_path.relative_to(root)
+                    break
+                except ValueError:
+                    continue
+            else:
+                logger.warning(
+                    "Path traversal attempt blocked: user %s attempted to access %s outside allowed roots %s",
+                    current_user.get("id", "unknown"),
+                    file_path,
+                    ", ".join(str(root) for root in allowed_roots),
+                )
+                raise HTTPException(status_code=403, detail="Access to the requested document is forbidden")
 
         # Additional security check: ensure file exists and is a regular file
         if not file_path.exists():

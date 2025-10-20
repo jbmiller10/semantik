@@ -12,6 +12,8 @@ from typing import Any
 
 import psutil
 
+from packages.shared.managers import QdrantCollectionNotFoundError
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,18 +36,30 @@ class ResourceEstimate:
 class ResourceManager:
     """Manages resource allocation for collection operations."""
 
-    def __init__(self, collection_repo: Any, operation_repo: Any):
+    RESOURCE_USAGE_CACHE_TTL_SECONDS = 30
+
+    def __init__(
+        self,
+        collection_repo: Any,
+        operation_repo: Any,
+        qdrant_manager: Any | None,
+    ) -> None:
         self.collection_repo = collection_repo
         self.operation_repo = operation_repo
+        self.qdrant_manager = qdrant_manager
+
         self._reserved_resources: dict[str, ResourceEstimate] = {}
         self._lock = asyncio.Lock()
+        self._usage_cache: dict[str, tuple[dict[str, Any], datetime]] = {}
+        self._usage_cache_lock = asyncio.Lock()
+        self._usage_cache_ttl_seconds = self.RESOURCE_USAGE_CACHE_TTL_SECONDS
 
     async def can_create_collection(self, user_id: int) -> bool:
         """Check if user can create a new collection."""
         try:
             # Get user's current collection count
-            collections = await self.collection_repo.list_by_user(user_id)
-            active_collections = [c for c in collections if c["status"] != "deleted"]
+            collections, _ = await self.collection_repo.list_for_user(user_id)
+            active_collections = [c for c in collections if c.status != "deleted"]
 
             # TODO: Get user's collection limit from user settings/subscription
             max_collections = 10  # Default limit
@@ -162,12 +176,13 @@ class ResourceManager:
         async with self._lock:
             try:
                 # Get collection info
-                collection = await self.collection_repo.get_by_id(collection_id)
+                collection = await self.collection_repo.get_by_uuid(collection_id)
                 if not collection:
                     return False
 
                 # Estimate resources (2x current size for blue-green)
-                size_gb = (collection.get("total_size_bytes", 0) / 1024 / 1024 / 1024) * 2
+                total_size_bytes = self._get_collection_value(collection, "total_size_bytes", 0) or 0
+                size_gb = (total_size_bytes / 1024 / 1024 / 1024) * 2
                 memory_mb = int(size_gb * 1024 + 1000)  # Add 1GB overhead
 
                 estimate = ResourceEstimate(memory_mb=memory_mb, storage_gb=size_gb, cpu_cores=2.0)
@@ -195,19 +210,55 @@ class ResourceManager:
     async def get_resource_usage(self, collection_id: str) -> dict[str, Any]:
         """Get current resource usage for a collection."""
         try:
-            collection = await self.collection_repo.get_by_id(collection_id)
+            now = datetime.now(UTC)
+
+            async with self._usage_cache_lock:
+                cached = self._usage_cache.get(collection_id)
+                if cached is not None:
+                    cached_usage, cached_at = cached
+                    if (now - cached_at).total_seconds() < self._usage_cache_ttl_seconds:
+                        return cached_usage
+                    self._usage_cache.pop(collection_id, None)
+
+            collection = await self.collection_repo.get_by_uuid(collection_id)
             if not collection:
                 return {}
 
-            # Get Qdrant collection info
-            # TODO: Query actual Qdrant usage
+            vector_store_name = self._get_collection_value(collection, "vector_store_name")
+            qdrant_collection_name = vector_store_name or f"collection_{collection_id}"
 
-            return {
-                "documents": collection.get("document_count", 0),
-                "vectors": collection.get("vector_count", 0),
-                "storage_bytes": collection.get("total_size_bytes", 0),
-                "storage_gb": collection.get("total_size_bytes", 0) / 1024 / 1024 / 1024,
-            }
+            qdrant_error: Exception | None = None
+            if self.qdrant_manager is not None:
+                try:
+                    qdrant_usage = await self.qdrant_manager.get_collection_usage(qdrant_collection_name)
+                    normalized = self._normalize_usage(qdrant_usage, collection)
+                    normalized.setdefault("metrics_status", "available")
+                    normalized.setdefault("metrics_source", "qdrant")
+
+                    async with self._usage_cache_lock:
+                        self._usage_cache[collection_id] = (normalized, datetime.now(UTC))
+
+                    return normalized
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    qdrant_error = exc
+                    logger.warning(
+                        "Failed to retrieve Qdrant metrics for %s: %s -- using repository statistics",
+                        qdrant_collection_name,
+                        exc,
+                    )
+
+            fallback = self._normalize_usage({}, collection)
+            fallback["metrics_source"] = "postgres"
+            fallback["metrics_status"] = "unavailable"
+            if isinstance(qdrant_error, QdrantCollectionNotFoundError):
+                fallback["metrics_reason"] = "collection_not_found"
+            elif qdrant_error is not None:
+                fallback["metrics_reason"] = "qdrant_unreachable"
+
+            async with self._usage_cache_lock:
+                self._usage_cache[collection_id] = (fallback, datetime.now(UTC))
+
+            return fallback
 
         except Exception as e:
             logger.error(f"Failed to get resource usage: {e}")
@@ -216,14 +267,25 @@ class ResourceManager:
     async def _get_user_resource_usage(self, user_id: int) -> dict[str, Any]:
         """Get total resource usage for a user."""
         try:
-            collections = await self.collection_repo.list_by_user(user_id)
-            total_storage_bytes = sum(c.get("total_size_bytes", 0) for c in collections)
+            collections, _ = await self.collection_repo.list_for_user(user_id)
 
-            return {
+            totals = {
                 "collections": len(collections),
-                "storage_bytes": total_storage_bytes,
-                "storage_gb": total_storage_bytes / 1024 / 1024 / 1024,
+                "storage_bytes": 0,
+                "storage_gb": 0.0,
             }
+
+            for collection in collections:
+                collection_id = getattr(collection, "id", None) or getattr(collection, "uuid", None)
+                if not collection_id:
+                    continue
+
+                usage = await self.get_resource_usage(str(collection_id))
+                totals["storage_bytes"] += usage.get("storage_bytes", 0)
+
+            totals["storage_gb"] = totals["storage_bytes"] / 1024 / 1024 / 1024
+
+            return totals
 
         except Exception as e:
             logger.error(f"Failed to get user resource usage: {e}")
@@ -239,6 +301,53 @@ class ResourceManager:
         except Exception as e:
             logger.error(f"Failed to get recent operations count: {e}")
             return 0
+
+    @staticmethod
+    def _get_collection_value(collection: Any, key: str, default: Any | None = None) -> Any:
+        if isinstance(collection, dict):
+            return collection.get(key, default)
+        return getattr(collection, key, default)
+
+    def _normalize_usage(self, usage: dict[str, Any], collection: Any) -> dict[str, Any]:
+        documents = usage.get("documents")
+        if documents is None:
+            documents = usage.get("points")
+        if documents is None:
+            documents = self._get_collection_value(collection, "document_count", None)
+        if documents is None:
+            documents = 0
+
+        vectors = usage.get("vectors")
+        if vectors is None:
+            vectors = usage.get("points")
+        if vectors is None:
+            vectors = self._get_collection_value(collection, "vector_count", None)
+        if vectors is None:
+            vectors = 0
+
+        storage_bytes = usage.get("storage_bytes")
+        if storage_bytes is None:
+            storage_bytes = usage.get("disk_usage_bytes")
+        if storage_bytes is None:
+            storage_bytes = self._get_collection_value(collection, "total_size_bytes", None)
+        if storage_bytes is None:
+            storage_bytes = 0
+
+        storage_gb = storage_bytes / 1024 / 1024 / 1024
+
+        normalized = {
+            "documents": documents,
+            "vectors": vectors,
+            "storage_bytes": storage_bytes,
+            "storage_gb": storage_gb,
+        }
+
+        if "metrics_status" not in usage:
+            normalized["metrics_status"] = usage.get("metrics_status", "available")
+        if "metrics_source" not in usage and usage:
+            normalized["metrics_source"] = usage.get("metrics_source", "qdrant")
+
+        return normalized
 
     async def _check_system_resources(self, estimate: ResourceEstimate) -> bool:
         """Check if system has enough resources."""

@@ -3,7 +3,13 @@ import { AxiosError } from 'axios';
 import { useUIStore } from '../stores/uiStore';
 import { useReindexCollection } from '../hooks/useCollectionOperations';
 import { useNavigate } from 'react-router-dom';
+import { useChunkingStore } from '../stores/chunkingStore';
+import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
+import ErrorBoundary from './ErrorBoundary';
+import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
+import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { Collection, ReindexRequest } from '../types/collection';
+import type { ChunkingStrategyType } from '../types/chunking';
 
 interface ReindexCollectionModalProps {
   collection: Collection;
@@ -11,6 +17,7 @@ interface ReindexCollectionModalProps {
     embedding_model?: string;
     chunk_size?: number;
     chunk_overlap?: number;
+    instruction?: string;
   };
   onClose: () => void;
   onSuccess: () => void;
@@ -20,17 +27,21 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
   const { addToast } = useUIStore();
   const reindexCollectionMutation = useReindexCollection();
   const navigate = useNavigate();
+  const { strategyConfig, setStrategy } = useChunkingStore();
   const [confirmText, setConfirmText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showStrategySelector, setShowStrategySelector] = useState(false);
+  const [selectedStrategy, setSelectedStrategy] = useState<ChunkingStrategyType | null>(null);
 
   const expectedConfirmText = `reindex ${collection.name}`;
   const isConfirmValid = confirmText === expectedConfirmText;
   
   // Calculate what's changing
   const hasModelChange = configChanges.embedding_model !== undefined && configChanges.embedding_model !== collection.embedding_model;
-  const hasChunkSizeChange = configChanges.chunk_size !== undefined && configChanges.chunk_size !== collection.chunk_size;
-  const hasChunkOverlapChange = configChanges.chunk_overlap !== undefined && configChanges.chunk_overlap !== collection.chunk_overlap;
-  const totalChanges = [hasModelChange, hasChunkSizeChange, hasChunkOverlapChange].filter(Boolean).length;
+  const hasInstructionChange = configChanges.instruction !== undefined;
+  const hasStrategyChange = selectedStrategy !== null && selectedStrategy !== collection.chunking_strategy;
+  
+  const totalChanges = [hasModelChange, hasInstructionChange, hasStrategyChange].filter(Boolean).length;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,11 +54,11 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
       if (configChanges.embedding_model !== undefined) {
         request.embedding_model = configChanges.embedding_model;
       }
-      if (configChanges.chunk_size !== undefined) {
-        request.chunk_size = configChanges.chunk_size;
-      }
-      if (configChanges.chunk_overlap !== undefined) {
-        request.chunk_overlap = configChanges.chunk_overlap;
+      
+      // Handle chunking strategy changes
+      if (hasStrategyChange && selectedStrategy) {
+        request.chunking_strategy = selectedStrategy;
+        request.chunking_config = strategyConfig.parameters;
       }
       
       // Call the mutation to start re-indexing
@@ -152,6 +163,44 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                 </div>
               </div>
 
+              {/* Chunking Strategy Selector */}
+              <div className="mt-4 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setShowStrategySelector(!showStrategySelector)}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  {showStrategySelector ? 'Hide' : 'Change'} Chunking Strategy
+                </button>
+                
+                {showStrategySelector && (
+                  <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                    <ErrorBoundary 
+                      level="component"
+                      fallback={(error, resetError) => (
+                        <ConfigurationErrorFallback 
+                          error={error} 
+                          resetError={resetError}
+                          onResetConfiguration={() => {
+                            const chunkingStore = useChunkingStore.getState();
+                            chunkingStore.resetToDefaults();
+                            resetError();
+                          }}
+                        />
+                      )}
+                    >
+                      <SimplifiedChunkingStrategySelector
+                        onStrategyChange={(strategy) => {
+                          setSelectedStrategy(strategy);
+                          setStrategy(strategy);
+                        }}
+                        disabled={isSubmitting}
+                      />
+                    </ErrorBoundary>
+                  </div>
+                )}
+              </div>
+
               <div className="mt-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Configuration Changes ({totalChanges} change{totalChanges !== 1 ? 's' : ''}):</h4>
                 <div className="space-y-2 bg-gray-50 rounded-lg p-3">
@@ -165,26 +214,25 @@ function ReindexCollectionModal({ collection, configChanges, onClose, onSuccess 
                       </div>
                     </div>
                   )}
-                  {hasChunkSizeChange && (
+                  {hasStrategyChange && selectedStrategy && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Chunk Size:</span>
+                      <span className="text-gray-600">Chunking Strategy:</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-red-600 line-through">{collection.chunk_size}</span>
+                        <span className="text-red-600 line-through">{CHUNKING_STRATEGIES[collection.chunking_strategy as ChunkingStrategyType]?.name || 'None'}</span>
                         <span className="text-gray-400">→</span>
-                        <span className="text-green-600 font-medium">{configChanges.chunk_size}</span>
+                        <span className="text-green-600 font-medium">
+                          {CHUNKING_STRATEGIES[selectedStrategy]?.name}
+                        </span>
                       </div>
                     </div>
                   )}
-                  {hasChunkOverlapChange && (
+                  {hasInstructionChange && (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Chunk Overlap:</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-red-600 line-through">{collection.chunk_overlap}</span>
-                        <span className="text-gray-400">→</span>
-                        <span className="text-green-600 font-medium">{configChanges.chunk_overlap}</span>
-                      </div>
+                      <span className="text-gray-600">Embedding Instruction:</span>
+                      <span className="text-green-600 font-medium">Updated</span>
                     </div>
                   )}
+                  
                 </div>
                 
                 {/* Impact summary */}

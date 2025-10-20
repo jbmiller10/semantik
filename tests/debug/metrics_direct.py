@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+
 """Test metrics directly from the registry"""
+
 import time
 
 from prometheus_client import generate_latest

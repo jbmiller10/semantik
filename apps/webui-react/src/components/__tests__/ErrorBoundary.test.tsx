@@ -12,12 +12,8 @@ const ThrowError = ({ shouldThrow }: { shouldThrow: boolean }) => {
   return <div>No error</div>
 }
 
-// Mock window.location.reload
-const mockReload = vi.fn()
-Object.defineProperty(window, 'location', {
-  value: { reload: mockReload },
-  writable: true,
-})
+// Note: window.location.reload is not mocked because the enhanced ErrorBoundary
+// now uses a reset mechanism instead of page reload
 
 describe('ErrorBoundary', () => {
   beforeEach(() => {
@@ -47,9 +43,9 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByText('Component Error')).toBeInTheDocument()
     expect(screen.getByText('Test error message')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Try Again/i })).toBeInTheDocument()
   })
 
   it('displays stack trace in collapsible details', () => {
@@ -67,31 +63,53 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
 
-    expect(screen.getByText('Stack trace')).toBeInTheDocument()
+    expect(screen.getByText('Technical details')).toBeInTheDocument()
     
     // The stack trace should be in a details element
     const details = document.querySelector('details')
     expect(details).toBeInTheDocument()
     
-    // Check that the stack trace contains expected text
-    const preElement = details?.querySelector('pre')
-    expect(preElement).toBeInTheDocument()
-    expect(preElement?.textContent).toContain('Error: Test error with stack')
+    // The details should contain error information
+    expect(screen.getByText('Error ID:')).toBeInTheDocument()
+    expect(screen.getByText('Component Stack:')).toBeInTheDocument()
+    expect(screen.getByText('Error Stack:')).toBeInTheDocument()
+    
+    // The error message should be displayed
+    expect(screen.getByText('Test error with stack')).toBeInTheDocument()
   })
 
-  it('reloads page when reload button is clicked', async () => {
+  it('resets error boundary when Try Again button is clicked', async () => {
     const user = userEvent.setup()
+    let shouldThrow = true
+    
+    const TestComponent = () => {
+      if (shouldThrow) {
+        throw new Error('Test error')
+      }
+      return <div>No error</div>
+    }
 
-    render(
+    const { rerender } = render(
       <ErrorBoundary>
-        <ThrowError shouldThrow={true} />
+        <TestComponent />
       </ErrorBoundary>
     )
 
-    const reloadButton = screen.getByRole('button', { name: 'Reload page' })
-    await user.click(reloadButton)
-
-    expect(mockReload).toHaveBeenCalled()
+    expect(screen.getByText('Component Error')).toBeInTheDocument()
+    
+    // Set shouldThrow to false and click Try Again
+    shouldThrow = false
+    const resetButton = screen.getByRole('button', { name: /Try Again/i })
+    await user.click(resetButton)
+    
+    // Re-render to see the recovered state
+    rerender(
+      <ErrorBoundary>
+        <TestComponent />
+      </ErrorBoundary>
+    )
+    
+    expect(screen.getByText('No error')).toBeInTheDocument()
   })
 
   it('logs errors to console', () => {
@@ -104,10 +122,15 @@ describe('ErrorBoundary', () => {
     )
 
     expect(consoleError).toHaveBeenCalledWith(
-      'Uncaught error:',
-      expect.any(Error),
+      '[ErrorBoundary] Component error caught:',
       expect.objectContaining({
-        componentStack: expect.any(String),
+        error: expect.any(Error),
+        errorInfo: expect.objectContaining({
+          componentStack: expect.any(String),
+        }),
+        errorId: expect.stringMatching(/^error-/),
+        level: 'component',
+        timestamp: expect.any(String)
       })
     )
   })
@@ -120,16 +143,16 @@ describe('ErrorBoundary', () => {
     )
 
     // Check for error boundary container with red background
-    const container = screen.getByText('Something went wrong').closest('.bg-red-50')
+    const container = screen.getByText('Component Error').closest('.bg-red-50')
     expect(container).toBeInTheDocument()
-    expect(container).toHaveClass('min-h-screen', 'flex', 'items-center', 'justify-center')
+    expect(container).toHaveClass('w-full', 'p-8', 'bg-red-50', 'rounded-lg')
 
     // Check heading styling
-    const heading = screen.getByText('Something went wrong')
-    expect(heading).toHaveClass('text-2xl', 'font-bold', 'text-red-600')
+    const heading = screen.getByText('Component Error')
+    expect(heading).toHaveClass('text-xl', 'font-semibold', 'text-gray-900')
 
-    // Check reload button styling
-    const button = screen.getByRole('button', { name: 'Reload page' })
+    // Check reset button styling
+    const button = screen.getByRole('button', { name: /Try Again/i })
     expect(button).toHaveClass('bg-blue-500', 'text-white', 'rounded')
   })
 
@@ -146,12 +169,9 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument()
-    // Error message paragraph should still be there, just empty
-    const container = screen.getByText('Something went wrong').parentElement
-    const errorParagraph = container?.querySelector('p')
-    expect(errorParagraph).toBeInTheDocument()
-    expect(errorParagraph?.textContent).toBe('')
+    expect(screen.getByText('Component Error')).toBeInTheDocument()
+    // Should show 'Unknown error' when error message is empty
+    expect(screen.getByText('Unknown error')).toBeInTheDocument()
   })
 
   it('handles errors thrown during render', () => {
@@ -167,9 +187,9 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>
     )
 
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByText('Component Error')).toBeInTheDocument()
     // The actual error message will vary, but error UI should be shown
-    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Try Again/i })).toBeInTheDocument()
   })
 
   it('does not catch errors in event handlers', async () => {
@@ -238,26 +258,70 @@ describe('ErrorBoundary', () => {
     expect(screen.queryByText('Error caught by boundary')).not.toBeInTheDocument()
   })
 
-  it('stays in error state even when children change', () => {
+  it('can recover from error state when reset', () => {
+    let shouldThrow = true
+    
+    const TestComponent = () => {
+      if (shouldThrow) {
+        throw new Error('Test error')
+      }
+      return <div>No error</div>
+    }
+    
     const { rerender } = render(
       <ErrorBoundary>
-        <ThrowError shouldThrow={true} />
+        <TestComponent />
       </ErrorBoundary>
     )
 
     // Error should be displayed
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    expect(screen.getByText('Component Error')).toBeInTheDocument()
 
-    // Re-render with non-throwing component
+    // Now the enhanced ErrorBoundary can recover via the Try Again button
+    shouldThrow = false
+    const resetButton = screen.getByRole('button', { name: /Try Again/i })
+    resetButton.click()
+    
+    // Re-render after reset
     rerender(
       <ErrorBoundary>
-        <ThrowError shouldThrow={false} />
+        <TestComponent />
+      </ErrorBoundary>
+    )
+    
+    // Should now show the recovered component
+    expect(screen.getByText('No error')).toBeInTheDocument()
+  })
+
+  it('shows page-level error with Go Home button', () => {
+    render(
+      <ErrorBoundary level="page">
+        <ThrowError shouldThrow={true} />
       </ErrorBoundary>
     )
 
-    // Error boundary remains in error state - this is expected React behavior
-    // The only way to recover is to reload the page
-    expect(screen.getByText('Something went wrong')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Reload page' })).toBeInTheDocument()
+    expect(screen.getByText('Page Error')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Try Again/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Go Home/i })).toBeInTheDocument()
+  })
+
+  it('uses custom fallback when provided', () => {
+    const customFallback = (error: Error, resetError: () => void) => (
+      <div>
+        <h1>Custom Error UI</h1>
+        <p>{error.message}</p>
+        <button onClick={resetError}>Custom Reset</button>
+      </div>
+    )
+
+    render(
+      <ErrorBoundary fallback={customFallback}>
+        <ThrowError shouldThrow={true} />
+      </ErrorBoundary>
+    )
+
+    expect(screen.getByText('Custom Error UI')).toBeInTheDocument()
+    expect(screen.getByText('Test error message')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Custom Reset' })).toBeInTheDocument()
   })
 })

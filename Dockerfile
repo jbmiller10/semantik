@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     git \
+    curl \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,19 +52,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Install Poetry
-ENV POETRY_VERSION=1.8.2
-ENV POETRY_HOME=/opt/poetry
-ENV PATH="$POETRY_HOME/bin:$PATH"
-RUN python -m venv $POETRY_HOME && \
-    $POETRY_HOME/bin/pip install poetry==$POETRY_VERSION
+# Install uv (supports swapping in a pre-downloaded installer script)
+ENV UV_HOME=/opt/uv
+COPY scripts/install_uv.sh /tmp/install_uv.sh
+RUN chmod +x /tmp/install_uv.sh && \
+    mkdir -p "${UV_HOME}/bin" && \
+    UV_INSTALL_DIR="${UV_HOME}/bin" sh /tmp/install_uv.sh && \
+    rm /tmp/install_uv.sh
+ENV PATH="${UV_HOME}/bin:${PATH}"
 
 # Copy dependency files
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml uv.lock ./
 
-# Install dependencies (without creating virtual env since we're in container)
-ENV POETRY_VIRTUALENVS_CREATE=false
-RUN poetry install --no-root --only main
+# Install dependencies into a virtual environment for production use
+RUN uv sync --frozen --no-install-project --no-default-groups
 
 # ============================================
 # Stage 3: Final Runtime Image
@@ -114,13 +116,12 @@ RUN update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON
 
 WORKDIR /app
 
-# Copy Python packages from builder
-# Poetry installs to dist-packages on Ubuntu with system Python
-COPY --from=python-builder /usr/local/lib/python${PYTHON_VERSION}/dist-packages /usr/local/lib/python${PYTHON_VERSION}/dist-packages
-COPY --from=python-builder /usr/local/bin /usr/local/bin
+# Copy virtual environment from builder
+COPY --from=python-builder /app/.venv /app/.venv
 
 # Copy application code
 COPY packages/ ./packages/
+COPY scripts/ ./scripts/
 
 # Copy alembic configuration and migrations
 COPY alembic.ini ./
@@ -134,6 +135,7 @@ RUN useradd -m -u 1000 appuser && \
     mkdir -p /app/data /app/logs && \
     chown -R appuser:appuser /app && \
     chown -R appuser:appuser /app/alembic /app/alembic.ini
+RUN chown -R appuser:appuser /app/.venv
 
 # Create necessary directories with proper permissions
 RUN mkdir -p \
@@ -145,6 +147,10 @@ RUN mkdir -p \
     /app/data/output \
     && chown -R appuser:appuser /app/data /app/logs
 
+# Prepare Hugging Face cache directory with correct ownership
+RUN mkdir -p /app/.cache/huggingface/hub && \
+    chown -R appuser:appuser /app/.cache
+
 # Create symbolic links for CUDA libraries if needed
 RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so || true && \
     ln -sf /usr/lib/x86_64-linux-gnu/libcusparse.so.11 /usr/local/cuda/lib64/libcusparse.so.11 || true && \
@@ -154,6 +160,9 @@ RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart
 # Test bitsandbytes installation (as root for library access)
 RUN python -c "import bitsandbytes; print('Bitsandbytes loaded successfully')" || \
     (echo "WARNING: Bitsandbytes test failed, INT8 quantization may not work" && exit 0)
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:${PATH}"
 
 USER appuser
 
@@ -166,6 +175,8 @@ ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY
 # C compiler for bitsandbytes JIT compilation
 ENV CC=gcc
 ENV CXX=g++
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 
 # Create entrypoint script
 COPY --chown=appuser:appuser docker-entrypoint.sh /app/

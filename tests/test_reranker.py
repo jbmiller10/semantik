@@ -3,6 +3,7 @@ Unit tests for CrossEncoderReranker class
 Tests the reranking functionality with mocked models
 """
 
+import importlib.util
 import queue
 import threading
 from collections.abc import Callable, Generator
@@ -12,9 +13,9 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import torch
 from torch import Tensor
+from vecpipe.reranker import CrossEncoderReranker
 
 # Import the class to test
-from vecpipe.reranker import CrossEncoderReranker
 
 # Test constants
 TEST_MODEL_NAME = "Qwen/Qwen3-Reranker-0.6B"
@@ -314,7 +315,7 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.9, 0.7, 0.5, 0.3, 0.1]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
 
         scores = reranker_loaded.compute_relevance_scores(query, sample_documents)
 
@@ -355,7 +356,7 @@ class TestRelevanceScoring:
         # Mock CPU tensor conversion
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.5, 0.5, 0.5, 0.5]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
 
         # Should handle gracefully without errors
         scores = reranker_loaded.compute_relevance_scores(query, documents)
@@ -540,7 +541,7 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.75]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -622,7 +623,7 @@ class TestEdgeCases:
         mock_probs = MagicMock()
         mock_yes_probs = MagicMock()
         mock_yes_probs.cpu.return_value.tolist.return_value = [0.85]
-        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+        mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
         mock_softmax.return_value = mock_probs
         mock_stack.return_value = torch.rand(1, 2)
 
@@ -782,7 +783,6 @@ class TestAdditionalCoverage:
         mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
     ) -> None:
         """Test flash attention detection logic"""
-        import importlib.util
 
         # Test when flash_attn is available
         with patch.object(importlib.util, "find_spec") as mock_find_spec:
@@ -998,7 +998,7 @@ class TestAdditionalCoverage:
                 return batch_scores
 
             mock_yes_probs.cpu.return_value.tolist.side_effect = get_batch_scores
-            mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())  # type: ignore[assignment, method-assign, misc]
+            mock_probs.__getitem__ = lambda _, key: (mock_yes_probs if key == (slice(None), 1) else MagicMock())
             mock_softmax.return_value = mock_probs
 
             # Run with custom batch size

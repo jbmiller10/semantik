@@ -2,7 +2,7 @@
 
 .PHONY: help install dev-install format lint type-check test test-coverage clean
 .PHONY: frontend-install frontend-build frontend-dev frontend-test build dev
-.PHONY: docker-up docker-down docker-logs docker-build-fresh docker-ps docker-restart
+.PHONY: docker-up docker-down docker-down-clean docker-logs docker-build-fresh docker-ps docker-restart
 .PHONY: docker-postgres-up docker-postgres-down docker-postgres-logs docker-shell-postgres
 .PHONY: docker-postgres-backup docker-postgres-restore
 .PHONY: dev-local docker-dev-up docker-dev-down docker-dev-logs
@@ -23,7 +23,8 @@ help:
 	@echo "Docker commands:"
 	@echo "  wizard            Interactive Docker setup wizard (TUI)"
 	@echo "  docker-up         Start all services with PostgreSQL"
-	@echo "  docker-down       Stop and remove all containers"
+	@echo "  docker-down       Stop and remove containers (keeps volumes)"
+	@echo "  docker-down-clean Stop and remove containers and volumes (data loss)"
 	@echo "  docker-logs       View logs from all services"
 	@echo "  docker-build-fresh Rebuild images without cache"
 	@echo "  docker-ps         Show status of all containers"
@@ -52,32 +53,32 @@ help:
 	@echo "  docker-dev-logs View logs from development services"
 
 install:
-	poetry install --no-dev
+	uv sync --frozen --no-default-groups
 
 dev-install:
-	poetry install
+	uv sync --frozen
 
 format:
-	poetry run black packages/vecpipe packages/webui packages/shared tests
-	poetry run isort packages/vecpipe packages/webui packages/shared tests
+	uv run black packages/vecpipe packages/webui packages/shared tests
+	uv run isort packages/vecpipe packages/webui packages/shared tests
 
 lint:
-	poetry run ruff check packages/vecpipe packages/webui packages/shared tests
+	uv run ruff check packages/vecpipe packages/webui packages/shared tests
 
 type-check:
-	poetry run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
+	uv run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports
 
 test:
-	poetry run pytest tests -v
+	uv run pytest tests -v
 
 test-ci:
-	poetry run pytest tests -v --ignore=tests/e2e -m "not e2e"
+	uv run pytest tests -v --ignore=tests/e2e -m "not e2e"
 
 test-e2e:
-	poetry run pytest tests -v -m e2e
+	uv run pytest tests -v -m e2e
 
 test-coverage:
-	poetry run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
+	uv run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -93,7 +94,7 @@ clean:
 # - Sets up document directories
 # - Creates optimized .env configuration
 wizard:
-	@python wizard_launcher.py
+	@python3 wizard_launcher.py
 
 docker-up:
 	@echo "Starting Semantik services with Docker Compose..."
@@ -154,6 +155,12 @@ docker-up:
 docker-down:
 	@echo "Stopping Semantik services..."
 	docker compose down
+	@echo "Containers stopped. Persistent volumes preserved."
+
+docker-down-clean:
+	@echo "Stopping Semantik services and removing volumes (this deletes Postgres data)..."
+	docker compose down -v
+	@echo "All containers and volumes removed."
 
 docker-logs:
 	docker compose logs -f

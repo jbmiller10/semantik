@@ -13,7 +13,7 @@ import pytest
 class TestAsyncSQLAlchemyPatterns:
     """Test that async SQLAlchemy patterns are used correctly."""
 
-    def test_no_sync_delete_pattern_in_repositories(self):
+    def test_no_sync_delete_pattern_in_repositories(self) -> None:
         """Ensure no repository uses session.delete() without await session.execute()."""
         repository_dir = Path(__file__).parent.parent.parent / "packages" / "shared" / "database" / "repositories"
 
@@ -57,7 +57,7 @@ class TestAsyncSQLAlchemyPatterns:
 
         assert len(violations) == 0, f"Found sync delete patterns in async repositories: {violations}"
 
-    def test_delete_imports_in_repositories(self):
+    def test_delete_imports_in_repositories(self) -> None:
         """Ensure repositories that perform deletions import the delete construct."""
         repository_dir = Path(__file__).parent.parent.parent / "packages" / "shared" / "database" / "repositories"
 
@@ -74,7 +74,7 @@ class TestAsyncSQLAlchemyPatterns:
                 assert has_import, f"{py_file.name} has a delete method but doesn't import from sqlalchemy"
                 assert has_delete, f"{py_file.name} has a delete method but doesn't import delete specifically"
 
-    def test_commit_after_delete_in_services(self):
+    def test_commit_after_delete_in_services(self) -> None:
         """Ensure service layer commits after deletion operations."""
         services_dir = Path(__file__).parent.parent.parent / "packages" / "webui" / "services"
 
@@ -109,7 +109,7 @@ class TestAsyncSQLAlchemyPatterns:
                                 "await self.db_session.commit()" in method_body
                             ), f"{py_file.name} calls collection_repo.delete but doesn't commit the transaction"
 
-    def test_flush_vs_commit_pattern(self):
+    def test_flush_vs_commit_pattern(self) -> None:
         """Ensure repositories use flush and services use commit."""
         # Repositories should use flush
         repository_dir = Path(__file__).parent.parent.parent / "packages" / "shared" / "database" / "repositories"
@@ -146,7 +146,7 @@ class TestAsyncSQLAlchemyPatterns:
                 if any(f"async def {op}" in content for op in write_ops):
                     pytest.fail(f"{py_file.name} has write operations but doesn't commit transactions")
 
-    def test_no_type_ignore_for_async_operations(self):
+    def test_no_type_ignore_for_async_operations(self) -> None:
         """Ensure we're not suppressing warnings for async operations."""
         packages_dir = Path(__file__).parent.parent.parent / "packages"
 

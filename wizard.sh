@@ -30,28 +30,28 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
     exit 1
 fi
 
-# Check if Poetry is installed
-if ! command -v poetry &> /dev/null; then
-    echo "📦 Poetry not found. Installing Poetry..."
-    curl -sSL https://install.python-poetry.org | python3 -
-    
-    # Add Poetry to PATH for this session
+# Check if uv is installed
+if ! command -v uv &> /dev/null; then
+    echo "📦 uv not found. Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Add uv to PATH for this session
     export PATH="$HOME/.local/bin:$PATH"
-    
+
     # Verify installation
-    if ! command -v poetry &> /dev/null; then
-        echo "❌ Error: Failed to install Poetry"
-        echo "Please install Poetry manually: https://python-poetry.org/docs/#installation"
+    if ! command -v uv &> /dev/null; then
+        echo "❌ Error: Failed to install uv"
+        echo "Please install uv manually: https://github.com/astral-sh/uv#installation"
         exit 1
     fi
-    echo "✅ Poetry installed successfully"
+    echo "✅ uv installed successfully"
 fi
 
 # Check if dependencies are installed
 echo "📋 Checking dependencies..."
-if ! poetry run python -c "import questionary, rich" 2>/dev/null; then
-    echo "📦 Installing dependencies..."
-    poetry install --no-interaction --no-ansi
+if ! uv run python -c "import questionary, rich" 2>/dev/null; then
+    echo "📦 Installing dependencies with uv..."
+    uv sync --frozen
     echo "✅ Dependencies installed"
 else
     echo "✅ Dependencies already installed"
@@ -61,4 +61,4 @@ fi
 echo
 echo "🧙 Starting interactive setup wizard..."
 echo
-poetry run python docker_setup_tui.py
+uv run python docker_setup_tui.py

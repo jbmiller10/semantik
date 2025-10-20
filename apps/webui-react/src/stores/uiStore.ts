@@ -7,7 +7,7 @@ export interface Toast {
   duration?: number;
 }
 
-interface UIState {
+export interface UIState {
   toasts: Toast[];
   activeTab: 'search' | 'collections' | 'operations';
   showDocumentViewer: { collectionId: string; docId: string; chunkId?: string } | null;
@@ -43,8 +43,5 @@ export const useUIStore = create<UIState>((set) => ({
     })),
   setActiveTab: (tab) => set({ activeTab: tab }),
   setShowDocumentViewer: (viewer) => set({ showDocumentViewer: viewer }),
-  setShowCollectionDetailsModal: (collectionId) => {
-    console.log('Setting showCollectionDetailsModal to:', collectionId);
-    set({ showCollectionDetailsModal: collectionId });
-  },
+  setShowCollectionDetailsModal: (collectionId) => set({ showCollectionDetailsModal: collectionId }),
 }));

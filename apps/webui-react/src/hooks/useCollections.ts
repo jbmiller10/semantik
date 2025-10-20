@@ -18,6 +18,8 @@ export const collectionKeys = {
 
 // Hook to fetch all collections
 export function useCollections() {
+  const isTestEnv = import.meta.env.MODE === 'test'
+
   return useQuery({
     queryKey: collectionKeys.lists(),
     queryFn: async () => {
@@ -28,12 +30,14 @@ export function useCollections() {
       return response.data.collections;
     },
     // Automatically refetch every 30 seconds if there are active operations
-    refetchInterval: (query) => {
-      const hasActiveOperations = query.state.data?.some(
-        (c: Collection) => c.status === 'processing' || c.activeOperation
-      );
-      return hasActiveOperations ? 30000 : false;
-    },
+    refetchInterval: isTestEnv
+      ? false
+      : (query) => {
+          const hasActiveOperations = query.state.data?.some(
+            (c: Collection) => c.status === 'processing' || c.activeOperation
+          );
+          return hasActiveOperations ? 30000 : false;
+        },
     staleTime: 5000, // Consider data stale after 5 seconds
   });
 }

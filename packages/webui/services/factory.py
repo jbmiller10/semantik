@@ -1,5 +1,7 @@
 """Factory functions for creating service instances with dependencies."""
 
+import logging
+
 import httpx
 from fastapi import Depends
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -8,22 +10,52 @@ from shared.database.repositories.operation_repository import OperationRepositor
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
+from packages.shared.managers import QdrantManager
+from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
+from .chunking.adapter import ChunkingServiceAdapter
+from .chunking.container import (
+    get_chunking_orchestrator as container_get_chunking_orchestrator,
+)
+from .chunking.container import (
+    get_redis_manager as container_get_redis_manager,
+)
+from .chunking.container import (
+    resolve_api_chunking_dependency,
+)
+from .chunking.orchestrator import ChunkingOrchestrator
+from .chunking_service import ChunkingService
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
+from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
 
+logger = logging.getLogger(__name__)
 
-def create_collection_service(db: AsyncSession) -> CollectionService:
+
+def get_redis_manager() -> RedisManager:
+    """Backward-compatible wrapper over chunking container Redis manager."""
+
+    manager = container_get_redis_manager()
+    logger.debug("Reusing Redis manager from chunking container")
+    return manager
+
+
+def create_collection_service(
+    db: AsyncSession,
+    *,
+    qdrant_manager_override: QdrantManager | None = None,
+) -> CollectionService:
     """Create a CollectionService instance with all required dependencies.
 
     This factory function simplifies dependency injection for FastAPI endpoints.
 
     Args:
         db: AsyncSession instance from FastAPI's dependency injection
+        qdrant_manager_override: Optional pre-built manager, useful for tests
 
     Returns:
         Configured CollectionService instance
@@ -54,12 +86,21 @@ def create_collection_service(db: AsyncSession) -> CollectionService:
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
 
+    qdrant_manager_instance = qdrant_manager_override
+    if qdrant_manager_instance is None:
+        try:
+            qdrant_client = qdrant_connection_manager.get_client()
+            qdrant_manager_instance = QdrantManager(qdrant_client)
+        except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+            logger.warning("Qdrant client unavailable for collection service: %s", exc)
+
     # Create and return service
     return CollectionService(
         db_session=db,
         collection_repo=collection_repo,
         operation_repo=operation_repo,
         document_repo=document_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 
@@ -146,10 +187,18 @@ def create_resource_manager(db: AsyncSession) -> ResourceManager:
     collection_repo = CollectionRepository(db)
     operation_repo = OperationRepository(db)
 
+    qdrant_manager_instance = None
+    try:
+        qdrant_client = qdrant_connection_manager.get_client()
+        qdrant_manager_instance = QdrantManager(qdrant_client)
+    except Exception as exc:  # pragma: no cover - fallback when Qdrant is offline
+        logger.warning("Qdrant client unavailable for resource metrics: %s", exc)
+
     # Create and return resource manager
     return ResourceManager(
         collection_repo=collection_repo,
         operation_repo=operation_repo,
+        qdrant_manager=qdrant_manager_instance,
     )
 
 
@@ -225,3 +274,69 @@ async def get_directory_scan_service() -> DirectoryScanService:
     provides preview functionality without persisting data.
     """
     return DirectoryScanService()
+
+
+async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
+    """Create orchestrator using composition root."""
+
+    return await container_get_chunking_orchestrator(db)
+
+
+async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
+    """Return chunking dependency that emulates legacy service."""
+
+    return await resolve_api_chunking_dependency(db, prefer_adapter=True)
+
+
+def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
+    """Create ChunkingService for Celery tasks without Redis."""
+
+    collection_repo = CollectionRepository(db_session)
+    document_repo = DocumentRepository(db_session)
+
+    return ChunkingService(
+        db_session=db_session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        redis_client=None,
+    )
+
+
+def create_celery_chunking_service_with_repos(
+    db_session: AsyncSession,
+    collection_repo: CollectionRepository,
+    document_repo: DocumentRepository,
+) -> ChunkingService:
+    """Create ChunkingService using pre-built repositories."""
+
+    return ChunkingService(
+        db_session=db_session,
+        collection_repo=collection_repo,
+        document_repo=document_repo,
+        redis_client=None,
+    )
+
+
+async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
+    """FastAPI dependency for orchestrator injection (new architecture)."""
+
+    return await container_get_chunking_orchestrator(db)
+
+
+async def get_chunking_service(
+    db: AsyncSession = Depends(get_db),
+) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
+    """FastAPI dependency for legacy ChunkingService consumers."""
+
+    return await create_chunking_service(db)
+
+
+# Expose commonly used dependency providers to builtins for tests that
+# reference them without importing (legacy tests convenience)
+try:  # pragma: no cover
+    import builtins as _builtins
+
+    _builtins.get_chunking_service = get_chunking_service  # type: ignore[attr-defined]
+    _builtins.get_collection_service = get_collection_service  # type: ignore[attr-defined]
+except Exception:
+    pass

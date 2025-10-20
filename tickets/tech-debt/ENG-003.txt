@@ -1,0 +1,51 @@
+Ticket: ENG-003 – Consolidate Chunking Strategy Defaults & Mapping
+Phase: 1 – Shared Utilities (Sprint 1)
+Owner Type: Backend engineer with knowledge of chunking domain & configuration management
+
+Repository Context:
+- `ChunkingService` (`packages/webui/services/chunking_service.py`) defines inline `STRATEGY_MAPPING` and default configs inside `SimpleChunkingStrategyFactory`.
+- `ChunkingConfigManager` (`packages/webui/services/chunking/config_manager.py`) maintains an overlapping but not identical set of defaults and metadata.
+- `packages/webui/services/chunking_constants.py` already stores global chunking constants but lacks the strategy mapping data.
+- Frontend pulls chunking strategy lists from API responses, making consistency critical.
+
+Problem Statement:
+Strategy identifiers, default configuration values, and human-readable metadata are spread across multiple modules with minor differences. Adding or adjusting a strategy requires updating at least three locations, risking drift and inconsistent API responses.
+
+Goal:
+Centralize strategy metadata, mapping, and default configuration definitions in a single source of truth that both service layers and the frontend API can consume. Ensure existing behaviour (default values, API output) remains intact.
+
+Implementation Steps:
+1. Define canonical strategy data structure:
+   - Extend `packages/webui/services/chunking_constants.py` (or new sibling `strategy_registry.py` if cleaner) with a dictionary that captures: canonical strategy id, factory key, default config, display metadata (name, description, best_for, pros/cons, supported_file_types).
+   - Provide helper functions (e.g., `get_strategy_defaults(strategy_id)`, `list_strategy_metadata()`).
+2. Refactor `SimpleChunkingStrategyFactory` in `chunking_service.py`:
+   - Replace inline defaults with lookups from the canonical structure.
+   - Keep compatibility for factory keys (character/recursive/etc.).
+3. Refactor `ChunkingConfigManager` to reuse the same canonical data rather than duplicating dictionaries.
+   - Ensure metadata methods still return the same shape currently expected by the API.
+4. Update any other consumers:
+   - Search for `STRATEGY_MAPPING` or hard-coded defaults across repo (e.g., `packages/webui/api/v2/chunking.py`, frontend constants) and route them through the shared helpers.
+   - Confirm `packages/webui/services/chunking_strategy_factory.py` or orchestrator components also leverage the canonical data.
+5. Testing & validation:
+   - Add unit tests covering helper functions (list metadata, fetch defaults, mapping translations) to guard against regression.
+   - Update existing tests across backend that rely on the constants to import from new module.
+   - Consider snapshot test for API endpoint returning strategy metadata to ensure payload remains unchanged.
+6. Documentation:
+   - Update docstrings and any inline comments referencing “update in three places” to highlight new single source of truth.
+
+Acceptance Criteria:
+- All strategy mappings and default configurations originate from a single module; no duplicate dictionaries remain in `chunking_service.py` or `ChunkingConfigManager`.
+- Backend API responses for strategy metadata remain identical (validated via tests or recorded fixtures).
+- Adding a new strategy requires touching only the centralized definitions and any domain-specific logic (documented in code comments).
+- Repository quality gates (`make lint`, `make type-check`, `make test`) pass.
+- Code readers can clearly find strategy metadata without hunting through multiple files.
+
+Out of Scope:
+- Introducing new strategies or modifying existing behaviour beyond consolidation.
+- Changing frontend consumption—ensure existing responses remain backward compatible.
+
+References:
+- packages/webui/services/chunking_service.py:151-177
+- packages/webui/services/chunking/config_manager.py:17-142
+- packages/webui/services/chunking_constants.py
+- packages/webui/api/v2/chunking.py (strategy endpoints)

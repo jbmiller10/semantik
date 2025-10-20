@@ -29,17 +29,21 @@ This guide covers the testing philosophy, practices, and procedures for the Sema
 ### Prerequisites
 ```bash
 # Install development dependencies
-poetry install --with dev
+uv sync --frozen
 
 # Verify pytest is available
-poetry run pytest --version
+uv run pytest --version
 ```
 
 ### Environment Variables
-Create a `.env.test` file for test-specific configuration:
+The Docker setup wizard now offers to generate a `.env.test` file with host overrides; accept the prompt to reuse
+those settings. If you skipped that step, create one manually for test-specific configuration:
 ```bash
 # Use mock embeddings to avoid GPU requirements
 USE_MOCK_EMBEDDINGS=true
+
+# Flag test environment (disables Prometheus server, enables test hooks)
+TESTING=true
 
 # Use test database (PostgreSQL required)
 DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test
@@ -62,12 +66,28 @@ JWT_SECRET_KEY=test-secret-key-for-testing-only
 ```
 
 ### PostgreSQL Test Database Setup
+
+We now ship a dedicated Docker service for the test database. Bring it up with the
+new `testing` profile before running suites that hit FastAPI endpoints:
+
+```bash
+# Start the disposable test database (uses credentials from .env.test)
+docker compose --profile testing up -d postgres_test
+```
+
+If you prefer a local Postgres instance, you can still create the database by hand:
+
 ```bash
 # Create test database
 createdb semantik_test
 
 # Run migrations on test database
-DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test poetry run alembic upgrade head
+DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test uv run alembic upgrade head
+
+# Clean the database before running the test suite (destroys all data!)
+TEST_DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
+CONFIRM_TEST_DB_RESET=true \
+uv run python scripts/reset_test_db.py
 ```
 
 ## Running Tests
@@ -78,16 +98,16 @@ DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test poetr
 make test
 
 # Run with verbose output
-poetry run pytest -v
+uv run pytest -v
 
 # Run specific test file
-poetry run pytest tests/test_auth.py
+uv run pytest tests/test_auth.py
 
 # Run specific test function
-poetry run pytest tests/test_auth.py::test_login_success
+uv run pytest tests/test_auth.py::test_login_success
 
 # Run tests matching pattern
-poetry run pytest -k "rerank"
+uv run pytest -k "rerank"
 ```
 
 ### Test Modes
@@ -96,29 +116,29 @@ poetry run pytest -k "rerank"
 ```bash
 # Force CPU mode for testing
 export CUDA_VISIBLE_DEVICES=""
-poetry run pytest
+uv run pytest
 ```
 
 #### GPU Mode
 ```bash
 # Run GPU-specific tests
-poetry run pytest -m gpu
+uv run pytest -m gpu
 ```
 
 #### Mock Mode
 ```bash
 # Use mock embeddings (no GPU required)
 export USE_MOCK_EMBEDDINGS=true
-poetry run pytest
+uv run pytest
 ```
 
 ### Coverage Reports
 ```bash
 # Generate coverage report
-poetry run pytest --cov=packages --cov-report=html
+uv run pytest --cov=packages --cov-report=html
 
 # View coverage in terminal
-poetry run pytest --cov=packages --cov-report=term-missing
+uv run pytest --cov=packages --cov-report=term-missing
 
 # Open HTML report
 open htmlcov/index.html
@@ -592,10 +612,10 @@ make docker-up
 make test-e2e
 
 # Run specific E2E test
-poetry run pytest tests/e2e/test_collection_deletion_e2e.py -v
+uv run pytest tests/e2e/test_collection_deletion_e2e.py -v
 
 # With custom endpoint
-API_BASE_URL=http://localhost:8000 poetry run pytest tests/e2e/ -v
+API_BASE_URL=http://localhost:8000 uv run pytest tests/e2e/ -v
 ```
 
 **CI/CD Integration**:
@@ -673,11 +693,11 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: |
-          pip install poetry
-          poetry install
+          pip install uv
+          uv sync
       - name: Run migrations
         run: |
-          poetry run alembic upgrade head
+          uv run alembic upgrade head
         env:
           DATABASE_URL: postgresql://postgres:test_pass@localhost:5432/semantik_test
       - name: Run tests
@@ -737,7 +757,7 @@ repos:
     hooks:
       - id: backend-tests
         name: Backend Tests
-        entry: poetry run pytest tests/unit -x
+        entry: uv run pytest tests/unit -x
         language: system
         pass_filenames: false
         files: \.(py)$
@@ -790,16 +810,16 @@ async def test_concurrent_searches():
 ### Verbose Output
 ```bash
 # Show print statements
-poetry run pytest -s
+uv run pytest -s
 
 # Show full assertion details
-poetry run pytest -vv
+uv run pytest -vv
 
 # Stop on first failure
-poetry run pytest -x
+uv run pytest -x
 
 # Drop into debugger on failure
-poetry run pytest --pdb
+uv run pytest --pdb
 ```
 
 ### Logging in Tests
@@ -933,13 +953,13 @@ const testCollection = new CollectionBuilder()
 ### Backend Coverage
 ```bash
 # Generate coverage report
-poetry run pytest --cov=packages --cov-report=html --cov-report=term-missing
+uv run pytest --cov=packages --cov-report=html --cov-report=term-missing
 
 # View coverage in browser
 open htmlcov/index.html
 
 # Coverage by package
-poetry run pytest --cov=packages.webui --cov=packages.vecpipe --cov=packages.shared
+uv run pytest --cov=packages.webui --cov=packages.vecpipe --cov=packages.shared
 ```
 
 ### Frontend Coverage
@@ -1015,7 +1035,7 @@ export default defineConfig({
    dropdb semantik_test
    createdb semantik_test
    DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
-     poetry run alembic upgrade head
+     uv run alembic upgrade head
    ```
 
 3. **WebSocket Test Timeouts**

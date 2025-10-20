@@ -7,7 +7,7 @@ import contextlib
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from threading import Lock
+from threading import RLock
 from typing import Any
 
 from shared.config import settings
@@ -38,8 +38,8 @@ class ModelManager:
         self.last_reranker_used: float = 0
         self.current_model_key: str | None = None
         self.current_reranker_key: str | None = None
-        self.lock = Lock()
-        self.reranker_lock = Lock()
+        self.lock = RLock()
+        self.reranker_lock = RLock()
         self.unload_task: asyncio.Task | None = None
         self.reranker_unload_task: asyncio.Task | None = None
         self.is_mock_mode = False
@@ -397,7 +397,13 @@ class ModelManager:
         loop = asyncio.get_event_loop()
         assert self.reranker is not None  # Already checked in ensure_reranker_loaded
         return await loop.run_in_executor(
-            self.executor, self.reranker.rerank, query, documents, top_k, instruction, True  # return_scores
+            self.executor,
+            self.reranker.rerank,
+            query,
+            documents,
+            top_k,
+            instruction,
+            True,  # return_scores
         )
 
     def get_status(self) -> dict[str, Any]:

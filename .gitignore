@@ -77,6 +77,7 @@ celerybeat.pid
 # Environments
 .env
 .env.*
+!.env.docker.example
 *.backup
 .semantik-config.json
 .jwt_secret
@@ -136,7 +137,7 @@ logs/
 data/
 images/
 models/
-repopackpy-output.txt
+repomixpy-output.txt
 
 # Logging
 *.pid
@@ -185,6 +186,7 @@ dev-debug.log
 # Task files
 tasks.json
 tasks/ 
+!packages/webui/tasks/
 TICKET*
 ticket_*
 CODEBASE_*
@@ -242,3 +244,13 @@ htmlcov/
 
 # Config examples
 nginx.conf.example
+
+# Project summaries
+/summaries/
+/summary/
+*repopack*
+*repomix*
+
+# Code review chunks (generated files only - scripts and guide are tracked)
+review-chunk-*.txt
+.code/

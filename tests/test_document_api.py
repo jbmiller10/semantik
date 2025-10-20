@@ -4,14 +4,22 @@ Unit tests for Document API endpoints
 
 import shutil
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
+
+from packages.shared.database import get_db
+from packages.webui.auth import get_current_user
+from packages.webui.dependencies import get_collection_for_user
+from packages.webui.main import app
 
 
 @pytest.fixture()
-def temp_test_dir() -> None:
+def temp_test_dir() -> Generator[Path, None, None]:
     """Create temporary directory for tests"""
     temp_dir = tempfile.mkdtemp()
     yield Path(temp_dir)
@@ -19,16 +27,14 @@ def temp_test_dir() -> None:
 
 
 @pytest.fixture()
-def mock_operation_repository() -> None:
+def mock_operation_repository() -> MagicMock:
     """Create a mock OperationRepository for testing."""
     return MagicMock()
 
 
 @pytest.fixture()
-def mock_document_repository() -> None:
+def mock_document_repository() -> AsyncMock:
     """Create a mock DocumentRepository for testing."""
-    from unittest.mock import AsyncMock
-
     return AsyncMock()
 
 
@@ -39,12 +45,9 @@ def test_client_with_document_mocks(
     mock_document_repository,  # noqa: ARG001
 ) -> None:
     """Create a test client with mocked document-related repositories."""
-    from packages.webui.auth import get_current_user
-    from packages.webui.dependencies import get_collection_for_user
-    from packages.webui.main import app
 
     # Override the authentication dependency
-    async def override_get_current_user():
+    async def override_get_current_user() -> None:
         return test_user
 
     # Mock collection for access control
@@ -52,25 +55,22 @@ def test_client_with_document_mocks(
     mock_collection.uuid = "test-operation"
     mock_collection.user_id = test_user["id"]
 
-    async def override_get_collection_for_user(collection_uuid: str, current_user=None, db=None):  # noqa: ARG001
+    async def override_get_collection_for_user(
+        collection_uuid: str, current_user=None, db=None  # noqa: ARG001
+    ) -> None:
         return mock_collection
 
     # Mock database session
-    from unittest.mock import AsyncMock
-
-    from packages.shared.database import get_db
 
     mock_db = AsyncMock()
 
-    async def override_get_db():
+    async def override_get_db() -> Generator[Any, None, None]:
         yield mock_db
 
     # Override dependencies
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[get_collection_for_user] = override_get_collection_for_user
     app.dependency_overrides[get_db] = override_get_db
-
-    from fastapi.testclient import TestClient
 
     client = TestClient(app)
 
@@ -97,7 +97,6 @@ class TestDocumentAPI:
         test_file.write_text("PDF content")
 
         # Mock async methods
-        from unittest.mock import AsyncMock, MagicMock
 
         # Create mock operation
         mock_operation = MagicMock()

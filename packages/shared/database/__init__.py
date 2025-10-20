@@ -13,19 +13,17 @@ Import Organization:
 - Utilities: Password hashing, user ID parsing, and metadata management
 """
 
-# Password hashing context
 from passlib.context import CryptContext
 
 from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
 from .collection_metadata import ensure_metadata_collection, store_collection_metadata
 from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
-
-# Async database session management
 from .database import AsyncSessionLocal, get_db
 from .exceptions import (
     AccessDeniedError,
     ConcurrencyError,
     DatabaseOperationError,
+    DimensionMismatchError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
@@ -38,17 +36,15 @@ from .factory import (
     create_all_repositories,
     create_api_key_repository,
     create_auth_repository,
+    create_chunk_repository,
     create_collection_repository,
     create_document_repository,
     create_operation_repository,
     create_user_repository,
     get_db_session,
 )
-
-# PostgreSQL database management
+from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
-
-# Utilities
 from .utils import parse_user_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -64,6 +60,7 @@ __all__ = [
     "create_all_repositories",
     "create_user_repository",
     "create_collection_repository",
+    "create_chunk_repository",
     "create_auth_repository",
     "create_api_key_repository",
     "create_operation_repository",
@@ -73,6 +70,7 @@ __all__ = [
     "AccessDeniedError",
     "ConcurrencyError",
     "DatabaseOperationError",
+    "DimensionMismatchError",
     "EntityAlreadyExistsError",
     "EntityNotFoundError",
     "InvalidStateError",
@@ -87,6 +85,9 @@ __all__ = [
     # Utility functions
     "parse_user_id",
     "pwd_context",
+    # Partition utilities
+    "ChunkPartitionHelper",
+    "PartitionAwareMixin",
     # Async database session management
     "AsyncSessionLocal",
     "get_db",

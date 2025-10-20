@@ -30,8 +30,8 @@ export interface SearchParams {
   rerankQuantization?: string;
   useReranker: boolean;
   hybridAlpha?: number;
-  hybridMode?: 'reciprocal_rank' | 'relative_score';
-  keywordMode?: 'bm25';
+  hybridMode?: 'filter' | 'rerank';
+  keywordMode?: 'any' | 'all';
 }
 
 interface FailedCollection {
@@ -53,6 +53,11 @@ interface SearchState {
     rerankerModel?: string;
     rerankingTimeMs?: number;
   } | null;
+  gpuMemoryError: {
+    message: string;
+    suggestion: string;
+    currentModel: string;
+  } | null;
   validationErrors: ValidationError[];
   rerankingAvailable: boolean;
   rerankingModelsLoading: boolean;
@@ -65,6 +70,7 @@ interface SearchState {
   setPartialFailure: (partialFailure: boolean) => void;
   clearResults: () => void;
   setRerankingMetrics: (metrics: SearchState['rerankingMetrics']) => void;
+  setGpuMemoryError: (error: SearchState['gpuMemoryError']) => void;
   validateAndUpdateSearchParams: (params: Partial<SearchParams>) => void;
   clearValidationErrors: () => void;
   hasValidationErrors: () => boolean;
@@ -85,13 +91,14 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     searchType: 'semantic',
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'reciprocal_rank',
-    keywordMode: 'bm25',
+    hybridMode: 'rerank',
+    keywordMode: 'any',
   },
   collections: [],
   failedCollections: [],
   partialFailure: false,
   rerankingMetrics: null,
+  gpuMemoryError: null,
   validationErrors: [],
   rerankingAvailable: true,
   rerankingModelsLoading: false,
@@ -107,6 +114,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   setPartialFailure: (partialFailure) => set({ partialFailure }),
   clearResults: () => set({ results: [], error: null, rerankingMetrics: null, failedCollections: [], partialFailure: false }),
   setRerankingMetrics: (metrics) => set({ rerankingMetrics: metrics }),
+  setGpuMemoryError: (gpuMemoryError) => set({ gpuMemoryError }),
   
   validateAndUpdateSearchParams: (params) => {
     const currentParams = get().searchParams;

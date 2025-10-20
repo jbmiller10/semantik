@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 """
 Integration tests for GPU memory management with real GPU operations.
 
@@ -14,6 +15,8 @@ and verify that:
 4. Concurrent operations are thread-safe
 """
 
+import argparse
+import asyncio
 import gc
 import os
 import sys
@@ -51,7 +54,7 @@ def get_memory_usage() -> tuple[float, float]:
     return used_bytes / (1024 * 1024), total_bytes / (1024 * 1024)
 
 
-def force_gpu_cleanup():
+def force_gpu_cleanup() -> None:
     """Force GPU memory cleanup"""
     gc.collect()
     if GPU_AVAILABLE:
@@ -64,21 +67,21 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
     """Integration tests for GPU memory management with real GPU operations"""
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         """Set up test class with GPU info"""
         if GPU_AVAILABLE:
             cls.gpu_name = torch.cuda.get_device_name(0)
             cls.gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
             print(f"\nRunning GPU tests on: {cls.gpu_name} ({cls.gpu_memory_gb:.1f} GB)")
 
-    def setUp(self):
+    def setUp(self) -> None:
         """Set up each test"""
         # Force cleanup before each test
         force_gpu_cleanup()
         self.initial_memory_used, self.total_memory = get_memory_usage()
         print(f"\nInitial GPU memory: {self.initial_memory_used:.1f}/{self.total_memory:.1f} MB")
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """Clean up after each test"""
         # Force cleanup after each test
         force_gpu_cleanup()
@@ -90,7 +93,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         if memory_leaked > 100:
             print(f"WARNING: Significant memory leak detected: {memory_leaked:.1f} MB")
 
-    def test_memory_monitoring(self):
+    def test_memory_monitoring(self) -> None:
         """Test real GPU memory tracking during embedding operations"""
         print("\n=== Testing GPU Memory Monitoring ===")
 
@@ -150,7 +153,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
             memory_freed > model_memory * 0.8
         ), f"Should free at least 80% of model memory, but only freed {memory_freed:.1f}/{model_memory:.1f} MB"
 
-    def test_adaptive_sizing_with_models(self):
+    def test_adaptive_sizing_with_models(self) -> None:
         """Test adaptive batch sizing with different real models if GPU available"""
         print("\n=== Testing Adaptive Batch Sizing ===")
 
@@ -213,7 +216,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
             service.unload_model()
             force_gpu_cleanup()
 
-    def test_stress_with_varying_lengths(self):
+    def test_stress_with_varying_lengths(self) -> None:
         """Test GPU memory handling with texts of varying lengths"""
         print("\n=== Testing Variable Length Text Processing ===")
 
@@ -259,7 +262,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         service.unload_model()
         force_gpu_cleanup()
 
-    def test_memory_cleanup(self):
+    def test_memory_cleanup(self) -> None:
         """Verify memory is properly freed after embeddings"""
         print("\n=== Testing Memory Cleanup ===")
 
@@ -303,7 +306,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         service.unload_model()
         force_gpu_cleanup()
 
-    def test_concurrent_gpu_operations(self):
+    def test_concurrent_gpu_operations(self) -> None:
         """Test thread safety with real GPU operations"""
         print("\n=== Testing Concurrent GPU Operations ===")
 
@@ -328,13 +331,12 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
         errors = []
         memory_spikes = []
 
-        def generate_embedding(thread_id: int, text: str):
+        def generate_embedding(thread_id: int, text: str) -> None:
             """Generate embedding in a thread"""
             try:
                 memory_before, _ = get_memory_usage()
 
                 # Use async method wrapped in sync call
-                import asyncio
 
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -402,7 +404,7 @@ class TestEmbeddingGPUMemory(unittest.TestCase):
 class TestGPUMemoryUtils(unittest.TestCase):
     """Test GPU memory utility functions with real GPU"""
 
-    def test_get_gpu_memory_info(self):
+    def test_get_gpu_memory_info(self) -> None:
         """Test GPU memory info retrieval"""
         free_mb, total_mb = get_gpu_memory_info()
 
@@ -412,7 +414,7 @@ class TestGPUMemoryUtils(unittest.TestCase):
         assert free_mb > 0, "Free GPU memory should be greater than 0"
         assert free_mb <= total_mb, "Free memory should not exceed total memory"
 
-    def test_model_memory_estimation(self):
+    def test_model_memory_estimation(self) -> None:
         """Test model memory requirement estimation"""
         test_cases = [
             ("sentence-transformers/all-MiniLM-L6-v2", "float32", 200),  # ~90MB model + overhead
@@ -434,7 +436,6 @@ class TestGPUMemoryUtils(unittest.TestCase):
 
 if __name__ == "__main__":
     # Add command line option to skip GPU tests
-    import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-gpu", action="store_true", help="Skip GPU tests")

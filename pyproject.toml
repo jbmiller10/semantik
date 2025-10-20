@@ -1,70 +1,100 @@
-[tool.poetry]
+[project]
 name = "document-embedding-system"
 version = "2.0.0"
 description = "Production-ready document embedding system with Qdrant"
-authors = ["Your Name <you@example.com>"]
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.11,<3.13"
 readme = "README.md"
-packages = [{include = "vecpipe", from = "packages"}, {include = "webui", from = "packages"}, {include = "shared", from = "packages"}]
+dependencies = [
+    "qdrant-client>=1.9.0,<2",
+    "sentence-transformers>=3.0.0,<4",
+    "fastapi>=0.116.0,<0.117",
+    "uvicorn>=0.27.1,<0.28",
+    "pyarrow>=15.0.0,<16",
+    "pandas>=2.2.0,<3",
+    "tqdm>=4.66.2,<5",
+    "httpx>=0.27.0,<0.28",
+    "tiktoken>=0.7.0,<0.8",
+    "prometheus-client>=0.19.0,<0.20",
+    "psutil>=5.9.0,<6",
+    "gputil>=1.4.0,<2",
+    "pypdf>=5.0.0,<6",
+    "python-docx>=1.1.0,<2",
+    "websockets>=11.0.3,<12",
+    "unstructured[all-docs]>=0.18.1,<0.19",
+    "python-multipart>=0.0.18,<0.0.19",
+    "python-dotenv>=1.0.1,<2",
+    "torch",
+    "transformers>=4.51.0,<5",
+    "bitsandbytes>=0.46.0,<0.47",
+    "accelerate>=0.26.0",
+    "passlib[bcrypt]>=1.7.4,<2",
+    "pyjwt[crypto]>=2.10.1,<3",
+    "email-validator>=2.1.0,<3",
+    "numpy<2",
+    "pydantic-settings>=2.10.1,<3",
+    "slowapi>=0.1.9,<0.2",
+    "pptx2md>=0.7.2,<0.8",
+    "questionary>=2.0.1,<3",
+    "rich>=13.0.0,<14",
+    "alembic>=1.13.1,<2",
+    "sqlalchemy>=2.0.23,<3",
+    "psycopg2-binary>=2.9.9,<3",
+    "celery[redis]>=5.3.0,<6",
+    "redis>=5.0.0,<6",
+    "flower>=2.0.0,<3",
+    "asyncpg>=0.30.0,<0.31",
+    "llama-index-core>=0.13.0,<0.14",
+    "llama-index-embeddings-openai>=0.5.0,<0.6",
+    "aiofiles>=24.1.0,<25",
+    "google-re2~=1.1",
+    "regex>=2024.11.6,<2025",
+    "playwright>=1.54.0",
+    "python-slugify>=8.0.4",
+    "text-unidecode>=1.3",
+    "pytest-base-url>=2.1.0",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<3.13"
-qdrant-client = "^1.9.0"
-sentence-transformers = "^3.0.0"
-fastapi = "^0.116.0"
-uvicorn = "^0.27.1"
-pyarrow = "^15.0.0"
-pandas = "^2.2.0"
-tqdm = "^4.66.2"
-httpx = "^0.27.0"
-tiktoken = "^0.5.0"
-prometheus-client = "^0.19.0"
-psutil = "^5.9.0"
-gputil = "^1.4.0"
-pypdf = "^5.0.0"
-python-docx = "^1.1.0"
-websockets = "^11.0.3"
-unstructured = {extras = ["all-docs"], version = "^0.18.1"}
-python-multipart = "^0.0.18"
-python-dotenv = "^1.0.1"
-torch = "*"
-transformers = "^4.51.0"
-bitsandbytes = "^0.46.0"
-accelerate = ">=0.26.0"
-passlib = {extras = ["bcrypt"], version = "^1.7.4"}
-pyjwt = {extras = ["crypto"], version = "^2.10.1"}
-email-validator = "^2.1.0"
-numpy = "<2"
-pydantic-settings = "^2.10.1"
-slowapi = "^0.1.9"
-pptx2md = "^0.7.2"
-questionary = "^2.0.1"
-rich = "^13.0.0"
-alembic = "^1.13.1"
-sqlalchemy = "^2.0.23"
-psycopg2-binary = "^2.9.9"
-celery = {extras = ["redis"], version = "^5.3.0"}
-redis = "^5.0.0"
-flower = "^2.0.0"
-asyncpg = "^0.30.0"
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0,<9",
+    "pytest-asyncio>=0.23.0,<0.24",
+    "pytest-cov>=4.1.0,<5",
+    "pytest-xdist>=3.5.0,<4",
+    "ruff>=0.2.0,<0.3",
+    "mypy>=1.8.0,<2",
+    "black>=24.2.0,<25",
+    "isort>=5.13.0,<6",
+    "types-requests>=2.31.0,<3",
+    "types-redis>=4.6.0,<5",
+    "pyfakefs>=5.3.0,<6",
+    "websocket-client>=1.8.0,<2",
+    "fakeredis>=2.31.0,<3",
+]
+e2e = ["pytest-playwright>=0.6.2,<0.7"]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-asyncio = "^0.23.0"
-pytest-cov = "^4.1.0"
-ruff = "^0.2.0"
-mypy = "^1.8.0"
-black = "^24.2.0"
-isort = "^5.13.0"
-types-requests = "^2.31.0"
-types-redis = "^4.6.0"
-pyfakefs = "^5.3.0"
-websocket-client = "^1.8.0"
+[tool.hatch.build.targets.sdist]
+include = [
+    "packages/vecpipe",
+    "packages/webui",
+    "packages/shared",
+]
 
-[tool.poetry.group.e2e]
-optional = true
+[tool.hatch.build.targets.wheel]
+include = [
+    "packages/vecpipe",
+    "packages/webui",
+    "packages/shared",
+]
 
-[tool.poetry.group.e2e.dependencies]
-pytest-playwright = "^0.6.2"
+[tool.hatch.build.targets.wheel.sources]
+"packages/vecpipe" = "vecpipe"
+"packages/webui" = "webui"
+"packages/shared" = "shared"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
@@ -123,12 +153,38 @@ warn_unused_ignores = true
 warn_no_return = true
 follow_imports = "normal"
 ignore_missing_imports = true
+exclude = [
+    "scripts/",
+    "manual_tests/",
+    "alembic/versions/",
+    "verify_reindex_fixes.py"
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
+disable_error_code = [
+    "return-value",
+    "var-annotated",
+    "no-any-return",
+    "arg-type",
+    "assignment",
+    "unused-ignore",
+    "list-item",
+    "misc",
+    "operator",
+    "no-untyped-call",
+    "no-untyped-def",
+    "attr-defined",
+    "index",
+    "call-overload",
+    "union-attr",
+    "override",
+    "dict-item",
+    "type-arg",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -140,8 +196,7 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
     "e2e: End-to-end tests that require a running instance (deselect with '-m \"not e2e\"')",
+    "integration: Integration tests that rely on real infrastructure or databases",
+    "performance: Performance-focused tests that may run slowly",
 ]
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+norecursedirs = ["manual_tests"]

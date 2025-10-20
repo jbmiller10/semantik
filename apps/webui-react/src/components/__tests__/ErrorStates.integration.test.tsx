@@ -50,8 +50,8 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
     searchType: 'semantic' as const,
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'reciprocal_rank' as const,
-    keywordMode: 'bm25' as const,
+    hybridMode: 'rerank' as const,
+    keywordMode: 'any' as const,
   },
   collections: [],
   failedCollections: [],
@@ -145,8 +145,8 @@ describe('Error States - Integration Tests', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
       }))
       
@@ -225,8 +225,8 @@ describe('Error States - Integration Tests', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
       }))
       
@@ -481,8 +481,8 @@ describe('Error States - Integration Tests', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
       }))
       
@@ -516,8 +516,8 @@ describe('Error States - Integration Tests', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'reciprocal_rank',
-          keywordMode: 'bm25'
+          hybridMode: 'rerank',
+          keywordMode: 'any'
         }
       }))
       
