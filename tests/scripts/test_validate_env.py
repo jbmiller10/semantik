@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import pathlib
-from collections.abc import Sequence
-from typing import Callable
+from collections.abc import Callable, Sequence
 
 import pytest
 
 from scripts import validate_env
 
 
-@pytest.fixture
+@pytest.fixture()
 def secure_env(monkeypatch: pytest.MonkeyPatch) -> Callable[[dict[str, str] | None], None]:
     """Provide a helper that seeds strong defaults for secrets before validation tests."""
 
