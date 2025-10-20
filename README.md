@@ -19,6 +19,9 @@ While we will do our best to avoid any breaking changes, we do not gurantee back
 
 Semantik is a self‑hosted semantic search system for local and team documents. It runs a FastAPI backend, a dedicated embedding/search service, and a Celery worker pipeline over Postgres, Redis, and Qdrant. A GPU is recommended; CPU works for small datasets.
 
+### Why Semantik
+Private, self‑hosted semantic search that fits on your own hardware. Designed for clear ops and predictable performance.
+
 ## Features
 - Semantic, keyword, and hybrid search with optional reranking
 - Collection management and document preview in the Web UI
@@ -41,6 +44,50 @@ Semantik is a self‑hosted semantic search system for local and team documents.
 
 Data flow (summary):
 1) API request → 2) DB operation row → 3) Celery task → 4) extract + chunk → 5) embed via vecpipe → 6) upsert to Qdrant → 7) progress via Redis/WebSocket → 8) status persisted.
+
+### Design Notes
+- Commit‑before‑dispatch task pattern eliminates operation/task race conditions
+- Partition‑aware Postgres schema with helper‑computed partition keys
+- Scalable WebSocket manager suited for horizontal scaling
+- Chunking tasks include circuit breaker, DLQ, and resource limits
+- Metrics and health checks across services
+
+### Security Snapshot
+- JWT auth with rate limiting (SlowAPI) and validated CORS
+- CSP headers enabled at the API layer
+- Internal API key for service‑to‑service calls
+- Data stays local by default (no external model calls)
+
+### Architecture Diagram (Mermaid)
+```mermaid
+flowchart LR
+  subgraph Client
+    UI[Web UI]
+  end
+  subgraph API
+    WebUI[FastAPI WebUI]
+  end
+  subgraph Infra
+    PG[(Postgres)]
+    R[Redis]
+    Q[Qdrant]
+  end
+  subgraph Worker
+    C[Celery Tasks]
+  end
+  subgraph Vector
+    V[Vecpipe (Embeddings/Search)]
+  end
+
+  UI -->|HTTP/WebSocket| WebUI
+  WebUI <--> PG
+  WebUI <--> R
+  WebUI -->|dispatch ops| C
+  C <--> PG
+  C <--> R
+  C -->|embed/search| V
+  V <--> Q
+```
 
 ## Quickstart (Docker)
 Prereqs: Docker + Compose; NVIDIA runtime for GPU.
@@ -118,6 +165,47 @@ services:
 
 Ensure the worker consumes the default queue (current configuration uses defaults).
 
+## Quick API Examples
+
+Create a collection
+```bash
+curl -X POST http://localhost:8080/api/v2/collections \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+        "name": "work_docs",
+        "description": "Team documents",
+        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+        "quantization": "float16",
+        "chunk_size": 1000,
+        "chunk_overlap": 200
+      }'
+```
+
+Add a source (file or directory)
+```bash
+curl -X POST http://localhost:8080/api/v2/collections/<collection_uuid>/sources \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+        "source_path": "/mnt/docs/handbook",
+        "config": {}
+      }'
+```
+
+Search across collections
+```bash
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+        "collection_uuids": ["<uuid1>", "<uuid2>"],
+        "query": "onboarding policy",
+        "k": 10,
+        "use_reranker": true
+      }'
+```
+
 ## Testing
 - Backend: `make test` (Pytest); coverage: `make test-coverage`
 - E2E (requires stack): `make test-e2e`
@@ -129,6 +217,9 @@ Ensure the worker consumes the default queue (current configuration uses default
 - CPU‑only mode is suitable for small corpora; GPU recommended for indexing speed and reranking
 - Conservative worker defaults (`CELERY_CONCURRENCY=1`)—tune to hardware and workload
 - Planned: hybrid search improvements, broader formats/OCR, additional embedding/reranker options, MCP integration
+
+### Performance
+Performance varies by hardware, collection size, and model choice. See tuning guidance in [docs/CONFIGURATION.md#performance-tuning](docs/CONFIGURATION.md#performance-tuning).
 
 ## License
 Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE).
