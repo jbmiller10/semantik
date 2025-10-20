@@ -881,6 +881,7 @@ class TestReindexTaskIntegration:
                 collection_id="coll-123",
                 type=OperationType.REINDEX,
                 status=OperationStatus.PENDING,
+                meta={"staging_collection_name": "vc-staging"},
                 config={
                     "chunk_size": 150,
                     "chunk_overlap": 30,
@@ -893,6 +894,7 @@ class TestReindexTaskIntegration:
                         "collection_id": "coll-123",
                         "type": OperationType.REINDEX,
                         "status": OperationStatus.PENDING,
+                        "meta": {"staging_collection_name": "vc-staging"},
                         "config": {
                             "chunk_size": 150,
                             "chunk_overlap": 30,
@@ -908,6 +910,7 @@ class TestReindexTaskIntegration:
                 path="/source/path",
                 status=CollectionStatus.READY,
                 vector_collection_id="vc-source",
+                qdrant_staging={"collection_name": "vc-staging"},
                 chunking_strategy="recursive",
                 chunking_config={},
                 chunk_size=100,
@@ -921,6 +924,7 @@ class TestReindexTaskIntegration:
                         "path": "/source/path",
                         "status": CollectionStatus.READY,
                         "vector_collection_id": "vc-source",
+                        "qdrant_staging": {"collection_name": "vc-staging"},
                         "chunking_strategy": "recursive",
                         "chunking_config": {},
                         "chunk_size": 100,
@@ -1134,6 +1138,59 @@ class TestReindexTaskIntegration:
             # Verify staging collection was used for indexing
             # The actual upsert happens via HTTP calls to vecpipe
             assert mock_httpx_post.called
+
+    @pytest.mark.asyncio()
+    async def test_reindex_task_requires_staging_metadata(self, mock_reindex_dependencies):
+        """Ensure we fail fast instead of targeting the primary collection when staging metadata is missing."""
+        db = mock_reindex_dependencies["db"]
+        updater = mock_reindex_dependencies["updater"]
+        operation = mock_reindex_dependencies["operation"]
+        source_collection = mock_reindex_dependencies["source_collection"]
+
+        # Remove staging metadata from both the operation and the collection
+        operation.meta = {}
+        operation.config = {}
+        operation.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "op-reindex-123",
+                "collection_id": "coll-123",
+                "type": OperationType.REINDEX,
+                "status": OperationStatus.PENDING,
+                "config": {},
+                "meta": {},
+            }.get(key, default)
+        )
+
+        source_collection.qdrant_staging = None
+        source_collection.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "coll-123",
+                "name": "Source Collection",
+                "path": "/source/path",
+                "status": CollectionStatus.READY,
+                "vector_collection_id": "vc-source",
+                "chunking_strategy": "recursive",
+                "chunking_config": {},
+                "chunk_size": 100,
+                "chunk_overlap": 20,
+                "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                "quantization": "float16",
+            }.get(key, default)
+        )
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        db.execute.side_effect = [mock_result_1, mock_result_2]
+
+        with pytest.raises(RuntimeError, match="Missing staging collection metadata"):
+            await _process_reindex_operation(db, updater, "op-reindex-123")
+
+        # Ensure we never attempted to resolve staging or ingest documents after the failure
+        assert db.execute.await_count == 2
 
     @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
