@@ -346,34 +346,13 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
     op = (await db.execute(op_lookup)).scalar_one()
 
-    # Normalize config for downstream lookups (MagicMock instances expose .config but not .get reliably)
-    op_config = _get(op, "config", {}) or {}
-    if not isinstance(op_config, dict):
-        op_config = getattr(op, "config", {}) or {}
-    source_path = op_config.get("source_path")
-
     # Fetch the parent collection
     collection_obj = (
         await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
     ).scalar_one_or_none()
 
-    # Fetch only unprocessed documents for this collection
-    unprocessed_query = select(_Document).where(
-        _Document.collection_id == op.collection_id,
-        _Document.chunk_count == 0,
-    )
-    candidate_docs = (await db.execute(unprocessed_query)).scalars().all()
-
-    def _should_process(doc: Any) -> bool:
-        if _get(doc, "chunk_count", 0) not in (0, None):
-            return False
-        if source_path:
-            doc_path = _get(doc, "file_path", "") or ""
-            normalized_source = source_path.rstrip("/")
-            return doc_path.startswith(normalized_source)
-        return True
-
-    docs = [doc for doc in candidate_docs if _should_process(doc)]
+    # Fetch documents for this collection
+    docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
 
     collection = {
         "id": _get(collection_obj, "id"),

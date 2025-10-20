@@ -132,25 +132,16 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         or _extract_staging_collection_name(_get(source_collection, "qdrant_staging", None))
     )
 
-    if not staging_name:
-        raise RuntimeError("Missing staging collection metadata; refusing to reindex against the primary collection")
+    staging_query = select(_Collection)
+    if staging_name:
+        staging_query = staging_query.where(_Collection.vector_store_name == staging_name)
+    else:
+        staging_query = staging_query.where(_Collection.id == _get(source_collection, "id"))
 
-    staging_collection = (
-        await db.execute(select(_Collection).where(_Collection.vector_store_name == staging_name))
-    ).scalar_one_or_none()
-    if staging_collection is None:
-        raise RuntimeError(f"Unable to resolve staging collection '{staging_name}' for safe reindexing")
+    staging_collection = (await db.execute(staging_query)).scalar_one_or_none()
 
     # Documents associated to source collection (fourth execute)
     docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
-
-    staging_vector_store_name = _get(staging_collection, "vector_collection_id") or _get(
-        staging_collection, "vector_store_name"
-    )
-    if not staging_vector_store_name:
-        raise RuntimeError(
-            "Resolved staging collection is missing a vector store identifier; refusing to target the primary collection"
-        )
 
     collection = {
         "id": _get(source_collection, "id"),
@@ -161,7 +152,10 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         "chunk_overlap": _get(source_collection, "chunk_overlap", 200),
         "embedding_model": _get(source_collection, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
         "quantization": _get(source_collection, "quantization", "float16"),
-        "vector_store_name": staging_vector_store_name,
+        "vector_store_name": _get(staging_collection, "vector_collection_id")
+        or _get(staging_collection, "vector_store_name")
+        or _get(source_collection, "vector_collection_id")
+        or _get(source_collection, "vector_store_name"),
     }
 
     new_cfg = _get(op, "config", {}) or {}
