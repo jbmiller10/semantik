@@ -7,6 +7,7 @@ import platform
 import re
 import secrets
 import shutil
+import string
 import subprocess
 import sys
 import threading
@@ -23,6 +24,42 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 console = Console()
+
+
+FLOWER_PASSWORD_SYMBOLS = "!@#$%^*-_=+"
+MIN_FLOWER_PASSWORD_LENGTH = 16
+
+
+def generate_flower_credentials() -> tuple[str, str]:
+    """Return a random Flower username/password pair meeting strength requirements."""
+
+    username = f"flower_{secrets.token_hex(4)}"
+
+    categories = (
+        string.ascii_lowercase,
+        string.ascii_uppercase,
+        string.digits,
+        FLOWER_PASSWORD_SYMBOLS,
+    )
+
+    password_chars = [secrets.choice(category) for category in categories]
+    all_chars = "".join(categories)
+    remaining = max(MIN_FLOWER_PASSWORD_LENGTH - len(password_chars), 0)
+    password_chars.extend(secrets.choice(all_chars) for _ in range(remaining))
+    secrets.SystemRandom().shuffle(password_chars)
+    password = "".join(password_chars)
+
+    return username, password
+
+
+def mask_secret(value: str, visible: int = 4) -> str:
+    """Return a masked representation of a secret, exposing only the last characters."""
+
+    if not value:
+        return "(unset)"
+    if len(value) <= visible:
+        return "*" * len(value)
+    return "*" * (len(value) - visible) + value[-visible:]
 
 
 class DockerSetupTUI:
@@ -1111,7 +1148,13 @@ class DockerSetupTUI:
         self.config["HF_HUB_OFFLINE"] = "false"
         self.config["ENVIRONMENT"] = "production"
         self.config["DEFAULT_COLLECTION"] = "work_docs"
-        self.config["FLOWER_BASIC_AUTH"] = "admin:admin"  # Default, user should change later
+
+        flower_username, flower_password = generate_flower_credentials()
+        self.config["FLOWER_USERNAME"] = flower_username
+        self.config["FLOWER_PASSWORD"] = flower_password
+
+        console.print("[green]Generated Flower monitoring credentials[/green]")
+        console.print("[dim]Credentials will be written to .env and masked in the summary below.[/dim]")
 
         console.print()
         return True
@@ -1151,7 +1194,8 @@ class DockerSetupTUI:
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
         table.add_row("Log Level", self.config["LOG_LEVEL"])
         table.add_row("WebUI Workers", "auto")
-        table.add_row("Flower Auth", "admin:admin (change in .env later)")
+        table.add_row("Flower Username", mask_secret(self.config["FLOWER_USERNAME"]))
+        table.add_row("Flower Password", mask_secret(self.config["FLOWER_PASSWORD"]))
 
         console.print(table)
         console.print()
@@ -1225,6 +1269,8 @@ class DockerSetupTUI:
             "HF_CACHE_DIR=./models": f"HF_CACHE_DIR={self.config['HF_CACHE_DIR']}",
             "HF_HUB_OFFLINE=false": f"HF_HUB_OFFLINE={self.config['HF_HUB_OFFLINE']}",
             "DEFAULT_COLLECTION=work_docs": f"DEFAULT_COLLECTION={self.config['DEFAULT_COLLECTION']}",
+            "FLOWER_USERNAME=replace-me-with-flower-user": f"FLOWER_USERNAME={self.config['FLOWER_USERNAME']}",
+            "FLOWER_PASSWORD=replace-me-with-strong-flower-password": f"FLOWER_PASSWORD={self.config['FLOWER_PASSWORD']}",
         }
 
         if self.config["USE_GPU"] == "true":

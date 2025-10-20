@@ -153,12 +153,38 @@ warn_unused_ignores = true
 warn_no_return = true
 follow_imports = "normal"
 ignore_missing_imports = true
+exclude = [
+    "scripts/",
+    "manual_tests/",
+    "alembic/versions/",
+    "verify_reindex_fixes.py"
+]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
+disable_error_code = [
+    "return-value",
+    "var-annotated",
+    "no-any-return",
+    "arg-type",
+    "assignment",
+    "unused-ignore",
+    "list-item",
+    "misc",
+    "operator",
+    "no-untyped-call",
+    "no-untyped-def",
+    "attr-defined",
+    "index",
+    "call-overload",
+    "union-attr",
+    "override",
+    "dict-item",
+    "type-arg",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

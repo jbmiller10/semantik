@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status**: Pre-release, undergoing active refactoring from "job-centric" to "collection-centric" architecture.
 
+**Active Development Branch**: `phase0-security-fixes` - Critical security hardening in progress.
+
 ## Architecture
 
 ### Tech Stack
@@ -39,12 +41,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **shared**: Python library containing database models, repositories, core utilities, and domain logic shared across services.
 
+### Service Startup Flow
+
+All services use `docker-entrypoint.sh` which:
+1. **Validates environment** - Runs `scripts/validate_env.py --strict` before startup
+2. **Waits for dependencies** - Uses `wait_for_service()` to ensure dependent services are ready
+3. **Runs migrations** (webui only) - Executes `alembic upgrade head` automatically
+4. **Manages HF cache** - Cleans stale lock files, ensures writable directories
+5. **Sets CUDA environment** - Configures paths for bitsandbytes and GPU support
+
+**Critical**: Environment validation is STRICT. Missing or invalid configuration will prevent service startup.
+
 ## Development Commands
 
 ### Primary Workflow
 
 ```bash
-# Install dependencies
+# Install dependencies (uses uv with lock file)
 uv sync --frozen
 
 # Code quality checks (format, lint, test)
@@ -123,6 +136,8 @@ uv run pytest tests/webui/api/v2/test_chunking_direct.py -v
 # Run specific test
 uv run pytest tests/webui/api/v2/test_chunking_direct.py::test_function_name -v
 ```
+
+**Test Database**: Uses dedicated `postgres_test` container (port 55432) activated with `--profile testing` to isolate test data.
 
 ### Frontend Development
 
@@ -315,6 +330,27 @@ Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunk
 4. **Secrets**: Never commit `JWT_SECRET_KEY` or database passwords
 5. **SQL Injection**: Always use SQLAlchemy parameterized queries
 6. **Rate Limiting**: Configured per-endpoint via `RateLimitConfig`
+7. **Path Traversal**: All file paths validated through `packages.shared.utils.security.validate_safe_path()`
+8. **Environment Validation**: `scripts/validate_env.py` enforces required config at startup
+
+### Security Testing
+
+All endpoints must pass security tests in `tests/security/`:
+- Path traversal prevention (`test_path_traversal.py`)
+- Access control enforcement (`test_access_denied_handlers.py`)
+- Input sanitization
+
+## Health Monitoring
+
+**Health Check Endpoints:**
+- `/api/health/livez` - Liveness probe (service running)
+- `/api/health/readyz` - Readiness probe (service ready to accept traffic)
+- `/api/health/startupz` - Startup probe (initialization complete)
+
+**Monitoring Integration:**
+- Prometheus metrics exposed via `prometheus-client`
+- Resource usage tracked via `psutil`
+- GPU metrics via `gputil`
 
 ## Testing Requirements
 
@@ -322,6 +358,7 @@ Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunk
 - All new frontend components require unit tests in `apps/webui-react/src/components/__tests__/`
 - Use `TestClient` for API tests, mock Redis/Celery
 - E2E tests marked with `@pytest.mark.e2e` and require running services
+- Security tests for all user-controlled inputs
 - Run `make check` before committing
 
 ## Critical Refactoring Context
@@ -345,6 +382,56 @@ Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunk
 5. **Business Logic Location**: Keep it in services, not routers
 6. **Frontend Cache Invalidation**: Re-fetch after mutations
 7. **Environment Variables**: Use `.env` files, never hardcode
+8. **Missing Environment Validation**: Test new required vars in `scripts/validate_env.py`
+
+## Debugging Multi-Service Issues
+
+**Viewing logs across services:**
+```bash
+# All services
+make docker-logs
+
+# Specific service
+docker compose logs -f webui
+docker compose logs -f vecpipe
+docker compose logs -f worker
+
+# Follow specific container
+docker logs -f semantik-webui
+```
+
+**Debugging database issues:**
+```bash
+# Access PostgreSQL shell
+make docker-shell-postgres
+
+# View active queries
+SELECT pid, query, state FROM pg_stat_activity WHERE state != 'idle';
+
+# Check partition info
+SELECT tablename FROM pg_tables WHERE schemaname = 'public';
+```
+
+**Debugging Celery tasks:**
+```bash
+# View worker logs
+docker compose logs -f worker
+
+# Inspect active tasks
+celery -A webui.celery_app inspect active
+
+# Start Flower monitoring UI
+docker compose --profile backend up flower
+# Access at http://localhost:5555
+```
+
+**Debugging WebSocket connections:**
+```bash
+# Monitor Redis pub/sub
+docker compose exec redis redis-cli
+> SUBSCRIBE operation-progress:*
+> SUBSCRIBE collection-updates:*
+```
 
 ## File Structure Reference
 
@@ -371,9 +458,14 @@ semantik/
 ├── tests/                # Test suite
 │   ├── webui/           # WebUI integration tests
 │   ├── shared/          # Shared library tests
+│   ├── security/        # Security vulnerability tests
 │   ├── e2e/             # End-to-end tests
 │   └── conftest.py      # Pytest configuration
+├── scripts/             # Utility scripts
+│   ├── validate_env.py  # Environment validation (used at startup)
+│   └── install_uv.sh    # uv installation for Docker
 ├── alembic/             # Database migrations
+├── docker-entrypoint.sh # Service startup orchestration
 ├── Makefile             # Development commands
 └── docker-compose.yml   # Service orchestration
 ```
