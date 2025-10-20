@@ -67,14 +67,20 @@ PLACEHOLDER_RULES: tuple[PlaceholderRule, ...] = (
     ),
     PlaceholderRule(
         env_var="FLOWER_USERNAME",
-        placeholders=("admin",),
-        message="Flower username must not be the default `admin`.",
+        placeholders=(
+            "admin",
+            "replace-me-with-flower-user",
+        ),
+        message="Flower username must not use a default placeholder; generate unique credentials via the setup wizard.",
         case_insensitive=True,
     ),
     PlaceholderRule(
         env_var="FLOWER_PASSWORD",
-        placeholders=("admin",),
-        message="Flower password must not remain `admin`; set a unique password.",
+        placeholders=(
+            "admin",
+            "replace-me-with-strong-flower-password",
+        ),
+        message="Flower password must not use a default placeholder; set a unique password.",
         case_insensitive=True,
     ),
 )
