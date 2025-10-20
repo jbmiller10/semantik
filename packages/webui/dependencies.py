@@ -237,10 +237,9 @@ async def require_admin_or_internal_key(
 ) -> None:
     """Ensure the request is authorized by admin role or internal API key."""
 
-    if settings.DISABLE_AUTH:
-        return
+    user_is_superuser = bool(current_user and current_user.get("is_superuser", False))
 
-    if current_user and current_user.get("is_superuser", False):
+    if user_is_superuser:
         return
 
     expected_key = settings.INTERNAL_API_KEY
@@ -249,11 +248,16 @@ async def require_admin_or_internal_key(
 
     method = request.method
     path = request.url.path
+    logger_context = {
+        "method": method,
+        "path": path,
+        "authenticated": bool(current_user),
+        "disable_auth": settings.DISABLE_AUTH,
+    }
     logger.warning(
-        "Partition monitoring access denied: method=%s path=%s authenticated=%s",
-        method,
-        path,
-        bool(current_user),
+        "Partition monitoring access denied: method=%(method)s path=%(path)s authenticated=%(authenticated)s "
+        "disable_auth=%(disable_auth)s",
+        logger_context,
     )
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
