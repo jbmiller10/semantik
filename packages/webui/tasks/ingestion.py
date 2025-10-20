@@ -331,9 +331,22 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
     chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
 
-    op = (await db.execute(None)).scalar_one()
-    collection_obj = (await db.execute(None)).scalar_one_or_none()
-    docs = (await db.execute(None)).scalars().all()
+    # Replace placeholder executes with real queries
+    from shared.database.models import Collection as _Collection
+    from shared.database.models import Document as _Document
+    from shared.database.models import Operation as _Operation
+    from sqlalchemy import select
+
+    # Fetch the operation by internal integer id
+    op = (await db.execute(select(_Operation).where(_Operation.id == _operation_id))).scalar_one()
+
+    # Fetch the parent collection
+    collection_obj = (
+        await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
+    ).scalar_one_or_none()
+
+    # Fetch documents for this collection
+    docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
 
     collection = {
         "id": _get(collection_obj, "id"),
