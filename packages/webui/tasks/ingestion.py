@@ -240,6 +240,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     collections_total.labels(status=old_status.value).dec()
                     collections_total.labels(status=new_status.value).inc()
 
+                # Persist status updates before notifying listeners to avoid race conditions
+                await db.commit()
+
                 await updater.send_update("operation_completed", {"status": "completed", "result": result})
 
                 logger.info(
@@ -251,8 +254,6 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "success": result.get("success", False),
                     },
                 )
-
-                await db.commit()
 
                 return result
 
