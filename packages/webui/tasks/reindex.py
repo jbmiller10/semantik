@@ -118,7 +118,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 if name:
                     return name
             return None
-        if isinstance(value, list | tuple):
+        if isinstance(value, (list, tuple)):
             for item in value:
                 name = _extract_staging_collection_name(item)
                 if name:
