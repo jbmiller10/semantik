@@ -11,6 +11,7 @@ import json
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -115,7 +116,7 @@ class TestWebSocketConnection:
         operation_id = mock_operation.uuid
 
         # Set up operation getter
-        async def get_operation(op_id) -> None:
+        async def get_operation(op_id: str) -> MagicMock | None:
             return mock_operation if op_id == operation_id else None
 
         ws_manager.set_operation_getter(get_operation)
@@ -440,7 +441,7 @@ class TestErrorHandling:
         ws_manager.redis = None  # Simulate Redis disconnection
 
         # Should handle gracefully without crashing
-        result = await ws_manager.send_message("test-channel", {"test": "data"})
+        result = await ws_manager.send_message("test-channel", {"test": "data"})  # type: ignore[func-returns-value]
 
         # Should return False or handle error gracefully
         assert result is False or result is None
@@ -470,7 +471,7 @@ class TestErrorHandling:
         mock_redis_client.xadd.side_effect = Exception("Redis stream error")
 
         # Should handle error gracefully
-        result = await ws_manager.send_message("test-channel", {"test": "data"})
+        result = await ws_manager.send_message("test-channel", {"test": "data"})  # type: ignore[func-returns-value]
 
         # Should indicate failure
         assert result is False or result is None
@@ -480,7 +481,7 @@ class TestErrorHandling:
         mock_redis_client.xadd.return_value = "123-0"
 
         # Should work again
-        result = await ws_manager.send_message("test-channel", {"test": "data"})
+        result = await ws_manager.send_message("test-channel", {"test": "data"})  # type: ignore[func-returns-value]
         assert result is not False
 
 
@@ -606,7 +607,7 @@ class TestPerformanceAndScaling:
         messages = []
 
         # Capture messages as they're sent
-        async def capture_xadd(_stream, data, **_kwargs) -> None:
+        async def capture_xadd(_stream: str, data: dict, **_kwargs: Any) -> str:
             messages.append(json.loads(data.get("message", data.get("data", "{}"))))
             return f"{len(messages)}-0"
 
@@ -664,7 +665,7 @@ class TestIntegrationScenarios:
         channel = f"chunking:{collection_id}:{operation_id}"
 
         # 1. Connect WebSocket
-        async def get_operation(op_id) -> None:
+        async def get_operation(op_id: str) -> dict[str, Any]:
             return {
                 "uuid": op_id,
                 "status": "pending",

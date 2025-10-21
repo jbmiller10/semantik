@@ -17,7 +17,7 @@ class TestCollectionServiceInstantiation:
 
         # This should fail with TypeError
         with pytest.raises(TypeError) as exc_info:
-            CollectionService(db_session)
+            CollectionService(db_session)  # type: ignore[call-arg]
 
         assert "missing 4 required positional arguments" in str(exc_info.value)
 
