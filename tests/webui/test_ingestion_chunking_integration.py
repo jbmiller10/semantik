@@ -812,13 +812,104 @@ class TestAppendTaskIntegration:
                 }
             )
 
-            await _process_append_operation(db, updater, "op-123")
+            result = await _process_append_operation(db, updater, "op-123")
 
             assert mock_chunking_service.execute_ingestion_chunking.call_count == 1
             call_args = mock_chunking_service.execute_ingestion_chunking.call_args
             assert call_args[1]["document_id"] == new_doc.id
 
+            updater.send_update.assert_awaited_once_with(
+                "append_completed",
+                {"processed": 1, "skipped": 1, "failed": 0, "operation_id": "op-123"},
+            )
+
+            assert result["success"] is True
+            assert result["documents_added"] == 1
+            assert result["processed"] == 1
+            assert result["skipped"] == 1
+            assert result["failed"] == 0
             assert processed_doc.chunk_count == 5
+
+    @pytest.mark.asyncio()
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("httpx.AsyncClient.post")
+    @patch("packages.webui.tasks.qdrant_manager")
+    async def test_append_task_records_partial_failures(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
+        """Ensure APPEND signals failure when any document processing fails."""
+        db = mock_dependencies["db"]
+        updater = mock_dependencies["updater"]
+        operation = mock_dependencies["operation"]
+        collection = mock_dependencies["collection"]
+        documents = mock_dependencies["documents"]
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_serialize.return_value = [("Recoverable content", {})]
+
+        embed_response = MagicMock()
+        embed_response.status_code = 200
+        embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
+
+        upsert_response = MagicMock()
+        upsert_response.status_code = 200
+
+        mock_httpx_post.side_effect = [embed_response, upsert_response]
+
+        mock_qdrant_client = MagicMock()
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
+            mock_chunking_service = MagicMock()
+            mock_chunking_service_class.return_value = mock_chunking_service
+
+            mock_chunking_service.execute_ingestion_chunking = AsyncMock(
+                side_effect=[
+                    Exception("chunking failed"),
+                    {
+                        "chunks": [
+                            {
+                                "chunk_id": "doc-2_0000",
+                                "text": "Recovered chunk",
+                                "metadata": {},
+                            }
+                        ],
+                        "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False},
+                    },
+                ]
+            )
+
+            result = await _process_append_operation(db, updater, "op-123")
+
+            assert mock_chunking_service.execute_ingestion_chunking.call_count == 2
+
+            updater.send_update.assert_awaited_once_with(
+                "append_completed",
+                {"processed": 1, "skipped": 0, "failed": 1, "operation_id": "op-123"},
+            )
+
+            assert result["success"] is False
+            assert result["processed"] == 1
+            assert result["skipped"] == 0
+            assert result["failed"] == 1
+
+            assert documents[0].status == DocumentStatus.FAILED
+            assert documents[1].chunk_count == 1
 
     @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")

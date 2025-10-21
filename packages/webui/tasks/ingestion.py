@@ -380,9 +380,19 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     )
 
     processed = 0
+    skipped = 0
+    failed = 0
     from shared.database.models import DocumentStatus
 
     for doc in docs:
+        status = getattr(doc, "status", None)
+        status_value = getattr(status, "value", status)
+        existing_chunks = getattr(doc, "chunk_count", 0) or 0
+
+        if existing_chunks > 0 and status_value == DocumentStatus.COMPLETED.value:
+            skipped += 1
+            continue
+
         try:
             try:
                 blocks_result = extract_fn(_get(doc, "file_path", ""))
@@ -400,7 +410,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 with contextlib.suppress(Exception):
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
-                processed += 1
+                skipped += 1
                 continue
 
             chunk_response = cs.execute_ingestion_chunking(
@@ -423,27 +433,43 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
 
-            with contextlib.suppress(Exception):
-                doc.chunk_count = len(chunks)
-                doc.status = DocumentStatus.COMPLETED
-            processed += 1
+                with contextlib.suppress(Exception):
+                    doc.chunk_count = len(chunks)
+                    doc.status = DocumentStatus.COMPLETED
+                processed += 1
+            else:
+                with contextlib.suppress(Exception):
+                    doc.chunk_count = 0
+                    doc.status = DocumentStatus.COMPLETED
+                skipped += 1
 
         except Exception:
             with contextlib.suppress(Exception):
                 doc.status = DocumentStatus.FAILED
+            failed += 1
             if doc == docs[-1]:
                 raise
 
     with contextlib.suppress(Exception):
-        await updater.send_update("append_completed", {"processed": processed, "operation_id": _get(op, "id")})
+        await updater.send_update(
+            "append_completed",
+            {
+                "processed": processed,
+                "skipped": skipped,
+                "failed": failed,
+                "operation_id": _get(op, "id"),
+            },
+        )
 
     # Mark legacy wrapper successes explicitly so orchestration logic can
     # promote the collection out of DEGRADED status (it expects a "success"
     # flag in the result payload).
     return {
-        "success": True,
+        "success": failed == 0,
         "processed": processed,
         "documents_added": processed,
+        "skipped": skipped,
+        "failed": failed,
     }
 
 

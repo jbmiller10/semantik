@@ -69,7 +69,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     from shared.database.models import Collection as _Collection
     from shared.database.models import Document as _Document
     from shared.database.models import Operation as _Operation
-    from sqlalchemy import select
+    from sqlalchemy import or_, select
 
     # Fetch the operation using whichever identifier the caller supplied
     op_lookup = select(_Operation)
@@ -132,11 +132,12 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         or _extract_staging_collection_name(_get(source_collection, "qdrant_staging", None))
     )
 
-    staging_query = select(_Collection)
-    if staging_name:
-        staging_query = staging_query.where(_Collection.vector_store_name == staging_name)
-    else:
-        staging_query = staging_query.where(_Collection.id == _get(source_collection, "id"))
+    if not staging_name:
+        raise RuntimeError("Missing staging collection metadata for reindex operation")
+
+    staging_query = select(_Collection).where(
+        or_(_Collection.vector_store_name == staging_name, _Collection.id == staging_name)
+    )
 
     staging_collection = (await db.execute(staging_query)).scalar_one_or_none()
 
@@ -154,6 +155,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         "quantization": _get(source_collection, "quantization", "float16"),
         "vector_store_name": _get(staging_collection, "vector_collection_id")
         or _get(staging_collection, "vector_store_name")
+        or staging_name
         or _get(source_collection, "vector_collection_id")
         or _get(source_collection, "vector_store_name"),
     }
