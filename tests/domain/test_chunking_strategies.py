@@ -249,6 +249,19 @@ More text after the code."""
         full_content = "".join(chunk.content for chunk in chunks)
         assert "def example() -> None:" in full_content
 
+    def test_small_document_emits_single_chunk(self, strategy) -> None:
+        """Ensure small documents produce a chunk even with large min_tokens."""
+        config = ChunkConfig(strategy_name="recursive", min_tokens=100, max_tokens=200, overlap_tokens=20)
+        text = "Short doc." * 15  # ~150 characters, below min_tokens * 4 threshold
+
+        chunks = strategy.chunk(text, config)
+
+        assert len(chunks) == 1
+        assert chunks[0].content == text
+        assert chunks[0].metadata.start_offset == 0
+        assert chunks[0].metadata.end_offset == len(text)
+        assert chunks[0].metadata.token_count > 0
+
 
 class TestSemanticChunkingStrategy:
     """Test suite for SemanticChunkingStrategy."""
