@@ -1,5 +1,6 @@
 """Collection Service for managing collection operations."""
 
+import asyncio
 import logging
 import re
 import uuid
@@ -263,10 +264,18 @@ class CollectionService:
         # Check if there's already an active operation
         active_operations = await self.operation_repo.get_active_operations(collection.id)
         if active_operations:
-            raise InvalidStateError(
-                "Cannot add source while another operation is in progress. "
-                "Please wait for the current operation to complete."
-            )
+            # Allow a short grace period for recently-finished operations to commit their status.
+            for attempt in range(5):
+                await asyncio.sleep(0.1 * (attempt + 1))
+                active_operations = await self.operation_repo.get_active_operations(collection.id)
+                if not active_operations:
+                    break
+
+            if active_operations:
+                raise InvalidStateError(
+                    "Cannot add source while another operation is in progress. "
+                    "Please wait for the current operation to complete."
+                )
 
         # Create operation record
         operation = await self.operation_repo.create(

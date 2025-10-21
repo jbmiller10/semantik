@@ -362,6 +362,46 @@ class TestAddSource:
         assert "Cannot add source while another operation is in progress" in str(exc_info.value)
 
     @pytest.mark.asyncio()
+    async def test_add_source_waits_for_active_operations(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+        mock_db_session: AsyncMock,
+    ) -> None:
+        """Service should tolerate briefly active operations before enqueuing APPEND."""
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.side_effect = [
+            [MagicMock()],
+            [MagicMock()],
+            [],
+            [],
+        ]
+        mock_operation_repo.create.return_value = mock_operation
+
+        with (
+            patch("packages.webui.services.collection_service.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task,
+        ):
+            result = await collection_service.add_source(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                source_path="/path/to/source",
+            )
+
+        # Should poll until operations clear
+        assert mock_operation_repo.get_active_operations.await_count >= 3
+        mock_sleep.assert_awaited()
+        mock_operation_repo.create.assert_awaited_once()
+        mock_collection_repo.update_status.assert_awaited_once()
+        mock_db_session.commit.assert_awaited_once()
+        mock_send_task.assert_called_once()
+        assert result["uuid"] == mock_operation.uuid
+
+    @pytest.mark.asyncio()
     async def test_add_source_collection_not_found(
         self, collection_service: CollectionService, mock_collection_repo: AsyncMock
     ) -> None:

@@ -440,78 +440,93 @@ class TestAppendTaskIntegration:
     @pytest.fixture()
     def mock_dependencies(self):
         """Create mock dependencies for APPEND task."""
-        return {
-            "db": AsyncMock(spec=AsyncSession),
-            "updater": AsyncMock(),
-            "operation": MagicMock(
-                id="op-123",
-                collection_id="coll-123",
-                type=OperationType.APPEND,
-                status=OperationStatus.PENDING,
-                config={"source_id": "source-123"},
+        operation = MagicMock(
+            id="op-123",
+            collection_id="coll-123",
+            type=OperationType.APPEND,
+            status=OperationStatus.PENDING,
+        )
+        operation.config = {"source_id": "source-123", "source_path": "/test"}
+        operation.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "op-123",
+                "collection_id": "coll-123",
+                "type": OperationType.APPEND,
+                "status": OperationStatus.PENDING,
+                "config": operation.config,
+            }.get(key, default)
+        )
+
+        collection = MagicMock(
+            id="coll-123",
+            name="Test Collection",
+            path="/test/path",
+            status=CollectionStatus.READY,
+            vector_collection_id="vc-123",
+            chunking_strategy="recursive",
+            chunking_config={"chunk_size": 100, "chunk_overlap": 20},
+            chunk_size=100,
+            chunk_overlap=20,
+            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            quantization="float16",
+            get=MagicMock(
+                side_effect=lambda key, default=None: {
+                    "id": "coll-123",
+                    "name": "Test Collection",
+                    "path": "/test/path",
+                    "status": CollectionStatus.READY,
+                    "vector_collection_id": "vc-123",
+                    "chunking_strategy": "recursive",
+                    "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
+                    "chunk_size": 100,
+                    "chunk_overlap": 20,
+                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                    "quantization": "float16",
+                }.get(key, default)
             ),
-            "collection": MagicMock(
-                id="coll-123",
-                name="Test Collection",
-                path="/test/path",
-                status=CollectionStatus.READY,
-                vector_collection_id="vc-123",
-                chunking_strategy="recursive",
-                chunking_config={"chunk_size": 100, "chunk_overlap": 20},
-                chunk_size=100,
-                chunk_overlap=20,
-                embedding_model="Qwen/Qwen3-Embedding-0.6B",
-                quantization="float16",
+        )
+
+        documents = [
+            MagicMock(
+                id="doc-1",
+                file_path="/test/doc1.txt",
+                file_size=1024,
+                status=DocumentStatus.PENDING,
+                chunk_count=0,
                 get=MagicMock(
                     side_effect=lambda key, default=None: {
-                        "id": "coll-123",
-                        "name": "Test Collection",
-                        "path": "/test/path",
-                        "status": CollectionStatus.READY,
-                        "vector_collection_id": "vc-123",
-                        "chunking_strategy": "recursive",
-                        "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
-                        "chunk_size": 100,
-                        "chunk_overlap": 20,
-                        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-                        "quantization": "float16",
+                        "id": "doc-1",
+                        "file_path": "/test/doc1.txt",
+                        "file_size": 1024,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
                     }.get(key, default)
                 ),
             ),
-            "documents": [
-                MagicMock(
-                    id="doc-1",
-                    file_path="/test/doc1.txt",
-                    file_size=1024,
-                    status=DocumentStatus.PENDING,
-                    chunk_count=0,
-                    get=MagicMock(
-                        side_effect=lambda key, default=None: {
-                            "id": "doc-1",
-                            "file_path": "/test/doc1.txt",
-                            "file_size": 1024,
-                            "status": DocumentStatus.PENDING,
-                            "chunk_count": 0,
-                        }.get(key, default)
-                    ),
+            MagicMock(
+                id="doc-2",
+                file_path="/test/doc2.pdf",
+                file_size=2048,
+                status=DocumentStatus.PENDING,
+                chunk_count=0,
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "doc-2",
+                        "file_path": "/test/doc2.pdf",
+                        "file_size": 2048,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
+                    }.get(key, default)
                 ),
-                MagicMock(
-                    id="doc-2",
-                    file_path="/test/doc2.pdf",
-                    file_size=2048,
-                    status=DocumentStatus.PENDING,
-                    chunk_count=0,
-                    get=MagicMock(
-                        side_effect=lambda key, default=None: {
-                            "id": "doc-2",
-                            "file_path": "/test/doc2.pdf",
-                            "file_size": 2048,
-                            "status": DocumentStatus.PENDING,
-                            "chunk_count": 0,
-                        }.get(key, default)
-                    ),
-                ),
-            ],
+            ),
+        ]
+
+        return {
+            "db": AsyncMock(spec=AsyncSession),
+            "updater": AsyncMock(),
+            "operation": operation,
+            "collection": collection,
+            "documents": documents,
         }
 
     @pytest.mark.asyncio()
@@ -725,6 +740,181 @@ class TestAppendTaskIntegration:
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
     @patch("httpx.AsyncClient.post")
     @patch("packages.webui.tasks.qdrant_manager")
+    async def test_append_task_skips_preprocessed_documents(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
+        """Ensure APPEND does not reprocess documents that already have chunks."""
+        db = mock_dependencies["db"]
+        updater = mock_dependencies["updater"]
+        operation = mock_dependencies["operation"]
+        collection = mock_dependencies["collection"]
+        documents = mock_dependencies["documents"]
+
+        processed_doc = documents[0]
+        processed_doc.chunk_count = 5
+        processed_doc.status = DocumentStatus.COMPLETED
+        processed_doc.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "doc-1",
+                "file_path": "/test/doc1.txt",
+                "file_size": 1024,
+                "status": DocumentStatus.COMPLETED,
+                "chunk_count": 5,
+            }.get(key, default)
+        )
+
+        new_doc = documents[1]
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [processed_doc, new_doc]
+        mock_result_3.scalars.return_value = mock_scalars
+
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_serialize.return_value = [("Fresh content", {})]
+
+        embed_response = MagicMock()
+        embed_response.status_code = 200
+        embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
+
+        upsert_response = MagicMock()
+        upsert_response.status_code = 200
+
+        mock_httpx_post.side_effect = [embed_response, upsert_response]
+
+        mock_qdrant_client = MagicMock()
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
+            mock_chunking_service = MagicMock()
+            mock_chunking_service_class.return_value = mock_chunking_service
+
+            mock_chunking_service.execute_ingestion_chunking = AsyncMock(
+                return_value={
+                    "chunks": [
+                        {
+                            "chunk_id": "doc-2_0000",
+                            "text": "New doc chunk",
+                            "metadata": {},
+                        }
+                    ],
+                    "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False},
+                }
+            )
+
+            result = await _process_append_operation(db, updater, "op-123")
+
+            assert mock_chunking_service.execute_ingestion_chunking.call_count == 1
+            call_args = mock_chunking_service.execute_ingestion_chunking.call_args
+            assert call_args[1]["document_id"] == new_doc.id
+
+            updater.send_update.assert_awaited_once_with(
+                "append_completed",
+                {"processed": 1, "skipped": 1, "failed": 0, "operation_id": "op-123"},
+            )
+
+            assert result["success"] is True
+            assert result["documents_added"] == 1
+            assert result["processed"] == 1
+            assert result["skipped"] == 1
+            assert result["failed"] == 0
+            assert processed_doc.chunk_count == 5
+
+    @pytest.mark.asyncio()
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("httpx.AsyncClient.post")
+    @patch("packages.webui.tasks.qdrant_manager")
+    async def test_append_task_records_partial_failures(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
+    ):
+        """Ensure APPEND signals failure when any document processing fails."""
+        db = mock_dependencies["db"]
+        updater = mock_dependencies["updater"]
+        operation = mock_dependencies["operation"]
+        collection = mock_dependencies["collection"]
+        documents = mock_dependencies["documents"]
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = collection
+
+        mock_result_3 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_3.scalars.return_value = mock_scalars
+
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3]
+
+        mock_extract_serialize.return_value = [("Recoverable content", {})]
+
+        embed_response = MagicMock()
+        embed_response.status_code = 200
+        embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
+
+        upsert_response = MagicMock()
+        upsert_response.status_code = 200
+
+        mock_httpx_post.side_effect = [embed_response, upsert_response]
+
+        mock_qdrant_client = MagicMock()
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
+            mock_chunking_service = MagicMock()
+            mock_chunking_service_class.return_value = mock_chunking_service
+
+            mock_chunking_service.execute_ingestion_chunking = AsyncMock(
+                side_effect=[
+                    Exception("chunking failed"),
+                    {
+                        "chunks": [
+                            {
+                                "chunk_id": "doc-2_0000",
+                                "text": "Recovered chunk",
+                                "metadata": {},
+                            }
+                        ],
+                        "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False},
+                    },
+                ]
+            )
+
+            result = await _process_append_operation(db, updater, "op-123")
+
+            assert mock_chunking_service.execute_ingestion_chunking.call_count == 2
+
+            updater.send_update.assert_awaited_once_with(
+                "append_completed",
+                {"processed": 1, "skipped": 0, "failed": 1, "operation_id": "op-123"},
+            )
+
+            assert result["success"] is False
+            assert result["processed"] == 1
+            assert result["skipped"] == 0
+            assert result["failed"] == 1
+
+            assert documents[0].status == DocumentStatus.FAILED
+            assert documents[1].chunk_count == 1
+
+    @pytest.mark.asyncio()
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("httpx.AsyncClient.post")
+    @patch("packages.webui.tasks.qdrant_manager")
     async def test_append_task_handles_different_strategies(
         self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_dependencies
     ):
@@ -881,6 +1071,7 @@ class TestReindexTaskIntegration:
                 collection_id="coll-123",
                 type=OperationType.REINDEX,
                 status=OperationStatus.PENDING,
+                meta={"staging_collection_name": "vc-staging"},
                 config={
                     "chunk_size": 150,
                     "chunk_overlap": 30,
@@ -893,6 +1084,7 @@ class TestReindexTaskIntegration:
                         "collection_id": "coll-123",
                         "type": OperationType.REINDEX,
                         "status": OperationStatus.PENDING,
+                        "meta": {"staging_collection_name": "vc-staging"},
                         "config": {
                             "chunk_size": 150,
                             "chunk_overlap": 30,
@@ -908,6 +1100,7 @@ class TestReindexTaskIntegration:
                 path="/source/path",
                 status=CollectionStatus.READY,
                 vector_collection_id="vc-source",
+                qdrant_staging={"collection_name": "vc-staging"},
                 chunking_strategy="recursive",
                 chunking_config={},
                 chunk_size=100,
@@ -921,6 +1114,7 @@ class TestReindexTaskIntegration:
                         "path": "/source/path",
                         "status": CollectionStatus.READY,
                         "vector_collection_id": "vc-source",
+                        "qdrant_staging": {"collection_name": "vc-staging"},
                         "chunking_strategy": "recursive",
                         "chunking_config": {},
                         "chunk_size": 100,
@@ -1134,6 +1328,176 @@ class TestReindexTaskIntegration:
             # Verify staging collection was used for indexing
             # The actual upsert happens via HTTP calls to vecpipe
             assert mock_httpx_post.called
+
+    @pytest.mark.asyncio()
+    async def test_reindex_task_requires_staging_metadata_when_collection_missing(self, mock_reindex_dependencies):
+        """Ensure we fail fast instead of targeting the primary collection when staging metadata is missing."""
+        db = mock_reindex_dependencies["db"]
+        updater = mock_reindex_dependencies["updater"]
+        operation = mock_reindex_dependencies["operation"]
+        source_collection = mock_reindex_dependencies["source_collection"]
+
+        # Remove staging metadata from both the operation and the collection
+        operation.meta = {}
+        operation.config = {}
+        operation.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "op-reindex-123",
+                "collection_id": "coll-123",
+                "type": OperationType.REINDEX,
+                "status": OperationStatus.PENDING,
+                "config": {},
+                "meta": {},
+            }.get(key, default)
+        )
+
+        source_collection.qdrant_staging = None
+        source_collection.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "coll-123",
+                "name": "Source Collection",
+                "path": "/source/path",
+                "status": CollectionStatus.READY,
+                "vector_collection_id": "vc-source",
+                "chunking_strategy": "recursive",
+                "chunking_config": {},
+                "chunk_size": 100,
+                "chunk_overlap": 20,
+                "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                "quantization": "float16",
+            }.get(key, default)
+        )
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        db.execute.side_effect = [mock_result_1, mock_result_2]
+
+        with pytest.raises(RuntimeError, match="Missing staging collection metadata"):
+            await _process_reindex_operation(db, updater, "op-reindex-123")
+
+        # Ensure we never attempted to resolve staging or ingest documents after the failure
+        assert db.execute.await_count == 2
+
+    @pytest.mark.asyncio()
+    @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
+    @patch("httpx.AsyncClient.post")
+    @patch("packages.webui.tasks.qdrant_manager")
+    async def test_reindex_task_allows_metadata_only_staging(
+        self, mock_qdrant_manager, mock_httpx_post, mock_extract_serialize, mock_reindex_dependencies
+    ):
+        """Allow reindex to proceed when staging exists only in metadata."""
+        db = mock_reindex_dependencies["db"]
+        updater = mock_reindex_dependencies["updater"]
+        operation = mock_reindex_dependencies["operation"]
+        source_collection = mock_reindex_dependencies["source_collection"]
+        documents = mock_reindex_dependencies["documents"]
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        mock_result_3 = MagicMock()
+        mock_result_3.scalar_one_or_none.return_value = None
+
+        mock_result_4 = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = documents
+        mock_result_4.scalars.return_value = mock_scalars
+
+        db.execute.side_effect = [mock_result_1, mock_result_2, mock_result_3, mock_result_4]
+
+        mock_extract_serialize.return_value = [("Metadata only staging", {})]
+
+        embed_response = MagicMock()
+        embed_response.status_code = 200
+        embed_response.json.return_value = {"embeddings": [[0.1] * 384]}
+
+        upsert_response = MagicMock()
+        upsert_response.status_code = 200
+
+        mock_httpx_post.side_effect = [embed_response, upsert_response]
+
+        mock_qdrant_client = MagicMock()
+        mock_qdrant_manager.get_client.return_value = mock_qdrant_client
+        mock_qdrant_client.get_collection.return_value = MagicMock(points_count=1)
+
+        with patch(
+            "packages.webui.tasks.resolve_celery_chunking_service",
+            new_callable=AsyncMock,
+        ) as mock_chunking_service_class:
+            mock_chunking_service = MagicMock()
+            mock_chunking_service_class.return_value = mock_chunking_service
+
+            mock_chunking_service.execute_ingestion_chunking = AsyncMock(
+                return_value={
+                    "chunks": [{"chunk_id": "doc-meta_0000", "text": "chunk", "metadata": {}}],
+                    "stats": {"chunk_count": 1, "strategy_used": "markdown", "fallback": False},
+                }
+            )
+
+            await _process_reindex_operation(db, updater, "op-reindex-123")
+
+            call_args = mock_chunking_service.execute_ingestion_chunking.call_args
+            assert call_args[1]["collection"]["vector_store_name"] == "vc-staging"
+
+    @pytest.mark.asyncio()
+    async def test_reindex_task_requires_staging_metadata(self, mock_reindex_dependencies):
+        """Ensure we fail fast instead of targeting the primary collection when staging metadata is missing."""
+        db = mock_reindex_dependencies["db"]
+        updater = mock_reindex_dependencies["updater"]
+        operation = mock_reindex_dependencies["operation"]
+        source_collection = mock_reindex_dependencies["source_collection"]
+
+        # Remove staging metadata from both the operation and the collection
+        operation.meta = {}
+        operation.config = {}
+        operation.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "op-reindex-123",
+                "collection_id": "coll-123",
+                "type": OperationType.REINDEX,
+                "status": OperationStatus.PENDING,
+                "config": {},
+                "meta": {},
+            }.get(key, default)
+        )
+
+        source_collection.qdrant_staging = None
+        source_collection.get = MagicMock(
+            side_effect=lambda key, default=None: {
+                "id": "coll-123",
+                "name": "Source Collection",
+                "path": "/source/path",
+                "status": CollectionStatus.READY,
+                "vector_collection_id": "vc-source",
+                "chunking_strategy": "recursive",
+                "chunking_config": {},
+                "chunk_size": 100,
+                "chunk_overlap": 20,
+                "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                "quantization": "float16",
+            }.get(key, default)
+        )
+
+        mock_result_1 = MagicMock()
+        mock_result_1.scalar_one.return_value = operation
+
+        mock_result_2 = MagicMock()
+        mock_result_2.scalar_one_or_none.return_value = source_collection
+
+        db.execute.side_effect = [mock_result_1, mock_result_2]
+
+        with pytest.raises(RuntimeError, match="Missing staging collection metadata"):
+            await _process_reindex_operation(db, updater, "op-reindex-123")
+
+        # Ensure we never attempted to resolve staging or ingest documents after the failure
+        assert db.execute.await_count == 2
 
     @pytest.mark.asyncio()
     @patch("packages.webui.tasks.extract_and_serialize_thread_safe")
