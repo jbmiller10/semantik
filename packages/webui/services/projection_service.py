@@ -49,6 +49,8 @@ class ProjectionService:
         """Convert a ProjectionRun ORM instance into a serialisable payload."""
 
         created_at = run.created_at if isinstance(run.created_at, datetime) else None
+        config = run.config if isinstance(run.config, dict) else None
+        meta = run.meta if isinstance(run.meta, dict) else None
 
         return {
             "collection_id": run.collection_id,
@@ -57,9 +59,52 @@ class ProjectionService:
             "reducer": run.reducer,
             "dimensionality": run.dimensionality,
             "created_at": created_at,
-             "operation_id": run.operation_uuid,
+            "operation_id": run.operation_uuid,
+            "config": config,
+            "meta": meta,
             "message": message,
         }
+
+    @staticmethod
+    def _normalise_reducer_config(reducer: str, config: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Validate and normalise reducer-specific configuration."""
+
+        reducer_key = reducer.lower()
+        if reducer_key == "umap":
+            if config is None:
+                cfg: dict[str, Any] = {}
+            elif isinstance(config, dict):
+                cfg = dict(config)
+            else:
+                raise HTTPException(status_code=400, detail="config must be an object")
+            try:
+                n_neighbors = int(cfg.get("n_neighbors", 15))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="n_neighbors must be an integer") from None
+            if n_neighbors < 2:
+                raise HTTPException(status_code=400, detail="n_neighbors must be >= 2")
+
+            try:
+                min_dist = float(cfg.get("min_dist", 0.1))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="min_dist must be a number") from None
+            if not 0.0 <= min_dist <= 1.0:
+                raise HTTPException(status_code=400, detail="min_dist must be between 0 and 1")
+
+            metric = str(cfg.get("metric", "cosine"))
+            if not metric:
+                raise HTTPException(status_code=400, detail="metric must be a non-empty string")
+
+            cfg["n_neighbors"] = n_neighbors
+            cfg["min_dist"] = min_dist
+            cfg["metric"] = metric
+            return cfg
+
+        if config is None:
+            return None
+        if not isinstance(config, dict):
+            raise HTTPException(status_code=400, detail="config must be an object")
+        return config
 
     async def start_projection_build(
         self,
@@ -82,15 +127,19 @@ class ProjectionService:
         # Validate collection existence and permissions prior to acknowledgement
         collection = await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
 
-        reducer = str(parameters.get("reducer") or "umap")
+        reducer = str(parameters.get("reducer") or "umap").lower()
         dimensionality = int(parameters.get("dimensionality") or 2)
-        config = parameters.get("config") if isinstance(parameters.get("config"), dict) else None
+        if dimensionality != 2:
+            raise HTTPException(status_code=400, detail="Only 2D projections are currently supported")
+
+        raw_config = parameters.get("config") if isinstance(parameters.get("config"), dict) else None
+        normalised_config = self._normalise_reducer_config(reducer, raw_config)
 
         run = await self.projection_repo.create(
             collection_id=collection.id,
             reducer=reducer,
             dimensionality=dimensionality,
-            config=config,
+            config=normalised_config,
             meta={"initiated_by": user_id},
         )
         operation = await self.operation_repo.create(
@@ -101,7 +150,7 @@ class ProjectionService:
                 "projection_run_id": run.uuid,
                 "reducer": reducer,
                 "dimensionality": dimensionality,
-                "config": config or {},
+                "config": normalised_config or {},
             },
             meta={"projection_run_uuid": run.uuid},
         )

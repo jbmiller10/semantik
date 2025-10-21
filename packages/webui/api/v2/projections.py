@@ -38,6 +38,8 @@ def _to_metadata_response(collection_id: str, payload: dict[str, Any], *, fallba
         dimensionality=int(payload.get("dimensionality", 2) or 2),
         created_at=payload.get("created_at"),
         message=payload.get("message"),
+        config=payload.get("config"),
+        meta=payload.get("meta"),
     )
 
 

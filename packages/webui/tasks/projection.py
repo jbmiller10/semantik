@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List
 
 import numpy as np
+
+try:  # Optional UMAP dependency
+    import umap  # type: ignore[import]
+except Exception:  # pragma: no cover - optional dependency
+    umap = None  # type: ignore[assignment]
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
 from shared.database.models import OperationStatus, ProjectionRunStatus
@@ -69,6 +74,31 @@ def _compute_pca_projection(vectors: np.ndarray) -> dict[str, np.ndarray]:
         "mean": _ensure_float32(mean.squeeze(axis=0)),
         "singular_values": _ensure_float32(top_singular_values),
         "explained_variance_ratio": _ensure_float32(explained_variance_ratio),
+    }
+
+
+def _compute_umap_projection(
+    vectors: np.ndarray,
+    *,
+    n_neighbors: int,
+    min_dist: float,
+    metric: str,
+) -> dict[str, np.ndarray]:
+    """Compute a 2D UMAP projection using umap-learn."""
+
+    if umap is None:
+        raise RuntimeError("umap-learn is not installed")
+
+    reducer = umap.UMAP(
+        n_neighbors=n_neighbors,
+        min_dist=min_dist,
+        metric=metric,
+        n_components=2,
+        random_state=42,
+    )
+    embedding = reducer.fit_transform(vectors)
+    return {
+        "projection": _ensure_float32(embedding),
     }
 
 
@@ -234,19 +264,23 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             )
                             if doc_identifier is not None:
                                 doc_key = str(doc_identifier)
-                                if doc_key not in doc_category_map:
-                                    if len(doc_category_map) < 255:
-                                        doc_category_map[doc_key] = len(doc_category_map)
+                                existing_idx = doc_category_map.get(doc_key)
+                                if existing_idx is not None:
+                                    category_idx = existing_idx
+                                else:
+                                    next_idx = len(doc_category_map)
+                                    if next_idx < 255:
+                                        doc_category_map[doc_key] = next_idx
+                                        category_idx = next_idx
                                     else:
+                                        category_idx = 255
                                         if not overflow_logged:
                                             logger.warning(
-                                                "Projection run %s has more than 255 categories; "
-                                                "additional categories will be grouped together",
+                                                "Projection %s has more than 255 categories; "
+                                                "using overflow bucket for remaining documents",
                                                 projection_id,
                                             )
                                             overflow_logged = True
-                                        doc_category_map[doc_key] = 255
-                                category_idx = doc_category_map[doc_key]
 
                         categories.append(int(category_idx))
 
@@ -268,9 +302,64 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     raise ValueError("Not enough vectors available to compute projection (need at least 2)")
 
                 vectors_array = np.stack(vectors, axis=0)
-                pca_result = _compute_pca_projection(vectors_array)
 
-                projection_array = pca_result["projection"]
+                requested_reducer = (run.reducer or "pca").lower()
+                reducer_used = requested_reducer
+                reducer_params: Dict[str, Any] = {}
+                fallback_reason: str | None = None
+
+                try:
+                    if requested_reducer == "umap":
+                        params = config if isinstance(config, dict) else {}
+                        n_neighbors = int(params.get("n_neighbors", 15))
+                        min_dist = float(params.get("min_dist", 0.1))
+                        metric = str(params.get("metric", "cosine"))
+                        reducer_params = {
+                            "n_neighbors": n_neighbors,
+                            "min_dist": min_dist,
+                            "metric": metric,
+                        }
+                        projection_result = _compute_umap_projection(
+                            vectors_array,
+                            n_neighbors=n_neighbors,
+                            min_dist=min_dist,
+                            metric=metric,
+                        )
+                        reducer_used = "umap"
+                    elif requested_reducer == "pca":
+                        projection_result = _compute_pca_projection(vectors_array)
+                        reducer_used = "pca"
+                    else:
+                        fallback_reason = f"Unsupported reducer '{requested_reducer}'"
+                        logger.warning(
+                            "Reducer %s not supported for projection %s; falling back to PCA",
+                            requested_reducer,
+                            projection_id,
+                        )
+                        projection_result = _compute_pca_projection(vectors_array)
+                        reducer_used = "pca"
+                        reducer_params = config if isinstance(config, dict) else {}
+                except Exception as exc:
+                    fallback_reason = str(exc)
+                    logger.warning(
+                        "Reducer %s failed for projection %s; falling back to PCA: %s",
+                        requested_reducer,
+                        projection_id,
+                        exc,
+                    )
+                    projection_result = _compute_pca_projection(vectors_array)
+                    reducer_used = "pca"
+                    if requested_reducer == "umap":
+                        params = config if isinstance(config, dict) else {}
+                        reducer_params = {
+                            "n_neighbors": int(params.get("n_neighbors", 15)),
+                            "min_dist": float(params.get("min_dist", 0.1)),
+                            "metric": str(params.get("metric", "cosine")),
+                        }
+                    else:
+                        reducer_params = config if isinstance(config, dict) else {}
+
+                projection_array = projection_result["projection"]
                 x_path = run_dir / "x.f32.bin"
                 y_path = run_dir / "y.f32.bin"
                 ids_path = run_dir / "ids.i32.bin"
@@ -317,7 +406,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     "collection_id": run.collection_id,
                     "created_at": datetime.now(UTC).isoformat(),
                     "point_count": point_count,
-                    "reducer": "pca",
+                    "reducer_requested": requested_reducer,
+                    "reducer_used": reducer_used,
+                    "reducer_params": reducer_params,
                     "dimensionality": 2,
                     "source_vector_collection": vector_collection_name,
                     "sample_limit": sample_limit,
@@ -327,11 +418,27 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         "ids": ids_path.name,
                         "categories": cat_path.name,
                     },
-                    "explained_variance_ratio": pca_result["explained_variance_ratio"].tolist(),
-                    "singular_values": pca_result["singular_values"].tolist(),
-                    "original_ids": original_ids,
-                    "category_map": {key: int(val) for key, val in doc_category_map.items()},
                 }
+                if "explained_variance_ratio" in projection_result:
+                    meta_payload["explained_variance_ratio"] = (
+                        projection_result["explained_variance_ratio"].tolist()
+                        if isinstance(projection_result["explained_variance_ratio"], np.ndarray)
+                        else projection_result["explained_variance_ratio"]
+                    )
+                if "singular_values" in projection_result:
+                    meta_payload["singular_values"] = (
+                        projection_result["singular_values"].tolist()
+                        if isinstance(projection_result["singular_values"], np.ndarray)
+                        else projection_result["singular_values"]
+                    )
+                if fallback_reason:
+                    meta_payload["fallback_reason"] = fallback_reason
+                meta_payload.update(
+                    {
+                        "original_ids": original_ids,
+                        "category_map": {key: int(val) for key, val in doc_category_map.items()},
+                    }
+                )
 
                 _write_meta(meta_path, meta_payload)
 
@@ -363,6 +470,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         {
                             "projection_id": run.uuid,
                             "point_count": point_count,
+                            "reducer": reducer_used,
                             "storage_path": str(run_dir),
                         },
                     )
@@ -370,6 +478,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                 return {
                     "projection_id": projection_id,
                     "status": "completed",
+                    "reducer": reducer_used,
                     "message": None,
                     "point_count": point_count,
                     "storage_path": str(run_dir),
