@@ -50,7 +50,14 @@ class ProjectionService:
 
         created_at = run.created_at if isinstance(run.created_at, datetime) else None
         config = run.config if isinstance(run.config, dict) else None
-        meta = run.meta if isinstance(run.meta, dict) else None
+        meta_raw = run.meta if isinstance(run.meta, dict) else None
+        meta = dict(meta_raw) if meta_raw is not None else {}
+
+        if config and "color_by" in config and "color_by" not in meta:
+            meta["color_by"] = config["color_by"]
+
+        if not meta:
+            meta = None
 
         return {
             "collection_id": run.collection_id,
@@ -135,11 +142,15 @@ class ProjectionService:
         raw_config = parameters.get("config") if isinstance(parameters.get("config"), dict) else None
         normalised_config = self._normalise_reducer_config(reducer, raw_config)
 
+        colour_by = str(parameters.get("color_by") or "document_id").lower()
+        run_config: dict[str, Any] = dict(normalised_config or {})
+        run_config["color_by"] = colour_by
+
         run = await self.projection_repo.create(
             collection_id=collection.id,
             reducer=reducer,
             dimensionality=dimensionality,
-            config=normalised_config,
+            config=run_config,
             meta={"initiated_by": user_id},
         )
         operation = await self.operation_repo.create(
@@ -150,7 +161,7 @@ class ProjectionService:
                 "projection_run_id": run.uuid,
                 "reducer": reducer,
                 "dimensionality": dimensionality,
-                "config": normalised_config or {},
+                "config": run_config,
             },
             meta={"projection_run_uuid": run.uuid},
         )

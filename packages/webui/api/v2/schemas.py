@@ -203,6 +203,19 @@ class ProjectionBuildRequest(BaseModel):
         description="Target dimensionality for visualization output",
     )
     config: dict[str, Any] | None = Field(default=None, description="Reducer-specific configuration overrides")
+    color_by: str = Field(
+        default="document_id",
+        description="Attribute used to colour points in the projection",
+    )
+
+    @field_validator("color_by")
+    @classmethod
+    def _validate_color_by(cls, value: str) -> str:
+        allowed = {"source_dir", "document_id", "filetype", "age_bucket"}
+        colour = value.lower() if isinstance(value, str) else value
+        if colour not in allowed:
+            raise ValueError("color_by must be one of: source_dir, document_id, filetype, age_bucket")
+        return colour
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -210,6 +223,7 @@ class ProjectionBuildRequest(BaseModel):
                 "reducer": "umap",
                 "dimensionality": 2,
                 "config": {"n_neighbors": 15, "min_dist": 0.1},
+                "color_by": "document_id",
             }
         }
     )

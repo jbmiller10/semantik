@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import uuid
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Mapping, Tuple
 
 import numpy as np
 
@@ -34,6 +36,160 @@ from packages.webui.tasks.utils import (
 
 DEFAULT_SAMPLE_LIMIT = 10_000
 QDRANT_SCROLL_BATCH = 1_000
+OVERFLOW_CATEGORY_INDEX = 255
+OVERFLOW_LEGEND_LABEL = "Other"
+UNKNOWN_CATEGORY_LABEL = "unknown"
+ALLOWED_COLOR_BY = {"document_id", "source_dir", "filetype", "age_bucket"}
+
+
+def _parse_timestamp(value: Any) -> datetime | None:
+    """Parse assorted timestamp representations into timezone-aware datetimes."""
+
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=UTC)
+        except (ValueError, OSError):  # pragma: no cover - defensive
+            return None
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    return None
+
+
+def _bucket_age(timestamp: datetime, now: datetime) -> str:
+    """Bucket timestamp deltas into coarse age groups."""
+
+    delta = now - timestamp
+    if delta.total_seconds() < 0:
+        return "future"
+    days = delta.total_seconds() / 86_400
+    if days <= 1:
+        return "≤1d"
+    if days <= 7:
+        return "≤7d"
+    if days <= 30:
+        return "≤30d"
+    if days <= 90:
+        return "≤90d"
+    if days <= 180:
+        return "≤180d"
+    if days <= 365:
+        return "≤1y"
+    return ">1y"
+
+
+def _extract_source_dir(payload: Mapping[str, Any]) -> str:
+    source_path = payload.get("source_path")
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    if not source_path:
+        source_path = payload.get("path") or metadata.get("source_path")
+    if not source_path or not isinstance(source_path, str):
+        return UNKNOWN_CATEGORY_LABEL
+    try:
+        path_obj = Path(source_path)
+    except Exception:  # pragma: no cover - defensive
+        return str(source_path) or UNKNOWN_CATEGORY_LABEL
+    if path_obj.suffix:
+        parent = path_obj.parent
+        if parent and parent.name:
+            return parent.name
+    if path_obj.name:
+        return path_obj.name
+    if path_obj.parent and path_obj.parent.name:
+        return path_obj.parent.name
+    return str(path_obj) or UNKNOWN_CATEGORY_LABEL
+
+
+def _extract_filetype(payload: Mapping[str, Any]) -> str:
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    mime = payload.get("mime_type") or metadata.get("mime_type")
+    if isinstance(mime, str) and mime:
+        return mime.lower()
+    path_value = payload.get("path") or payload.get("source_path") or metadata.get("source_path")
+    if isinstance(path_value, str) and path_value:
+        try:
+            suffix = Path(path_value).suffix.lower()
+        except Exception:  # pragma: no cover - defensive
+            suffix = ""
+        if suffix:
+            return suffix.lstrip(".") or UNKNOWN_CATEGORY_LABEL
+    return UNKNOWN_CATEGORY_LABEL
+
+
+def _extract_age_bucket(payload: Mapping[str, Any], now: datetime) -> str:
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    timestamp_value = (
+        payload.get("ingested_at")
+        or payload.get("created_at")
+        or payload.get("updated_at")
+        or payload.get("timestamp")
+        or metadata.get("ingested_at")
+        or metadata.get("created_at")
+        or metadata.get("updated_at")
+        or metadata.get("timestamp")
+    )
+    parsed = _parse_timestamp(timestamp_value)
+    if parsed is None:
+        return UNKNOWN_CATEGORY_LABEL
+    return _bucket_age(parsed, now)
+
+
+def _derive_category_label(
+    payload: Mapping[str, Any] | None,
+    color_by: str,
+    now: datetime,
+) -> Tuple[str, str | None]:
+    """Return the category label and optional document identifier."""
+
+    if not isinstance(payload, Mapping):
+        return UNKNOWN_CATEGORY_LABEL, None
+
+    if color_by == "document_id":
+        doc_identifier = (
+            payload.get("doc_id")
+            or payload.get("document_id")
+            or payload.get("chunk_id")
+            or payload.get("source_id")
+        )
+        if doc_identifier is None:
+            return UNKNOWN_CATEGORY_LABEL, None
+        return str(doc_identifier), str(doc_identifier)
+
+    if color_by == "source_dir":
+        return _extract_source_dir(payload), None
+
+    if color_by == "filetype":
+        return _extract_filetype(payload), None
+
+    if color_by == "age_bucket":
+        return _extract_age_bucket(payload, now), None
+
+    # Fallback to document_id semantics for unexpected values
+    doc_identifier = (
+        payload.get("doc_id")
+        or payload.get("document_id")
+        or payload.get("chunk_id")
+        or payload.get("source_id")
+    )
+    if doc_identifier is None:
+        return UNKNOWN_CATEGORY_LABEL, None
+    return str(doc_identifier), str(doc_identifier)
 
 
 def _ensure_float32(array: np.ndarray) -> np.ndarray:
@@ -171,6 +327,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
             raise ValueError("Collection is missing a vector store name for projection computation")
 
         config = run.config or {}
+        color_by = str(config.get("color_by") or "document_id").lower()
+        if color_by not in ALLOWED_COLOR_BY:
+            color_by = "document_id"
+
         sample_limit = int(
             config.get("sample_size")
             or config.get("sample_limit")
@@ -200,6 +360,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     )
                 await session.commit()
 
+                vectors: List[np.ndarray] = []
+                original_ids: List[str] = []
+                categories: List[int] = []
+
                 if updater:
                     await updater.send_update(
                         "projection_started",
@@ -207,13 +371,14 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             "projection_id": run.uuid,
                             "collection_id": run.collection_id,
                             "sample_limit": sample_limit,
+                            "color_by": color_by,
                         },
                     )
 
-                vectors: List[np.ndarray] = []
-                original_ids: List[str] = []
-                categories: List[int] = []
-                doc_category_map: Dict[str, int] = {}
+                category_index_map: Dict[str, int] = {}
+                label_for_index: Dict[int, str] = {}
+                category_counts: Counter[int] = Counter()
+                doc_category_map: Dict[str, int] = {} if color_by == "document_id" else {}
                 overflow_logged = False
 
                 manager = resolve_qdrant_manager()
@@ -254,35 +419,39 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         original_ids.append(str(record.id))
 
                         payload = getattr(record, "payload", {}) or {}
-                        category_idx = 0
-                        if isinstance(payload, dict):
-                            doc_identifier = (
-                                payload.get("doc_id")
-                                or payload.get("document_id")
-                                or payload.get("chunk_id")
-                                or payload.get("source_id")
-                            )
-                            if doc_identifier is not None:
-                                doc_key = str(doc_identifier)
-                                existing_idx = doc_category_map.get(doc_key)
-                                if existing_idx is not None:
-                                    category_idx = existing_idx
-                                else:
-                                    next_idx = len(doc_category_map)
-                                    if next_idx < 255:
-                                        doc_category_map[doc_key] = next_idx
-                                        category_idx = next_idx
-                                    else:
-                                        category_idx = 255
-                                        if not overflow_logged:
-                                            logger.warning(
-                                                "Projection %s has more than 255 categories; "
-                                                "using overflow bucket for remaining documents",
-                                                projection_id,
-                                            )
-                                            overflow_logged = True
+                        category_label, doc_identifier = _derive_category_label(payload, color_by, now)
+
+                        if not category_label:
+                            category_label = UNKNOWN_CATEGORY_LABEL
+
+                        category_idx = category_index_map.get(category_label)
+                        if category_idx is None:
+                            if len(category_index_map) < OVERFLOW_CATEGORY_INDEX:
+                                category_idx = len(category_index_map)
+                                category_index_map[category_label] = category_idx
+                                label_for_index[category_idx] = category_label
+                            else:
+                                category_idx = OVERFLOW_CATEGORY_INDEX
+                        else:
+                            if category_idx != OVERFLOW_CATEGORY_INDEX:
+                                label_for_index.setdefault(category_idx, category_label)
+
+                        if category_idx == OVERFLOW_CATEGORY_INDEX:
+                            label_for_index.setdefault(OVERFLOW_CATEGORY_INDEX, OVERFLOW_LEGEND_LABEL)
+                            if not overflow_logged:
+                                logger.warning(
+                                    "Projection %s exceeded 255 categories; using overflow bucket",
+                                    projection_id,
+                                )
+                                overflow_logged = True
 
                         categories.append(int(category_idx))
+                        category_counts[category_idx] += 1
+
+                        if color_by == "document_id" and doc_identifier is not None:
+                            doc_key = str(doc_identifier)
+                            if doc_key not in doc_category_map:
+                                doc_category_map[doc_key] = int(category_idx)
 
                     if updater:
                         await updater.send_update(
@@ -291,6 +460,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                                 "projection_id": run.uuid,
                                 "fetched": len(vectors),
                                 "sample_limit": sample_limit,
+                                "color_by": color_by,
                             },
                         )
 
@@ -396,6 +566,25 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                 ids_array = np.asarray(ids_array, dtype=np.int32)
                 categories_array = np.array(categories, dtype=np.uint8)
 
+                legend_entries = [
+                    {
+                        "index": int(idx),
+                        "label": label,
+                        "count": int(category_counts.get(idx, 0)),
+                    }
+                    for idx, label in sorted(label_for_index.items())
+                ]
+                if category_counts.get(OVERFLOW_CATEGORY_INDEX) and not any(
+                    entry["index"] == OVERFLOW_CATEGORY_INDEX for entry in legend_entries
+                ):
+                    legend_entries.append(
+                        {
+                            "index": OVERFLOW_CATEGORY_INDEX,
+                            "label": OVERFLOW_LEGEND_LABEL,
+                            "count": int(category_counts[OVERFLOW_CATEGORY_INDEX]),
+                        }
+                    )
+
                 _write_binary(x_path, x_values, np.float32)
                 _write_binary(y_path, y_values, np.float32)
                 _write_binary(ids_path, ids_array, np.int32)
@@ -418,6 +607,8 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         "ids": ids_path.name,
                         "categories": cat_path.name,
                     },
+                    "color_by": color_by,
+                    "legend": legend_entries,
                 }
                 if "explained_variance_ratio" in projection_result:
                     meta_payload["explained_variance_ratio"] = (
@@ -433,12 +624,12 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     )
                 if fallback_reason:
                     meta_payload["fallback_reason"] = fallback_reason
-                meta_payload.update(
-                    {
-                        "original_ids": original_ids,
-                        "category_map": {key: int(val) for key, val in doc_category_map.items()},
-                    }
-                )
+                meta_payload["original_ids"] = original_ids
+                if color_by == "document_id":
+                    meta_payload["category_map"] = {key: int(val) for key, val in doc_category_map.items()}
+                meta_payload["category_counts"] = {
+                    str(int(idx)): int(count) for idx, count in category_counts.items()
+                }
 
                 _write_meta(meta_path, meta_payload)
 
@@ -446,7 +637,11 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     run.uuid,
                     storage_path=str(run_dir),
                     point_count=point_count,
-                    meta={"projection_artifacts": meta_payload},
+                    meta={
+                        "projection_artifacts": meta_payload,
+                        "color_by": color_by,
+                        "legend": legend_entries,
+                    },
                 )
                 await projection_repo.update_status(
                     run.uuid,
@@ -472,6 +667,8 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             "point_count": point_count,
                             "reducer": reducer_used,
                             "storage_path": str(run_dir),
+                            "color_by": color_by,
+                            "legend": legend_entries,
                         },
                     )
 
@@ -515,6 +712,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         {
                             "projection_id": run.uuid,
                             "error": sanitized_error,
+                            "color_by": color_by,
                         },
                     )
 
@@ -531,21 +729,99 @@ async def _process_projection_operation(
     projection_repo: Any,
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
-    """Async handler invoked from the ingestion dispatcher (placeholder)."""
-
+    """Async handler invoked from the ingestion dispatcher for projections."""
     logger.info(
-        "Processing projection operation (stub) operation_id=%s collection_id=%s",
+        "Processing projection operation operation_id=%s collection_id=%s",
         operation.get("uuid"),
         collection.get("id"),
     )
 
-    await updater.send_update(
-        "projection_stub",
-        {
-            "status": "pending",
-            "message": "Projection processing not yet implemented",
-        },
+    operation_config = operation.get("config") or {}
+    projection_id = (
+        operation_config.get("projection_run_id")
+        or operation_config.get("projection_id")
+        or operation_config.get("projection_uuid")
     )
+    if not projection_id:
+        raise ValueError("Projection operation missing projection run identifier")
 
-    # TODO: create projection run records, enqueue compute_projection task, update progress
-    return {"success": True, "message": "Projection processing not yet implemented"}
+    projection_id = str(projection_id)
+
+    session = getattr(projection_repo, "session", None)
+    if session is None:
+        raise RuntimeError("Projection repository is missing bound session")
+
+    operation_repo = OperationRepository(session)
+
+    run = await projection_repo.get_by_uuid(projection_id)
+    if not run:
+        raise ValueError(f"Projection run {projection_id} not found")
+
+    try:
+        if getattr(run, "operation_uuid", None) != operation.get("uuid"):
+            await projection_repo.set_operation_uuid(projection_id, operation.get("uuid"))
+
+        await projection_repo.update_status(
+            projection_id,
+            status=ProjectionRunStatus.RUNNING,
+            error_message=None,
+            started_at=datetime.now(UTC),
+        )
+
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        logger.exception("Failed preparing projection %s before enqueue: %s", projection_id, exc)
+        raise
+
+    if updater:
+        await updater.send_update(
+            "projection_enqueued",
+            {
+                "projection_id": projection_id,
+                "operation_id": operation.get("uuid"),
+                "status": ProjectionRunStatus.RUNNING.value,
+            },
+        )
+
+    try:
+        compute_projection.apply_async(args=(projection_id,), task_id=str(uuid.uuid4()))
+    except Exception as exc:  # pragma: no cover - broker failure path
+        sanitized_error = _sanitize_error_message(str(exc))
+        logger.error(
+            "Failed to enqueue compute_projection for %s: %s",
+            projection_id,
+            sanitized_error,
+        )
+
+        await projection_repo.update_status(
+            projection_id,
+            status=ProjectionRunStatus.FAILED,
+            error_message=sanitized_error,
+            completed_at=datetime.now(UTC),
+        )
+        await operation_repo.update_status(
+            operation.get("uuid"),
+            OperationStatus.FAILED,
+            error_message=sanitized_error,
+            completed_at=datetime.now(UTC),
+        )
+        await session.commit()
+
+        if updater:
+            await updater.send_update(
+                "projection_failed",
+                {
+                    "projection_id": projection_id,
+                    "error": sanitized_error,
+                },
+            )
+
+        return {"success": False, "message": sanitized_error}
+
+    return {
+        "success": True,
+        "defer_completion": True,
+        "projection_id": projection_id,
+        "message": "Projection compute enqueued",
+    }

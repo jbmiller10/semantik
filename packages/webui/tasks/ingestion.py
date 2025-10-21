@@ -252,6 +252,19 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                 if cpu_time < 0 or not isinstance(cpu_time, int | float):
                     cpu_time = 0.0
 
+                defer_completion = (
+                    operation["type"] == OperationType.PROJECTION_BUILD
+                    and result.get("defer_completion")
+                )
+
+                if defer_completion:
+                    await db.commit()
+                    logger.info(
+                        "Projection operation %s enqueued for async processing",
+                        operation_id,
+                    )
+                    return result
+
                 await _record_operation_metrics(
                     operation_repo,
                     operation_id,
