@@ -85,6 +85,15 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
     ).scalar_one_or_none()
 
+    def _looks_like_collection_identifier(text: str) -> bool:
+        """Return True when a string resembles a collection identifier."""
+        lowered = text.lower()
+        if any(token in lowered for token in ("staging", "collection", "vector", "vc-")):
+            return True
+        if "-" in text:
+            return True
+        return False
+
     def _extract_staging_collection_name(value: Any) -> str | None:
         """Best-effort extraction of the staging collection identifier."""
         if not value:
@@ -93,11 +102,16 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
             text = value.strip()
             if not text:
                 return None
-            try:
-                parsed = json.loads(text)
-            except json.JSONDecodeError:
+            if text[0] in "[{":
+                try:
+                    parsed = json.loads(text)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    return _extract_staging_collection_name(parsed)
+            if _looks_like_collection_identifier(text):
                 return text
-            return _extract_staging_collection_name(parsed)
+            return None
         if isinstance(value, dict):
             for key in (
                 "collection_name",
@@ -114,13 +128,23 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 if name:
                     return name
             for nested_value in value.values():
-                name = _extract_staging_collection_name(nested_value)
-                if name:
-                    return name
+                if isinstance(nested_value, (dict, list, tuple)):
+                    name = _extract_staging_collection_name(nested_value)
+                    if name:
+                        return name
+                elif isinstance(nested_value, str):
+                    name = _extract_staging_collection_name(nested_value)
+                    if name:
+                        return name
             return None
-        if isinstance(value, list | tuple):
+        if isinstance(value, (list, tuple)):
             for item in value:
-                name = _extract_staging_collection_name(item)
+                if isinstance(item, (dict, list, tuple)):
+                    name = _extract_staging_collection_name(item)
+                elif isinstance(item, str):
+                    name = _extract_staging_collection_name(item)
+                else:
+                    name = None
                 if name:
                     return name
         return None

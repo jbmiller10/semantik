@@ -116,7 +116,30 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     collection: dict[str, Any] | None = None
 
     process = psutil.Process()
-    initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+
+    def _safe_cpu_seconds(proc: Any) -> float:
+        """Return total CPU seconds for the process, tolerating mocked values."""
+        try:
+            cpu_times = proc.cpu_times()
+        except Exception:  # pragma: no cover - psutil edge cases
+            return 0.0
+
+        user = getattr(cpu_times, "user", 0.0)
+        system = getattr(cpu_times, "system", 0.0)
+
+        try:
+            user_seconds = float(user)
+        except (TypeError, ValueError):
+            user_seconds = 0.0
+
+        try:
+            system_seconds = float(system)
+        except (TypeError, ValueError):
+            system_seconds = 0.0
+
+        return user_seconds + system_seconds
+
+    initial_cpu_time = _safe_cpu_seconds(process)
 
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
@@ -216,7 +239,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
 
                 duration = time.time() - start_time
-                cpu_time = (process.cpu_times().user + process.cpu_times().system) - initial_cpu_time
+                cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
+                if cpu_time < 0 or not isinstance(cpu_time, (int, float)):
+                    cpu_time = 0.0
 
                 await _record_operation_metrics(
                     operation_repo,
@@ -628,6 +653,7 @@ async def _process_append_operation_impl(
         raise ValueError("source_path is required for APPEND operation")
 
     tasks_ns = _tasks_namespace()
+    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
 
     session = document_repo.session
     document_scanner = DocumentScanningService(db_session=session, document_repo=document_repo)
@@ -741,11 +767,28 @@ async def _process_append_operation_impl(
             for doc in documents:
                 try:
                     logger.info("Processing document: %s", doc.file_path)
-
-                    text_blocks = await asyncio.wait_for(
-                        loop.run_in_executor(executor_pool, extract_and_serialize_thread_safe, doc.file_path),
-                        timeout=300,
-                    )
+                    try:
+                        text_blocks = await asyncio.wait_for(
+                            await_if_awaitable(
+                                loop.run_in_executor(
+                                    executor_pool,
+                                    extract_fn,
+                                    doc.file_path,
+                                )
+                            ),
+                            timeout=300,
+                        )
+                    except RuntimeError as exc:  # pragma: no cover - defensive
+                        if "cannot reuse already awaited coroutine" not in str(exc):
+                            raise
+                        logger.debug(
+                            "Executor returned a reusable coroutine for %s; falling back to direct call",
+                            doc.file_path,
+                        )
+                        text_blocks = await asyncio.wait_for(
+                            await_if_awaitable(extract_fn(doc.file_path)),
+                            timeout=300,
+                        )
 
                     if not text_blocks:
                         logger.warning("No text extracted from %s", doc.file_path)
