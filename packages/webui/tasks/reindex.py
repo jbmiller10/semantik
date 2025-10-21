@@ -118,7 +118,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 if name:
                     return name
             return None
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             for item in value:
                 name = _extract_staging_collection_name(item)
                 if name:
@@ -337,7 +337,16 @@ async def _process_reindex_operation_impl(
         staging_collection_name = staging_info["collection_name"]
 
         try:
-            from shared.database.collection_metadata import store_collection_metadata
+            from shared.database.collection_metadata import ensure_metadata_collection, store_collection_metadata
+
+            try:
+                ensure_metadata_collection(qdrant_client)
+            except Exception as ensure_exc:
+                logger.warning(
+                    "Failed to ensure metadata collection before storing staging metadata for %s: %s",
+                    staging_collection_name,
+                    ensure_exc,
+                )
 
             store_collection_metadata(
                 qdrant=qdrant_client,
@@ -353,6 +362,7 @@ async def _process_reindex_operation_impl(
                 chunk_size=new_config.get("chunk_size", collection.get("config", {}).get("chunk_size")),
                 chunk_overlap=new_config.get("chunk_overlap", collection.get("config", {}).get("chunk_overlap")),
                 instruction=new_config.get("instruction", collection.get("config", {}).get("instruction")),
+                ensure=False,
             )
         except Exception as exc:
             logger.warning("Failed to store staging collection metadata: %s", exc)

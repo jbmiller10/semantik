@@ -1330,7 +1330,7 @@ class TestReindexTaskIntegration:
             assert mock_httpx_post.called
 
     @pytest.mark.asyncio()
-    async def test_reindex_task_requires_staging_metadata(self, mock_reindex_dependencies):
+    async def test_reindex_task_requires_staging_metadata_when_collection_missing(self, mock_reindex_dependencies):
         """Ensure we fail fast instead of targeting the primary collection when staging metadata is missing."""
         db = mock_reindex_dependencies["db"]
         updater = mock_reindex_dependencies["updater"]

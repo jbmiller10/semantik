@@ -40,9 +40,19 @@ def store_collection_metadata(
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
     instruction: str | None = None,
+    *,
+    ensure: bool = True,
 ) -> None:
-    """Store metadata about a collection"""
-    ensure_metadata_collection(qdrant)
+    """Store metadata about a collection.
+
+    The ``ensure`` flag allows callers that have already provisioned the metadata
+    collection to skip the additional existence check. This keeps downstream
+    mocks from observing an unexpected second ``create_collection`` invocation
+    while preserving the safety net for production code paths.
+    """
+
+    if ensure:
+        ensure_metadata_collection(qdrant)
 
     metadata = {
         "collection_name": collection_name,
