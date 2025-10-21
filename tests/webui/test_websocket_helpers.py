@@ -103,9 +103,9 @@ class WebSocketTestHarness:
         self.clients[client_id] = client
         return client
 
-    async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user") -> None:
+    async def connect_clients(self, operation_id: str, num_clients: int = 1, user_prefix: str = "user") -> list[MockWebSocketClient]:
         """Connect multiple clients to an operation."""
-        connected_clients = []
+        connected_clients: list[MockWebSocketClient] = []
         for i in range(num_clients):
             client_id = f"client_{i}"
             user_id = f"{user_prefix}_{i}"

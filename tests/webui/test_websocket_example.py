@@ -72,7 +72,7 @@ class TestWebSocketExamples:
         mock_operation.error_message = None
 
         # Set up the operation getter function
-        async def mock_get_operation(operation_id) -> None:
+        async def mock_get_operation(operation_id: str) -> MagicMock | None:
             if operation_id == "operation789":
                 return mock_operation
             return None

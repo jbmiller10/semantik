@@ -3,7 +3,7 @@
 import inspect
 import logging
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
@@ -243,7 +243,7 @@ async def get_current_user_optional(
         candidate = call_target()
 
     if inspect.isawaitable(candidate):
-        return cast(dict[str, Any] | None, await cast(Awaitable[Any], candidate))
+        return cast(dict[str, Any] | None, await candidate)
 
     return cast(dict[str, Any] | None, candidate)
 

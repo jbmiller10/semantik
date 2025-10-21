@@ -427,17 +427,18 @@ def _reset_singletons() -> None:
             REGISTRY.unregister(collector)
 
 
-def create_async_mock(return_value=None) -> None:
+def create_async_mock(return_value=None) -> MagicMock:
     """Helper to create an async mock that returns a value."""
+    from typing import Any
 
-    async def async_mock(*_args, **_kwargs) -> None:
+    async def async_mock(*_args: Any, **_kwargs: Any) -> Any:
         return return_value
 
     return MagicMock(side_effect=async_mock)
 
 
 @pytest.fixture()
-def mock_collection_repository() -> None:
+def mock_collection_repository() -> MagicMock:
     """Create a mock CollectionRepository for testing."""
     mock = MagicMock()
     mock.list_collections = create_async_mock([])
@@ -450,7 +451,7 @@ def mock_collection_repository() -> None:
 
 
 @pytest.fixture()
-def mock_user_repository() -> None:
+def mock_user_repository() -> MagicMock:
     """Create a mock UserRepository for testing."""
     mock = MagicMock()
     mock.create_user = create_async_mock()
@@ -462,7 +463,7 @@ def mock_user_repository() -> None:
 
 
 @pytest.fixture()
-def mock_auth_repository() -> None:
+def mock_auth_repository() -> MagicMock:
     """Create a mock AuthRepository for testing."""
     mock = MagicMock()
     mock.save_refresh_token = create_async_mock()
