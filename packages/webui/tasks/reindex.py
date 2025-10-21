@@ -377,10 +377,13 @@ async def _process_reindex_operation_impl(
                 collection_name=staging_collection_name,
                 model_name=new_config.get(
                     "model_name",
-                    collection.get("config", {}).get("model_name", collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")),
+                    collection.get("config", {}).get(
+                        "model_name", collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
+                    ),
                 ),
                 quantization=new_config.get(
-                    "quantization", collection.get("config", {}).get("quantization", collection.get("quantization", "float32"))
+                    "quantization",
+                    collection.get("config", {}).get("quantization", collection.get("quantization", "float32")),
                 ),
                 vector_dim=staging_info.get("vector_dim"),
                 chunk_size=new_config.get("chunk_size", collection.get("config", {}).get("chunk_size")),

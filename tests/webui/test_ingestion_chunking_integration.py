@@ -458,68 +458,68 @@ class TestAppendTaskIntegration:
         )
 
         collection = MagicMock(
-                id="coll-123",
-                name="Test Collection",
-                path="/test/path",
-                status=CollectionStatus.READY,
-                vector_collection_id="vc-123",
-                chunking_strategy="recursive",
-                chunking_config={"chunk_size": 100, "chunk_overlap": 20},
-                chunk_size=100,
-                chunk_overlap=20,
-                embedding_model="Qwen/Qwen3-Embedding-0.6B",
-                quantization="float16",
-                get=MagicMock(
-                    side_effect=lambda key, default=None: {
-                        "id": "coll-123",
-                        "name": "Test Collection",
-                        "path": "/test/path",
-                        "status": CollectionStatus.READY,
-                        "vector_collection_id": "vc-123",
-                        "chunking_strategy": "recursive",
-                        "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
-                        "chunk_size": 100,
-                        "chunk_overlap": 20,
-                        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-                        "quantization": "float16",
-                    }.get(key, default)
-                ),
-            )
+            id="coll-123",
+            name="Test Collection",
+            path="/test/path",
+            status=CollectionStatus.READY,
+            vector_collection_id="vc-123",
+            chunking_strategy="recursive",
+            chunking_config={"chunk_size": 100, "chunk_overlap": 20},
+            chunk_size=100,
+            chunk_overlap=20,
+            embedding_model="Qwen/Qwen3-Embedding-0.6B",
+            quantization="float16",
+            get=MagicMock(
+                side_effect=lambda key, default=None: {
+                    "id": "coll-123",
+                    "name": "Test Collection",
+                    "path": "/test/path",
+                    "status": CollectionStatus.READY,
+                    "vector_collection_id": "vc-123",
+                    "chunking_strategy": "recursive",
+                    "chunking_config": {"chunk_size": 100, "chunk_overlap": 20},
+                    "chunk_size": 100,
+                    "chunk_overlap": 20,
+                    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+                    "quantization": "float16",
+                }.get(key, default)
+            ),
+        )
 
         documents = [
-                MagicMock(
-                    id="doc-1",
-                    file_path="/test/doc1.txt",
-                    file_size=1024,
-                    status=DocumentStatus.PENDING,
-                    chunk_count=0,
-                    get=MagicMock(
-                        side_effect=lambda key, default=None: {
-                            "id": "doc-1",
-                            "file_path": "/test/doc1.txt",
-                            "file_size": 1024,
-                            "status": DocumentStatus.PENDING,
-                            "chunk_count": 0,
-                        }.get(key, default)
-                    ),
+            MagicMock(
+                id="doc-1",
+                file_path="/test/doc1.txt",
+                file_size=1024,
+                status=DocumentStatus.PENDING,
+                chunk_count=0,
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "doc-1",
+                        "file_path": "/test/doc1.txt",
+                        "file_size": 1024,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
+                    }.get(key, default)
                 ),
-                MagicMock(
-                    id="doc-2",
-                    file_path="/test/doc2.pdf",
-                    file_size=2048,
-                    status=DocumentStatus.PENDING,
-                    chunk_count=0,
-                    get=MagicMock(
-                        side_effect=lambda key, default=None: {
-                            "id": "doc-2",
-                            "file_path": "/test/doc2.pdf",
-                            "file_size": 2048,
-                            "status": DocumentStatus.PENDING,
-                            "chunk_count": 0,
-                        }.get(key, default)
-                    ),
+            ),
+            MagicMock(
+                id="doc-2",
+                file_path="/test/doc2.pdf",
+                file_size=2048,
+                status=DocumentStatus.PENDING,
+                chunk_count=0,
+                get=MagicMock(
+                    side_effect=lambda key, default=None: {
+                        "id": "doc-2",
+                        "file_path": "/test/doc2.pdf",
+                        "file_size": 2048,
+                        "status": DocumentStatus.PENDING,
+                        "chunk_count": 0,
+                    }.get(key, default)
                 ),
-            ]
+            ),
+        ]
 
         return {
             "db": AsyncMock(spec=AsyncSession),
