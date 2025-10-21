@@ -13,7 +13,6 @@ import asyncio
 import contextlib
 import time
 import uuid
-from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
@@ -187,7 +186,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             operation, collection, collection_repo, document_repo, updater
                         )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await tasks_ns._process_append_operation(db, updater, operation["id"])
+                        result = await tasks_ns._process_append_operation_impl(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
                     elif operation["type"] == OperationType.REINDEX:
                         result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
@@ -240,9 +241,6 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     collections_total.labels(status=old_status.value).dec()
                     collections_total.labels(status=new_status.value).inc()
 
-                # Persist status updates before notifying listeners to avoid race conditions
-                await db.commit()
-
                 await updater.send_update("operation_completed", {"status": "completed", "result": result})
 
                 logger.info(
@@ -254,6 +252,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "success": result.get("success", False),
                     },
                 )
+
+                # Commit after notifying listeners; add_source will tolerate the small window
+                await db.commit()
 
                 return result
 
@@ -483,7 +484,7 @@ async def _process_index_operation(
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
     from qdrant_client.models import Distance, VectorParams
-    from shared.database.collection_metadata import store_collection_metadata
+    from shared.database.collection_metadata import ensure_metadata_collection, store_collection_metadata
     from shared.embedding.models import get_model_config
     from shared.embedding.validation import get_model_dimension
     from shared.metrics.collection_metrics import record_qdrant_operation
@@ -497,6 +498,15 @@ async def _process_index_operation(
             vector_store_name = f"col_{collection['uuid'].replace('-', '_')}"
             logger.warning(
                 "Collection %s missing vector_store_name, generated: %s", collection["id"], vector_store_name
+            )
+
+        try:
+            ensure_metadata_collection(qdrant_client)
+        except Exception as exc:
+            logger.warning(
+                "Failed to ensure metadata collection before creating %s: %s",
+                vector_store_name,
+                exc,
             )
 
         config = collection.get("config", {})
@@ -538,6 +548,7 @@ async def _process_index_operation(
                 chunk_size=config.get("chunk_size"),
                 chunk_overlap=config.get("chunk_overlap"),
                 instruction=config.get("instruction"),
+                ensure=False,
             )
         except Exception as exc:
             logger.warning("Failed to store collection metadata: %s", exc)
@@ -622,6 +633,15 @@ async def _process_append_operation_impl(
         scan_duration = time.time() - scan_start
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
 
+        logger.info(
+            "Scan stats for %s: %s documents found, %s new, %s duplicates, %s errors",
+            source_path,
+            scan_stats["total_documents_found"],
+            scan_stats["new_documents_registered"],
+            scan_stats["duplicate_documents_skipped"],
+            len(scan_stats.get("errors", [])),
+        )
+
         await updater.send_update(
             "scanning_completed",
             {
@@ -659,6 +679,12 @@ async def _process_append_operation_impl(
         )
 
         documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+        logger.info(
+            "Matched %s documents for prefix %s out of %s total in collection",
+            len(documents),
+            source_path,
+            len(all_docs),
+        )
         unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
 
         if len(unprocessed_documents) > 0:
