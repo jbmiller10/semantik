@@ -654,10 +654,24 @@ class TestAppendOperation:
         mock_chunker.chunk_text.return_value = [mock_chunk]
 
         # Patch both the extract function and TokenChunker
+        chunking_service = AsyncMock()
+        chunking_service.execute_ingestion_chunking.return_value = {
+            "chunks": [
+                {"chunk_id": "chunk1", "text": "This is test content", "metadata": {"page": 1}}
+            ],
+            "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False, "duration_ms": 1},
+        }
+
         with (
             patch("packages.webui.tasks.extract_and_serialize_thread_safe", side_effect=mock_extract_func),
             patch("shared.text_processing.chunking.TokenChunker", return_value=mock_chunker),
             patch("asyncio.get_event_loop", return_value=mock_loop),
+            patch(
+                "packages.webui.tasks.create_celery_chunking_service_with_repos",
+                return_value=chunking_service,
+            ),
+            patch("shared.embedding.validation.get_collection_dimension", return_value=1024),
+            patch("shared.embedding.validation.validate_dimension_compatibility", return_value=None),
         ):
             # Mock httpx client for vecpipe API
             mock_client = AsyncMock()

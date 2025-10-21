@@ -439,6 +439,7 @@ async def _process_reindex_operation_impl(
                                 combined_metadata.update(metadata)
 
                     reindex_collection = collection.copy()
+                    reindex_collection["vector_store_name"] = staging_collection_name
                     if new_config.get("chunking_strategy"):
                         reindex_collection["chunking_strategy"] = new_config["chunking_strategy"]
                     if new_config.get("chunking_config"):

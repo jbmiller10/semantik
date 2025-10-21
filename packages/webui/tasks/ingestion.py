@@ -172,7 +172,21 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     "name": collection_obj.name,
                     "vector_store_name": collection_obj.vector_store_name,
                     "config": getattr(collection_obj, "config", {}),
+                    "embedding_model": getattr(collection_obj, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
+                    "quantization": getattr(collection_obj, "quantization", "float16"),
+                    "chunk_size": getattr(collection_obj, "chunk_size", 1000),
+                    "chunk_overlap": getattr(collection_obj, "chunk_overlap", 200),
+                    "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
+                    "chunking_config": getattr(collection_obj, "chunking_config", {}) or {},
+                    "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
+                    "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
+                    "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
+                    "vector_count": getattr(collection_obj, "vector_count", 0),
                 }
+
+                vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
+                if vector_collection_id and not collection["vector_store_name"]:
+                    collection["vector_store_name"] = vector_collection_id
 
                 tasks_ns = _tasks_namespace()
                 result: dict[str, Any] = {}
