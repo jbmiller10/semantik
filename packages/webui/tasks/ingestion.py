@@ -687,6 +687,8 @@ async def _process_append_operation_impl(
         )
         unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
 
+        failed_count = 0
+
         if len(unprocessed_documents) > 0:
             await updater.send_update(
                 "processing_embeddings",
@@ -711,7 +713,6 @@ async def _process_append_operation_impl(
             qdrant_client = manager.get_client()
 
             processed_count = 0
-            failed_count = 0
             total_vectors_created = 0
 
             chunking_service = create_celery_chunking_service_with_repos(
@@ -935,15 +936,19 @@ async def _process_append_operation_impl(
                 },
             )
 
+        scan_errors = scan_stats.get("errors", []) or []
+        success = failed_count == 0 and not scan_errors
+
         return {
-            "success": True,
+            "success": success,
             "source_path": source_path,
             "documents_added": scan_stats["new_documents_registered"],
             "total_files_scanned": scan_stats["total_documents_found"],
             "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             "total_size_bytes": scan_stats["total_size_bytes"],
             "scan_duration_seconds": scan_duration,
-            "errors": scan_stats.get("errors", []),
+            "errors": scan_errors,
+            "failed_documents": failed_count,
         }
 
     except Exception as exc:
