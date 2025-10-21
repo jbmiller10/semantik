@@ -17,6 +17,8 @@ export interface ProjectionMetadata {
   message?: string | null;
   operation_id?: string | null;
   operation_status?: string | null;
+  config?: Record<string, unknown> | null;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface ProjectionListResponse {

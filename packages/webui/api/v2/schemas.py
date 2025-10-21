@@ -225,6 +225,8 @@ class ProjectionMetadataResponse(BaseModel):
     dimensionality: int = Field(description="Target dimensionality of the projection output")
     created_at: datetime | None = Field(default=None, description="Creation timestamp")
     message: str | None = Field(default=None, description="Optional status message")
+    config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
+    meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
 
 
 class ProjectionListResponse(BaseModel):
