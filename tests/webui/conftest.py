@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from packages.shared.database.models import CollectionStatus, OperationType
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 
 @pytest.fixture(autouse=True)
