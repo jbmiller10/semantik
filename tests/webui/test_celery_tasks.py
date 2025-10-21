@@ -424,10 +424,18 @@ class TestIndexOperation:
 
         return manager
 
+    @patch("shared.database.collection_metadata.store_collection_metadata")
+    @patch("shared.database.collection_metadata.ensure_metadata_collection")
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("shared.embedding.models.get_model_config")
     async def test_process_index_operation_success(
-        self, mock_get_model_config, mock_qdrant_global, mock_qdrant_manager, mock_updater
+        self,
+        mock_get_model_config,
+        mock_qdrant_global,
+        mock_ensure_metadata,
+        mock_store_metadata,
+        mock_qdrant_manager,
+        mock_updater,
     ) -> None:
         """Test successful INDEX operation."""
         # Setup mocks
@@ -464,6 +472,13 @@ class TestIndexOperation:
         client.create_collection.assert_called_once()
         call_args = client.create_collection.call_args
         assert call_args[1]["collection_name"] == "col_test_123"
+
+        # Metadata helpers should have been called for the new collection
+        mock_ensure_metadata.assert_called_once_with(client)
+        mock_store_metadata.assert_called_once()
+        store_kwargs = mock_store_metadata.call_args.kwargs
+        assert store_kwargs["collection_name"] == "col_test_123"
+        assert store_kwargs["ensure"] is False
 
         # Verify collection was updated in database
         collection_repo.update.assert_called_once_with("col-123", {"vector_store_name": "col_test_123"})
@@ -508,6 +523,57 @@ class TestIndexOperation:
         # Run operation and expect failure
         with pytest.raises(Exception, match="Qdrant unavailable"):
             await _process_index_operation(operation, collection, collection_repo, document_repo, mock_updater)
+
+    @patch("shared.database.pg_connection_manager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.document_repository.DocumentRepository")
+    @patch("packages.webui.tasks.psutil.Process")
+    async def test_process_collection_operation_append_dispatches_impl(
+        self,
+        mock_process,
+        mock_doc_repo_class,
+        mock_col_repo_class,
+        mock_op_repo_class,
+        mock_session_local,
+        mock_pg_manager,
+        mock_repositories,
+        mock_celery_task,
+    ) -> None:
+        """APPEND operations should invoke the implementation handler."""
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_session_local.return_value = mock_session
+
+        mock_op_repo_class.return_value = mock_repositories["operation"]
+        mock_col_repo_class.return_value = mock_repositories["collection"]
+        mock_doc_repo_class.return_value = mock_repositories["document"]
+
+        operation_obj = mock_repositories["operation"].get_by_uuid.return_value
+        operation_obj.type = OperationType.APPEND
+        operation_obj.config = {"source_path": "/data/docs"}
+
+        collection_obj = mock_repositories["collection"].get_by_uuid.return_value
+        collection_obj.vector_store_name = "col_docs"
+
+        append_result = {"success": True, "documents_added": 4, "source_path": "/data/docs"}
+
+        with patch(
+            "packages.webui.tasks._process_append_operation_impl",
+            new=AsyncMock(return_value=append_result),
+        ) as mock_append_impl:
+            result = await _process_collection_operation_async("op-123", mock_celery_task)
+
+        mock_append_impl.assert_awaited_once()
+        impl_args = mock_append_impl.call_args[0]
+        assert impl_args[0]["config"]["source_path"] == "/data/docs"
+        assert impl_args[1]["vector_store_name"] == "col_docs"
+        assert result["documents_added"] == 4
 
 
 class TestAppendOperation:
@@ -699,6 +765,8 @@ class TestReindexOperation:
         manager.get_collection_info.return_value = Mock(vectors_count=1000)
         return manager
 
+    @patch("shared.database.collection_metadata.store_collection_metadata")
+    @patch("shared.database.collection_metadata.ensure_metadata_collection")
     @patch("packages.webui.tasks.QdrantManager")
     @patch("packages.webui.tasks.qdrant_manager")
     @patch("packages.webui.tasks._validate_reindex")
@@ -715,6 +783,8 @@ class TestReindexOperation:
         mock_validate,
         mock_qdrant_global,
         mock_qdrant_manager_class,
+        mock_ensure_metadata,
+        mock_store_metadata,
         mock_qdrant_manager_instance,
         mock_updater,
     ) -> None:
@@ -798,6 +868,12 @@ class TestReindexOperation:
 
         # Verify staging collection was created
         mock_reindex_handler.assert_called_once()
+
+        # Metadata helpers should be invoked for staging collection
+        mock_ensure_metadata.assert_called_once_with(qdrant_client)
+        mock_store_metadata.assert_called_once()
+        assert mock_store_metadata.call_args.kwargs["collection_name"] == "staging_col_123_20240115_120000"
+        assert mock_store_metadata.call_args.kwargs["ensure"] is False
 
         # Verify validation was performed
         mock_validate.assert_called_once()
