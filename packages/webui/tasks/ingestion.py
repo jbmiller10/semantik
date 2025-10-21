@@ -437,7 +437,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     with contextlib.suppress(Exception):
         await updater.send_update("append_completed", {"processed": processed, "operation_id": _get(op, "id")})
 
-    return {"processed": processed}
+    # Mark legacy wrapper successes explicitly so orchestration logic can
+    # promote the collection out of DEGRADED status (it expects a "success"
+    # flag in the result payload).
+    return {
+        "success": True,
+        "processed": processed,
+        "documents_added": processed,
+    }
 
 
 async def _process_index_operation(

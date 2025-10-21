@@ -245,13 +245,17 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         chars_per_token = 4
         max_chars = config.max_tokens * chars_per_token
         min_chars = config.min_tokens * chars_per_token
+        # Ensure small documents aren't discarded entirely when the min size exceeds
+        # their length. Clamping keeps recursive splitting from returning [].
+        if content:
+            min_chars = max(1, min(min_chars, len(content)))
         overlap_chars = config.overlap_tokens * chars_per_token
 
         # Start recursive splitting
         splits = self._recursive_split(content, self.separators, max_chars, min_chars)
 
         if not splits:
-            return []
+            splits = [content]
 
         # Convert splits to chunks with overlap
         chunks: list[Chunk] = []
