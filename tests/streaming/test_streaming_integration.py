@@ -224,7 +224,7 @@ Mixed: English café 中文 🎉 all together."""
             # Shared memory pool for all processors
             memory_pool = MemoryPool(buffer_size=1024, pool_size=10)
 
-            async def process_file(file_path: str, file_id: int) -> None:
+            async def process_file(file_path: str, file_id: int) -> tuple[int, int]:
                 processor = StreamingDocumentProcessor(memory_pool=memory_pool)
                 strategy = SimpleChunkingStrategy()
 

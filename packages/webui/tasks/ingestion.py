@@ -13,7 +13,6 @@ import asyncio
 import contextlib
 import time
 import uuid
-from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
@@ -117,7 +116,30 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     collection: dict[str, Any] | None = None
 
     process = psutil.Process()
-    initial_cpu_time = process.cpu_times().user + process.cpu_times().system
+
+    def _safe_cpu_seconds(proc: Any) -> float:
+        """Return total CPU seconds for the process, tolerating mocked values."""
+        try:
+            cpu_times = proc.cpu_times()
+        except Exception:  # pragma: no cover - psutil edge cases
+            return 0.0
+
+        user = getattr(cpu_times, "user", 0.0)
+        system = getattr(cpu_times, "system", 0.0)
+
+        try:
+            user_seconds = float(user)
+        except (TypeError, ValueError):
+            user_seconds = 0.0
+
+        try:
+            system_seconds = float(system)
+        except (TypeError, ValueError):
+            system_seconds = 0.0
+
+        return user_seconds + system_seconds
+
+    initial_cpu_time = _safe_cpu_seconds(process)
 
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
@@ -173,7 +195,21 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     "name": collection_obj.name,
                     "vector_store_name": collection_obj.vector_store_name,
                     "config": getattr(collection_obj, "config", {}),
+                    "embedding_model": getattr(collection_obj, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
+                    "quantization": getattr(collection_obj, "quantization", "float16"),
+                    "chunk_size": getattr(collection_obj, "chunk_size", 1000),
+                    "chunk_overlap": getattr(collection_obj, "chunk_overlap", 200),
+                    "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
+                    "chunking_config": getattr(collection_obj, "chunking_config", {}) or {},
+                    "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
+                    "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
+                    "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
+                    "vector_count": getattr(collection_obj, "vector_count", 0),
                 }
+
+                vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
+                if vector_collection_id and not collection["vector_store_name"]:
+                    collection["vector_store_name"] = vector_collection_id
 
                 tasks_ns = _tasks_namespace()
                 result: dict[str, Any] = {}
@@ -187,7 +223,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             operation, collection, collection_repo, document_repo, updater
                         )
                     elif operation["type"] == OperationType.APPEND:
-                        result = await tasks_ns._process_append_operation(db, updater, operation["id"])
+                        result = await tasks_ns._process_append_operation_impl(
+                            operation, collection, collection_repo, document_repo, updater
+                        )
                     elif operation["type"] == OperationType.REINDEX:
                         result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
@@ -201,7 +239,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
 
                 duration = time.time() - start_time
-                cpu_time = (process.cpu_times().user + process.cpu_times().system) - initial_cpu_time
+                cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
+                if cpu_time < 0 or not isinstance(cpu_time, int | float):
+                    cpu_time = 0.0
 
                 await _record_operation_metrics(
                     operation_repo,
@@ -233,7 +273,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         doc_stats["total_size_bytes"],
                     )
                 else:
-                    new_status = CollectionStatus.PARTIALLY_READY
+                    new_status = CollectionStatus.DEGRADED
                     await collection_repo.update_status(collection["id"], new_status)
 
                 if old_status != new_status:
@@ -252,6 +292,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     },
                 )
 
+                # Commit after notifying listeners; add_source will tolerate the small window
                 await db.commit()
 
                 return result
@@ -331,9 +372,28 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
     chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
 
-    op = (await db.execute(None)).scalar_one()
-    collection_obj = (await db.execute(None)).scalar_one_or_none()
-    docs = (await db.execute(None)).scalars().all()
+    # Replace placeholder executes with real queries
+    from shared.database.models import Collection as _Collection
+    from shared.database.models import Document as _Document
+    from shared.database.models import Operation as _Operation
+    from sqlalchemy import select
+
+    # Fetch the operation using whichever identifier the caller supplied
+    op_lookup = select(_Operation)
+    try:
+        op_lookup = op_lookup.where(_Operation.id == int(_operation_id))
+    except (TypeError, ValueError):
+        op_lookup = op_lookup.where(_Operation.uuid == _operation_id)
+
+    op = (await db.execute(op_lookup)).scalar_one()
+
+    # Fetch the parent collection
+    collection_obj = (
+        await db.execute(select(_Collection).where(_Collection.id == op.collection_id))
+    ).scalar_one_or_none()
+
+    # Fetch documents for this collection
+    docs = (await db.execute(select(_Document).where(_Document.collection_id == op.collection_id))).scalars().all()
 
     collection = {
         "id": _get(collection_obj, "id"),
@@ -361,9 +421,19 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     )
 
     processed = 0
+    skipped = 0
+    failed = 0
     from shared.database.models import DocumentStatus
 
     for doc in docs:
+        status = getattr(doc, "status", None)
+        status_value = getattr(status, "value", status)
+        existing_chunks = getattr(doc, "chunk_count", 0) or 0
+
+        if existing_chunks > 0 and status_value == DocumentStatus.COMPLETED.value:
+            skipped += 1
+            continue
+
         try:
             try:
                 blocks_result = extract_fn(_get(doc, "file_path", ""))
@@ -381,7 +451,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 with contextlib.suppress(Exception):
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
-                processed += 1
+                skipped += 1
                 continue
 
             chunk_response = cs.execute_ingestion_chunking(
@@ -404,21 +474,44 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
 
-            with contextlib.suppress(Exception):
-                doc.chunk_count = len(chunks)
-                doc.status = DocumentStatus.COMPLETED
-            processed += 1
+                with contextlib.suppress(Exception):
+                    doc.chunk_count = len(chunks)
+                    doc.status = DocumentStatus.COMPLETED
+                processed += 1
+            else:
+                with contextlib.suppress(Exception):
+                    doc.chunk_count = 0
+                    doc.status = DocumentStatus.COMPLETED
+                skipped += 1
 
         except Exception:
             with contextlib.suppress(Exception):
                 doc.status = DocumentStatus.FAILED
+            failed += 1
             if doc == docs[-1]:
                 raise
 
     with contextlib.suppress(Exception):
-        await updater.send_update("append_completed", {"processed": processed, "operation_id": _get(op, "id")})
+        await updater.send_update(
+            "append_completed",
+            {
+                "processed": processed,
+                "skipped": skipped,
+                "failed": failed,
+                "operation_id": _get(op, "id"),
+            },
+        )
 
-    return {"processed": processed}
+    # Mark legacy wrapper successes explicitly so orchestration logic can
+    # promote the collection out of DEGRADED status (it expects a "success"
+    # flag in the result payload).
+    return {
+        "success": failed == 0,
+        "processed": processed,
+        "documents_added": processed,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 async def _process_index_operation(
@@ -430,7 +523,7 @@ async def _process_index_operation(
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
     from qdrant_client.models import Distance, VectorParams
-    from shared.database.collection_metadata import store_collection_metadata
+    from shared.database.collection_metadata import ensure_metadata_collection, store_collection_metadata
     from shared.embedding.models import get_model_config
     from shared.embedding.validation import get_model_dimension
     from shared.metrics.collection_metrics import record_qdrant_operation
@@ -444,6 +537,15 @@ async def _process_index_operation(
             vector_store_name = f"col_{collection['uuid'].replace('-', '_')}"
             logger.warning(
                 "Collection %s missing vector_store_name, generated: %s", collection["id"], vector_store_name
+            )
+
+        try:
+            ensure_metadata_collection(qdrant_client)
+        except Exception as exc:
+            logger.warning(
+                "Failed to ensure metadata collection before creating %s: %s",
+                vector_store_name,
+                exc,
             )
 
         config = collection.get("config", {})
@@ -477,15 +579,15 @@ async def _process_index_operation(
 
         try:
             store_collection_metadata(
-                qdrant_client,
-                vector_store_name,
-                {
-                    "model_name": actual_model_name,
-                    "quantization": collection.get("quantization", "float16"),
-                    "instruction": config.get("instruction"),
-                    "dimension": vector_dim,
-                    "created_at": datetime.now(UTC).isoformat(),
-                },
+                qdrant=qdrant_client,
+                collection_name=vector_store_name,
+                model_name=actual_model_name,
+                quantization=collection.get("quantization", "float16"),
+                vector_dim=vector_dim,
+                chunk_size=config.get("chunk_size"),
+                chunk_overlap=config.get("chunk_overlap"),
+                instruction=config.get("instruction"),
+                ensure=False,
             )
         except Exception as exc:
             logger.warning("Failed to store collection metadata: %s", exc)
@@ -551,6 +653,7 @@ async def _process_append_operation_impl(
         raise ValueError("source_path is required for APPEND operation")
 
     tasks_ns = _tasks_namespace()
+    extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
 
     session = document_repo.session
     document_scanner = DocumentScanningService(db_session=session, document_repo=document_repo)
@@ -569,6 +672,15 @@ async def _process_append_operation_impl(
 
         scan_duration = time.time() - scan_start
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
+
+        logger.info(
+            "Scan stats for %s: %s documents found, %s new, %s duplicates, %s errors",
+            source_path,
+            scan_stats["total_documents_found"],
+            scan_stats["new_documents_registered"],
+            scan_stats["duplicate_documents_skipped"],
+            len(scan_stats.get("errors", [])),
+        )
 
         await updater.send_update(
             "scanning_completed",
@@ -607,7 +719,15 @@ async def _process_append_operation_impl(
         )
 
         documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
+        logger.info(
+            "Matched %s documents for prefix %s out of %s total in collection",
+            len(documents),
+            source_path,
+            len(all_docs),
+        )
         unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
+
+        failed_count = 0
 
         if len(unprocessed_documents) > 0:
             await updater.send_update(
@@ -633,7 +753,6 @@ async def _process_append_operation_impl(
             qdrant_client = manager.get_client()
 
             processed_count = 0
-            failed_count = 0
             total_vectors_created = 0
 
             chunking_service = create_celery_chunking_service_with_repos(
@@ -648,11 +767,28 @@ async def _process_append_operation_impl(
             for doc in documents:
                 try:
                     logger.info("Processing document: %s", doc.file_path)
-
-                    text_blocks = await asyncio.wait_for(
-                        loop.run_in_executor(executor_pool, extract_and_serialize_thread_safe, doc.file_path),
-                        timeout=300,
-                    )
+                    try:
+                        text_blocks = await asyncio.wait_for(
+                            await_if_awaitable(
+                                loop.run_in_executor(
+                                    executor_pool,
+                                    extract_fn,
+                                    doc.file_path,
+                                )
+                            ),
+                            timeout=300,
+                        )
+                    except RuntimeError as exc:  # pragma: no cover - defensive
+                        if "cannot reuse already awaited coroutine" not in str(exc):
+                            raise
+                        logger.debug(
+                            "Executor returned a reusable coroutine for %s; falling back to direct call",
+                            doc.file_path,
+                        )
+                        text_blocks = await asyncio.wait_for(
+                            await_if_awaitable(extract_fn(doc.file_path)),
+                            timeout=300,
+                        )
 
                     if not text_blocks:
                         logger.warning("No text extracted from %s", doc.file_path)
@@ -857,15 +993,19 @@ async def _process_append_operation_impl(
                 },
             )
 
+        scan_errors = scan_stats.get("errors", []) or []
+        success = failed_count == 0 and not scan_errors
+
         return {
-            "success": True,
+            "success": success,
             "source_path": source_path,
             "documents_added": scan_stats["new_documents_registered"],
             "total_files_scanned": scan_stats["total_documents_found"],
             "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             "total_size_bytes": scan_stats["total_size_bytes"],
             "scan_duration_seconds": scan_duration,
-            "errors": scan_stats.get("errors", []),
+            "errors": scan_errors,
+            "failed_documents": failed_count,
         }
 
     except Exception as exc:
@@ -1138,13 +1278,13 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                     if collection_obj.status != CollectionStatus.ERROR:
                         await collection_repo.update_status(
                             collection_obj.uuid,
-                            CollectionStatus.PARTIALLY_READY,
+                            CollectionStatus.DEGRADED,
                             status_message=f"Append operation failed: {sanitized_error}",
                         )
                 elif operation_type == OperationType.REMOVE_SOURCE:
                     await collection_repo.update_status(
                         collection_obj.id,
-                        CollectionStatus.PARTIALLY_READY,
+                        CollectionStatus.DEGRADED,
                         status_message=f"Remove source operation failed: {sanitized_error}",
                     )
 

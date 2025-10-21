@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
+from packages.webui.services.factory import create_celery_chunking_service_with_repos
 
 from .cleanup import (
     cleanup_old_collections,
@@ -105,6 +106,7 @@ __all__ = [
     "CeleryTaskWithOperationUpdates",
     "ChunkingService",
     "resolve_celery_chunking_service",
+    "create_celery_chunking_service_with_repos",
     "celery_app",
     "executor",
     "extract_and_serialize_thread_safe",

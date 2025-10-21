@@ -14,7 +14,7 @@ from alembic.versions.ae558c9e183f_implement_100_direct_list_partitions import u
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-def extract_sql_statements() -> None:
+def extract_sql_statements() -> bool:
     """Extract SQL statements from the migration."""
 
     class MockConnection:

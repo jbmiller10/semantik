@@ -107,7 +107,7 @@ async def add_source(
 
 ### 2. `add_source`
 - Adds documents from a source to existing collection
-- Validates collection state (must be READY or PARTIALLY_READY)
+- Validates collection state (must be READY or DEGRADED)
 - Returns: operation dictionary
 - Exceptions: `InvalidStateError`, `EntityNotFoundError`, `AccessDeniedError`
 
@@ -218,11 +218,11 @@ EMPTY → INDEXING → READY
          ↓    ↑
        FAILED  ↓
          ↑    ↓
-    PARTIALLY_READY ← PROCESSING
+      DEGRADED ← PROCESSING
 ```
 
 The service enforces these rules:
-- Can only add sources when READY or PARTIALLY_READY
+- Can only add sources when READY or DEGRADED
 - Cannot perform operations during INDEXING
 - Cannot reindex FAILED collections (must delete and recreate)
 
