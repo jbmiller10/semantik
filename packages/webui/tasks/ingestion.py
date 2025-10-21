@@ -110,6 +110,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
+    from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 
     start_time = time.time()
     operation = None
@@ -151,6 +152,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
         operation_repo = OperationRepository(db)
         collection_repo = CollectionRepository(db)
         document_repo = DocumentRepository(db)
+        projection_repo = ProjectionRunRepository(db)
 
         try:
             await operation_repo.set_task_id(operation_id, task_id)
@@ -231,6 +233,13 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     elif operation["type"] == OperationType.REMOVE_SOURCE:
                         result = await tasks_ns._process_remove_source_operation(
                             operation, collection, collection_repo, document_repo, updater
+                        )
+                    elif operation["type"] == OperationType.PROJECTION_BUILD:
+                        result = await tasks_ns._process_projection_operation(
+                            operation,
+                            collection,
+                            projection_repo,
+                            updater,
                         )
                     else:  # pragma: no cover - defensive branch
                         raise ValueError(f"Unknown operation type: {operation['type']}")
