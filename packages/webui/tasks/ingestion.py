@@ -240,7 +240,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
                 duration = time.time() - start_time
                 cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
-                if cpu_time < 0 or not isinstance(cpu_time, (int, float)):
+                if cpu_time < 0 or not isinstance(cpu_time, int | float):
                     cpu_time = 0.0
 
                 await _record_operation_metrics(

@@ -128,23 +128,14 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
                 if name:
                     return name
             for nested_value in value.values():
-                if isinstance(nested_value, (dict, list, tuple)):
-                    name = _extract_staging_collection_name(nested_value)
-                    if name:
-                        return name
-                elif isinstance(nested_value, str):
+                if isinstance(nested_value, dict | list | tuple | str):
                     name = _extract_staging_collection_name(nested_value)
                     if name:
                         return name
             return None
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             for item in value:
-                if isinstance(item, (dict, list, tuple)):
-                    name = _extract_staging_collection_name(item)
-                elif isinstance(item, str):
-                    name = _extract_staging_collection_name(item)
-                else:
-                    name = None
+                name = _extract_staging_collection_name(item) if isinstance(item, dict | list | tuple | str) else None
                 if name:
                     return name
         return None
