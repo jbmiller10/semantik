@@ -656,9 +656,7 @@ class TestAppendOperation:
         # Patch both the extract function and TokenChunker
         chunking_service = AsyncMock()
         chunking_service.execute_ingestion_chunking.return_value = {
-            "chunks": [
-                {"chunk_id": "chunk1", "text": "This is test content", "metadata": {"page": 1}}
-            ],
+            "chunks": [{"chunk_id": "chunk1", "text": "This is test content", "metadata": {"page": 1}}],
             "stats": {"chunk_count": 1, "strategy_used": "recursive", "fallback": False, "duration_ms": 1},
         }
 
