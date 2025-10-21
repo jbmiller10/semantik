@@ -5,6 +5,7 @@ This module extends the base schemas with v2-specific features like
 multi-collection search and enhanced result metadata.
 """
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -189,3 +190,79 @@ class SingleCollectionSearchRequest(BaseModel):
             }
         }
     )
+
+
+class ProjectionBuildRequest(BaseModel):
+    """Request payload to start a projection build."""
+
+    reducer: str = Field(default="umap", description="Dimensionality reduction algorithm to use")
+    dimensionality: int = Field(
+        default=2,
+        ge=2,
+        le=3,
+        description="Target dimensionality for visualization output",
+    )
+    config: dict[str, Any] | None = Field(default=None, description="Reducer-specific configuration overrides")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "reducer": "umap",
+                "dimensionality": 2,
+                "config": {"n_neighbors": 15, "min_dist": 0.1},
+            }
+        }
+    )
+
+
+class ProjectionMetadataResponse(BaseModel):
+    """Minimal metadata payload describing a projection run."""
+
+    id: str = Field(description="Projection run UUID")
+    collection_id: str = Field(description="Collection UUID")
+    status: str = Field(description="Lifecycle status for the projection run")
+    reducer: str = Field(description="Algorithm used for the projection")
+    dimensionality: int = Field(description="Target dimensionality of the projection output")
+    created_at: datetime | None = Field(default=None, description="Creation timestamp")
+    message: str | None = Field(default=None, description="Optional status message")
+
+
+class ProjectionListResponse(BaseModel):
+    """Wrapper for listing projection runs belonging to a collection."""
+
+    projections: list[ProjectionMetadataResponse]
+
+
+class ProjectionArrayResponse(BaseModel):
+    """Placeholder payload for coordinate responses until streaming is implemented."""
+
+    projection_id: str
+    message: str = "Projection array streaming not yet implemented"
+
+
+class ProjectionSelectionRequest(BaseModel):
+    """Selection request expressed as a bounding box in screen coordinates."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "x": 100,
+                "y": 150,
+                "width": 250,
+                "height": 200,
+            }
+        }
+    )
+
+
+class ProjectionSelectionResponse(BaseModel):
+    """Placeholder response for selection requests."""
+
+    projection_id: str
+    chunks: list[str]
+    message: str = Field(default="Projection selection not yet implemented")

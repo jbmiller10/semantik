@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from .repositories.collection_repository import CollectionRepository
     from .repositories.document_repository import DocumentRepository
     from .repositories.operation_repository import OperationRepository
+    from .repositories.projection_run_repository import ProjectionRunRepository
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,14 @@ def create_document_repository(session: AsyncSession) -> "DocumentRepository":
     return DocumentRepository(session)
 
 
+def create_projection_run_repository(session: AsyncSession) -> "ProjectionRunRepository":
+    """Create a projection run repository instance."""
+
+    from .repositories.projection_run_repository import ProjectionRunRepository
+
+    return ProjectionRunRepository(session)
+
+
 def create_collection_repository(session: AsyncSession) -> "CollectionRepository":
     """Create a collection repository instance.
 
@@ -137,6 +146,7 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
         "document": create_document_repository(session),
         "collection": create_collection_repository(session),
         "chunk": create_chunk_repository(session),
+        "projection_run": create_projection_run_repository(session),
     }
 
 
