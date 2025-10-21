@@ -119,3 +119,44 @@ class TestOperationsWebSocket:
                 # Verify disconnection was called with connection_id only
                 # ScalableWebSocketManager expects: disconnect(connection_id)
                 mock_ws_manager.disconnect.assert_called_once_with(mock_connection_id)
+
+    @pytest.mark.asyncio()
+    async def test_websocket_handles_plain_ping(self, mock_websocket_client) -> None:
+        """Clients sending plain 'ping' strings should receive a 'pong' response."""
+
+        mock_user = {"id": "42", "username": "ping-user"}
+
+        with (
+            patch("packages.webui.api.v2.operations.get_current_user_websocket", return_value=mock_user),
+            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
+            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+        ):
+            mock_service_instance = AsyncMock()
+            mock_service_instance.verify_websocket_access = AsyncMock(return_value=None)
+            mock_service_class.return_value = mock_service_instance
+
+            with patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class:
+                mock_repo_class.return_value = AsyncMock()
+
+                async def mock_db_generator() -> Generator[Any, None, None]:
+                    yield AsyncMock()
+
+                mock_get_db.side_effect = lambda: mock_db_generator()
+
+                connection_id = "conn-789"
+                mock_ws_manager.connect = AsyncMock(return_value=connection_id)
+                mock_ws_manager.disconnect = AsyncMock()
+
+                mock_websocket_client.receive = AsyncMock(
+                    side_effect=[
+                        {"type": "websocket.receive", "text": "ping"},
+                        {"type": "websocket.disconnect"},
+                    ]
+                )
+
+                await operation_websocket(mock_websocket_client, "op-ping")
+
+                # A pong response should be sent back to the client
+                assert {"type": "pong"} in mock_websocket_client.received_messages
+                mock_ws_manager.disconnect.assert_called_once_with(connection_id)
