@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
+from shared.config import settings
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.chunk_repository import ChunkRepository
@@ -129,6 +130,51 @@ class ProjectionService:
             cfg["min_dist"] = min_dist
             cfg["metric"] = metric
             return cfg
+
+        if reducer_key == "tsne":
+            if config is None:
+                cfg = {}
+            elif isinstance(config, dict):
+                cfg = dict(config)
+            else:
+                raise HTTPException(status_code=400, detail="config must be an object")
+
+            try:
+                perplexity = float(cfg.get("perplexity", 30.0))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="perplexity must be a number") from None
+            if perplexity <= 0:
+                raise HTTPException(status_code=400, detail="perplexity must be > 0")
+
+            try:
+                learning_rate = float(cfg.get("learning_rate", 200.0))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="learning_rate must be a number") from None
+            if learning_rate <= 0:
+                raise HTTPException(status_code=400, detail="learning_rate must be > 0")
+
+            try:
+                n_iter = int(cfg.get("n_iter", 1_000))
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="n_iter must be an integer") from None
+            if n_iter < 250:
+                raise HTTPException(status_code=400, detail="n_iter must be >= 250")
+
+            metric = str(cfg.get("metric", "euclidean"))
+            if not metric:
+                raise HTTPException(status_code=400, detail="metric must be a non-empty string")
+
+            init = str(cfg.get("init", "pca")).lower()
+            if init not in {"pca", "random"}:
+                init = "pca"
+
+            return {
+                "perplexity": perplexity,
+                "learning_rate": learning_rate,
+                "n_iter": n_iter,
+                "metric": metric,
+                "init": init,
+            }
 
         if config is None:
             return None
@@ -262,6 +308,61 @@ class ProjectionService:
         "cat": "cat.u8.bin",
     }
 
+    async def _resolve_storage_directory(self, run: ProjectionRun, storage_path_raw: str) -> Path:
+        """Resolve the storage directory for a projection run across environments."""
+
+        data_dir = settings.data_dir.resolve()
+        raw_path = Path(storage_path_raw)
+
+        def _projection_suffix(path: Path) -> Path | None:
+            parts = path.parts
+            for idx in range(len(parts) - 1):
+                if parts[idx] == "semantik" and parts[idx + 1] == "projections":
+                    return Path(*parts[idx:])
+            return None
+
+        candidates: list[Path] = []
+
+        def _add_candidate(path: Path) -> None:
+            resolved = path if path.is_absolute() else data_dir / path
+            resolved = resolved.resolve(strict=False)
+            if resolved not in candidates:
+                candidates.append(resolved)
+
+        if raw_path.is_absolute():
+            _add_candidate(raw_path)
+            try:
+                relative_path = raw_path.relative_to(data_dir)
+            except ValueError:
+                suffix = _projection_suffix(raw_path)
+                if suffix is not None:
+                    _add_candidate(suffix)
+            else:
+                _add_candidate(relative_path)
+        else:
+            _add_candidate(raw_path)
+
+        resolved_dir: Path | None = None
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_dir():
+                resolved_dir = candidate
+                break
+
+        if resolved_dir is None:
+            raise FileNotFoundError("Projection artifacts directory not found")
+
+        try:
+            normalized_relative = resolved_dir.relative_to(data_dir)
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise PermissionError("Attempted access outside projection storage root") from exc
+
+        normalized_storage = str(normalized_relative)
+        if normalized_storage != storage_path_raw:
+            run.storage_path = normalized_storage
+            await self.db_session.flush()
+
+        return resolved_dir
+
     async def resolve_artifact_path(
         self,
         collection_id: str,
@@ -281,14 +382,15 @@ class ProjectionService:
 
         await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
 
-        storage_path = getattr(run, "storage_path", None)
-        if not storage_path:
+        storage_path_raw = getattr(run, "storage_path", None)
+        if not storage_path_raw:
             raise HTTPException(status_code=409, detail="Projection artifacts are not yet available")
 
-        base_dir = Path(storage_path).resolve()
-        file_path = (base_dir / self._ALLOWED_ARTIFACTS[normalized_name]).resolve()
+        resolved_dir = await self._resolve_storage_directory(run, storage_path_raw)
 
-        if base_dir not in file_path.parents and file_path != base_dir:
+        file_path = (resolved_dir / self._ALLOWED_ARTIFACTS[normalized_name]).resolve()
+
+        if resolved_dir not in file_path.parents and file_path != resolved_dir:
             raise PermissionError("Attempted access outside projection storage root")
 
         if not file_path.is_file():
@@ -336,7 +438,12 @@ class ProjectionService:
         if not storage_path:
             raise FileNotFoundError("Projection artifacts have not been generated yet")
 
-        artifacts_dir = Path(storage_path)
+        try:
+            artifacts_dir = await self._resolve_storage_directory(run, storage_path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
         ids_path = artifacts_dir / self._ALLOWED_ARTIFACTS["ids"]
         meta_path = artifacts_dir / "meta.json"
 
@@ -467,11 +574,20 @@ class ProjectionService:
         storage_path = getattr(run, "storage_path", None)
         if storage_path:
             try:
-                shutil.rmtree(storage_path, ignore_errors=False)
+                artifacts_dir = await self._resolve_storage_directory(run, storage_path)
             except FileNotFoundError:
-                pass
-            except Exception as exc:  # pragma: no cover - defensive cleanup
-                logger.warning("Failed to delete projection artifacts %s: %s", storage_path, exc)
+                artifacts_dir = None
+            except PermissionError as exc:  # pragma: no cover - defensive cleanup
+                logger.warning("Projection storage path for %s is outside data dir: %s", projection_id, exc)
+                artifacts_dir = None
+
+            if artifacts_dir:
+                try:
+                    shutil.rmtree(artifacts_dir, ignore_errors=False)
+                except FileNotFoundError:
+                    pass
+                except Exception as exc:  # pragma: no cover - defensive cleanup
+                    logger.warning("Failed to delete projection artifacts %s: %s", artifacts_dir, exc)
 
         await self.projection_repo.delete(projection_id)
         await self.db_session.commit()

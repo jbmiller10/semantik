@@ -27,6 +27,8 @@ export interface ProjectionLegendItem {
   count?: number;
 }
 
+export type ProjectionArtifactName = 'x' | 'y' | 'cat' | 'ids';
+
 export interface ProjectionListResponse {
   projections: ProjectionMetadata[];
 }
