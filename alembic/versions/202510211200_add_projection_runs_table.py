@@ -119,10 +119,12 @@ def downgrade() -> None:
     bind = op.get_bind()
     projection_run_status.drop(bind, checkfirst=True)
 
-    op.execute("UPDATE operations SET type = 'index' WHERE type = 'projection_build'")
+    op.execute(
+        "UPDATE operations SET type = 'INDEX' WHERE type IN ('PROJECTION_BUILD', 'projection_build')"
+    )
     op.execute("ALTER TYPE operation_type RENAME TO operation_type_old")
     op.execute(
-        "CREATE TYPE operation_type AS ENUM ('index', 'append', 'reindex', 'remove_source', 'delete')"
+        "CREATE TYPE operation_type AS ENUM ('INDEX', 'APPEND', 'REINDEX', 'REMOVE_SOURCE', 'DELETE')"
     )
     op.execute(
         "ALTER TABLE operations ALTER COLUMN type TYPE operation_type USING type::text::operation_type"
