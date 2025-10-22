@@ -338,16 +338,8 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     }
   };
 
-  const handleOpenDocument = () => {
-    // Use first selected item
-    const firstItem = selectionState.items[0];
-
-    if (!firstItem) {
-      addToast({ type: 'error', message: 'No item selected' });
-      return;
-    }
-
-    if (!firstItem.document_id) {
+  const handleOpenDocument = (item: ProjectionSelectionItem) => {
+    if (!item.document_id) {
       addToast({ type: 'error', message: 'No document available to open' });
       return;
     }
@@ -355,34 +347,28 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     // Analytics logging
     console.log('projection_selection_open', {
       collectionId,
-      documentId: firstItem.document_id,
-      chunkIndex: firstItem.chunk_index,
+      documentId: item.document_id,
+      chunkId: item.chunk_id,
+      chunkIndex: item.chunk_index,
       timestamp: new Date().toISOString(),
     });
 
-    // Open document viewer
+    // Open document viewer with chunk context
     setShowDocumentViewer({
       collectionId,
-      docId: firstItem.document_id,
+      docId: item.document_id,
+      chunkId: item.chunk_id !== null && item.chunk_id !== undefined ? String(item.chunk_id) : undefined,
     });
   };
 
-  const handleFindSimilar = async () => {
-    // Use first selected item
-    const firstItem = selectionState.items[0];
-
-    if (!firstItem) {
-      addToast({ type: 'error', message: 'No item selected' });
-      return;
-    }
-
-    if (!firstItem.content_preview) {
+  const handleFindSimilar = async (item: ProjectionSelectionItem) => {
+    if (!item.content_preview) {
       addToast({ type: 'error', message: 'No content available to search with' });
       return;
     }
 
     // Truncate query to reasonable length (500 chars)
-    const query = firstItem.content_preview.slice(0, 500);
+    const query = item.content_preview.slice(0, 500);
 
     setSimilarSearchState({
       loading: true,
@@ -402,7 +388,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       // Analytics logging
       console.log('projection_selection_find_similar', {
         collectionId,
-        chunkId: firstItem.chunk_id,
+        chunkId: item.chunk_id,
         query: query.slice(0, 100), // Log truncated query
         resultCount: response.data?.results?.length ?? 0,
         timestamp: new Date().toISOString(),
@@ -794,7 +780,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                           <div className="mt-3 flex gap-2">
                             <button
                               type="button"
-                              onClick={handleOpenDocument}
+                              onClick={() => handleOpenDocument(item)}
                               disabled={!item.document_id}
                               title="View the full document containing this chunk"
                               className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -803,7 +789,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                             </button>
                             <button
                               type="button"
-                              onClick={handleFindSimilar}
+                              onClick={() => handleFindSimilar(item)}
                               disabled={!item.content_preview || similarSearchState.loading}
                               title="Search for semantically similar content"
                               className="text-xs px-2 py-1 rounded border border-purple-400 text-purple-600 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -875,6 +861,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                                 setShowDocumentViewer({
                                   collectionId,
                                   docId: result.document_id,
+                                  chunkId: result.chunk_id,
                                 });
                               }}
                               className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
