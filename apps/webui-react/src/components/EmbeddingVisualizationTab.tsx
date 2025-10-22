@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useRef, useState, lazy } from 'react';
-import { AlertCircle, Loader2, Play, Trash2, Eye } from 'lucide-react';
+import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
   useDeleteProjection,
@@ -7,6 +7,8 @@ import {
 } from '../hooks/useProjections';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { projectionsV2Api } from '../services/api/v2/projections';
+import { searchV2Api } from '../services/api/v2/collections';
+import { useUIStore } from '../stores/uiStore';
 import type {
   ProjectionLegendItem,
   ProjectionMetadata,
@@ -14,6 +16,8 @@ import type {
   ProjectionSelectionItem,
   StartProjectionRequest,
 } from '../types/projection';
+import type { SearchResult } from '../services/api/v2/types';
+import { getErrorMessage } from '../utils/errorUtils';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
 
@@ -113,6 +117,12 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     error?: string;
   }>({ indices: [], items: [], missing: [], loading: false });
   const selectionRequestId = useRef(0);
+  const [similarSearchState, setSimilarSearchState] = useState<{
+    loading: boolean;
+    error: string | null;
+    results: SearchResult[];
+    visible: boolean;
+  }>({ loading: false, error: null, results: [], visible: false });
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false);
   const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
   const [recomputeReducer, setRecomputeReducer] = useState<ProjectionReducer>('umap');
@@ -127,6 +137,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
   const startProjection = useStartProjection(collectionId);
   const deleteProjection = useDeleteProjection(collectionId);
+  const { setShowDocumentViewer, addToast } = useUIStore();
 
   const { isConnected: isOperationConnected } = useOperationProgress(pendingOperationId, {
     showToasts: false,
@@ -324,6 +335,94 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
           error: error instanceof Error ? error.message : 'Failed to resolve selection',
         });
       }
+    }
+  };
+
+  const handleOpenDocument = () => {
+    // Use first selected item
+    const firstItem = selectionState.items[0];
+
+    if (!firstItem) {
+      addToast({ type: 'error', message: 'No item selected' });
+      return;
+    }
+
+    if (!firstItem.document_id) {
+      addToast({ type: 'error', message: 'No document available to open' });
+      return;
+    }
+
+    // Analytics logging
+    console.log('projection_selection_open', {
+      collectionId,
+      documentId: firstItem.document_id,
+      chunkIndex: firstItem.chunk_index,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Open document viewer
+    setShowDocumentViewer({
+      collectionId,
+      docId: firstItem.document_id,
+    });
+  };
+
+  const handleFindSimilar = async () => {
+    // Use first selected item
+    const firstItem = selectionState.items[0];
+
+    if (!firstItem) {
+      addToast({ type: 'error', message: 'No item selected' });
+      return;
+    }
+
+    if (!firstItem.content_preview) {
+      addToast({ type: 'error', message: 'No content available to search with' });
+      return;
+    }
+
+    // Truncate query to reasonable length (500 chars)
+    const query = firstItem.content_preview.slice(0, 500);
+
+    setSimilarSearchState({
+      loading: true,
+      error: null,
+      results: [],
+      visible: true,
+    });
+
+    try {
+      const response = await searchV2Api.search({
+        query,
+        collection_uuids: [collectionId],
+        k: 10,
+        search_type: 'semantic',
+      });
+
+      // Analytics logging
+      console.log('projection_selection_find_similar', {
+        collectionId,
+        chunkId: firstItem.chunk_id,
+        query: query.slice(0, 100), // Log truncated query
+        resultCount: response.data?.results?.length ?? 0,
+        timestamp: new Date().toISOString(),
+      });
+
+      setSimilarSearchState({
+        loading: false,
+        error: null,
+        results: response.data?.results ?? [],
+        visible: true,
+      });
+    } catch (error) {
+      const errorMessage = getErrorMessage(error);
+      setSimilarSearchState({
+        loading: false,
+        error: errorMessage,
+        results: [],
+        visible: true,
+      });
+      addToast({ type: 'error', message: `Failed to find similar chunks: ${errorMessage}` });
     }
   };
 
@@ -671,40 +770,51 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   <div className="text-sm text-red-600">{selectionState.error}</div>
                 )}
                 {!selectionState.loading && selectionState.items.length > 0 && (
-                  <ul className="space-y-3 text-sm text-gray-700 max-h-64 overflow-y-auto">
-                    {selectionState.items.map((item) => (
-                      <li key={`${item.selected_id}-${item.index}`} className="border border-gray-200 rounded-md p-3">
-                        <div className="text-xs text-gray-500 mb-1">
-                          Point #{item.index + 1} • ID {item.selected_id}
-                        </div>
-                        {item.document_id && (
-                          <div className="font-medium text-gray-900">Document {item.document_id}</div>
-                        )}
-                        {item.chunk_index !== undefined && item.chunk_index !== null && (
-                          <div className="text-xs text-gray-500">Chunk #{item.chunk_index}</div>
-                        )}
-                        {item.content_preview && (
-                          <p className="mt-2 text-sm text-gray-600 line-clamp-3">{item.content_preview}</p>
-                        )}
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
-                            disabled
-                          >
-                            Open
-                          </button>
-                          <button
-                            type="button"
-                            className="text-xs px-2 py-1 rounded border border-purple-400 text-purple-600 hover:bg-purple-50"
-                            disabled
-                          >
-                            Find Similar
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    {selectionState.items.length > 1 && (
+                      <p className="text-xs text-gray-500 mb-2 italic">
+                        Actions apply to the first selected point
+                      </p>
+                    )}
+                    <ul className="space-y-3 text-sm text-gray-700 max-h-64 overflow-y-auto">
+                      {selectionState.items.map((item) => (
+                        <li key={`${item.selected_id}-${item.index}`} className="border border-gray-200 rounded-md p-3">
+                          <div className="text-xs text-gray-500 mb-1">
+                            Point #{item.index + 1} • ID {item.selected_id}
+                          </div>
+                          {item.document_id && (
+                            <div className="font-medium text-gray-900">Document {item.document_id}</div>
+                          )}
+                          {item.chunk_index !== undefined && item.chunk_index !== null && (
+                            <div className="text-xs text-gray-500">Chunk #{item.chunk_index}</div>
+                          )}
+                          {item.content_preview && (
+                            <p className="mt-2 text-sm text-gray-600 line-clamp-3">{item.content_preview}</p>
+                          )}
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleOpenDocument}
+                              disabled={!item.document_id}
+                              title="View the full document containing this chunk"
+                              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Open
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleFindSimilar}
+                              disabled={!item.content_preview || similarSearchState.loading}
+                              title="Search for semantically similar content"
+                              className="text-xs px-2 py-1 rounded border border-purple-400 text-purple-600 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {similarSearchState.loading ? 'Searching...' : 'Find Similar'}
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
                 {!selectionState.loading && selectionState.items.length === 0 && !selectionState.error && (
                   <p className="text-sm text-gray-500">No metadata available for the selected points.</p>
@@ -713,6 +823,73 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   <p className="mt-2 text-xs text-amber-600">
                     {selectionState.missing.length.toLocaleString()} point(s) could not be resolved.
                   </p>
+                )}
+
+                {/* Similar Results Section */}
+                {similarSearchState.visible && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="text-sm font-semibold text-gray-800">Similar Chunks</h5>
+                      <button
+                        type="button"
+                        onClick={() => setSimilarSearchState((prev) => ({ ...prev, visible: false }))}
+                        className="text-gray-500 hover:text-gray-700"
+                        title="Close similar results"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    {similarSearchState.loading && (
+                      <div className="flex items-center gap-2 text-sm text-purple-600">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Searching for similar chunks…
+                      </div>
+                    )}
+
+                    {similarSearchState.error && !similarSearchState.loading && (
+                      <div className="text-sm text-red-600">{similarSearchState.error}</div>
+                    )}
+
+                    {!similarSearchState.loading && similarSearchState.results.length > 0 && (
+                      <ul className="space-y-2 text-sm text-gray-700 max-h-96 overflow-y-auto">
+                        {similarSearchState.results.map((result) => (
+                          <li
+                            key={`${result.document_id}-${result.chunk_index}`}
+                            className="border border-gray-200 rounded-md p-3 hover:bg-gray-50"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-medium text-gray-900 text-xs truncate">
+                                {result.file_name}
+                              </div>
+                              <span className="text-xs text-purple-600 font-medium ml-2">
+                                {(result.score * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 mb-2">
+                              Chunk #{result.chunk_index}
+                            </div>
+                            <p className="text-sm text-gray-600 line-clamp-2 mb-2">{result.text}</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowDocumentViewer({
+                                  collectionId,
+                                  docId: result.document_id,
+                                });
+                              }}
+                              className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                            >
+                              Open
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {!similarSearchState.loading && similarSearchState.results.length === 0 && !similarSearchState.error && (
+                      <p className="text-sm text-gray-500">No similar chunks found.</p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
