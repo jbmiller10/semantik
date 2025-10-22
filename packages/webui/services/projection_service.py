@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
+from array import array
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+import shutil
 
 from fastapi import HTTPException
-from shared.database.exceptions import EntityNotFoundError
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
+from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -223,7 +228,10 @@ class ProjectionService:
         logger.debug(
             "Fetching projection metadata collection=%s projection=%s", collection_id, projection_id
         )
-        await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
+        owner_id = getattr(collection, "owner_id", None) or getattr(collection, "user_id", None)
+        if owner_id is not None and owner_id != user_id:
+            raise AccessDeniedError("collection", collection_id)
         run = await self.projection_repo.get_by_uuid(projection_id)
         if not run or run.collection_id != collection_id:
             raise EntityNotFoundError("projection_run", projection_id)
@@ -269,7 +277,7 @@ class ProjectionService:
 
         storage_path = getattr(run, "storage_path", None)
         if not storage_path:
-            raise FileNotFoundError("Projection artifacts have not been generated yet")
+            raise HTTPException(status_code=409, detail="Projection artifacts are not yet available")
 
         base_dir = Path(storage_path).resolve()
         file_path = (base_dir / self._ALLOWED_ARTIFACTS[normalized_name]).resolve()
@@ -289,7 +297,7 @@ class ProjectionService:
         selection: dict[str, Any],
         user_id: int,
     ) -> dict[str, Any]:
-        """Resolve selection requests over a projection (placeholder)."""
+        """Resolve selection requests over a projection to chunk/document metadata."""
 
         logger.debug(
             "Selecting projection region collection=%s projection=%s selection=%s",
@@ -297,15 +305,167 @@ class ProjectionService:
             projection_id,
             selection,
         )
+
+        ids = selection.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise HTTPException(status_code=400, detail="ids list is required")
+
+        try:
+            ordered_ids: list[int] = []
+            seen_ids: set[int] = set()
+            for value in ids:
+                int_value = int(value)
+                if int_value not in seen_ids:
+                    seen_ids.add(int_value)
+                    ordered_ids.append(int_value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="ids must be integers") from exc
+
         await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
         run = await self.projection_repo.get_by_uuid(projection_id)
         if not run or run.collection_id != collection_id:
             raise EntityNotFoundError("projection_run", projection_id)
 
-        # TODO: map screen selection to documents/chunks
+        storage_path = getattr(run, "storage_path", None)
+        if not storage_path:
+            raise FileNotFoundError("Projection artifacts have not been generated yet")
+
+        artifacts_dir = Path(storage_path)
+        ids_path = artifacts_dir / self._ALLOWED_ARTIFACTS["ids"]
+        meta_path = artifacts_dir / "meta.json"
+
+        if not ids_path.is_file():
+            raise HTTPException(status_code=404, detail="Projection ids artifact is missing")
+
+        meta_payload: dict[str, Any] = {}
+        if meta_path.is_file():
+            try:
+                meta_payload = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:  # pragma: no cover - defensive
+                meta_payload = {}
+
+        run_meta = run.meta if isinstance(run.meta, dict) else {}
+        projection_meta = run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
+        if not projection_meta and meta_payload:
+            projection_meta = meta_payload
+
+        degraded_flag = bool(run_meta.get("degraded") or projection_meta.get("degraded"))
+
+        original_ids: list[str] | None = None
+        if projection_meta:
+            original_ids = projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
+
+        id_array = array("i")
+        with ids_path.open("rb") as buffer:
+            id_array.frombytes(buffer.read())
+
+        requested_ids_set = set(ordered_ids)
+        id_to_index: dict[int, int] = {}
+        for index, value in enumerate(id_array):
+            if value in requested_ids_set and value not in id_to_index:
+                id_to_index[value] = index
+                if len(id_to_index) == len(requested_ids_set):
+                    break
+
+        chunk_repo = ChunkRepository(self.db_session)
+        document_repo = DocumentRepository(self.db_session)
+
+        items: list[dict[str, Any]] = []
+        missing_ids: list[int] = []
+
+        for selected_id in ordered_ids:
+            index = id_to_index.get(selected_id)
+            if index is None:
+                missing_ids.append(selected_id)
+                continue
+
+            original_identifier: str | None = None
+            if original_ids and 0 <= index < len(original_ids):
+                raw_identifier = original_ids[index]
+                original_identifier = str(raw_identifier)
+            else:
+                raw_identifier = None
+
+            chunk_data: dict[str, Any] | None = None
+            document_data: dict[str, Any] | None = None
+
+            chunk_id: int | None = None
+            if isinstance(raw_identifier, str):
+                try:
+                    chunk_id = int(raw_identifier)
+                except ValueError:
+                    chunk_id = None
+            elif isinstance(raw_identifier, int):
+                chunk_id = raw_identifier
+
+            if chunk_id is not None:
+                try:
+                    chunk = await chunk_repo.get_chunk_by_id(chunk_id, collection_id)
+                except Exception:
+                    chunk = None
+
+                if chunk:
+                    chunk_data = {
+                        "chunk_id": chunk.id,
+                        "document_id": chunk.document_id,
+                        "chunk_index": chunk.chunk_index,
+                        "content_preview": (chunk.content or "")[:200] if chunk.content else None,
+                    }
+                    if chunk.document_id:
+                        try:
+                            document = await document_repo.get_by_id(chunk.document_id)
+                        except Exception:
+                            document = None
+                        if document:
+                            document_data = {
+                                "document_id": document.id,
+                                "file_name": document.file_name,
+                                "source_id": document.source_id,
+                                "mime_type": document.mime_type,
+                            }
+
+            items.append(
+                {
+                    "selected_id": selected_id,
+                    "index": index,
+                    "original_id": original_identifier,
+                    "chunk_id": chunk_data.get("chunk_id") if chunk_data else None,
+                    "document_id": chunk_data.get("document_id") if chunk_data else None,
+                    "chunk_index": chunk_data.get("chunk_index") if chunk_data else None,
+                    "content_preview": chunk_data.get("content_preview") if chunk_data else None,
+                }
+            )
+
+            if document_data:
+                items[-1]["document"] = document_data
+
         return {
-            "collection_id": collection_id,
-            "projection_id": projection_id,
-            "chunks": [],
-            "message": "Projection selection not yet implemented",
+            "items": items,
+            "missing_ids": missing_ids,
+            "degraded": degraded_flag,
         }
+
+    async def delete_projection(
+        self,
+        collection_id: str,
+        projection_id: str,
+        user_id: int,
+    ) -> None:
+        """Delete a projection run and associated on-disk artifacts."""
+
+        await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
+        run = await self.projection_repo.get_by_uuid(projection_id)
+        if not run or run.collection_id != collection_id:
+            raise EntityNotFoundError("projection_run", projection_id)
+
+        storage_path = getattr(run, "storage_path", None)
+        if storage_path:
+            try:
+                shutil.rmtree(storage_path, ignore_errors=False)
+            except FileNotFoundError:
+                pass
+            except Exception as exc:  # pragma: no cover - defensive cleanup
+                logger.warning("Failed to delete projection artifacts %s: %s", storage_path, exc)
+
+        await self.projection_repo.delete(projection_id)
+        await self.db_session.commit()

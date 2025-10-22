@@ -5,7 +5,15 @@ import {
   useDeleteProjection,
   useStartProjection,
 } from '../hooks/useProjections';
-import type { ProjectionMetadata, ProjectionReducer } from '../types/projection';
+import { useOperationProgress } from '../hooks/useOperationProgress';
+import { projectionsV2Api } from '../services/api/v2/projections';
+import type {
+  ProjectionLegendItem,
+  ProjectionMetadata,
+  ProjectionReducer,
+  ProjectionSelectionItem,
+  StartProjectionRequest,
+} from '../types/projection';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
 
@@ -25,6 +33,16 @@ interface ProjectionDataState {
 interface EmbeddingVisualizationTabProps {
   collectionId: string;
 }
+
+const COLOR_BY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'document_id', label: 'Document' },
+  { value: 'source_dir', label: 'Source Folder' },
+  { value: 'filetype', label: 'File Type' },
+  { value: 'age_bucket', label: 'Age Bucket' },
+];
+
+const METRIC_OPTIONS = ['cosine', 'euclidean', 'manhattan'];
+const SAMPLE_LIMIT_CAP = 200_000;
 
 const REDUCER_OPTIONS: Array<{
   value: ProjectionReducer;
@@ -73,15 +91,56 @@ function projectionProgress(status: ProjectionMetadata['status']) {
 
 export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizationTabProps) {
   const [selectedReducer, setSelectedReducer] = useState<ProjectionReducer>('umap');
+  const [selectedColorBy, setSelectedColorBy] = useState<string>('document_id');
   const [activeProjection, setActiveProjection] = useState<ProjectionDataState>({
     projectionId: '',
     pointCount: 0,
     status: 'idle',
   });
+  const [activeProjectionMeta, setActiveProjectionMeta] = useState<{
+    color_by?: string;
+    legend?: ProjectionLegendItem[];
+    sampled?: boolean;
+    shown_count?: number;
+    total_count?: number;
+    degraded?: boolean;
+  } | null>(null);
+  const [selectionState, setSelectionState] = useState<{
+    indices: number[];
+    items: ProjectionSelectionItem[];
+    missing: number[];
+    loading: boolean;
+    error?: string;
+  }>({ indices: [], items: [], missing: [], loading: false });
+  const selectionRequestId = useRef(0);
+  const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false);
+  const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
+  const [recomputeReducer, setRecomputeReducer] = useState<ProjectionReducer>('umap');
+  const [recomputeParams, setRecomputeParams] = useState({
+    n_neighbors: '15',
+    min_dist: '0.1',
+    metric: 'cosine',
+    sample_n: '',
+  });
+  const [recomputeError, setRecomputeError] = useState<string | undefined>(undefined);
   const activeRequestId = useRef(0);
   const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
   const startProjection = useStartProjection(collectionId);
   const deleteProjection = useDeleteProjection(collectionId);
+
+  const { isConnected: isOperationConnected } = useOperationProgress(pendingOperationId, {
+    showToasts: false,
+    onComplete: () => {
+      setPendingOperationId(null);
+      refetch();
+    },
+    onError: (errorMessage) => {
+      setPendingOperationId(null);
+      if (errorMessage) {
+        setRecomputeError(errorMessage);
+      }
+    },
+  });
 
   const sortedProjections = useMemo(
     () =>
@@ -93,9 +152,19 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     [projections]
   );
 
-  const handleStartProjection = async () => {
-    await startProjection.mutateAsync({ reducer: selectedReducer });
+  const startProjectionWithPayload = async (payload: StartProjectionRequest) => {
+    const response = await startProjection.mutateAsync(payload);
+    if (response?.operation_id) {
+      setPendingOperationId(response.operation_id);
+    }
     refetch();
+    setActiveProjectionMeta(null);
+    setSelectionState({ indices: [], items: [], missing: [], loading: false });
+    return response;
+  };
+
+  const handleStartProjection = async () => {
+    await startProjectionWithPayload({ reducer: selectedReducer, color_by: selectedColorBy });
   };
 
   const handleDeleteProjection = async (projectionId: string) => {
@@ -106,6 +175,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
         ? { projectionId: '', pointCount: 0, status: 'idle' }
         : prev
     );
+    setActiveProjectionMeta(null);
   };
 
   const handleViewProjection = async (projection: ProjectionMetadata) => {
@@ -113,8 +183,25 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
     const requestId = ++activeRequestId.current;
     setActiveProjection({ projectionId: projection.id, pointCount: 0, status: 'loading' });
+    setActiveProjectionMeta(null);
+    setSelectionState({ indices: [], items: [], missing: [], loading: false });
 
     try {
+      const metadataResponse = await projectionsV2Api.getMetadata(collectionId, projection.id);
+      const metaPayload = (metadataResponse.data?.meta as Record<string, unknown> | null) ?? {};
+      const legendPayload = Array.isArray(metaPayload?.legend)
+        ? (metaPayload.legend as ProjectionLegendItem[])
+        : [];
+      const metaColorBy = typeof metaPayload?.color_by === 'string'
+        ? (metaPayload.color_by as string)
+        : typeof metaPayload?.colorBy === 'string'
+          ? (metaPayload.colorBy as string)
+          : undefined;
+      const metaSampled = Boolean(metaPayload?.sampled);
+      const shownCountRaw = metaPayload?.shown_count ?? metaPayload?.shownCount ?? metaPayload?.point_count;
+      const totalCountRaw = metaPayload?.total_count ?? metaPayload?.totalCount;
+      const metaDegraded = Boolean(metaPayload?.degraded);
+
       const arrayNames = ['x', 'y', 'cat', 'ids'] as const;
       const responses = await Promise.all(
         arrayNames.map((name) =>
@@ -140,12 +227,32 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       }
 
       if (requestId === activeRequestId.current) {
+        const parsedShownCount = (() => {
+          const value = Number(shownCountRaw);
+          return Number.isFinite(value) && value > 0 ? value : x.length;
+        })();
+        const parsedTotalCount = (() => {
+          const value = Number(totalCountRaw);
+          if (Number.isFinite(value) && value > 0) {
+            return Math.max(value, parsedShownCount);
+          }
+          return metaSampled ? Math.max(parsedShownCount, x.length) : x.length;
+        })();
+
         setActiveProjection({
           projectionId: projection.id,
           pointCount: x.length,
           arrays: { x, y, category },
           ids,
           status: 'loaded',
+        });
+        setActiveProjectionMeta({
+          color_by: metaColorBy,
+          legend: legendPayload,
+          sampled: metaSampled,
+          shown_count: parsedShownCount,
+          total_count: parsedTotalCount,
+          degraded: metaDegraded,
         });
       }
     } catch (error: unknown) {
@@ -156,7 +263,141 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
           status: 'error',
           error: error instanceof Error ? error.message : 'Failed to load projection data',
         });
+        setActiveProjectionMeta(null);
       }
+    }
+  };
+
+  const handleRecomputeProjection = async () => {
+    openRecomputeDialog();
+  };
+
+  const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
+  const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
+
+  const handleSelectionChange = async (indices: number[]) => {
+    if (!activeProjection.projectionId || !activeProjection.ids) {
+      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      return;
+    }
+
+    const uniqueIndices = Array.from(new Set(indices)).filter(
+      (index) => index >= 0 && index < activeProjection.ids!.length
+    );
+
+    if (uniqueIndices.length === 0) {
+      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      return;
+    }
+
+    const mappedIds = uniqueIndices
+      .map((index) => activeProjection.ids![index])
+      .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+
+    if (mappedIds.length === 0) {
+      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      return;
+    }
+
+    const requestId = ++selectionRequestId.current;
+    setSelectionState((prev) => ({ ...prev, indices: uniqueIndices, loading: true, error: undefined }));
+    try {
+      const response = await projectionsV2Api.select(collectionId, activeProjection.projectionId, mappedIds);
+      if (requestId === selectionRequestId.current) {
+        setSelectionState({
+          indices: uniqueIndices,
+          items: response.data?.items ?? [],
+          missing: response.data?.missing_ids ?? [],
+          loading: false,
+        });
+        if (response.data?.degraded && activeProjectionMeta) {
+          setActiveProjectionMeta({ ...activeProjectionMeta, degraded: true });
+        }
+      }
+    } catch (error) {
+      if (requestId === selectionRequestId.current) {
+        setSelectionState({
+          indices: uniqueIndices,
+          items: [],
+          missing: [],
+          loading: false,
+          error: error instanceof Error ? error.message : 'Failed to resolve selection',
+        });
+      }
+    }
+  };
+
+  const openRecomputeDialog = () => {
+    setRecomputeReducer(selectedReducer);
+    setRecomputeParams({
+      n_neighbors: '15',
+      min_dist: '0.1',
+      metric: 'cosine',
+      sample_n: '',
+    });
+    setRecomputeError(undefined);
+    setRecomputeDialogOpen(true);
+  };
+
+  const closeRecomputeDialog = () => {
+    if (!startProjection.isPending) {
+      setRecomputeDialogOpen(false);
+      setRecomputeError(undefined);
+    }
+  };
+
+  const handleRecomputeSubmit = async () => {
+    setRecomputeError(undefined);
+
+    const payload: StartProjectionRequest = {
+      reducer: recomputeReducer,
+      color_by: selectedColorBy,
+    };
+    const config: Record<string, unknown> = {};
+    if (recomputeReducer === 'umap') {
+      const parsedNeighbors = Number(recomputeParams.n_neighbors);
+      const parsedMinDist = Number(recomputeParams.min_dist);
+      const metricValue = recomputeParams.metric?.trim() || 'cosine';
+      const errors: string[] = [];
+
+      if (!Number.isFinite(parsedNeighbors) || parsedNeighbors < 2) {
+        errors.push('n_neighbors must be a number ≥ 2.');
+      }
+      if (!Number.isFinite(parsedMinDist) || parsedMinDist < 0 || parsedMinDist > 1) {
+        errors.push('min_dist must be between 0 and 1.');
+      }
+      if (!metricValue) {
+        errors.push('metric is required.');
+      }
+
+      if (errors.length > 0) {
+        setRecomputeError(errors.join(' '));
+        return;
+      }
+
+      config.n_neighbors = Math.floor(parsedNeighbors);
+      config.min_dist = parsedMinDist;
+      config.metric = metricValue;
+    }
+    if (recomputeParams.sample_n !== '') {
+      const sampleNumeric = Number(recomputeParams.sample_n);
+      if (!Number.isFinite(sampleNumeric) || sampleNumeric <= 0) {
+        setRecomputeError('Sample size must be a positive number.');
+        return;
+      }
+      config.sample_size = Math.floor(sampleNumeric);
+    }
+
+    if (Object.keys(config).length > 0) {
+      payload.config = config;
+    }
+
+    try {
+      await startProjectionWithPayload(payload);
+      setRecomputeDialogOpen(false);
+      setRecomputeError(undefined);
+    } catch (error) {
+      setRecomputeError(error instanceof Error ? error.message : 'Failed to start projection');
     }
   };
 
@@ -187,6 +428,20 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               ))}
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Color by</label>
+            <select
+              value={selectedColorBy}
+              onChange={(event) => setSelectedColorBy(event.target.value)}
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+            >
+              {COLOR_BY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             type="button"
             onClick={handleStartProjection}
@@ -202,6 +457,16 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
           </button>
         </div>
       </section>
+
+      {pendingOperationId && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          <div className="font-medium">Projection recompute in progress…</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-blue-600">
+            <span>Operation ID: {pendingOperationId}</span>
+            <span>{isOperationConnected ? 'Live updates active.' : 'Connecting to progress updates…'}</span>
+          </div>
+        </div>
+      )}
 
       <section className="bg-white border border-gray-200 rounded-lg shadow-sm">
         <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
@@ -311,9 +576,58 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
         {activeProjection.status === 'loaded' && activeProjection.arrays && (
           <div className="space-y-4">
-            <div className="text-sm text-gray-700">
-              Loaded <span className="font-semibold">{activeProjection.pointCount}</span> points.
-              Categories: {new Set(activeProjection.arrays.category).size}.
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-700">
+              <span>
+                Loaded <span className="font-semibold">{activeProjection.pointCount}</span> points.
+                Categories: {new Set(activeProjection.arrays.category).size}.
+              </span>
+              {activeProjectionMeta?.sampled && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                  title={`Showing ${shownCountDisplay.toLocaleString()} of ${totalCountDisplay.toLocaleString()} points`}
+                >
+                  Sampled
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col gap-4">
+              {activeProjectionMeta?.color_by && (
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">
+                    Colored by <span className="font-medium">{activeProjectionMeta.color_by}</span>
+                  </p>
+                  {(activeProjectionMeta.color_by !== selectedColorBy || activeProjectionMeta.degraded) && (
+                    <button
+                      type="button"
+                      onClick={handleRecomputeProjection}
+                      disabled={startProjection.isPending}
+                      className="inline-flex items-center px-3 py-1.5 text-sm rounded-md border border-purple-500 text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+                    >
+                      {startProjection.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : null}
+                      {activeProjectionMeta.degraded
+                        ? 'Recompute to refresh'
+                        : `Recompute with ${COLOR_BY_OPTIONS.find((opt) => opt.value === selectedColorBy)?.label ?? selectedColorBy}`}
+                    </button>
+                  )}
+                </div>
+              )}
+              {activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-md p-3">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Legend</h4>
+                  <ul className="max-h-48 overflow-y-auto text-sm text-gray-600 space-y-1">
+                    {activeProjectionMeta.legend.map((entry) => (
+                      <li key={entry.index} className="flex items-center justify-between">
+                        <span>{entry.label}</span>
+                        {typeof entry.count === 'number' && (
+                          <span className="text-xs text-gray-500">{entry.count.toLocaleString()}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <div className="border border-gray-200 rounded-md overflow-hidden">
               <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
@@ -323,12 +637,209 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                     y: activeProjection.arrays.y,
                     category: activeProjection.arrays.category,
                   }}
+                  onSelection={(points) => {
+                    const indices = Array.isArray(points)
+                      ? points
+                          .map((point) => {
+                            if (point && typeof point === 'object' && 'index' in point) {
+                              const idx = (point as { index: unknown }).index;
+                              return typeof idx === 'number' ? idx : -1;
+                            }
+                            return -1;
+                          })
+                          .filter((idx) => typeof idx === 'number' && idx >= 0)
+                      : [];
+                    void handleSelectionChange(indices);
+                  }}
                 />
               </Suspense>
             </div>
+            {(selectionState.items.length > 0 || selectionState.loading || selectionState.error) && (
+              <div className="border border-gray-200 rounded-md p-4 bg-white shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Selection</h4>
+                  <span className="text-xs text-gray-500">
+                    Indices: {selectionState.indices.length.toLocaleString()}
+                  </span>
+                </div>
+                {selectionState.loading && (
+                  <div className="flex items-center gap-2 text-sm text-purple-600">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Resolving selection…
+                  </div>
+                )}
+                {selectionState.error && !selectionState.loading && (
+                  <div className="text-sm text-red-600">{selectionState.error}</div>
+                )}
+                {!selectionState.loading && selectionState.items.length > 0 && (
+                  <ul className="space-y-3 text-sm text-gray-700 max-h-64 overflow-y-auto">
+                    {selectionState.items.map((item) => (
+                      <li key={`${item.selected_id}-${item.index}`} className="border border-gray-200 rounded-md p-3">
+                        <div className="text-xs text-gray-500 mb-1">
+                          Point #{item.index + 1} • ID {item.selected_id}
+                        </div>
+                        {item.document_id && (
+                          <div className="font-medium text-gray-900">Document {item.document_id}</div>
+                        )}
+                        {item.chunk_index !== undefined && item.chunk_index !== null && (
+                          <div className="text-xs text-gray-500">Chunk #{item.chunk_index}</div>
+                        )}
+                        {item.content_preview && (
+                          <p className="mt-2 text-sm text-gray-600 line-clamp-3">{item.content_preview}</p>
+                        )}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                            disabled
+                          >
+                            Open
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs px-2 py-1 rounded border border-purple-400 text-purple-600 hover:bg-purple-50"
+                            disabled
+                          >
+                            Find Similar
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!selectionState.loading && selectionState.items.length === 0 && !selectionState.error && (
+                  <p className="text-sm text-gray-500">No metadata available for the selected points.</p>
+                )}
+                {selectionState.missing.length > 0 && (
+                  <p className="mt-2 text-xs text-amber-600">
+                    {selectionState.missing.length.toLocaleString()} point(s) could not be resolved.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      {recomputeDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Recompute Projection</h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Choose reducer and sampling parameters for the new projection run.
+            </p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reducer</label>
+                <select
+                  value={recomputeReducer}
+                  onChange={(event) => setRecomputeReducer(event.target.value as ProjectionReducer)}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                >
+                  <option value="umap">UMAP</option>
+                  <option value="pca">PCA</option>
+                </select>
+              </div>
+
+              {recomputeReducer === 'umap' && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">n_neighbors</label>
+                    <input
+                      type="number"
+                      min={2}
+                      value={recomputeParams.n_neighbors}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, n_neighbors: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">min_dist</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={recomputeParams.min_dist}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, min_dist: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Metric</label>
+                    <select
+                      value={recomputeParams.metric}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, metric: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    >
+                      {METRIC_OPTIONS.map((metricOption) => (
+                        <option key={metricOption} value={metricOption}>
+                          {metricOption}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Sample size</label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Optional"
+                  value={recomputeParams.sample_n}
+                  onChange={(event) =>
+                    setRecomputeParams((prev) => ({ ...prev, sample_n: event.target.value }))
+                  }
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Leave blank to use the default cap ({SAMPLE_LIMIT_CAP.toLocaleString()} points).
+                </p>
+              </div>
+
+              {recomputeError && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {recomputeError}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeRecomputeDialog}
+                className="inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                disabled={startProjection.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRecomputeSubmit}
+                disabled={startProjection.isPending}
+                className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {startProjection.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Starting…
+                  </>
+                ) : (
+                  'Start'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

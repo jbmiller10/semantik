@@ -34,7 +34,7 @@ from packages.webui.tasks.utils import (
 )
 
 
-DEFAULT_SAMPLE_LIMIT = 10_000
+DEFAULT_SAMPLE_LIMIT = 200_000
 QDRANT_SCROLL_BATCH = 1_000
 OVERFLOW_CATEGORY_INDEX = 255
 OVERFLOW_LEGEND_LABEL = "Other"
@@ -53,7 +53,19 @@ def _parse_timestamp(value: Any) -> datetime | None:
         return value.astimezone(UTC)
     if isinstance(value, (int, float)):
         try:
-            return datetime.fromtimestamp(float(value), tz=UTC)
+            timestamp = float(value)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            return None
+
+        abs_ts = abs(timestamp)
+        # Heuristic conversions: treat large magnitudes as milliseconds/microseconds.
+        if abs_ts >= 1e14:  # microseconds since epoch
+            timestamp /= 1_000_000
+        elif abs_ts >= 1e12:  # milliseconds since epoch
+            timestamp /= 1_000
+
+        try:
+            return datetime.fromtimestamp(timestamp, tz=UTC)
         except (ValueError, OSError):  # pragma: no cover - defensive
             return None
     if isinstance(value, str):
@@ -331,12 +343,15 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
         if color_by not in ALLOWED_COLOR_BY:
             color_by = "document_id"
 
-        sample_limit = int(
-            config.get("sample_size")
-            or config.get("sample_limit")
-            or config.get("sample_n")
-            or DEFAULT_SAMPLE_LIMIT
-        )
+        configured_sample = config.get("sample_size")
+        if configured_sample is None:
+            configured_sample = config.get("sample_limit")
+        if configured_sample is None:
+            configured_sample = config.get("sample_n")
+        try:
+            sample_limit = int(configured_sample) if configured_sample is not None else DEFAULT_SAMPLE_LIMIT
+        except (TypeError, ValueError):
+            sample_limit = DEFAULT_SAMPLE_LIMIT
         sample_limit = max(sample_limit, 1)
 
         run_dir = settings.data_dir / "semantik" / "projections" / run.collection_id / run.uuid
@@ -468,6 +483,13 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         break
 
                 point_count = len(vectors)
+                total_vectors = getattr(collection, "vector_count", None)
+                if isinstance(total_vectors, int) and total_vectors > 0:
+                    total_vectors = max(total_vectors, point_count)
+                else:
+                    total_vectors = point_count
+                sampled_flag = point_count < total_vectors
+
                 if point_count < 2:
                     raise ValueError("Not enough vectors available to compute projection (need at least 2)")
 
@@ -595,6 +617,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     "collection_id": run.collection_id,
                     "created_at": datetime.now(UTC).isoformat(),
                     "point_count": point_count,
+                    "total_count": total_vectors,
+                    "shown_count": point_count,
+                    "sampled": sampled_flag,
                     "reducer_requested": requested_reducer,
                     "reducer_used": reducer_used,
                     "reducer_params": reducer_params,
@@ -641,6 +666,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         "projection_artifacts": meta_payload,
                         "color_by": color_by,
                         "legend": legend_entries,
+                        "sampled": sampled_flag,
+                        "shown_count": point_count,
+                        "total_count": total_vectors,
                     },
                 )
                 await projection_repo.update_status(
@@ -669,6 +697,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             "storage_path": str(run_dir),
                             "color_by": color_by,
                             "legend": legend_entries,
+                            "sampled": sampled_flag,
+                            "shown_count": point_count,
+                            "total_count": total_vectors,
                         },
                     )
 

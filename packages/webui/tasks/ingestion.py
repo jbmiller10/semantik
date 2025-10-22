@@ -288,6 +288,23 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     new_status = CollectionStatus.READY
                     await collection_repo.update_status(collection["id"], new_status)
 
+                    # Mark existing projections as stale so the UI can prompt recomputation.
+                    try:
+                        runs, _ = await projection_repo.list_for_collection(collection["id"], limit=1)
+                    except Exception:  # pragma: no cover - defensive path
+                        runs = []
+                    if runs:
+                        try:
+                            await projection_repo.update_metadata(
+                                runs[0].uuid,
+                                meta={"degraded": True},
+                            )
+                        except Exception:  # pragma: no cover - defensive logging
+                            logger.warning(
+                                "Failed to mark projection %s as degraded after collection update",
+                                runs[0].uuid,
+                            )
+
                     await _update_collection_metrics(
                         collection["id"],
                         doc_stats["total_documents"],
