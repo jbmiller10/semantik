@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
@@ -15,12 +15,14 @@ from packages.webui.api.v2.schemas import (
     ProjectionBuildRequest,
     ProjectionListResponse,
     ProjectionMetadataResponse,
+    ProjectionSelectionItem,
     ProjectionSelectionRequest,
     ProjectionSelectionResponse,
 )
 from packages.webui.auth import get_current_user
 from packages.webui.services.factory import get_projection_service
 from packages.webui.services.projection_service import ProjectionService
+from packages.webui.api.dependencies.collections import get_collection_ownership_guard
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,8 @@ def _to_metadata_response(collection_id: str, payload: dict[str, Any], *, fallba
         reducer=payload.get("reducer", "umap"),
         dimensionality=int(payload.get("dimensionality", 2) or 2),
         created_at=payload.get("created_at"),
+        operation_id=payload.get("operation_id") or payload.get("operation_uuid"),
+        operation_status=payload.get("operation_status"),
         message=payload.get("message"),
         config=payload.get("config"),
         meta=payload.get("meta"),
@@ -207,9 +211,31 @@ async def select_projection_region(
         selection.model_dump(),
         int(current_user["id"]),
     )
-
+    items = [ProjectionSelectionItem(**item) for item in payload.get("items", [])]
     return ProjectionSelectionResponse(
         projection_id=projection_id,
-        chunks=[str(chunk) for chunk in payload.get("chunks", [])],
-        message=payload.get("message", "Projection selection not yet implemented"),
+        items=items,
+        missing_ids=[int(mid) for mid in payload.get("missing_ids", [])],
     )
+
+
+@router.delete(
+    "/{projection_id}",
+    status_code=204,
+    responses={204: {"description": "Projection deleted"}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def delete_projection(
+    collection_id: str,
+    projection_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    _ownership_guard: None = Depends(get_collection_ownership_guard),
+    service: ProjectionService = Depends(get_projection_service),
+) -> Response:
+    try:
+        await service.delete_projection(collection_id, projection_id, int(current_user["id"]))
+    except EntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AccessDeniedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    return Response(status_code=204)

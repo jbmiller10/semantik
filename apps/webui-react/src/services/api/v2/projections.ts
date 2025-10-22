@@ -3,6 +3,7 @@ import type {
   ProjectionData,
   ProjectionListResponse,
   ProjectionMetadata,
+  ProjectionSelectionResponse,
   StartProjectionRequest,
   StartProjectionResponse,
 } from '../../../types/projection';
@@ -32,5 +33,11 @@ export const projectionsV2Api = {
   delete: (collectionId: string, projectionId: string) =>
     apiClient.delete<void>(
       `/api/v2/collections/${collectionId}/projections/${projectionId}`
+    ),
+
+  select: (collectionId: string, projectionId: string, ids: number[]) =>
+    apiClient.post<ProjectionSelectionResponse>(
+      `/api/v2/collections/${collectionId}/projections/${projectionId}/select`,
+      { ids }
     ),
 };

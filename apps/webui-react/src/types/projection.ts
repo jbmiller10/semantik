@@ -21,6 +21,12 @@ export interface ProjectionMetadata {
   meta?: Record<string, unknown> | null;
 }
 
+export interface ProjectionLegendItem {
+  index: number;
+  label: string;
+  count?: number;
+}
+
 export interface ProjectionListResponse {
   projections: ProjectionMetadata[];
 }
@@ -29,6 +35,25 @@ export interface StartProjectionRequest {
   reducer?: ProjectionReducer;
   dimensionality?: number;
   config?: Record<string, unknown>;
+  color_by?: string;
+}
+
+export interface ProjectionSelectionItem {
+  selected_id: number;
+  index: number;
+  original_id?: string | null;
+  chunk_id?: number | null;
+  document_id?: string | null;
+  chunk_index?: number | null;
+  content_preview?: string | null;
+  document?: Record<string, unknown> | null;
+}
+
+export interface ProjectionSelectionResponse {
+  projection_id: string;
+  items: ProjectionSelectionItem[];
+  missing_ids: number[];
+  degraded?: boolean;
 }
 
 export type StartProjectionResponse = ProjectionMetadata;

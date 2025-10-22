@@ -238,6 +238,8 @@ class ProjectionMetadataResponse(BaseModel):
     reducer: str = Field(description="Algorithm used for the projection")
     dimensionality: int = Field(description="Target dimensionality of the projection output")
     created_at: datetime | None = Field(default=None, description="Creation timestamp")
+    operation_id: str | None = Field(default=None, description="Associated operation UUID, if any")
+    operation_status: str | None = Field(default=None, description="Status of the associated operation")
     message: str | None = Field(default=None, description="Optional status message")
     config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
     meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
@@ -257,28 +259,35 @@ class ProjectionArrayResponse(BaseModel):
 
 
 class ProjectionSelectionRequest(BaseModel):
-    """Selection request expressed as a bounding box in screen coordinates."""
+    """Selection request expressed as a set of projection point identifiers."""
 
-    x: float
-    y: float
-    width: float
-    height: float
+    ids: list[int] = Field(min_length=1, description="Int32 identifiers from ids.i32.bin")
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "x": 100,
-                "y": 150,
-                "width": 250,
-                "height": 200,
+                "ids": [12, 45, 78],
             }
         }
     )
 
 
+class ProjectionSelectionItem(BaseModel):
+    """Metadata for a selected projection point."""
+
+    selected_id: int = Field(description="Int32 identifier from ids.i32.bin")
+    index: int = Field(description="Zero-based index within the projection arrays")
+    original_id: str | None = Field(default=None, description="Original vector identifier from Qdrant")
+    chunk_id: int | None = Field(default=None, description="Chunk primary key if available")
+    document_id: str | None = Field(default=None, description="Document UUID if resolved")
+    chunk_index: int | None = Field(default=None, description="Chunk index within the document")
+    content_preview: str | None = Field(default=None, description="Snippet of the chunk content")
+    document: dict[str, Any] | None = Field(default=None, description="Resolved document metadata")
+
+
 class ProjectionSelectionResponse(BaseModel):
-    """Placeholder response for selection requests."""
+    """Response detailing resolved metadata for selected projection points."""
 
     projection_id: str
-    chunks: list[str]
-    message: str = Field(default="Projection selection not yet implemented")
+    items: list[ProjectionSelectionItem]
+    missing_ids: list[int] = Field(default_factory=list, description="IDs not found in the projection artifact")
