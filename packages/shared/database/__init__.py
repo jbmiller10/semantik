@@ -40,11 +40,13 @@ from .factory import (
     create_collection_repository,
     create_document_repository,
     create_operation_repository,
+    create_projection_run_repository,
     create_user_repository,
     get_db_session,
 )
 from .partition_utils import ChunkPartitionHelper, PartitionAwareMixin
 from .postgres_database import check_postgres_connection, get_postgres_db, pg_connection_manager
+from .repositories.projection_run_repository import ProjectionRunRepository
 from .utils import parse_user_id
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -54,6 +56,7 @@ __all__ = [
     "BaseRepository",
     "UserRepository",
     "CollectionRepository",
+    "ProjectionRunRepository",
     "AuthRepository",
     "ApiKeyRepository",
     # Factory functions
@@ -65,6 +68,7 @@ __all__ = [
     "create_api_key_repository",
     "create_operation_repository",
     "create_document_repository",
+    "create_projection_run_repository",
     "get_db_session",
     # Domain exceptions
     "AccessDeniedError",

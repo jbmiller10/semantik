@@ -15,6 +15,7 @@ import type {
   SearchRequest,
   SearchResponse,
 } from './types';
+import { projectionsV2Api } from './projections';
 
 /**
  * V2 Collections API client
@@ -97,5 +98,6 @@ export function handleApiError(error: unknown): string {
 export const v2Api = {
   collections: collectionsV2Api,
   operations: operationsV2Api,
+  projections: projectionsV2Api,
   search: searchV2Api,
 };

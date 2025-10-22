@@ -35,6 +35,7 @@ from .ingestion import (
     process_collection_operation,
     test_task,
 )
+from .projection import _process_projection_operation, compute_projection
 from .reindex import (
     _cleanup_staging_resources,
     _process_reindex_operation,
@@ -85,9 +86,11 @@ __all__ = [
     "_process_append_operation",
     "_process_append_operation_impl",
     "_process_remove_source_operation",
+    "_process_projection_operation",
     "_handle_task_failure",
     "_handle_task_failure_async",
     "test_task",
+    "compute_projection",
     # Reindex helpers
     "_process_reindex_operation",
     "_process_reindex_operation_impl",
@@ -145,7 +148,7 @@ def _load_module(name: str) -> Any:
     return import_module(f"packages.webui.tasks.{name}")
 
 
-_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "reindex", "cleanup", "utils"))
+_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "utils"))
 
 
 def __getattr__(name: str) -> Any:  # noqa: N807
