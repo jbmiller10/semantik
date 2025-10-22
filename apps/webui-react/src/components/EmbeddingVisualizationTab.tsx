@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useRef, useState, lazy } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
@@ -10,6 +10,7 @@ import { projectionsV2Api } from '../services/api/v2/projections';
 import { searchV2Api } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
 import type {
+  ProjectionArtifactName,
   ProjectionLegendItem,
   ProjectionMetadata,
   ProjectionReducer,
@@ -138,6 +139,9 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const [recomputeError, setRecomputeError] = useState<string | undefined>(undefined);
   const [currentOperationStatus, setCurrentOperationStatus] = useState<string | null>(null);
   const activeRequestId = useRef(0);
+  const viewContainerRef = useRef<HTMLDivElement | null>(null);
+  const [viewSize, setViewSize] = useState<{ width: number; height: number }>({ width: 960, height: 540 });
+  const [pixelRatio, setPixelRatio] = useState<number>(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
   const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
   const startProjection = useStartProjection(collectionId);
   const deleteProjection = useDeleteProjection(collectionId);
@@ -158,6 +162,35 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       }
     },
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const handlePixelRatio = () => setPixelRatio(window.devicePixelRatio || 1);
+    window.addEventListener('resize', handlePixelRatio);
+    return () => {
+      window.removeEventListener('resize', handlePixelRatio);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!viewContainerRef.current || typeof window === 'undefined' || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const node = viewContainerRef.current;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const width = Math.max(360, entry.contentRect.width);
+      const height = Math.max(320, Math.round(width * 0.6));
+      setViewSize({ width, height });
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [viewContainerRef]);
 
   const sortedProjections = useMemo(
     () =>
@@ -229,18 +262,12 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       const totalCountRaw = metaPayload?.total_count ?? metaPayload?.totalCount;
       const metaDegraded = Boolean(metaPayload?.degraded);
 
-      const arrayNames = ['x', 'y', 'cat', 'ids'] as const;
+      const arrayNames: ProjectionArtifactName[] = ['x', 'y', 'cat', 'ids'];
       const responses = await Promise.all(
-        arrayNames.map((name) =>
-          fetch(
-            `/api/v2/collections/${collectionId}/projections/${projection.id}/arrays/${name}`
-          ).then((res) => {
-            if (!res.ok) {
-              throw new Error(`Failed to load ${name}`);
-            }
-            return res.arrayBuffer();
-          })
-        )
+        arrayNames.map(async (name) => {
+          const res = await projectionsV2Api.getArtifact(collectionId, projection.id, name);
+          return res.data;
+        })
       );
 
       const [xBuf, yBuf, catBuf, idsBuf] = responses;
@@ -760,7 +787,11 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                 </div>
               )}
             </div>
-            <div className="border border-gray-200 rounded-md overflow-hidden">
+            <div
+              className="border border-gray-200 rounded-md overflow-hidden"
+              ref={viewContainerRef}
+              style={{ minHeight: '320px' }}
+            >
               <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
                 <EmbeddingView
                   data={{
@@ -768,6 +799,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                     y: activeProjection.arrays.y,
                     category: activeProjection.arrays.category,
                   }}
+                  width={viewSize.width}
+                  height={viewSize.height}
+                  pixelRatio={pixelRatio}
+                  theme={{ statusBar: false }}
                   onSelection={(points) => {
                     const indices = Array.isArray(points)
                       ? points
