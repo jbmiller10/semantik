@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import uuid
 from collections import Counter
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Mapping, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -25,14 +26,13 @@ from shared.database.repositories.projection_run_repository import ProjectionRun
 
 from packages.webui.tasks.utils import (
     CeleryTaskWithOperationUpdates,
+    _sanitize_error_message,
     celery_app,
     logger,
     resolve_awaitable_sync,
     resolve_qdrant_manager,
     settings,
-    _sanitize_error_message,
 )
-
 
 DEFAULT_SAMPLE_LIMIT = 200_000
 QDRANT_SCROLL_BATCH = 1_000
@@ -166,7 +166,7 @@ def _derive_category_label(
     payload: Mapping[str, Any] | None,
     color_by: str,
     now: datetime,
-) -> Tuple[str, str | None]:
+) -> tuple[str, str | None]:
     """Return the category label and optional document identifier."""
 
     if not isinstance(payload, Mapping):
@@ -276,7 +276,7 @@ def _write_binary(path: Path, array: np.ndarray, dtype: np.dtype) -> None:
     array.astype(dtype, copy=False).tofile(path)
 
 
-def _write_meta(path: Path, payload: Dict[str, Any]) -> None:
+def _write_meta(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
@@ -375,9 +375,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     )
                 await session.commit()
 
-                vectors: List[np.ndarray] = []
-                original_ids: List[str] = []
-                categories: List[int] = []
+                vectors: list[np.ndarray] = []
+                original_ids: list[str] = []
+                categories: list[int] = []
 
                 if updater:
                     await updater.send_update(
@@ -390,10 +390,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         },
                     )
 
-                category_index_map: Dict[str, int] = {}
-                label_for_index: Dict[int, str] = {}
+                category_index_map: dict[str, int] = {}
+                label_for_index: dict[int, str] = {}
                 category_counts: Counter[int] = Counter()
-                doc_category_map: Dict[str, int] = {} if color_by == "document_id" else {}
+                doc_category_map: dict[str, int] = {} if color_by == "document_id" else {}
                 overflow_logged = False
 
                 manager = resolve_qdrant_manager()
@@ -497,7 +497,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
 
                 requested_reducer = (run.reducer or "pca").lower()
                 reducer_used = requested_reducer
-                reducer_params: Dict[str, Any] = {}
+                reducer_params: dict[str, Any] = {}
                 fallback_reason: str | None = None
 
                 try:
@@ -612,7 +612,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                 _write_binary(ids_path, ids_array, np.int32)
                 _write_binary(cat_path, categories_array, np.uint8)
 
-                meta_payload: Dict[str, Any] = {
+                meta_payload: dict[str, Any] = {
                     "projection_id": run.uuid,
                     "collection_id": run.collection_id,
                     "created_at": datetime.now(UTC).isoformat(),
