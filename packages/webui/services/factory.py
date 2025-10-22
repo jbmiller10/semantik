@@ -30,8 +30,8 @@ from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
-from .redis_manager import RedisManager
 from .projection_service import ProjectionService
+from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
 

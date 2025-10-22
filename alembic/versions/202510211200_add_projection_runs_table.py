@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "202510211200"
 down_revision: str | Sequence[str] | None = "202510201015"
@@ -27,6 +28,7 @@ projection_run_status = postgresql.ENUM(
     "failed",
     "cancelled",
     name="projection_run_status",
+    create_type=False,
 )
 
 
@@ -35,8 +37,29 @@ def upgrade() -> None:
 
     op.execute("ALTER TYPE operation_type ADD VALUE IF NOT EXISTS 'projection_build'")
 
-    bind = op.get_bind()
-    projection_run_status.create(bind, checkfirst=True)
+    # Ensure the ENUM exists without raising when the migration re-runs after a partial failure.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE t.typname = 'projection_run_status'
+            ) THEN
+                CREATE TYPE projection_run_status AS ENUM (
+                    'pending',
+                    'running',
+                    'completed',
+                    'failed',
+                    'cancelled'
+                );
+            END IF;
+        END
+        $$;
+        """
+    )
 
     op.create_table(
         "projection_runs",

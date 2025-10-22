@@ -22,7 +22,6 @@ from packages.webui.api.v2.schemas import (
 from packages.webui.auth import get_current_user
 from packages.webui.services.factory import get_projection_service
 from packages.webui.services.projection_service import ProjectionService
-from packages.webui.api.dependencies.collections import get_collection_ownership_guard
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +227,6 @@ async def delete_projection(
     collection_id: str,
     projection_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
-    _ownership_guard: None = Depends(get_collection_ownership_guard),
     service: ProjectionService = Depends(get_projection_service),
 ) -> Response:
     try:

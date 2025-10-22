@@ -4,25 +4,24 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import uuid
 from array import array
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Any
-import shutil
 
 from fastapi import HTTPException
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
+from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from shared.database.repositories.chunk_repository import ChunkRepository
-from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.webui.celery_app import celery_app
-
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +49,17 @@ class ProjectionService:
         self.collection_repo = collection_repo
 
     @staticmethod
-    def _encode_projection(run: ProjectionRun, *, message: str | None = None) -> dict[str, Any]:
-        """Convert a ProjectionRun ORM instance into a serialisable payload."""
+    def _encode_projection(run: ProjectionRun, *, operation: Any | None = None, message: str | None = None) -> dict[str, Any]:
+        """Convert a ProjectionRun ORM instance into a serialisable payload.
+
+        Args:
+            run: The ProjectionRun database model to encode
+            operation: Optional Operation model to include status from
+            message: Optional status message to include
+
+        Returns:
+            Dictionary with projection metadata including operation_status if operation provided
+        """
 
         created_at = run.created_at if isinstance(run.created_at, datetime) else None
         config = run.config if isinstance(run.config, dict) else None
@@ -64,7 +72,8 @@ class ProjectionService:
         if not meta:
             meta = None
 
-        return {
+        # Build base response
+        response = {
             "collection_id": run.collection_id,
             "projection_id": run.uuid,
             "status": run.status.value,
@@ -76,6 +85,15 @@ class ProjectionService:
             "meta": meta,
             "message": message,
         }
+
+        # Include operation status if operation provided
+        if operation is not None:
+            response["operation_status"] = operation.status.value
+            # Override message with error message if operation failed
+            if operation.error_message and not message:
+                response["message"] = operation.error_message
+
+        return response
 
     @staticmethod
     def _normalise_reducer_config(reducer: str, config: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -200,9 +218,7 @@ class ProjectionService:
             await self.db_session.commit()
             raise HTTPException(status_code=503, detail="Failed to enqueue projection build task") from exc
 
-        response = self._encode_projection(run, message="Projection scheduling not yet implemented")
-        response["operation_status"] = operation.status.value
-        return response
+        return self._encode_projection(run, operation=operation, message="Projection scheduling not yet implemented")
 
     async def list_projections(self, collection_id: str, user_id: int) -> list[dict[str, Any]]:
         """List projection runs for a collection (placeholder)."""
@@ -212,13 +228,10 @@ class ProjectionService:
         runs, _total = await self.projection_repo.list_for_collection(collection_id)
         projections: list[dict[str, Any]] = []
         for run in runs:
-            payload = self._encode_projection(run)
+            operation = None
             if run.operation_uuid:
                 operation = await self.operation_repo.get_by_uuid(run.operation_uuid)
-                if operation:
-                    payload["operation_status"] = operation.status.value
-                    if operation.error_message:
-                        payload["message"] = operation.error_message
+            payload = self._encode_projection(run, operation=operation)
             projections.append(payload)
         return projections
 
@@ -236,18 +249,11 @@ class ProjectionService:
         if not run or run.collection_id != collection_id:
             raise EntityNotFoundError("projection_run", projection_id)
 
-        message = None
-        message: str | None = None
-        response = self._encode_projection(run, message=message)
-
+        operation = None
         if run.operation_uuid:
             operation = await self.operation_repo.get_by_uuid(run.operation_uuid)
-            if operation:
-                response["operation_status"] = operation.status.value
-                if operation.error_message:
-                    response["message"] = operation.error_message
 
-        return response
+        return self._encode_projection(run, operation=operation)
 
     _ALLOWED_ARTIFACTS: dict[str, str] = {
         "x": "x.f32.bin",

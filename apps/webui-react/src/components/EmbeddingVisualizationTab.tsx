@@ -70,25 +70,28 @@ const REDUCER_OPTIONS: Array<{
   },
 ];
 
-function statusBadge(status: ProjectionMetadata['status']) {
+function statusBadge(status: ProjectionMetadata['status'] | string) {
   const base = 'px-2 py-1 rounded-full text-xs font-medium';
   switch (status) {
     case 'completed':
       return <span className={`${base} bg-green-100 text-green-800`}>Completed</span>;
     case 'running':
-      return <span className={`${base} bg-blue-100 text-blue-800`}>Running</span>;
+    case 'processing':
+      return <span className={`${base} bg-blue-100 text-blue-800`}>Processing</span>;
     case 'failed':
       return <span className={`${base} bg-red-100 text-red-800`}>Failed</span>;
     case 'cancelled':
       return <span className={`${base} bg-gray-100 text-gray-600`}>Cancelled</span>;
+    case 'pending':
+      return <span className={`${base} bg-amber-100 text-amber-800`}>Pending</span>;
     default:
       return <span className={`${base} bg-amber-100 text-amber-800`}>Pending</span>;
   }
 }
 
-function projectionProgress(status: ProjectionMetadata['status']) {
+function projectionProgress(status: ProjectionMetadata['status'] | string) {
   if (status === 'completed') return 100;
-  if (status === 'running') return 60;
+  if (status === 'running' || status === 'processing') return 60;
   if (status === 'pending') return 10;
   return 0;
 }
@@ -133,6 +136,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     sample_n: '',
   });
   const [recomputeError, setRecomputeError] = useState<string | undefined>(undefined);
+  const [currentOperationStatus, setCurrentOperationStatus] = useState<string | null>(null);
   const activeRequestId = useRef(0);
   const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
   const startProjection = useStartProjection(collectionId);
@@ -143,10 +147,12 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     showToasts: false,
     onComplete: () => {
       setPendingOperationId(null);
+      setCurrentOperationStatus(null);
       refetch();
     },
     onError: (errorMessage) => {
       setPendingOperationId(null);
+      setCurrentOperationStatus(null);
       if (errorMessage) {
         setRecomputeError(errorMessage);
       }
@@ -163,10 +169,20 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     [projections]
   );
 
+  // Find in-progress projection for fallback status display (when WebSocket not available)
+  const inProgressProjection = useMemo(() => {
+    if (pendingOperationId) return null; // Don't show fallback if we have active pending op
+    return sortedProjections.find((p) => {
+      const status = p.operation_status || p.status;
+      return status === 'processing' || status === 'pending' || status === 'running';
+    });
+  }, [sortedProjections, pendingOperationId]);
+
   const startProjectionWithPayload = async (payload: StartProjectionRequest) => {
     const response = await startProjection.mutateAsync(payload);
     if (response?.operation_id) {
       setPendingOperationId(response.operation_id);
+      setCurrentOperationStatus(response.operation_status || null);
     }
     refetch();
     setActiveProjectionMeta(null);
@@ -545,10 +561,38 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
       {pendingOperationId && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-          <div className="font-medium">Projection recompute in progress…</div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium">Projection recompute in progress…</span>
+            {currentOperationStatus && (
+              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                {currentOperationStatus}
+              </span>
+            )}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-blue-600">
             <span>Operation ID: {pendingOperationId}</span>
             <span>{isOperationConnected ? 'Live updates active.' : 'Connecting to progress updates…'}</span>
+            {!isOperationConnected && currentOperationStatus && (
+              <span className="italic">Last known status: {currentOperationStatus}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!pendingOperationId && inProgressProjection && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">Projection in progress</span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+              {inProgressProjection.operation_status || inProgressProjection.status}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-600">
+            <span>Projection: {inProgressProjection.reducer.toUpperCase()}</span>
+            {inProgressProjection.operation_id && (
+              <span>Operation ID: {inProgressProjection.operation_id}</span>
+            )}
+            <span className="italic">Status from last refresh (WebSocket unavailable)</span>
           </div>
         </div>
       )}
@@ -585,7 +629,9 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {sortedProjections.map((projection) => {
-                  const progress = projectionProgress(projection.status);
+                  // Prefer operation_status over projection.status for more accurate state
+                  const displayStatus = projection.operation_status || projection.status;
+                  const progress = projectionProgress(displayStatus);
                   return (
                     <tr key={projection.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-900">
@@ -595,7 +641,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                           <div className="mt-1 text-xs text-gray-500">{projection.message}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3">{statusBadge(projection.status)}</td>
+                      <td className="px-4 py-3">{statusBadge(displayStatus)}</td>
                       <td className="px-4 py-3">
                         <div className="h-2 rounded bg-gray-200">
                           <div

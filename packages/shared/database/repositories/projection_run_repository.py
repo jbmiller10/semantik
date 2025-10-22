@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any, Sequence
+from typing import Any
 from uuid import uuid4
-
-from sqlalchemy import Select, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, ProjectionRun, ProjectionRunStatus
+from sqlalchemy import Select, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 

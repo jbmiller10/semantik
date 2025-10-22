@@ -230,17 +230,41 @@ class ProjectionBuildRequest(BaseModel):
 
 
 class ProjectionMetadataResponse(BaseModel):
-    """Minimal metadata payload describing a projection run."""
+    """Minimal metadata payload describing a projection run.
+
+    Progress Tracking Fields:
+        operation_id: UUID of the associated background operation tracking this projection build
+        operation_status: Real-time status from the operations table (pending/processing/completed/failed/cancelled)
+        status: ProjectionRun status (pending/running/completed/failed/cancelled)
+
+    For accurate progress tracking, prefer operation_status over status when available, as operation_status
+    reflects the latest state from the background task while status may lag during processing.
+    """
 
     id: str = Field(description="Projection run UUID")
     collection_id: str = Field(description="Collection UUID")
-    status: str = Field(description="Lifecycle status for the projection run")
+    status: str = Field(
+        description="ProjectionRun lifecycle status (pending/running/completed/failed/cancelled). "
+        "May lag behind operation_status during processing. Prefer operation_status when available."
+    )
     reducer: str = Field(description="Algorithm used for the projection")
     dimensionality: int = Field(description="Target dimensionality of the projection output")
     created_at: datetime | None = Field(default=None, description="Creation timestamp")
-    operation_id: str | None = Field(default=None, description="Associated operation UUID, if any")
-    operation_status: str | None = Field(default=None, description="Status of the associated operation")
-    message: str | None = Field(default=None, description="Optional status message")
+    operation_id: str | None = Field(
+        default=None,
+        description="UUID of the associated Operation tracking this projection build. "
+        "Use with WebSocket channel 'operation-progress:{operation_id}' for real-time updates."
+    )
+    operation_status: str | None = Field(
+        default=None,
+        description="Current status from the operations table (pending/processing/completed/failed/cancelled). "
+        "This reflects the most recent state from the background task and should be preferred over 'status' "
+        "for accurate progress indication. Null if no operation is associated."
+    )
+    message: str | None = Field(
+        default=None,
+        description="Optional status or error message. Automatically populated with error details for failed operations."
+    )
     config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
     meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
 
