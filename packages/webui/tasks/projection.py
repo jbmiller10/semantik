@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import inspect
 import json
+import sys
 import uuid
 from collections import Counter
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -397,9 +398,15 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
         raise RuntimeError("Failed to initialize projection session maker")
 
     session_factory = pg_manager._sessionmaker
+    session: Any | None = None
+    session_guard: Callable[[], Any] | None = None
 
     try:
         async with session_factory() as session:
+            ensure_open_guard = getattr(session, "ensure_open", None)
+            if callable(ensure_open_guard):
+                session_guard = ensure_open_guard
+
             projection_repo = ProjectionRunRepository(session)
             operation_repo = OperationRepository(session)
             collection_repo = CollectionRepository(session)
@@ -868,7 +875,18 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     if updater:
                         await updater.close()
     finally:
+        guard_exception: Exception | None = None
+        active_exc_type = sys.exc_info()[0]
+        if session_guard is not None:
+            try:
+                session_guard()
+            except Exception as exc:  # pragma: no cover - surface cleanup errors
+                guard_exception = exc
+
         await pg_manager.close()
+
+        if guard_exception is not None and active_exc_type is None:
+            raise guard_exception
 
 
 async def _process_projection_operation(
