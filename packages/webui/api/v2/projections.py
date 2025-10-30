@@ -30,7 +30,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v2/collections/{collection_id}/projections", tags=["projections-v2"])
 
 
-def _to_metadata_response(collection_id: str, payload: dict[str, Any], *, fallback_id: str) -> ProjectionMetadataResponse:
+def _to_metadata_response(
+    collection_id: str, payload: dict[str, Any], *, fallback_id: str
+) -> ProjectionMetadataResponse:
     """Normalise arbitrary projection metadata dictionaries."""
 
     return ProjectionMetadataResponse(
@@ -52,7 +54,11 @@ def _to_metadata_response(collection_id: str, payload: dict[str, Any], *, fallba
     "",
     response_model=ProjectionMetadataResponse,
     status_code=202,
-    responses={202: {"description": "Projection run accepted"}, 400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    responses={
+        202: {"description": "Projection run accepted"},
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+    },
 )
 async def start_projection(
     collection_id: str,
@@ -223,7 +229,11 @@ async def select_projection_region(
 @router.delete(
     "/{projection_id}",
     status_code=204,
-    responses={204: {"description": "Projection deleted"}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    responses={
+        204: {"description": "Projection deleted"},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+    },
 )
 async def delete_projection(
     collection_id: str,

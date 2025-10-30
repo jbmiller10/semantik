@@ -104,9 +104,7 @@ def upgrade() -> None:
         ),
     )
 
-    op.create_index(
-        "ix_projection_runs_collection_id", "projection_runs", ["collection_id"], unique=False
-    )
+    op.create_index("ix_projection_runs_collection_id", "projection_runs", ["collection_id"], unique=False)
     op.create_index("ix_projection_runs_status", "projection_runs", ["status"], unique=False)
     op.create_index("ix_projection_runs_created_at", "projection_runs", ["created_at"], unique=False)
 
@@ -122,14 +120,8 @@ def downgrade() -> None:
     bind = op.get_bind()
     projection_run_status.drop(bind, checkfirst=True)
 
-    op.execute(
-        "UPDATE operations SET type = 'INDEX' WHERE type IN ('PROJECTION_BUILD', 'projection_build')"
-    )
+    op.execute("UPDATE operations SET type = 'INDEX' WHERE type IN ('PROJECTION_BUILD', 'projection_build')")
     op.execute("ALTER TYPE operation_type RENAME TO operation_type_old")
-    op.execute(
-        "CREATE TYPE operation_type AS ENUM ('INDEX', 'APPEND', 'REINDEX', 'REMOVE_SOURCE', 'DELETE')"
-    )
-    op.execute(
-        "ALTER TABLE operations ALTER COLUMN type TYPE operation_type USING type::text::operation_type"
-    )
+    op.execute("CREATE TYPE operation_type AS ENUM ('INDEX', 'APPEND', 'REINDEX', 'REMOVE_SOURCE', 'DELETE')")
+    op.execute("ALTER TABLE operations ALTER COLUMN type TYPE operation_type USING type::text::operation_type")
     op.execute("DROP TYPE operation_type_old")

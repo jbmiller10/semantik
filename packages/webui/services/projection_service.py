@@ -52,7 +52,9 @@ class ProjectionService:
         self.collection_repo = collection_repo
 
     @staticmethod
-    def _encode_projection(run: ProjectionRun, *, operation: Any | None = None, message: str | None = None) -> dict[str, Any]:
+    def _encode_projection(
+        run: ProjectionRun, *, operation: Any | None = None, message: str | None = None
+    ) -> dict[str, Any]:
         """Convert a ProjectionRun ORM instance into a serialisable payload.
 
         Args:
@@ -286,9 +288,7 @@ class ProjectionService:
     async def get_projection_metadata(self, collection_id: str, projection_id: str, user_id: int) -> dict[str, Any]:
         """Fetch metadata for a projection run (placeholder)."""
 
-        logger.debug(
-            "Fetching projection metadata collection=%s projection=%s", collection_id, projection_id
-        )
+        logger.debug("Fetching projection metadata collection=%s projection=%s", collection_id, projection_id)
         collection = await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
         owner_id = getattr(collection, "owner_id", None) or getattr(collection, "user_id", None)
         if owner_id is not None and owner_id != user_id:
@@ -460,7 +460,9 @@ class ProjectionService:
                 meta_payload = {}
 
         run_meta = run.meta if isinstance(run.meta, dict) else {}
-        projection_meta = run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
+        projection_meta = (
+            run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
+        )
         if not projection_meta and meta_payload:
             projection_meta = meta_payload
 
@@ -468,7 +470,9 @@ class ProjectionService:
 
         original_ids: list[str] | None = None
         if projection_meta:
-            original_ids = projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
+            original_ids = (
+                projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
+            )
 
         id_array = array("i")
         with ids_path.open("rb") as buffer:
