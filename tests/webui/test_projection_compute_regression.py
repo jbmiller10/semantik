@@ -5,11 +5,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 from contextlib import asynccontextmanager
-from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Callable
+from typing import TYPE_CHECKING, Any
 
-import pytest
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+    from pathlib import Path
+
+    import pytest
 
 import packages.webui.tasks.projection as projection_module
 
@@ -200,8 +203,8 @@ def test_compute_projection_reports_closed_session(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(projection_module, "CollectionRepository", _CollectionRepository)
     monkeypatch.setattr(projection_module, "resolve_qdrant_manager", lambda: _FakeQdrantManager())
     monkeypatch.setattr(projection_module, "_operation_updates", _fake_operation_updates)
-    monkeypatch.setattr(projection_module, "_write_binary", lambda *args, **kwargs: None)
-    monkeypatch.setattr(projection_module, "_write_meta", lambda *args, **kwargs: None)
+    monkeypatch.setattr(projection_module, "_write_binary", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(projection_module, "_write_meta", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(projection_module, "resolve_awaitable_sync", _resolve_sync)
 
     result = projection_module.compute_projection("run-123")
