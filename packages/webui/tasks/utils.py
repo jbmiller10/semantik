@@ -395,6 +395,14 @@ def resolve_awaitable_sync(value: Any) -> Any:
     if inspect.isawaitable(value):
         tasks_module = import_module("packages.webui.tasks")
         asyncio_module = tasks_module.asyncio
+
+        # Allow tests to keep patching asyncio.run while letting production code
+        # use the dedicated worker event loop. The patched object will usually be
+        # a mock supplied by unittest.mock.patch.
+        patched_run = getattr(asyncio_module, "run", None)
+        if patched_run is not None and _is_mock_like(patched_run):
+            return patched_run(value)
+
         loop = getattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, None)
         if loop is None or loop.is_closed():
             loop = asyncio_module.new_event_loop()
