@@ -117,6 +117,11 @@ class OperationType(str, enum.Enum):
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
 
+    def __str__(self) -> str:  # pragma: no cover - simple helper for driver bindings
+        """Return the canonical string value for the enum member."""
+
+        return self.value
+
 
 class ProjectionRunStatus(str, enum.Enum):
     """Lifecycle states for embedding projection runs."""

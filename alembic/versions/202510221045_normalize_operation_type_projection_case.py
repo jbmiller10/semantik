@@ -1,4 +1,4 @@
-"""Ensure projection operation enum uses lowercase variant.
+"""Ensure operation_type enum values use lowercase variants.
 
 Revision ID: 202510221045
 Revises: 202510211200
@@ -19,9 +19,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Normalize projection enum to use the lowercase value."""
+    """Normalize the operation_type enum to lower-case labels."""
 
-    # Rename the uppercase enum value to lowercase if it exists.
     op.execute(
         """
         DO $$
@@ -31,20 +30,68 @@ def upgrade() -> None:
                 FROM pg_type t
                 JOIN pg_enum e ON e.enumtypid = t.oid
                 WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'INDEX'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''INDEX'' TO ''index''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'APPEND'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''APPEND'' TO ''append''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'REINDEX'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''REINDEX'' TO ''reindex''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'REMOVE_SOURCE'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''REMOVE_SOURCE'' TO ''remove_source''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'DELETE'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''DELETE'' TO ''delete''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
                   AND e.enumlabel = 'PROJECTION_BUILD'
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'projection_build'
             ) THEN
                 EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''PROJECTION_BUILD'' TO ''projection_build''';
             END IF;
-        END
-        $$;
-        """
-    )
 
-    # Ensure the lowercase value exists (for databases that never had projection operations).
-    op.execute(
-        """
-        DO $$
-        BEGIN
             IF NOT EXISTS (
                 SELECT 1
                 FROM pg_type t
@@ -61,7 +108,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Restore the uppercase enum label used prior to this migration."""
+    """Restore the original uppercase enum labels."""
 
     op.execute(
         """
@@ -72,19 +119,61 @@ def downgrade() -> None:
                 FROM pg_type t
                 JOIN pg_enum e ON e.enumtypid = t.oid
                 WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'index'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''index'' TO ''INDEX''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid  = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'append'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''append'' TO ''APPEND''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'reindex'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''reindex'' TO ''REINDEX''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'remove_source'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''remove_source'' TO ''REMOVE_SOURCE''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
+                  AND e.enumlabel = 'delete'
+            ) THEN
+                EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''delete'' TO ''DELETE''';
+            END IF;
+
+            IF EXISTS (
+                SELECT 1
+                FROM pg_type t
+                JOIN pg_enum e ON e.enumtypid = t.oid
+                WHERE t.typname = 'operation_type'
                   AND e.enumlabel = 'projection_build'
             ) THEN
                 EXECUTE 'ALTER TYPE operation_type RENAME VALUE ''projection_build'' TO ''PROJECTION_BUILD''';
             END IF;
-        END
-        $$;
-        """
-    )
 
-    op.execute(
-        """
-        DO $$
-        BEGIN
             IF NOT EXISTS (
                 SELECT 1
                 FROM pg_type t
