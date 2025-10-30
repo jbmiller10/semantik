@@ -211,4 +211,3 @@ def test_compute_projection_reports_closed_session(monkeypatch: pytest.MonkeyPat
 
     assert result["status"] == "failed"
     assert "Session is closed" in (result.get("message") or "")
-
