@@ -8,12 +8,15 @@ Create Date: 2025-10-21 12:00:00.000000
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 from alembic import op
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 revision: str = "202510211200"
 down_revision: str | Sequence[str] | None = "202510201015"

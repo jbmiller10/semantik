@@ -9,20 +9,22 @@ import uuid
 from array import array
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
 from shared.config import settings
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.chunk_repository import ChunkRepository
-from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
-from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.webui.celery_app import celery_app
+
+if TYPE_CHECKING:
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.operation_repository import OperationRepository
+    from shared.database.repositories.projection_run_repository import ProjectionRunRepository
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

@@ -43,10 +43,10 @@ from .utils import (
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
     _audit_log_operation,
+    _is_mock_like,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
-    _is_mock_like,
     await_if_awaitable,
     celery_app,
     extract_and_serialize_thread_safe,
@@ -106,11 +106,11 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of collection operation processing with enhanced monitoring."""
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
+    from shared.database.postgres_database import PostgresConnectionManager
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
     from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-    from shared.database.postgres_database import PostgresConnectionManager
 
     start_time = time.time()
     operation = None

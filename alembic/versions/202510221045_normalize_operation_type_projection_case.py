@@ -8,9 +8,12 @@ Create Date: 2025-10-22 10:45:00.000000
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from alembic import op
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 revision: str = "202510221045"
 down_revision: str | Sequence[str] | None = "202510211200"
