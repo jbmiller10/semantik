@@ -868,8 +868,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     if updater:
                         await updater.close()
     finally:
-        with suppress(Exception):
-            await pg_manager.close()
+        await pg_manager.close()
 
 
 async def _process_projection_operation(
