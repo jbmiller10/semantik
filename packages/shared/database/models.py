@@ -117,6 +117,20 @@ class OperationType(str, enum.Enum):
     DELETE = "delete"
     PROJECTION_BUILD = "projection_build"
 
+    @classmethod
+    def _missing_(cls, value: Any) -> "OperationType | None":
+        """Provide case-insensitive lookup for enum values."""
+
+        if isinstance(value, str):
+            normalized = value.lower()
+            return cls._value2member_map_.get(normalized) or cls.__members__.get(value.upper())
+        return None
+
+    def __str__(self) -> str:  # pragma: no cover - simple helper for driver bindings
+        """Return the canonical string value for the enum member."""
+
+        return self.value
+
 
 class ProjectionRunStatus(str, enum.Enum):
     """Lifecycle states for embedding projection runs."""
@@ -366,7 +380,14 @@ class Operation(Base):
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(
-        Enum(OperationType, name="operation_type", native_enum=True, create_constraint=False),
+        Enum(
+            OperationType,
+            name="operation_type",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            validate_strings=True,
+        ),
         nullable=False,
         index=True,
     )  # type: ignore[var-annotated]
