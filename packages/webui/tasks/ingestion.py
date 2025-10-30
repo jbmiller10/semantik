@@ -46,6 +46,7 @@ from .utils import (
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
+    _is_mock_like,
     await_if_awaitable,
     celery_app,
     extract_and_serialize_thread_safe,
@@ -116,6 +117,37 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     collection: dict[str, Any] | None = None
 
     process = psutil.Process()
+    tasks_ns = _tasks_namespace()
+
+    shared_db_root = import_module("shared.database")
+    shared_db_module = import_module("shared.database.database")
+
+    pg_manager_override = getattr(tasks_ns, "_pg_connection_manager_override", None)
+    if pg_manager_override is not None:
+        pg_manager = pg_manager_override
+        close_pg_manager = False
+    else:
+        pg_manager = getattr(shared_db_root, "pg_connection_manager", None)
+        close_pg_manager = False
+        if pg_manager is None:
+            pg_manager = PostgresConnectionManager()
+            close_pg_manager = True
+
+    initialize_fn = getattr(pg_manager, "initialize", None)
+    if initialize_fn is not None:
+        await await_if_awaitable(initialize_fn())
+
+    session_factory = getattr(pg_manager, "_sessionmaker", None)
+    if session_factory is None or _is_mock_like(session_factory):
+        session_factory = getattr(shared_db_module, "AsyncSessionLocal", None)
+
+    if session_factory is None or not callable(session_factory):
+        if close_pg_manager:
+            close_fn = getattr(pg_manager, "close", None)
+            if close_fn is not None:
+                with contextlib.suppress(Exception):
+                    await await_if_awaitable(close_fn())
+        raise RuntimeError("Failed to initialize database connection for this task")
 
     def _safe_cpu_seconds(proc: Any) -> float:
         """Return total CPU seconds for the process, tolerating mocked values."""
@@ -143,16 +175,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
-    pg_manager = PostgresConnectionManager()
-    await pg_manager.initialize()
-
-    if pg_manager._sessionmaker is None:
-        await pg_manager.close()
-        raise RuntimeError("Failed to initialize database connection for this task")
-
     logger.info("Initialized database connection for this task")
-
-    session_factory = pg_manager._sessionmaker
 
     try:
         async with session_factory() as db:
@@ -220,7 +243,6 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     if vector_collection_id and not collection["vector_store_name"]:
                         collection["vector_store_name"] = vector_collection_id
 
-                    tasks_ns = _tasks_namespace()
                     result: dict[str, Any] = {}
                     operation_type = operation["type"].value.lower()
 
@@ -404,7 +426,11 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     with contextlib.suppress(Exception):
                         await db.rollback()
     finally:
-        await pg_manager.close()
+        if close_pg_manager:
+            close_fn = getattr(pg_manager, "close", None)
+            if close_fn is not None:
+                with contextlib.suppress(Exception):
+                    await await_if_awaitable(close_fn())
 
 
 async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
