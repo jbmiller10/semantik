@@ -871,6 +871,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
         with suppress(Exception):
             await pg_manager.close()
 
+
 async def _process_projection_operation(
     operation: dict[str, Any],
     collection: dict[str, Any],
