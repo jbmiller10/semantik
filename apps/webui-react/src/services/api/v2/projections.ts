@@ -1,7 +1,6 @@
 import apiClient from './client';
 import type {
   ProjectionArtifactName,
-  ProjectionData,
   ProjectionListResponse,
   ProjectionMetadata,
   ProjectionSelectionResponse,
@@ -18,11 +17,6 @@ export const projectionsV2Api = {
   getMetadata: (collectionId: string, projectionId: string) =>
     apiClient.get<ProjectionMetadata>(
       `/api/v2/collections/${collectionId}/projections/${projectionId}`
-    ),
-
-  getData: (collectionId: string, projectionId: string) =>
-    apiClient.get<ProjectionData>(
-      `/api/v2/collections/${collectionId}/projections/${projectionId}/array`
     ),
 
   getArtifact: (collectionId: string, projectionId: string, artifactName: ProjectionArtifactName) =>

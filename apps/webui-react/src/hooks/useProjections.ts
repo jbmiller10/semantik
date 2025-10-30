@@ -3,7 +3,6 @@ import { projectionsV2Api } from '../services/api/v2/projections';
 import { handleApiError } from '../services/api/v2/collections';
 import { useUIStore } from '../stores/uiStore';
 import type {
-  ProjectionData,
   ProjectionMetadata,
   ProjectionStatus,
   StartProjectionRequest,
@@ -16,8 +15,6 @@ export const projectionKeys = {
   lists: (collectionId: string) => [...projectionKeys.root, collectionId, 'list'] as const,
   detail: (collectionId: string, projectionId: string) =>
     [...projectionKeys.root, collectionId, 'detail', projectionId] as const,
-  data: (collectionId: string, projectionId: string) =>
-    [...projectionKeys.root, collectionId, 'data', projectionId] as const,
 };
 
 export function useCollectionProjections(collectionId: string | null) {
@@ -51,21 +48,6 @@ export function useProjectionMetadata(collectionId: string | null, projectionId:
     queryFn: async () => {
       if (!collectionId || !projectionId) return null;
       const response = await projectionsV2Api.getMetadata(collectionId, projectionId);
-      return response.data;
-    },
-    enabled: !!collectionId && !!projectionId,
-  });
-}
-
-export function useProjectionData(collectionId: string | null, projectionId: string | null) {
-  const safeCollectionId = collectionId ?? '__none__';
-  const safeProjectionId = projectionId ?? '__none__';
-
-  return useQuery<ProjectionData | null>({
-    queryKey: projectionKeys.data(safeCollectionId, safeProjectionId),
-    queryFn: async () => {
-      if (!collectionId || !projectionId) return null;
-      const response = await projectionsV2Api.getData(collectionId, projectionId);
       return response.data;
     },
     enabled: !!collectionId && !!projectionId,
@@ -175,13 +157,4 @@ export function useUpdateProjectionInCache() {
       updated
     );
   };
-}
-
-export function useProjectionDataFromCache(
-  collectionId: string,
-  projectionId: string
-): ProjectionData | undefined {
-  return useQueryClient().getQueryData<ProjectionData>(
-    projectionKeys.data(collectionId, projectionId)
-  );
 }

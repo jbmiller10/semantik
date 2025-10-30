@@ -39,6 +39,17 @@ interface EmbeddingVisualizationTabProps {
   collectionId: string;
 }
 
+type RecomputeParamsState = {
+  n_neighbors: string;
+  min_dist: string;
+  metric: string;
+  sample_n: string;
+  perplexity: string;
+  learning_rate: string;
+  n_iter: string;
+  init: 'pca' | 'random';
+};
+
 const COLOR_BY_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'document_id', label: 'Document' },
   { value: 'source_dir', label: 'Source Folder' },
@@ -47,6 +58,8 @@ const COLOR_BY_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 const METRIC_OPTIONS = ['cosine', 'euclidean', 'manhattan'];
+const TSNE_METRIC_OPTIONS = ['euclidean'];
+const TSNE_INIT_OPTIONS: Array<'pca' | 'random'> = ['pca', 'random'];
 const SAMPLE_LIMIT_CAP = 200_000;
 
 const REDUCER_OPTIONS: Array<{
@@ -130,11 +143,15 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false);
   const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
   const [recomputeReducer, setRecomputeReducer] = useState<ProjectionReducer>('umap');
-  const [recomputeParams, setRecomputeParams] = useState({
+  const [recomputeParams, setRecomputeParams] = useState<RecomputeParamsState>({
     n_neighbors: '15',
     min_dist: '0.1',
     metric: 'cosine',
     sample_n: '',
+    perplexity: '30',
+    learning_rate: '200',
+    n_iter: '1000',
+    init: 'pca',
   });
   const [recomputeError, setRecomputeError] = useState<string | undefined>(undefined);
   const [currentOperationStatus, setCurrentOperationStatus] = useState<string | null>(null);
@@ -460,8 +477,12 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     setRecomputeParams({
       n_neighbors: '15',
       min_dist: '0.1',
-      metric: 'cosine',
+      metric: selectedReducer === 'tsne' ? 'euclidean' : 'cosine',
       sample_n: '',
+      perplexity: '30',
+      learning_rate: '200',
+      n_iter: '1000',
+      init: 'pca',
     });
     setRecomputeError(undefined);
     setRecomputeDialogOpen(true);
@@ -472,6 +493,19 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       setRecomputeDialogOpen(false);
       setRecomputeError(undefined);
     }
+  };
+
+  const handleRecomputeReducerChange = (value: ProjectionReducer) => {
+    setRecomputeReducer(value);
+    setRecomputeParams((prev) => ({
+      ...prev,
+      metric:
+        value === 'tsne'
+          ? (TSNE_METRIC_OPTIONS.includes(prev.metric) ? prev.metric : 'euclidean')
+          : value === 'umap'
+            ? (METRIC_OPTIONS.includes(prev.metric) ? prev.metric : 'cosine')
+            : prev.metric,
+    }));
   };
 
   const handleRecomputeSubmit = async () => {
@@ -506,6 +540,37 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       config.n_neighbors = Math.floor(parsedNeighbors);
       config.min_dist = parsedMinDist;
       config.metric = metricValue;
+    } else if (recomputeReducer === 'tsne') {
+      const parsedPerplexity = Number(recomputeParams.perplexity);
+      const parsedLearningRate = Number(recomputeParams.learning_rate);
+      const parsedIterations = Number(recomputeParams.n_iter);
+      const metricValue = recomputeParams.metric?.trim() || 'euclidean';
+      const initValue = recomputeParams.init === 'random' ? 'random' : 'pca';
+      const errors: string[] = [];
+
+      if (!Number.isFinite(parsedPerplexity) || parsedPerplexity <= 0) {
+        errors.push('perplexity must be a positive number.');
+      }
+      if (!Number.isFinite(parsedLearningRate) || parsedLearningRate <= 0) {
+        errors.push('learning_rate must be a positive number.');
+      }
+      if (!Number.isFinite(parsedIterations) || parsedIterations < 250) {
+        errors.push('n_iter must be an integer ≥ 250.');
+      }
+      if (!metricValue) {
+        errors.push('metric is required.');
+      }
+
+      if (errors.length > 0) {
+        setRecomputeError(errors.join(' '));
+        return;
+      }
+
+      config.perplexity = parsedPerplexity;
+      config.learning_rate = parsedLearningRate;
+      config.n_iter = Math.floor(parsedIterations);
+      config.metric = metricValue;
+      config.init = initValue;
     }
     if (recomputeParams.sample_n !== '') {
       const sampleNumeric = Number(recomputeParams.sample_n);
@@ -978,10 +1043,13 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                 <label className="block text-sm font-medium text-gray-700 mb-1">Reducer</label>
                 <select
                   value={recomputeReducer}
-                  onChange={(event) => setRecomputeReducer(event.target.value as ProjectionReducer)}
+                  onChange={(event) =>
+                    handleRecomputeReducerChange(event.target.value as ProjectionReducer)
+                  }
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
                 >
                   <option value="umap">UMAP</option>
+                  <option value="tsne">t-SNE</option>
                   <option value="pca">PCA</option>
                 </select>
               </div>
@@ -1026,6 +1094,79 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                       {METRIC_OPTIONS.map((metricOption) => (
                         <option key={metricOption} value={metricOption}>
                           {metricOption}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {recomputeReducer === 'tsne' && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">perplexity</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={recomputeParams.perplexity}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, perplexity: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">learning_rate</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={recomputeParams.learning_rate}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, learning_rate: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">n_iter</label>
+                    <input
+                      type="number"
+                      min={250}
+                      value={recomputeParams.n_iter}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, n_iter: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">metric</label>
+                    <select
+                      value={recomputeParams.metric}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, metric: event.target.value }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    >
+                      {TSNE_METRIC_OPTIONS.map((metricOption) => (
+                        <option key={metricOption} value={metricOption}>
+                          {metricOption}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">init</label>
+                    <select
+                      value={recomputeParams.init}
+                      onChange={(event) =>
+                        setRecomputeParams((prev) => ({ ...prev, init: event.target.value as 'pca' | 'random' }))
+                      }
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm"
+                    >
+                      {TSNE_INIT_OPTIONS.map((initOption) => (
+                        <option key={initOption} value={initOption}>
+                          {initOption}
                         </option>
                       ))}
                     </select>
