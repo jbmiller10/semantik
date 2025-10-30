@@ -274,16 +274,17 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             raise ValueError(f"Unknown operation type: {operation['type']}")
 
                         memory_peak = process.memory_info().rss
-                        collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
+                        collection_memory_usage_bytes.labels(operation_type=operation_type).set(
+                            memory_peak - memory_before
+                        )
 
                     duration = time.time() - start_time
                     cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
                     if cpu_time < 0 or not isinstance(cpu_time, int | float):
                         cpu_time = 0.0
 
-                    defer_completion = (
-                        operation["type"] == OperationType.PROJECTION_BUILD
-                        and result.get("defer_completion")
+                    defer_completion = operation["type"] == OperationType.PROJECTION_BUILD and result.get(
+                        "defer_completion"
                     )
 
                     if defer_completion:

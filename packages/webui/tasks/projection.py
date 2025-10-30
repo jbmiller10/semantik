@@ -179,10 +179,7 @@ def _derive_category_label(
 
     if color_by == "document_id":
         doc_identifier = (
-            payload.get("doc_id")
-            or payload.get("document_id")
-            or payload.get("chunk_id")
-            or payload.get("source_id")
+            payload.get("doc_id") or payload.get("document_id") or payload.get("chunk_id") or payload.get("source_id")
         )
         if doc_identifier is None:
             return UNKNOWN_CATEGORY_LABEL, None
@@ -199,10 +196,7 @@ def _derive_category_label(
 
     # Fallback to document_id semantics for unexpected values
     doc_identifier = (
-        payload.get("doc_id")
-        or payload.get("document_id")
-        or payload.get("chunk_id")
-        or payload.get("source_id")
+        payload.get("doc_id") or payload.get("document_id") or payload.get("chunk_id") or payload.get("source_id")
     )
     if doc_identifier is None:
         return UNKNOWN_CATEGORY_LABEL, None
