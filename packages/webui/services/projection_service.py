@@ -9,20 +9,22 @@ import uuid
 from array import array
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException
 from shared.config import settings
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.chunk_repository import ChunkRepository
-from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
-from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.webui.celery_app import celery_app
+
+if TYPE_CHECKING:
+    from shared.database.repositories.collection_repository import CollectionRepository
+    from shared.database.repositories.operation_repository import OperationRepository
+    from shared.database.repositories.projection_run_repository import ProjectionRunRepository
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,9 @@ class ProjectionService:
         self.collection_repo = collection_repo
 
     @staticmethod
-    def _encode_projection(run: ProjectionRun, *, operation: Any | None = None, message: str | None = None) -> dict[str, Any]:
+    def _encode_projection(
+        run: ProjectionRun, *, operation: Any | None = None, message: str | None = None
+    ) -> dict[str, Any]:
         """Convert a ProjectionRun ORM instance into a serialisable payload.
 
         Args:
@@ -284,9 +288,7 @@ class ProjectionService:
     async def get_projection_metadata(self, collection_id: str, projection_id: str, user_id: int) -> dict[str, Any]:
         """Fetch metadata for a projection run (placeholder)."""
 
-        logger.debug(
-            "Fetching projection metadata collection=%s projection=%s", collection_id, projection_id
-        )
+        logger.debug("Fetching projection metadata collection=%s projection=%s", collection_id, projection_id)
         collection = await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
         owner_id = getattr(collection, "owner_id", None) or getattr(collection, "user_id", None)
         if owner_id is not None and owner_id != user_id:
@@ -458,7 +460,9 @@ class ProjectionService:
                 meta_payload = {}
 
         run_meta = run.meta if isinstance(run.meta, dict) else {}
-        projection_meta = run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
+        projection_meta = (
+            run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
+        )
         if not projection_meta and meta_payload:
             projection_meta = meta_payload
 
@@ -466,7 +470,9 @@ class ProjectionService:
 
         original_ids: list[str] | None = None
         if projection_meta:
-            original_ids = projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
+            original_ids = (
+                projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
+            )
 
         id_array = array("i")
         with ids_path.open("rb") as buffer:

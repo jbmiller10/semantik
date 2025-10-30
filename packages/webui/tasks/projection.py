@@ -24,10 +24,10 @@ try:  # Optional scikit-learn dependency for t-SNE
 except Exception:  # pragma: no cover - optional dependency
     TSNE = None  # type: ignore[assignment]
 from shared.database.models import OperationStatus, ProjectionRunStatus
+from shared.database.postgres_database import PostgresConnectionManager
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from shared.database.postgres_database import PostgresConnectionManager
 
 from packages.webui.tasks.utils import (
     CeleryTaskWithOperationUpdates,
@@ -56,7 +56,7 @@ def _parse_timestamp(value: Any) -> datetime | None:
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         try:
             timestamp = float(value)
         except (TypeError, ValueError):  # pragma: no cover - defensive
@@ -179,10 +179,7 @@ def _derive_category_label(
 
     if color_by == "document_id":
         doc_identifier = (
-            payload.get("doc_id")
-            or payload.get("document_id")
-            or payload.get("chunk_id")
-            or payload.get("source_id")
+            payload.get("doc_id") or payload.get("document_id") or payload.get("chunk_id") or payload.get("source_id")
         )
         if doc_identifier is None:
             return UNKNOWN_CATEGORY_LABEL, None
@@ -199,10 +196,7 @@ def _derive_category_label(
 
     # Fallback to document_id semantics for unexpected values
     doc_identifier = (
-        payload.get("doc_id")
-        or payload.get("document_id")
-        or payload.get("chunk_id")
-        or payload.get("source_id")
+        payload.get("doc_id") or payload.get("document_id") or payload.get("chunk_id") or payload.get("source_id")
     )
     if doc_identifier is None:
         return UNKNOWN_CATEGORY_LABEL, None
@@ -335,7 +329,7 @@ def _compute_tsne_projection(
     if iteration_param is None:
         # As a fallback for very old sklearn versions, try to set the attribute directly.
         with suppress(Exception):
-            setattr(tsne, "n_iter", effective_n_iter)
+            tsne.n_iter = effective_n_iter
 
     embedding = tsne.fit_transform(vectors)
 
@@ -374,7 +368,7 @@ async def _operation_updates(operation_id: str | None) -> AsyncIterator[CeleryTa
 
 
 @celery_app.task(bind=True, name="webui.tasks.compute_projection")
-def compute_projection(self: Any, projection_id: str) -> dict[str, Any]:  # noqa: ANN401
+def compute_projection(self: Any, projection_id: str) -> dict[str, Any]:  # noqa: ANN401, ARG001
     """Compute a 2D PCA projection for the requested projection run."""
 
     logger.info("compute_projection task invoked for projection_id=%s", projection_id)
@@ -875,481 +869,6 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         await updater.close()
     finally:
         await pg_manager.close()
-        projection_repo = ProjectionRunRepository(session)
-        operation_repo = OperationRepository(session)
-        collection_repo = CollectionRepository(session)
-
-        run = await projection_repo.get_by_uuid(projection_id)
-        if not run:
-            raise ValueError(f"Projection run {projection_id} not found")
-
-        operation_uuid = getattr(run, "operation_uuid", None)
-        collection = await collection_repo.get_by_uuid(run.collection_id)
-        if not collection:
-            raise ValueError(f"Collection {run.collection_id} for projection {projection_id} not found")
-
-        vector_collection_name = getattr(collection, "vector_store_name", None) or getattr(
-            collection, "vector_collection_id", None
-        )
-        if not vector_collection_name:
-            raise ValueError("Collection is missing a vector store name for projection computation")
-
-        config = run.config or {}
-        color_by = str(config.get("color_by") or "document_id").lower()
-        if color_by not in ALLOWED_COLOR_BY:
-            color_by = "document_id"
-
-        configured_sample = config.get("sample_size")
-        if configured_sample is None:
-            configured_sample = config.get("sample_limit")
-        if configured_sample is None:
-            configured_sample = config.get("sample_n")
-        try:
-            sample_limit = int(configured_sample) if configured_sample is not None else DEFAULT_SAMPLE_LIMIT
-        except (TypeError, ValueError):
-            sample_limit = DEFAULT_SAMPLE_LIMIT
-        sample_limit = max(sample_limit, 1)
-
-        run_dir = settings.data_dir / "semantik" / "projections" / run.collection_id / run.uuid
-        run_dir.mkdir(parents=True, exist_ok=True)
-
-        now = datetime.now(UTC)
-
-        async with _operation_updates(operation_uuid) as updater:
-            try:
-                await projection_repo.update_status(
-                    run.uuid,
-                    status=ProjectionRunStatus.RUNNING,
-                    started_at=now,
-                )
-                if operation_uuid:
-                    await operation_repo.update_status(
-                        operation_uuid,
-                        OperationStatus.PROCESSING,
-                        started_at=now,
-                        error_message=None,
-                    )
-                await session.commit()
-
-                vectors: list[np.ndarray] = []
-                original_ids: list[str] = []
-                categories: list[int] = []
-
-                if updater:
-                    await updater.send_update(
-                        "projection_started",
-                        {
-                            "projection_id": run.uuid,
-                            "collection_id": run.collection_id,
-                            "sample_limit": sample_limit,
-                            "color_by": color_by,
-                        },
-                    )
-
-                category_index_map: dict[str, int] = {}
-                label_for_index: dict[int, str] = {}
-                category_counts: Counter[int] = Counter()
-                doc_category_map: dict[str, int] = {} if color_by == "document_id" else {}
-                overflow_logged = False
-
-                manager = resolve_qdrant_manager()
-                qdrant_client = getattr(manager, "client", None)
-                if qdrant_client is None and hasattr(manager, "get_client"):
-                    qdrant_client = manager.get_client()
-                if qdrant_client is None:
-                    raise RuntimeError("Unable to acquire Qdrant client from manager")
-
-                offset: Any = None
-                while len(vectors) < sample_limit:
-                    remaining = sample_limit - len(vectors)
-                    batch_limit = max(1, min(QDRANT_SCROLL_BATCH, remaining))
-                    records, offset = qdrant_client.scroll(
-                        collection_name=vector_collection_name,
-                        offset=offset,
-                        limit=batch_limit,
-                        with_payload=True,
-                        with_vectors=True,
-                    )
-
-                    if not records:
-                        break
-
-                    for record in records:
-                        vector_values = getattr(record, "vector", None)
-                        if isinstance(vector_values, dict):
-                            # Use the first available vector when multiple are present.
-                            vector_values = next((val for val in vector_values.values() if val is not None), None)
-                        if vector_values is None:
-                            continue
-
-                        vector_array = np.asarray(vector_values, dtype=np.float32)
-                        if vector_array.ndim != 1:
-                            continue
-
-                        vectors.append(vector_array)
-                        original_ids.append(str(record.id))
-
-                        payload = getattr(record, "payload", {}) or {}
-                        category_label, doc_identifier = _derive_category_label(payload, color_by, now)
-
-                        if not category_label:
-                            category_label = UNKNOWN_CATEGORY_LABEL
-
-                        category_idx = category_index_map.get(category_label)
-                        if category_idx is None:
-                            if len(category_index_map) < OVERFLOW_CATEGORY_INDEX:
-                                category_idx = len(category_index_map)
-                                category_index_map[category_label] = category_idx
-                                label_for_index[category_idx] = category_label
-                            else:
-                                category_idx = OVERFLOW_CATEGORY_INDEX
-                        else:
-                            if category_idx != OVERFLOW_CATEGORY_INDEX:
-                                label_for_index.setdefault(category_idx, category_label)
-
-                        if category_idx == OVERFLOW_CATEGORY_INDEX:
-                            label_for_index.setdefault(OVERFLOW_CATEGORY_INDEX, OVERFLOW_LEGEND_LABEL)
-                            if not overflow_logged:
-                                logger.warning(
-                                    "Projection %s exceeded 255 categories; using overflow bucket",
-                                    projection_id,
-                                )
-                                overflow_logged = True
-
-                        categories.append(int(category_idx))
-                        category_counts[category_idx] += 1
-
-                        if color_by == "document_id" and doc_identifier is not None:
-                            doc_key = str(doc_identifier)
-                            if doc_key not in doc_category_map:
-                                doc_category_map[doc_key] = int(category_idx)
-
-                    if updater:
-                        await updater.send_update(
-                            "projection_fetch_progress",
-                            {
-                                "projection_id": run.uuid,
-                                "fetched": len(vectors),
-                                "sample_limit": sample_limit,
-                                "color_by": color_by,
-                            },
-                        )
-
-                    if offset is None:
-                        break
-
-                point_count = len(vectors)
-                total_vectors = getattr(collection, "vector_count", None)
-                if isinstance(total_vectors, int) and total_vectors > 0:
-                    total_vectors = max(total_vectors, point_count)
-                else:
-                    total_vectors = point_count
-                sampled_flag = point_count < total_vectors
-
-                if point_count < 2:
-                    raise ValueError("Not enough vectors available to compute projection (need at least 2)")
-
-                vectors_array = np.stack(vectors, axis=0)
-
-                requested_reducer = (run.reducer or "pca").lower()
-                reducer_used = requested_reducer
-                reducer_params: dict[str, Any] = {}
-                fallback_reason: str | None = None
-
-                try:
-                    if requested_reducer == "umap":
-                        params = config if isinstance(config, dict) else {}
-                        n_neighbors = int(params.get("n_neighbors", 15))
-                        min_dist = float(params.get("min_dist", 0.1))
-                        metric = str(params.get("metric", "cosine"))
-                        reducer_params = {
-                            "n_neighbors": n_neighbors,
-                            "min_dist": min_dist,
-                            "metric": metric,
-                        }
-                        projection_result = _compute_umap_projection(
-                            vectors_array,
-                            n_neighbors=n_neighbors,
-                            min_dist=min_dist,
-                            metric=metric,
-                        )
-                        reducer_used = "umap"
-                    elif requested_reducer == "tsne":
-                        params = config if isinstance(config, dict) else {}
-                        perplexity = float(params.get("perplexity", 30.0))
-                        learning_rate = float(params.get("learning_rate", 200.0))
-                        n_iter = int(params.get("n_iter", 1_000))
-                        metric = str(params.get("metric", "euclidean"))
-                        init = str(params.get("init", "pca"))
-                        projection_result = _compute_tsne_projection(
-                            vectors_array,
-                            perplexity=perplexity,
-                            learning_rate=learning_rate,
-                            n_iter=n_iter,
-                            metric=metric,
-                            init=init,
-                        )
-                        reducer_used = "tsne"
-                        reducer_params = {
-                            "perplexity": float(projection_result.get("perplexity", perplexity)),
-                            "learning_rate": float(projection_result.get("learning_rate", learning_rate)),
-                            "n_iter": int(projection_result.get("n_iter", n_iter)),
-                            "metric": metric,
-                            "init": init,
-                        }
-                    elif requested_reducer == "pca":
-                        projection_result = _compute_pca_projection(vectors_array)
-                        reducer_used = "pca"
-                    else:
-                        fallback_reason = f"Unsupported reducer '{requested_reducer}'"
-                        logger.warning(
-                            "Reducer %s not supported for projection %s; falling back to PCA",
-                            requested_reducer,
-                            projection_id,
-                        )
-                        projection_result = _compute_pca_projection(vectors_array)
-                        reducer_used = "pca"
-                        reducer_params = config if isinstance(config, dict) else {}
-                except Exception as exc:
-                    fallback_reason = str(exc)
-                    logger.warning(
-                        "Reducer %s failed for projection %s; falling back to PCA: %s",
-                        requested_reducer,
-                        projection_id,
-                        exc,
-                    )
-                    projection_result = _compute_pca_projection(vectors_array)
-                    reducer_used = "pca"
-                    if requested_reducer == "umap":
-                        params = config if isinstance(config, dict) else {}
-                        reducer_params = {
-                            "n_neighbors": int(params.get("n_neighbors", 15)),
-                            "min_dist": float(params.get("min_dist", 0.1)),
-                            "metric": str(params.get("metric", "cosine")),
-                        }
-                    elif requested_reducer == "tsne":
-                        params = config if isinstance(config, dict) else {}
-                        reducer_params = {
-                            "perplexity": float(params.get("perplexity", 30.0)),
-                            "learning_rate": float(params.get("learning_rate", 200.0)),
-                            "n_iter": int(params.get("n_iter", 1_000)),
-                            "metric": str(params.get("metric", "euclidean")),
-                            "init": str(params.get("init", "pca")),
-                        }
-                    else:
-                        reducer_params = config if isinstance(config, dict) else {}
-
-                projection_array = projection_result["projection"]
-                x_path = run_dir / "x.f32.bin"
-                y_path = run_dir / "y.f32.bin"
-                ids_path = run_dir / "ids.i32.bin"
-                cat_path = run_dir / "cat.u8.bin"
-                meta_path = run_dir / "meta.json"
-
-                x_values = projection_array[:, 0]
-                y_values = projection_array[:, 1]
-                ids_array = []
-                warned_fallback = False
-                int32_info = np.iinfo(np.int32)
-                for idx, point_id in enumerate(original_ids):
-                    use_sequential = False
-                    try:
-                        numeric = int(point_id)
-                    except (TypeError, ValueError):
-                        use_sequential = True
-                    else:
-                        if numeric < int32_info.min or numeric > int32_info.max:
-                            use_sequential = True
-
-                    if use_sequential:
-                        if not warned_fallback:
-                            logger.warning(
-                                "Projection %s has point IDs that are non-integer or outside int32 bounds; "
-                                "using sequential fallback",
-                                projection_id,
-                            )
-                            warned_fallback = True
-                        numeric = idx
-
-                    ids_array.append(numeric)
-
-                ids_array = np.asarray(ids_array, dtype=np.int32)
-                categories_array = np.array(categories, dtype=np.uint8)
-
-                legend_entries = [
-                    {
-                        "index": int(idx),
-                        "label": label,
-                        "count": int(category_counts.get(idx, 0)),
-                    }
-                    for idx, label in sorted(label_for_index.items())
-                ]
-                if category_counts.get(OVERFLOW_CATEGORY_INDEX) and not any(
-                    entry["index"] == OVERFLOW_CATEGORY_INDEX for entry in legend_entries
-                ):
-                    legend_entries.append(
-                        {
-                            "index": OVERFLOW_CATEGORY_INDEX,
-                            "label": OVERFLOW_LEGEND_LABEL,
-                            "count": int(category_counts[OVERFLOW_CATEGORY_INDEX]),
-                        }
-                    )
-
-                _write_binary(x_path, x_values, np.float32)
-                _write_binary(y_path, y_values, np.float32)
-                _write_binary(ids_path, ids_array, np.int32)
-                _write_binary(cat_path, categories_array, np.uint8)
-
-                meta_payload: dict[str, Any] = {
-                    "projection_id": run.uuid,
-                    "collection_id": run.collection_id,
-                    "created_at": datetime.now(UTC).isoformat(),
-                    "point_count": point_count,
-                    "total_count": total_vectors,
-                    "shown_count": point_count,
-                    "sampled": sampled_flag,
-                    "reducer_requested": requested_reducer,
-                    "reducer_used": reducer_used,
-                    "reducer_params": reducer_params,
-                    "dimensionality": 2,
-                    "source_vector_collection": vector_collection_name,
-                    "sample_limit": sample_limit,
-                    "files": {
-                        "x": x_path.name,
-                        "y": y_path.name,
-                        "ids": ids_path.name,
-                        "categories": cat_path.name,
-                    },
-                    "color_by": color_by,
-                    "legend": legend_entries,
-                }
-                if "explained_variance_ratio" in projection_result:
-                    meta_payload["explained_variance_ratio"] = (
-                        projection_result["explained_variance_ratio"].tolist()
-                        if isinstance(projection_result["explained_variance_ratio"], np.ndarray)
-                        else projection_result["explained_variance_ratio"]
-                    )
-                if "singular_values" in projection_result:
-                    meta_payload["singular_values"] = (
-                        projection_result["singular_values"].tolist()
-                        if isinstance(projection_result["singular_values"], np.ndarray)
-                        else projection_result["singular_values"]
-                    )
-                if "kl_divergence" in projection_result and projection_result["kl_divergence"] is not None:
-                    try:
-                        meta_payload["kl_divergence"] = float(projection_result["kl_divergence"])
-                    except (TypeError, ValueError):
-                        meta_payload["kl_divergence"] = projection_result["kl_divergence"]
-                if fallback_reason:
-                    meta_payload["fallback_reason"] = fallback_reason
-                meta_payload["original_ids"] = original_ids
-                if color_by == "document_id":
-                    meta_payload["category_map"] = {key: int(val) for key, val in doc_category_map.items()}
-                meta_payload["category_counts"] = {
-                    str(int(idx)): int(count) for idx, count in category_counts.items()
-                }
-
-                _write_meta(meta_path, meta_payload)
-
-                try:
-                    storage_path_value = str(run_dir.relative_to(settings.data_dir))
-                except ValueError:
-                    storage_path_value = str(run_dir)
-
-                await projection_repo.update_metadata(
-                    run.uuid,
-                    storage_path=storage_path_value,
-                    point_count=point_count,
-                    meta={
-                        "projection_artifacts": meta_payload,
-                        "color_by": color_by,
-                        "legend": legend_entries,
-                        "sampled": sampled_flag,
-                        "shown_count": point_count,
-                        "total_count": total_vectors,
-                    },
-                )
-                await projection_repo.update_status(
-                    run.uuid,
-                    status=ProjectionRunStatus.COMPLETED,
-                    completed_at=datetime.now(UTC),
-                )
-
-                if operation_uuid:
-                    await operation_repo.update_status(
-                        operation_uuid,
-                        OperationStatus.COMPLETED,
-                        completed_at=datetime.now(UTC),
-                        error_message=None,
-                    )
-
-                await session.commit()
-
-                if updater:
-                    await updater.send_update(
-                        "projection_completed",
-                        {
-                            "projection_id": run.uuid,
-                            "point_count": point_count,
-                            "reducer": reducer_used,
-                            "storage_path": str(run_dir),
-                            "color_by": color_by,
-                            "legend": legend_entries,
-                            "sampled": sampled_flag,
-                            "shown_count": point_count,
-                            "total_count": total_vectors,
-                        },
-                    )
-
-                return {
-                    "projection_id": projection_id,
-                    "status": "completed",
-                    "reducer": reducer_used,
-                    "message": None,
-                    "point_count": point_count,
-                    "storage_path": str(run_dir),
-                }
-
-            except Exception as exc:
-                sanitized_error = _sanitize_error_message(str(exc))
-                logger.exception("Projection computation failed for %s", projection_id)
-
-                await session.rollback()
-
-                try:
-                    await projection_repo.update_status(
-                        run.uuid,
-                        status=ProjectionRunStatus.FAILED,
-                        error_message=sanitized_error,
-                        completed_at=datetime.now(UTC),
-                    )
-                    if operation_uuid:
-                        await operation_repo.update_status(
-                            operation_uuid,
-                            OperationStatus.FAILED,
-                            error_message=sanitized_error,
-                            completed_at=datetime.now(UTC),
-                        )
-                    await session.commit()
-                except Exception as status_exc:  # pragma: no cover - defensive logging
-                    logger.error("Failed to update projection status after error: %s", status_exc)
-                    await session.rollback()
-
-                if updater:
-                    await updater.send_update(
-                        "projection_failed",
-                        {
-                            "projection_id": run.uuid,
-                            "error": sanitized_error,
-                            "color_by": color_by,
-                        },
-                    )
-
-                return {
-                    "projection_id": projection_id,
-                    "status": "failed",
-                    "message": sanitized_error,
-                }
 
 
 async def _process_projection_operation(

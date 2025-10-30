@@ -407,17 +407,13 @@ def resolve_awaitable_sync(value: Any) -> Any:
         if loop is None or loop.is_closed():
             loop = asyncio_module.new_event_loop()
             setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)
-            try:
-                asyncio_module.set_event_loop(loop)
-            except RuntimeError:
+            with contextlib.suppress(RuntimeError):
                 # set_event_loop may fail if policy forbids setting outside main thread.
                 # In that case the loop will still be passed explicitly to ensure_future/run_until_complete.
-                pass
-        else:
-            try:
                 asyncio_module.set_event_loop(loop)
-            except RuntimeError:
-                pass
+        else:
+            with contextlib.suppress(RuntimeError):
+                asyncio_module.set_event_loop(loop)
 
         task = asyncio_module.ensure_future(value, loop=loop)
         try:

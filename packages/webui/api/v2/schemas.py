@@ -253,17 +253,17 @@ class ProjectionMetadataResponse(BaseModel):
     operation_id: str | None = Field(
         default=None,
         description="UUID of the associated Operation tracking this projection build. "
-        "Use with WebSocket channel 'operation-progress:{operation_id}' for real-time updates."
+        "Use with WebSocket channel 'operation-progress:{operation_id}' for real-time updates.",
     )
     operation_status: str | None = Field(
         default=None,
         description="Current status from the operations table (pending/processing/completed/failed/cancelled). "
         "This reflects the most recent state from the background task and should be preferred over 'status' "
-        "for accurate progress indication. Null if no operation is associated."
+        "for accurate progress indication. Null if no operation is associated.",
     )
     message: str | None = Field(
         default=None,
-        description="Optional status or error message. Automatically populated with error details for failed operations."
+        description="Optional status or error message. Automatically populated with error details for failed operations.",
     )
     config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
     meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")

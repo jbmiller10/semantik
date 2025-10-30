@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
 from shared.database.models import Collection, ProjectionRun, ProjectionRunStatus
-from sqlalchemy import Select, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import selectinload
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -175,5 +178,6 @@ class ProjectionRunRepository:
         if not run:
             raise EntityNotFoundError("projection_run", projection_uuid)
 
-        await self.session.delete(run)
+        stmt = delete(ProjectionRun).where(ProjectionRun.id == run.id)
+        await self.session.execute(stmt)
         await self.session.flush()
