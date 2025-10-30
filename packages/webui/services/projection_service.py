@@ -268,7 +268,7 @@ class ProjectionService:
             await self.db_session.commit()
             raise HTTPException(status_code=503, detail="Failed to enqueue projection build task") from exc
 
-        return self._encode_projection(run, operation=operation, message="Projection scheduling not yet implemented")
+        return self._encode_projection(run, operation=operation)
 
     async def list_projections(self, collection_id: str, user_id: int) -> list[dict[str, Any]]:
         """List projection runs for a collection (placeholder)."""
@@ -278,9 +278,7 @@ class ProjectionService:
         runs, _total = await self.projection_repo.list_for_collection(collection_id)
         projections: list[dict[str, Any]] = []
         for run in runs:
-            operation = None
-            if run.operation_uuid:
-                operation = await self.operation_repo.get_by_uuid(run.operation_uuid)
+            operation = getattr(run, "operation", None)
             payload = self._encode_projection(run, operation=operation)
             projections.append(payload)
         return projections
@@ -309,6 +307,7 @@ class ProjectionService:
         "ids": "ids.i32.bin",
         "cat": "cat.u8.bin",
     }
+    _MAX_SELECTION_IDS = 5000
 
     async def _resolve_storage_directory(self, run: ProjectionRun, storage_path_raw: str) -> Path:
         """Resolve the storage directory for a projection run across environments."""
@@ -430,6 +429,9 @@ class ProjectionService:
                     ordered_ids.append(int_value)
         except (TypeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail="ids must be integers") from exc
+
+        if len(ordered_ids) > self._MAX_SELECTION_IDS:
+            raise HTTPException(status_code=413, detail=f"Too many ids; max {self._MAX_SELECTION_IDS}")
 
         await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
         run = await self.projection_repo.get_by_uuid(projection_id)

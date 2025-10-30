@@ -275,13 +275,6 @@ class ProjectionListResponse(BaseModel):
     projections: list[ProjectionMetadataResponse]
 
 
-class ProjectionArrayResponse(BaseModel):
-    """Placeholder payload for coordinate responses until streaming is implemented."""
-
-    projection_id: str
-    message: str = "Projection array streaming not yet implemented"
-
-
 class ProjectionSelectionRequest(BaseModel):
     """Selection request expressed as a set of projection point identifiers."""
 

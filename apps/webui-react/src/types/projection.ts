@@ -59,19 +59,3 @@ export interface ProjectionSelectionResponse {
 }
 
 export type StartProjectionResponse = ProjectionMetadata;
-
-export interface ProjectionPoint {
-  id: string;
-  x: number;
-  y: number;
-  z?: number;
-  label?: string;
-  color?: string;
-  cluster?: string | number;
-}
-
-export interface ProjectionData {
-  projection: ProjectionMetadata;
-  points: ProjectionPoint[];
-  metadata?: Record<string, unknown>;
-}

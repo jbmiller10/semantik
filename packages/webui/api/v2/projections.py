@@ -11,7 +11,6 @@ from fastapi.responses import StreamingResponse
 from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from packages.webui.api.schemas import ErrorResponse
 from packages.webui.api.v2.schemas import (
-    ProjectionArrayResponse,
     ProjectionBuildRequest,
     ProjectionListResponse,
     ProjectionMetadataResponse,
@@ -117,30 +116,6 @@ async def get_projection(
 
 
 @router.get(
-    "/{projection_id}/array",
-    response_model=ProjectionArrayResponse,
-)
-async def get_projection_array(
-    collection_id: str,
-    projection_id: str,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: ProjectionService = Depends(get_projection_service),
-) -> ProjectionArrayResponse:
-    """Return projection coordinates as a binary payload (placeholder)."""
-
-    data = await service.get_projection_array(collection_id, projection_id, int(current_user["id"]))
-
-    if data:
-        # TODO: stream the real binary payload rather than returning a placeholder message
-        return ProjectionArrayResponse(
-            projection_id=projection_id,
-            message="Binary payload omitted in scaffold",
-        )
-
-    return ProjectionArrayResponse(projection_id=projection_id)
-
-
-@router.get(
     "/{projection_id}/arrays/{artifact_name}",
     responses={
         200: {"description": "Projection artifact", "content": {"application/octet-stream": {}}},
@@ -190,6 +165,7 @@ async def stream_projection_artifact(
         "Cache-Control": "private, max-age=3600",
         "Content-Length": str(file_stat.st_size),
         "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'attachment; filename="{artifact_path.name}"',
     }
 
     return StreamingResponse(

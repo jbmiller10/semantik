@@ -87,6 +87,7 @@ class ProjectionRunRepository:
         stmt: Select[tuple[ProjectionRun]] = (
             select(ProjectionRun)
             .where(ProjectionRun.collection_id == collection_id)
+            .options(selectinload(ProjectionRun.operation))
             .order_by(ProjectionRun.created_at.desc())
             .limit(limit)
             .offset(offset)

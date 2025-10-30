@@ -41,6 +41,7 @@ from packages.webui.tasks.utils import (
 )
 
 DEFAULT_SAMPLE_LIMIT = 200_000
+PCA_SVD_SAMPLE_LIMIT = 50_000
 QDRANT_SCROLL_BATCH = 1_000
 OVERFLOW_CATEGORY_INDEX = 255
 OVERFLOW_LEGEND_LABEL = "Other"
@@ -211,7 +212,7 @@ def _ensure_float32(array: np.ndarray) -> np.ndarray:
 
 
 def _compute_pca_projection(vectors: np.ndarray) -> dict[str, np.ndarray]:
-    """Compute a 2D PCA projection using NumPy's SVD implementation."""
+    """Compute a 2D PCA projection while guarding against oversized SVD workloads."""
 
     if vectors.ndim != 2:
         raise ValueError(f"Expected a 2D array for PCA, got {vectors.shape!r}")
@@ -220,14 +221,24 @@ def _compute_pca_projection(vectors: np.ndarray) -> dict[str, np.ndarray]:
     if vectors.shape[1] < 2:
         raise ValueError("Vectors must have at least two dimensions for PCA projection")
 
-    mean = vectors.mean(axis=0, keepdims=True)
-    centered = vectors - mean
+    sample_limit = PCA_SVD_SAMPLE_LIMIT
+    num_rows = vectors.shape[0]
 
-    # Compute SVD on centered data; full_matrices=False keeps outputs minimal.
-    _, singular_values, vt = np.linalg.svd(centered, full_matrices=False)
+    mean = vectors.mean(axis=0, keepdims=True)
+
+    if num_rows > sample_limit:
+        # Down-sample deterministically to keep SVD cost manageable while remaining reproducible.
+        sample_indices = np.linspace(0, num_rows - 1, sample_limit, dtype=np.int64)
+        centered_sample = vectors[sample_indices] - mean
+        _, singular_values, vt = np.linalg.svd(centered_sample, full_matrices=False)
+        centered_full = vectors - mean
+    else:
+        centered_full = vectors - mean
+        _, singular_values, vt = np.linalg.svd(centered_full, full_matrices=False)
+
     top_components = vt[:2]
 
-    projection = centered @ top_components.T
+    projection = centered_full @ top_components.T
 
     total_variance = float(np.square(singular_values).sum())
     top_singular_values = singular_values[:2]
