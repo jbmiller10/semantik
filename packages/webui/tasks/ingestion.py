@@ -43,6 +43,7 @@ from .utils import (
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
     _audit_log_operation,
+    _is_mock_like,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
@@ -104,18 +105,49 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
 
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of collection operation processing with enhanced monitoring."""
-    from shared.database import pg_connection_manager
-    from shared.database.database import AsyncSessionLocal
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
+    from shared.database.postgres_database import PostgresConnectionManager
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
+    from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 
     start_time = time.time()
     operation = None
     collection: dict[str, Any] | None = None
 
     process = psutil.Process()
+    tasks_ns = _tasks_namespace()
+
+    shared_db_root = import_module("shared.database")
+    shared_db_module = import_module("shared.database.database")
+
+    pg_manager_override = getattr(tasks_ns, "_pg_connection_manager_override", None)
+    if pg_manager_override is not None:
+        pg_manager = pg_manager_override
+        close_pg_manager = False
+    else:
+        pg_manager = getattr(shared_db_root, "pg_connection_manager", None)
+        close_pg_manager = False
+        if pg_manager is None:
+            pg_manager = PostgresConnectionManager()
+            close_pg_manager = True
+
+    initialize_fn = getattr(pg_manager, "initialize", None)
+    if initialize_fn is not None:
+        await await_if_awaitable(initialize_fn())
+
+    session_factory = getattr(pg_manager, "_sessionmaker", None)
+    if session_factory is None or _is_mock_like(session_factory):
+        session_factory = getattr(shared_db_module, "AsyncSessionLocal", None)
+
+    if session_factory is None or not callable(session_factory):
+        if close_pg_manager:
+            close_fn = getattr(pg_manager, "close", None)
+            if close_fn is not None:
+                with contextlib.suppress(Exception):
+                    await await_if_awaitable(close_fn())
+        raise RuntimeError("Failed to initialize database connection for this task")
 
     def _safe_cpu_seconds(proc: Any) -> float:
         """Return total CPU seconds for the process, tolerating mocked values."""
@@ -143,220 +175,263 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
     task_id = celery_task.request.id if hasattr(celery_task, "request") else str(uuid.uuid4())
 
-    if not pg_connection_manager._sessionmaker:
-        await pg_connection_manager.initialize()
-        logger.info("Initialized database connection for this task")
+    logger.info("Initialized database connection for this task")
 
-    async with AsyncSessionLocal() as db:
-        operation_repo = OperationRepository(db)
-        collection_repo = CollectionRepository(db)
-        document_repo = DocumentRepository(db)
-
-        try:
-            await operation_repo.set_task_id(operation_id, task_id)
-            logger.info("Set task_id %s for operation %s", task_id, operation_id)
-
-            async with CeleryTaskWithOperationUpdates(operation_id) as updater:
-                operation_obj = await operation_repo.get_by_uuid(operation_id)
-                if not operation_obj:
-                    raise ValueError(f"Operation {operation_id} not found in database")
-
-                operation = {
-                    "id": operation_obj.id,
-                    "uuid": operation_obj.uuid,
-                    "collection_id": operation_obj.collection_id,
-                    "type": operation_obj.type,
-                    "config": operation_obj.config,
-                    "user_id": getattr(operation_obj, "user_id", None),
-                }
-
-                logger.info(
-                    "Starting collection operation",
-                    extra={
-                        "operation_id": operation_id,
-                        "operation_type": operation["type"].value,
-                        "collection_id": operation["collection_id"],
-                        "task_id": task_id,
-                    },
-                )
-
-                await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
-                await updater.send_update(
-                    "operation_started", {"status": "processing", "type": operation["type"].value}
-                )
-
-                collection_obj = await collection_repo.get_by_uuid(operation["collection_id"])
-                if not collection_obj:
-                    raise ValueError(f"Collection {operation['collection_id']} not found in database")
-
-                collection = {
-                    "id": collection_obj.id,
-                    "uuid": collection_obj.id,
-                    "name": collection_obj.name,
-                    "vector_store_name": collection_obj.vector_store_name,
-                    "config": getattr(collection_obj, "config", {}),
-                    "embedding_model": getattr(collection_obj, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
-                    "quantization": getattr(collection_obj, "quantization", "float16"),
-                    "chunk_size": getattr(collection_obj, "chunk_size", 1000),
-                    "chunk_overlap": getattr(collection_obj, "chunk_overlap", 200),
-                    "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
-                    "chunking_config": getattr(collection_obj, "chunking_config", {}) or {},
-                    "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
-                    "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
-                    "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
-                    "vector_count": getattr(collection_obj, "vector_count", 0),
-                }
-
-                vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
-                if vector_collection_id and not collection["vector_store_name"]:
-                    collection["vector_store_name"] = vector_collection_id
-
-                tasks_ns = _tasks_namespace()
-                result: dict[str, Any] = {}
-                operation_type = operation["type"].value.lower()
-
-                with OperationTimer(operation_type):
-                    memory_before = process.memory_info().rss
-
-                    if operation["type"] == OperationType.INDEX:
-                        result = await tasks_ns._process_index_operation(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
-                    elif operation["type"] == OperationType.APPEND:
-                        result = await tasks_ns._process_append_operation_impl(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
-                    elif operation["type"] == OperationType.REINDEX:
-                        result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
-                    elif operation["type"] == OperationType.REMOVE_SOURCE:
-                        result = await tasks_ns._process_remove_source_operation(
-                            operation, collection, collection_repo, document_repo, updater
-                        )
-                    else:  # pragma: no cover - defensive branch
-                        raise ValueError(f"Unknown operation type: {operation['type']}")
-
-                    memory_peak = process.memory_info().rss
-                    collection_memory_usage_bytes.labels(operation_type=operation_type).set(memory_peak - memory_before)
-
-                duration = time.time() - start_time
-                cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
-                if cpu_time < 0 or not isinstance(cpu_time, int | float):
-                    cpu_time = 0.0
-
-                await _record_operation_metrics(
-                    operation_repo,
-                    operation_id,
-                    {
-                        "duration_seconds": duration,
-                        "cpu_seconds": cpu_time,
-                        "memory_peak_bytes": memory_peak,
-                        "documents_processed": result.get("documents_added", result.get("documents_removed", 0)),
-                        "success": result.get("success", False),
-                    },
-                )
-
-                collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
-
-                await operation_repo.update_status(operation_id, OperationStatus.COMPLETED)
-
-                old_status = collection.get("status", CollectionStatus.PENDING)
-
-                if result.get("success"):
-                    doc_stats = await document_repo.get_stats_by_collection(collection["id"])
-                    new_status = CollectionStatus.READY
-                    await collection_repo.update_status(collection["id"], new_status)
-
-                    await _update_collection_metrics(
-                        collection["id"],
-                        doc_stats["total_documents"],
-                        collection.get("vector_count", 0),
-                        doc_stats["total_size_bytes"],
-                    )
-                else:
-                    new_status = CollectionStatus.DEGRADED
-                    await collection_repo.update_status(collection["id"], new_status)
-
-                if old_status != new_status:
-                    collections_total.labels(status=old_status.value).dec()
-                    collections_total.labels(status=new_status.value).inc()
-
-                await updater.send_update("operation_completed", {"status": "completed", "result": result})
-
-                logger.info(
-                    "Collection operation completed",
-                    extra={
-                        "operation_id": operation_id,
-                        "operation_type": operation["type"].value,
-                        "duration_seconds": duration,
-                        "success": result.get("success", False),
-                    },
-                )
-
-                # Commit after notifying listeners; add_source will tolerate the small window
-                await db.commit()
-
-                return result
-
-        except Exception as exc:
-            logger.error("Operation %s failed: %s", operation_id, exc, exc_info=True)
-
-            with contextlib.suppress(Exception):
-                await db.rollback()
+    try:
+        async with session_factory() as db:
+            operation_repo = OperationRepository(db)
+            collection_repo = CollectionRepository(db)
+            document_repo = DocumentRepository(db)
+            projection_repo = ProjectionRunRepository(db)
 
             try:
-                if operation:
+                await operation_repo.set_task_id(operation_id, task_id)
+                logger.info("Set task_id %s for operation %s", task_id, operation_id)
+
+                async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+                    operation_obj = await operation_repo.get_by_uuid(operation_id)
+                    if not operation_obj:
+                        raise ValueError(f"Operation {operation_id} not found in database")
+
+                    operation = {
+                        "id": operation_obj.id,
+                        "uuid": operation_obj.uuid,
+                        "collection_id": operation_obj.collection_id,
+                        "type": operation_obj.type,
+                        "config": operation_obj.config,
+                        "user_id": getattr(operation_obj, "user_id", None),
+                    }
+
+                    logger.info(
+                        "Starting collection operation",
+                        extra={
+                            "operation_id": operation_id,
+                            "operation_type": operation["type"].value,
+                            "collection_id": operation["collection_id"],
+                            "task_id": task_id,
+                        },
+                    )
+
+                    await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
+                    await updater.send_update(
+                        "operation_started", {"status": "processing", "type": operation["type"].value}
+                    )
+
+                    collection_obj = await collection_repo.get_by_uuid(operation["collection_id"])
+                    if not collection_obj:
+                        raise ValueError(f"Collection {operation['collection_id']} not found in database")
+
+                    collection = {
+                        "id": collection_obj.id,
+                        "uuid": collection_obj.id,
+                        "name": collection_obj.name,
+                        "vector_store_name": collection_obj.vector_store_name,
+                        "config": getattr(collection_obj, "config", {}),
+                        "embedding_model": getattr(collection_obj, "embedding_model", "Qwen/Qwen3-Embedding-0.6B"),
+                        "quantization": getattr(collection_obj, "quantization", "float16"),
+                        "chunk_size": getattr(collection_obj, "chunk_size", 1000),
+                        "chunk_overlap": getattr(collection_obj, "chunk_overlap", 200),
+                        "chunking_strategy": getattr(collection_obj, "chunking_strategy", None),
+                        "chunking_config": getattr(collection_obj, "chunking_config", {}) or {},
+                        "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
+                        "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
+                        "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
+                        "vector_count": getattr(collection_obj, "vector_count", 0),
+                    }
+
+                    vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
+                    if vector_collection_id and not collection["vector_store_name"]:
+                        collection["vector_store_name"] = vector_collection_id
+
+                    result: dict[str, Any] = {}
+                    operation_type = operation["type"].value.lower()
+
+                    with OperationTimer(operation_type):
+                        memory_before = process.memory_info().rss
+
+                        if operation["type"] == OperationType.INDEX:
+                            result = await tasks_ns._process_index_operation(
+                                operation, collection, collection_repo, document_repo, updater
+                            )
+                        elif operation["type"] == OperationType.APPEND:
+                            result = await tasks_ns._process_append_operation_impl(
+                                operation, collection, collection_repo, document_repo, updater
+                            )
+                        elif operation["type"] == OperationType.REINDEX:
+                            result = await tasks_ns._process_reindex_operation(db, updater, operation["id"])
+                        elif operation["type"] == OperationType.REMOVE_SOURCE:
+                            result = await tasks_ns._process_remove_source_operation(
+                                operation, collection, collection_repo, document_repo, updater
+                            )
+                        elif operation["type"] == OperationType.PROJECTION_BUILD:
+                            result = await tasks_ns._process_projection_operation(
+                                operation,
+                                collection,
+                                projection_repo,
+                                updater,
+                            )
+                        else:  # pragma: no cover - defensive branch
+                            raise ValueError(f"Unknown operation type: {operation['type']}")
+
+                        memory_peak = process.memory_info().rss
+                        collection_memory_usage_bytes.labels(operation_type=operation_type).set(
+                            memory_peak - memory_before
+                        )
+
+                    duration = time.time() - start_time
+                    cpu_time = _safe_cpu_seconds(process) - initial_cpu_time
+                    if cpu_time < 0 or not isinstance(cpu_time, int | float):
+                        cpu_time = 0.0
+
+                    defer_completion = operation["type"] == OperationType.PROJECTION_BUILD and result.get(
+                        "defer_completion"
+                    )
+
+                    if defer_completion:
+                        await db.commit()
+                        logger.info(
+                            "Projection operation %s enqueued for async processing",
+                            operation_id,
+                        )
+                        return result
+
                     await _record_operation_metrics(
                         operation_repo,
                         operation_id,
                         {
-                            "duration_seconds": time.time() - start_time,
-                            "error_type": type(exc).__name__,
-                            "error_message": str(exc),
-                            "success": False,
+                            "duration_seconds": duration,
+                            "cpu_seconds": cpu_time,
+                            "memory_peak_bytes": memory_peak,
+                            "documents_processed": result.get("documents_added", result.get("documents_removed", 0)),
+                            "success": result.get("success", False),
                         },
                     )
 
-                await operation_repo.update_status(operation_id, OperationStatus.FAILED, error_message=str(exc))
+                    collection_cpu_seconds_total.labels(operation_type=operation_type).inc(cpu_time)
 
-                if operation and collection:
-                    collection_id = operation["collection_id"]
-                    operation_type = operation["type"]
+                    await operation_repo.update_status(operation_id, OperationStatus.COMPLETED)
 
-                    if operation_type == OperationType.INDEX:
-                        await collection_repo.update_status(
-                            collection["uuid"],
-                            CollectionStatus.ERROR,
-                            status_message=f"Initial indexing failed: {str(exc)}",
+                    old_status = collection.get("status", CollectionStatus.PENDING)
+
+                    if result.get("success"):
+                        doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+                        new_status = CollectionStatus.READY
+                        await collection_repo.update_status(collection["id"], new_status)
+
+                        # Mark existing projections as stale so the UI can prompt recomputation.
+                        try:
+                            runs, _ = await projection_repo.list_for_collection(collection["id"], limit=1)
+                        except Exception:  # pragma: no cover - defensive path
+                            runs = []
+                        if runs:
+                            try:
+                                await projection_repo.update_metadata(
+                                    runs[0].uuid,
+                                    meta={"degraded": True},
+                                )
+                            except Exception:  # pragma: no cover - defensive logging
+                                logger.warning(
+                                    "Failed to mark projection %s as degraded after collection update",
+                                    runs[0].uuid,
+                                )
+
+                        await _update_collection_metrics(
+                            collection["id"],
+                            doc_stats["total_documents"],
+                            collection.get("vector_count", 0),
+                            doc_stats["total_size_bytes"],
                         )
-                    elif operation_type == OperationType.REINDEX:
-                        await collection_repo.update_status(
-                            collection["uuid"],
-                            CollectionStatus.DEGRADED,
-                            status_message=f"Re-indexing failed: {str(exc)}. Original collection still available.",
-                        )
-                        await reindex_tasks._cleanup_staging_resources(collection_id, operation)
+                    else:
+                        new_status = CollectionStatus.DEGRADED
+                        await collection_repo.update_status(collection["id"], new_status)
 
-                # updater context manager handles failure updates
-            except Exception as update_error:  # pragma: no cover - defensive logging
-                logger.error("Failed to update operation status during error handling: %s", update_error)
+                    if old_status != new_status:
+                        collections_total.labels(status=old_status.value).dec()
+                        collections_total.labels(status=new_status.value).inc()
 
-            raise
+                    await updater.send_update("operation_completed", {"status": "completed", "result": result})
 
-        finally:
-            try:
-                if operation:
-                    current_status = await operation_repo.get_by_uuid(operation_id)
-                    from shared.database.models import OperationStatus as _OperationStatus
+                    logger.info(
+                        "Collection operation completed",
+                        extra={
+                            "operation_id": operation_id,
+                            "operation_type": operation["type"].value,
+                            "duration_seconds": duration,
+                            "success": result.get("success", False),
+                        },
+                    )
 
-                    if current_status and current_status.status == _OperationStatus.PROCESSING:
-                        await operation_repo.update_status(
-                            operation_id, _OperationStatus.FAILED, error_message="Task terminated unexpectedly"
-                        )
-                        await db.commit()
-            except Exception as final_error:  # pragma: no cover - defensive logging
-                logger.error("Failed to finalize operation status: %s", final_error)
+                    # Commit after notifying listeners; add_source will tolerate the small window
+                    await db.commit()
+
+                    return result
+
+            except Exception as exc:
+                logger.error("Operation %s failed: %s", operation_id, exc, exc_info=True)
+
                 with contextlib.suppress(Exception):
                     await db.rollback()
+
+                try:
+                    if operation:
+                        await _record_operation_metrics(
+                            operation_repo,
+                            operation_id,
+                            {
+                                "duration_seconds": time.time() - start_time,
+                                "error_type": type(exc).__name__,
+                                "error_message": str(exc),
+                                "success": False,
+                            },
+                        )
+
+                    await operation_repo.update_status(operation_id, OperationStatus.FAILED, error_message=str(exc))
+
+                    if operation and collection:
+                        collection_id = operation["collection_id"]
+                        operation_type = operation["type"]
+
+                        if operation_type == OperationType.INDEX:
+                            await collection_repo.update_status(
+                                collection["uuid"],
+                                CollectionStatus.ERROR,
+                                status_message=f"Initial indexing failed: {str(exc)}",
+                            )
+                        elif operation_type == OperationType.REINDEX:
+                            await collection_repo.update_status(
+                                collection["uuid"],
+                                CollectionStatus.DEGRADED,
+                                status_message=f"Re-indexing failed: {str(exc)}. Original collection still available.",
+                            )
+                            await reindex_tasks._cleanup_staging_resources(collection_id, operation)
+
+                    # updater context manager handles failure updates
+                except Exception as update_error:  # pragma: no cover - defensive logging
+                    logger.error("Failed to update operation status during error handling: %s", update_error)
+
+                raise
+
+            finally:
+                try:
+                    if operation:
+                        current_status = await operation_repo.get_by_uuid(operation_id)
+                        from shared.database.models import OperationStatus as _OperationStatus
+
+                        if current_status and current_status.status == _OperationStatus.PROCESSING:
+                            await operation_repo.update_status(
+                                operation_id, _OperationStatus.FAILED, error_message="Task terminated unexpectedly"
+                            )
+                            await db.commit()
+                except Exception as final_error:  # pragma: no cover - defensive logging
+                    logger.error("Failed to finalize operation status: %s", final_error)
+                    with contextlib.suppress(Exception):
+                        await db.rollback()
+    finally:
+        if close_pg_manager:
+            close_fn = getattr(pg_manager, "close", None)
+            if close_fn is not None:
+                with contextlib.suppress(Exception):
+                    await await_if_awaitable(close_fn())
 
 
 async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
