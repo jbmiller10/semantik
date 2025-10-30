@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
@@ -21,7 +21,9 @@ from packages.webui.api.v2.schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.services.factory import get_projection_service
-from packages.webui.services.projection_service import ProjectionService
+
+if TYPE_CHECKING:
+    from packages.webui.services.projection_service import ProjectionService
 
 logger = logging.getLogger(__name__)
 
