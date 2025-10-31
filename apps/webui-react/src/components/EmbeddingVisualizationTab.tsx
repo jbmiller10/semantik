@@ -1092,7 +1092,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
                   theme={{ statusBar: true }}
-                  mode={effectiveRenderMode}
+                  config={{ mode: effectiveRenderMode }}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
                   onTooltip={handleTooltip}
                   customTooltip={tooltipRendererConfig}
