@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
-import type { CustomComponent, DataPoint, EmbeddingViewConfig } from 'embedding-atlas/react';
+import type { DataPoint } from 'embedding-atlas/react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
@@ -71,45 +71,12 @@ type RenderMode = 'auto' | 'points' | 'density';
 const DENSITY_THRESHOLD = 20_000;
 const RENDER_MODE_OPTIONS: RenderMode[] = ['auto', 'points', 'density'];
 
-type TooltipRendererProps = {
-  tooltip: DataPoint | null;
-  tooltipState: ProjectionTooltipState;
-  ids?: Int32Array;
-};
-
 type TooltipIndexCandidate = {
   index?: number;
   rowIndex?: number;
   pointIndex?: number;
   i?: number;
 };
-
-class ProjectionTooltipRenderer {
-  private readonly target: HTMLElement;
-
-  constructor(target: HTMLElement, props: TooltipRendererProps) {
-    this.target = target;
-    this.update(props);
-  }
-
-  update(props: TooltipRendererProps) {
-    renderTooltipContent(this.target, props);
-  }
-
-  destroy() {
-    this.target.replaceChildren();
-  }
-}
-
-function renderTooltipContent(target: HTMLElement, props: TooltipRendererProps) {
-  const { tooltip, tooltipState, ids } = props;
-  target.replaceChildren();
-
-  const content = createTooltipNode({ tooltip, tooltipState, ids });
-  if (content) {
-    target.appendChild(content);
-  }
-}
 
 function getTooltipIndex(tooltip: DataPoint | null): number | null {
   if (!tooltip || typeof tooltip !== 'object') {
@@ -128,99 +95,27 @@ function getTooltipIndex(tooltip: DataPoint | null): number | null {
   return null;
 }
 
-function createTooltipNode({
-  tooltip,
-  tooltipState,
-  ids,
-}: TooltipRendererProps): HTMLElement | null {
-  if (!tooltip) {
-    return null;
-  }
-
-  const index = getTooltipIndex(tooltip);
-  if (index === null) {
-    return null;
-  }
-
-  const selectedId = ids && index >= 0 && index < ids.length ? ids[index] ?? null : null;
-  const metadata =
-    selectedId !== null && tooltipState.metadata?.selectedId === selectedId ? tooltipState.metadata : null;
-  const status = metadata ? 'success' : tooltipState.status;
-
-  if (status === 'idle' && !metadata) {
-    return null;
-  }
-
-  const container = document.createElement('div');
-  container.setAttribute('role', 'tooltip');
-  container.setAttribute('aria-live', 'polite');
-  container.className =
-    'pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[12px] text-gray-700 shadow-md';
-
-  if (status === 'loading' && !metadata) {
-    container.textContent = 'Loading...';
-    return container;
-  }
-
-  if (status === 'error' && !metadata) {
-    container.textContent = 'No metadata available';
-    return container;
-  }
-
-  if (!metadata) {
-    return null;
-  }
-
-  const contentWrapper = document.createElement('div');
-  contentWrapper.className = 'space-y-1';
-
-  if (metadata.documentId) {
-    const docEl = document.createElement('div');
-    docEl.className = 'font-medium text-gray-800';
-    docEl.textContent = `Document ${metadata.documentId}`;
-    contentWrapper.appendChild(docEl);
-  }
-
-  if (typeof metadata.chunkIndex === 'number') {
-    const chunkEl = document.createElement('div');
-    chunkEl.className = 'text-gray-500';
-    chunkEl.textContent = `Chunk #${metadata.chunkIndex}`;
-    contentWrapper.appendChild(chunkEl);
-  }
-
-  const previewEl = document.createElement('div');
-  previewEl.className = 'text-gray-600';
-  const previewText = metadata.contentPreview && metadata.contentPreview.trim().length > 0
-    ? metadata.contentPreview.slice(0, 200)
-    : 'No metadata available';
-  previewEl.textContent = previewText;
-  contentWrapper.appendChild(previewEl);
-
-  container.appendChild(contentWrapper);
-  return container;
-}
-
 const REDUCER_OPTIONS: Array<{
   value: ProjectionReducer;
   label: string;
   description: string;
 }> = [
-  {
-    value: 'umap',
-    label: 'UMAP',
-    description: 'Uniform Manifold Approximation and Projection (fast, good global + local structure).',
-  },
-  {
-    value: 'tsne',
-    label: 't-SNE',
-    description: 't-distributed Stochastic Neighbor Embedding (great local detail, slower).',
-  },
-  {
-    value: 'pca',
-    label: 'PCA',
-    description: 'Principal Component Analysis (linear baseline, very fast).',
-  },
-];
+    {
+      value: 'umap',
+      label: 'UMAP',
+      description: 'Uniform Manifold Approximation and Projection (fast, good global + local structure).',
+    },
+    {
+      value: 'tsne',
+      label: 't-SNE',
+      description: 't-distributed Stochastic Neighbor Embedding (great local detail, slower).',
+    },
+    {
+      value: 'pca',
+      label: 'PCA',
+      description: 'Principal Component Analysis (linear baseline, very fast).',
+    },
+  ];
 
 function statusBadge(status: ProjectionMetadata['status'] | string) {
   const base = 'px-2 py-1 rounded-full text-xs font-medium';
@@ -501,11 +396,6 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     }
     return activeProjection.pointCount >= DENSITY_THRESHOLD ? 'density' : 'points';
   }, [currentRenderMode, activeProjection.pointCount]);
-
-  const embeddingViewConfig = useMemo<EmbeddingViewConfig>(() => ({
-    mode: effectiveRenderMode,
-  }), [effectiveRenderMode]);
-
   const hasLegend = Boolean(activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0);
 
   const clusterLabels = useMemo(() => {
@@ -524,16 +414,6 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
   const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
   const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
-
-  const tooltipRendererConfig = useMemo(() => {
-    return {
-      class: ProjectionTooltipRenderer,
-      props: {
-        tooltipState,
-        ids: activeProjection.ids,
-      },
-    } satisfies CustomComponent<HTMLDivElement, TooltipRendererProps>;
-  }, [activeProjection.ids, tooltipState]);
 
   const handleSelectionChange = async (indices: number[]) => {
     if (!activeProjection.projectionId || !activeProjection.ids) {
@@ -812,11 +692,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   key={option.value}
                   type="button"
                   onClick={() => setSelectedReducer(option.value)}
-                  className={`border rounded-lg p-3 text-left transition-colors ${
-                    selectedReducer === option.value
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 hover:border-purple-300'
-                  }`}
+                  className={`border rounded-lg p-3 text-left transition-colors ${selectedReducer === option.value
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-gray-200 hover:border-purple-300'
+                    }`}
                 >
                   <div className="font-medium text-gray-900">{option.label}</div>
                   <p className="text-sm text-gray-600 mt-1">{option.description}</p>
@@ -1034,11 +913,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                           key={mode}
                           type="button"
                           onClick={() => handleRenderModeChange(mode)}
-                          className={`px-2.5 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 ${
-                            isActive
-                              ? 'bg-purple-600 text-white shadow-sm'
-                              : 'text-gray-600 hover:bg-purple-50'
-                          }`}
+                          className={`px-2.5 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 ${isActive
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-gray-600 hover:bg-purple-50'
+                            }`}
                           aria-pressed={isActive}
                         >
                           {label}
@@ -1119,30 +997,87 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
                   theme={{ statusBar: true }}
-                  config={embeddingViewConfig}
+                  // Pass mode directly; config prop is ignored in some builds.
+                  mode={effectiveRenderMode}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
                   onTooltip={handleTooltip}
-                  customTooltip={tooltipRendererConfig}
+                  customTooltip={({ tooltip }) => {
+                    // Render tooltip via function to avoid class-based CustomComponent issues across builds.
+                    if (!tooltip) return null;
+                    const idx = getTooltipIndex(tooltip);
+                    if (idx == null) return null;
+                    const ids = activeProjection.ids;
+                    const selectedId = ids && idx >= 0 && idx < ids.length ? ids[idx] ?? null : null;
+                    const metadata =
+                      selectedId !== null && tooltipState.metadata?.selectedId === selectedId
+                        ? tooltipState.metadata
+                        : null;
+                    const status = metadata ? 'success' : tooltipState.status;
+
+                    if (status === 'idle' && !metadata) {
+                      return null;
+                    }
+
+                    const base =
+                      'pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[12px] text-gray-700 shadow-md';
+
+                    if (status === 'loading' && !metadata) {
+                      return (
+                        <div role="tooltip" aria-live="polite" className={base}>
+                          <div className="text-gray-500">Loading...</div>
+                        </div>
+                      );
+                    }
+
+                    if (status === 'error' && !metadata) {
+                      return (
+                        <div role="tooltip" aria-live="polite" className={base}>
+                          <div className="text-gray-500">No metadata available</div>
+                        </div>
+                      );
+                    }
+
+                    if (!metadata) {
+                      return null;
+                    }
+
+                    const preview = metadata.contentPreview?.trim();
+                    const previewText = preview && preview.length > 0 ? preview.slice(0, 200) : 'No metadata available';
+
+                    return (
+                      <div role="tooltip" aria-live="polite" className={base}>
+                        <div className="space-y-1">
+                          {metadata.documentId && (
+                            <div className="font-medium text-gray-800">Document {metadata.documentId}</div>
+                          )}
+                          {typeof metadata.chunkIndex === 'number' && (
+                            <div className="text-gray-500">Chunk #{metadata.chunkIndex}</div>
+                          )}
+                          <div className="text-gray-600">{previewText}</div>
+                        </div>
+                      </div>
+                    );
+                  }}
                   onSelection={(points) => {
                     // Accept both numeric indices and { index } objects
                     const indices = Array.isArray(points)
                       ? points
-                          .map((p) =>
-                            typeof p === 'number'
-                              ? p
-                              : p && typeof p === 'object'
-                                ? (typeof (p as any).index === 'number'
-                                    ? (p as any).index
-                                    : typeof (p as any).rowIndex === 'number'
-                                      ? (p as any).rowIndex
-                                      : typeof (p as any).pointIndex === 'number'
-                                        ? (p as any).pointIndex
-                                        : typeof (p as any).i === 'number'
-                                          ? (p as any).i
-                                          : -1)
-                                : -1
-                          )
-                          .filter((idx) => Number.isInteger(idx) && idx >= 0)
+                        .map((p) =>
+                          typeof p === 'number'
+                            ? p
+                            : p && typeof p === 'object'
+                              ? (typeof (p as any).index === 'number'
+                                ? (p as any).index
+                                : typeof (p as any).rowIndex === 'number'
+                                  ? (p as any).rowIndex
+                                  : typeof (p as any).pointIndex === 'number'
+                                    ? (p as any).pointIndex
+                                    : typeof (p as any).i === 'number'
+                                      ? (p as any).i
+                                      : -1)
+                              : -1
+                        )
+                        .filter((idx) => Number.isInteger(idx) && idx >= 0)
                       : [];
                     void handleSelectionChange(indices);
                   }}
