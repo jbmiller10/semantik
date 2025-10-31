@@ -25,6 +25,19 @@ export const TOOLTIP_CACHE_TTL_MS = 60_000;
 export const TOOLTIP_DEBOUNCE_MS = 50;
 export const TOOLTIP_MAX_INFLIGHT = 5;
 
+function isRequestAborted(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = error as { code?: string; name?: string };
+  return (
+    maybeError.code === 'ERR_CANCELED' ||
+    maybeError.name === 'CanceledError' ||
+    maybeError.name === 'AbortError'
+  );
+}
+
 function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
   const preview = typeof item?.content_preview === 'string' ? item.content_preview.slice(0, 200) : null;
   return {
@@ -48,6 +61,7 @@ export function useProjectionTooltip(
   const latestRequestToken = useRef(0);
   const inflightTokens = useRef<number[]>([]);
   const cancelledTokens = useRef<Set<number>>(new Set());
+  const controllersRef = useRef<Map<number, AbortController>>(new Map());
 
   const [state, setState] = useState<ProjectionTooltipState>({
     status: 'idle',
@@ -60,6 +74,8 @@ export function useProjectionTooltip(
   }, []);
 
   useEffect(() => {
+    controllersRef.current.forEach((controller) => controller.abort());
+    controllersRef.current.clear();
     cacheRef.current.clear();
     cancelledTokens.current.clear();
     inflightTokens.current = [];
@@ -68,6 +84,10 @@ export function useProjectionTooltip(
       debounceTimerRef.current = null;
     }
     clearState();
+    return () => {
+      controllersRef.current.forEach((controller) => controller.abort());
+      controllersRef.current.clear();
+    };
   }, [projectionId, clearState]);
 
   const scheduleFetch = useCallback(
@@ -121,19 +141,27 @@ export function useProjectionTooltip(
       });
 
       const token = ++latestRequestToken.current;
+      const controller = new AbortController();
+      controllersRef.current.set(token, controller);
       inflightTokens.current.push(token);
       if (inflightTokens.current.length > TOOLTIP_MAX_INFLIGHT) {
         const dropped = inflightTokens.current.shift();
         if (typeof dropped === 'number') {
           cancelledTokens.current.add(dropped);
+          const droppedController = controllersRef.current.get(dropped);
+          if (droppedController) {
+            droppedController.abort();
+            controllersRef.current.delete(dropped);
+          }
         }
       }
 
       void projectionsV2Api
-        .select(collectionId, projectionId, [selectedId])
+        .select(collectionId, projectionId, [selectedId], { signal: controller.signal })
         .then((response) => {
           if (
             cancelledTokens.current.has(token) ||
+            controller.signal.aborted ||
             latestRequestToken.current !== token
           ) {
             return;
@@ -148,8 +176,8 @@ export function useProjectionTooltip(
             metadata,
           });
         })
-        .catch(() => {
-          if (cancelledTokens.current.has(token)) {
+        .catch((error) => {
+          if (cancelledTokens.current.has(token) || controller.signal.aborted || isRequestAborted(error)) {
             return;
           }
           cacheRef.current.set(selectedId, {
@@ -168,6 +196,7 @@ export function useProjectionTooltip(
         })
         .finally(() => {
           cancelledTokens.current.delete(token);
+          controllersRef.current.delete(token);
           inflightTokens.current = inflightTokens.current.filter((t) => t !== token);
         });
     },
@@ -187,7 +216,8 @@ export function useProjectionTooltip(
       }
 
       const point = value as DataPoint & { index?: number };
-      if (typeof point.index !== 'number') {
+      const index = typeof point.index === 'number' ? point.index : null;
+      if (index === null) {
         setState({
           status: 'error',
           position: { x: point.x, y: point.y },
@@ -198,7 +228,7 @@ export function useProjectionTooltip(
       }
 
       debounceTimerRef.current = setTimeout(() => {
-        scheduleFetch({ ...point, index: point.index });
+        scheduleFetch({ ...point, index });
       }, TOOLTIP_DEBOUNCE_MS);
     },
     [clearState, scheduleFetch]
