@@ -1,4 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
+import type { CustomComponent, DataPoint } from 'embedding-atlas/react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
@@ -6,6 +7,7 @@ import {
   useStartProjection,
 } from '../hooks/useProjections';
 import { useProjectionTooltip } from '../hooks/useProjectionTooltip';
+import type { ProjectionTooltipState } from '../hooks/useProjectionTooltip';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { projectionsV2Api } from '../services/api/v2/projections';
 import { searchV2Api } from '../services/api/v2/collections';
@@ -68,6 +70,112 @@ type RenderMode = 'auto' | 'points' | 'density';
 
 const DENSITY_THRESHOLD = 20_000;
 const RENDER_MODE_OPTIONS: RenderMode[] = ['auto', 'points', 'density'];
+
+type TooltipRendererProps = {
+  tooltip: DataPoint | null;
+  tooltipState: ProjectionTooltipState;
+  ids?: Int32Array;
+};
+
+class ProjectionTooltipRenderer {
+  private readonly target: HTMLElement;
+
+  constructor(target: HTMLElement, props: TooltipRendererProps) {
+    this.target = target;
+    this.update(props);
+  }
+
+  update(props: TooltipRendererProps) {
+    renderTooltipContent(this.target, props);
+  }
+
+  destroy() {
+    this.target.replaceChildren();
+  }
+}
+
+function renderTooltipContent(target: HTMLElement, props: TooltipRendererProps) {
+  const { tooltip, tooltipState, ids } = props;
+  target.replaceChildren();
+
+  const content = createTooltipNode({ tooltip, tooltipState, ids });
+  if (content) {
+    target.appendChild(content);
+  }
+}
+
+function createTooltipNode({
+  tooltip,
+  tooltipState,
+  ids,
+}: TooltipRendererProps): HTMLElement | null {
+  if (!tooltip) {
+    return null;
+  }
+
+  const indexProp = (tooltip as { index?: number }).index;
+  const index = typeof indexProp === 'number' ? indexProp : null;
+  if (index === null) {
+    return null;
+  }
+
+  const selectedId = ids && index >= 0 && index < ids.length ? ids[index] ?? null : null;
+  const metadata =
+    selectedId !== null && tooltipState.metadata?.selectedId === selectedId ? tooltipState.metadata : null;
+  const status = metadata ? 'success' : tooltipState.status;
+
+  if (status === 'idle' && !metadata) {
+    return null;
+  }
+
+  const container = document.createElement('div');
+  container.setAttribute('role', 'tooltip');
+  container.setAttribute('aria-live', 'polite');
+  container.className =
+    'pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[12px] text-gray-700 shadow-md';
+
+  if (status === 'loading' && !metadata) {
+    container.textContent = 'Loading...';
+    return container;
+  }
+
+  if (status === 'error' && !metadata) {
+    container.textContent = 'No metadata available';
+    return container;
+  }
+
+  if (!metadata) {
+    return null;
+  }
+
+  const contentWrapper = document.createElement('div');
+  contentWrapper.className = 'space-y-1';
+
+  if (metadata.documentId) {
+    const docEl = document.createElement('div');
+    docEl.className = 'font-medium text-gray-800';
+    docEl.textContent = `Document ${metadata.documentId}`;
+    contentWrapper.appendChild(docEl);
+  }
+
+  if (typeof metadata.chunkIndex === 'number') {
+    const chunkEl = document.createElement('div');
+    chunkEl.className = 'text-gray-500';
+    chunkEl.textContent = `Chunk #${metadata.chunkIndex}`;
+    contentWrapper.appendChild(chunkEl);
+  }
+
+  const previewEl = document.createElement('div');
+  previewEl.className = 'text-gray-600';
+  const previewText = metadata.contentPreview && metadata.contentPreview.trim().length > 0
+    ? metadata.contentPreview.slice(0, 200)
+    : 'No metadata available';
+  previewEl.textContent = previewText;
+  contentWrapper.appendChild(previewEl);
+
+  container.appendChild(contentWrapper);
+  return container;
+}
 
 const REDUCER_OPTIONS: Array<{
   value: ProjectionReducer;
@@ -172,7 +280,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const startProjection = useStartProjection(collectionId);
   const deleteProjection = useDeleteProjection(collectionId);
   const { setShowDocumentViewer, addToast } = useUIStore();
-  const { tooltipState, handleTooltip, clearTooltipCache } = useProjectionTooltip(
+  const { tooltipState, handleTooltip, handleTooltipLeave, clearTooltipCache } = useProjectionTooltip(
     collectionId ?? null,
     activeProjection.projectionId || null,
     activeProjection.ids
@@ -364,7 +472,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     return renderModeByProjection[activeProjection.projectionId] ?? 'auto';
   }, [activeProjection.projectionId, renderModeByProjection]);
 
-  const effectiveRenderMode = useMemo<RenderMode>(() => {
+  const effectiveRenderMode = useMemo<'points' | 'density'>(() => {
     if (currentRenderMode !== 'auto') {
       return currentRenderMode;
     }
@@ -389,6 +497,16 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
   const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
   const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
+
+  const tooltipRendererConfig = useMemo(() => {
+    return {
+      class: ProjectionTooltipRenderer,
+      props: {
+        tooltipState,
+        ids: activeProjection.ids,
+      },
+    } satisfies CustomComponent<HTMLDivElement, TooltipRendererProps>;
+  }, [activeProjection.ids, tooltipState]);
 
   const handleSelectionChange = async (indices: number[]) => {
     if (!activeProjection.projectionId || !activeProjection.ids) {
@@ -961,6 +1079,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               className="border border-gray-200 rounded-md overflow-hidden"
               ref={viewContainerRef}
               style={{ minHeight: '320px' }}
+              onPointerLeave={handleTooltipLeave}
             >
               <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
                 <EmbeddingView
@@ -973,60 +1092,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
                   theme={{ statusBar: true }}
-                  config={{ mode: effectiveRenderMode }}
+                  mode={effectiveRenderMode}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
                   onTooltip={handleTooltip}
-                  customTooltip={({ tooltip }) => {
-                    if (!tooltip) {
-                      return null;
-                    }
-                    const index = (tooltip as { index?: number }).index;
-                    const selectedId =
-                      typeof index === 'number' && activeProjection.ids && index >= 0 && index < activeProjection.ids.length
-                        ? activeProjection.ids[index]
-                        : null;
-                    const metadata =
-                      selectedId !== null && tooltipState.metadata?.selectedId === selectedId
-                        ? tooltipState.metadata
-                        : null;
-                    const status = metadata ? 'success' : tooltipState.status;
-                    if (status === 'idle' && !metadata) {
-                      return null;
-                    }
-                    const documentLabel = metadata?.documentId ?? null;
-                    const chunkLabel = metadata?.chunkIndex ?? null;
-                    const previewText = metadata?.contentPreview?.slice(0, 200) ?? null;
-
-                    return (
-                      <div
-                        role="tooltip"
-                        aria-live="polite"
-                        className="pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[11px] text-gray-700 shadow-md"
-                      >
-                        {status === 'loading' && !metadata ? (
-                          <div className="text-gray-500">Loading...</div>
-                        ) : null}
-                        {status === 'error' && !metadata ? (
-                          <div className="text-gray-500">No metadata available</div>
-                        ) : null}
-                        {metadata ? (
-                          <div className="space-y-1">
-                            {documentLabel ? (
-                              <div className="font-medium text-gray-800">Document {documentLabel}</div>
-                            ) : null}
-                            {typeof chunkLabel === 'number' ? (
-                              <div className="text-gray-500">Chunk #{chunkLabel}</div>
-                            ) : null}
-                            <div className="text-gray-600">
-                              {previewText && previewText.trim().length > 0
-                                ? previewText
-                                : 'No metadata available'}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  }}
+                  customTooltip={tooltipRendererConfig}
                   onSelection={(points) => {
                     const indices = Array.isArray(points)
                       ? points
