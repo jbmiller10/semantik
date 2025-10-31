@@ -1,10 +1,13 @@
 import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
+import type { DataPoint } from 'embedding-atlas/react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
   useDeleteProjection,
   useStartProjection,
 } from '../hooks/useProjections';
+import { useProjectionTooltip } from '../hooks/useProjectionTooltip';
+import type { ProjectionTooltipState } from '../hooks/useProjectionTooltip';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { projectionsV2Api } from '../services/api/v2/projections';
 import { searchV2Api } from '../services/api/v2/collections';
@@ -19,6 +22,7 @@ import type {
 } from '../types/projection';
 import type { SearchResult } from '../services/api/v2/types';
 import { getErrorMessage } from '../utils/errorUtils';
+import { createCategoryLabels, DEFAULT_CATEGORY_LABEL_OPTIONS } from '../utils/clusterLabels';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
 
@@ -62,27 +66,56 @@ const TSNE_METRIC_OPTIONS = ['euclidean'];
 const TSNE_INIT_OPTIONS: Array<'pca' | 'random'> = ['pca', 'random'];
 const SAMPLE_LIMIT_CAP = 200_000;
 
+type RenderMode = 'auto' | 'points' | 'density';
+
+const DENSITY_THRESHOLD = 20_000;
+const RENDER_MODE_OPTIONS: RenderMode[] = ['auto', 'points', 'density'];
+
+type TooltipIndexCandidate = {
+  index?: number;
+  rowIndex?: number;
+  pointIndex?: number;
+  i?: number;
+};
+
+function getTooltipIndex(tooltip: DataPoint | null): number | null {
+  if (!tooltip || typeof tooltip !== 'object') {
+    return null;
+  }
+
+  const candidate = tooltip as TooltipIndexCandidate;
+  const keys: Array<keyof TooltipIndexCandidate> = ['index', 'rowIndex', 'pointIndex', 'i'];
+  for (const key of keys) {
+    const value = candidate[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 const REDUCER_OPTIONS: Array<{
   value: ProjectionReducer;
   label: string;
   description: string;
 }> = [
-  {
-    value: 'umap',
-    label: 'UMAP',
-    description: 'Uniform Manifold Approximation and Projection (fast, good global + local structure).',
-  },
-  {
-    value: 'tsne',
-    label: 't-SNE',
-    description: 't-distributed Stochastic Neighbor Embedding (great local detail, slower).',
-  },
-  {
-    value: 'pca',
-    label: 'PCA',
-    description: 'Principal Component Analysis (linear baseline, very fast).',
-  },
-];
+    {
+      value: 'umap',
+      label: 'UMAP',
+      description: 'Uniform Manifold Approximation and Projection (fast, good global + local structure).',
+    },
+    {
+      value: 'tsne',
+      label: 't-SNE',
+      description: 't-distributed Stochastic Neighbor Embedding (great local detail, slower).',
+    },
+    {
+      value: 'pca',
+      label: 'PCA',
+      description: 'Principal Component Analysis (linear baseline, very fast).',
+    },
+  ];
 
 function statusBadge(status: ProjectionMetadata['status'] | string) {
   const base = 'px-2 py-1 rounded-full text-xs font-medium';
@@ -118,6 +151,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     pointCount: 0,
     status: 'idle',
   });
+  const [renderModeByProjection, setRenderModeByProjection] = useState<Record<string, RenderMode>>({});
   const [activeProjectionMeta, setActiveProjectionMeta] = useState<{
     color_by?: string;
     legend?: ProjectionLegendItem[];
@@ -126,6 +160,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     total_count?: number;
     degraded?: boolean;
   } | null>(null);
+  const [labelsEnabled, setLabelsEnabled] = useState(false);
   const [selectionState, setSelectionState] = useState<{
     indices: number[];
     items: ProjectionSelectionItem[];
@@ -163,6 +198,11 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const startProjection = useStartProjection(collectionId);
   const deleteProjection = useDeleteProjection(collectionId);
   const { setShowDocumentViewer, addToast } = useUIStore();
+  const { tooltipState, handleTooltip, handleTooltipLeave, clearTooltipCache } = useProjectionTooltip(
+    collectionId ?? null,
+    activeProjection.projectionId || null,
+    activeProjection.ids
+  );
 
   const { isConnected: isOperationConnected } = useOperationProgress(pendingOperationId, {
     showToasts: false,
@@ -262,6 +302,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     setActiveProjection({ projectionId: projection.id, pointCount: 0, status: 'loading' });
     setActiveProjectionMeta(null);
     setSelectionState({ indices: [], items: [], missing: [], loading: false });
+    clearTooltipCache();
 
     try {
       const metadataResponse = await projectionsV2Api.getMetadata(collectionId, projection.id);
@@ -325,6 +366,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
           total_count: parsedTotalCount,
           degraded: metaDegraded,
         });
+        setLabelsEnabled(legendPayload.length > 0);
       }
     } catch (error: unknown) {
       if (requestId === activeRequestId.current) {
@@ -342,6 +384,33 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   const handleRecomputeProjection = async () => {
     openRecomputeDialog();
   };
+
+  const currentRenderMode: RenderMode = useMemo(() => {
+    if (!activeProjection.projectionId) return 'auto';
+    return renderModeByProjection[activeProjection.projectionId] ?? 'auto';
+  }, [activeProjection.projectionId, renderModeByProjection]);
+
+  const effectiveRenderMode = useMemo<'points' | 'density'>(() => {
+    if (currentRenderMode !== 'auto') {
+      return currentRenderMode;
+    }
+    return activeProjection.pointCount >= DENSITY_THRESHOLD ? 'density' : 'points';
+  }, [currentRenderMode, activeProjection.pointCount]);
+  const hasLegend = Boolean(activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0);
+
+  const clusterLabels = useMemo(() => {
+    if (!labelsEnabled || !activeProjection.arrays || !hasLegend) {
+      return [];
+    }
+    return createCategoryLabels({
+      x: activeProjection.arrays.x,
+      y: activeProjection.arrays.y,
+      category: activeProjection.arrays.category,
+      legend: activeProjectionMeta?.legend ?? [],
+      minPoints: DEFAULT_CATEGORY_LABEL_OPTIONS.minPoints,
+      maxLabels: DEFAULT_CATEGORY_LABEL_OPTIONS.maxLabels,
+    });
+  }, [labelsEnabled, activeProjection.arrays, activeProjectionMeta?.legend, hasLegend]);
 
   const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
   const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
@@ -396,6 +465,20 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
         });
       }
     }
+  };
+
+  const handleRenderModeChange = (mode: RenderMode) => {
+    if (!activeProjection.projectionId) return;
+    setRenderModeByProjection((prev) => {
+      const existing = prev[activeProjection.projectionId];
+      if (existing === mode) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [activeProjection.projectionId]: mode,
+      };
+    });
   };
 
   const handleOpenDocument = (item: ProjectionSelectionItem) => {
@@ -609,11 +692,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   key={option.value}
                   type="button"
                   onClick={() => setSelectedReducer(option.value)}
-                  className={`border rounded-lg p-3 text-left transition-colors ${
-                    selectedReducer === option.value
-                      ? 'border-purple-500 bg-purple-50'
-                      : 'border-gray-200 hover:border-purple-300'
-                  }`}
+                  className={`border rounded-lg p-3 text-left transition-colors ${selectedReducer === option.value
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'border-gray-200 hover:border-purple-300'
+                    }`}
                 >
                   <div className="font-medium text-gray-900">{option.label}</div>
                   <p className="text-sm text-gray-600 mt-1">{option.description}</p>
@@ -814,6 +896,52 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               )}
             </div>
             <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
+                  <span className="font-medium text-gray-800">Rendering</span>
+                  <div className="inline-flex overflow-hidden rounded-md border border-gray-200 bg-white">
+                    {RENDER_MODE_OPTIONS.map((mode) => {
+                      const isActive = currentRenderMode === mode;
+                      const label =
+                        mode === 'auto'
+                          ? 'Auto'
+                          : mode === 'density'
+                            ? 'Density'
+                            : 'Points';
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => handleRenderModeChange(mode)}
+                          className={`px-2.5 py-1 text-xs font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 ${isActive
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-gray-600 hover:bg-purple-50'
+                            }`}
+                          aria-pressed={isActive}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {currentRenderMode === 'auto'
+                      ? `Auto switches to density at ${DENSITY_THRESHOLD.toLocaleString()}+ points`
+                      : `Forced ${currentRenderMode}`}
+                  </span>
+                </div>
+                {hasLegend ? (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      checked={labelsEnabled}
+                      onChange={(event) => setLabelsEnabled(event.target.checked)}
+                    />
+                    Show labels
+                  </label>
+                ) : null}
+              </div>
               {activeProjectionMeta?.color_by && (
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-gray-600">
@@ -856,6 +984,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               className="border border-gray-200 rounded-md overflow-hidden"
               ref={viewContainerRef}
               style={{ minHeight: '320px' }}
+              onPointerLeave={handleTooltipLeave}
             >
               <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
                 <EmbeddingView
@@ -867,18 +996,88 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   width={viewSize.width}
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
-                  theme={{ statusBar: false }}
+                  theme={{ statusBar: true }}
+                  // Pass mode directly; config prop is ignored in some builds.
+                  mode={effectiveRenderMode}
+                  labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
+                  onTooltip={handleTooltip}
+                  customTooltip={({ tooltip }) => {
+                    // Render tooltip via function to avoid class-based CustomComponent issues across builds.
+                    if (!tooltip) return null;
+                    const idx = getTooltipIndex(tooltip);
+                    if (idx == null) return null;
+                    const ids = activeProjection.ids;
+                    const selectedId = ids && idx >= 0 && idx < ids.length ? ids[idx] ?? null : null;
+                    const metadata =
+                      selectedId !== null && tooltipState.metadata?.selectedId === selectedId
+                        ? tooltipState.metadata
+                        : null;
+                    const status = metadata ? 'success' : tooltipState.status;
+
+                    if (status === 'idle' && !metadata) {
+                      return null;
+                    }
+
+                    const base =
+                      'pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[12px] text-gray-700 shadow-md';
+
+                    if (status === 'loading' && !metadata) {
+                      return (
+                        <div role="tooltip" aria-live="polite" className={base}>
+                          <div className="text-gray-500">Loading...</div>
+                        </div>
+                      );
+                    }
+
+                    if (status === 'error' && !metadata) {
+                      return (
+                        <div role="tooltip" aria-live="polite" className={base}>
+                          <div className="text-gray-500">No metadata available</div>
+                        </div>
+                      );
+                    }
+
+                    if (!metadata) {
+                      return null;
+                    }
+
+                    const preview = metadata.contentPreview?.trim();
+                    const previewText = preview && preview.length > 0 ? preview.slice(0, 200) : 'No metadata available';
+
+                    return (
+                      <div role="tooltip" aria-live="polite" className={base}>
+                        <div className="space-y-1">
+                          {metadata.documentId && (
+                            <div className="font-medium text-gray-800">Document {metadata.documentId}</div>
+                          )}
+                          {typeof metadata.chunkIndex === 'number' && (
+                            <div className="text-gray-500">Chunk #{metadata.chunkIndex}</div>
+                          )}
+                          <div className="text-gray-600">{previewText}</div>
+                        </div>
+                      </div>
+                    );
+                  }}
                   onSelection={(points) => {
+                    // Accept both numeric indices and { index } objects
                     const indices = Array.isArray(points)
                       ? points
-                          .map((point) => {
-                            if (point && typeof point === 'object' && 'index' in point) {
-                              const idx = (point as { index: unknown }).index;
-                              return typeof idx === 'number' ? idx : -1;
-                            }
-                            return -1;
-                          })
-                          .filter((idx) => typeof idx === 'number' && idx >= 0)
+                        .map((p) =>
+                          typeof p === 'number'
+                            ? p
+                            : p && typeof p === 'object'
+                              ? (typeof (p as any).index === 'number'
+                                ? (p as any).index
+                                : typeof (p as any).rowIndex === 'number'
+                                  ? (p as any).rowIndex
+                                  : typeof (p as any).pointIndex === 'number'
+                                    ? (p as any).pointIndex
+                                    : typeof (p as any).i === 'number'
+                                      ? (p as any).i
+                                      : -1)
+                              : -1
+                        )
+                        .filter((idx) => Number.isInteger(idx) && idx >= 0)
                       : [];
                     void handleSelectionChange(indices);
                   }}
