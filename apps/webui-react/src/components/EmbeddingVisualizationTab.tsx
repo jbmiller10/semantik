@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
-import type { CustomComponent, DataPoint } from 'embedding-atlas/react';
+import type { CustomComponent, DataPoint, EmbeddingViewConfig } from 'embedding-atlas/react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
 import {
   useCollectionProjections,
@@ -77,6 +77,13 @@ type TooltipRendererProps = {
   ids?: Int32Array;
 };
 
+type TooltipIndexCandidate = {
+  index?: number;
+  rowIndex?: number;
+  pointIndex?: number;
+  i?: number;
+};
+
 class ProjectionTooltipRenderer {
   private readonly target: HTMLElement;
 
@@ -104,6 +111,23 @@ function renderTooltipContent(target: HTMLElement, props: TooltipRendererProps) 
   }
 }
 
+function getTooltipIndex(tooltip: DataPoint | null): number | null {
+  if (!tooltip || typeof tooltip !== 'object') {
+    return null;
+  }
+
+  const candidate = tooltip as TooltipIndexCandidate;
+  const keys: Array<keyof TooltipIndexCandidate> = ['index', 'rowIndex', 'pointIndex', 'i'];
+  for (const key of keys) {
+    const value = candidate[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function createTooltipNode({
   tooltip,
   tooltipState,
@@ -113,8 +137,7 @@ function createTooltipNode({
     return null;
   }
 
-  const indexProp = (tooltip as { index?: number }).index;
-  const index = typeof indexProp === 'number' ? indexProp : null;
+  const index = getTooltipIndex(tooltip);
   if (index === null) {
     return null;
   }
@@ -478,6 +501,10 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     }
     return activeProjection.pointCount >= DENSITY_THRESHOLD ? 'density' : 'points';
   }, [currentRenderMode, activeProjection.pointCount]);
+
+  const embeddingViewConfig = useMemo<EmbeddingViewConfig>(() => ({
+    mode: effectiveRenderMode,
+  }), [effectiveRenderMode]);
 
   const hasLegend = Boolean(activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0);
 
@@ -1092,21 +1119,30 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
                   theme={{ statusBar: true }}
-                  config={{ mode: effectiveRenderMode }}
+                  config={embeddingViewConfig}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
                   onTooltip={handleTooltip}
                   customTooltip={tooltipRendererConfig}
                   onSelection={(points) => {
+                    // Accept both numeric indices and { index } objects
                     const indices = Array.isArray(points)
                       ? points
-                          .map((point) => {
-                            if (point && typeof point === 'object' && 'index' in point) {
-                              const idx = (point as { index: unknown }).index;
-                              return typeof idx === 'number' ? idx : -1;
-                            }
-                            return -1;
-                          })
-                          .filter((idx) => typeof idx === 'number' && idx >= 0)
+                          .map((p) =>
+                            typeof p === 'number'
+                              ? p
+                              : p && typeof p === 'object'
+                                ? (typeof (p as any).index === 'number'
+                                    ? (p as any).index
+                                    : typeof (p as any).rowIndex === 'number'
+                                      ? (p as any).rowIndex
+                                      : typeof (p as any).pointIndex === 'number'
+                                        ? (p as any).pointIndex
+                                        : typeof (p as any).i === 'number'
+                                          ? (p as any).i
+                                          : -1)
+                                : -1
+                          )
+                          .filter((idx) => Number.isInteger(idx) && idx >= 0)
                       : [];
                     void handleSelectionChange(indices);
                   }}

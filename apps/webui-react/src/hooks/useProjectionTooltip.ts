@@ -38,6 +38,13 @@ function isRequestAborted(error: unknown): boolean {
   );
 }
 
+function extractIndex(value: DataPoint | any): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const v: any = value;
+  const idx = v.index ?? v.rowIndex ?? v.pointIndex ?? v.i;
+  return typeof idx === 'number' ? idx : null;
+}
+
 function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
   const preview = typeof item?.content_preview === 'string' ? item.content_preview.slice(0, 200) : null;
   return {
@@ -216,7 +223,7 @@ export function useProjectionTooltip(
       }
 
       const point = value as DataPoint & { index?: number };
-      const index = typeof point.index === 'number' ? point.index : null;
+      const index = extractIndex(point);
       if (index === null) {
         setState({
           status: 'error',
