@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { render, screen, waitFor } from '@/tests/utils/test-utils';
+import { render, screen, waitFor, within } from '@/tests/utils/test-utils';
 import { act } from '@testing-library/react';
 import EmbeddingVisualizationTab from '../EmbeddingVisualizationTab';
 import type { ProjectionMetadata } from '../../types/projection';
@@ -8,6 +8,9 @@ import type { ProjectionMetadata } from '../../types/projection';
 let lastEmbeddingViewProps: any | null = null;
 const setShowDocumentViewerMock = vi.fn();
 const addToastMock = vi.fn();
+
+let lastOperationId: string | null = null;
+let lastOperationOptions: any | null = null;
 
 vi.mock('../../hooks/useProjections', () => ({
   useCollectionProjections: vi.fn(),
@@ -25,7 +28,11 @@ vi.mock('../../hooks/useProjectionTooltip', () => ({
 }));
 
 vi.mock('../../hooks/useOperationProgress', () => ({
-  useOperationProgress: vi.fn(() => ({ isConnected: false })),
+  useOperationProgress: vi.fn((operationId: string | null, options: any = {}) => {
+    lastOperationId = operationId;
+    lastOperationOptions = options;
+    return { isConnected: false };
+  }),
 }));
 
 vi.mock('../../stores/uiStore', () => ({
@@ -80,12 +87,16 @@ describe('EmbeddingVisualizationTab', () => {
     setShowDocumentViewerMock.mockReset();
     addToastMock.mockReset();
     lastEmbeddingViewProps = null;
+    lastOperationId = null;
+    lastOperationOptions = null;
 
     const mockProjections: ProjectionMetadata[] = [
       {
         id: 'projection-1',
         collection_id: collectionId,
         status: 'completed',
+        operation_id: 'op-existing',
+        operation_status: 'completed',
         reducer: 'umap',
         dimensionality: 2,
         created_at: new Date().toISOString(),
@@ -492,5 +503,655 @@ describe('EmbeddingVisualizationTab', () => {
       )
     ).toBeInTheDocument();
     expect(screen.getByText(/1 point\(s\) could not be resolved\./)).toBeInTheDocument();
+  });
+
+  it('shows a loading indicator while projection arrays are being fetched', async () => {
+    vi.mocked(projectionsV2Api.getMetadata).mockReturnValue(
+      new Promise(() => {
+        // Intentionally never resolve to keep the component in loading state
+      }) as any
+    );
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async () => {
+        throw new Error('getArtifact should not be called while metadata is unresolved');
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    expect(
+      await screen.findByText(/Loading projection data…/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows an error message when projection arrays are inconsistent', async () => {
+    const x = new Float32Array(10);
+    const y = new Float32Array(5);
+    const category = new Uint8Array(10);
+    const ids = new Int32Array(10);
+
+    for (let i = 0; i < 10; i += 1) {
+      x[i] = i;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+    for (let i = 0; i < 5; i += 1) {
+      y[i] = i;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {},
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    expect(
+      await screen.findByText(/Projection arrays have inconsistent lengths/)
+    ).toBeInTheDocument();
+  });
+
+  it('shows sampling badge with N of M points when projection is sampled', async () => {
+    const x = new Float32Array(50);
+    const y = new Float32Array(50);
+    const category = new Uint8Array(50);
+    const ids = new Int32Array(50);
+
+    for (let i = 0; i < 50; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+          sampled: true,
+          shown_count: 10,
+          total_count: 50,
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    const sampledBadge = await screen.findByText('Sampled');
+    expect(sampledBadge).toBeInTheDocument();
+    expect(sampledBadge).toHaveAttribute(
+      'title',
+      'Showing 10 of 50 points'
+    );
+  });
+
+  it('hides sampling badge when projection is not sampled', async () => {
+    const x = new Float32Array(30);
+    const y = new Float32Array(30);
+    const category = new Uint8Array(30);
+    const ids = new Int32Array(30);
+
+    for (let i = 0; i < 30; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+          sampled: false,
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText('Sampled')
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('validates recompute dialog inputs and shows error messages', async () => {
+    const x = new Float32Array(10);
+    const y = new Float32Array(10);
+    const category = new Uint8Array(10);
+    const ids = new Int32Array(10);
+
+    for (let i = 0; i < 10; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const colorBySelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(colorBySelect, 'filetype');
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    const recomputeButton = await screen.findByRole('button', {
+      name: /Recompute with File Type/i,
+    });
+    await user.click(recomputeButton);
+
+    const sampleSizeInput = await screen.findByPlaceholderText(/Optional/i);
+    await user.clear(sampleSizeInput);
+    await user.type(sampleSizeInput, '0');
+
+    const startButton = await screen.findByRole('button', { name: /^Start$/i });
+    await user.click(startButton);
+
+    expect(
+      await screen.findByText(/Sample size must be a positive number\./)
+    ).toBeInTheDocument();
+  });
+
+  it('starts recompute, shows progress banner, and closes dialog on success', async () => {
+    const x = new Float32Array(5);
+    const y = new Float32Array(5);
+    const category = new Uint8Array(5);
+    const ids = new Int32Array(5);
+
+    for (let i = 0; i < 5; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+
+    const refetchMock = vi.fn();
+
+    vi.mocked(useCollectionProjections).mockReturnValue({
+      data: [
+        {
+          id: 'projection-1',
+          collection_id: collectionId,
+          status: 'completed',
+          operation_id: 'op-existing',
+          operation_status: 'completed',
+          reducer: 'umap',
+          dimensionality: 2,
+          created_at: new Date().toISOString(),
+          meta: {},
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchMock,
+    } as any);
+
+    const mutateAsyncMock = vi.fn(async () => ({
+      id: 'projection-2',
+      collection_id: collectionId,
+      status: 'pending',
+      operation_id: 'op-123',
+      operation_status: 'processing',
+      reducer: 'umap',
+      dimensionality: 2,
+      created_at: new Date().toISOString(),
+      meta: {},
+    }));
+
+    vi.mocked(useStartProjection).mockReturnValue({
+      mutateAsync: mutateAsyncMock,
+      isPending: false,
+    } as any);
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const colorBySelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(colorBySelect, 'filetype');
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    const recomputeButton = await screen.findByRole('button', {
+      name: /Recompute with File Type/i,
+    });
+    await user.click(recomputeButton);
+
+    const sampleSizeInput = await screen.findByPlaceholderText(/Optional/i);
+    await user.clear(sampleSizeInput);
+    await user.type(sampleSizeInput, '1000');
+
+    const startButton = await screen.findByRole('button', { name: /^Start$/i });
+    await user.click(startButton);
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(refetchMock).toHaveBeenCalled();
+
+    expect(
+      screen.getByText(/Projection recompute in progress…/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Operation ID: op-123/)).toBeInTheDocument();
+    expect(screen.getByText(/Last known status: processing/)).toBeInTheDocument();
+
+    expect(lastOperationId).toBe('op-123');
+    expect(lastOperationOptions).toMatchObject({
+      showToasts: false,
+    });
+
+    // Simulate websocket completion callback
+    await act(async () => {
+      lastOperationOptions?.onComplete?.();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/Projection recompute in progress…/)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('resets recompute dialog fields when reopened', async () => {
+    const x = new Float32Array(5);
+    const y = new Float32Array(5);
+    const category = new Uint8Array(5);
+    const ids = new Int32Array(5);
+
+    for (let i = 0; i < 5; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = i + 1;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const colorBySelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(colorBySelect, 'filetype');
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    const openRecompute = async () => {
+      const recomputeButton = await screen.findByRole('button', {
+        name: /Recompute with File Type/i,
+      });
+      await user.click(recomputeButton);
+    };
+
+    await openRecompute();
+
+    const sampleSizeInput = await screen.findByPlaceholderText(/Optional/i);
+    await user.clear(sampleSizeInput);
+    await user.type(sampleSizeInput, '500');
+
+    const cancelButton = await screen.findByRole('button', { name: /Cancel/i });
+    await user.click(cancelButton);
+
+    await openRecompute();
+
+    const reopenedSampleInput = await screen.findByPlaceholderText(/Optional/i);
+    expect((reopenedSampleInput as HTMLInputElement).value).toBe('');
+  });
+
+  it('renders multi-selection state, applies stale-response guard, and toggles action button enabled states', async () => {
+    const x = new Float32Array(3);
+    const y = new Float32Array(3);
+    const category = new Uint8Array(3);
+    const ids = new Int32Array(3);
+
+    for (let i = 0; i < 3; i += 1) {
+      x[i] = i;
+      y[i] = 0;
+      category[i] = 0;
+      ids[i] = 300 + i;
+    }
+
+    vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+      data: {
+        id: 'projection-1',
+        collection_id: collectionId,
+        status: 'completed',
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date().toISOString(),
+        meta: {
+          color_by: 'document_id',
+        },
+      },
+    } as any);
+
+    vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+      async (_collection, _projection, artifactName) => {
+        if (artifactName === 'x') {
+          return { data: x.buffer } as any;
+        }
+        if (artifactName === 'y') {
+          return { data: y.buffer } as any;
+        }
+        if (artifactName === 'cat') {
+          return { data: category.buffer } as any;
+        }
+        if (artifactName === 'ids') {
+          return { data: ids.buffer } as any;
+        }
+        throw new Error(`Unexpected artifact request: ${artifactName}`);
+      }
+    );
+
+    const firstSelectionResponse = {
+      data: {
+        projection_id: 'projection-1',
+        items: [
+          {
+            selected_id: 300,
+            index: 0,
+            document_id: 'doc-first',
+            chunk_id: 1,
+            chunk_index: 0,
+            content_preview: 'First preview',
+          },
+          {
+            selected_id: 301,
+            index: 1,
+            document_id: null,
+            chunk_id: 2,
+            chunk_index: 1,
+            content_preview: null,
+          },
+        ],
+        missing_ids: [],
+        degraded: false,
+      },
+    };
+
+    const secondSelectionResponse = {
+      data: {
+        projection_id: 'projection-1',
+        items: [
+          {
+            selected_id: 302,
+            index: 2,
+            document_id: 'doc-second',
+            chunk_id: 3,
+            chunk_index: 2,
+            content_preview: 'Second preview',
+          },
+        ],
+        missing_ids: [],
+        degraded: false,
+      },
+    };
+
+    let resolveFirstSelection: ((value: any) => void) | null = null;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirstSelection = resolve;
+    });
+
+    vi.mocked(projectionsV2Api.select)
+      .mockImplementationOnce(async () => firstPromise as any)
+      .mockResolvedValueOnce(secondSelectionResponse as any);
+
+    const user = userEvent.setup();
+
+    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+
+    const viewButton = await screen.findByRole('button', { name: /view/i });
+    await user.click(viewButton);
+
+    await waitFor(() => {
+      expect(lastEmbeddingViewProps).not.toBeNull();
+    });
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([0, 1]);
+    });
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([2]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Selection')).toBeInTheDocument();
+      expect(screen.getByText(/Indices: 1/)).toBeInTheDocument();
+      expect(screen.getByText(/Point #3/)).toBeInTheDocument();
+      expect(screen.getByText(/ID 302/)).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveFirstSelection?.(firstSelectionResponse as any);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Point #3/)).toBeInTheDocument();
+      expect(screen.getByText(/ID 302/)).toBeInTheDocument();
+    });
+
+    vi.mocked(projectionsV2Api.select).mockResolvedValue({
+      data: {
+        projection_id: 'projection-1',
+        items: firstSelectionResponse.data.items,
+        missing_ids: [],
+        degraded: false,
+      },
+    } as any);
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([0, 1]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Selection/)).toBeInTheDocument();
+      expect(screen.getByText(/Indices: 2/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Actions apply to the first selected point/)
+      ).toBeInTheDocument();
+    });
+
+    const openButtons = screen.getAllByRole('button', { name: /^open$/i });
+    const similarButtons = screen.getAllByRole('button', { name: /find similar/i });
+
+    expect(openButtons[0]).toBeEnabled();
+    expect(openButtons[1]).toBeDisabled();
+    expect(similarButtons[0]).toBeEnabled();
+    expect(similarButtons[1]).toBeDisabled();
   });
 });
