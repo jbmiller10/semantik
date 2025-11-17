@@ -16,6 +16,19 @@ Always ensure Black and Ruff pass before marking a ticket complete—rerun `make
 ## Testing Guidelines
 Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
 
+### Frontend E2E (Cypress)
+A minimal Cypress harness exists for projection visualization flows (`cypress/e2e/projection_visualize.cy.ts`) with config in `cypress.config.ts` (base URL `http://localhost:5173`). To run these tests:
+
+- Start the backend as usual, e.g.:
+  - `source .env && PYTHONPATH=/home/john/semantik uv run python -m uvicorn packages.webui.main:app --host 0.0.0.0 --port 8080 --reload`
+- Start the frontend dev server:
+  - `npm run dev:frontend`
+- Install Cypress once at the repo root:
+  - `npm install -D cypress`
+- Then run Cypress against the projection spec:
+  - Interactive: `npx cypress open` (select `cypress/e2e/projection_visualize.cy.ts`)
+  - Headless: `npx cypress run --spec cypress/e2e/projection_visualize.cy.ts`
+
 ### Dedicated Test Database
 The project includes a dedicated PostgreSQL instance for integration and API tests to ensure test isolation. Start it using the `testing` Docker Compose profile:
 
