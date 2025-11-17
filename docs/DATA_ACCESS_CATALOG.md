@@ -2,6 +2,10 @@
 
 This document catalogs existing data access points for embeddings and operations that the projection pipeline should use or extend.
 
+For an end‑to‑end view of how these data access points feed the projection
+visualization (artifacts, metadata, sampling, render modes, selection, and
+tooltips), see also `docs/EMBEDDING_VISUALIZATION.md`.
+
 ## Table of Contents
 1. [Vector/Embedding Access (Qdrant)](#vectorembedding-access-qdrant)
 2. [Database Repositories](#database-repositories)
