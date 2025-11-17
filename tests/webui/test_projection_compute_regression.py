@@ -327,8 +327,8 @@ def test_compute_projection_umap_failure_falls_back_to_pca(
 
     # Configure the stub repository so that the projection run requests UMAP
     # with explicit reducer config that should be preserved when falling back.
-    projection_module._ProjectionRunRepository.default_reducer = "umap"
-    projection_module._ProjectionRunRepository.default_config = {
+    _ProjectionRunRepository.default_reducer = "umap"
+    _ProjectionRunRepository.default_config = {
         "color_by": "document_id",
         "n_neighbors": 10,
         "min_dist": 0.05,
@@ -413,8 +413,8 @@ def test_compute_projection_uses_overflow_category_bucket(
         lambda: _FakePostgresConnectionManager(_happy_session_factory),
     )
 
-    projection_module._ProjectionRunRepository.default_reducer = "pca"
-    projection_module._ProjectionRunRepository.default_config = {"color_by": "document_id"}
+    _ProjectionRunRepository.default_reducer = "pca"
+    _ProjectionRunRepository.default_config = {"color_by": "document_id"}
 
     monkeypatch.setattr(projection_module, "ProjectionRunRepository", _ProjectionRunRepository)
     monkeypatch.setattr(projection_module, "OperationRepository", _OperationRepository)

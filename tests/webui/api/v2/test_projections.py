@@ -800,3 +800,172 @@ async def test_stream_missing_artifact_marks_run_degraded(
     assert refreshed is not None
     assert isinstance(refreshed.meta, dict)
     assert refreshed.meta.get("degraded") is True
+
+
+@pytest.mark.asyncio()
+async def test_stream_projection_artifact_happy_path(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming an existing artifact should return bytes with stable headers."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = b"\x01\x02\x03\x04"
+    (run_dir / "x.f32.bin").write_bytes(payload)
+
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    response = await api_client.get(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/arrays/x",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.content == payload
+    assert response.headers.get("Content-Length") == str(len(payload))
+    content_disposition = response.headers.get("Content-Disposition") or ""
+    assert "x.f32.bin" in content_disposition
+
+
+@pytest.mark.asyncio()
+async def test_stream_projection_artifact_forbidden_for_non_owner(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming artifacts from another user's collection should be forbidden."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    # Collection is owned by other_user_db, but api_auth_headers authenticates test_user_db.
+    collection = await collection_factory(owner_id=other_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(projection_run)
+    await db_session.commit()
+
+    response = await api_client.get(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/arrays/x",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 403, response.text
+
+
+@pytest.mark.asyncio()
+async def test_stream_projection_artifact_rejects_invalid_name(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Artifact names outside the allowed set should be rejected defensively."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(projection_run)
+    await db_session.commit()
+
+    # Use a suspicious-looking artifact name; the service should treat this as
+    # an invalid artifact key rather than attempting path traversal.
+    response = await api_client.get(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/arrays/../secret",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 400, response.text
+
+
+@pytest.mark.asyncio()
+async def test_delete_projection_forbidden_for_non_owner(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """Deleting another user's projection should be rejected with 403."""
+
+    collection = await collection_factory(owner_id=other_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(projection_run)
+    await db_session.commit()
+
+    response = await api_client.delete(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 403, response.text

@@ -1,9 +1,26 @@
 /**
- * Patch WebGPU adapter/device requests so Embedding Atlas can operate on hardware
- * that lacks optional features like `shader-f16`. The library currently requests
- * that feature unconditionally; on adapters that do not support it, the call to
- * `requestDevice` rejects, leaving the visualization blank. This hook strips any
- * unsupported required features before delegating to the native browser APIs.
+ * WebGPU compatibility shim for Embedding Atlas.
+ *
+ * Embedding Atlas' WebGPU path currently relies on optional features (such as
+ * `shader-f16`) that are not available on all adapters. When these features are
+ * missing, the library's internal `requestDevice` call rejects and the
+ * visualization never renders.
+ *
+ * To keep projections reliable across a wide range of browsers and GPUs, this
+ * patch intercepts `navigator.gpu.requestAdapter` and forces it to return
+ * `null`. This nudges Embedding Atlas onto its WebGL code path, which is more
+ * widely supported today.
+ *
+ * Behaviour:
+ * - Runs only in the browser (no-ops on the server or when `navigator.gpu`
+ *   is unavailable).
+ * - Calls the original `requestAdapter` once for side‑effects, then returns
+ *   `null` so WebGPU is effectively disabled for Embedding Atlas.
+ * - Sets `window.__embeddingAtlasWebgpuFallback = true` and logs a console
+ *   warning so operators can detect that WebGPU was disabled.
+ *
+ * This is an intentionally conservative default and may be revisited once
+ * Embedding Atlas' WebGPU implementation is stable across common hardware.
  */
 
 let patched = false;

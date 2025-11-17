@@ -784,7 +784,13 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
         setRecomputeError('Sample size must be a positive number.');
         return;
       }
-      config.sample_size = Math.floor(sampleNumeric);
+      const sampleSize = Math.floor(sampleNumeric);
+      // Encode sampling as a top-level field so the backend service can
+      // normalise aliases (sample_size / sample_limit / sample_n) into the
+      // immutable ProjectionRun.config used by the worker. Keeping this at the
+      // top level avoids reducer-specific config normalisation from dropping
+      // sampling controls (e.g. for t-SNE).
+      payload.sample_size = sampleSize;
     }
 
     if (Object.keys(config).length > 0) {
