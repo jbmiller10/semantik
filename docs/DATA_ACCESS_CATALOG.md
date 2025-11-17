@@ -333,19 +333,26 @@ class OperationType(str, enum.Enum):
 async def start_projection_build(
     collection_id: str,
     user_id: int,
-    parameters: dict[str, Any]
-) -> dict[str, Any]
-    """Initiate projection computation
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """Initiate projection computation for a collection.
 
-    Current flow:
+    Lifecycle semantics:
     1. Validate collection with get_by_uuid_with_permission_check()
-    2. Create ProjectionRun record
-    3. Create Operation record (type=PROJECTION_BUILD)
-    4. Commit transaction
-    5. Dispatch Celery task
+    2. Create a new ProjectionRun (status=PENDING) with reducer/config/color_by and sampling config
+    3. Create a new Operation (type=PROJECTION_BUILD, status=PENDING) linked via operation_uuid
+    4. Commit transaction (commit-before-enqueue)
+    5. Dispatch Celery task `webui.tasks.process_collection_operation`
 
-    Location: projection_service.py:63-139
-    TODO: Implement actual projection computation
+    Recompute behaviour:
+    - Every request creates a fresh ProjectionRun + Operation; previous runs are
+      retained as history and may be marked `meta["degraded"] = True` when the
+      underlying collection changes or the worker had to fall back to PCA.
+    - API responses surface both `status` (ProjectionRunStatus) and
+      `operation_status` (OperationStatus) alongside `operation_id` so callers
+      can treat projections as long-running jobs.
+
+    Location: packages/webui/services/projection_service.py::start_projection_build
     """
 
 async def get_projection_array(
@@ -367,8 +374,32 @@ async def select_projection_region(
 ) -> dict[str, Any]
     """Map screen coordinates to document/chunk IDs
 
-    Location: projection_service.py:197-223
-    TODO: Implement spatial indexing for selection
+    Semantics:
+    - Resolves on-disk artifacts under data_dir/semantik/projections/<collection>/<projection>.
+    - Returns chunk/document metadata and a degraded flag derived from ProjectionRun.meta
+      and projection_artifacts.degraded.
+    - When required artifacts are missing or meta.json is invalid, the run is marked
+      degraded via ProjectionRunRepository.update_metadata and a 4xx error is raised so
+      the UI can prompt for recompute.
+
+    Location: packages/webui/services/projection_service.py::select_projection_region
+    """
+
+async def delete_projection(
+    collection_id: str,
+    projection_id: str,
+    user_id: int,
+) -> None:
+    """Delete a projection run and its artifacts.
+
+    Semantics:
+    - Validates collection ownership.
+    - Rejects deletion for in-progress runs (status pending/running) with HTTP 409 so
+      workers are not racing with artifact removal.
+    - For completed/failed/cancelled runs, removes only the run's artifacts directory and
+      ProjectionRun row. Other runs and operations for the collection are unaffected.
+
+    Location: packages/webui/services/projection_service.py::delete_projection
     """
 ```
 

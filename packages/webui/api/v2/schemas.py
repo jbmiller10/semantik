@@ -207,6 +207,16 @@ class ProjectionBuildRequest(BaseModel):
         default="document_id",
         description="Attribute used to colour points in the projection",
     )
+    sample_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional cap on the number of vectors sampled when building the projection",
+    )
+    sample_n: int | None = Field(
+        default=None,
+        ge=1,
+        description="Alias for sample_size; kept for compatibility with earlier clients",
+    )
 
     @field_validator("color_by")
     @classmethod
@@ -224,6 +234,7 @@ class ProjectionBuildRequest(BaseModel):
                 "dimensionality": 2,
                 "config": {"n_neighbors": 15, "min_dist": 0.1},
                 "color_by": "document_id",
+                "sample_size": 5000,
             }
         }
     )
@@ -308,3 +319,10 @@ class ProjectionSelectionResponse(BaseModel):
     projection_id: str
     items: list[ProjectionSelectionItem]
     missing_ids: list[int] = Field(default_factory=list, description="IDs not found in the projection artifact")
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "True when the underlying projection run is degraded (e.g. "
+            "artifacts are stale, incomplete or produced via a fallback reducer)."
+        ),
+    )

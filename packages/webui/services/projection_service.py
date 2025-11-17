@@ -71,8 +71,23 @@ class ProjectionService:
         meta_raw = run.meta if isinstance(run.meta, dict) else None
         meta = dict(meta_raw) if meta_raw is not None else {}
 
+        projection_meta = meta.get("projection_artifacts")
+        if isinstance(projection_meta, dict) and "color_by" in projection_meta and "color_by" not in meta:
+            meta["color_by"] = projection_meta["color_by"]
         if config and "color_by" in config and "color_by" not in meta:
             meta["color_by"] = config["color_by"]
+
+        # Surface degraded flag in the top-level meta payload when present either
+        # on the run or within the projection_artifacts payload so API consumers
+        # can rely on a single boolean field.
+        if not meta.get("degraded"):
+            projection_degraded = False
+            if isinstance(projection_meta, dict):
+                projection_degraded = bool(projection_meta.get("degraded"))
+            if meta_raw and isinstance(meta_raw, dict):
+                projection_degraded = bool(meta_raw.get("degraded")) or projection_degraded
+            if projection_degraded:
+                meta["degraded"] = True
 
         if not meta:
             meta = None
@@ -194,7 +209,18 @@ class ProjectionService:
     ) -> dict[str, Any]:
         """Kick off a projection run for a collection.
 
-        Returns a placeholder response until the compute pipeline is implemented.
+        A projection build is always modelled as a *new* ProjectionRun and a
+        backing Operation record:
+
+        - Existing runs are never overwritten; recompute requests simply create
+          additional runs for the same collection.
+        - The ProjectionRun starts in ``PENDING`` while the Operation starts in
+          ``PENDING`` and is later advanced to ``PROCESSING`` / ``COMPLETED`` /
+          ``FAILED`` by the Celery task pipeline.
+
+        The returned payload exposes both the projection run status and the
+        operation status so that callers can treat projections as long‑running
+        jobs and track progress via WebSocket channels.
         """
 
         logger.info(
@@ -217,7 +243,19 @@ class ProjectionService:
 
         colour_by = str(parameters.get("color_by") or "document_id").lower()
         run_config: dict[str, Any] = dict(normalised_config or {})
+
+        # Persist colour mode and sampling controls as part of the immutable run
+        # configuration so that recompute and selection calls can faithfully
+        # describe how a particular projection was produced.
         run_config["color_by"] = colour_by
+
+        # Sampling knobs may be provided as top‑level parameters; normalise the
+        # common aliases into the stored config so the worker can derive a
+        # single sample_limit.
+        sample_aliases = ("sample_size", "sample_limit", "sample_n")
+        for alias in sample_aliases:
+            if alias in parameters and parameters[alias] is not None:
+                run_config[alias] = parameters[alias]
 
         run = await self.projection_repo.create(
             collection_id=collection.id,
@@ -387,7 +425,17 @@ class ProjectionService:
         if not storage_path_raw:
             raise HTTPException(status_code=409, detail="Projection artifacts are not yet available")
 
-        resolved_dir = await self._resolve_storage_directory(run, storage_path_raw)
+        try:
+            resolved_dir = await self._resolve_storage_directory(run, storage_path_raw)
+        except FileNotFoundError:
+            # Artifacts directory has gone missing; mark the run as degraded so
+            # callers can be prompted to recompute before surfacing the error.
+            try:
+                await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
+                await self.db_session.flush()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.warning("Failed to mark projection %s as degraded after missing artifacts directory", run.uuid)
+            raise
 
         file_path = (resolved_dir / self._ALLOWED_ARTIFACTS[normalized_name]).resolve()
 
@@ -395,6 +443,13 @@ class ProjectionService:
             raise PermissionError("Attempted access outside projection storage root")
 
         if not file_path.is_file():
+            # Individual artifact is missing; treat the run as degraded so
+            # metadata consumers can recommend recomputation.
+            try:
+                await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
+                await self.db_session.flush()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.warning("Failed to mark projection %s as degraded after missing artifact %s", run.uuid, artifact_name)
             raise FileNotFoundError(f"Projection artifact '{artifact_name}' not found")
 
         return file_path
@@ -445,6 +500,14 @@ class ProjectionService:
         try:
             artifacts_dir = await self._resolve_storage_directory(run, storage_path)
         except FileNotFoundError as exc:
+            # If the artifacts directory cannot be resolved anymore, consider
+            # the run degraded so future metadata calls can surface a recompute
+            # recommendation.
+            try:
+                await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
+                await self.db_session.flush()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.warning("Failed to mark projection %s as degraded after missing artifacts directory", run.uuid)
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -452,6 +515,13 @@ class ProjectionService:
         meta_path = artifacts_dir / "meta.json"
 
         if not ids_path.is_file():
+            # Missing ids array indicates the on-disk projection is incomplete;
+            # mark the run degraded while surfacing a 404 to the caller.
+            try:
+                await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
+                await self.db_session.flush()
+            except Exception:  # pragma: no cover - defensive logging
+                logger.warning("Failed to mark projection %s as degraded after missing ids artifact", run.uuid)
             raise HTTPException(status_code=404, detail="Projection ids artifact is missing")
 
         meta_payload: dict[str, Any] = {}
@@ -459,6 +529,14 @@ class ProjectionService:
             try:
                 meta_payload = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:  # pragma: no cover - defensive
+                # Corrupt metadata should not break selection entirely, but the
+                # run should be marked degraded so the UI can suggest a
+                # recompute.
+                try:
+                    await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
+                    await self.db_session.flush()
+                except Exception:  # pragma: no cover - defensive logging
+                    logger.warning("Failed to mark projection %s as degraded after invalid meta.json", run.uuid)
                 meta_payload = {}
 
         run_meta = run.meta if isinstance(run.meta, dict) else {}
@@ -578,6 +656,12 @@ class ProjectionService:
         run = await self.projection_repo.get_by_uuid(projection_id)
         if not run or run.collection_id != collection_id:
             raise EntityNotFoundError("projection_run", projection_id)
+
+        # Avoid deleting runs that are still being computed to prevent races
+        # with the worker writing artifacts. Callers should wait for the
+        # associated operation to reach a terminal state instead.
+        if run.status in {ProjectionRunStatus.PENDING, ProjectionRunStatus.RUNNING}:
+            raise HTTPException(status_code=409, detail="Projection is still in progress and cannot be deleted")
 
         storage_path = getattr(run, "storage_path", None)
         if storage_path:

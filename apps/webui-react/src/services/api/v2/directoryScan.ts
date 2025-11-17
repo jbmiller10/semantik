@@ -43,5 +43,21 @@ export const directoryScanV2Api = {
 
 // Helper function to generate a scan ID
 export const generateScanId = (): string => {
-  return crypto.randomUUID();
+  const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+
+  if (globalCrypto?.randomUUID) {
+    return globalCrypto.randomUUID();
+  }
+
+  if (globalCrypto?.getRandomValues) {
+    const bytes = globalCrypto.getRandomValues(new Uint8Array(16));
+    // RFC 4122 variant 1 UUID layout
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  // Last-resort fallback for very old browsers: timestamp + random suffix
+  return `scan-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
 };

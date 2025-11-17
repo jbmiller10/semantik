@@ -199,6 +199,7 @@ async def select_projection_region(
         projection_id=projection_id,
         items=items,
         missing_ids=[int(mid) for mid in payload.get("missing_ids", [])],
+        degraded=bool(payload.get("degraded", False)),
     )
 
 

@@ -3,6 +3,27 @@ import { createCategoryLabels } from '../clusterLabels';
 import type { ProjectionLegendItem } from '../../types/projection';
 
 describe('createCategoryLabels', () => {
+  it('emits a single centroid label for one category', () => {
+    const x = new Float32Array([0, 2, 4, 6, 8]);
+    const y = new Float32Array([0, 0, 0, 0, 0]);
+    const category = new Uint8Array([0, 0, 0, 0, 0]);
+    const legend: ProjectionLegendItem[] = [{ index: 0, label: 'Only Cluster', count: 5 }];
+
+    const labels = createCategoryLabels({
+      x,
+      y,
+      category,
+      legend,
+      minPoints: 3,
+      maxLabels: 10,
+    });
+
+    expect(labels).toHaveLength(1);
+    expect(labels[0].text).toBe('Only Cluster');
+    expect(labels[0].x).toBeCloseTo(4); // centroid of 0,2,4,6,8
+    expect(labels[0].y).toBeCloseTo(0);
+  });
+
   it('computes centroids and sorts by cluster size', () => {
     const x = new Float32Array([0, 1, 2, 10, 11, 12, 20, 21, 22]);
     const y = new Float32Array([0, 0, 0, 5, 5, 5, 10, 10, 10]);
@@ -91,4 +112,3 @@ describe('createCategoryLabels', () => {
     expect(createCategoryLabels({ x, y, category, legend: [], minPoints: 1, maxLabels: 5 })).toEqual([]);
   });
 });
-

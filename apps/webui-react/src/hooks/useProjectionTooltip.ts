@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DataPoint } from 'embedding-atlas/react';
 import { projectionsV2Api } from '../services/api/v2/projections';
 import { LruCache } from '../utils/lruCache';
+import { getProjectionPointIndex } from '../utils/projectionIndex';
 
 type TooltipStatus = 'idle' | 'loading' | 'success' | 'error';
 
@@ -36,13 +37,6 @@ function isRequestAborted(error: unknown): boolean {
     maybeError.name === 'CanceledError' ||
     maybeError.name === 'AbortError'
   );
-}
-
-function extractIndex(value: DataPoint | any): number | null {
-  if (!value || typeof value !== 'object') return null;
-  const v: any = value;
-  const idx = v.index ?? v.rowIndex ?? v.pointIndex ?? v.i;
-  return typeof idx === 'number' ? idx : null;
 }
 
 function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
@@ -222,8 +216,8 @@ export function useProjectionTooltip(
         return;
       }
 
-      const point = value as DataPoint & { index?: number };
-      const index = extractIndex(point);
+      const point = value as DataPoint;
+      const index = getProjectionPointIndex(point);
       if (index === null) {
         setState({
           status: 'error',
