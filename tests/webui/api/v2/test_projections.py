@@ -1,8 +1,10 @@
 """Integration tests for the v2 projections API."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
+import numpy as np
 import pytest
 from httpx import AsyncClient
 
@@ -55,6 +57,38 @@ async def test_start_projection_includes_operation_status(
     # Verify other fields
     assert body["reducer"] == "umap"
     assert body["dimensionality"] == 2
+
+
+@pytest.mark.asyncio()
+async def test_start_projection_accepts_sampling_parameters(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    stub_celery_send_task,
+) -> None:
+    """Sampling parameters should be accepted and persisted in config."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    request_payload = {
+        "reducer": "umap",
+        "dimensionality": 2,
+        "color_by": "document_id",
+        "sample_size": 1234,
+        "config": {"n_neighbors": 10, "min_dist": 0.2},
+    }
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections",
+        json=request_payload,
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 202, response.text
+    body = response.json()
+
+    assert body["config"] is not None
+    assert body["config"]["sample_size"] == 1234
 
 
 @pytest.mark.asyncio()
@@ -281,3 +315,488 @@ async def test_projection_without_operation_has_no_operation_status(
     # operation_status should be present but None/null
     assert "operation_status" in body or body.get("operation_status") is None
     assert body.get("operation_id") is None
+
+
+@pytest.mark.asyncio()
+async def test_get_projection_surfaces_degraded_meta_from_run(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """Projection metadata should expose degraded flag derived from run.meta."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        meta={"degraded": True, "color_by": "document_id"},
+    )
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    response = await api_client.get(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["meta"]["degraded"] is True
+    assert body["meta"]["color_by"] == "document_id"
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_happy_path(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selecting points should return items and missing_ids in a stable schema."""
+
+    # Route projection artifacts under a temporary data directory
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        point_count=3,
+    )
+
+    # Prepare on-disk artifacts
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    x = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    y = np.array([0.4, 0.5, 0.6], dtype=np.float32)
+    ids = np.array([101, 102, 103], dtype=np.int32)
+    cats = np.array([0, 1, 1], dtype=np.uint8)
+
+    x.tofile(run_dir / "x.f32.bin")
+    y.tofile(run_dir / "y.f32.bin")
+    ids.tofile(run_dir / "ids.i32.bin")
+    cats.tofile(run_dir / "cat.u8.bin")
+
+    meta_payload = {
+        "projection_id": projection_run.uuid,
+        "collection_id": collection.id,
+        "point_count": 3,
+        "total_count": 3,
+        "shown_count": 3,
+        "sampled": False,
+        "reducer_requested": "pca",
+        "reducer_used": "pca",
+        "reducer_params": {},
+        "dimensionality": 2,
+        "source_vector_collection": "vector-collection",
+        "sample_limit": 3,
+        "files": {
+            "x": "x.f32.bin",
+            "y": "y.f32.bin",
+            "ids": "ids.i32.bin",
+            "categories": "cat.u8.bin",
+        },
+        "color_by": "document_id",
+        "legend": [
+            {"index": 0, "label": "A", "count": 1},
+            {"index": 1, "label": "B", "count": 2},
+        ],
+        "original_ids": ["101", "102", "103"],
+        "category_counts": {"0": 1, "1": 2},
+    }
+    (run_dir / "meta.json").write_text(__import__("json").dumps(meta_payload), encoding="utf-8")
+
+    # storage_path is stored relative to data_dir
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    request_payload = {"ids": [101, 999]}
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/select",
+        json=request_payload,
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["projection_id"] == projection_run.uuid
+    assert body["degraded"] is False
+    assert body["missing_ids"] == [999]
+    assert len(body["items"]) == 1
+
+    item = body["items"][0]
+    assert item["selected_id"] == 101
+    assert item["index"] == 0
+    assert item["original_id"] == "101"
+    # Chunk and document metadata are optional and may be null when no chunk mapping exists
+    assert "chunk_id" in item
+    assert "document_id" in item
+    assert "chunk_index" in item
+    assert "content_preview" in item
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_degraded_flag(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selection responses should surface degraded projections."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        point_count=1,
+        meta={
+            "degraded": True,
+            "projection_artifacts": {"original_ids": ["42"], "degraded": True},
+        },
+    )
+
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    np.array([0.1], dtype=np.float32).tofile(run_dir / "x.f32.bin")
+    np.array([0.2], dtype=np.float32).tofile(run_dir / "y.f32.bin")
+    np.array([42], dtype=np.int32).tofile(run_dir / "ids.i32.bin")
+    np.array([0], dtype=np.uint8).tofile(run_dir / "cat.u8.bin")
+
+    meta_payload = {
+        "projection_id": projection_run.uuid,
+        "collection_id": collection.id,
+        "point_count": 1,
+        "total_count": 1,
+        "shown_count": 1,
+        "sampled": False,
+        "reducer_requested": "pca",
+        "reducer_used": "pca",
+        "reducer_params": {},
+        "dimensionality": 2,
+        "source_vector_collection": "vector-collection",
+        "sample_limit": 1,
+        "files": {
+            "x": "x.f32.bin",
+            "y": "y.f32.bin",
+            "ids": "ids.i32.bin",
+            "categories": "cat.u8.bin",
+        },
+        "color_by": "document_id",
+        "legend": [{"index": 0, "label": "A", "count": 1}],
+        "original_ids": ["42"],
+        "category_counts": {"0": 1},
+        "degraded": True,
+    }
+    (run_dir / "meta.json").write_text(__import__("json").dumps(meta_payload), encoding="utf-8")
+
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/select",
+        json={"ids": [42]},
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["projection_id"] == projection_run.uuid
+    assert body["degraded"] is True
+    assert body["missing_ids"] == []
+    assert len(body["items"]) == 1
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_missing_ids_marks_run_degraded(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing ids artifact should mark the projection run degraded."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        point_count=3,
+    )
+
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write some artifacts but deliberately omit ids.i32.bin
+    np.array([0.1, 0.2, 0.3], dtype=np.float32).tofile(run_dir / "x.f32.bin")
+    np.array([0.4, 0.5, 0.6], dtype=np.float32).tofile(run_dir / "y.f32.bin")
+    np.array([0, 1, 1], dtype=np.uint8).tofile(run_dir / "cat.u8.bin")
+
+    meta_payload = {
+        "projection_id": projection_run.uuid,
+        "collection_id": collection.id,
+        "point_count": 3,
+        "total_count": 3,
+        "shown_count": 3,
+        "sampled": False,
+        "reducer_requested": "pca",
+        "reducer_used": "pca",
+        "reducer_params": {},
+        "dimensionality": 2,
+        "source_vector_collection": "vector-collection",
+        "sample_limit": 3,
+        "files": {
+            "x": "x.f32.bin",
+            "y": "y.f32.bin",
+            "ids": "ids.i32.bin",
+            "categories": "cat.u8.bin",
+        },
+        "color_by": "document_id",
+        "legend": [
+            {"index": 0, "label": "A", "count": 1},
+            {"index": 1, "label": "B", "count": 2},
+        ],
+        "original_ids": ["101", "102", "103"],
+        "category_counts": {"0": 1, "1": 2},
+    }
+    (run_dir / "meta.json").write_text(__import__("json").dumps(meta_payload), encoding="utf-8")
+
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/select",
+        json={"ids": [101]},
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 404, response.text
+
+    refreshed = await db_session.get(ProjectionRun, projection_run.id)
+    assert refreshed is not None
+    assert isinstance(refreshed.meta, dict)
+    assert refreshed.meta.get("degraded") is True
+
+
+@pytest.mark.asyncio()
+async def test_delete_in_progress_projection_rejected(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """Deleting a projection that is still running should return a conflict error."""
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.RUNNING,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    db_session.add(projection_run)
+    await db_session.commit()
+
+    response = await api_client.delete(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 409, response.text
+    body = response.json()
+    assert "cannot be deleted" in body["detail"]
+
+
+@pytest.mark.asyncio()
+async def test_delete_completed_projection_removes_only_target(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Deleting a completed projection removes its artifacts and DB row without affecting others."""
+
+    # Route projection artifacts under a temporary data directory
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    run1 = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    run2 = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    run_dir1 = tmp_path / "semantik" / "projections" / collection.id / run1.uuid
+    run_dir2 = tmp_path / "semantik" / "projections" / collection.id / run2.uuid
+    run_dir1.mkdir(parents=True, exist_ok=True)
+    run_dir2.mkdir(parents=True, exist_ok=True)
+
+    run1.storage_path = str(run_dir1.relative_to(tmp_path))
+    run2.storage_path = str(run_dir2.relative_to(tmp_path))
+
+    db_session.add_all([run1, run2])
+    await db_session.commit()
+
+    response = await api_client.delete(
+        f"/api/v2/collections/{collection.id}/projections/{run1.uuid}",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 204, response.text
+
+    # run1 should be deleted, run2 should remain
+    deleted = await db_session.get(ProjectionRun, run1.id)
+    remaining = await db_session.get(ProjectionRun, run2.id)
+    assert deleted is None
+    assert remaining is not None
+
+    # Artifacts directory for run1 should be removed; run2 should still exist
+    assert not run_dir1.exists()
+    assert run_dir2.exists()
+
+
+@pytest.mark.asyncio()
+async def test_stream_missing_artifact_marks_run_degraded(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming a missing artifact should mark the projection run degraded."""
+
+    from packages.webui import services as services_pkg
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        point_count=None,
+    )
+
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Do not create x.f32.bin so the stream endpoint sees a missing artifact.
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    response = await api_client.get(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/arrays/x",
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 404, response.text
+
+    refreshed = await db_session.get(ProjectionRun, projection_run.id)
+    assert refreshed is not None
+    assert isinstance(refreshed.meta, dict)
+    assert refreshed.meta.get("degraded") is True

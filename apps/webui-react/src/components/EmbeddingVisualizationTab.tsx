@@ -1,13 +1,14 @@
-import { Suspense, useEffect, useMemo, useRef, useState, lazy } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, lazy } from 'react';
 import type { DataPoint } from 'embedding-atlas/react';
 import { AlertCircle, Loader2, Play, Trash2, Eye, X } from 'lucide-react';
+import { EmbeddingTooltipAdapter } from './EmbeddingTooltip';
+import { ensureEmbeddingAtlasWebgpuCompatibility } from '../utils/embeddingAtlasWebgpuPatch';
 import {
   useCollectionProjections,
   useDeleteProjection,
   useStartProjection,
 } from '../hooks/useProjections';
 import { useProjectionTooltip } from '../hooks/useProjectionTooltip';
-import type { ProjectionTooltipState } from '../hooks/useProjectionTooltip';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { projectionsV2Api } from '../services/api/v2/projections';
 import { searchV2Api } from '../services/api/v2/collections';
@@ -23,8 +24,104 @@ import type {
 import type { SearchResult } from '../services/api/v2/types';
 import { getErrorMessage } from '../utils/errorUtils';
 import { createCategoryLabels, DEFAULT_CATEGORY_LABEL_OPTIONS } from '../utils/clusterLabels';
+import type { CategoryLabel } from '../utils/clusterLabels';
+import { getProjectionPointIndex } from '../utils/projectionIndex';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
+
+ensureEmbeddingAtlasWebgpuCompatibility();
+
+/**
+ * EmbeddingVisualizationTab orchestrates the Projection tab for a collection.
+ *
+ * Responsibilities
+ * - Manage the lifecycle of projection runs for a collection (start, list, delete, recompute).
+ * - Load projection artifacts (x / y coordinates, category indices, ids) and metadata from the v2 projections API.
+ * - Render the current projection via EmbeddingView and manage render mode, labels, and responsive sizing.
+ * - Handle hover and selection interactions and connect them to metadata tooltips, similar search, and document viewing.
+ *
+ * State and hooks overview
+ * - projections: list of ProjectionMetadata from useCollectionProjections; this is the source of truth for runs.
+ * - activeProjection: currently loaded projection arrays + ids + status used to drive EmbeddingView.
+ * - activeProjectionMeta: summary of ProjectionMetadata.meta (color_by, legend, sampling counts, degraded flag).
+ * - renderModeByProjection / currentRenderMode / effectiveRenderMode:
+ *   per-projection render mode preference; effectiveRenderMode is the concrete
+ *   'points' | 'density' mode sent to EmbeddingView.
+ * - labelsEnabled / clusterLabels: toggle and cached cluster centroid labels derived from backend legend + arrays.
+ * - selectionState: indices selected in EmbeddingView, resolved ProjectionSelectionItem[] from /select, and loading/error/missing.
+ * - tooltipState / activeTooltip: hover state from useProjectionTooltip plus
+ *   the latest DataPoint from EmbeddingView.
+ * - similarSearchState: status and results for "Find similar" queries based on
+ *   the current selection, via searchV2Api.
+ * - recomputeDialogOpen / recomputeReducer / recomputeParams / recomputeError:
+ *   UI and form state for starting a new ProjectionRun with explicit reducer configuration.
+ * - pendingOperationId / currentOperationStatus: track the server-side Operation
+ *   backing a projection so progress banners stay in sync.
+ * - viewSize / pixelRatio: responsive canvas dimensions and device pixel ratio for EmbeddingView.
+ * - setShowDocumentViewer (from uiStore): side-effect to open the document
+ *   viewer for a selected chunk or similar-search result.
+ *
+ * Supporting hooks and services
+ * - useCollectionProjections: polls the v2 projections list for a collection
+ *   and drives the table of runs and their status.
+ * - useStartProjection / useDeleteProjection: wrap projectionsV2Api.start /
+ *   delete with optimistic cache updates and toasts.
+ * - useProjectionTooltip: given collectionId, projectionId and ids, resolves
+ *   hover tooltips via projectionsV2Api.select with LRU caching and debouncing.
+ * - useOperationProgress: tracks the Operation backing a projection (via
+ *   pendingOperationId) and calls onComplete/onError, which we use to refresh
+ *   the projections list and surface recompute errors.
+ * - searchV2Api.search: used to implement "Find similar" from the selection
+ *   panel.
+ *
+ * Lifecycle (happy path)
+ * - Start projection: user clicks "Start projection" → useStartProjection →
+ *   projectionsV2Api.start, which creates a new ProjectionRun and Operation.
+ *   The list from useCollectionProjections reflects status over time.
+ * - View projection: when a run is completed, "View" calls handleViewProjection,
+ *   which fetches ProjectionMetadata.meta and the x/y/cat/ids artifacts,
+ *   validates lengths, then populates activeProjection and activeProjectionMeta.
+ * - Hover tooltip: EmbeddingView calls onTooltip with a DataPoint; the tab
+ *   forwards this to useProjectionTooltip, which maps the point index through
+ *   ids and calls projectionsV2Api.select for a single id to obtain tooltip
+ *   metadata. The resulting tooltipState is consumed by EmbeddingTooltipAdapter
+ *   to render a React tooltip.
+ * - Selection panel: EmbeddingView calls onSelection with indices (or
+ *   DataPoint-like objects); the tab normalizes these to unique indices, maps
+ *   them through ids, and calls projectionsV2Api.select. The
+ *   ProjectionSelectionResponse items, missing_ids, and degraded flag populate
+ *   selectionState and inform degraded UI.
+ * - Recompute: "Recompute" opens a dialog whose form is encoded into
+ *   StartProjectionRequest.config. Submitting the dialog calls
+ *   startProjectionWithPayload, which always creates a new ProjectionRun rather
+ *   than mutating existing runs.
+ *
+ * Backend contracts
+ * - Projection arrays are streamed as typed buffers and must have consistent length:
+ *   x: Float32Array, y: Float32Array, category: Uint8Array, ids: Int32Array.
+ * - ProjectionMetadata.meta is treated as the canonical summary for
+ *   visualization: color_by, legend, sampling info (sampled, shown_count,
+ *   total_count), and degraded.
+ * - ProjectionSelectionResponse from /select returns items, missing_ids, and a
+ *   degraded boolean; when degraded is true we mirror that onto
+ *   activeProjectionMeta.degraded so banners and selection panels reflect the
+ *   current backend state.
+ *
+ * EmbeddingView contract
+ * - data prop receives typed arrays ({ x, y, category }) that EmbeddingView
+ *   consumes directly; lengths are validated here.
+ * - config.mode receives effectiveRenderMode ('points' | 'density'), derived
+ *   from user preference and point count.
+ * - labels is an optional array of centroid labels
+ *   ({ x, y, text, level?, priority? }) derived from the legend via
+ *   createCategoryLabels and only computed when enabled to avoid unnecessary
+ *   work.
+ * - onTooltip and onSelection are the only interaction channels: the tab
+ *   translates these callbacks into tooltip metadata, selectionState updates,
+ *   similar-search queries, and document viewer navigation.
+ */
+
+type EmbeddingLabel = CategoryLabel;
 
 interface ProjectionDataState {
   projectionId: string;
@@ -68,32 +165,9 @@ const SAMPLE_LIMIT_CAP = 200_000;
 
 type RenderMode = 'auto' | 'points' | 'density';
 
+// Above this many points, "auto" mode prefers density rendering for performance.
 const DENSITY_THRESHOLD = 20_000;
 const RENDER_MODE_OPTIONS: RenderMode[] = ['auto', 'points', 'density'];
-
-type TooltipIndexCandidate = {
-  index?: number;
-  rowIndex?: number;
-  pointIndex?: number;
-  i?: number;
-};
-
-function getTooltipIndex(tooltip: DataPoint | null): number | null {
-  if (!tooltip || typeof tooltip !== 'object') {
-    return null;
-  }
-
-  const candidate = tooltip as TooltipIndexCandidate;
-  const keys: Array<keyof TooltipIndexCandidate> = ['index', 'rowIndex', 'pointIndex', 'i'];
-  for (const key of keys) {
-    const value = candidate[key];
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-  }
-
-  return null;
-}
 
 const REDUCER_OPTIONS: Array<{
   value: ProjectionReducer;
@@ -144,8 +218,14 @@ function projectionProgress(status: ProjectionMetadata['status'] | string) {
 }
 
 export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizationTabProps) {
+  // Projection run configuration and list state
   const [selectedReducer, setSelectedReducer] = useState<ProjectionReducer>('umap');
   const [selectedColorBy, setSelectedColorBy] = useState<string>('document_id');
+  const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
+  const startProjection = useStartProjection(collectionId);
+  const deleteProjection = useDeleteProjection(collectionId);
+
+  // Active projection arrays + metadata used to drive EmbeddingView
   const [activeProjection, setActiveProjection] = useState<ProjectionDataState>({
     projectionId: '',
     pointCount: 0,
@@ -161,6 +241,8 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     degraded?: boolean;
   } | null>(null);
   const [labelsEnabled, setLabelsEnabled] = useState(false);
+
+  // Selection, tooltip, and linked-document / similar-search state
   const [selectionState, setSelectionState] = useState<{
     indices: number[];
     items: ProjectionSelectionItem[];
@@ -175,6 +257,9 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     results: SearchResult[];
     visible: boolean;
   }>({ loading: false, error: null, results: [], visible: false });
+  const [activeTooltip, setActiveTooltip] = useState<DataPoint | null>(null);
+
+  // Recompute dialog and long-running Operation tracking
   const [recomputeDialogOpen, setRecomputeDialogOpen] = useState(false);
   const [pendingOperationId, setPendingOperationId] = useState<string | null>(null);
   const [recomputeReducer, setRecomputeReducer] = useState<ProjectionReducer>('umap');
@@ -190,14 +275,17 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   });
   const [recomputeError, setRecomputeError] = useState<string | undefined>(undefined);
   const [currentOperationStatus, setCurrentOperationStatus] = useState<string | null>(null);
+
+  // View sizing and device pixel density for EmbeddingView
   const activeRequestId = useRef(0);
   const viewContainerRef = useRef<HTMLDivElement | null>(null);
   const [viewSize, setViewSize] = useState<{ width: number; height: number }>({ width: 960, height: 540 });
   const [pixelRatio, setPixelRatio] = useState<number>(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
-  const { data: projections = [], isLoading, refetch } = useCollectionProjections(collectionId);
-  const startProjection = useStartProjection(collectionId);
-  const deleteProjection = useDeleteProjection(collectionId);
+
+  // Global UI store: document viewer + toasts
   const { setShowDocumentViewer, addToast } = useUIStore();
+
+  // Tooltip metadata is fetched via /select on-demand using point ids from the active projection
   const { tooltipState, handleTooltip, handleTooltipLeave, clearTooltipCache } = useProjectionTooltip(
     collectionId ?? null,
     activeProjection.projectionId || null,
@@ -385,11 +473,27 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     openRecomputeDialog();
   };
 
+  const handleTooltipEvent = useCallback(
+    (value: DataPoint | null) => {
+      setActiveTooltip(value);
+      handleTooltip(value);
+    },
+    [handleTooltip]
+  );
+
+  const handleTooltipLeaveEvent = useCallback(() => {
+    setActiveTooltip(null);
+    handleTooltipLeave();
+  }, [handleTooltipLeave]);
+
+  // User preference for render mode, persisted per projection id.
+  // 'auto' lets the tab choose based on the current point count.
   const currentRenderMode: RenderMode = useMemo(() => {
     if (!activeProjection.projectionId) return 'auto';
     return renderModeByProjection[activeProjection.projectionId] ?? 'auto';
   }, [activeProjection.projectionId, renderModeByProjection]);
 
+  // Concrete mode passed to EmbeddingView. Auto switches to 'density' for large point clouds.
   const effectiveRenderMode = useMemo<'points' | 'density'>(() => {
     if (currentRenderMode !== 'auto') {
       return currentRenderMode;
@@ -398,7 +502,12 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   }, [currentRenderMode, activeProjection.pointCount]);
   const hasLegend = Boolean(activeProjectionMeta?.legend && activeProjectionMeta.legend.length > 0);
 
-  const clusterLabels = useMemo(() => {
+  // Cluster labels are derived from backend legend + arrays.
+  // They are relatively expensive to compute, so we:
+  // - require labelsEnabled and a non-empty legend; and
+  // - memoize on arrays/legend/hasLegend to avoid recomputing on every render.
+  // The result is passed into EmbeddingView as EmbeddingLabel[].
+  const clusterLabels: EmbeddingLabel[] = useMemo(() => {
     if (!labelsEnabled || !activeProjection.arrays || !hasLegend) {
       return [];
     }
@@ -412,12 +521,21 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     });
   }, [labelsEnabled, activeProjection.arrays, activeProjectionMeta?.legend, hasLegend]);
 
+  const tooltipCustomProps = useMemo(
+    () => ({
+      getTooltipIndex: (tooltip: DataPoint | null) => getProjectionPointIndex(tooltip),
+      ids: activeProjection.ids,
+      tooltipState,
+    }),
+    [activeProjection.ids, tooltipState]
+  );
+
   const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
   const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
 
   const handleSelectionChange = async (indices: number[]) => {
     if (!activeProjection.projectionId || !activeProjection.ids) {
-      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      setSelectionState({ indices: [], items: [], missing: [], loading: false, error: undefined });
       return;
     }
 
@@ -426,7 +544,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     );
 
     if (uniqueIndices.length === 0) {
-      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      setSelectionState({ indices: [], items: [], missing: [], loading: false, error: undefined });
       return;
     }
 
@@ -435,13 +553,17 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
 
     if (mappedIds.length === 0) {
-      setSelectionState({ indices: [], items: [], missing: [], loading: false });
+      setSelectionState({ indices: [], items: [], missing: [], loading: false, error: undefined });
       return;
     }
 
     const requestId = ++selectionRequestId.current;
     setSelectionState((prev) => ({ ...prev, indices: uniqueIndices, loading: true, error: undefined }));
     try {
+      // Selection resolution contract:
+      // - send the ids corresponding to the selected indices to /select,
+      // - populate selectionState with the returned ProjectionSelectionItem[] and missing_ids,
+      // - mirror degraded back onto activeProjectionMeta so UI stays in sync with backend state.
       const response = await projectionsV2Api.select(collectionId, activeProjection.projectionId, mappedIds);
       if (requestId === selectionRequestId.current) {
         setSelectionState({
@@ -449,6 +571,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
           items: response.data?.items ?? [],
           missing: response.data?.missing_ids ?? [],
           loading: false,
+          error: undefined,
         });
         if (response.data?.degraded && activeProjectionMeta) {
           setActiveProjectionMeta({ ...activeProjectionMeta, degraded: true });
@@ -984,107 +1107,52 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
               className="border border-gray-200 rounded-md overflow-hidden"
               ref={viewContainerRef}
               style={{ minHeight: '320px' }}
-              onPointerLeave={handleTooltipLeave}
+              onPointerLeave={handleTooltipLeaveEvent}
             >
               <Suspense fallback={<div className="p-4 text-sm text-purple-700">Rendering projection…</div>}>
+                {/* EmbeddingView (embedding-atlas)
+                    - data: typed arrays (Float32Array / Uint8Array) for
+                      x / y / category. Length consistency is validated above.
+                    - tooltip: latest DataPoint from EmbeddingView; forwarded to
+                      useProjectionTooltip via onTooltip.
+                    - config.mode: effectiveRenderMode ('points' | 'density'),
+                      derived from currentRenderMode and point count.
+                    - labels: optional EmbeddingLabel[] computed from legend +
+                      arrays for cluster-level annotations.
+                    - onSelection: receives indices or DataPoint-like objects;
+                      we normalize to indices and call /select to resolve
+                      ProjectionSelectionItem[] into selectionState. */}
                 <EmbeddingView
                   data={{
                     x: activeProjection.arrays.x,
                     y: activeProjection.arrays.y,
                     category: activeProjection.arrays.category,
                   }}
+                  tooltip={activeTooltip}
                   width={viewSize.width}
                   height={viewSize.height}
                   pixelRatio={pixelRatio}
                   theme={{ statusBar: true }}
-                  // Pass mode directly; config prop is ignored in some builds.
-                  mode={effectiveRenderMode}
+                  config={{ mode: effectiveRenderMode }}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
-                  onTooltip={handleTooltip}
-                  customTooltip={({ tooltip }) => {
-                    // Render tooltip via function to avoid class-based CustomComponent issues across builds.
-                    if (!tooltip) return null;
-                    const idx = getTooltipIndex(tooltip);
-                    if (idx == null) return null;
-                    const ids = activeProjection.ids;
-                    const selectedId = ids && idx >= 0 && idx < ids.length ? ids[idx] ?? null : null;
-                    const metadata =
-                      selectedId !== null && tooltipState.metadata?.selectedId === selectedId
-                        ? tooltipState.metadata
-                        : null;
-                    const status = metadata ? 'success' : tooltipState.status;
-
-                    if (status === 'idle' && !metadata) {
-                      return null;
-                    }
-
-                    const base =
-                      'pointer-events-none max-w-xs rounded-md border border-gray-200 bg-white/95 p-2 text-[12px] text-gray-700 shadow-md';
-
-                    if (status === 'loading' && !metadata) {
-                      return (
-                        <div role="tooltip" aria-live="polite" className={base}>
-                          <div className="text-gray-500">Loading...</div>
-                        </div>
-                      );
-                    }
-
-                    if (status === 'error' && !metadata) {
-                      return (
-                        <div role="tooltip" aria-live="polite" className={base}>
-                          <div className="text-gray-500">No metadata available</div>
-                        </div>
-                      );
-                    }
-
-                    if (!metadata) {
-                      return null;
-                    }
-
-                    const preview = metadata.contentPreview?.trim();
-                    const previewText = preview && preview.length > 0 ? preview.slice(0, 200) : 'No metadata available';
-
-                    return (
-                      <div role="tooltip" aria-live="polite" className={base}>
-                        <div className="space-y-1">
-                          {metadata.documentId && (
-                            <div className="font-medium text-gray-800">Document {metadata.documentId}</div>
-                          )}
-                          {typeof metadata.chunkIndex === 'number' && (
-                            <div className="text-gray-500">Chunk #{metadata.chunkIndex}</div>
-                          )}
-                          <div className="text-gray-600">{previewText}</div>
-                        </div>
-                      </div>
-                    );
+                  onTooltip={handleTooltipEvent}
+                  customTooltip={{
+                    class: EmbeddingTooltipAdapter,
+                    props: tooltipCustomProps,
                   }}
                   onSelection={(points) => {
-                    // Accept both numeric indices and { index } objects
+                    // Accept both numeric indices and { index }-like objects
                     const indices = Array.isArray(points)
                       ? points
-                        .map((p) =>
-                          typeof p === 'number'
-                            ? p
-                            : p && typeof p === 'object'
-                              ? (typeof (p as any).index === 'number'
-                                ? (p as any).index
-                                : typeof (p as any).rowIndex === 'number'
-                                  ? (p as any).rowIndex
-                                  : typeof (p as any).pointIndex === 'number'
-                                    ? (p as any).pointIndex
-                                    : typeof (p as any).i === 'number'
-                                      ? (p as any).i
-                                      : -1)
-                              : -1
-                        )
-                        .filter((idx) => Number.isInteger(idx) && idx >= 0)
+                          .map((value) => getProjectionPointIndex(value))
+                          .filter((idx): idx is number => typeof idx === 'number' && Number.isInteger(idx) && idx >= 0)
                       : [];
                     void handleSelectionChange(indices);
                   }}
                 />
               </Suspense>
             </div>
-            {(selectionState.items.length > 0 || selectionState.loading || selectionState.error) && (
+            {(selectionState.indices.length > 0 || selectionState.loading || selectionState.error) && (
               <div className="border border-gray-200 rounded-md p-4 bg-white shadow-sm">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-semibold text-gray-800">Selection</h4>
@@ -1092,6 +1160,11 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                     Indices: {selectionState.indices.length.toLocaleString()}
                   </span>
                 </div>
+                {activeProjectionMeta?.degraded && !selectionState.loading && (
+                  <p className="mb-2 text-xs text-amber-700">
+                    This projection is marked as degraded; selection results may be incomplete. Consider recomputing.
+                  </p>
+                )}
                 {selectionState.loading && (
                   <div className="flex items-center gap-2 text-sm text-purple-600">
                     <Loader2 className="h-4 w-4 animate-spin" /> Resolving selection…
@@ -1147,9 +1220,15 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                     </ul>
                   </>
                 )}
-                {!selectionState.loading && selectionState.items.length === 0 && !selectionState.error && (
-                  <p className="text-sm text-gray-500">No metadata available for the selected points.</p>
-                )}
+                {!selectionState.loading &&
+                  selectionState.items.length === 0 &&
+                  !selectionState.error &&
+                  selectionState.indices.length > 0 && (
+                    <p className="text-sm text-gray-500">
+                      Selected points could not be mapped to documents. Try recomputing the projection or refining your
+                      selection.
+                    </p>
+                  )}
                 {selectionState.missing.length > 0 && (
                   <p className="mt-2 text-xs text-amber-600">
                     {selectionState.missing.length.toLocaleString()} point(s) could not be resolved.

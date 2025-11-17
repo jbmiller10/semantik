@@ -15,11 +15,18 @@ import json
 import unittest.mock
 from collections import namedtuple
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
+from packages.shared.database.models import (
+    CollectionStatus,
+    DocumentStatus,
+    OperationStatus,
+    OperationType,
+    ProjectionRunStatus,
+)
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
@@ -27,6 +34,7 @@ from packages.webui.tasks import (
     _process_append_operation_impl,
     _process_collection_operation_async,
     _process_index_operation,
+    _process_projection_operation,
     _process_reindex_operation_impl,
     _process_remove_source_operation,
     _sanitize_error_message,
@@ -99,6 +107,120 @@ class TestCeleryTaskHelpers:
 
         with pytest.raises(RuntimeError):
             tasks_module._build_internal_api_headers()
+
+
+class TestProjectionOperationLifecycle:
+    """Tests for projection-specific operation handling."""
+
+    @pytest.mark.asyncio()
+    async def test_process_projection_operation_sets_running_and_processing(self, monkeypatch, mock_updater) -> None:
+        """Projection operations should mark runs RUNNING and operations PROCESSING before enqueue."""
+        from packages.webui.tasks import projection as projection_module
+
+        class DummySession:
+            def __init__(self) -> None:
+                self.committed = False
+                self.rolled_back = False
+
+            async def commit(self) -> None:
+                self.committed = True
+
+            async def rollback(self) -> None:
+                self.rolled_back = True
+
+        class DummyRun:
+            def __init__(self, projection_id: str) -> None:
+                self.uuid = projection_id
+                self.operation_uuid: str | None = None
+
+        class DummyProjectionRepo:
+            def __init__(self, session: DummySession) -> None:
+                self.session = session
+                self.status_updates: list[dict[str, Any]] = []
+                self.operation_links: list[tuple[str, str | None]] = []
+
+            async def get_by_uuid(self, projection_id: str) -> DummyRun:
+                return DummyRun(projection_id)
+
+            async def set_operation_uuid(self, projection_id: str, operation_uuid: str | None) -> None:
+                self.operation_links.append((projection_id, operation_uuid))
+
+            async def update_status(
+                self,
+                projection_id: str,
+                *,
+                status: ProjectionRunStatus,
+                error_message: str | None = None,
+                started_at: datetime | None = None,
+                completed_at: datetime | None = None,
+            ) -> None:
+                self.status_updates.append(
+                    {
+                        "projection_id": projection_id,
+                        "status": status,
+                        "error_message": error_message,
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                    }
+                )
+
+        class DummyOperationRepo:
+            def __init__(self, session: DummySession) -> None:
+                self.session = session
+                self.status_updates: list[dict[str, Any]] = []
+
+            async def update_status(
+                self,
+                operation_uuid: str,
+                status: OperationStatus,
+                error_message: str | None = None,
+                started_at: datetime | None = None,
+                completed_at: datetime | None = None,
+            ) -> None:
+                self.status_updates.append(
+                    {
+                        "operation_uuid": operation_uuid,
+                        "status": status,
+                        "error_message": error_message,
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                    }
+                )
+
+        session = DummySession()
+        projection_repo = DummyProjectionRepo(session)
+        operation_repo = DummyOperationRepo(session)
+
+        # Ensure _process_projection_operation uses the dummy OperationRepository
+        monkeypatch.setattr(projection_module, "OperationRepository", lambda _session: operation_repo)
+
+        enqueue_called: dict[str, Any] = {}
+
+        def fake_apply_async(*args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+            enqueue_called["called"] = True
+            enqueue_called["args"] = args
+            enqueue_called["kwargs"] = kwargs
+
+        monkeypatch.setattr(projection_module.compute_projection, "apply_async", fake_apply_async)
+
+        operation = {
+            "uuid": "op-123",
+            "config": {"projection_run_id": "proj-456"},
+        }
+        collection = {"id": "col-123"}
+
+        result = await projection_module._process_projection_operation(operation, collection, projection_repo, mock_updater)
+
+        assert result["success"] is True
+        assert result["defer_completion"] is True
+        assert result["projection_id"] == "proj-456"
+        assert enqueue_called.get("called") is True
+
+        # Projection should be marked RUNNING
+        assert any(update["status"] == ProjectionRunStatus.RUNNING for update in projection_repo.status_updates)
+
+        # Operation should be marked PROCESSING before compute is enqueued
+        assert any(update["status"] == OperationStatus.PROCESSING for update in operation_repo.status_updates)
 
 
 class TestCeleryTaskWithOperationUpdates:

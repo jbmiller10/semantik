@@ -182,3 +182,47 @@ def test_encode_projection_with_completed_operation():
     assert result["status"] == "completed"
     assert result["operation_status"] == "completed"
     assert result["message"] is None
+
+
+def test_encode_projection_includes_degraded_flag_from_projection_meta():
+    """degraded=True inside projection_artifacts should surface on meta."""
+    run = MagicMock()
+    run.collection_id = "coll-123"
+    run.uuid = "proj-456"
+    run.status = ProjectionRunStatus.COMPLETED
+    run.reducer = "umap"
+    run.dimensionality = 2
+    run.created_at = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
+    run.operation_uuid = None
+    run.config = {"color_by": "document_id"}
+    run.meta = {
+        "projection_artifacts": {
+            "degraded": True,
+            "color_by": "document_id",
+        }
+    }
+
+    result = ProjectionService._encode_projection(run)
+
+    assert result["meta"]["degraded"] is True
+    assert result["meta"]["color_by"] == "document_id"
+
+
+def test_encode_projection_includes_degraded_flag_from_run_meta():
+    """degraded=True on the run meta should surface in encoded meta."""
+    run = MagicMock()
+    run.collection_id = "coll-123"
+    run.uuid = "proj-456"
+    run.status = ProjectionRunStatus.COMPLETED
+    run.reducer = "pca"
+    run.dimensionality = 2
+    run.created_at = datetime(2025, 1, 15, 10, 30, 0, tzinfo=UTC)
+    run.operation_uuid = None
+    run.config = {"color_by": "document_id"}
+    run.meta = {"degraded": True, "legend": []}
+
+    result = ProjectionService._encode_projection(run)
+
+    assert result["meta"]["degraded"] is True
+    # colour mode should still be propagated from config
+    assert result["meta"]["color_by"] == "document_id"

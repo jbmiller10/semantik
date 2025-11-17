@@ -55,7 +55,7 @@ export interface ProjectionSelectionResponse {
   projection_id: string;
   items: ProjectionSelectionItem[];
   missing_ids: number[];
-  degraded?: boolean;
+  degraded: boolean;
 }
 
 export type StartProjectionResponse = ProjectionMetadata;
