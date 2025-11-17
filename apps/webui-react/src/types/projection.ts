@@ -38,6 +38,12 @@ export interface StartProjectionRequest {
   dimensionality?: number;
   config?: Record<string, unknown>;
   color_by?: string;
+  /**
+   * Optional sampling controls forwarded to the backend.
+   * Prefer sample_size; sample_n is kept for compatibility with earlier clients.
+   */
+  sample_size?: number;
+  sample_n?: number;
 }
 
 export interface ProjectionSelectionItem {
