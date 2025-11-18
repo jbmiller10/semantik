@@ -538,6 +538,128 @@ async def test_select_projection_region_happy_path(
 
 
 @pytest.mark.asyncio()
+async def test_select_projection_region_resolves_chunk_metadata_via_embedding_vector_id(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    document_factory,
+    db_session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selection should resolve chunk metadata when original_ids store vector IDs."""
+
+    from packages.webui import services as services_pkg
+    from packages.shared.database.models import Chunk, Document
+
+    projection_service_module = services_pkg.projection_service
+    monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
+
+    # Create collection, document, and chunk with an embedding_vector_id.
+    collection = await collection_factory(owner_id=test_user_db.id)
+    document: Document = await document_factory(collection_id=collection.id)
+
+    chunk = Chunk(
+        collection_id=collection.id,
+        document_id=document.id,
+        chunk_index=0,
+        content="hello from chunk",
+    )
+    # Use a UUID-like embedding_vector_id mirroring Qdrant point IDs.
+    vector_id = str(uuid4())
+    chunk.embedding_vector_id = vector_id
+
+    db_session.add(chunk)
+    await db_session.commit()
+    await db_session.refresh(chunk)
+
+    # Wire a completed ProjectionRun with artifacts on disk.
+    projection_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="pca",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        point_count=1,
+    )
+
+    run_dir = tmp_path / "semantik" / "projections" / collection.id / projection_run.uuid
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    x = np.array([0.1], dtype=np.float32)
+    y = np.array([0.2], dtype=np.float32)
+    ids = np.array([42], dtype=np.int32)
+    cats = np.array([0], dtype=np.uint8)
+
+    x.tofile(run_dir / "x.f32.bin")
+    y.tofile(run_dir / "y.f32.bin")
+    ids.tofile(run_dir / "ids.i32.bin")
+    cats.tofile(run_dir / "cat.u8.bin")
+
+    meta_payload = {
+        "projection_id": projection_run.uuid,
+        "collection_id": collection.id,
+        "point_count": 1,
+        "total_count": 1,
+        "shown_count": 1,
+        "sampled": False,
+        "reducer_requested": "pca",
+        "reducer_used": "pca",
+        "reducer_params": {},
+        "dimensionality": 2,
+        "source_vector_collection": "vector-collection",
+        "sample_limit": 1,
+        "files": {
+            "x": "x.f32.bin",
+            "y": "y.f32.bin",
+            "ids": "ids.i32.bin",
+            "categories": "cat.u8.bin",
+        },
+        "color_by": "document_id",
+        "legend": [{"index": 0, "label": "A", "count": 1}],
+        # original_ids carries the embedding_vector_id for this point.
+        "original_ids": [vector_id],
+        "category_counts": {"0": 1},
+    }
+    (run_dir / "meta.json").write_text(__import__("json").dumps(meta_payload), encoding="utf-8")
+
+    # storage_path is stored relative to data_dir
+    projection_run.storage_path = str(run_dir.relative_to(tmp_path))
+
+    db_session.add(projection_run)
+    await db_session.commit()
+    await db_session.refresh(projection_run)
+
+    # Selecting by id from ids.i32.bin should yield resolved chunk metadata.
+    request_payload = {"ids": [42]}
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections/{projection_run.uuid}/select",
+        json=request_payload,
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["projection_id"] == projection_run.uuid
+    assert body["missing_ids"] == []
+    assert len(body["items"]) == 1
+
+    item = body["items"][0]
+    assert item["selected_id"] == 42
+    assert item["index"] == 0
+    assert item["original_id"] == vector_id
+    assert item["chunk_id"] == chunk.id
+    assert item["document_id"] == document.id
+    assert item["chunk_index"] == 0
+    assert item["content_preview"].startswith("hello from chunk")
+
+@pytest.mark.asyncio()
 async def test_select_projection_region_degraded_flag(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],

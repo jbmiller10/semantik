@@ -369,6 +369,36 @@ class ChunkRepository(PartitionAwareMixin):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_chunk_by_embedding_vector_id(
+        self, embedding_vector_id: str, collection_id: str
+    ) -> Chunk | None:
+        """Get a chunk by its embedding_vector_id with partition pruning.
+
+        This maps back from a vector-store point identifier (for example,
+        a Qdrant point ID) to the associated chunk row.
+
+        Args:
+            embedding_vector_id: Vector-store point identifier (UUID v4).
+            collection_id: Collection ID (partition key).
+
+        Returns:
+            Chunk instance or None if not found.
+
+        Raises:
+            ValueError: If identifiers are invalid.
+            TypeError: If identifiers have wrong types.
+        """
+        # Validate identifiers
+        embedding_vector_id = PartitionValidation.validate_uuid(embedding_vector_id, "embedding_vector_id")
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        query = select(Chunk).where(
+            and_(Chunk.collection_id == collection_id, Chunk.embedding_vector_id == embedding_vector_id)
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
     async def chunk_exists(self, document_id: str, collection_id: str, chunk_index: int) -> bool:
         """Check if a specific chunk exists.
 

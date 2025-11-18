@@ -88,6 +88,33 @@ class TestChunkRepositoryIntegration:
         assert fetched is not None
         assert fetched.chunk_index == 5
 
+    async def test_get_chunk_by_embedding_vector_id_fetches_chunk(
+        self, repository, db_session, collection_factory, document_factory, test_user_db
+    ):
+        """Fetching by embedding_vector_id should return the created chunk when mapping exists."""
+        from uuid import uuid4
+
+        collection = await collection_factory(owner_id=test_user_db.id)
+        document = await document_factory(collection_id=collection.id)
+        chunk = await repository.create_chunk(
+            {
+                "collection_id": collection.id,
+                "document_id": document.id,
+                "chunk_index": 7,
+                "content": "vector-mapped chunk",
+            }
+        )
+
+        # Assign a synthetic embedding_vector_id and persist it.
+        vector_id = str(uuid4())
+        chunk.embedding_vector_id = vector_id
+        await db_session.commit()
+
+        fetched = await repository.get_chunk_by_embedding_vector_id(vector_id, collection.id)
+        assert fetched is not None
+        assert fetched.id == chunk.id
+        assert fetched.embedding_vector_id == vector_id
+
     async def test_get_chunks_by_document_orders_results(
         self, repository, db_session, collection_factory, document_factory, test_user_db
     ):
