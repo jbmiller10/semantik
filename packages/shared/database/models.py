@@ -28,6 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
+import sys
 from typing import Any, cast
 
 from sqlalchemy import (
@@ -48,6 +49,15 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+# Ensure both ``shared.database.models`` and
+# ``packages.shared.database.models`` resolve to the same module instance.
+# This prevents SQLAlchemy from creating duplicate model classes for the
+# same tables when the codebase imports models through either prefix.
+if __name__ == "packages.shared.database.models":
+    sys.modules.setdefault("shared.database.models", sys.modules[__name__])
+elif __name__ == "shared.database.models":
+    sys.modules.setdefault("packages.shared.database.models", sys.modules[__name__])
 
 
 # Create the declarative base
@@ -456,6 +466,7 @@ class ProjectionRun(Base):
     point_count = Column(Integer, nullable=True)
     config = Column(JSON, nullable=True)
     meta = Column(JSON, nullable=True)
+    metadata_hash = Column(String, nullable=True, index=True)
     error_message = Column(Text)
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())

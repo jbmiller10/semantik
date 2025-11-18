@@ -22,5 +22,8 @@
   },
   "overrides": {
     "rollup": "4.52.5"
+  },
+  "devDependencies": {
+    "cypress": "^15.6.0"
   }
 }

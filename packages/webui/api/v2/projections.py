@@ -34,6 +34,8 @@ def _to_metadata_response(
 ) -> ProjectionMetadataResponse:
     """Normalise arbitrary projection metadata dictionaries."""
 
+    reuse_flag = payload.get("idempotent_reuse")
+
     return ProjectionMetadataResponse(
         id=payload.get("projection_id") or payload.get("id") or fallback_id,
         collection_id=payload.get("collection_id", collection_id),
@@ -46,6 +48,7 @@ def _to_metadata_response(
         message=payload.get("message"),
         config=payload.get("config"),
         meta=payload.get("meta"),
+        idempotent_reuse=bool(reuse_flag) if reuse_flag is not None else None,
     )
 
 
@@ -62,6 +65,7 @@ def _to_metadata_response(
 async def start_projection(
     collection_id: str,
     request: ProjectionBuildRequest,
+    response: Response,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: ProjectionService = Depends(get_projection_service),
 ) -> ProjectionMetadataResponse:
@@ -75,7 +79,15 @@ async def start_projection(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     logger.debug("Projection run scheduled: %s", result)
-    return _to_metadata_response(collection_id, result, fallback_id="pending-projection")
+    metadata_response = _to_metadata_response(collection_id, result, fallback_id="pending-projection")
+
+    # Idempotent shortcut: when an existing completed run is reused, downgrade
+    # the HTTP status from 202 Accepted to 200 OK so callers can distinguish
+    # between "queued" and "immediately satisfied" responses.
+    if metadata_response.idempotent_reuse:
+        response.status_code = 200
+
+    return metadata_response
 
 
 @router.get("", response_model=ProjectionListResponse)
@@ -116,7 +128,7 @@ async def get_projection(
 
 
 @router.get(
-    "/{projection_id}/arrays/{artifact_name}",
+    "/{projection_id}/arrays/{artifact_name:path}",
     responses={
         200: {"description": "Projection artifact", "content": {"application/octet-stream": {}}},
         400: {"model": ErrorResponse},
@@ -199,6 +211,7 @@ async def select_projection_region(
         projection_id=projection_id,
         items=items,
         missing_ids=[int(mid) for mid in payload.get("missing_ids", [])],
+        degraded=bool(payload.get("degraded", False)),
     )
 
 

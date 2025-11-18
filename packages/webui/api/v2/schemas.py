@@ -207,6 +207,23 @@ class ProjectionBuildRequest(BaseModel):
         default="document_id",
         description="Attribute used to colour points in the projection",
     )
+    sample_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional cap on the number of vectors sampled when building the projection",
+    )
+    sample_n: int | None = Field(
+        default=None,
+        ge=1,
+        description="Alias for sample_size; kept for compatibility with earlier clients",
+    )
+    metadata_hash: str | None = Field(
+        default=None,
+        description=(
+            "Optional deterministic hash of reducer/config/color_by/sampling inputs and collection vector state. "
+            "If omitted, the backend will compute a stable hash for idempotent recompute."
+        ),
+    )
 
     @field_validator("color_by")
     @classmethod
@@ -224,6 +241,7 @@ class ProjectionBuildRequest(BaseModel):
                 "dimensionality": 2,
                 "config": {"n_neighbors": 15, "min_dist": 0.1},
                 "color_by": "document_id",
+                "sample_size": 5000,
             }
         }
     )
@@ -267,6 +285,13 @@ class ProjectionMetadataResponse(BaseModel):
     )
     config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
     meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
+    idempotent_reuse: bool | None = Field(
+        default=None,
+        description=(
+            "True when the projection build request was satisfied by reusing an existing completed run with an "
+            "identical metadata_hash instead of creating a new run."
+        ),
+    )
 
 
 class ProjectionListResponse(BaseModel):
@@ -308,3 +333,10 @@ class ProjectionSelectionResponse(BaseModel):
     projection_id: str
     items: list[ProjectionSelectionItem]
     missing_ids: list[int] = Field(default_factory=list, description="IDs not found in the projection artifact")
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "True when the underlying projection run is degraded (e.g. "
+            "artifacts are stale, incomplete or produced via a fallback reducer)."
+        ),
+    )

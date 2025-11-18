@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios';
 import apiClient from './client';
 import type {
   ProjectionArtifactName,
@@ -36,9 +37,15 @@ export const projectionsV2Api = {
       `/api/v2/collections/${collectionId}/projections/${projectionId}`
     ),
 
-  select: (collectionId: string, projectionId: string, ids: number[]) =>
+  select: (
+    collectionId: string,
+    projectionId: string,
+    ids: number[],
+    config?: AxiosRequestConfig
+  ) =>
     apiClient.post<ProjectionSelectionResponse>(
       `/api/v2/collections/${collectionId}/projections/${projectionId}/select`,
-      { ids }
+      { ids },
+      config
     ),
 };
