@@ -8,6 +8,7 @@ type TooltipStatus = 'idle' | 'loading' | 'success' | 'error';
 
 export interface TooltipMetadata {
   selectedId: number;
+  originalId?: string | null;
   documentId?: string | number | null;
   chunkIndex?: number | null;
   contentPreview?: string | null;
@@ -43,6 +44,7 @@ function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
   const preview = typeof item?.content_preview === 'string' ? item.content_preview.slice(0, 200) : null;
   return {
     selectedId,
+    originalId: typeof item?.original_id === 'string' ? item.original_id : null,
     documentId: item?.document_id ?? null,
     chunkIndex: item?.chunk_index ?? null,
     contentPreview: preview,

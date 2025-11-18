@@ -51,11 +51,19 @@ function TooltipContent({ tooltip, getTooltipIndex, ids, tooltipState }: Tooltip
   }
 
   const preview = metadata.contentPreview?.trim();
-  const previewText = preview && preview.length > 0 ? preview.slice(0, 200) : 'No metadata available';
+  const previewText =
+    preview && preview.length > 0
+      ? preview.slice(0, 200)
+      : metadata.originalId
+        ? 'No document metadata available for this point'
+        : 'No metadata available';
 
   return (
     <div role="tooltip" aria-live="polite" className={base}>
       <div className="space-y-1">
+        {metadata.originalId && !metadata.documentId && (
+          <div className="text-gray-500">Point ID {metadata.originalId}</div>
+        )}
         {metadata.documentId && (
           <div className="font-medium text-gray-800">Document {metadata.documentId}</div>
         )}
