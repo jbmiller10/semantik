@@ -34,6 +34,7 @@ class ProjectionRunRepository:
         dimensionality: int,
         config: dict[str, Any] | None = None,
         meta: dict[str, Any] | None = None,
+        metadata_hash: str | None = None,
     ) -> ProjectionRun:
         """Create a new projection run stub for a collection."""
         if dimensionality <= 0:
@@ -54,6 +55,7 @@ class ProjectionRunRepository:
             dimensionality=dimensionality,
             config=config or {},
             meta=meta or {},
+            metadata_hash=metadata_hash,
         )
 
         try:
@@ -182,3 +184,22 @@ class ProjectionRunRepository:
         stmt = delete(ProjectionRun).where(ProjectionRun.id == run.id)
         await self.session.execute(stmt)
         await self.session.flush()
+
+    async def find_latest_completed_by_metadata_hash(
+        self,
+        collection_id: str,
+        metadata_hash: str,
+    ) -> ProjectionRun | None:
+        """Return the most recent completed run for a collection with the given metadata hash."""
+
+        stmt: Select[tuple[ProjectionRun]] = (
+            select(ProjectionRun)
+            .where(ProjectionRun.collection_id == collection_id)
+            .where(ProjectionRun.metadata_hash == metadata_hash)
+            .where(ProjectionRun.status == ProjectionRunStatus.COMPLETED)
+            .options(selectinload(ProjectionRun.operation))
+            .order_by(ProjectionRun.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().first()

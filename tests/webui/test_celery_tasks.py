@@ -15,11 +15,18 @@ import json
 import unittest.mock
 from collections import namedtuple
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
+from packages.shared.database.models import (
+    CollectionStatus,
+    DocumentStatus,
+    OperationStatus,
+    OperationType,
+    ProjectionRunStatus,
+)
 from packages.webui.tasks import (
     CeleryTaskWithOperationUpdates,
     _handle_task_failure,
@@ -99,6 +106,122 @@ class TestCeleryTaskHelpers:
 
         with pytest.raises(RuntimeError):
             tasks_module._build_internal_api_headers()
+
+
+class TestProjectionOperationLifecycle:
+    """Tests for projection-specific operation handling."""
+
+    @pytest.mark.asyncio()
+    async def test_process_projection_operation_sets_running_and_processing(self, monkeypatch, mock_updater) -> None:
+        """Projection operations should mark runs RUNNING and operations PROCESSING before enqueue."""
+        from packages.webui.tasks import projection as projection_module
+
+        class DummySession:
+            def __init__(self) -> None:
+                self.committed = False
+                self.rolled_back = False
+
+            async def commit(self) -> None:
+                self.committed = True
+
+            async def rollback(self) -> None:
+                self.rolled_back = True
+
+        class DummyRun:
+            def __init__(self, projection_id: str) -> None:
+                self.uuid = projection_id
+                self.operation_uuid: str | None = None
+
+        class DummyProjectionRepo:
+            def __init__(self, session: DummySession) -> None:
+                self.session = session
+                self.status_updates: list[dict[str, Any]] = []
+                self.operation_links: list[tuple[str, str | None]] = []
+
+            async def get_by_uuid(self, projection_id: str) -> DummyRun:
+                return DummyRun(projection_id)
+
+            async def set_operation_uuid(self, projection_id: str, operation_uuid: str | None) -> None:
+                self.operation_links.append((projection_id, operation_uuid))
+
+            async def update_status(
+                self,
+                projection_id: str,
+                *,
+                status: ProjectionRunStatus,
+                error_message: str | None = None,
+                started_at: datetime | None = None,
+                completed_at: datetime | None = None,
+            ) -> None:
+                self.status_updates.append(
+                    {
+                        "projection_id": projection_id,
+                        "status": status,
+                        "error_message": error_message,
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                    }
+                )
+
+        class DummyOperationRepo:
+            def __init__(self, session: DummySession) -> None:
+                self.session = session
+                self.status_updates: list[dict[str, Any]] = []
+
+            async def update_status(
+                self,
+                operation_uuid: str,
+                status: OperationStatus,
+                error_message: str | None = None,
+                started_at: datetime | None = None,
+                completed_at: datetime | None = None,
+            ) -> None:
+                self.status_updates.append(
+                    {
+                        "operation_uuid": operation_uuid,
+                        "status": status,
+                        "error_message": error_message,
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                    }
+                )
+
+        session = DummySession()
+        projection_repo = DummyProjectionRepo(session)
+        operation_repo = DummyOperationRepo(session)
+
+        # Ensure _process_projection_operation uses the dummy OperationRepository
+        monkeypatch.setattr(projection_module, "OperationRepository", lambda _session: operation_repo)
+
+        enqueue_called: dict[str, Any] = {}
+
+        def fake_apply_async(*args: Any, **kwargs: Any) -> None:  # noqa: ANN401
+            enqueue_called["called"] = True
+            enqueue_called["args"] = args
+            enqueue_called["kwargs"] = kwargs
+
+        monkeypatch.setattr(projection_module.compute_projection, "apply_async", fake_apply_async)
+
+        operation = {
+            "uuid": "op-123",
+            "config": {"projection_run_id": "proj-456"},
+        }
+        collection = {"id": "col-123"}
+
+        result = await projection_module._process_projection_operation(
+            operation, collection, projection_repo, mock_updater
+        )
+
+        assert result["success"] is True
+        assert result["defer_completion"] is True
+        assert result["projection_id"] == "proj-456"
+        assert enqueue_called.get("called") is True
+
+        # Projection should be marked RUNNING
+        assert any(update["status"] == ProjectionRunStatus.RUNNING for update in projection_repo.status_updates)
+
+        # Operation should be marked PROCESSING before compute is enqueued
+        assert any(update["status"] == OperationStatus.PROCESSING for update in operation_repo.status_updates)
 
 
 class TestCeleryTaskWithOperationUpdates:
@@ -232,10 +355,12 @@ class TestProcessCollectionOperation:
     @patch("shared.database.repositories.operation_repository.OperationRepository")
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.repositories.document_repository.DocumentRepository")
+    @patch("shared.database.repositories.projection_run_repository.ProjectionRunRepository")
     @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_index_success(
         self,
         mock_process,
+        mock_projection_repo_class,
         mock_doc_repo_class,
         mock_col_repo_class,
         mock_op_repo_class,
@@ -265,6 +390,8 @@ class TestProcessCollectionOperation:
         mock_op_repo_class.return_value = mock_repositories["operation"]
         mock_col_repo_class.return_value = mock_repositories["collection"]
         mock_doc_repo_class.return_value = mock_repositories["document"]
+        # Projection repository should be constructed but is not used for INDEX.
+        mock_projection_repo_class.return_value = AsyncMock()
 
         # Mock the index operation handler
         with patch("packages.webui.tasks._process_index_operation") as mock_process_index:
@@ -298,10 +425,12 @@ class TestProcessCollectionOperation:
     @patch("shared.database.repositories.operation_repository.OperationRepository")
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.repositories.document_repository.DocumentRepository")
+    @patch("shared.database.repositories.projection_run_repository.ProjectionRunRepository")
     @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_failure_handling(
         self,
         mock_process,
+        mock_projection_repo_class,
         mock_doc_repo_class,
         mock_col_repo_class,
         mock_op_repo_class,
@@ -331,6 +460,7 @@ class TestProcessCollectionOperation:
         mock_op_repo_class.return_value = mock_repositories["operation"]
         mock_col_repo_class.return_value = mock_repositories["collection"]
         mock_doc_repo_class.return_value = mock_repositories["document"]
+        mock_projection_repo_class.return_value = AsyncMock()
 
         # Mock the index operation to fail
         with patch("packages.webui.tasks._process_index_operation") as mock_process_index:
@@ -529,10 +659,12 @@ class TestIndexOperation:
     @patch("shared.database.repositories.operation_repository.OperationRepository")
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.repositories.document_repository.DocumentRepository")
+    @patch("shared.database.repositories.projection_run_repository.ProjectionRunRepository")
     @patch("packages.webui.tasks.psutil.Process")
     async def test_process_collection_operation_append_dispatches_impl(
         self,
         mock_process,
+        mock_projection_repo_class,
         mock_doc_repo_class,
         mock_col_repo_class,
         mock_op_repo_class,
@@ -553,6 +685,7 @@ class TestIndexOperation:
         mock_op_repo_class.return_value = mock_repositories["operation"]
         mock_col_repo_class.return_value = mock_repositories["collection"]
         mock_doc_repo_class.return_value = mock_repositories["document"]
+        mock_projection_repo_class.return_value = AsyncMock()
 
         operation_obj = mock_repositories["operation"].get_by_uuid.return_value
         operation_obj.type = OperationType.APPEND
@@ -574,6 +707,80 @@ class TestIndexOperation:
         assert impl_args[0]["config"]["source_path"] == "/data/docs"
         assert impl_args[1]["vector_store_name"] == "col_docs"
         assert result["documents_added"] == 4
+
+    @patch("shared.database.pg_connection_manager")
+    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("shared.database.repositories.operation_repository.OperationRepository")
+    @patch("shared.database.repositories.collection_repository.CollectionRepository")
+    @patch("shared.database.repositories.document_repository.DocumentRepository")
+    @patch("shared.database.repositories.projection_run_repository.ProjectionRunRepository")
+    @patch("packages.webui.tasks.psutil.Process")
+    async def test_process_collection_operation_projection_defers_completion(
+        self,
+        mock_process,
+        mock_projection_repo_class,
+        mock_doc_repo_class,
+        mock_col_repo_class,
+        mock_op_repo_class,
+        mock_session_local,
+        mock_pg_manager,
+        mock_repositories,
+        mock_celery_task,
+    ) -> None:
+        """PROJECTION_BUILD operations should defer completion and avoid READY transitions."""
+
+        mock_session = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_session_local.return_value = mock_session
+
+        mock_op_repo_class.return_value = mock_repositories["operation"]
+        mock_col_repo_class.return_value = mock_repositories["collection"]
+        mock_doc_repo_class.return_value = mock_repositories["document"]
+
+        # Projection repository is created but should not be used for metrics /
+        # degradation when defer_completion is respected.
+        mock_projection_repo = AsyncMock()
+        mock_projection_repo_class.return_value = mock_projection_repo
+
+        operation_obj = mock_repositories["operation"].get_by_uuid.return_value
+        operation_obj.type = OperationType.PROJECTION_BUILD
+        operation_obj.config = {"projection_run_id": "proj-123"}
+
+        collection_obj = mock_repositories["collection"].get_by_uuid.return_value
+        collection_obj.status = CollectionStatus.PENDING
+
+        projection_result = {
+            "success": True,
+            "defer_completion": True,
+            "projection_id": "proj-123",
+            "message": "Projection compute enqueued",
+        }
+
+        with patch(
+            "packages.webui.tasks._process_projection_operation",
+            new=AsyncMock(return_value=projection_result),
+        ) as mock_projection_impl:
+            result = await _process_collection_operation_async("op-123", mock_celery_task)
+
+        mock_projection_impl.assert_awaited_once()
+        assert result["defer_completion"] is True
+        assert result["projection_id"] == "proj-123"
+
+        # Defer-completion path should commit and return early without marking
+        # the collection READY or recording metrics.
+        mock_session.commit.assert_awaited()
+
+        status_calls = mock_repositories["operation"].update_status.call_args_list
+        # First call marks PROCESSING; there should be no COMPLETED call.
+        assert any(call[0] == ("op-123", OperationStatus.PROCESSING) for call in status_calls)
+        assert not any(call[0] == ("op-123", OperationStatus.COMPLETED) for call in status_calls)
+
+        mock_repositories["collection"].update_status.assert_not_called()
+        mock_repositories["document"].get_stats_by_collection.assert_not_called()
+        mock_projection_repo.list_for_collection.assert_not_called()
 
 
 class TestAppendOperation:

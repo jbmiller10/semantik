@@ -81,8 +81,12 @@ export function useStartProjection(collectionId: string | null) {
       }
     },
     onSuccess: (data) => {
-      addToast({ type: 'success', message: 'Projection started successfully' });
       if (!collectionId) return;
+      const isReuse = data?.idempotent_reuse === true;
+      addToast({
+        type: 'success',
+        message: isReuse ? 'Reused latest projection' : 'Projection started successfully',
+      });
       queryClient.setQueryData<ProjectionMetadata[]>(
         projectionKeys.lists(collectionId),
         (prev = []) => {

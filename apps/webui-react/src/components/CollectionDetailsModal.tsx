@@ -757,7 +757,12 @@ function CollectionDetailsModal() {
           )}
 
           {collection && activeTab === 'visualize' && (
-            <EmbeddingVisualizationTab collectionId={collection.id} />
+            <EmbeddingVisualizationTab
+              collectionId={collection.id}
+              collectionEmbeddingModel={collection.embedding_model}
+              collectionVectorCount={collection.vector_count}
+              collectionUpdatedAt={collection.updated_at}
+            />
           )}
         </div>
       </div>

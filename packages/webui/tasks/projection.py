@@ -1,4 +1,52 @@
-"""Projection Celery tasks for computing and tracking embedding projections."""
+"""Projection Celery tasks for computing and tracking embedding projections.
+
+Artifact layout
+---------------
+
+For each successfully completed ``ProjectionRun`` this module writes a
+canonical set of artifacts under a per-run directory::
+
+    <settings.data_dir>/semantik/projections/<collection_id>/<projection_uuid>/
+
+The directory contains the following files:
+
+* ``x.f32.bin``  – float32 array of length ``point_count`` with X coordinates
+* ``y.f32.bin``  – float32 array of length ``point_count`` with Y coordinates
+* ``ids.i32.bin`` – int32 array of length ``point_count`` with stable point IDs
+* ``cat.u8.bin`` – uint8 array of length ``point_count`` with category indices
+* ``meta.json``  – JSON payload describing the projection run and artifacts
+
+All four binary arrays MUST share the same ``point_count``; this invariant is
+validated before artifacts are written.
+
+``meta.json`` schema
+--------------------
+
+The ``meta.json`` payload (and the value stored in
+``ProjectionRun.meta['projection_artifacts']``) has the following core shape:
+
+* ``projection_id`` (str) – projection UUID
+* ``collection_id`` (str) – parent collection UUID
+* ``created_at`` (ISO 8601 str) – metadata creation time
+* ``point_count`` (int) – number of projected points
+* ``total_count`` (int) – total vectors available in the collection
+* ``shown_count`` (int) – number of points shown in this run
+* ``sampled`` (bool) – whether the run used sampling
+* ``reducer_requested`` / ``reducer_used`` (str) – reducer names
+* ``reducer_params`` (dict) – effective reducer configuration
+* ``dimensionality`` (int) – currently always ``2``
+* ``source_vector_collection`` (str) – backing Qdrant collection name
+* ``sample_limit`` (int) – sampling cap used when scrolling vectors
+* ``files`` (dict) – filenames for ``x``, ``y``, ``ids`` and ``categories``
+* ``color_by`` (str) – active color-by mode
+* ``legend`` (list[dict]) – entries with ``index``, ``label`` and ``count``
+* ``original_ids`` (list[str]) – original Qdrant point identifiers
+* ``category_counts`` (dict[str, int]) – counts per category index
+
+Optional, reducer-specific fields (e.g. ``explained_variance_ratio``,
+``singular_values``, ``kl_divergence``, ``fallback_reason``) may be included
+for diagnostics but are always backwards compatible.
+"""
 
 from __future__ import annotations
 
@@ -489,6 +537,16 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             },
                         )
 
+                    # Category indices for ``cat.u8.bin`` are assigned
+                    # sequentially starting at 0 for each distinct category
+                    # label observed while scrolling Qdrant. Once indices
+                    # 0–254 are exhausted, any additional categories are
+                    # mapped into the overflow bucket at
+                    # ``OVERFLOW_CATEGORY_INDEX`` (255), which is exposed as a
+                    # single "Other" entry in the legend. This ensures every
+                    # value stored in the categories array either has a
+                    # corresponding legend label or is explicitly grouped into
+                    # the overflow bucket.
                     category_index_map: dict[str, int] = {}
                     label_for_index: dict[int, str] = {}
                     category_counts: Counter[int] = Counter()
@@ -682,6 +740,12 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             reducer_params = config if isinstance(config, dict) else {}
 
                     projection_array = projection_result["projection"]
+                    if projection_array.ndim != 2 or projection_array.shape[1] < 2:
+                        raise ValueError(
+                            f"Projection reducer returned invalid shape {projection_array.shape!r}; "
+                            "expected (point_count, 2)"
+                        )
+
                     x_path = run_dir / "x.f32.bin"
                     y_path = run_dir / "y.f32.bin"
                     ids_path = run_dir / "ids.i32.bin"
@@ -718,6 +782,23 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                     ids_array = np.asarray(ids_array, dtype=np.int32)
                     categories_array = np.array(categories, dtype=np.uint8)
 
+                    if not (
+                        len(x_values) == len(y_values) == ids_array.shape[0] == categories_array.shape[0] == point_count
+                    ):
+                        raise ValueError(
+                            "Projection artifact length mismatch: "
+                            f"x={len(x_values)}, y={len(y_values)}, ids={ids_array.shape[0]}, "
+                            f"cat={categories_array.shape[0]}, point_count={point_count}"
+                        )
+
+                    # Legend entries provide a stable mapping from category
+                    # index → label → count that mirrors ``cat.u8.bin``:
+                    # - For indices < OVERFLOW_CATEGORY_INDEX, there is a
+                    #   one-to-one mapping between each distinct category
+                    #   label and its index.
+                    # - When the overflow bucket is used, index 255 is
+                    #   represented once with label ``OVERFLOW_LEGEND_LABEL``
+                    #   and the aggregated count of all overflowed points.
                     legend_entries = [
                         {
                             "index": int(idx),
@@ -791,6 +872,16 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                         str(int(idx)): int(count) for idx, count in category_counts.items()
                     }
 
+                    # Mark runs as degraded when the reducer had to fall back
+                    # to PCA or other non‑requested behaviour. This flag is
+                    # persisted both in the projection_artifacts payload and at
+                    # the top level run.meta so that API consumers can rely on
+                    # a single degraded boolean when deciding whether to offer
+                    # a recompute action.
+                    degraded_flag = bool(fallback_reason)
+                    if degraded_flag:
+                        meta_payload["degraded"] = True
+
                     _write_meta(meta_path, meta_payload)
 
                     try:
@@ -809,6 +900,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             "sampled": sampled_flag,
                             "shown_count": point_count,
                             "total_count": total_vectors,
+                            "degraded": degraded_flag,
                         },
                     )
                     await projection_repo.update_status(
@@ -945,6 +1037,16 @@ async def _process_projection_operation(
             started_at=datetime.now(UTC),
         )
 
+        # Treat the operation as actively processing as soon as the projection
+        # run has been prepared and the compute task is about to be enqueued so
+        # that API consumers can distinguish between queued and idle runs.
+        await operation_repo.update_status(
+            operation.get("uuid"),
+            OperationStatus.PROCESSING,
+            started_at=datetime.now(UTC),
+            error_message=None,
+        )
+
         await session.commit()
     except Exception as exc:
         await session.rollback()
@@ -962,6 +1064,11 @@ async def _process_projection_operation(
         )
 
     try:
+        logger.info(
+            "Enqueuing compute_projection task for projection_id=%s operation_id=%s",
+            projection_id,
+            operation.get("uuid"),
+        )
         compute_projection.apply_async(args=(projection_id,), task_id=str(uuid.uuid4()))
     except Exception as exc:  # pragma: no cover - broker failure path
         sanitized_error = _sanitize_error_message(str(exc))
