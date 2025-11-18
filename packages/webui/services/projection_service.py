@@ -778,6 +778,9 @@ class ProjectionService:
             chunk_data: dict[str, Any] | None = None
             document_data: dict[str, Any] | None = None
 
+            # First, attempt to interpret the original identifier as a numeric
+            # chunk primary key for backward compatibility with earlier runs
+            # and tests that store chunk ids directly in original_ids.
             chunk_id: int | None = None
             if isinstance(raw_identifier, str):
                 try:
@@ -787,31 +790,41 @@ class ProjectionService:
             elif isinstance(raw_identifier, int):
                 chunk_id = raw_identifier
 
+            chunk = None
             if chunk_id is not None:
                 try:
                     chunk = await chunk_repo.get_chunk_by_id(chunk_id, collection_id)
                 except Exception:
                     chunk = None
 
-                if chunk:
-                    chunk_data = {
-                        "chunk_id": chunk.id,
-                        "document_id": chunk.document_id,
-                        "chunk_index": chunk.chunk_index,
-                        "content_preview": (chunk.content or "")[:200] if chunk.content else None,
-                    }
-                    if chunk.document_id:
-                        try:
-                            document = await document_repo.get_by_id(chunk.document_id)
-                        except Exception:
-                            document = None
-                        if document:
-                            document_data = {
-                                "document_id": document.id,
-                                "file_name": document.file_name,
-                                "source_id": document.source_id,
-                                "mime_type": document.mime_type,
-                            }
+            # If no chunk was found via primary key mapping, fall back to
+            # resolving by embedding_vector_id when the original identifier
+            # is a non-empty string (for example, a Qdrant point ID).
+            if chunk is None and isinstance(raw_identifier, str) and raw_identifier:
+                try:
+                    chunk = await chunk_repo.get_chunk_by_embedding_vector_id(raw_identifier, collection_id)
+                except Exception:
+                    chunk = None
+
+            if chunk:
+                chunk_data = {
+                    "chunk_id": chunk.id,
+                    "document_id": chunk.document_id,
+                    "chunk_index": chunk.chunk_index,
+                    "content_preview": (chunk.content or "")[:200] if chunk.content else None,
+                }
+                if chunk.document_id:
+                    try:
+                        document = await document_repo.get_by_id(chunk.document_id)
+                    except Exception:
+                        document = None
+                    if document:
+                        document_data = {
+                            "document_id": document.id,
+                            "file_name": document.file_name,
+                            "source_id": document.source_id,
+                            "mime_type": document.mime_type,
+                        }
 
             items.append(
                 {
