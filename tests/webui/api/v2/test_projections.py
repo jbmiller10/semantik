@@ -14,6 +14,7 @@ from packages.shared.database.models import (
     ProjectionRun,
     ProjectionRunStatus,
 )
+from packages.webui.services.projection_service import compute_projection_metadata_hash
 
 
 @pytest.mark.asyncio()
@@ -65,7 +66,7 @@ async def test_start_projection_accepts_sampling_parameters(
     api_auth_headers: dict[str, str],
     test_user_db,
     collection_factory,
-    stub_celery_send_task,
+    stub_celery_send_task,  # noqa: ARG001
 ) -> None:
     """Sampling parameters should be accepted and persisted in config."""
     collection = await collection_factory(owner_id=test_user_db.id)
@@ -89,6 +90,78 @@ async def test_start_projection_accepts_sampling_parameters(
 
     assert body["config"] is not None
     assert body["config"]["sample_size"] == 1234
+
+
+@pytest.mark.asyncio()
+async def test_start_projection_reuses_completed_run_with_matching_metadata_hash(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+    db_session,
+    stub_celery_send_task,
+) -> None:
+    """Starting a projection with matching metadata_hash should reuse a completed run."""
+
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    base_request = {
+      "reducer": "umap",
+      "dimensionality": 2,
+      "color_by": "document_id",
+      "sample_size": 5000,
+      "config": {"n_neighbors": 15, "min_dist": 0.1, "metric": "cosine"},
+    }
+
+    run_config = dict(base_request["config"])
+    run_config["color_by"] = base_request["color_by"]
+    run_config["sample_size"] = base_request["sample_size"]
+
+    metadata_hash = compute_projection_metadata_hash(
+        collection_id=collection.id,
+        embedding_model=collection.embedding_model,
+        collection_vector_count=collection.vector_count,
+        collection_updated_at=collection.updated_at,
+        reducer=base_request["reducer"],
+        dimensionality=base_request["dimensionality"],
+        color_by=base_request["color_by"],
+        config=run_config,
+        sample_limit=base_request["sample_size"],
+    )
+
+    existing_run = ProjectionRun(
+        uuid=str(uuid4()),
+        collection_id=collection.id,
+        operation_uuid=None,
+        reducer="umap",
+        dimensionality=2,
+        status=ProjectionRunStatus.COMPLETED,
+        config=run_config,
+        meta={"initiated_by": test_user_db.id},
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        metadata_hash=metadata_hash,
+    )
+    db_session.add(existing_run)
+    await db_session.commit()
+    await db_session.refresh(existing_run)
+
+    request_payload = dict(base_request)
+    request_payload["metadata_hash"] = metadata_hash
+
+    response = await api_client.post(
+        f"/api/v2/collections/{collection.id}/projections",
+        json=request_payload,
+        headers=api_auth_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    assert body["id"] == existing_run.uuid
+    assert body["status"] == "completed"
+    assert body.get("idempotent_reuse") is True
+    stub_celery_send_task.assert_not_called()
 
 
 @pytest.mark.asyncio()

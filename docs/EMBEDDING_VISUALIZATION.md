@@ -433,9 +433,11 @@ Tooltips follow a shared, index‑based contract:
 
 - `getProjectionPointIndex` (`projectionIndex.ts`):
   - Normalises various selection values into a `number | null`:
+    - `DataPoint.identifier` (preferred when it is a non‑negative integer; Embedding Atlas uses this as the row id in plain `EmbeddingView` mode);
     - raw numeric indices;
     - `DataPoint` objects with an `index` field;
-    - legacy shapes with `rowIndex`, `pointIndex`, or `i`.
+    - legacy shapes with `rowIndex`, `pointIndex`, or `i`;
+    - nested `fields.index` / `fields.rowIndex` / `fields.pointIndex` / `fields.i` shapes that may appear in future Atlas versions.
   - Ensures the result is a non‑negative integer.
 
 - `useProjectionTooltip`:
@@ -621,4 +623,3 @@ When in doubt, use the tests listed above as executable documentation for
 expected behaviour. Any change that affects sampling, degraded semantics,
 artifact layout, or render thresholds should be accompanied by updated
 tests and an update to this document.
-

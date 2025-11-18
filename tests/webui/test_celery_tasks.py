@@ -34,7 +34,6 @@ from packages.webui.tasks import (
     _process_append_operation_impl,
     _process_collection_operation_async,
     _process_index_operation,
-    _process_projection_operation,
     _process_reindex_operation_impl,
     _process_remove_source_operation,
     _sanitize_error_message,

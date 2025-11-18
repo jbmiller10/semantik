@@ -7,7 +7,7 @@ import logging
 import shutil
 import uuid
 from array import array
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +27,58 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+def compute_projection_metadata_hash(
+    *,
+    collection_id: str,
+    embedding_model: str,
+    collection_vector_count: int,
+    collection_updated_at: datetime | None,
+    reducer: str,
+    dimensionality: int,
+    color_by: str,
+    config: dict[str, Any] | None,
+    sample_limit: int | None,
+) -> str:
+    """Compute a deterministic metadata hash for projection idempotency.
+
+    The hash is derived from immutable inputs to the projection:
+
+    - collection identity and embedding model
+    - collection vector statistics (count + last update timestamp)
+    - reducer name and dimensionality
+    - normalised reducer config (sorted JSON)
+    - colour mode and sampling limit
+    """
+
+    import hashlib
+
+    def _normalise_config(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        return {key: raw[key] for key in sorted(raw.keys())}
+
+    updated_at_str: str | None
+    if isinstance(collection_updated_at, datetime):
+        updated_at_str = collection_updated_at.astimezone(UTC).replace(microsecond=0).isoformat()
+    else:
+        updated_at_str = None
+
+    payload: dict[str, Any] = {
+        "collection_id": collection_id,
+        "embedding_model": embedding_model,
+        "collection_vector_count": int(collection_vector_count),
+        "collection_updated_at": updated_at_str,
+        "reducer": reducer.lower(),
+        "dimensionality": int(dimensionality),
+        "color_by": color_by.lower(),
+        "sample_limit": int(sample_limit) if sample_limit is not None else None,
+        "config": _normalise_config(config),
+    }
+
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class ProjectionService:
@@ -50,6 +102,68 @@ class ProjectionService:
         self.projection_repo = projection_repo
         self.operation_repo = operation_repo
         self.collection_repo = collection_repo
+
+    @staticmethod
+    def _extract_sample_limit(config: dict[str, Any] | None) -> int | None:
+        """Derive a canonical sample_limit from config aliases."""
+        if not isinstance(config, dict):
+            return None
+        for key in ("sample_size", "sample_limit", "sample_n"):
+            value = config.get(key)
+            if value is None:
+                continue
+            try:
+                as_int = int(value)
+            except (TypeError, ValueError):
+                continue
+            if as_int <= 0:
+                continue
+            return as_int
+        return None
+
+    @staticmethod
+    def _is_run_degraded(run: ProjectionRun) -> bool:
+        """Return True when the run meta marks the projection as degraded."""
+        meta_raw = run.meta if isinstance(run.meta, dict) else None
+        if not meta_raw:
+            return False
+
+        if bool(meta_raw.get("degraded")):
+            return True
+
+        projection_meta = meta_raw.get("projection_artifacts")
+        if isinstance(projection_meta, dict) and bool(projection_meta.get("degraded")):
+            return True
+
+        return False
+
+    @staticmethod
+    def _is_metadata_compatible(
+        run: ProjectionRun,
+        *,
+        reducer: str,
+        dimensionality: int,
+        color_by: str,
+        sample_limit: int | None,
+    ) -> bool:
+        """Validate that a candidate run matches the requested inputs for idempotent reuse."""
+
+        if run.reducer.lower() != reducer.lower():
+            return False
+        if run.dimensionality != dimensionality:
+            return False
+
+        config = run.config if isinstance(run.config, dict) else {}
+        run_color_raw = config.get("color_by")
+        run_color = str(run_color_raw).lower() if run_color_raw is not None else None
+        if run_color != color_by.lower():
+            return False
+
+        run_sample_limit = ProjectionService._extract_sample_limit(config)
+        if (run_sample_limit or None) != (sample_limit or None):
+            return False
+
+        return True
 
     @staticmethod
     def _encode_projection(
@@ -249,13 +363,88 @@ class ProjectionService:
         # describe how a particular projection was produced.
         run_config["color_by"] = colour_by
 
-        # Sampling knobs may be provided as top‑level parameters; normalise the
+        # Sampling knobs may be provided as top‑level parameters; normalise
         # common aliases into the stored config so the worker can derive a
-        # single sample_limit.
+        # single sample_limit and the idempotency hash can treat sampling
+        # consistently across clients.
+        sample_limit: int | None = None
         sample_aliases = ("sample_size", "sample_limit", "sample_n")
         for alias in sample_aliases:
             if alias in parameters and parameters[alias] is not None:
-                run_config[alias] = parameters[alias]
+                try:
+                    value = int(parameters[alias])
+                except (TypeError, ValueError):
+                    raise HTTPException(status_code=400, detail=f"{alias} must be an integer") from None
+                if value <= 0:
+                    raise HTTPException(status_code=400, detail=f"{alias} must be > 0") from None
+                run_config[alias] = value
+                sample_limit = value
+                break
+
+        # Compute a deterministic idempotency hash so repeated recompute
+        # requests with identical inputs can reuse an existing completed run.
+        raw_client_hash = parameters.get("metadata_hash")
+        client_metadata_hash = raw_client_hash.strip() if isinstance(raw_client_hash, str) else None
+
+        computed_metadata_hash = compute_projection_metadata_hash(
+            collection_id=collection.id,
+            embedding_model=getattr(collection, "embedding_model", "") or "",
+            collection_vector_count=getattr(collection, "vector_count", 0) or 0,
+            collection_updated_at=getattr(collection, "updated_at", None),
+            reducer=reducer,
+            dimensionality=dimensionality,
+            color_by=colour_by,
+            config=run_config,
+            sample_limit=sample_limit,
+        )
+
+        metadata_hash = computed_metadata_hash
+        if client_metadata_hash:
+            if client_metadata_hash != computed_metadata_hash:
+                logger.warning(
+                    "Client-supplied projection metadata_hash mismatch for collection %s: client=%s, computed=%s",
+                    collection.id,
+                    client_metadata_hash,
+                    computed_metadata_hash,
+                )
+            else:
+                metadata_hash = client_metadata_hash
+
+        # Idempotent shortcut: when an identical, non-degraded completed run
+        # already exists for this collection and metadata hash, return it
+        # instead of creating a new ProjectionRun/Operation pair.
+        if metadata_hash:
+            existing = await self.projection_repo.find_latest_completed_by_metadata_hash(
+                collection.id, metadata_hash
+            )
+            if existing is not None:
+                if not self._is_run_degraded(existing) and self._is_metadata_compatible(
+                    existing,
+                    reducer=reducer,
+                    dimensionality=dimensionality,
+                    color_by=colour_by,
+                    sample_limit=sample_limit,
+                ):
+                    operation = getattr(existing, "operation", None)
+                    logger.info(
+                        "Reusing completed projection run %s for collection %s via metadata_hash",
+                        existing.uuid,
+                        collection.id,
+                    )
+                    payload = self._encode_projection(
+                        existing,
+                        operation=operation,
+                        message="Reused completed projection for identical parameters",
+                    )
+                    payload["idempotent_reuse"] = True
+                    return payload
+
+                logger.warning(
+                    "Projection metadata_hash collision or degraded run for collection %s (hash=%s); "
+                    "ignoring idempotent reuse",
+                    collection.id,
+                    metadata_hash,
+                )
 
         run = await self.projection_repo.create(
             collection_id=collection.id,
@@ -263,6 +452,7 @@ class ProjectionService:
             dimensionality=dimensionality,
             config=run_config,
             meta={"initiated_by": user_id},
+            metadata_hash=metadata_hash,
         )
         operation = await self.operation_repo.create(
             collection_id=collection.id,

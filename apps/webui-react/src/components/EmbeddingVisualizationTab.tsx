@@ -26,6 +26,8 @@ import { getErrorMessage } from '../utils/errorUtils';
 import { createCategoryLabels, DEFAULT_CATEGORY_LABEL_OPTIONS } from '../utils/clusterLabels';
 import type { CategoryLabel } from '../utils/clusterLabels';
 import { getProjectionPointIndex } from '../utils/projectionIndex';
+import { computeProjectionMetadataHash, type ProjectionMetadataHashContext } from '../utils/projectionHash';
+import { trackTelemetry } from '../lib/telemetry';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
 
@@ -138,6 +140,9 @@ interface ProjectionDataState {
 
 interface EmbeddingVisualizationTabProps {
   collectionId: string;
+  collectionEmbeddingModel?: string;
+  collectionVectorCount?: number;
+  collectionUpdatedAt?: string | null;
 }
 
 type RecomputeParamsState = {
@@ -217,7 +222,12 @@ function projectionProgress(status: ProjectionMetadata['status'] | string) {
   return 0;
 }
 
-export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizationTabProps) {
+export function EmbeddingVisualizationTab({
+  collectionId,
+  collectionEmbeddingModel,
+  collectionVectorCount,
+  collectionUpdatedAt,
+}: EmbeddingVisualizationTabProps) {
   // Projection run configuration and list state
   const [selectedReducer, setSelectedReducer] = useState<ProjectionReducer>('umap');
   const [selectedColorBy, setSelectedColorBy] = useState<string>('document_id');
@@ -357,10 +367,35 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
   }, [sortedProjections, pendingOperationId]);
 
   const startProjectionWithPayload = async (payload: StartProjectionRequest) => {
-    const response = await startProjection.mutateAsync(payload);
-    if (response?.operation_id) {
-      setPendingOperationId(response.operation_id);
-      setCurrentOperationStatus(response.operation_status || null);
+    let enrichedPayload: StartProjectionRequest = payload;
+
+    // If caller has already provided a metadata_hash (e.g. recompute dialog),
+    // respect it; otherwise, compute one from the current collection context.
+    if (!enrichedPayload.metadata_hash && metadataHashContext) {
+      try {
+        const metadataHash = await computeProjectionMetadataHash(metadataHashContext, enrichedPayload);
+        enrichedPayload = {
+          ...enrichedPayload,
+          metadata_hash: metadataHash,
+        };
+      } catch (error) {
+        // Hash computation failure should not block the projection; log and continue without idempotency hint.
+        // eslint-disable-next-line no-console
+        console.warn('Failed to compute projection metadata hash', error);
+      }
+    }
+
+    const response = await startProjection.mutateAsync(enrichedPayload);
+    const shouldTrackOperation =
+      response?.operation_id &&
+      response.operation_status &&
+      !response.idempotent_reuse &&
+      ['pending', 'processing', 'running'].includes(response.operation_status);
+
+    if (shouldTrackOperation) {
+      // At this point response and its operation fields are known to be present.
+      setPendingOperationId(response!.operation_id!);
+      setCurrentOperationStatus(response!.operation_status ?? null);
     }
     refetch();
     setActiveProjectionMeta(null);
@@ -521,6 +556,58 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
     });
   }, [labelsEnabled, activeProjection.arrays, activeProjectionMeta?.legend, hasLegend]);
 
+  // Nearest-point helper for EmbeddingView. Embedding Atlas expects a querySelection
+  // callback to resolve hover / click locations into concrete DataPoints. We implement
+  // a simple distance-based search over the current projection arrays and use the
+  // zero-based array index as the DataPoint identifier so tooltip/selection plumbing
+  // can map back through `ids`.
+  const querySelection = useCallback(
+    async (x: number, y: number, unitDistance: number): Promise<DataPoint | null> => {
+      const arrays = activeProjection.arrays;
+      if (!arrays) {
+        return null;
+      }
+
+      const { x: xs, y: ys, category } = arrays;
+      const length = xs.length;
+      if (length === 0) {
+        return null;
+      }
+
+      // Allow a small radius around the cursor in data space. The library passes
+      // `unitDistance` as the distance corresponding to one pixel.
+      const maxDistance = unitDistance * 3;
+      const maxDistanceSq = maxDistance * maxDistance;
+
+      let bestIndex = -1;
+      let bestDistanceSq = maxDistanceSq;
+
+      for (let index = 0; index < length; index += 1) {
+        const dx = xs[index] - x;
+        const dy = ys[index] - y;
+        const distanceSq = dx * dx + dy * dy;
+        if (distanceSq < bestDistanceSq) {
+          bestDistanceSq = distanceSq;
+          bestIndex = index;
+        }
+      }
+
+      if (bestIndex === -1) {
+        return null;
+      }
+
+      const dataPoint: DataPoint = {
+        x: xs[bestIndex],
+        y: ys[bestIndex],
+        category: category[bestIndex],
+        identifier: bestIndex,
+      };
+
+      return dataPoint;
+    },
+    [activeProjection.arrays]
+  );
+
   const tooltipCustomProps = useMemo(
     () => ({
       getTooltipIndex: (tooltip: DataPoint | null) => getProjectionPointIndex(tooltip),
@@ -532,6 +619,18 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
 
   const shownCountDisplay = activeProjectionMeta?.shown_count ?? activeProjection.pointCount;
   const totalCountDisplay = activeProjectionMeta?.total_count ?? Math.max(shownCountDisplay, activeProjection.pointCount);
+
+  const metadataHashContext = useMemo<ProjectionMetadataHashContext | null>(() => {
+    if (!collectionEmbeddingModel) {
+      return null;
+    }
+    return {
+      collectionId,
+      embeddingModel: collectionEmbeddingModel,
+      vectorCount: collectionVectorCount ?? 0,
+      updatedAt: collectionUpdatedAt ?? null,
+    };
+  }, [collectionId, collectionEmbeddingModel, collectionVectorCount, collectionUpdatedAt]);
 
   const handleSelectionChange = async (indices: number[]) => {
     if (!activeProjection.projectionId || !activeProjection.ids) {
@@ -610,12 +709,11 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       return;
     }
 
-    // Analytics logging
-    console.log('projection_selection_open', {
-      collectionId,
-      documentId: item.document_id,
-      chunkId: item.chunk_id,
-      chunkIndex: item.chunk_index,
+    trackTelemetry('visualize_selection_open', {
+      collection_id: collectionId,
+      document_id: item.document_id,
+      chunk_id: item.chunk_id,
+      chunk_index: item.chunk_index,
       timestamp: new Date().toISOString(),
     });
 
@@ -651,12 +749,11 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
         search_type: 'semantic',
       });
 
-      // Analytics logging
-      console.log('projection_selection_find_similar', {
-        collectionId,
-        chunkId: item.chunk_id,
-        query: query.slice(0, 100), // Log truncated query
-        resultCount: response.data?.results?.length ?? 0,
+      trackTelemetry('visualize_selection_find_similar', {
+        collection_id: collectionId,
+        chunk_id: item.chunk_id,
+        query: query.slice(0, 100),
+        result_count: response.data?.results?.length ?? 0,
         timestamp: new Date().toISOString(),
       });
 
@@ -797,8 +894,36 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
       payload.config = config;
     }
 
+    let metadataHash: string | undefined;
+    if (metadataHashContext) {
+      try {
+        metadataHash = await computeProjectionMetadataHash(metadataHashContext, payload);
+        payload.metadata_hash = metadataHash;
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to compute projection metadata hash for recompute', error);
+      }
+    }
+
+    trackTelemetry('visualize_recompute_start', {
+      collection_id: collectionId,
+      reducer: recomputeReducer,
+      color_by: selectedColorBy,
+      sample_size: payload.sample_size ?? payload.sample_n ?? null,
+      metadata_hash: metadataHash ?? null,
+      timestamp: new Date().toISOString(),
+    });
+
     try {
-      await startProjectionWithPayload(payload);
+      const response = await startProjectionWithPayload(payload);
+      if (response?.idempotent_reuse) {
+        trackTelemetry('visualize_recompute_reuse', {
+          collection_id: collectionId,
+          projection_id: response.id,
+          metadata_hash: metadataHash ?? null,
+          timestamp: new Date().toISOString(),
+        });
+      }
       setRecomputeDialogOpen(false);
       setRecomputeError(undefined);
     } catch (error) {
@@ -1141,6 +1266,7 @@ export function EmbeddingVisualizationTab({ collectionId }: EmbeddingVisualizati
                   theme={{ statusBar: true }}
                   config={{ mode: effectiveRenderMode }}
                   labels={labelsEnabled && clusterLabels.length > 0 ? clusterLabels : undefined}
+                  querySelection={querySelection}
                   onTooltip={handleTooltipEvent}
                   customTooltip={{
                     class: EmbeddingTooltipAdapter,
