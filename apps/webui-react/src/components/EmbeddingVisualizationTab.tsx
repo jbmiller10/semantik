@@ -27,7 +27,7 @@ import { createCategoryLabels, DEFAULT_CATEGORY_LABEL_OPTIONS } from '../utils/c
 import type { CategoryLabel } from '../utils/clusterLabels';
 import { getProjectionPointIndex } from '../utils/projectionIndex';
 import { computeProjectionMetadataHash, type ProjectionMetadataHashContext } from '../utils/projectionHash';
-import { trackTelemetry } from '../lib/telemetry';
+import { trackTelemetry } from '../telemetry';
 
 const EmbeddingView = lazy(() => import('embedding-atlas/react').then((mod) => ({ default: mod.EmbeddingView })));
 
