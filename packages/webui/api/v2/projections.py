@@ -34,7 +34,7 @@ def _to_metadata_response(
 ) -> ProjectionMetadataResponse:
     """Normalise arbitrary projection metadata dictionaries."""
 
-    reuse_flag = payload.get("idempotent_reuse", None)
+    reuse_flag = payload.get("idempotent_reuse")
 
     return ProjectionMetadataResponse(
         id=payload.get("projection_id") or payload.get("id") or fallback_id,
