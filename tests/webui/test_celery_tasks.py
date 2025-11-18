@@ -208,7 +208,9 @@ class TestProjectionOperationLifecycle:
         }
         collection = {"id": "col-123"}
 
-        result = await projection_module._process_projection_operation(operation, collection, projection_repo, mock_updater)
+        result = await projection_module._process_projection_operation(
+            operation, collection, projection_repo, mock_updater
+        )
 
         assert result["success"] is True
         assert result["defer_completion"] is True

@@ -30,7 +30,11 @@ export function ensureEmbeddingAtlasWebgpuCompatibility() {
     return;
   }
 
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter?: (...args: any[]) => Promise<any> } }).gpu;
+  type WebgpuLike = {
+    requestAdapter?: (...args: unknown[]) => Promise<unknown>;
+  };
+
+  const gpu = (navigator as Navigator & { gpu?: WebgpuLike }).gpu;
   if (!gpu || typeof gpu.requestAdapter !== 'function') {
     patched = true;
     return;
@@ -38,10 +42,10 @@ export function ensureEmbeddingAtlasWebgpuCompatibility() {
 
   const originalRequestAdapter = gpu.requestAdapter.bind(gpu);
 
-  gpu.requestAdapter = async function patchedRequestAdapter(...args: any[]) {
+  gpu.requestAdapter = async function patchedRequestAdapter(...args: unknown[]) {
     await originalRequestAdapter(...args);
     if (typeof window !== 'undefined') {
-      (window as any).__embeddingAtlasWebgpuFallback = true;
+      (window as typeof window & { __embeddingAtlasWebgpuFallback?: boolean }).__embeddingAtlasWebgpuFallback = true;
       console.warn('[EmbeddingAtlas] Forcing WebGL renderer (WebGPU disabled for compatibility).');
     }
     // Force Embedding Atlas to take its WebGL path by denying WebGPU.

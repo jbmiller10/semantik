@@ -91,7 +91,6 @@ import { searchV2Api } from '../../services/api/v2/collections';
 type ProjectionMetadataResponse = Awaited<ReturnType<typeof projectionsV2Api.getMetadata>>;
 type ProjectionArtifactResponse = Awaited<ReturnType<typeof projectionsV2Api.getArtifact>>;
 type ProjectionSelectResponse = Awaited<ReturnType<typeof projectionsV2Api.select>>;
-type SearchResponse = Awaited<ReturnType<typeof searchV2Api.search>>;
 
 describe('EmbeddingVisualizationTab', () => {
   const collectionId = 'test-collection-id';

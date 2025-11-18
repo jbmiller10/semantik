@@ -369,9 +369,7 @@ class ChunkRepository(PartitionAwareMixin):
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_chunk_by_embedding_vector_id(
-        self, embedding_vector_id: str, collection_id: str
-    ) -> Chunk | None:
+    async def get_chunk_by_embedding_vector_id(self, embedding_vector_id: str, collection_id: str) -> Chunk | None:
         """Get a chunk by its embedding_vector_id with partition pruning.
 
         This maps back from a vector-store point identifier (for example,
