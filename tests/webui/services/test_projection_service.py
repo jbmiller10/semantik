@@ -1,14 +1,12 @@
 """Unit tests for ProjectionService and helpers."""
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
-
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.exceptions import AccessDeniedError
 from shared.database.models import OperationStatus, ProjectionRunStatus
 
 from packages.webui.services import projection_service as projection_module
@@ -566,13 +564,13 @@ async def test_start_projection_build_handles_celery_failure(
     operation.error_message = None
     mock_operation_repo.create.return_value = operation
 
-    async def update_status_side_effect(*args: Any, **kwargs: Any) -> None:
+    async def update_status_side_effect(*_: Any, **__: Any) -> None:
         return None
 
     mock_operation_repo.update_status = AsyncMock(side_effect=update_status_side_effect)
     mock_projection_repo.update_status = AsyncMock(side_effect=update_status_side_effect)
 
-    def failing_send_task(*args: Any, **kwargs: Any) -> None:
+    def failing_send_task(*_: Any, **__: Any) -> None:
         raise RuntimeError("broker failure")
 
     monkeypatch.setattr(projection_module.celery_app, "send_task", failing_send_task)

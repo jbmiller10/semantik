@@ -380,7 +380,6 @@ export function EmbeddingVisualizationTab({
         };
       } catch (error) {
         // Hash computation failure should not block the projection; log and continue without idempotency hint.
-        // eslint-disable-next-line no-console
         console.warn('Failed to compute projection metadata hash', error);
       }
     }
@@ -900,7 +899,6 @@ export function EmbeddingVisualizationTab({
         metadataHash = await computeProjectionMetadataHash(metadataHashContext, payload);
         payload.metadata_hash = metadataHash;
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.warn('Failed to compute projection metadata hash for recompute', error);
       }
     }

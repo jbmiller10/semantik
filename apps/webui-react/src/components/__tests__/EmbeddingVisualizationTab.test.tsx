@@ -1,16 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
-import { render, screen, waitFor, within } from '@/tests/utils/test-utils';
+import { render, screen, waitFor } from '@/tests/utils/test-utils';
 import { act } from '@testing-library/react';
 import EmbeddingVisualizationTab from '../EmbeddingVisualizationTab';
 import type { ProjectionMetadata } from '../../types/projection';
+import type { EmbeddingViewProps } from 'embedding-atlas/react';
+import type { UseMutationResult } from '@tanstack/react-query';
+import type { StartProjectionRequest, StartProjectionResponse } from '../../types/projection';
 
-let lastEmbeddingViewProps: any | null = null;
+type UseOperationProgressOptions = {
+  onComplete?: () => void;
+  onError?: (error: string) => void;
+  showToasts?: boolean;
+};
+
+let lastEmbeddingViewProps: EmbeddingViewProps | null = null;
 const setShowDocumentViewerMock = vi.fn();
 const addToastMock = vi.fn();
 
 let lastOperationId: string | null = null;
-let lastOperationOptions: any | null = null;
+let lastOperationOptions: UseOperationProgressOptions | null = null;
 
 vi.mock('../../hooks/useProjections', () => ({
   useCollectionProjections: vi.fn(),
@@ -28,7 +37,7 @@ vi.mock('../../hooks/useProjectionTooltip', () => ({
 }));
 
 vi.mock('../../hooks/useOperationProgress', () => ({
-  useOperationProgress: vi.fn((operationId: string | null, options: any = {}) => {
+  useOperationProgress: vi.fn((operationId: string | null, options: UseOperationProgressOptions = {}) => {
     lastOperationId = operationId;
     lastOperationOptions = options;
     return { isConnected: false };
@@ -43,7 +52,7 @@ vi.mock('../../stores/uiStore', () => ({
 }));
 
 vi.mock('embedding-atlas/react', () => ({
-  EmbeddingView: (props: any) => {
+  EmbeddingView: (props: EmbeddingViewProps) => {
     lastEmbeddingViewProps = props;
     const labelCount = Array.isArray(props.labels) ? props.labels.length : 0;
     const labelsEnabled = props.labels ? 'true' : 'false';
@@ -79,6 +88,11 @@ import { useUIStore } from '../../stores/uiStore';
 import { projectionsV2Api } from '../../services/api/v2/projections';
 import { searchV2Api } from '../../services/api/v2/collections';
 
+type ProjectionMetadataResponse = Awaited<ReturnType<typeof projectionsV2Api.getMetadata>>;
+type ProjectionArtifactResponse = Awaited<ReturnType<typeof projectionsV2Api.getArtifact>>;
+type ProjectionSelectResponse = Awaited<ReturnType<typeof projectionsV2Api.select>>;
+type SearchResponse = Awaited<ReturnType<typeof searchV2Api.search>>;
+
 describe('EmbeddingVisualizationTab', () => {
   const collectionId = 'test-collection-id';
 
@@ -104,27 +118,31 @@ describe('EmbeddingVisualizationTab', () => {
       },
     ];
 
-    vi.mocked(useCollectionProjections).mockReturnValue({
+    const projectionsResult: ReturnType<typeof useCollectionProjections> = {
       data: mockProjections,
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as any);
+    } as unknown as ReturnType<typeof useCollectionProjections>;
 
-    vi.mocked(useStartProjection).mockReturnValue({
+    const startMutation: UseMutationResult<StartProjectionResponse, unknown, StartProjectionRequest> = {
       mutateAsync: vi.fn(),
       isPending: false,
-    } as any);
+    } as unknown as UseMutationResult<StartProjectionResponse, unknown, StartProjectionRequest>;
 
-    vi.mocked(useDeleteProjection).mockReturnValue({
+    const deleteMutation: UseMutationResult<string, unknown, string> = {
       mutateAsync: vi.fn(),
       isPending: false,
-    } as any);
+    } as unknown as UseMutationResult<string, unknown, string>;
+
+    vi.mocked(useCollectionProjections).mockReturnValue(projectionsResult);
+    vi.mocked(useStartProjection).mockReturnValue(startMutation);
+    vi.mocked(useDeleteProjection).mockReturnValue(deleteMutation);
 
     vi.mocked(useUIStore).mockReturnValue({
       setShowDocumentViewer: setShowDocumentViewerMock,
       addToast: addToastMock,
-    } as any);
+    });
   });
 
   it('passes labels to EmbeddingView when legend is present and toggle is used', async () => {
@@ -157,21 +175,21 @@ describe('EmbeddingVisualizationTab', () => {
           degraded: false,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -238,21 +256,21 @@ describe('EmbeddingVisualizationTab', () => {
           degraded: true,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -274,7 +292,7 @@ describe('EmbeddingVisualizationTab', () => {
         missing_ids: [],
         degraded: true,
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     const user = userEvent.setup();
 
@@ -333,21 +351,21 @@ describe('EmbeddingVisualizationTab', () => {
           degraded: false,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -369,7 +387,7 @@ describe('EmbeddingVisualizationTab', () => {
         missing_ids: [],
         degraded: false,
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(searchV2Api.search).mockResolvedValue({
       data: {
@@ -384,7 +402,7 @@ describe('EmbeddingVisualizationTab', () => {
         partial_failure: false,
         api_version: 'v2',
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     const user = userEvent.setup();
 
@@ -468,21 +486,21 @@ describe('EmbeddingVisualizationTab', () => {
           degraded: false,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -495,7 +513,7 @@ describe('EmbeddingVisualizationTab', () => {
         missing_ids: [200],
         degraded: false,
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     const user = userEvent.setup();
 
@@ -534,11 +552,10 @@ describe('EmbeddingVisualizationTab', () => {
   });
 
   it('shows a loading indicator while projection arrays are being fetched', async () => {
-    vi.mocked(projectionsV2Api.getMetadata).mockReturnValue(
-      new Promise(() => {
-        // Intentionally never resolve to keep the component in loading state
-      }) as any
-    );
+    const neverResolving: Promise<ProjectionMetadataResponse> = new Promise(() => {
+      // Intentionally never resolve to keep the component in loading state
+    });
+    vi.mocked(projectionsV2Api.getMetadata).mockReturnValue(neverResolving);
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async () => {
         throw new Error('getArtifact should not be called while metadata is unresolved');
@@ -589,21 +606,21 @@ describe('EmbeddingVisualizationTab', () => {
         created_at: new Date().toISOString(),
         meta: {},
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -656,21 +673,21 @@ describe('EmbeddingVisualizationTab', () => {
           total_count: 50,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -724,21 +741,21 @@ describe('EmbeddingVisualizationTab', () => {
           sampled: false,
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -790,21 +807,21 @@ describe('EmbeddingVisualizationTab', () => {
           color_by: 'document_id',
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -859,7 +876,7 @@ describe('EmbeddingVisualizationTab', () => {
 
     const refetchMock = vi.fn();
 
-    vi.mocked(useCollectionProjections).mockReturnValue({
+    const projectionsOverride: ReturnType<typeof useCollectionProjections> = {
       data: [
         {
           id: 'projection-1',
@@ -876,7 +893,8 @@ describe('EmbeddingVisualizationTab', () => {
       isLoading: false,
       error: null,
       refetch: refetchMock,
-    } as any);
+    } as unknown as ReturnType<typeof useCollectionProjections>;
+    vi.mocked(useCollectionProjections).mockReturnValue(projectionsOverride);
 
     const mutateAsyncMock = vi.fn(async () => ({
       id: 'projection-2',
@@ -890,10 +908,11 @@ describe('EmbeddingVisualizationTab', () => {
       meta: {},
     }));
 
-    vi.mocked(useStartProjection).mockReturnValue({
+    const startOverride: UseMutationResult<StartProjectionResponse, unknown, StartProjectionRequest> = {
       mutateAsync: mutateAsyncMock,
       isPending: false,
-    } as any);
+    } as unknown as UseMutationResult<StartProjectionResponse, unknown, StartProjectionRequest>;
+    vi.mocked(useStartProjection).mockReturnValue(startOverride);
 
     vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
       data: {
@@ -907,21 +926,21 @@ describe('EmbeddingVisualizationTab', () => {
           color_by: 'document_id',
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -1010,21 +1029,21 @@ describe('EmbeddingVisualizationTab', () => {
           color_by: 'document_id',
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -1087,21 +1106,21 @@ describe('EmbeddingVisualizationTab', () => {
           color_by: 'document_id',
         },
       },
-    } as any);
+    } as ProjectionMetadataResponse);
 
     vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
       async (_collection, _projection, artifactName) => {
         if (artifactName === 'x') {
-          return { data: x.buffer } as any;
+          return { data: x.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'y') {
-          return { data: y.buffer } as any;
+          return { data: y.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'cat') {
-          return { data: category.buffer } as any;
+          return { data: category.buffer } as ProjectionArtifactResponse;
         }
         if (artifactName === 'ids') {
-          return { data: ids.buffer } as any;
+          return { data: ids.buffer } as ProjectionArtifactResponse;
         }
         throw new Error(`Unexpected artifact request: ${artifactName}`);
       }
@@ -1151,14 +1170,14 @@ describe('EmbeddingVisualizationTab', () => {
       },
     };
 
-    let resolveFirstSelection: ((value: any) => void) | null = null;
-    const firstPromise = new Promise((resolve) => {
+    let resolveFirstSelection: ((value: ProjectionSelectResponse) => void) | null = null;
+    const firstPromise: Promise<ProjectionSelectResponse> = new Promise((resolve) => {
       resolveFirstSelection = resolve;
     });
 
     vi.mocked(projectionsV2Api.select)
-      .mockImplementationOnce(async () => firstPromise as any)
-      .mockResolvedValueOnce(secondSelectionResponse as any);
+      .mockImplementationOnce(async () => firstPromise)
+      .mockResolvedValueOnce(secondSelectionResponse as ProjectionSelectResponse);
 
     const user = userEvent.setup();
 
@@ -1187,7 +1206,7 @@ describe('EmbeddingVisualizationTab', () => {
     });
 
     await act(async () => {
-      resolveFirstSelection?.(firstSelectionResponse as any);
+      resolveFirstSelection?.(firstSelectionResponse as ProjectionSelectResponse);
     });
 
     await waitFor(() => {
@@ -1202,7 +1221,7 @@ describe('EmbeddingVisualizationTab', () => {
         missing_ids: [],
         degraded: false,
       },
-    } as any);
+    } as ProjectionSelectResponse);
 
     await act(async () => {
       lastEmbeddingViewProps?.onSelection?.([0, 1]);

@@ -550,9 +550,9 @@ async def test_select_projection_region_resolves_chunk_metadata_via_embedding_ve
 ) -> None:
     """Selection should resolve chunk metadata when original_ids store vector IDs."""
 
-    from packages.webui import services as services_pkg
     from packages.shared.database.models import Document
     from packages.shared.database.repositories.chunk_repository import ChunkRepository
+    from packages.webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
