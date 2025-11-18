@@ -519,7 +519,7 @@ class ProjectionService:
         collection = await self.collection_repo.get_by_uuid_with_permission_check(collection_id, user_id)
         owner_id = getattr(collection, "owner_id", None) or getattr(collection, "user_id", None)
         if owner_id is not None and owner_id != user_id:
-            raise AccessDeniedError("collection", collection_id)
+            raise AccessDeniedError(str(user_id), "collection", collection_id)
         run = await self.projection_repo.get_by_uuid(projection_id)
         if not run or run.collection_id != collection_id:
             raise EntityNotFoundError("projection_run", projection_id)
