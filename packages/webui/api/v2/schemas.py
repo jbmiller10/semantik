@@ -217,6 +217,13 @@ class ProjectionBuildRequest(BaseModel):
         ge=1,
         description="Alias for sample_size; kept for compatibility with earlier clients",
     )
+    metadata_hash: str | None = Field(
+        default=None,
+        description=(
+            "Optional deterministic hash of reducer/config/color_by/sampling inputs and collection vector state. "
+            "If omitted, the backend will compute a stable hash for idempotent recompute."
+        ),
+    )
 
     @field_validator("color_by")
     @classmethod
@@ -278,6 +285,13 @@ class ProjectionMetadataResponse(BaseModel):
     )
     config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
     meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
+    idempotent_reuse: bool | None = Field(
+        default=None,
+        description=(
+            "True when the projection build request was satisfied by reusing an existing completed run with an "
+            "identical metadata_hash instead of creating a new run."
+        ),
+    )
 
 
 class ProjectionListResponse(BaseModel):

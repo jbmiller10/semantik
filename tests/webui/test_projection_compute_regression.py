@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     import pytest
 
 import json
-from pathlib import Path
 
 import numpy as np
 
@@ -443,7 +442,7 @@ def test_compute_projection_uses_overflow_category_bucket(
     # Every non-overflow index present in cat.u8.bin must have a legend entry.
     from packages.webui.tasks.projection import OVERFLOW_CATEGORY_INDEX, OVERFLOW_LEGEND_LABEL
 
-    for idx in set(int(v) for v in cat_values if int(v) < OVERFLOW_CATEGORY_INDEX):
+    for idx in {int(v) for v in cat_values if int(v) < OVERFLOW_CATEGORY_INDEX}:
         assert idx in legend_by_index
 
     # Overflow bucket must be present with the canonical label and aggregated count.

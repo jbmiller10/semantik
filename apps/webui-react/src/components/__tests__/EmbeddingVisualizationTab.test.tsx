@@ -179,7 +179,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -271,7 +278,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -374,7 +388,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -478,7 +499,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -519,7 +547,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -576,7 +611,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -636,7 +678,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -697,7 +746,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const viewButton = await screen.findByRole('button', { name: /view/i });
     await user.click(viewButton);
@@ -756,7 +812,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const colorBySelect = screen.getAllByRole('combobox')[0];
     await user.selectOptions(colorBySelect, 'filetype');
@@ -866,7 +929,14 @@ describe('EmbeddingVisualizationTab', () => {
 
     const user = userEvent.setup();
 
-    render(<EmbeddingVisualizationTab collectionId={collectionId} />);
+    render(
+      <EmbeddingVisualizationTab
+        collectionId={collectionId}
+        collectionEmbeddingModel="test-model"
+        collectionVectorCount={100}
+        collectionUpdatedAt={new Date().toISOString()}
+      />
+    );
 
     const colorBySelect = screen.getAllByRole('combobox')[0];
     await user.selectOptions(colorBySelect, 'filetype');

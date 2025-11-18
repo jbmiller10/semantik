@@ -19,6 +19,7 @@ export interface ProjectionMetadata {
   operation_status?: string | null;
   config?: Record<string, unknown> | null;
   meta?: Record<string, unknown> | null;
+   idempotent_reuse?: boolean | null;
 }
 
 export interface ProjectionLegendItem {
@@ -44,6 +45,11 @@ export interface StartProjectionRequest {
    */
   sample_size?: number;
   sample_n?: number;
+  /**
+   * Optional deterministic hash of reducer/config/color_by/sampling inputs
+   * and collection vector state, used for idempotent recompute.
+   */
+  metadata_hash?: string;
 }
 
 export interface ProjectionSelectionItem {
