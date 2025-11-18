@@ -10,6 +10,7 @@ export interface TooltipMetadata {
   selectedId: number;
   originalId?: string | null;
   documentId?: string | number | null;
+  documentLabel?: string | null;
   chunkIndex?: number | null;
   contentPreview?: string | null;
   source: 'cache' | 'network';
@@ -42,10 +43,19 @@ function isRequestAborted(error: unknown): boolean {
 
 function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
   const preview = typeof item?.content_preview === 'string' ? item.content_preview.slice(0, 200) : null;
+  const document = item?.document as { file_name?: unknown } | null | undefined;
+  const rawFileName = document && typeof document.file_name === 'string' ? document.file_name : null;
+  const label =
+    rawFileName && rawFileName.trim().length > 0
+      ? rawFileName.trim()
+      : item?.document_id != null
+        ? String(item.document_id)
+        : null;
   return {
     selectedId,
     originalId: typeof item?.original_id === 'string' ? item.original_id : null,
     documentId: item?.document_id ?? null,
+    documentLabel: label,
     chunkIndex: item?.chunk_index ?? null,
     contentPreview: preview,
     source: 'network',

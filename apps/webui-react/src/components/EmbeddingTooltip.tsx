@@ -64,7 +64,10 @@ function TooltipContent({ tooltip, getTooltipIndex, ids, tooltipState }: Tooltip
         {metadata.originalId && !metadata.documentId && (
           <div className="text-gray-500">Point ID {metadata.originalId}</div>
         )}
-        {metadata.documentId && (
+        {metadata.documentLabel && (
+          <div className="font-medium text-gray-800">{metadata.documentLabel}</div>
+        )}
+        {!metadata.documentLabel && metadata.documentId && (
           <div className="font-medium text-gray-800">Document {metadata.documentId}</div>
         )}
         {typeof metadata.chunkIndex === 'number' && (

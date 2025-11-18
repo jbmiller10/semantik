@@ -19,6 +19,7 @@ from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.document_repository import DocumentRepository
 
 from packages.webui.celery_app import celery_app
+from packages.webui.utils.qdrant_manager import qdrant_manager
 
 if TYPE_CHECKING:
     from shared.database.repositories.collection_repository import CollectionRepository
@@ -738,6 +739,15 @@ class ProjectionService:
 
         degraded_flag = bool(run_meta.get("degraded") or projection_meta.get("degraded"))
 
+        # Qdrant vector collection name (if available) for optional metadata
+        # resolution directly from the vector store when chunk/document
+        # mappings are not present in the database.
+        vector_collection_name: str | None = None
+        if projection_meta:
+            source_vector_collection = projection_meta.get("source_vector_collection")
+            if isinstance(source_vector_collection, str) and source_vector_collection:
+                vector_collection_name = source_vector_collection
+
         original_ids: list[str] | None = None
         if projection_meta:
             original_ids = (
@@ -761,6 +771,16 @@ class ProjectionService:
 
         items: list[dict[str, Any]] = []
         missing_ids: list[int] = []
+
+        # Lazy-initialise Qdrant client if we need to fall back to vector
+        # store metadata. This avoids adding a hard dependency for tests or
+        # environments without Qdrant.
+        qdrant_client = None
+        if vector_collection_name:
+            try:  # pragma: no cover - exercised via integration, not unit tests
+                qdrant_client = qdrant_manager.get_client()
+            except Exception:
+                qdrant_client = None
 
         for selected_id in ordered_ids:
             index = id_to_index.get(selected_id)
@@ -805,6 +825,61 @@ class ProjectionService:
                     chunk = await chunk_repo.get_chunk_by_embedding_vector_id(raw_identifier, collection_id)
                 except Exception:
                     chunk = None
+
+            # If we still cannot resolve a chunk from the relational database,
+            # and a Qdrant client is available, attempt to pull minimal
+            # metadata (doc_id, chunk_id, content) directly from the vector
+            # store so tooltips and selection remain useful even when
+            # embedding_vector_id has not been backfilled.
+            if chunk is None and qdrant_client is not None and isinstance(raw_identifier, str) and raw_identifier:
+                try:  # pragma: no cover - relies on live Qdrant in integration environments
+                    records = qdrant_client.retrieve(
+                        collection_name=vector_collection_name,
+                        ids=[raw_identifier],
+                        with_payload=True,
+                    )
+                except Exception:
+                    records = None
+
+                if records:
+                    record = records[0]
+                    payload = getattr(record, "payload", {}) or {}
+                    doc_id = payload.get("doc_id") or None
+                    content_value = payload.get("content")
+                    content_preview = content_value[:200] if isinstance(content_value, str) else None
+
+                    # Best-effort parsing of chunk_index from chunk_id-style strings.
+                    chunk_index_value: int | None = None
+                    chunk_id_str = payload.get("chunk_id")
+                    if isinstance(chunk_id_str, str):
+                        import re
+
+                        match = re.search(r"(\\d+)$", chunk_id_str)
+                        if match:
+                            try:
+                                chunk_index_value = int(match.group(1))
+                            except ValueError:
+                                chunk_index_value = None
+
+                    if doc_id or content_preview:
+                        chunk_data = {
+                            "chunk_id": None,
+                            "document_id": doc_id,
+                            "chunk_index": chunk_index_value,
+                            "content_preview": content_preview,
+                        }
+                        if doc_id:
+                            try:
+                                document = await document_repo.get_by_id(str(doc_id))
+                            except Exception:
+                                document = None
+                            if document:
+                                document_data = {
+                                    "document_id": document.id,
+                                    "file_name": document.file_name,
+                                    "source_id": document.source_id,
+                                    "mime_type": document.mime_type,
+                                }
 
             if chunk:
                 chunk_data = {
