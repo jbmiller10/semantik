@@ -41,7 +41,12 @@ function isRequestAborted(error: unknown): boolean {
   );
 }
 
-function toTooltipMetadata(item: any, selectedId: number): TooltipMetadata {
+import type { ProjectionSelectionItem } from '../types/projection';
+
+function toTooltipMetadata(
+  item: ProjectionSelectionItem | null | undefined,
+  selectedId: number
+): TooltipMetadata {
   const preview = typeof item?.content_preview === 'string' ? item.content_preview.slice(0, 200) : null;
   const document = item?.document as { file_name?: unknown } | null | undefined;
   const rawFileName = document && typeof document.file_name === 'string' ? document.file_name : null;
@@ -87,8 +92,9 @@ export function useProjectionTooltip(
   }, []);
 
   useEffect(() => {
-    controllersRef.current.forEach((controller) => controller.abort());
-    controllersRef.current.clear();
+    const controllers = controllersRef.current;
+    controllers.forEach((controller) => controller.abort());
+    controllers.clear();
     cacheRef.current.clear();
     cancelledTokens.current.clear();
     inflightTokens.current = [];
@@ -98,8 +104,8 @@ export function useProjectionTooltip(
     }
     clearState();
     return () => {
-      controllersRef.current.forEach((controller) => controller.abort());
-      controllersRef.current.clear();
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
     };
   }, [projectionId, clearState]);
 

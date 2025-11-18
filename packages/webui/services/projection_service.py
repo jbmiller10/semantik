@@ -415,9 +415,7 @@ class ProjectionService:
         # already exists for this collection and metadata hash, return it
         # instead of creating a new ProjectionRun/Operation pair.
         if metadata_hash:
-            existing = await self.projection_repo.find_latest_completed_by_metadata_hash(
-                collection.id, metadata_hash
-            )
+            existing = await self.projection_repo.find_latest_completed_by_metadata_hash(collection.id, metadata_hash)
             if existing is not None:
                 if not self._is_run_degraded(existing) and self._is_metadata_compatible(
                     existing,
@@ -640,7 +638,9 @@ class ProjectionService:
                 await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
                 await self.db_session.flush()
             except Exception:  # pragma: no cover - defensive logging
-                logger.warning("Failed to mark projection %s as degraded after missing artifact %s", run.uuid, artifact_name)
+                logger.warning(
+                    "Failed to mark projection %s as degraded after missing artifact %s", run.uuid, artifact_name
+                )
             raise FileNotFoundError(f"Projection artifact '{artifact_name}' not found")
 
         return file_path

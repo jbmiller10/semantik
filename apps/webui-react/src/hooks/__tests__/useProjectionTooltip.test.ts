@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import {
@@ -82,7 +82,7 @@ describe('useProjectionTooltip', () => {
         missing_ids: [],
         degraded: false,
       },
-    } as any);
+    } as Awaited<ReturnType<typeof projectionsV2Api.select>>);
 
     const { result, unmount } = renderHook(() =>
       useProjectionTooltip('collection-1', 'projection-1', ids)

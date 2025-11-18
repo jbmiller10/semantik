@@ -106,11 +106,11 @@ async def test_start_projection_reuses_completed_run_with_matching_metadata_hash
     collection = await collection_factory(owner_id=test_user_db.id)
 
     base_request = {
-      "reducer": "umap",
-      "dimensionality": 2,
-      "color_by": "document_id",
-      "sample_size": 5000,
-      "config": {"n_neighbors": 15, "min_dist": 0.1, "metric": "cosine"},
+        "reducer": "umap",
+        "dimensionality": 2,
+        "color_by": "document_id",
+        "sample_size": 5000,
+        "config": {"n_neighbors": 15, "min_dist": 0.1, "metric": "cosine"},
     }
 
     run_config = dict(base_request["config"])
@@ -661,6 +661,7 @@ async def test_select_projection_region_resolves_chunk_metadata_via_embedding_ve
     assert item["document_id"] == document.id
     assert item["chunk_index"] == 0
     assert item["content_preview"].startswith("hello from chunk")
+
 
 @pytest.mark.asyncio()
 async def test_select_projection_region_degraded_flag(

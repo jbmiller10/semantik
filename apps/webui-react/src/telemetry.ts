@@ -13,20 +13,20 @@ export interface TelemetryPayload {
 export function trackTelemetry(event: TelemetryEventName, payload: TelemetryPayload = {}): void {
   try {
     if (typeof window !== 'undefined') {
-      const anyWindow = window as any;
-      const analytics = anyWindow.analytics;
+      const analytics = (window as typeof window & {
+        analytics?: {
+          track?: (event: TelemetryEventName, payload: TelemetryPayload) => void;
+        };
+      }).analytics;
       if (analytics && typeof analytics.track === 'function') {
         analytics.track(event, payload);
         return;
       }
     }
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.warn('Telemetry dispatch failed', { event, error });
   }
 
   // Fallback: structured console log for local debugging
-  // eslint-disable-next-line no-console
   console.log('telemetry_event', { event, ...payload });
 }
-

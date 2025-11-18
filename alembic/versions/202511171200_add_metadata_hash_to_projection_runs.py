@@ -43,4 +43,3 @@ def downgrade() -> None:
 
     op.drop_index("ix_projection_runs_metadata_hash", table_name="projection_runs")
     op.drop_column("projection_runs", "metadata_hash")
-

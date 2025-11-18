@@ -311,9 +311,7 @@ def test_compute_projection_writes_canonical_artifacts_and_meta(
         assert category_counts[int(idx)] >= 1
 
 
-def test_compute_projection_umap_failure_falls_back_to_pca(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_compute_projection_umap_failure_falls_back_to_pca(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """UMAP reducer failures should fall back to PCA and mark run degraded."""
 
     monkeypatch.setattr(projection_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -400,9 +398,7 @@ class _OverflowQdrantManager:
         self.client = _OverflowQdrantClient(num_points=num_points)
 
 
-def test_compute_projection_uses_overflow_category_bucket(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_compute_projection_uses_overflow_category_bucket(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Legend entries and category counts must respect the overflow bucket semantics."""
 
     monkeypatch.setattr(projection_module, "settings", SimpleNamespace(data_dir=tmp_path))

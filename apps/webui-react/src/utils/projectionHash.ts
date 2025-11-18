@@ -58,7 +58,7 @@ export async function computeProjectionMetadataHash(
 ): Promise<string> {
   const canonical = buildProjectionMetadataHashPayload(context, request);
 
-  const globalCrypto: Crypto | undefined = (globalThis as any).crypto;
+  const globalCrypto = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto;
   if (globalCrypto?.subtle && typeof TextEncoder !== 'undefined') {
     const encoder = new TextEncoder();
     const data = encoder.encode(canonical);
@@ -82,4 +82,3 @@ export async function computeProjectionMetadataHash(
   }
   return `fallback-${Math.abs(hash)}`;
 }
-
