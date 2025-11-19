@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
-from shared.database.exceptions import AccessDeniedError
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, ProjectionRunStatus
 
 from packages.webui.services import projection_service as projection_module
@@ -530,6 +530,45 @@ async def test_start_projection_build_creates_run_and_operation(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.parametrize(
+    ("param_name", "param_value", "expected_detail"),
+    [
+        ("sample_size", "oops", "sample_size must be an integer"),
+        ("sample_n", 0, "sample_n must be > 0"),
+    ],
+)
+async def test_start_projection_build_validates_sampling_aliases(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    param_name: str,
+    param_value: Any,
+    expected_detail: str,
+) -> None:
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    parameters = {"reducer": "umap", "dimensionality": 2, param_name: param_value}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.start_projection_build(
+            collection_id=mock_collection.id,
+            user_id=1,
+            parameters=parameters,
+        )
+
+    assert exc_info.value.detail == expected_detail
+
+
+@pytest.mark.asyncio()
 async def test_start_projection_build_reuses_existing_run(
     mock_db_session: AsyncMock,
     mock_projection_repo: AsyncMock,
@@ -640,6 +679,69 @@ async def test_start_projection_build_handles_celery_failure(
     assert exc_info.value.status_code == 503
     mock_operation_repo.update_status.assert_awaited_once()
     mock_projection_repo.update_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_start_projection_build_ignores_mismatched_metadata_hash(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+    mock_projection_repo.find_latest_completed_by_metadata_hash.return_value = None
+
+    run = MagicMock()
+    run.uuid = "proj-hash"
+    run.collection_id = mock_collection.id
+    run.reducer = "umap"
+    run.dimensionality = 2
+    run.config = {}
+    run.meta = {}
+    run.operation_uuid = None
+    run.status = ProjectionRunStatus.PENDING
+    mock_projection_repo.create.return_value = run
+
+    operation = MagicMock()
+    operation.uuid = "op-hash"
+    operation.status = OperationStatus.PENDING
+    operation.error_message = None
+    mock_operation_repo.create.return_value = operation
+
+    send_task_mock = MagicMock()
+    monkeypatch.setattr(projection_module.celery_app, "send_task", send_task_mock)
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    result = await service.start_projection_build(
+        collection_id=mock_collection.id,
+        user_id=1,
+        parameters={"reducer": "umap", "dimensionality": 2, "metadata_hash": "client-supplied"},
+    )
+
+    create_kwargs = mock_projection_repo.create.await_args.kwargs
+    expected_hash = compute_projection_metadata_hash(
+        collection_id=mock_collection.id,
+        embedding_model=getattr(mock_collection, "embedding_model", ""),
+        collection_vector_count=getattr(mock_collection, "vector_count", 0),
+        collection_updated_at=getattr(mock_collection, "updated_at", None),
+        reducer="umap",
+        dimensionality=2,
+        color_by="document_id",
+        config=create_kwargs["config"],
+        sample_limit=None,
+    )
+
+    assert create_kwargs["metadata_hash"] == expected_hash
+    assert result["projection_id"] == "proj-hash"
+    send_task_mock.assert_called_once()
 
 
 @pytest.mark.asyncio()
@@ -779,6 +881,36 @@ async def test_resolve_storage_directory_normalises_relative_paths(
 
 
 @pytest.mark.asyncio()
+async def test_resolve_storage_directory_handles_absolute_projection_suffix(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "semantik" / "projections" / "abs-run"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    run = MagicMock()
+    run.storage_path = str(artifacts_dir)
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    resolved = await service._resolve_storage_directory(run, str(artifacts_dir))
+
+    assert resolved == artifacts_dir
+    assert run.storage_path == "semantik/projections/abs-run"
+    mock_db_session.flush.assert_awaited()
+
+
+@pytest.mark.asyncio()
 async def test_resolve_artifact_path_returns_existing_file(
     mock_db_session: AsyncMock,
     mock_projection_repo: AsyncMock,
@@ -815,6 +947,138 @@ async def test_resolve_artifact_path_returns_existing_file(
     )
 
     assert resolved == artifact_file
+
+
+@pytest.mark.asyncio()
+async def test_resolve_artifact_path_rejects_unknown_artifact() -> None:
+    service = ProjectionService(
+        db_session=AsyncMock(),
+        projection_repo=AsyncMock(),
+        operation_repo=AsyncMock(),
+        collection_repo=AsyncMock(),
+    )
+
+    with pytest.raises(ValueError, match=""):
+        await service.resolve_artifact_path("c", "p", "unknown", 1)
+
+
+@pytest.mark.asyncio()
+async def test_resolve_artifact_path_requires_matching_projection(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+) -> None:
+    mock_projection_repo.get_by_uuid.return_value = None
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(EntityNotFoundError):
+        await service.resolve_artifact_path("c", "p", "x", 1)
+
+
+@pytest.mark.asyncio()
+async def test_resolve_artifact_path_requires_storage_path(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    run = MagicMock()
+    run.uuid = "proj-1"
+    run.collection_id = "coll-1"
+    run.storage_path = None
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.resolve_artifact_path("coll-1", "proj-1", "x", 1)
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio()
+async def test_resolve_artifact_path_blocks_symlink_escape(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "symlink_proj"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    outside_file = tmp_path / "outside.bin"
+    outside_file.write_bytes(b"forbidden")
+    symlink_path = artifacts_dir / "x.f32.bin"
+    symlink_path.symlink_to(outside_file)
+
+    run = MagicMock()
+    run.uuid = "proj-1"
+    run.collection_id = "coll-1"
+    run.storage_path = "symlink_proj"
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(PermissionError):
+        await service.resolve_artifact_path("coll-1", "proj-1", "x", 1)
+
+
+@pytest.mark.asyncio()
+async def test_resolve_artifact_path_marks_degraded_when_file_missing(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "missing_file_proj"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    run = MagicMock()
+    run.uuid = "proj-1"
+    run.collection_id = "coll-1"
+    run.storage_path = "missing_file_proj"
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.update_metadata = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(FileNotFoundError):
+        await service.resolve_artifact_path("coll-1", "proj-1", "x", 1)
+
+    mock_projection_repo.update_metadata.assert_awaited_once()
 
 
 @pytest.mark.asyncio()
@@ -912,3 +1176,469 @@ async def test_select_projection_region_rejects_invalid_ids() -> None:
         )
 
     assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_requires_integer_ids() -> None:
+    service = ProjectionService(
+        db_session=AsyncMock(),
+        projection_repo=AsyncMock(),
+        operation_repo=AsyncMock(),
+        collection_repo=AsyncMock(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.select_projection_region(
+            collection_id="coll-1",
+            projection_id="proj-1",
+            selection={"ids": [1, "abc"]},
+            user_id=1,
+        )
+
+    assert exc_info.value.detail == "ids must be integers"
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_enforces_max_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = ProjectionService(
+        db_session=AsyncMock(),
+        projection_repo=AsyncMock(),
+        operation_repo=AsyncMock(),
+        collection_repo=AsyncMock(),
+    )
+
+    monkeypatch.setattr(ProjectionService, "_MAX_SELECTION_IDS", 1)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.select_projection_region(
+            collection_id="coll-1",
+            projection_id="proj-1",
+            selection={"ids": [1, 2]},
+            user_id=1,
+        )
+
+    assert exc_info.value.status_code == 413
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_requires_existing_projection(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+    mock_projection_repo.get_by_uuid.return_value = None
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(EntityNotFoundError):
+        await service.select_projection_region(
+            collection_id=mock_collection.id,
+            projection_id="missing",
+            selection={"ids": [1]},
+            user_id=1,
+        )
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_requires_artifacts_path(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.storage_path = None
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(FileNotFoundError):
+        await service.select_projection_region(
+            collection_id=mock_collection.id,
+            projection_id="proj-1",
+            selection={"ids": [1]},
+            user_id=1,
+        )
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_marks_degraded_when_directory_missing(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.storage_path = "proj-missing"
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.update_metadata = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+    service._resolve_storage_directory = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.select_projection_region(
+            collection_id=mock_collection.id,
+            projection_id="proj-1",
+            selection={"ids": [1]},
+            user_id=1,
+        )
+
+    assert exc_info.value.status_code == 404
+    mock_projection_repo.update_metadata.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_marks_degraded_when_ids_file_missing(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "missing_ids"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.storage_path = "missing_ids"
+    run.meta = {"projection_artifacts": {"original_ids": ["1"]}}
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.update_metadata = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.select_projection_region(
+            collection_id=mock_collection.id,
+            projection_id="proj-ids",
+            selection={"ids": [1]},
+            user_id=1,
+        )
+
+    assert exc_info.value.detail == "Projection ids artifact is missing"
+    mock_projection_repo.update_metadata.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_handles_invalid_meta_json(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "invalid_meta"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    ids_file = artifacts_dir / "ids.i32.bin"
+    ids_file.write_bytes(array("i", [5]).tobytes())
+    (artifacts_dir / "meta.json").write_text("{not json")
+
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.storage_path = "invalid_meta"
+    run.meta = {"projection_artifacts": {"original_ids": ["5"]}}
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.update_metadata = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    result = await service.select_projection_region(
+        collection_id=mock_collection.id,
+        projection_id="proj-invalid-meta",
+        selection={"ids": [5]},
+        user_id=1,
+    )
+
+    assert result["items"][0]["selected_id"] == 5
+    mock_projection_repo.update_metadata.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_select_projection_region_enriches_chunk_and_qdrant_metadata(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "projection_enrich"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    ids_file = artifacts_dir / "ids.i32.bin"
+    ids_file.write_bytes(array("i", [5, 6, 7, 8, 9]).tobytes())
+    meta_payload = {
+        "original_ids": ["10", "vector-1", "not-int", 77],
+        "source_vector_collection": "collection-q",
+        "degraded": True,
+    }
+    (artifacts_dir / "meta.json").write_text(json.dumps(meta_payload))
+
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.storage_path = "projection_enrich"
+    run.meta = {}
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    class FakeChunk:
+        def __init__(self, chunk_id: int, document_id: str, content: str, chunk_index: int = 0) -> None:
+            self.id = chunk_id
+            self.document_id = document_id
+            self.content = content
+            self.chunk_index = chunk_index
+
+    class FakeChunkRepository:
+        def __init__(self, session: Any) -> None:
+            self.session = session
+
+        async def get_chunk_by_id(self, chunk_id: int, collection_id: str) -> FakeChunk | None:
+            if chunk_id == 10:
+                return FakeChunk(10, "doc-10", "A" * 300)
+            if chunk_id == 77:
+                return FakeChunk(77, "doc-77", "chunk77", chunk_index=5)
+            raise Exception("missing")
+
+        async def get_chunk_by_embedding_vector_id(self, vector_id: str, collection_id: str) -> FakeChunk | None:
+            raise Exception("missing")
+
+    class FakeDocument:
+        def __init__(self, doc_id: str) -> None:
+            self.id = doc_id
+            self.file_name = f"{doc_id}.txt"
+            self.source_id = f"src-{doc_id}"
+            self.mime_type = "text/plain"
+
+    class FakeDocumentRepository:
+        def __init__(self, session: Any) -> None:
+            self.session = session
+
+        async def get_by_id(self, doc_id: str) -> FakeDocument | None:
+            if str(doc_id) in {"doc-10", "doc-77", "doc-qdrant"}:
+                return FakeDocument(str(doc_id))
+            return None
+
+    class FakeQdrantClient:
+        def retrieve(self, collection_name: str, ids: list[str], with_payload: bool) -> list[SimpleNamespace]:
+            if ids == ["vector-1"]:
+                chunk_id_value = "chunk-" + "\\" + "dddd"
+                payload = {
+                    "doc_id": "doc-qdrant",
+                    "chunk_id": chunk_id_value,
+                    "content": "payload-text" * 20,
+                }
+                return [SimpleNamespace(payload=payload)]
+            return []
+
+    monkeypatch.setattr(projection_module, "ChunkRepository", FakeChunkRepository)
+    monkeypatch.setattr(projection_module, "DocumentRepository", FakeDocumentRepository)
+    monkeypatch.setattr(
+        projection_module.qdrant_manager,
+        "get_client",
+        MagicMock(return_value=FakeQdrantClient()),
+    )
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    result = await service.select_projection_region(
+        collection_id=mock_collection.id,
+        projection_id="proj-rich",
+        selection={"ids": [5, 6, 7, 8, 9, 42]},
+        user_id=1,
+    )
+
+    assert result["degraded"] is True
+    assert result["missing_ids"] == [42]
+    assert len(result["items"]) == 5
+
+    first, second, third, fourth, fifth = result["items"]
+    assert first["chunk_id"] == 10
+    assert first["document"]["document_id"] == "doc-10"
+    assert second["document"]["document_id"] == "doc-qdrant"
+    assert second["chunk_index"] is None
+    assert third["document_id"] is None
+    assert fourth["chunk_id"] == 77
+    assert fifth["original_id"] is None
+
+
+@pytest.mark.asyncio()
+async def test_delete_projection_rejects_pending_run(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    run = MagicMock()
+    run.collection_id = mock_collection.id
+    run.status = ProjectionRunStatus.PENDING
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+    mock_projection_repo.get_by_uuid.return_value = run
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.delete_projection(mock_collection.id, "proj", 1)
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio()
+async def test_delete_projection_removes_artifacts_and_commits(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "proj_delete"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    (artifacts_dir / "dummy.bin").write_bytes(b"x")
+
+    run = MagicMock()
+    run.uuid = "proj-delete"
+    run.collection_id = mock_collection.id
+    run.storage_path = "proj_delete"
+    run.status = ProjectionRunStatus.COMPLETED
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.delete = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    await service.delete_projection(mock_collection.id, "proj-delete", 1)
+
+    assert not artifacts_dir.exists()
+    mock_projection_repo.delete.assert_awaited_once_with("proj-delete")
+    mock_db_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_delete_projection_handles_missing_artifacts_directory(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+) -> None:
+    run = MagicMock()
+    run.uuid = "proj-delete"
+    run.collection_id = mock_collection.id
+    run.storage_path = "missing"
+    run.status = ProjectionRunStatus.COMPLETED
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.delete = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+    service._resolve_storage_directory = AsyncMock(side_effect=FileNotFoundError("missing"))
+
+    await service.delete_projection(mock_collection.id, "proj-delete", 1)
+
+    mock_projection_repo.delete.assert_awaited_once_with("proj-delete")
+    mock_db_session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio()
+async def test_delete_projection_ignores_rmtree_file_not_found(
+    mock_db_session: AsyncMock,
+    mock_projection_repo: AsyncMock,
+    mock_operation_repo: AsyncMock,
+    mock_collection_repo: AsyncMock,
+    mock_collection: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(projection_module.settings, "DATA_DIR", tmp_path)
+    artifacts_dir = tmp_path / "proj_delete_missing"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    run = MagicMock()
+    run.uuid = "proj-delete-missing"
+    run.collection_id = mock_collection.id
+    run.storage_path = "proj_delete_missing"
+    run.status = ProjectionRunStatus.COMPLETED
+    mock_projection_repo.get_by_uuid.return_value = run
+    mock_projection_repo.delete = AsyncMock()
+    mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+    monkeypatch.setattr(projection_module.shutil, "rmtree", MagicMock(side_effect=FileNotFoundError()))
+
+    service = ProjectionService(
+        db_session=mock_db_session,
+        projection_repo=mock_projection_repo,
+        operation_repo=mock_operation_repo,
+        collection_repo=mock_collection_repo,
+    )
+
+    await service.delete_projection(mock_collection.id, "proj-delete-missing", 1)
+
+    mock_projection_repo.delete.assert_awaited_once_with("proj-delete-missing")
+    mock_db_session.commit.assert_awaited_once()
