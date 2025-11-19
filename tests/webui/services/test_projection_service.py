@@ -4,8 +4,8 @@ import json
 from array import array
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -958,7 +958,7 @@ async def test_resolve_artifact_path_rejects_unknown_artifact() -> None:
         collection_repo=AsyncMock(),
     )
 
-    with pytest.raises(ValueError, match=""):
+    with pytest.raises(ValueError, match="Unsupported projection artifact 'unknown'"):
         await service.resolve_artifact_path("c", "p", "unknown", 1)
 
 

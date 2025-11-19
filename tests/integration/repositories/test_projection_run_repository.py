@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,9 @@ from shared.database.exceptions import EntityNotFoundError, ValidationError
 from shared.database.models import ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio()
@@ -108,8 +111,8 @@ class TestProjectionRunRepositoryIntegration:
         )
         await repository.create(collection_id=other_collection.id, reducer="pca", dimensionality=3)
 
-        await repository.update_status(pending.uuid, ProjectionRunStatus.RUNNING)
-        await repository.update_status(completed.uuid, ProjectionRunStatus.COMPLETED)
+        await repository.update_status(pending.uuid, status=ProjectionRunStatus.RUNNING)
+        await repository.update_status(completed.uuid, status=ProjectionRunStatus.COMPLETED)
 
         runs, total = await repository.list_for_collection(
             collection.id,
@@ -117,7 +120,8 @@ class TestProjectionRunRepositoryIntegration:
         )
 
         assert total == 1
-        assert runs and runs[0].uuid == completed.uuid
+        assert runs
+        assert runs[0].uuid == completed.uuid
 
     async def test_update_status_transitions_and_clears_error(
         self,
@@ -130,16 +134,16 @@ class TestProjectionRunRepositoryIntegration:
         collection = await collection_factory(owner_id=test_user_db.id)
         run = await repository.create(collection_id=collection.id, reducer="umap", dimensionality=2)
 
-        running = await repository.update_status(run.uuid, ProjectionRunStatus.RUNNING)
+        running = await repository.update_status(run.uuid, status=ProjectionRunStatus.RUNNING)
         assert running.status is ProjectionRunStatus.RUNNING
         assert running.started_at is not None
 
-        failed = await repository.update_status(run.uuid, ProjectionRunStatus.FAILED, error_message="boom")
+        failed = await repository.update_status(run.uuid, status=ProjectionRunStatus.FAILED, error_message="boom")
         assert failed.status is ProjectionRunStatus.FAILED
         assert failed.error_message == "boom"
         assert failed.completed_at is not None
 
-        completed = await repository.update_status(run.uuid, ProjectionRunStatus.COMPLETED)
+        completed = await repository.update_status(run.uuid, status=ProjectionRunStatus.COMPLETED)
         assert completed.status is ProjectionRunStatus.COMPLETED
         assert completed.error_message is None
         assert completed.completed_at is not None
@@ -258,16 +262,17 @@ class TestProjectionRunRepositoryIntegration:
         )
 
         # Mark completion times explicitly to guarantee ordering
-        await repository.update_status(older.uuid, ProjectionRunStatus.COMPLETED)
-        await repository.update_status(newer.uuid, ProjectionRunStatus.COMPLETED)
-        await repository.update_status(running.uuid, ProjectionRunStatus.RUNNING)
+        await repository.update_status(older.uuid, status=ProjectionRunStatus.COMPLETED)
+        await repository.update_status(newer.uuid, status=ProjectionRunStatus.COMPLETED)
+        await repository.update_status(running.uuid, status=ProjectionRunStatus.RUNNING)
 
         older.created_at = datetime.now(UTC) - timedelta(hours=2)
         newer.created_at = datetime.now(UTC)
         await db_session.flush()
 
         latest = await repository.find_latest_completed_by_metadata_hash(collection.id, "hash-shared")
-        assert latest is not None and latest.uuid == newer.uuid
+        assert latest is not None
+        assert latest.uuid == newer.uuid
 
         missing = await repository.find_latest_completed_by_metadata_hash(collection.id, "hash-missing")
         assert missing is None
