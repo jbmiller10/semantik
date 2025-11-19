@@ -16,7 +16,7 @@ import packages.webui.tasks.projection as projection_module
     ("value", "expected_iso"),
     [
         (datetime(2024, 1, 2, tzinfo=UTC), "2024-01-02T00:00:00+00:00"),
-        (datetime(2024, 1, 3, 15, tzinfo=None), "2024-01-03T15:00:00+00:00"),
+        (datetime(2024, 1, 3, 15, 0, 0, 0, tzinfo=UTC), "2024-01-03T15:00:00+00:00"),
         (1_700_000_000, datetime.fromtimestamp(1_700_000_000, tz=UTC).isoformat()),
         (
             1_700_000_000_000_000,
@@ -93,7 +93,7 @@ def test_extract_age_bucket_looks_through_metadata() -> None:
     assert projection_module._extract_age_bucket(payload, now) == projection_module.UNKNOWN_CATEGORY_LABEL
 
 
-def test_derive_category_label_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_derive_category_label_variants() -> None:
     now = datetime(2024, 5, 1, tzinfo=UTC)
     payload = {
         "doc_id": "doc-123",
@@ -166,7 +166,7 @@ def test_compute_pca_projection_downsamples_large_inputs(monkeypatch: pytest.Mon
     [np.ones((1, 3), dtype=np.float32), np.ones((3, 1), dtype=np.float32)],
 )
 def test_compute_pca_projection_validates_input(vectors: np.ndarray) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=""):
         projection_module._compute_pca_projection(vectors)
 
 
@@ -306,11 +306,11 @@ async def test_operation_updates_context_manager(monkeypatch: pytest.MonkeyPatch
         def __init__(self, operation_id: str) -> None:
             self.operation_id = operation_id
 
-        async def __aenter__(self) -> "DummyUpdater":
+        async def __aenter__(self) -> DummyUpdater:
             events.append(f"enter:{self.operation_id}")
             return self
 
-        async def __aexit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+        async def __aexit__(self, exc_type, exc, tb) -> None:
             events.append(f"exit:{self.operation_id}")
 
     monkeypatch.setattr(projection_module, "CeleryTaskWithOperationUpdates", DummyUpdater)
