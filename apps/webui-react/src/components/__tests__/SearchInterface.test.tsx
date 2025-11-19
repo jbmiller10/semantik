@@ -314,8 +314,6 @@ describe('SearchInterface', () => {
   })
 
   it('updates search parameters when inputs change', async () => {
-    const user = userEvent.setup()
-
     render(<SearchInterface />)
 
     const queryInput = screen.getByPlaceholderText('Enter your search query...')
