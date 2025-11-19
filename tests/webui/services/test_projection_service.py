@@ -1,7 +1,11 @@
 """Unit tests for ProjectionService and helpers."""
 
+import json
+from array import array
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -346,6 +350,15 @@ def test_is_metadata_compatible_matches_expected_fields() -> None:
         sample_limit=50,
     )
 
+    # Mismatched dimensionality
+    assert not ProjectionService._is_metadata_compatible(
+        run,
+        reducer="umap",
+        dimensionality=3,
+        color_by="document_id",
+        sample_limit=100,
+    )
+
 
 def test_normalise_reducer_config_umap_defaults_and_validation() -> None:
     cfg = ProjectionService._normalise_reducer_config("umap", None)
@@ -398,6 +411,41 @@ def test_normalise_reducer_config_rejects_non_dict_config() -> None:
 
     with pytest.raises(HTTPException):
         ProjectionService._normalise_reducer_config("pca", "not-a-dict")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_detail"),
+    [
+        ({"n_neighbors": "oops"}, "n_neighbors must be an integer"),
+        ({"n_neighbors": 15, "min_dist": "oops"}, "min_dist must be a number"),
+        ({"n_neighbors": 15, "min_dist": 2}, "min_dist must be between 0 and 1"),
+        ({"n_neighbors": 15, "min_dist": 0.1, "metric": ""}, "metric must be a non-empty string"),
+    ],
+)
+def test_normalise_reducer_config_umap_invalid_inputs(config: dict[str, Any], expected_detail: str) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        ProjectionService._normalise_reducer_config("umap", config)
+
+    assert exc_info.value.detail == expected_detail
+
+
+@pytest.mark.parametrize(
+    ("config", "expected_detail"),
+    [
+        ({"perplexity": "oops"}, "perplexity must be a number"),
+        ({"perplexity": 0}, "perplexity must be > 0"),
+        ({"perplexity": 10, "learning_rate": "oops"}, "learning_rate must be a number"),
+        ({"perplexity": 10, "learning_rate": 0}, "learning_rate must be > 0"),
+        ({"perplexity": 10, "learning_rate": 100, "n_iter": "oops"}, "n_iter must be an integer"),
+        ({"perplexity": 10, "learning_rate": 100, "n_iter": 100}, "n_iter must be >= 250"),
+        ({"perplexity": 10, "learning_rate": 100, "n_iter": 300, "metric": ""}, "metric must be a non-empty string"),
+    ],
+)
+def test_normalise_reducer_config_tsne_invalid_inputs(config: dict[str, Any], expected_detail: str) -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        ProjectionService._normalise_reducer_config("tsne", config)
+
+    assert exc_info.value.detail == expected_detail
 
 
 @pytest.mark.asyncio()
