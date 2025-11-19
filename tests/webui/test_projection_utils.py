@@ -166,7 +166,7 @@ def test_compute_pca_projection_downsamples_large_inputs(monkeypatch: pytest.Mon
     [np.ones((1, 3), dtype=np.float32), np.ones((3, 1), dtype=np.float32)],
 )
 def test_compute_pca_projection_validates_input(vectors: np.ndarray) -> None:
-    with pytest.raises(ValueError, match=""):
+    with pytest.raises(ValueError, match="(At least two|at least two dimensions).*PCA"):
         projection_module._compute_pca_projection(vectors)
 
 

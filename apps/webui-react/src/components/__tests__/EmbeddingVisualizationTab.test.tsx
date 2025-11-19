@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import { render, screen, waitFor } from '@/tests/utils/test-utils';
-import { act } from '@testing-library/react';
+import { act, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import EmbeddingVisualizationTab from '../EmbeddingVisualizationTab';
 import type { ProjectionMetadata } from '../../types/projection';
 import type { EmbeddingViewProps } from 'embedding-atlas/react';
@@ -91,9 +92,90 @@ import { searchV2Api } from '../../services/api/v2/collections';
 type ProjectionMetadataResponse = Awaited<ReturnType<typeof projectionsV2Api.getMetadata>>;
 type ProjectionArtifactResponse = Awaited<ReturnType<typeof projectionsV2Api.getArtifact>>;
 type ProjectionSelectResponse = Awaited<ReturnType<typeof projectionsV2Api.select>>;
+const collectionId = 'test-collection-id';
+type EmbeddingVisualizationTabTestProps = Partial<ComponentProps<typeof EmbeddingVisualizationTab>>;
+
+type ProjectionMockOptions = {
+  pointCount: number;
+  idsStart?: number;
+  categoryGenerator?: (index: number) => number;
+  meta?: Record<string, unknown>;
+};
+
+function createProjectionArrays({ pointCount, idsStart = 0, categoryGenerator }: ProjectionMockOptions) {
+  const x = new Float32Array(pointCount);
+  const y = new Float32Array(pointCount);
+  const category = new Uint8Array(pointCount);
+  const ids = new Int32Array(pointCount);
+  for (let index = 0; index < pointCount; index += 1) {
+    x[index] = index;
+    y[index] = 0;
+    category[index] = categoryGenerator ? categoryGenerator(index) : 0;
+    ids[index] = idsStart + index;
+  }
+  return { x, y, category, ids };
+}
+
+function setupProjectionApiMocks(options: ProjectionMockOptions) {
+  const arrays = createProjectionArrays(options);
+  vi.mocked(projectionsV2Api.getMetadata).mockResolvedValue({
+    data: {
+      id: 'projection-1',
+      collection_id: collectionId,
+      status: 'completed',
+      reducer: 'umap',
+      dimensionality: 2,
+      created_at: new Date().toISOString(),
+      meta: {
+        color_by: 'document_id',
+        ...options.meta,
+      },
+    },
+  } as ProjectionMetadataResponse);
+
+  vi.mocked(projectionsV2Api.getArtifact).mockImplementation(
+    async (_collection, _projection, artifactName) => {
+      if (artifactName === 'x') {
+        return { data: arrays.x.buffer } as ProjectionArtifactResponse;
+      }
+      if (artifactName === 'y') {
+        return { data: arrays.y.buffer } as ProjectionArtifactResponse;
+      }
+      if (artifactName === 'cat') {
+        return { data: arrays.category.buffer } as ProjectionArtifactResponse;
+      }
+      if (artifactName === 'ids') {
+        return { data: arrays.ids.buffer } as ProjectionArtifactResponse;
+      }
+      throw new Error(`Unexpected artifact request: ${artifactName}`);
+    }
+  );
+
+  return arrays;
+}
+
+function renderTab(overrides: EmbeddingVisualizationTabTestProps = {}) {
+  const user = userEvent.setup();
+  render(
+    <EmbeddingVisualizationTab
+      collectionId={collectionId}
+      {...overrides}
+    />
+  );
+  return { user };
+}
+
+async function renderTabAndLoadProjection(overrides: EmbeddingVisualizationTabTestProps = {}) {
+  const { user } = renderTab(overrides);
+  const viewButton = await screen.findByRole('button', { name: /view/i });
+  await user.click(viewButton);
+  await waitFor(() => {
+    expect(lastEmbeddingViewProps).not.toBeNull();
+  });
+  return { user };
+}
 
 describe('EmbeddingVisualizationTab', () => {
-  const collectionId = 'test-collection-id';
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1241,5 +1323,312 @@ describe('EmbeddingVisualizationTab', () => {
     expect(openButtons[1]).toBeDisabled();
     expect(similarButtons[0]).toBeEnabled();
     expect(similarButtons[1]).toBeDisabled();
+  });
+
+  it('starts a projection with selected options and tracks pending operation state', async () => {
+    const mutateAsyncMock = vi.fn(async () => ({
+      id: 'projection-2',
+      collection_id: collectionId,
+      status: 'pending',
+      operation_id: 'op-555',
+      operation_status: 'processing',
+      reducer: 'tsne',
+      dimensionality: 2,
+      created_at: new Date().toISOString(),
+      meta: {},
+      idempotent_reuse: false,
+    }));
+
+    const refetchMock = vi.fn();
+    vi.mocked(useCollectionProjections).mockReturnValue({
+      data: [
+        {
+          id: 'projection-1',
+          collection_id: collectionId,
+          status: 'completed',
+          operation_id: 'op-existing',
+          operation_status: 'completed',
+          reducer: 'umap',
+          dimensionality: 2,
+          created_at: new Date().toISOString(),
+          meta: {},
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: refetchMock,
+    } as unknown as ReturnType<typeof useCollectionProjections>);
+
+    vi.mocked(useStartProjection).mockReturnValue({
+      mutateAsync: mutateAsyncMock,
+      isPending: false,
+    } as unknown as UseMutationResult<StartProjectionResponse, unknown, StartProjectionRequest>);
+
+    const { user } = renderTab();
+
+    await user.click(screen.getByRole('button', { name: /t-SNE/i }));
+    const colorSelect = screen.getAllByRole('combobox')[0];
+    await user.selectOptions(colorSelect, 'filetype');
+
+    await user.click(screen.getByRole('button', { name: /Start Projection/i }));
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({ reducer: 'tsne', color_by: 'filetype' });
+    });
+
+    expect(await screen.findByText(/Projection recompute in progress/i)).toBeInTheDocument();
+    expect(screen.getByText(/op-555/)).toBeInTheDocument();
+    expect(lastOperationId).toBe('op-555');
+
+    await act(async () => {
+      lastOperationOptions?.onComplete?.();
+    });
+
+    expect(refetchMock).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByText(/Projection recompute in progress/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows fallback progress banner when websocket updates are unavailable', () => {
+    const now = Date.now();
+    vi.mocked(useCollectionProjections).mockReturnValue({
+      data: [
+        {
+          id: 'projection-running',
+          collection_id: collectionId,
+          status: 'running',
+          operation_id: 'op-fallback',
+          operation_status: 'processing',
+          reducer: 'umap',
+          dimensionality: 2,
+          created_at: new Date(now).toISOString(),
+          meta: {},
+        },
+      ],
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCollectionProjections>);
+
+    renderTab();
+
+    expect(screen.getByText(/Projection in progress/i)).toBeInTheDocument();
+    expect(screen.getByText(/op-fallback/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Status from last refresh \(WebSocket unavailable\)/i)
+    ).toBeInTheDocument();
+  });
+
+  it('deletes the active projection and resets the preview state', async () => {
+    setupProjectionApiMocks({ pointCount: 4 });
+
+    const deleteMock = vi.fn().mockResolvedValue('deleted');
+    vi.mocked(useDeleteProjection).mockReturnValue({
+      mutateAsync: deleteMock,
+      isPending: false,
+    } as unknown as UseMutationResult<string, unknown, string>);
+
+    const { user } = await renderTabAndLoadProjection();
+
+    expect(await screen.findByRole('button', { name: 'Auto' })).toBeInTheDocument();
+
+    const deleteButton = screen.getByRole('button', { name: /Delete/i });
+    await user.click(deleteButton);
+
+    await waitFor(() => {
+      expect(deleteMock).toHaveBeenCalledWith('projection-1');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Select a completed projection/i)).toBeInTheDocument();
+    });
+  });
+
+  it('switches render modes manually and resolves query selections near the cursor', async () => {
+    setupProjectionApiMocks({ pointCount: 25_000 });
+
+    const { user } = await renderTabAndLoadProjection();
+
+    await waitFor(() => {
+      expect(lastEmbeddingViewProps?.config?.mode).toBe('density');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Points' }));
+    await waitFor(() => {
+      expect(lastEmbeddingViewProps?.config?.mode).toBe('points');
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Density' }));
+    await waitFor(() => {
+      expect(lastEmbeddingViewProps?.config?.mode).toBe('density');
+    });
+
+    const resolvedPoint = await lastEmbeddingViewProps?.querySelection?.(10, 0, 1);
+    expect(resolvedPoint?.identifier).toBe(10);
+
+    const missingPoint = await lastEmbeddingViewProps?.querySelection?.(999999, 999999, 1);
+    expect(missingPoint).toBeNull();
+  });
+
+  it('surfaces selection errors when the select endpoint fails', async () => {
+    setupProjectionApiMocks({ pointCount: 2 });
+
+    vi.mocked(projectionsV2Api.select).mockRejectedValue(new Error('select failed'));
+
+    await renderTabAndLoadProjection();
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([0]);
+    });
+
+    expect(await screen.findByText('select failed')).toBeInTheDocument();
+  });
+
+  it('renders similar search results and allows closing the results panel', async () => {
+    setupProjectionApiMocks({ pointCount: 3 });
+
+    vi.mocked(projectionsV2Api.select).mockResolvedValue({
+      data: {
+        projection_id: 'projection-1',
+        items: [
+          {
+            selected_id: 0,
+            index: 0,
+            document_id: 'doc-1',
+            chunk_id: 10,
+            chunk_index: 1,
+            content_preview: 'Preview for similar search',
+          },
+        ],
+        missing_ids: [],
+        degraded: false,
+      },
+    } as ProjectionSelectResponse);
+
+    vi.mocked(searchV2Api.search).mockResolvedValue({
+      data: {
+        results: [
+          {
+            document_id: 'doc-2',
+            chunk_id: 'chunk-2',
+            chunk_index: 3,
+            file_name: 'report.pdf',
+            text: 'Result text',
+            score: 0.42,
+          },
+        ],
+      },
+    } as ProjectionMetadataResponse);
+
+    const { user } = await renderTabAndLoadProjection();
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([0]);
+    });
+
+    const findSimilarButton = await screen.findByRole('button', { name: /Find Similar/i });
+    await user.click(findSimilarButton);
+
+    const resultTitle = await screen.findByText('report.pdf');
+    const resultCard = resultTitle.closest('li');
+    expect(resultCard).not.toBeNull();
+    if (!resultCard) {
+      throw new Error('Result card not found');
+    }
+    const openResultButton = within(resultCard).getByRole('button', { name: /^Open$/i });
+    await user.click(openResultButton);
+    expect(setShowDocumentViewerMock).toHaveBeenCalledWith({
+      collectionId,
+      docId: 'doc-2',
+      chunkId: 'chunk-2',
+    });
+
+    await user.click(screen.getByTitle('Close similar results'));
+    expect(screen.queryByText(/Similar Chunks/i)).not.toBeInTheDocument();
+  });
+
+  it('shows an error toast when similar search fails', async () => {
+    setupProjectionApiMocks({ pointCount: 2 });
+
+    vi.mocked(projectionsV2Api.select).mockResolvedValue({
+      data: {
+        projection_id: 'projection-1',
+        items: [
+          {
+            selected_id: 1,
+            index: 0,
+            document_id: 'doc-1',
+            chunk_id: 7,
+            chunk_index: 0,
+            content_preview: 'Chunk preview content',
+          },
+        ],
+        missing_ids: [],
+        degraded: false,
+      },
+    } as ProjectionSelectResponse);
+
+    vi.mocked(searchV2Api.search).mockRejectedValue(new Error('Search exploded'));
+
+    const { user } = await renderTabAndLoadProjection();
+
+    await act(async () => {
+      lastEmbeddingViewProps?.onSelection?.([0]);
+    });
+
+    const findSimilarButton = await screen.findByRole('button', { name: /Find Similar/i });
+    await user.click(findSimilarButton);
+
+    expect(await screen.findByText('Search exploded')).toBeInTheDocument();
+    expect(addToastMock).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'Failed to find similar chunks: Search exploded',
+    });
+  });
+
+  it('renders status badges and progress bars for each projection state', () => {
+    const statuses = [
+      { id: 'completed', status: 'completed' },
+      { id: 'running', status: 'running' },
+      { id: 'processing', status: 'pending', operation_status: 'processing' },
+      { id: 'failed', status: 'failed' },
+      { id: 'cancelled', status: 'cancelled' },
+      { id: 'pending', status: 'pending' },
+      { id: 'mystery', status: 'weird-status' },
+    ];
+
+    vi.mocked(useCollectionProjections).mockReturnValue({
+      data: statuses.map((entry, index) => ({
+        ...entry,
+        collection_id: collectionId,
+        reducer: 'umap',
+        dimensionality: 2,
+        created_at: new Date(Date.now() - index * 1_000).toISOString(),
+        meta: {},
+      })),
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useCollectionProjections>);
+
+    renderTab();
+
+    expect(screen.getByText('Completed')).toBeInTheDocument();
+    expect(screen.getAllByText('Processing').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Failed')).toBeInTheDocument();
+    expect(screen.getByText('Cancelled')).toBeInTheDocument();
+    expect(screen.getAllByText('Pending').length).toBeGreaterThan(0);
+
+    const rows = screen.getAllByRole('row').slice(1);
+    const widths = rows
+      .map((row) => row.querySelector('td:nth-child(3) .bg-purple-500') as HTMLElement | null)
+      .filter((bar): bar is HTMLElement => Boolean(bar))
+      .map((bar) => bar.style.width);
+
+    expect(widths).toContain('100%');
+    expect(widths).toContain('60%');
+    expect(widths).toContain('10%');
+    expect(widths).toContain('0%');
   });
 });
