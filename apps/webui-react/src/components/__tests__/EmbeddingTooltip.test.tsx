@@ -228,7 +228,7 @@ describe('TooltipContent', () => {
 
   it('handles ids being undefined', () => {
     const getTooltipIndex = vi.fn().mockReturnValue(0);
-    const { container } = render(
+    render(
       <TooltipContent
         {...defaultProps}
         getTooltipIndex={getTooltipIndex}
@@ -245,7 +245,7 @@ describe('TooltipContent', () => {
 
   it('handles index out of bounds', () => {
     const getTooltipIndex = vi.fn().mockReturnValue(100); // Out of bounds
-    const { container } = render(
+    render(
       <TooltipContent
         {...defaultProps}
         getTooltipIndex={getTooltipIndex}
@@ -259,7 +259,7 @@ describe('TooltipContent', () => {
 
   it('handles negative index', () => {
     const getTooltipIndex = vi.fn().mockReturnValue(-1);
-    const { container } = render(
+    render(
       <TooltipContent
         {...defaultProps}
         getTooltipIndex={getTooltipIndex}
