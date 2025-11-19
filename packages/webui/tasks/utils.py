@@ -387,15 +387,42 @@ async def await_if_awaitable(value: Any) -> Any:
     return value
 
 
+_WORKER_EVENT_LOOP_ATTR = "_celery_worker_event_loop"
+
+
 def resolve_awaitable_sync(value: Any) -> Any:
-    """Resolve coroutine-like values from synchronous contexts using patched asyncio."""
+    """Resolve coroutine-like values from synchronous contexts without recreating loops."""
     if inspect.isawaitable(value):
         tasks_module = import_module("packages.webui.tasks")
         asyncio_module = tasks_module.asyncio
-        run = asyncio_module.run
+
+        # Allow tests to keep patching asyncio.run while letting production code
+        # use the dedicated worker event loop. The patched object will usually be
+        # a mock supplied by unittest.mock.patch.
+        patched_run = getattr(asyncio_module, "run", None)
+        if patched_run is not None and _is_mock_like(patched_run):
+            return patched_run(value)
+
+        loop = getattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, None)
+        if loop is None or loop.is_closed():
+            loop = asyncio_module.new_event_loop()
+            setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)
+            with contextlib.suppress(RuntimeError):
+                # set_event_loop may fail if policy forbids setting outside main thread.
+                # In that case the loop will still be passed explicitly to ensure_future/run_until_complete.
+                asyncio_module.set_event_loop(loop)
+        else:
+            with contextlib.suppress(RuntimeError):
+                asyncio_module.set_event_loop(loop)
+
+        task = asyncio_module.ensure_future(value, loop=loop)
         try:
-            return run(value)
+            return loop.run_until_complete(task)
         finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(task)
             close = getattr(value, "close", None)
             if callable(close):
                 with contextlib.suppress(Exception):

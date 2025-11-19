@@ -28,6 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
+import sys
 from typing import Any, cast
 
 from sqlalchemy import (
@@ -48,6 +49,15 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+# Ensure both ``shared.database.models`` and
+# ``packages.shared.database.models`` resolve to the same module instance.
+# This prevents SQLAlchemy from creating duplicate model classes for the
+# same tables when the codebase imports models through either prefix.
+if __name__ == "packages.shared.database.models":
+    sys.modules.setdefault("shared.database.models", sys.modules[__name__])
+elif __name__ == "shared.database.models":
+    sys.modules.setdefault("packages.shared.database.models", sys.modules[__name__])
 
 
 # Create the declarative base
@@ -115,6 +125,31 @@ class OperationType(str, enum.Enum):
     REINDEX = "reindex"
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
+    PROJECTION_BUILD = "projection_build"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "OperationType | None":
+        """Provide case-insensitive lookup for enum values."""
+
+        if isinstance(value, str):
+            normalized = value.lower()
+            return cls._value2member_map_.get(normalized) or cls.__members__.get(value.upper())
+        return None
+
+    def __str__(self) -> str:  # pragma: no cover - simple helper for driver bindings
+        """Return the canonical string value for the enum member."""
+
+        return self.value
+
+
+class ProjectionRunStatus(str, enum.Enum):
+    """Lifecycle states for embedding projection runs."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class User(Base):
@@ -188,6 +223,7 @@ class Collection(Base):
     permissions = relationship("CollectionPermission", back_populates="collection", cascade="all, delete-orphan")
     sources = relationship("CollectionSource", back_populates="collection", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="collection", cascade="all, delete-orphan")
+    projection_runs = relationship("ProjectionRun", back_populates="collection", cascade="all, delete-orphan")
     audit_logs = relationship("CollectionAuditLog", back_populates="collection", cascade="all, delete-orphan")
     resource_limits = relationship(
         "CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan"
@@ -354,7 +390,14 @@ class Operation(Base):
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(
-        Enum(OperationType, name="operation_type", native_enum=True, create_constraint=False),
+        Enum(
+            OperationType,
+            name="operation_type",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            validate_strings=True,
+        ),
         nullable=False,
         index=True,
     )  # type: ignore[var-annotated]
@@ -383,6 +426,55 @@ class Operation(Base):
     user = relationship("User")
     audit_logs = relationship("CollectionAuditLog", back_populates="operation")
     metrics = relationship("OperationMetrics", back_populates="operation", cascade="all, delete-orphan")
+    projection_run = relationship("ProjectionRun", back_populates="operation", uselist=False)
+
+
+class ProjectionRun(Base):
+    """Dimensionality reduction run persisted for visualization."""
+
+    __tablename__ = "projection_runs"
+    __table_args__ = (
+        CheckConstraint("dimensionality > 0", name="ck_projection_runs_dimensionality_positive"),
+        CheckConstraint("point_count IS NULL OR point_count >= 0", name="ck_projection_runs_point_count_non_negative"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String, unique=True, nullable=False, index=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    operation_uuid = Column(
+        String,
+        ForeignKey("operations.uuid", ondelete="SET NULL"),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+    status = Column(
+        Enum(
+            ProjectionRunStatus,
+            name="projection_run_status",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=ProjectionRunStatus.PENDING,
+        index=True,
+    )  # type: ignore[var-annotated]
+    dimensionality = Column(Integer, nullable=False)
+    reducer = Column(String, nullable=False)
+    storage_path = Column(String, nullable=True)
+    point_count = Column(Integer, nullable=True)
+    config = Column(JSON, nullable=True)
+    meta = Column(JSON, nullable=True)
+    metadata_hash = Column(String, nullable=True, index=True)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+
+    collection = relationship("Collection", back_populates="projection_runs")
+    operation = relationship("Operation", back_populates="projection_run")
 
 
 class CollectionAuditLog(Base):
