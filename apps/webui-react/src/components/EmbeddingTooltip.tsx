@@ -11,7 +11,7 @@ interface TooltipProps {
 }
 
 // React component for the tooltip content
-function TooltipContent({ tooltip, getTooltipIndex, ids, tooltipState }: TooltipProps) {
+export function TooltipContent({ tooltip, getTooltipIndex, ids, tooltipState }: TooltipProps) {
   if (!tooltip) return null;
 
   const idx = getTooltipIndex(tooltip);
