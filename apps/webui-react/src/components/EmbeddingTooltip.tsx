@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import type { DataPoint } from 'embedding-atlas/react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { ProjectionTooltipState } from '../hooks/useProjectionTooltip';
