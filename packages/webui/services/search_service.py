@@ -153,7 +153,7 @@ class SearchService:
             max_timeout = min(
                 max(timeout.connect or 0, timeout.read or 0, timeout.write or 0, timeout.pool or 0)
                 * self.retry_timeout_multiplier,
-                60.0
+                60.0,
             )
             extended_timeout = httpx.Timeout(
                 timeout=max_timeout if max_timeout > 0 else 60.0,
