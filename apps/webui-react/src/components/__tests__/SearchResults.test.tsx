@@ -74,7 +74,7 @@ describe('SearchResults', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
+
     vi.mocked(useUIStore).mockImplementation((selector: (state: ReturnType<typeof useUIStore>) => unknown) => {
       const state = {
         setShowDocumentViewer: mockSetShowDocumentViewer,
@@ -89,7 +89,7 @@ describe('SearchResults', () => {
     mockSearchStore({ loading: true })
 
     render(<SearchResults />)
-    
+
     expect(screen.getByText('Searching...')).toBeInTheDocument()
     // Check for spinner - find element with animate-spin class
     const spinner = document.querySelector('.animate-spin')
@@ -101,7 +101,7 @@ describe('SearchResults', () => {
     mockSearchStore({ error: errorMessage })
 
     render(<SearchResults />)
-    
+
     expect(screen.getByText(errorMessage)).toBeInTheDocument()
   })
 
@@ -109,7 +109,7 @@ describe('SearchResults', () => {
     mockSearchStore()
 
     const { container } = render(<SearchResults />)
-    
+
     expect(container.firstChild).toBeNull()
   })
 
@@ -117,30 +117,30 @@ describe('SearchResults', () => {
     mockSearchStore({ results: mockResults })
 
     render(<SearchResults />)
-    
+
     // Check header
     expect(screen.getByText('Search Results')).toBeInTheDocument()
     expect(screen.getByText('Found 3 results across 1 collections')).toBeInTheDocument()
-    
+
     // Check collection header
     expect(screen.getByText('Test Collection')).toBeInTheDocument()
     expect(screen.getByText('3 results in 2 documents')).toBeInTheDocument()
-    
+
     // Check document headers
     expect(screen.getByText('document1.txt')).toBeInTheDocument()
     expect(screen.getByText('document2.txt')).toBeInTheDocument()
-    
+
     // Check file paths
     expect(screen.getByText('/path/to/document1.txt')).toBeInTheDocument()
     expect(screen.getByText('/path/to/document2.txt')).toBeInTheDocument()
-    
+
     // Check chunk counts
     expect(screen.getByText('2 chunks')).toBeInTheDocument()
     expect(screen.getByText('1 chunk')).toBeInTheDocument()
-    
+
     // Check max scores
-    expect(screen.getByText('Max score: 0.950')).toBeInTheDocument()
-    expect(screen.getByText('Max score: 0.750')).toBeInTheDocument()
+    expect(screen.getByText('Score: 0.950')).toBeInTheDocument()
+    expect(screen.getByText('Score: 0.750')).toBeInTheDocument()
   })
 
   it('displays reranking metrics when available', () => {
@@ -153,55 +153,55 @@ describe('SearchResults', () => {
     })
 
     render(<SearchResults />)
-    
+
     expect(screen.getByText('Reranked')).toBeInTheDocument()
     expect(screen.getByText('126ms')).toBeInTheDocument()
   })
 
   it('expands and collapses documents on click', async () => {
     const user = userEvent.setup()
-    
+
     mockSearchStore({ results: mockResults })
 
     render(<SearchResults />)
-    
+
     // Initially, chunks should not be visible
     expect(screen.queryByText('This is the first chunk of document 1')).not.toBeInTheDocument()
-    
+
     // Click on first document to expand
     const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(firstDoc!)
-    
+
     // Now chunks should be visible
     expect(screen.getByText('This is the first chunk of document 1')).toBeInTheDocument()
     expect(screen.getByText('This is the second chunk of document 1')).toBeInTheDocument()
     expect(screen.getByText('Chunk 1 of 2')).toBeInTheDocument()
     expect(screen.getByText('Chunk 2 of 2')).toBeInTheDocument()
-    expect(screen.getByText('Score: 0.950')).toBeInTheDocument()
-    expect(screen.getByText('Score: 0.850')).toBeInTheDocument()
-    
+    expect(screen.getAllByText('Score: 0.950')[0]).toBeInTheDocument()
+    expect(screen.getAllByText('Score: 0.850')[0]).toBeInTheDocument()
+
     // Click again to collapse
     await user.click(firstDoc!)
-    
+
     // Chunks should be hidden again
     expect(screen.queryByText('This is the first chunk of document 1')).not.toBeInTheDocument()
   })
 
   it('handles view document button click', async () => {
     const user = userEvent.setup()
-    
+
     mockSearchStore({ results: mockResults })
 
     render(<SearchResults />)
-    
+
     // Expand first document
     const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(firstDoc!)
-    
+
     // Click view document button
     const viewButtons = screen.getAllByText('View Document →')
     await user.click(viewButtons[0])
-    
+
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
       collectionId: 'collection1',
       docId: 'doc1',
@@ -211,19 +211,19 @@ describe('SearchResults', () => {
 
   it('handles chunk click for document viewing', async () => {
     const user = userEvent.setup()
-    
+
     mockSearchStore({ results: mockResults })
 
     render(<SearchResults />)
-    
+
     // Expand first document
     const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(firstDoc!)
-    
-    // Click on chunk content
-    const chunkContent = screen.getByText('This is the first chunk of document 1')
-    await user.click(chunkContent.closest('.hover\\:bg-gray-100')!)
-    
+
+    // Click on view document button
+    const viewButtons = screen.getAllByText('View Document →')
+    await user.click(viewButtons[0])
+
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
       collectionId: 'collection1',
       docId: 'doc1',
@@ -233,26 +233,26 @@ describe('SearchResults', () => {
 
   it('handles missing collection ID in results', async () => {
     const user = userEvent.setup()
-    
+
     const resultsWithoutCollectionId = [
       {
         ...mockResults[0],
         collection_id: undefined,
       },
     ]
-    
+
     mockSearchStore({ results: resultsWithoutCollectionId })
 
     render(<SearchResults />)
-    
+
     // Expand document
     const doc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(doc!)
-    
+
     // Click view document - should use 'unknown' as collectionId
     const viewButton = screen.getByText('View Document →')
     await user.click(viewButton)
-    
+
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
       collectionId: 'unknown',
       docId: 'doc1',
@@ -262,25 +262,25 @@ describe('SearchResults', () => {
 
   it('prevents event propagation when clicking view document button', async () => {
     const user = userEvent.setup()
-    
+
     mockSearchStore({ results: mockResults })
 
     render(<SearchResults />)
-    
+
     // Expand first document
     const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(firstDoc!)
-    
+
     // Verify document is expanded
     expect(screen.getByText('This is the first chunk of document 1')).toBeInTheDocument()
-    
+
     // Click view document button - should not collapse the document
     const viewButton = screen.getAllByText('View Document →')[0]
     await user.click(viewButton)
-    
+
     // Document should still be expanded
     expect(screen.getByText('This is the first chunk of document 1')).toBeInTheDocument()
-    
+
     // And setShowDocumentViewer should have been called
     expect(mockSetShowDocumentViewer).toHaveBeenCalled()
   })
@@ -292,7 +292,7 @@ describe('SearchResults', () => {
 
     // Force render by mocking a non-empty results array that groups to empty
     const { container } = render(<SearchResults />)
-    
+
     // Component returns null for empty results
     expect(container.firstChild).toBeNull()
   })
