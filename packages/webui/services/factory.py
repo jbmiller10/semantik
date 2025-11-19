@@ -7,6 +7,7 @@ from fastapi import Depends
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
+from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database import get_db
@@ -29,6 +30,7 @@ from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
+from .projection_service import ProjectionService
 from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
@@ -232,6 +234,27 @@ def create_operation_service(db: AsyncSession) -> OperationService:
 async def get_operation_service(db: AsyncSession = Depends(get_db)) -> OperationService:
     """FastAPI dependency for OperationService injection."""
     return create_operation_service(db)
+
+
+def create_projection_service(db: AsyncSession) -> ProjectionService:
+    """Create a ProjectionService instance with required dependencies."""
+
+    projection_repo = ProjectionRunRepository(db)
+    operation_repo = OperationRepository(db)
+    collection_repo = CollectionRepository(db)
+
+    return ProjectionService(
+        db_session=db,
+        projection_repo=projection_repo,
+        operation_repo=operation_repo,
+        collection_repo=collection_repo,
+    )
+
+
+async def get_projection_service(db: AsyncSession = Depends(get_db)) -> ProjectionService:
+    """FastAPI dependency for ProjectionService injection."""
+
+    return create_projection_service(db)
 
 
 def create_search_service(

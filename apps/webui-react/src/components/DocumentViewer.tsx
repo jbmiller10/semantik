@@ -46,6 +46,7 @@ interface PDFPageProxy {
 interface DocumentViewerProps {
   collectionId: string;
   docId: string;
+  chunkId?: string;
   query?: string;
   onClose: () => void;
 }
@@ -102,7 +103,7 @@ const DOCX_RENDER_OPTIONS = {
   renderEndnotes: true,
 } as const;
 
-function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
+function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -111,6 +112,12 @@ function DocumentViewer({ collectionId, docId, onClose }: DocumentViewerProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+
+  // TODO: Implement chunk highlighting/scrolling when chunkId is provided
+  // The chunkId parameter is now available for future enhancement
+  if (chunkId) {
+    // Future: scroll to and highlight chunk
+  }
 
   const updateBlobUrl = (newUrl: string | null) => {
     if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
