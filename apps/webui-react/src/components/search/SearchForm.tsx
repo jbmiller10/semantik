@@ -7,8 +7,27 @@ import { searchV2Api } from '../../services/api/v2/collections';
 import { useUIStore } from '../../stores/uiStore';
 import { sanitizeQuery } from '../../utils/searchValidation';
 
+import type { Collection } from '../../types/collection';
+import type { SearchResult as ApiSearchResult } from '../../services/api/v2/types';
+
 interface SearchFormProps {
-    collections: any[]; // Using any[] for now to avoid circular deps, or import Collection type
+    collections: Collection[];
+}
+
+interface SearchError {
+    name?: string;
+    message?: string;
+    code?: string;
+    response?: {
+        status?: number;
+        data?: {
+            detail?: string | {
+                error?: string;
+                message?: string;
+                suggestion?: string;
+            };
+        };
+    };
 }
 
 export default function SearchForm({ collections }: SearchFormProps) {
@@ -100,7 +119,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
 
             if (response.data) {
                 // Map results preserving all fields
-                const mappedResults = response.data.results.map((result: any) => ({
+                const mappedResults = response.data.results.map((result: ApiSearchResult) => ({
                     doc_id: result.document_id,
                     chunk_id: result.chunk_id,
                     score: result.score,
@@ -108,7 +127,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     file_path: result.file_path,
                     file_name: result.file_name,
                     chunk_index: result.chunk_index || 0,
-                    total_chunks: result.metadata?.total_chunks || 1,
+                    total_chunks: (result.metadata?.total_chunks as number) || 1,
                     collection_id: result.collection_id,
                     collection_name: result.collection_name,
                     original_score: result.original_score,
@@ -137,28 +156,29 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     });
                 }
             }
-        } catch (error: any) {
-            if (error.name === 'CanceledError' || error.message === 'canceled') {
+        } catch (error: unknown) {
+            const err = error as SearchError;
+            if (err.name === 'CanceledError' || err.message === 'canceled') {
                 return; // Ignore cancellations
             }
 
             console.error('Search error:', error);
 
             // Handle specific error types
-            if (error.response?.status === 500 && error.response?.data?.detail?.includes('GPU')) {
+            if (err.response?.status === 500 && typeof err.response?.data?.detail === 'string' && err.response.data.detail.includes('GPU')) {
                 setGpuMemoryError({
                     message: 'GPU memory limit exceeded',
                     suggestion: 'Try reducing the batch size or using a smaller model.',
                     currentModel: searchParams.rerankModel || 'unknown'
                 });
                 setError('GPU_MEMORY_ERROR');
-            } else if (error.response?.status === 507) {
+            } else if (err.response?.status === 507) {
                 // Handle insufficient storage/memory
-                const detail = error.response.data.detail;
+                const detail = err.response?.data?.detail;
                 if (typeof detail === 'object' && detail.error === 'insufficient_memory') {
                     setGpuMemoryError({
-                        message: detail.message,
-                        suggestion: detail.suggestion,
+                        message: detail.message || 'Insufficient GPU memory',
+                        suggestion: detail.suggestion || '',
                         currentModel: searchParams.rerankModel || 'Unknown'
                     });
                     setError('GPU_MEMORY_ERROR');
@@ -170,10 +190,12 @@ export default function SearchForm({ collections }: SearchFormProps) {
                 } else {
                     setError(typeof detail === 'string' ? detail : 'Insufficient resources');
                 }
-            } else if (error.code === 'ECONNABORTED') {
+            } else if (err.code === 'ECONNABORTED') {
                 setError('Search timed out. Please try again with fewer collections or a simpler query.');
             } else {
-                setError(error.response?.data?.detail || 'An unexpected error occurred during search.');
+                const detail = err.response?.data?.detail;
+                const errorMessage = typeof detail === 'string' ? detail : 'An unexpected error occurred during search.';
+                setError(errorMessage);
             }
         } finally {
             setLoading(false);
@@ -255,7 +277,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             value={searchParams.searchType}
                             onChange={(e) => {
                                 setFieldTouched('searchType', true);
-                                validateAndUpdateSearchParams({ searchType: e.target.value as any });
+                                validateAndUpdateSearchParams({ searchType: e.target.value as 'semantic' | 'hybrid' | 'question' | 'code' });
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
                             disabled={loading}
@@ -311,7 +333,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             <select
                                 id="fusion-mode"
                                 value={searchParams.hybridMode}
-                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as any })}
+                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'weighted' | 'reciprocal_rank' | 'relative_score' })}
                                 className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm"
                             >
                                 <option value="weighted">Weighted Sum</option>
