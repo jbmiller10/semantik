@@ -11,6 +11,10 @@ export interface ChunkingStrategy {
   name: string;
   description: string;
   icon: string; // lucide-react icon name
+  visualExample?: {
+    url: string;
+    caption?: string;
+  };
   performance: {
     speed: 'fast' | 'medium' | 'slow';
     quality: 'basic' | 'good' | 'excellent';

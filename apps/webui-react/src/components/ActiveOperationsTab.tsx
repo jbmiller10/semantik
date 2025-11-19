@@ -2,12 +2,14 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { operationsV2Api } from '../services/api/v2/collections';
-import { useOperationProgress } from '../hooks/useOperationProgress';
+
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
+import { useOperationsSocket } from '../hooks/useOperationsSocket';
+import { useOperationProgress } from '../hooks/useOperationProgress';
 
 // Helper to safely get source_path from config
 function getSourcePath(config: Record<string, unknown> | undefined): string | null {
@@ -37,12 +39,15 @@ function ActiveOperationsTab() {
 
   const shouldPollActiveOperations = pollingPreference ?? true;
 
+  // Use shared WebSocket for all operation updates
+  useOperationsSocket();
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['active-operations'],
     queryFn: async () => {
-      const response = await operationsV2Api.list({ 
+      const response = await operationsV2Api.list({
         status: 'processing,pending',
-        limit: 100 
+        limit: 100
       });
       return response.data;
     },
@@ -78,8 +83,8 @@ function ActiveOperationsTab() {
           <div className="ml-3">
             <p className="text-sm text-red-800">Failed to load active operations</p>
             <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
-            <button 
-              onClick={() => refetch()} 
+            <button
+              onClick={() => refetch()}
               className="text-sm text-red-600 hover:text-red-500 mt-2 underline"
             >
               Try again
@@ -152,10 +157,10 @@ interface OperationListItemProps {
 }
 
 function OperationListItem({ operation, collectionName, onNavigateToCollection }: OperationListItemProps) {
-  // Connect to WebSocket for this operation's progress
-  // Only connect if the operation is active
-  const isActive = operation.status === 'processing' || operation.status === 'pending';
-  useOperationProgress(isActive ? operation.id : null, { showToasts: false });
+  // Maintain per-operation progress subscription so individual ops still receive fine-grained updates.
+  const shouldSubscribe = operation.status === 'processing';
+  useOperationProgress(shouldSubscribe ? operation.id : null, { showToasts: false });
+
 
   const formatOperationType = (type: string) => {
     switch (type) {
@@ -227,7 +232,7 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
               </div>
             </div>
           </div>
-          
+
           {/* Progress bar for processing operations */}
           {operation.status === 'processing' && operation.progress !== undefined && (
             <div className="mt-3">

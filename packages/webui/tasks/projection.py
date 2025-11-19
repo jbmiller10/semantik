@@ -416,7 +416,9 @@ def _write_meta(path: Path, payload: dict[str, Any]) -> None:
 
 
 @asynccontextmanager
-async def _operation_updates(operation_id: str | None) -> AsyncIterator[CeleryTaskWithOperationUpdates | None]:
+async def _operation_updates(
+    operation_id: str | None, user_id: int | None = None
+) -> AsyncIterator[CeleryTaskWithOperationUpdates | None]:
     """Yield an update publisher when an operation ID is available."""
 
     if not operation_id:
@@ -424,6 +426,8 @@ async def _operation_updates(operation_id: str | None) -> AsyncIterator[CeleryTa
         return
 
     async with CeleryTaskWithOperationUpdates(operation_id) as updater:
+        if user_id is not None:
+            updater.set_user_id(user_id)
         yield updater
 
 
@@ -506,7 +510,13 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
 
             now = datetime.now(UTC)
 
-            async with _operation_updates(operation_uuid) as updater:
+            user_id = None
+            if operation_uuid:
+                operation = await operation_repo.get_by_uuid(operation_uuid)
+                if operation:
+                    user_id = getattr(operation, "user_id", None)
+
+            async with _operation_updates(operation_uuid, user_id=user_id) as updater:
                 try:
                     await projection_repo.update_status(
                         run.uuid,

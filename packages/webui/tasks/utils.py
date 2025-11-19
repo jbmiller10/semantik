@@ -99,6 +99,11 @@ class CeleryTaskWithOperationUpdates:
             or getattr(settings, "INSTANCE_ID", None)
             or f"celery-worker:{socket.gethostname()}"
         )
+        self.user_id: int | None = None
+
+    def set_user_id(self, user_id: int | None) -> None:
+        """Set the user ID for publishing updates to the user channel."""
+        self.user_id = user_id
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
@@ -111,6 +116,11 @@ class CeleryTaskWithOperationUpdates:
         """Send update to Redis Stream and Pub/Sub."""
         try:
             redis_client = await self._get_redis()
+            
+            # Ensure operation_id is in the data payload
+            if isinstance(data, dict):
+                data["operation_id"] = self.operation_id
+                
             message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
             message_json = json.dumps(message)
 
@@ -127,11 +137,21 @@ class CeleryTaskWithOperationUpdates:
                 "from_instance": self._publisher_id,
                 "timestamp": time.time(),
             }
+            
+            # Publish to operation channel
             publish_result = redis_client.publish(
                 f"operation:{self.operation_id}",
                 json.dumps(publish_payload),
             )
             await await_if_awaitable(publish_result)
+
+            # Publish to user channel if user_id is set
+            if self.user_id:
+                user_publish_result = redis_client.publish(
+                    f"user:{self.user_id}",
+                    json.dumps(publish_payload),
+                )
+                await await_if_awaitable(user_publish_result)
 
             # Set TTL for stream
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
