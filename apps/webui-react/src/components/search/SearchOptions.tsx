@@ -12,7 +12,7 @@ export default function SearchOptions() {
         setFieldTouched
     } = useSearchStore();
 
-    const handleParamChange = (key: string, value: any) => {
+    const handleParamChange = (key: string, value: string | number | boolean) => {
         setFieldTouched(key, true);
         validateAndUpdateSearchParams({ [key]: value });
     };

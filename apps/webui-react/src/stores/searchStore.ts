@@ -21,7 +21,7 @@ export interface SearchResult {
   original_score?: number;
   reranked_score?: number;
   embedding_model?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SearchParams {
@@ -34,7 +34,7 @@ export interface SearchParams {
   rerankQuantization?: string;
   useReranker: boolean;
   hybridAlpha?: number;
-  hybridMode?: 'filter' | 'rerank';
+  hybridMode?: 'filter' | 'rerank' | 'weighted' | 'reciprocal_rank' | 'relative_score';
   keywordMode?: 'any' | 'all';
 }
 
