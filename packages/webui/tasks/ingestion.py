@@ -212,6 +212,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         },
                     )
 
+                    # Set user_id on updater for user-channel notifications
+                    if operation.get("user_id"):
+                        updater.set_user_id(operation["user_id"])
+
                     await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
                     await updater.send_update(
                         "operation_started", {"status": "processing", "type": operation["type"].value}
@@ -1029,6 +1033,9 @@ async def _process_append_operation_impl(
                             "current_document": doc.file_path,
                         },
                     )
+                    
+                    # Commit to prevent idle-in-transaction timeout
+                    await session.commit()
 
                 except Exception as exc:
                     logger.error("Failed to process document %s: %s", doc.file_path, exc)
@@ -1038,6 +1045,8 @@ async def _process_append_operation_impl(
                         error_message=str(exc),
                     )
                     failed_count += 1
+                    # Commit to prevent idle-in-transaction timeout
+                    await session.commit()
 
             doc_stats = await document_repo.get_stats_by_collection(collection["id"])
             current_doc_count = doc_stats.get("total_documents", 0)

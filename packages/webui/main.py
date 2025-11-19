@@ -40,7 +40,7 @@ from .api.v2 import projections as v2_projections  # noqa: E402
 from .api.v2 import search as v2_search  # noqa: E402
 from .api.v2 import system as v2_system  # noqa: E402
 from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
-from .api.v2.operations import operation_websocket  # noqa: E402
+from .api.v2.operations import operation_websocket, operation_websocket_global  # noqa: E402
 from .background_tasks import start_background_tasks, stop_background_tasks  # noqa: E402
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
 from .middleware.csp import CSPMiddleware  # noqa: E402
@@ -308,6 +308,10 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
+    @app.websocket("/ws/operations")
+    async def operation_ws_global(websocket: WebSocket) -> None:
+        await operation_websocket_global(websocket)
+
     @app.websocket("/ws/operations/{operation_id}")
     async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
         await operation_websocket(websocket, operation_id)

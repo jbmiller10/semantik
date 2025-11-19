@@ -136,8 +136,15 @@ def _create_celery_app() -> Celery:
 celery_app = _create_celery_app()
 
 
+from shared.database.postgres_database import pg_connection_manager
+
 # Worker initialization
 @worker_process_init.connect
 def init_worker_process(**kwargs: Any) -> None:  # noqa: ARG001
     """Initialize worker process - prepare for database connections."""
-    logger.info("Worker process initialized - database will be initialized per task")
+    # Reset the connection manager state to ensure we don't use inherited
+    # connections from the parent process (which are not fork-safe).
+    # This forces a fresh engine creation when the first task runs.
+    pg_connection_manager._engine = None
+    pg_connection_manager._sessionmaker = None
+    logger.info("Worker process initialized - database connection reset")
