@@ -867,12 +867,14 @@ async def _process_append_operation_impl(
 
                     if not text_blocks:
                         logger.warning("No text extracted from %s", doc.file_path)
+                        # Mark as completed but with 0 chunks so we don't fail the whole batch
                         await document_repo.update_status(
                             doc.id,
-                            DocumentStatus.FAILED,
-                            error_message="No text content extracted",
+                            DocumentStatus.COMPLETED,
+                            chunk_count=0,
                         )
-                        failed_count += 1
+                        # Count as skipped/processed rather than failed
+                        processed_count += 1
                         continue
 
                     combined_text = ""

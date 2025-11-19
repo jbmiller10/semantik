@@ -94,6 +94,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     poppler-utils \
     tesseract-ocr \
+    libgl1 \
     # Required for PostgreSQL
     libpq5 \
     # Required for bitsandbytes (INT8 quantization)
