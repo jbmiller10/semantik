@@ -48,7 +48,7 @@ describe('SearchInterface Reranking Tests', () => {
   beforeEach(() => {
     // Reset all mocks
     vi.clearAllMocks();
-    
+
     // Reset store state
     useSearchStore.setState({
       searchParams: {
@@ -111,7 +111,7 @@ describe('SearchInterface Reranking Tests', () => {
     // Select a collection
     const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
-    
+
     // Wait for dropdown to appear and select first collection
     await waitFor(() => {
       const option = screen.getByText('Test Collection 1');
@@ -128,7 +128,7 @@ describe('SearchInterface Reranking Tests', () => {
       const modelSelect = document.getElementById('reranker-model');
       expect(modelSelect).toBeInTheDocument();
     });
-    
+
     const modelSelect = document.getElementById('reranker-model') as HTMLSelectElement;
     fireEvent.change(modelSelect, { target: { value: 'Qwen/Qwen3-Reranker-0.6B' } });
 
@@ -140,7 +140,7 @@ describe('SearchInterface Reranking Tests', () => {
     await waitFor(() => {
       expect(screen.queryByText('Searching...')).not.toBeInTheDocument();
     }, { timeout: 5000 });
-    
+
     // Verify search was performed and results section appears
     await waitFor(() => {
       // The SearchResults component should render something when results are available
@@ -182,7 +182,7 @@ describe('SearchInterface Reranking Tests', () => {
     // Select a collection
     const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
-    
+
     await waitFor(() => {
       const option = screen.getByText('Test Collection 1');
       fireEvent.click(option);
@@ -200,7 +200,7 @@ describe('SearchInterface Reranking Tests', () => {
     await waitFor(() => {
       expect(screen.queryByText('Searching...')).not.toBeInTheDocument();
     }, { timeout: 5000 });
-    
+
     // Verify search results appear
     await waitFor(() => {
       expect(screen.getByText('Test result without reranking')).toBeInTheDocument();
@@ -215,15 +215,21 @@ describe('SearchInterface Reranking Tests', () => {
     expect(screen.queryByLabelText(/Quantization/i)).not.toBeInTheDocument();
 
     // Enable reranking by clicking the checkbox input (not the label text)
-    const rerankingCheckbox = screen.getByLabelText('Enable cross-encoder reranking');
-    fireEvent.click(rerankingCheckbox);
+    // First expand advanced options
+    const advancedButton = screen.getByText('Advanced Options');
+    fireEvent.click(advancedButton);
+
+    await waitFor(() => {
+      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
+      fireEvent.click(rerankingCheckbox);
+    });
 
     // Now reranking options should be visible
     await waitFor(() => {
       // Look for the select elements by their labels
       const modelSelect = screen.getByLabelText(/Reranker Model/i);
       const quantizationSelect = screen.getByLabelText(/Quantization/i);
-      
+
       expect(modelSelect).toBeInTheDocument();
       expect(quantizationSelect).toBeInTheDocument();
       expect(screen.getByText(/Reranking uses a more sophisticated model/)).toBeInTheDocument();
@@ -245,17 +251,23 @@ describe('SearchInterface Reranking Tests', () => {
     fireEvent.change(queryInput, { target: { value: 'test query' } });
 
     // Select a collection
-    const collectionSelect = screen.getByText('Select collections to search...');
+    const collectionSelect = screen.getByText('Select collections...');
     fireEvent.click(collectionSelect);
-    
+
     await waitFor(() => {
       const option = screen.getByText('Test Collection 1');
       fireEvent.click(option);
     });
 
     // Enable reranking with large model
-    const rerankingCheckbox = screen.getByLabelText('Enable cross-encoder reranking');
-    fireEvent.click(rerankingCheckbox);
+    // First expand advanced options
+    const advancedButton = screen.getByText('Advanced Options');
+    fireEvent.click(advancedButton);
+
+    await waitFor(() => {
+      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
+      fireEvent.click(rerankingCheckbox);
+    });
 
     await waitFor(() => {
       const modelSelect = screen.getByLabelText(/Reranker Model/i);
@@ -272,7 +284,7 @@ describe('SearchInterface Reranking Tests', () => {
       const state = useSearchStore.getState();
       // SearchInterface sets error to 'GPU_MEMORY_ERROR' for insufficient memory
       expect(state.error).toBe('GPU_MEMORY_ERROR');
-      
+
       // Check that the detailed error info was stored in the search store
       expect(state.gpuMemoryError).toBeDefined();
       expect(state.gpuMemoryError?.message).toContain('Insufficient GPU memory for reranking');
@@ -319,7 +331,7 @@ describe('SearchInterface Reranking Tests', () => {
     // Select a collection
     const collectionSelect = screen.getByText('Select collections to search...');
     fireEvent.click(collectionSelect);
-    
+
     await waitFor(() => {
       const option = screen.getByText('Test Collection 1');
       fireEvent.click(option);
@@ -341,41 +353,48 @@ describe('SearchInterface Reranking Tests', () => {
     await waitFor(() => {
       expect(screen.queryByText('Searching...')).not.toBeInTheDocument();
     }, { timeout: 5000 });
-    
+
     // Verify search results appear
     await waitFor(() => {
       expect(screen.getByText('Hybrid search with reranking result')).toBeInTheDocument();
     });
   });
-  
+
   it('should update search params when reranking configuration changes', async () => {
     render(<SearchInterface />, { wrapper: createWrapper() });
-    
+
     // Enable reranking - click the actual checkbox input, not the label text
-    const rerankingCheckbox = screen.getByLabelText('Enable cross-encoder reranking');
-    fireEvent.click(rerankingCheckbox);
-    
+    // First expand advanced options
+    const advancedButton = screen.getByText('Advanced Options');
+    fireEvent.click(advancedButton);
+
+    await waitFor(() => {
+      const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
+      fireEvent.click(rerankingCheckbox);
+    });
+
     // Verify search params are updated
     expect(useSearchStore.getState().searchParams.useReranker).toBe(true);
-    
+
     // Change model
     await waitFor(() => {
       const modelSelect = document.getElementById('reranker-model') as HTMLSelectElement;
       expect(modelSelect).toBeTruthy();
       fireEvent.change(modelSelect, { target: { value: 'Qwen/Qwen3-Reranker-4B' } });
     });
-    
+
     // Verify model is updated in search params
     expect(useSearchStore.getState().searchParams.rerankModel).toBe('Qwen/Qwen3-Reranker-4B');
-    
+
     // Change quantization
     const quantizationSelect = document.getElementById('reranker-quantization') as HTMLSelectElement;
     fireEvent.change(quantizationSelect, { target: { value: 'int8' } });
-    
+
     // Verify quantization is updated
     expect(useSearchStore.getState().searchParams.rerankQuantization).toBe('int8');
-    
+
     // Disable reranking
+    const rerankingCheckbox = screen.getByRole('checkbox', { name: /enable cross-encoder reranking/i });
     fireEvent.click(rerankingCheckbox);
     expect(useSearchStore.getState().searchParams.useReranker).toBe(false);
   });

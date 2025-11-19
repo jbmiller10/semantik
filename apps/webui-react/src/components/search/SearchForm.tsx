@@ -152,6 +152,24 @@ export default function SearchForm({ collections }: SearchFormProps) {
                     currentModel: searchParams.rerankModel || 'unknown'
                 });
                 setError('GPU_MEMORY_ERROR');
+            } else if (error.response?.status === 507) {
+                // Handle insufficient storage/memory
+                const detail = error.response.data.detail;
+                if (typeof detail === 'object' && detail.error === 'insufficient_memory') {
+                    setGpuMemoryError({
+                        message: detail.message,
+                        suggestion: detail.suggestion,
+                        currentModel: searchParams.rerankModel || 'Unknown'
+                    });
+                    setError('GPU_MEMORY_ERROR');
+                    addToast({
+                        type: 'error',
+                        message: detail.message || 'Insufficient GPU memory',
+                        duration: 5000
+                    });
+                } else {
+                    setError(typeof detail === 'string' ? detail : 'Insufficient resources');
+                }
             } else if (error.code === 'ECONNABORTED') {
                 setError('Search timed out. Please try again with fewer collections or a simpler query.');
             } else {
@@ -229,10 +247,11 @@ export default function SearchForm({ collections }: SearchFormProps) {
 
                     {/* Search Type Selector */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label htmlFor="search-type" className="block text-sm font-medium text-gray-700 mb-1">
                             Search Type
                         </label>
                         <select
+                            id="search-type"
                             value={searchParams.searchType}
                             onChange={(e) => {
                                 setFieldTouched('searchType', true);
@@ -286,10 +305,11 @@ export default function SearchForm({ collections }: SearchFormProps) {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-blue-800 mb-1">
+                            <label htmlFor="fusion-mode" className="block text-sm font-medium text-blue-800 mb-1">
                                 Fusion Mode
                             </label>
                             <select
+                                id="fusion-mode"
                                 value={searchParams.hybridMode}
                                 onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as any })}
                                 className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm"
