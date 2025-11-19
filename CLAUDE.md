@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status**: Pre-release, undergoing active refactoring from "job-centric" to "collection-centric" architecture.
 
-**Active Development Branch**: `phase0-security-fixes` - Critical security hardening in progress.
+**Current Branch**: `embedding-viz` - Embedding visualization feature development (recently merged to main)
+**Main Branch**: `main` - Stable production branch
 
 ## Architecture
 
@@ -60,7 +61,7 @@ All services use `docker-entrypoint.sh` which:
 # Install dependencies (uses uv with lock file)
 uv sync --frozen
 
-# Code quality checks (format, lint, test)
+# Code quality checks (runs format + lint + type-check + test)
 make check
 
 # Run individual checks
@@ -150,11 +151,21 @@ make frontend-dev
 
 # Frontend tests
 cd apps/webui-react
-npm run test           # Run tests
-npm run test:ui        # Interactive test UI
-npm run test:coverage  # Coverage report
-npm run test:e2e       # Playwright E2E tests
+npm run test              # Run Vitest unit tests
+npm run test:ui           # Interactive test UI (Vitest)
+npm run test:coverage     # Coverage report
+npm run test:e2e          # Playwright E2E tests (requires running services)
+npm run test:e2e:ui       # Playwright UI mode for debugging
+
+# Backend E2E tests (Playwright in Python)
+make test-e2e            # Requires services running via make docker-up
 ```
+
+**Test Organization:**
+- Unit tests: `apps/webui-react/src/**/__tests__/*.test.ts(x)`
+- E2E tests (frontend): `apps/webui-react/playwright/`
+- E2E tests (backend): `tests/e2e/`
+- Cypress tests: `cypress/e2e/` (legacy, being migrated to Playwright)
 
 ### Local Development Mode
 
@@ -321,6 +332,41 @@ Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunk
 - Maximum 10,000 total connections
 - Authentication via JWT in first message after connection
 - Channels: `operation-progress:{operation_id}`, `collection-updates:{collection_id}`
+
+## Embedding Visualization (Projection Runs)
+
+**Feature**: Interactive 2D visualization of document embeddings using dimensionality reduction.
+
+### Architecture
+- **Backend**: Projection computation via UMAP/t-SNE/PCA in Celery tasks
+- **Frontend**: React component using `embedding-atlas` library with WebGPU/WebGL fallback
+- **Storage**: Projection artifacts (x, y, cat, ids arrays) stored in `data/projection_artifacts/`
+
+### Key Components
+- `packages/webui/services/projection_service.py` - Business logic for projection builds
+- `packages/webui/tasks/projection.py` - Celery tasks for computing projections
+- `apps/webui-react/src/components/EmbeddingVisualizationTab.tsx` - Visualization UI
+- `apps/webui-react/src/hooks/useProjectionTooltip.ts` - Tooltip/selection logic
+
+### Database Models
+- `ProjectionRun` - Tracks projection metadata, status, and storage paths
+- Linked to `Operation` for async processing and progress tracking
+
+### API Endpoints
+- `POST /api/v2/collections/{collection_id}/projections` - Start projection build
+- `GET /api/v2/collections/{collection_id}/projections` - List projections
+- `GET /api/v2/projections/{projection_id}` - Get projection metadata
+- `GET /api/v2/projections/{projection_id}/arrays/{artifact}` - Stream projection data
+- `POST /api/v2/projections/{projection_id}/select` - Resolve tooltip/selection data
+
+### Critical Patterns
+- Projection runs are **immutable** - recompute creates new runs
+- Sampling applied during compute to limit point count (default: 10,000)
+- WebGPU forced via `embeddingAtlasWebgpuPatch.ts` for compatibility
+- Tooltips use LRU cache (`utils/lruCache.ts`) to minimize API calls
+- Cluster labels computed from filenames for semantic grouping
+
+**Documentation**: See `docs/EMBEDDING_VISUALIZATION.md` for complete technical details.
 
 ## Security Guidelines
 

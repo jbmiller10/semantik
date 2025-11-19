@@ -149,15 +149,17 @@ class SearchService:
             logger.warning(f"Search timeout for collection {collection.name}, retrying...")
             # Calculate extended timeout by multiplying current timeout values
             # Calculate a general timeout based on the maximum of individual timeouts
-            max_timeout = (
+            # Cap the retry timeout to a reasonable limit (e.g., 60s) to prevent excessive hangs
+            max_timeout = min(
                 max(timeout.connect or 0, timeout.read or 0, timeout.write or 0, timeout.pool or 0)
-                * self.retry_timeout_multiplier
+                * self.retry_timeout_multiplier,
+                60.0,
             )
             extended_timeout = httpx.Timeout(
-                timeout=max_timeout if max_timeout > 0 else 120.0,
-                connect=timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0,
-                read=timeout.read * self.retry_timeout_multiplier if timeout.read else 120.0,
-                write=timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0,
+                timeout=max_timeout if max_timeout > 0 else 60.0,
+                connect=min(timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0, 30.0),
+                read=min(timeout.read * self.retry_timeout_multiplier if timeout.read else 60.0, 60.0),
+                write=min(timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0, 30.0),
             )
 
             try:
