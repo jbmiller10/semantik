@@ -21,6 +21,10 @@ def test_plugin_loader_registers_strategy(monkeypatch):
             "description": "plugin test",
             "manager_defaults": {"chunk_size": 123},
             "factory_defaults": {"chunk_size": 123, "chunk_overlap": 10},
+            "visual_example": {
+                "url": "https://example.com/my-plugin.png",
+                "caption": "Example chunks rendered by My Plugin",
+            },
         }
 
     class DummyEntryPoint:
@@ -70,4 +74,3 @@ def test_plugin_loader_registers_strategy(monkeypatch):
         STRATEGY_REGISTRY.update(original_domain_registry)
 
         strategy_registry._clear_caches()
-
