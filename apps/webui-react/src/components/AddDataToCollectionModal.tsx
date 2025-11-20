@@ -5,6 +5,8 @@ import { useNavigate } from 'react-router-dom';
 import { getInputClassName } from '../utils/formStyles';
 import type { Collection } from '../types/collection';
 
+import { FileBrowser } from './FileBrowser';
+
 interface AddDataToCollectionModalProps {
   collection: Collection;
   onClose: () => void;
@@ -21,6 +23,7 @@ function AddDataToCollectionModal({
   const navigate = useNavigate();
   const [sourcePath, setSourcePath] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [useFileBrowser, setUseFileBrowser] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,9 +31,9 @@ function AddDataToCollectionModal({
       addToast({ type: 'error', message: 'Please enter a directory path' });
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       await addSourceMutation.mutateAsync({
         collectionId: collection.id,
@@ -40,7 +43,7 @@ function AddDataToCollectionModal({
           chunk_overlap: collection.chunk_overlap,
         }
       });
-      
+
       // Navigate to collection detail page to show operation progress
       navigate(`/collections/${collection.id}`);
       // Toast is already shown by the mutation
@@ -74,9 +77,27 @@ function AddDataToCollectionModal({
           <div className="px-6 py-4 space-y-4">
             {/* Source Path Input */}
             <div>
-              <label htmlFor="sourcePath" className="block text-sm font-medium text-gray-700">
-                Source Directory Path
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label htmlFor="sourcePath" className="block text-sm font-medium text-gray-700">
+                  Source Directory Path
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setUseFileBrowser(!useFileBrowser)}
+                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                >
+                  {useFileBrowser ? 'Enter path manually' : 'Browse files'}
+                </button>
+              </div>
+
+              {useFileBrowser ? (
+                <FileBrowser
+                  onSelect={(path) => setSourcePath(path)}
+                  initialPath={sourcePath}
+                  className="mb-2"
+                />
+              ) : null}
+
               <input
                 type="text"
                 id="sourcePath"
@@ -85,7 +106,7 @@ function AddDataToCollectionModal({
                 placeholder="/path/to/documents"
                 className={getInputClassName(false, isSubmitting)}
                 required
-                autoFocus
+                autoFocus={!useFileBrowser}
               />
               <p className="mt-1 text-xs text-gray-500">
                 All files in this directory will be scanned and added to the collection

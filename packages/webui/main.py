@@ -28,7 +28,7 @@ from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
-from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
+from .api import auth, health, internal, metrics, models, root, settings, filesystem  # noqa: E402
 from .api.chunking_exception_handlers import register_chunking_exception_handlers  # noqa: E402
 from .api.v2 import chunking as v2_chunking  # noqa: E402
 from .api.v2 import collections as v2_collections  # noqa: E402
@@ -306,6 +306,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
 
     # Include root router AFTER static file mounts to ensure catch-all doesn't intercept static files
     app.include_router(root.router)  # No prefix for static + root
+    app.include_router(filesystem.router)
 
     # Mount WebSocket endpoints at the app level
     @app.websocket("/ws/operations")

@@ -241,6 +241,7 @@ describe('DocumentViewer', () => {
       expect(mockPdfViewer).toHaveBeenCalled();
       const [props] = mockPdfViewer.mock.calls[0];
       expect(props.src).toBe('blob:mock-url');
+      expect(props.highlightText).toBeUndefined();
       expect(screen.getByTestId('pdf-viewer')).toBeInTheDocument();
     });
   });

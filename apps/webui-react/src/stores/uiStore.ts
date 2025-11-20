@@ -10,12 +10,28 @@ export interface Toast {
 export interface UIState {
   toasts: Toast[];
   activeTab: 'search' | 'collections' | 'operations';
-  showDocumentViewer: { collectionId: string; docId: string; chunkId?: string } | null;
+  showDocumentViewer: {
+    collectionId: string;
+    docId: string;
+    chunkId?: string;
+    chunkText?: string;
+    chunkIndex?: number;
+  } | null;
   showCollectionDetailsModal: string | null;
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
   setActiveTab: (tab: 'search' | 'collections' | 'operations') => void;
-  setShowDocumentViewer: (viewer: { collectionId: string; docId: string; chunkId?: string } | null) => void;
+  setShowDocumentViewer: (
+    viewer:
+      | {
+          collectionId: string;
+          docId: string;
+          chunkId?: string;
+          chunkText?: string;
+          chunkIndex?: number;
+        }
+      | null
+  ) => void;
   setShowCollectionDetailsModal: (collectionId: string | null) => void;
 }
 

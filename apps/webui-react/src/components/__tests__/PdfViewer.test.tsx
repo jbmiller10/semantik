@@ -28,6 +28,7 @@ describe('PdfViewer', () => {
     const getPage = vi.fn(async () => ({
       getViewport: () => ({ width: 100, height: 200 }),
       render: renderPage,
+      getTextContent: async () => ({ items: [{ str: 'hello world' }] }),
     }))
 
     mockGetDocument.mockReturnValue({
@@ -38,7 +39,7 @@ describe('PdfViewer', () => {
       }),
     })
 
-    render(<PdfViewer src="blob:test" />)
+    render(<PdfViewer src="blob:test" highlightText="world" />)
 
     await waitFor(() => {
       expect(getPage).toHaveBeenCalledTimes(2)
