@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 import uuid
 from importlib import import_module
@@ -28,9 +29,6 @@ from shared.metrics.collection_metrics import (
 )
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
-
-if TYPE_CHECKING:
-    from types import ModuleType
 
 from . import reindex as reindex_tasks
 from .utils import (
@@ -54,6 +52,22 @@ from .utils import (
     resolve_qdrant_manager,
     resolve_qdrant_manager_class,
 )
+
+if TYPE_CHECKING:
+    from types import ModuleType
+
+
+def _get_embedding_concurrency() -> int:
+    """Return per-worker embed concurrency, defaulting to 1 if unset/invalid."""
+    try:
+        val = int(os.getenv("EMBEDDING_CONCURRENCY_PER_WORKER", "1"))
+        return max(1, val)
+    except Exception:  # pragma: no cover - defensive parsing
+        return 1
+
+
+# Single-process semaphore throttling embed calls so we can run more workers for CPU-bound steps
+_embedding_semaphore = asyncio.Semaphore(_get_embedding_concurrency())
 
 
 def _tasks_namespace() -> ModuleType:
@@ -211,6 +225,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             "task_id": task_id,
                         },
                     )
+
+                    # Set user_id on updater for user-channel notifications
+                    if operation.get("user_id"):
+                        updater.set_user_id(operation["user_id"])
 
                     await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
                     await updater.send_update(
@@ -885,6 +903,11 @@ async def _process_append_operation_impl(
                             if metadata:
                                 combined_metadata.update(metadata)
 
+                    # End any open transaction before long external calls to avoid
+                    # idle_in_transaction_session_timeout disconnects from Postgres.
+                    if session.in_transaction():
+                        await session.commit()
+
                     chunking_result = await chunking_service.execute_ingestion_chunking(
                         text=combined_text,
                         document_id=doc.id,
@@ -927,8 +950,13 @@ async def _process_append_operation_impl(
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
-                        logger.info("Calling vecpipe /embed for %s texts", len(texts))
-                        response = await client.post(vecpipe_url, json=embed_request)
+                        logger.info(
+                            "Calling vecpipe /embed for %s texts (semaphore cap=%s)",
+                            len(texts),
+                            _embedding_semaphore._value,
+                        )
+                        async with _embedding_semaphore:
+                            response = await client.post(vecpipe_url, json=embed_request)
 
                         if response.status_code != 200:
                             raise Exception(
@@ -971,6 +999,10 @@ async def _process_append_operation_impl(
                                     ).format(exc, qdrant_collection_name, expected_dim, embedding_model, actual_dim)
                                     logger.error(error_msg)
                                     raise ValueError(error_msg) from exc
+
+                    # Ensure no open transaction lingers while we call external vector upserts
+                    if session.in_transaction():
+                        await session.commit()
 
                     points = []
                     for i, chunk in enumerate(chunks):
@@ -1030,14 +1062,22 @@ async def _process_append_operation_impl(
                         },
                     )
 
+                    # Commit to prevent idle-in-transaction timeout
+                    await session.commit()
+
                 except Exception as exc:
                     logger.error("Failed to process document %s: %s", doc.file_path, exc)
+                    with contextlib.suppress(Exception):
+                        # Clear any pending transaction state so status updates use a fresh connection
+                        await session.rollback()
                     await document_repo.update_status(
                         doc.id,
                         DocumentStatus.FAILED,
                         error_message=str(exc),
                     )
                     failed_count += 1
+                    # Commit to prevent idle-in-transaction timeout
+                    await session.commit()
 
             doc_stats = await document_repo.get_stats_by_collection(collection["id"])
             current_doc_count = doc_stats.get("total_documents", 0)
