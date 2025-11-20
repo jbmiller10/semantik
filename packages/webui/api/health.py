@@ -8,7 +8,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from shared.database import check_postgres_connection
 from webui.utils.qdrant_manager import qdrant_manager
-from webui.websocket_manager import ws_manager
+from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +68,11 @@ async def liveness_probe() -> dict[str, str]:
 async def _check_redis_health() -> dict[str, Any]:
     """Check Redis connection health with timeout."""
     try:
-        if not ws_manager.redis:
+        if not ws_manager.redis_client:
             return {"status": "unhealthy", "message": "Redis connection not initialized"}
 
         # Test Redis connection with timeout
-        await asyncio.wait_for(ws_manager.redis.ping(), timeout=HEALTH_CHECK_TIMEOUT)
+        await asyncio.wait_for(ws_manager.redis_client.ping(), timeout=HEALTH_CHECK_TIMEOUT)
         return {"status": "healthy", "message": "Redis connection successful"}
     except TimeoutError:
         return {"status": "unhealthy", "message": "Redis connection timeout"}

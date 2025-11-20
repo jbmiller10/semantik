@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { useAuthStore } from '../../../stores/authStore';
 import { navigateTo } from '../../navigation';
+import { getApiBaseUrl } from '../baseUrl';
 
 /**
  * Axios instance configured for v2 API endpoints
  */
 const apiClient = axios.create({
-  baseURL: '',
+  baseURL: getApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

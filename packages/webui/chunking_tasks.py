@@ -30,6 +30,7 @@ from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.shared.chunking.plugin_loader import load_chunking_plugins
 from packages.shared.database import pg_connection_manager
 from packages.shared.database.database import AsyncSessionLocal
 from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
@@ -57,6 +58,11 @@ from packages.webui.tasks import extract_and_serialize_thread_safe
 from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)
+
+# Load any external chunking plugins when the worker imports this module
+_loaded_plugins = load_chunking_plugins()
+if _loaded_plugins:
+    logger.info("Chunking worker loaded plugins: %s", ", ".join(_loaded_plugins))
 
 
 def get_redis_client() -> Redis:

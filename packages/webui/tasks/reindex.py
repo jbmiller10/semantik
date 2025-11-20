@@ -79,6 +79,13 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         op_lookup = op_lookup.where(_Operation.uuid == _operation_id)
 
     op = (await db.execute(op_lookup)).scalar_one()
+    # Publish user-scoped websocket updates when available
+    try:
+        user_id = getattr(op, "user_id", None)
+        if user_id and updater:
+            updater.set_user_id(user_id)
+    except Exception:
+        pass
 
     # Source collection is the operation's collection
     source_collection = (
