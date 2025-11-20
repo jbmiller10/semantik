@@ -856,6 +856,24 @@ class ChunkingOrchestrator:
         merged = self.config_manager.merge_configs(strategy, config)
         merged["strategy"] = strategy
 
+        # In dev / DISABLE_AUTH mode the stub user_id is 0; avoid FK violations by returning
+        # an ephemeral DTO instead of persisting.
+        if user_id <= 0 or self.config_manager.profile_repo is None:
+            now = datetime.now(UTC)
+            return ServiceSavedConfiguration(
+                id=str(uuid.uuid4()),
+                name=name,
+                description=description,
+                strategy=strategy,
+                config=merged,
+                created_by=user_id,
+                created_at=now,
+                updated_at=now,
+                usage_count=0,
+                is_default=is_default,
+                tags=tags,
+            )
+
         return await self.config_manager.save_user_config(
             user_id=user_id,
             name=name,
@@ -874,6 +892,9 @@ class ChunkingOrchestrator:
         is_default: bool | None = None,
     ) -> list[ServiceSavedConfiguration]:
         """List persisted configurations for the user."""
+
+        if user_id <= 0 or self.config_manager.profile_repo is None:
+            return []
 
         return await self.config_manager.list_user_configs(
             user_id=user_id,
