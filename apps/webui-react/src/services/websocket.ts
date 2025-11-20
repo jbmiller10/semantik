@@ -159,6 +159,23 @@ export class WebSocketService extends EventEmitter {
   private isAuthenticated = false;
   private authenticationToken: string | null = null;
   private hasSentAuthRequest = false;
+
+  /**
+   * Safely send a JSON serialisable payload through the active WebSocket.
+   * Returns true on success, false when an error occurs (and emits an error event).
+   */
+  private safeSend(message: WebSocketMessage): boolean {
+    if (!this.ws) return false;
+
+    try {
+      this.ws.send(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      this.emit('error', { message: 'Failed to send message', error });
+      return false;
+    }
+  }
   
   constructor(config: WebSocketConfig) {
     super();
@@ -288,12 +305,11 @@ export class WebSocketService extends EventEmitter {
     
     // Send directly without queueing (authentication is special)
     if (this.ws?.readyState === WebSocketState.OPEN && !this.hasSentAuthRequest) {
-      try {
-        this.ws.send(JSON.stringify(authMessage));
+      const sent = this.safeSend(authMessage);
+      if (sent) {
         this.hasSentAuthRequest = true;
         console.log('Authentication request sent');
-      } catch (error) {
-        console.error('Failed to send authentication:', error);
+      } else {
         this.ws?.close(4008, 'Authentication failed');
       }
     }
@@ -518,14 +534,7 @@ export class WebSocketService extends EventEmitter {
   send(message: WebSocketMessage): boolean {
     // Check if WebSocket is open and authenticated
     if (this.ws?.readyState === WebSocketState.OPEN && this.isAuthenticated) {
-      try {
-        this.ws.send(JSON.stringify(message));
-        return true;
-      } catch (error) {
-        console.error('Failed to send message:', error);
-        this.emit('error', { message: 'Failed to send message', error });
-        return false;
-      }
+      return this.safeSend(message);
     } else {
       // Queue message for later sending
       this.messageQueue.push(message);
@@ -548,11 +557,9 @@ export class WebSocketService extends EventEmitter {
       const message = this.messageQueue.shift();
       if (message) {
         // Send directly since we're already authenticated
-        try {
-          this.ws.send(JSON.stringify(message));
-        } catch (error) {
-          console.error('Failed to send queued message:', error);
-          // Re-queue the message
+        const sent = this.safeSend(message);
+        if (!sent) {
+          // Re-queue the message on failure and stop flushing
           this.messageQueue.unshift(message);
           break;
         }
@@ -593,8 +600,10 @@ export class WebSocketService extends EventEmitter {
     
     // Close WebSocket connection
     if (this.ws) {
-      if (this.ws.readyState === WebSocketState.OPEN || this.ws.readyState === WebSocketState.CONNECTING) {
+      try {
         this.ws.close(1000, 'Client disconnect');
+      } catch (error) {
+        console.error('Error while closing WebSocket:', error);
       }
       this.ws = null;
     }

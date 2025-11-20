@@ -7,6 +7,7 @@ interface PdfViewerProps {
   src: string
   className?: string
   onError?: (message: string) => void
+  highlightText?: string
 }
 
 if (typeof window !== 'undefined') {
@@ -27,7 +28,7 @@ const INITIAL_RENDER_STATE: RenderState = {
   error: null,
 }
 
-function PdfViewer({ src, className, onError }: PdfViewerProps) {
+function PdfViewer({ src, className, onError, highlightText }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [renderState, setRenderState] = useState<RenderState>(INITIAL_RENDER_STATE)
 
@@ -79,6 +80,26 @@ function PdfViewer({ src, className, onError }: PdfViewerProps) {
           container.appendChild(canvas)
 
           await page.render({ canvasContext: context, viewport }).promise
+
+          // Lightweight text search to scroll to the chunk/page that contains the highlight text
+          if (highlightText && highlightText.trim()) {
+            try {
+              const textContent = await page.getTextContent()
+              const pageText = textContent.items
+                .map((item: any) => item.str)
+                .join(' ')
+                .toLowerCase()
+              if (pageText.includes(highlightText.toLowerCase())) {
+                // Scroll the first matching page into view
+                canvas.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                // Draw a temporary outline to signal focus
+                canvas.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.5)'
+              }
+            } catch {
+              // ignore text lookup failures; PDF text layer can be missing for scans
+            }
+          }
+
           setRenderState((state) => ({
             ...state,
             renderedPages: pageNumber,
@@ -167,4 +188,3 @@ function PdfViewer({ src, className, onError }: PdfViewerProps) {
 }
 
 export default PdfViewer
-

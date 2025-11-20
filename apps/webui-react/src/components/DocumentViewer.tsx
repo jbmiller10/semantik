@@ -20,7 +20,7 @@ declare global {
     };
     Mark: new (element: HTMLElement) => {
       mark: (term: string, options?: Record<string, unknown>) => void;
-      unmark: () => void;
+      unmark: (options?: Record<string, unknown>) => void;
     };
     emlformat: {
       parse: (emlContent: string) => { html: string; headers: Record<string, string> };
@@ -47,6 +47,8 @@ interface DocumentViewerProps {
   collectionId: string;
   docId: string;
   chunkId?: string;
+  chunkText?: string;
+  chunkIndex?: number;
   query?: string;
   onClose: () => void;
 }
@@ -103,7 +105,7 @@ const DOCX_RENDER_OPTIONS = {
   renderEndnotes: true,
 } as const;
 
-function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewerProps) {
+function DocumentViewer({ collectionId, docId, chunkId, chunkText, chunkIndex, query, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -113,11 +115,8 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
   const blobUrlRef = useRef<string | null>(null);
 
-  // TODO: Implement chunk highlighting/scrolling when chunkId is provided
-  // The chunkId parameter is now available for future enhancement
-  if (chunkId) {
-    // Future: scroll to and highlight chunk
-  }
+  // Choose target highlight text: prefer chunk content, fall back to query string
+  const highlightTarget = chunkText || query;
 
   const updateBlobUrl = (newUrl: string | null) => {
     if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
@@ -274,10 +273,41 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
     loadDocument();
   }, [collectionId, docId]);
 
-  // Apply highlights when content or query changes
+  // Apply highlights when content, query, or chunk selection changes (non-PDF only)
   useEffect(() => {
-    // Disabled until document content can be loaded
-  }, []);
+    if (loading || error || isPdf) return;
+    if (!highlightTarget || !highlightTarget.trim()) return;
+    if (!contentRef.current) return;
+
+    // Ensure mark.js is available before attempting to highlight
+    if (!window.Mark) {
+      // Gracefully degrade when highlight library is unavailable
+      return;
+    }
+
+    // Clear previous highlights
+    if (markInstanceRef.current) {
+      markInstanceRef.current.unmark();
+    }
+
+    const markInstance = new window.Mark(contentRef.current);
+    markInstanceRef.current = markInstance;
+
+    // Highlight the target text and scroll to first occurrence
+    markInstance.unmark({
+      done: () => {
+        markInstance.mark(highlightTarget, {
+          separateWordSearch: false,
+          done: () => {
+            const first = contentRef.current?.querySelector('mark');
+            if (first) {
+              first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          },
+        });
+      },
+    });
+  }, [highlightTarget, isPdf, loading, error]);
 
   const handleDownload = async () => {
     try {
@@ -379,6 +409,12 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
 
           {/* Content */}
           <div className="flex-1 overflow-auto p-4">
+            {(chunkId || chunkText || chunkIndex !== undefined) && (
+              <div className="mb-3 rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                {chunkIndex !== undefined ? `Showing chunk ${chunkIndex + 1}` : 'Focusing on selected chunk'}
+                {highlightTarget ? ' — highlighting matching text in the document.' : ''}
+              </div>
+            )}
             {loading && (
               <div className="flex items-center justify-center h-64">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
@@ -391,10 +427,17 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
               </div>
             )}
             
+            {isPdf && highlightTarget && (
+              <div className="mb-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+                Chunk jump is not available for PDFs yet. Use page search to locate the chunk manually.
+              </div>
+            )}
+
             {isPdf && blobUrl ? (
               <PdfViewer
                 src={blobUrl}
                 className="space-y-6"
+                highlightText={highlightTarget || undefined}
                 onError={(message) => setError(message)}
               />
             ) : (

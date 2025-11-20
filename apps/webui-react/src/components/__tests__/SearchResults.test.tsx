@@ -202,11 +202,15 @@ describe('SearchResults', () => {
     const viewButtons = screen.getAllByText('View Document →')
     await user.click(viewButtons[0])
 
-    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      collectionId: 'collection1',
-      docId: 'doc1',
-      chunkId: 'chunk1',
-    })
+    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionId: 'collection1',
+        docId: 'doc1',
+        chunkId: 'chunk1',
+        chunkText: 'This is the first chunk of document 1',
+        chunkIndex: 0,
+      }),
+    )
   })
 
   it('handles chunk click for document viewing', async () => {
@@ -224,11 +228,13 @@ describe('SearchResults', () => {
     const viewButtons = screen.getAllByText('View Document →')
     await user.click(viewButtons[0])
 
-    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      collectionId: 'collection1',
-      docId: 'doc1',
-      chunkId: 'chunk1',
-    })
+    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionId: 'collection1',
+        docId: 'doc1',
+        chunkId: 'chunk1',
+      }),
+    )
   })
 
   it('handles missing collection ID in results', async () => {
@@ -253,11 +259,13 @@ describe('SearchResults', () => {
     const viewButton = screen.getByText('View Document →')
     await user.click(viewButton)
 
-    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
-      collectionId: 'unknown',
-      docId: 'doc1',
-      chunkId: 'chunk1',
-    })
+    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collectionId: 'unknown',
+        docId: 'doc1',
+        chunkId: 'chunk1',
+      }),
+    )
   })
 
   it('prevents event propagation when clicking view document button', async () => {
