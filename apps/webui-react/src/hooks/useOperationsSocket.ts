@@ -4,6 +4,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useUpdateOperationInCache } from './useCollectionOperations';
 import { useWebSocket } from './useWebSocket';
 import type { OperationStatus } from '../types/collection';
+import { operationsV2Api } from '../services/api/v2/operations';
 
 export function useOperationsSocket() {
     const updateOperationInCache = useUpdateOperationInCache();
@@ -13,8 +14,7 @@ export function useOperationsSocket() {
     const wsUrl = useMemo(() => {
         // If there is no token, do not attempt a connection
         if (!token) return null;
-        const baseUrl = window.location.origin.replace(/^http/, 'ws');
-        return `${baseUrl}/ws/operations?token=${encodeURIComponent(token)}`;
+        return operationsV2Api.getGlobalWebSocketUrl(token);
     }, [token]);
 
     const { readyState, reconnect } = useWebSocket(wsUrl, {
