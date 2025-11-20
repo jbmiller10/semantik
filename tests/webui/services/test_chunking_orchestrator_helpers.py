@@ -3,7 +3,6 @@
 import pytest
 
 from packages.shared.chunking.infrastructure.exceptions import ValidationError
-
 from packages.webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,

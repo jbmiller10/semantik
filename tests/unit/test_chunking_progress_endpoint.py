@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from typing import TYPE_CHECKING
 
 import pytest
 from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 from packages.webui.api.v2.chunking import get_chunking_orchestrator_dependency
 from packages.webui.auth import get_current_user
@@ -23,7 +26,7 @@ class _FakeProgressService:
 
 
 @pytest.fixture(autouse=True)
-def clear_overrides() -> Generator[None, None, None]:
+def _clear_overrides() -> Generator[None, None, None]:
     """Ensure dependency overrides do not leak between tests."""
 
     app.dependency_overrides.clear()
@@ -32,14 +35,14 @@ def clear_overrides() -> Generator[None, None, None]:
 
 
 @pytest.fixture(autouse=True)
-def stub_current_user() -> Generator[None, None, None]:
+def _stub_current_user() -> None:
     """Provide a deterministic authenticated user for tests."""
 
     async def _fake_user():
         return {"id": 0, "username": "test", "email": "test@example.com"}
 
     app.dependency_overrides[get_current_user] = _fake_user
-    yield
+    return None
 
 
 def test_progress_endpoint_uses_service_response() -> None:

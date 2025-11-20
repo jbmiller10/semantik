@@ -1251,9 +1251,7 @@ class ChunkingOrchestrator:
             return None
 
         try:
-            entries = await redis_client.xrevrange(
-                f"operation-progress:{operation_id}", max="+", min="-", count=1
-            )
+            entries = await redis_client.xrevrange(f"operation-progress:{operation_id}", max="+", min="-", count=1)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug("Failed to read progress stream for %s: %s", operation_id, exc)
             return None
@@ -1303,9 +1301,7 @@ class ChunkingOrchestrator:
 
         total_documents = self._coerce_int(total)
         chunks_created = self._coerce_int(
-            payload.get("chunks_created")
-            or payload.get("vectors_created")
-            or payload.get("total_vectors_created"),
+            payload.get("chunks_created") or payload.get("vectors_created") or payload.get("total_vectors_created"),
         )
 
         return {
@@ -1332,15 +1328,12 @@ class ChunkingOrchestrator:
             "scanning_documents": "in_progress",
             "scanning_completed": "in_progress",
         }
-        return mapping.get(msg_type, None)
+        return mapping.get(msg_type)
 
     def _map_operation_status(self, status: OperationStatus | str | None) -> str:
         """Normalize operation status to ChunkingStatus-compatible string."""
 
-        if isinstance(status, OperationStatus):
-            status_value = status.value
-        else:
-            status_value = str(status or "pending").lower()
+        status_value = status.value if isinstance(status, OperationStatus) else str(status or "pending").lower()
 
         mapping = {
             "pending": "pending",
