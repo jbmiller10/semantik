@@ -14,18 +14,9 @@ from packages.shared.database import get_db
 from packages.shared.managers import QdrantManager
 from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
-from .chunking.adapter import ChunkingServiceAdapter
-from .chunking.container import (
-    get_chunking_orchestrator as container_get_chunking_orchestrator,
-)
-from .chunking.container import (
-    get_redis_manager as container_get_redis_manager,
-)
-from .chunking.container import (
-    resolve_api_chunking_dependency,
-)
+from .chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
+from .chunking.container import get_redis_manager as container_get_redis_manager
 from .chunking.orchestrator import ChunkingOrchestrator
-from .chunking_service import ChunkingService
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
@@ -305,41 +296,6 @@ async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator
     return await container_get_chunking_orchestrator(db)
 
 
-async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
-    """Return chunking dependency that emulates legacy service."""
-
-    return await resolve_api_chunking_dependency(db, prefer_adapter=True)
-
-
-def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
-    """Create ChunkingService for Celery tasks without Redis."""
-
-    collection_repo = CollectionRepository(db_session)
-    document_repo = DocumentRepository(db_session)
-
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=None,
-    )
-
-
-def create_celery_chunking_service_with_repos(
-    db_session: AsyncSession,
-    collection_repo: CollectionRepository,
-    document_repo: DocumentRepository,
-) -> ChunkingService:
-    """Create ChunkingService using pre-built repositories."""
-
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=None,
-    )
-
-
 async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
     """FastAPI dependency for orchestrator injection (new architecture)."""
 
@@ -348,10 +304,10 @@ async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> Chunk
 
 async def get_chunking_service(
     db: AsyncSession = Depends(get_db),
-) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
-    """FastAPI dependency for legacy ChunkingService consumers."""
+) -> ChunkingOrchestrator:
+    """Backward-compatible dependency returning the orchestrator."""
 
-    return await create_chunking_service(db)
+    return await get_chunking_orchestrator(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

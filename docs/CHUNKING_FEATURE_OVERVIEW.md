@@ -51,7 +51,7 @@ We're implementing a comprehensive chunking system based on the "5 Levels of Tex
 
 Based on architectural review feedback, we're taking an **enhanced clean-slate approach**:
 - ✅ **No backwards compatibility** constraints
-- ✅ **Service-oriented architecture** with ChunkingService layer
+- ✅ **Service-oriented architecture** with ChunkingOrchestrator layer
 - ✅ **Normalized database schema** for performance at scale
 - ✅ **Security-first design** with comprehensive validation
 - ✅ **Best-in-class libraries** (LlamaIndex, sentence-transformers)
@@ -94,7 +94,7 @@ Based on review feedback, our architecture includes:
 
 ### 1. **Service Layer Architecture**
 ```python
-ChunkingService       # Business logic separation
+ChunkingOrchestrator       # Business logic separation
 ├── Security validation
 ├── Caching layer
 ├── Error handling
@@ -132,7 +132,7 @@ Hierarchical: 400 chunks/sec (multiple passes)
 
 **Key Tasks**:
 - Implement BaseChunker interface with async support
-- Create ChunkingService layer for business logic
+- Create ChunkingOrchestrator layer for business logic
 - Build 3 core strategies using LlamaIndex:
   - Character (TokenTextSplitter)
   - Recursive (SentenceSplitter)
@@ -211,7 +211,7 @@ Hierarchical: 400 chunks/sec (multiple passes)
 └─────────────────────┬───────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────┐
-│              ChunkingService Layer                   │
+│              ChunkingOrchestrator Layer                   │
 │  - Business logic           - Error handling         │
 │  - Cache management         - Analytics tracking     │
 │  - Security validation      - Progress monitoring    │
@@ -253,7 +253,7 @@ Hierarchical: 400 chunks/sec (multiple passes)
    - Regular updates and improvements
 
 2. **Enhanced Architecture**
-   - ChunkingService layer for clean separation
+   - ChunkingOrchestrator layer for clean separation
    - Normalized schema for query performance
    - Security validation throughout
    - Error handling at every level
@@ -286,7 +286,7 @@ Hierarchical: 400 chunks/sec (multiple passes)
 - Ensure performance testing from day 1
 
 ### 2. **Enhanced Architecture**
-- Added ChunkingService layer
+- Added ChunkingOrchestrator layer
 - Normalized database schema
 - Comprehensive security validation
 - Robust error handling framework
@@ -434,7 +434,7 @@ See the implementation plan for specific subagent recommendations per task.
 
 ```
 Week 1: Foundation & Architecture
-├── Day 1-2: BaseChunker + ChunkingService
+├── Day 1-2: BaseChunker + ChunkingOrchestrator
 ├── Day 3: Core strategies (character, recursive, markdown)
 ├── Day 4: Error handling + Security
 ├── Day 5: Performance testing framework

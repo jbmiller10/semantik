@@ -7,7 +7,7 @@ from httpx import AsyncClient
 
 from packages.shared.database.models import Chunk, OperationStatus
 from packages.shared.database.partition_utils import compute_partition_key_from_hash
-from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 from packages.webui.services.dtos.chunking_dtos import ServiceStrategyInfo
 
 
@@ -19,7 +19,7 @@ async def test_list_chunking_strategies_integration(
 ) -> None:
     """The strategies endpoint should return the built-in strategies."""
 
-    async def fake_get_available_strategies_for_api(_self):
+    async def fake_get_available_strategies(_self):
         return [
             ServiceStrategyInfo(
                 id="fixed_size",
@@ -39,7 +39,7 @@ async def test_list_chunking_strategies_integration(
             ),
         ]
 
-    monkeypatch.setattr(ChunkingService, "get_available_strategies_for_api", fake_get_available_strategies_for_api)
+    monkeypatch.setattr(ChunkingOrchestrator, "get_available_strategies", fake_get_available_strategies)
 
     response = await api_client.get("/api/v2/chunking/strategies", headers=api_auth_headers)
 

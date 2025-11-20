@@ -14,8 +14,7 @@ from typing import Any
 
 import httpx
 
-from packages.webui.services.chunking.container import resolve_celery_chunking_service
-from packages.webui.services.factory import create_celery_chunking_service_with_repos
+from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from .cleanup import (
     cleanup_old_collections,
@@ -62,7 +61,6 @@ from .utils import (
     REINDEX_VECTOR_COUNT_VARIANCE,
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
-    ChunkingService,
     _audit_log_operation,
     _build_internal_api_headers,
     _get_internal_api_key,
@@ -107,9 +105,7 @@ __all__ = [
     "asyncio",
     "httpx",
     "CeleryTaskWithOperationUpdates",
-    "ChunkingService",
-    "resolve_celery_chunking_service",
-    "create_celery_chunking_service_with_repos",
+    "resolve_celery_chunking_orchestrator",
     "celery_app",
     "executor",
     "extract_and_serialize_thread_safe",
