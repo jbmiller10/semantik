@@ -42,7 +42,7 @@ def _stub_current_user() -> None:
         return {"id": 0, "username": "test", "email": "test@example.com"}
 
     app.dependency_overrides[get_current_user] = _fake_user
-    return None
+    return
 
 
 def test_progress_endpoint_uses_service_response() -> None:
