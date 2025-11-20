@@ -47,7 +47,10 @@ from packages.webui.api.chunking_exceptions import (
 )
 from packages.webui.celery_app import celery_app
 from packages.webui.middleware.correlation import get_or_generate_correlation_id
-from packages.webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_service
+from packages.webui.services.chunking.container import (
+    build_chunking_operation_manager,
+    resolve_celery_chunking_orchestrator,
+)
 from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
 from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
 from packages.webui.services.factory import get_redis_manager
@@ -572,15 +575,17 @@ async def _process_document_chunking(
         raise ValueError(f"Extracted content empty for document {getattr(document, 'id', file_path)}")
 
     file_type = file_path.rsplit(".", 1)[-1] if "." in file_path else None
-    chunking_result = await chunking_service.execute_ingestion_chunking(
-        text=combined_text,
-        document_id=document.id,
-        collection=collection_payload,
-        metadata=metadata,
-        file_type=file_type,
+
+    strategy = collection_payload.get("chunking_strategy") or "recursive"
+    config = collection_payload.get("chunking_config") or {}
+
+    chunks = await chunking_service.execute_ingestion_chunking(
+        content=combined_text,
+        strategy=strategy,
+        config=config,
+        metadata={**metadata, "document_id": document.id, "file_type": file_type} if metadata else None,
     )
 
-    chunks = chunking_result.get("chunks") or []
     if not chunks:
         raise ValueError(f"No chunks produced for document {getattr(document, 'id', file_path)}")
 
@@ -595,6 +600,22 @@ async def _process_document_chunking(
         chunk_count=len(chunk_rows),
     )
 
+    fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in chunks)
+    fallback_reason = None
+    if fallback_used:
+        for chunk in chunks:
+            reason = (chunk.get("metadata") or {}).get("fallback_reason")
+            if reason:
+                fallback_reason = reason
+                break
+
+    stats = {
+        "strategy_used": strategy,
+        "chunk_count": len(chunk_rows),
+        "fallback": fallback_used,
+        "fallback_reason": fallback_reason,
+    }
+
     logger.info(
         "Chunked document %s with %s chunks",
         getattr(document, "id", "unknown"),
@@ -602,7 +623,7 @@ async def _process_document_chunking(
         extra={"correlation_id": correlation_id},
     )
 
-    return len(chunk_rows), chunking_result.get("stats")
+    return len(chunk_rows), stats
 
 
 async def _process_chunking_operation_async(
@@ -703,7 +724,7 @@ async def _process_chunking_operation_async(
                         "duration_seconds": duration,
                     }
 
-                chunking_service = await resolve_celery_chunking_service(
+                chunking_service = await resolve_celery_chunking_orchestrator(
                     db,
                     collection_repo=collection_repo,
                     document_repo=document_repo,

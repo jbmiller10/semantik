@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from qdrant_client.models import PointStruct
 
-from packages.webui.services.chunking.container import resolve_celery_chunking_service
+from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -62,7 +62,11 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     tasks_ns = _tasks_namespace()
     log = getattr(tasks_ns, "logger", logger)
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
-    chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
+    chunking_resolver = getattr(
+        tasks_ns,
+        "resolve_celery_chunking_orchestrator",
+        resolve_celery_chunking_orchestrator,
+    )
 
     # Replace placeholder executes with real queries while preserving
     # the number/order of db.execute(...) calls that tests expect.
@@ -312,7 +316,6 @@ async def _process_reindex_operation_impl(
         reindex_switch_duration,
         reindex_validation_duration,
     )
-    from webui.services.factory import create_celery_chunking_service_with_repos
 
     config = operation.get("config", {})
     new_config = config.get("new_config", {})
@@ -427,8 +430,8 @@ async def _process_reindex_operation_impl(
         instruction = new_config.get("instruction", collection.get("config", {}).get("instruction"))
         vector_dim = new_config.get("vector_dim", collection.get("config", {}).get("vector_dim"))
 
-        chunking_service = create_celery_chunking_service_with_repos(
-            db_session=document_repo.session,
+        chunking_service = await resolve_celery_chunking_orchestrator(
+            document_repo.session,
             collection_repo=collection_repo,
             document_repo=document_repo,
         )
@@ -474,16 +477,31 @@ async def _process_reindex_operation_impl(
                     if "chunk_overlap" in new_config:
                         reindex_collection["chunk_overlap"] = new_config["chunk_overlap"]
 
-                    chunking_result = await chunking_service.execute_ingestion_chunking(
-                        text=combined_text,
-                        document_id=doc_id,
-                        collection=reindex_collection,
-                        metadata=combined_metadata,
-                        file_type=file_path.split(".")[-1] if "." in file_path else None,
+                    strategy = reindex_collection.get("chunking_strategy") or "recursive"
+                    config = reindex_collection.get("chunking_config") or {}
+                    all_chunks = await chunking_service.execute_ingestion_chunking(
+                        content=combined_text,
+                        strategy=strategy,
+                        config=config,
+                        metadata={**combined_metadata, "document_id": doc_id},
                     )
 
-                    all_chunks = chunking_result["chunks"]
-                    chunking_stats = chunking_result["stats"]
+                    fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in all_chunks)
+                    fallback_reason = None
+                    if fallback_used:
+                        for chunk in all_chunks:
+                            reason = (chunk.get("metadata") or {}).get("fallback_reason")
+                            if reason:
+                                fallback_reason = reason
+                                break
+
+                    chunking_stats = {
+                        "strategy_used": strategy,
+                        "chunk_count": len(all_chunks),
+                        "fallback": fallback_used,
+                        "fallback_reason": fallback_reason,
+                        "duration_ms": None,
+                    }
 
                     logger.info(
                         "Reprocessed document %s: %s chunks using %s strategy (fallback: %s, duration: %sms)",

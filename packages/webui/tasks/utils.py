@@ -38,14 +38,14 @@ except RuntimeError as exc:
     raise
 
 
-# Re-export ChunkingService for tests that patch packages.webui.tasks.ChunkingService
+# Re-export orchestrator for tests that patch packages.webui.tasks.ChunkingOrchestrator
 try:  # Prefer packages.* import path to match test patch targets
-    from packages.webui.services.chunking_service import ChunkingService
+    from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 except Exception:  # Fallback for runtime usage paths
     try:
-        from webui.services.chunking_service import ChunkingService  # type: ignore
+        from webui.services.chunking.orchestrator import ChunkingOrchestrator  # type: ignore
     except Exception:  # As a last resort, define a placeholder
-        ChunkingService = None  # type: ignore
+        ChunkingOrchestrator = None  # type: ignore
 
 
 # Task timeout constants
@@ -453,7 +453,7 @@ __all__ = [
     "celery_app",
     "qdrant_manager",
     "QdrantManager",
-    "ChunkingService",
+    "ChunkingOrchestrator",
     "CeleryTaskWithOperationUpdates",
     "DEFAULT_DAYS_TO_KEEP",
     "DEFAULT_MAX_RETRIES",
