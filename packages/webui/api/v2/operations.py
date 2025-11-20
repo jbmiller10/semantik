@@ -304,3 +304,68 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     finally:
         # Ensure we always disconnect properly to clean up resources
         await ws_manager.disconnect(connection_id)
+
+
+# WebSocket handler for global operation updates
+async def operation_websocket_global(websocket: WebSocket) -> None:
+    """WebSocket for real-time updates of ALL operations for a user.
+
+    Authentication is handled via JWT token passed as query parameter.
+    The token should be passed as ?token=<jwt_token> in the WebSocket URL.
+
+    The WebSocket will:
+    1. Authenticate the user via JWT token
+    2. Subscribe to Redis updates for the user channel
+    3. Stream progress updates for all operations belonging to the user
+    """
+    # Extract token from query parameters
+    token = websocket.query_params.get("token")
+
+    try:
+        # Authenticate the user
+        user = await get_current_user_websocket(token)
+        user_id = str(user["id"])
+    except ValueError as e:
+        # Authentication failed
+        await websocket.close(code=1008, reason=str(e))
+        return
+    except Exception as e:
+        logger.error(f"WebSocket authentication error: {e}")
+        await websocket.close(code=1011, reason="Internal server error")
+        return
+
+    # Connect the WebSocket using only user_id (no operation_id)
+    # This will subscribe to the user:{user_id} channel
+    connection_id = await ws_manager.connect(websocket, user_id)
+
+    try:
+        # Keep the connection alive and handle any incoming messages
+        while True:
+            try:
+                message = await websocket.receive()
+
+                if message.get("type") == "websocket.disconnect":
+                    break
+
+                raw_text = message.get("text")
+                if raw_text is None:
+                    continue
+
+                if not raw_text:
+                    continue
+
+                try:
+                    data = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    if raw_text.strip().lower() == "ping":
+                        await websocket.send_json({"type": "pong"})
+                    continue
+
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except Exception:
+                break
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await ws_manager.disconnect(connection_id)

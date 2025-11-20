@@ -9,6 +9,7 @@ This test suite covers additional functionality not covered in the main test fil
 """
 
 import asyncio
+import json
 import time
 from collections.abc import Generator
 from contextlib import asynccontextmanager
@@ -668,6 +669,46 @@ class TestConcurrentOperations:
         # Verify all completed
         assert len(results) == 3
         assert all(r["success"] for r in results)
+
+    async def test_updater_publishes_user_channel(self) -> None:
+        """Ensure user_id is honored so global websocket channel receives updates."""
+
+        updater = CeleryTaskWithOperationUpdates("op-user-123")
+        updater.set_user_id(42)
+
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        class FakeRedis:
+            async def xadd(self, *_args, **_kwargs) -> str:
+                return "1-0"
+
+            async def expire(self, *_args, **_kwargs) -> bool:
+                return True
+
+            async def publish(self, channel: str, payload: str) -> int:
+                published.append((channel, json.loads(payload)))
+                return 1
+
+            async def ping(self) -> bool:
+                return True
+
+            async def close(self) -> None:
+                return None
+
+        fake = FakeRedis()
+
+        async def fake_get() -> FakeRedis:
+            return fake
+
+        # Bypass redis.from_url: stub _get_redis directly
+        updater._get_redis = fake_get  # type: ignore[assignment]
+
+        async with updater:
+            await updater.send_update("operation_started", {"status": "processing"})
+
+        channels = {channel for channel, _ in published}
+        assert f"operation:{updater.operation_id}" in channels
+        assert "user:42" in channels
 
 
 class TestEdgeCases:
