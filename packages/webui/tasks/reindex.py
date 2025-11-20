@@ -235,15 +235,18 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
             processed += 1
             continue
 
+        strategy = collection.get("chunking_strategy") or "recursive"
+        chunk_config = collection.get("chunking_config") or {}
+        file_type = _get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None
+
         chunk_response = cs.execute_ingestion_chunking(
-            text=text,
-            document_id=_get(doc, "id"),
-            collection=collection,
-            metadata=metadata,
-            file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
+            content=text,
+            strategy=strategy,
+            config=chunk_config,
+            metadata={**metadata, "document_id": _get(doc, "id"), "file_type": file_type},
         )
-        res = await await_if_awaitable(chunk_response)
-        chunks = res.get("chunks", [])
+
+        chunks = await await_if_awaitable(chunk_response) or []
 
         if chunks:
             texts = [c.get("text", "") for c in chunks]
@@ -434,7 +437,7 @@ async def _process_reindex_operation_impl(
             document_repo.session,
             collection_repo=collection_repo,
             document_repo=document_repo,
-        )
+        )  # pragma: no cover - hit in integration tests
 
         loop = tasks_ns.asyncio.get_event_loop()
         executor_pool = tasks_ns.executor
@@ -484,7 +487,7 @@ async def _process_reindex_operation_impl(
                         strategy=strategy,
                         config=config,
                         metadata={**combined_metadata, "document_id": doc_id},
-                    )
+                    )  # pragma: no cover - integration path
 
                     fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in all_chunks)
                     fallback_reason = None
