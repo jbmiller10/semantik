@@ -1,11 +1,10 @@
 """
 Chunking services package - focused, composable services for document chunking.
 
-This package splits the monolithic ChunkingService into focused components
-following the Single Responsibility Principle.
+This package contains the orchestrator-centric chunking stack, composed from
+focused components following the Single Responsibility Principle.
 """
 
-from .adapter import ChunkingServiceAdapter
 from .cache import ChunkingCache
 from .config_manager import ChunkingConfigManager
 from .metrics import ChunkingMetrics
@@ -21,6 +20,5 @@ __all__ = [
     "ChunkingMetrics",
     "ChunkingValidator",
     "ChunkingConfigManager",
-    "ChunkingServiceAdapter",
     "ChunkingOperationManager",
 ]

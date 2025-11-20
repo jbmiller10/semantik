@@ -28,7 +28,7 @@ from shared.metrics.collection_metrics import (
     collections_total,
 )
 
-from packages.webui.services.chunking.container import resolve_celery_chunking_service
+from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from . import reindex as reindex_tasks
 from .utils import (
@@ -463,7 +463,11 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
     tasks_ns = _tasks_namespace()
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
-    chunking_resolver = getattr(tasks_ns, "resolve_celery_chunking_service", resolve_celery_chunking_service)
+    chunking_resolver = getattr(
+        tasks_ns,
+        "resolve_celery_chunking_orchestrator",
+        resolve_celery_chunking_orchestrator,
+    )
 
     # Replace placeholder executes with real queries
     from shared.database.models import Collection as _Collection
@@ -547,17 +551,14 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 skipped += 1
                 continue
 
-            chunk_response = cs.execute_ingestion_chunking(
-                text=text,
-                document_id=_get(doc, "id"),
-                collection=collection,
-                metadata=metadata,
-                file_type=_get(doc, "file_path", "").split(".")[-1] if "." in _get(doc, "file_path", "") else None,
+            res_chunks = await cs.execute_ingestion_chunking(
+                content=text,
+                strategy=collection.get("chunking_strategy") or "recursive",
+                config=collection.get("chunking_config") or {},
+                metadata={**metadata, "document_id": _get(doc, "id")},
             )
 
-            res = await await_if_awaitable(chunk_response)
-
-            chunks = res.get("chunks", [])
+            chunks = res_chunks or []
 
             if chunks:
                 texts = [c.get("text", "") for c in chunks]
@@ -737,7 +738,6 @@ async def _process_append_operation_impl(
     from shared.database.models import DocumentStatus
     from shared.metrics.collection_metrics import document_processing_duration, record_document_processed
     from webui.services.document_scanning_service import DocumentScanningService
-    from webui.services.factory import create_celery_chunking_service_with_repos
 
     config = operation.get("config", {})
     source_path = config.get("source_path")
@@ -848,8 +848,8 @@ async def _process_append_operation_impl(
             processed_count = 0
             total_vectors_created = 0
 
-            chunking_service = create_celery_chunking_service_with_repos(
-                db_session=document_repo.session,
+            chunking_service = await resolve_celery_chunking_orchestrator(
+                document_repo.session,
                 collection_repo=collection_repo,
                 document_repo=document_repo,
             )
@@ -908,16 +908,31 @@ async def _process_append_operation_impl(
                     if session.in_transaction():
                         await session.commit()
 
-                    chunking_result = await chunking_service.execute_ingestion_chunking(
-                        text=combined_text,
-                        document_id=doc.id,
-                        collection=collection,
-                        metadata=combined_metadata,
-                        file_type=doc.file_path.split(".")[-1] if "." in doc.file_path else None,
+                    strategy = collection.get("chunking_strategy") or "recursive"
+                    config = collection.get("chunking_config") or {}
+                    chunks = await chunking_service.execute_ingestion_chunking(
+                        content=combined_text,
+                        strategy=strategy,
+                        config=config,
+                        metadata={**combined_metadata, "document_id": doc.id} if combined_metadata else {"document_id": doc.id},
                     )
 
-                    chunks = chunking_result["chunks"]
-                    chunking_stats = chunking_result["stats"]
+                    fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in chunks)
+                    fallback_reason = None
+                    if fallback_used:
+                        for chunk in chunks:
+                            reason = (chunk.get("metadata") or {}).get("fallback_reason")
+                            if reason:
+                                fallback_reason = reason
+                                break
+
+                    chunking_stats = {
+                        "strategy_used": strategy,
+                        "chunk_count": len(chunks),
+                        "fallback": fallback_used,
+                        "fallback_reason": fallback_reason,
+                        "duration_ms": None,
+                    }
 
                     logger.info(
                         "Created %s chunks for %s using %s strategy (fallback: %s, duration: %sms)",
@@ -938,7 +953,7 @@ async def _process_append_operation_impl(
                         failed_count += 1
                         continue
 
-                    texts = [chunk["text"] for chunk in chunks]
+                    texts = [chunk.get("text") or chunk.get("content") for chunk in chunks]
 
                     vecpipe_url = "http://vecpipe:8000/embed"
                     embed_request = {

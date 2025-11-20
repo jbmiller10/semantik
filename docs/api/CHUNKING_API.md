@@ -129,6 +129,49 @@ Get an AI-powered strategy recommendation based on file types and content charac
 }
 ```
 
+## Plugin Author Guide
+
+Third-party chunking strategies register themselves at runtime through the strategy registry and factory. Each plugin must provide:
+
+1. A strategy implementation class that subclasses `packages.shared.chunking.domain.services.chunking_strategies.base.ChunkingStrategy` and implements `chunk(text, config)`.
+2. A call to `ChunkingStrategyFactory.register_strategy(<internal_name>, <class>)` so the orchestrator can instantiate it.
+3. A call to `register_strategy_definition(...)` so the strategy surfaces in `/strategies` responses with defaults and metadata.
+
+Minimal example (register at import time in your plugin module):
+
+```python
+from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from packages.webui.services.chunking.strategy_registry import register_strategy_definition
+from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+
+
+class DemoPluginStrategy(ChunkingStrategy):
+    INTERNAL_NAME = "demo_plugin"
+    API_ID = "demo_plugin"
+
+    def chunk(self, text: str, config):  # config is a ChunkConfig
+        return [text]  # trivial passthrough
+
+
+register_strategy_definition(
+    api_id="demo_plugin",
+    internal_id="demo_plugin",
+    display_name="Demo Plugin",
+    description="Example plugin strategy",
+    manager_defaults={"chunk_size": 256, "chunk_overlap": 0},
+    builder_defaults={"chunk_size": 128, "chunk_overlap": 0},
+    visual_example={"url": "https://example.com/demo.png"},
+    is_plugin=True,
+)
+ChunkingStrategyFactory.register_strategy("demo_plugin", DemoPluginStrategy)
+```
+
+After registration the orchestrator accepts `strategy_name="demo_plugin"` along with optional `strategy_config` and treats it like any built-in strategy.
+
+## Configuration Persistence
+
+User-defined chunking presets are persisted in the database table `chunking_config_profiles` (Alembic migration `202511201200`). The legacy `data/chunking_configs.json` file is no longer used. The FastAPI endpoints `/configs` (save/list) now store and retrieve rows via the orchestrator's configuration manager, enabling multi-replica safe storage and auditability.
+
 ### Preview Operations
 
 #### Generate Preview

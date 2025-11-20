@@ -570,6 +570,37 @@ class ChunkingConfig(Base):
     documents = relationship("Document", back_populates="chunking_config")
 
 
+class ChunkingConfigProfile(Base):
+    """User-scoped saved chunking configuration.
+
+    Replaces the legacy JSON file store so configurations persist across
+    replicas and can be audited. Records are scoped to a user and may be
+    marked as default. Tags are stored as JSON list to avoid extension
+    dependencies while keeping flexibility.
+    """
+
+    __tablename__ = "chunking_config_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    strategy = Column(String, nullable=False, index=True)
+    config = Column(JSON, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_default = Column(Boolean, nullable=False, default=False, index=True)
+    usage_count = Column(Integer, nullable=False, default=0)
+    tags = Column(JSON)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("created_by", "name", name="uq_chunking_config_profiles_user_name"),
+    )
+
+    # Relationships
+    user = relationship("User", backref="chunking_config_profiles")
+
+
 class Chunk(Base):
     """Chunk model for partitioned document storage.
 
