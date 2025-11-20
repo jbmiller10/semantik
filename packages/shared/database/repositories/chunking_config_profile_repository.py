@@ -29,14 +29,14 @@ class ChunkingConfigProfileRepository:
         strategy: str,
         config: dict[str, Any],
         description: str | None = None,
-        is_default: bool = False,
+        is_default: bool | None = False,
         tags: list[str] | None = None,
     ) -> ChunkingConfigProfile:
         """Create or update a profile by (user, name)."""
 
         normalized_name = name.strip()
 
-        # Clear other defaults when setting a new default
+        # Clear other defaults only when explicitly setting a new default
         if is_default:
             await self.session.execute(
                 update(ChunkingConfigProfile)
@@ -59,7 +59,8 @@ class ChunkingConfigProfileRepository:
             existing.description = description
             existing.strategy = strategy
             existing.config = config
-            existing.is_default = is_default if is_default is not None else existing.is_default
+            if is_default is not None:
+                existing.is_default = is_default
             existing.tags = tags_payload
             logger.debug("Updated chunking config profile %s for user %s", existing.id, user_id)
             await self.session.flush()
