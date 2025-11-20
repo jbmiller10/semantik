@@ -8,6 +8,7 @@ from celery import Celery
 from celery.signals import worker_process_init
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.database.postgres_database import pg_connection_manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -134,9 +135,6 @@ def _create_celery_app() -> Celery:
 
 # Create Celery instance with environment-aware configuration.
 celery_app = _create_celery_app()
-
-
-from shared.database.postgres_database import pg_connection_manager
 
 # Worker initialization
 @worker_process_init.connect

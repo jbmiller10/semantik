@@ -889,6 +889,11 @@ async def _process_append_operation_impl(
                             if metadata:
                                 combined_metadata.update(metadata)
 
+                    # End any open transaction before long external calls to avoid
+                    # idle_in_transaction_session_timeout disconnects from Postgres.
+                    if session.in_transaction():
+                        await session.commit()
+
                     chunking_result = await chunking_service.execute_ingestion_chunking(
                         text=combined_text,
                         document_id=doc.id,
@@ -1033,12 +1038,15 @@ async def _process_append_operation_impl(
                             "current_document": doc.file_path,
                         },
                     )
-                    
+
                     # Commit to prevent idle-in-transaction timeout
                     await session.commit()
 
                 except Exception as exc:
                     logger.error("Failed to process document %s: %s", doc.file_path, exc)
+                    with contextlib.suppress(Exception):
+                        # Clear any pending transaction state so status updates use a fresh connection
+                        await session.rollback()
                     await document_repo.update_status(
                         doc.id,
                         DocumentStatus.FAILED,

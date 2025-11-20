@@ -3,8 +3,6 @@
 
 from importlib import metadata
 
-import pytest
-
 from packages.shared.chunking import plugin_loader
 from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
 from packages.webui.services.chunking import strategy_registry
