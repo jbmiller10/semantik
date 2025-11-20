@@ -234,7 +234,13 @@ class ChunkingOrchestrator:
                 expires_at=expires_at,
                 correlation_id=correlation,
             )
-            await self.cache.cache_preview(content_hash, normalized_strategy, merged_config, cache_payload)
+            await self.cache.cache_preview(
+                content_hash,
+                normalized_strategy,
+                merged_config,
+                cache_payload,
+                preview_id=preview_id,
+            )
 
         return response
 
@@ -917,10 +923,15 @@ class ChunkingOrchestrator:
             return None
         return self._build_preview_response_from_cache(cached, correlation_id=cached.get("correlation_id"))
 
-    async def clear_preview_cache(self, pattern: str | None = None) -> int:
-        """Clear preview cache entries."""
+    async def clear_preview_cache(self, preview_id: str | None = None) -> int:
+        """Clear preview cache entries for a specific preview ID."""
 
-        return await self.cache.clear_cache(pattern)
+        if preview_id:
+            deleted = await self.cache.clear_preview_by_id(preview_id)
+            if deleted:
+                return deleted
+
+        return await self.cache.clear_cache(preview_id)
 
     async def _load_document_content(self, document_id: str) -> str:
         """Load document content from repository."""
