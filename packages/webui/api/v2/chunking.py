@@ -487,6 +487,10 @@ async def start_chunking_operation(
             celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
         except Exception as exc:  # pragma: no cover - defensive dispatch
             logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Chunking task could not be queued; retry later.",
+            ) from exc
 
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
@@ -568,6 +572,10 @@ async def update_chunking_strategy(
                 celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Rechunking task could not be queued; retry later.",
+                ) from exc
 
             return ChunkingOperationResponse(
                 operation_id=operation["uuid"],
