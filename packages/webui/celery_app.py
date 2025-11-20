@@ -136,6 +136,7 @@ def _create_celery_app() -> Celery:
 # Create Celery instance with environment-aware configuration.
 celery_app = _create_celery_app()
 
+
 # Worker initialization
 @worker_process_init.connect
 def init_worker_process(**kwargs: Any) -> None:  # noqa: ARG001
