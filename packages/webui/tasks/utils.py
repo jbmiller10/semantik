@@ -116,12 +116,11 @@ class CeleryTaskWithOperationUpdates:
         """Send update to Redis Stream and Pub/Sub."""
         try:
             redis_client = await self._get_redis()
-            
-            # Ensure operation_id is in the data payload
-            if isinstance(data, dict):
-                data["operation_id"] = self.operation_id
-                
-            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
+
+            # Avoid mutating the caller's payload; keep data exactly as supplied
+            payload = dict(data) if isinstance(data, dict) else data
+
+            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": payload}
             message_json = json.dumps(message)
 
             # Add to stream with automatic ID
