@@ -555,7 +555,13 @@ class ChunkingOrchestrator:
         if not self.db_session:
             raise ValidationError(field="db_session", value=None, reason="Database session unavailable")
 
-        from packages.shared.database.models import Chunk, Collection, Document, Operation, OperationStatus, OperationType
+        from packages.shared.database.models import (
+            Chunk,
+            Document,
+            Operation,
+            OperationStatus,
+            OperationType,
+        )
 
         collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
         if not collection:
@@ -648,13 +654,7 @@ class ChunkingOrchestrator:
         if total_chunks == 0:
             return ServiceChunkList(chunks=[], total=0, page=safe_page, page_size=safe_page_size)
 
-        chunk_query = (
-            select(Chunk)
-            .where(*filters)
-            .order_by(Chunk.chunk_index)
-            .offset(offset)
-            .limit(safe_page_size)
-        )
+        chunk_query = select(Chunk).where(*filters).order_by(Chunk.chunk_index).offset(offset).limit(safe_page_size)
         chunk_rows = await self.db_session.execute(chunk_query)
         chunk_objects = chunk_rows.scalars().all()
 
@@ -708,9 +708,7 @@ class ChunkingOrchestrator:
         )
         total_documents_processed = int(documents_processed_result.scalar() or 0)
 
-        avg_chunks_per_document = (
-            total_chunks_created / total_documents_processed if total_documents_processed else 0.0
-        )
+        avg_chunks_per_document = total_chunks_created / total_documents_processed if total_documents_processed else 0.0
 
         operation_rows = await self.db_session.execute(
             select(
@@ -808,7 +806,7 @@ class ChunkingOrchestrator:
         self,
         *,
         content: str | None = None,
-        document_id: str | None = None,
+        document_id: str | None = None,  # noqa: ARG002 - document_id preserved for API parity
         file_type: str | None = None,
         user_id: int | None = None,  # noqa: ARG002
         deep_analysis: bool | None = None,  # noqa: ARG002

@@ -593,9 +593,7 @@ class ChunkingConfigProfile(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
 
-    __table_args__ = (
-        UniqueConstraint("created_by", "name", name="uq_chunking_config_profiles_user_name"),
-    )
+    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_chunking_config_profiles_user_name"),)
 
     # Relationships
     user = relationship("User", backref="chunking_config_profiles")
