@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import time
 import uuid
 from importlib import import_module
@@ -28,6 +29,19 @@ from shared.metrics.collection_metrics import (
 )
 
 from packages.webui.services.chunking.container import resolve_celery_chunking_service
+
+
+def _get_embedding_concurrency() -> int:
+    """Return per-worker embed concurrency, defaulting to 1 if unset/invalid."""
+    try:
+        val = int(os.getenv("EMBEDDING_CONCURRENCY_PER_WORKER", "1"))
+        return max(1, val)
+    except Exception:  # pragma: no cover - defensive parsing
+        return 1
+
+
+# Single-process semaphore throttling embed calls so we can run more workers for CPU-bound steps
+_embedding_semaphore = asyncio.Semaphore(_get_embedding_concurrency())
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -936,8 +950,9 @@ async def _process_append_operation_impl(
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
-                        logger.info("Calling vecpipe /embed for %s texts", len(texts))
-                        response = await client.post(vecpipe_url, json=embed_request)
+                        logger.info("Calling vecpipe /embed for %s texts (semaphore cap=%s)", len(texts), _embedding_semaphore._value)
+                        async with _embedding_semaphore:
+                            response = await client.post(vecpipe_url, json=embed_request)
 
                         if response.status_code != 200:
                             raise Exception(

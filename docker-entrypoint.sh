@@ -116,7 +116,8 @@ case "$SERVICE" in
     worker)
         run_strict_env_validation "worker" false
         echo "Starting Celery worker..."
-        # Choose a sensible default: all available CPU cores minus one, but allow explicit override
+        # Choose a sensible default: all available CPU cores minus one, capped by CELERY_MAX_CONCURRENCY (if set)
+        # This avoids oversubscribing memory when the container can see many host CPUs.
         if [ -z "${CELERY_CONCURRENCY:-}" ]; then
             if command -v nproc >/dev/null 2>&1; then
                 _cores=$(nproc)
@@ -132,6 +133,14 @@ PY
                 CELERY_CONCURRENCY=$((_cores - 1))
             else
                 CELERY_CONCURRENCY=1
+            fi
+
+            # Optional safety cap
+            if [ -n "${CELERY_MAX_CONCURRENCY:-}" ]; then
+                # shellcheck disable=SC2072
+                if [ "${CELERY_CONCURRENCY}" -gt "${CELERY_MAX_CONCURRENCY}" ]; then
+                    CELERY_CONCURRENCY=${CELERY_MAX_CONCURRENCY}
+                fi
             fi
         fi
 
