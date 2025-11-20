@@ -124,6 +124,8 @@ Common variables (see `.env.docker.example` and docs for full list):
 - Models: `DEFAULT_EMBEDDING_MODEL` (e.g. `Qwen/Qwen3-Embedding-0.6B`), `DEFAULT_QUANTIZATION` (`float16`), `USE_MOCK_EMBEDDINGS`
 - Paths: `DOCUMENT_PATH` (mounted docs), `HF_CACHE_DIR` (models cache)
 - Ports: `WEBUI_PORT` (8080), `SEARCH_API_PORT` (8000)
+- Worker: `CELERY_CONCURRENCY` (optional; defaults to `max(1, cores-1)` based on container CPU quota; set explicitly to pin), `CELERY_MAX_CONCURRENCY` (optional cap applied to the auto value; defaults to 4 in docker-compose)
+- Embedding throttle: `EMBEDDING_CONCURRENCY_PER_WORKER` (optional; default 1, docker-compose default set) limits concurrent `/embed` calls per worker to protect VRAM
 
 ## Services
 - WebUI (FastAPI): container `webui` (port 8080); serves API/UI, runs migrations at start
@@ -212,7 +214,7 @@ curl -X POST http://localhost:8080/api/v2/search \
 ## Roadmap / Limitations
 - Scheduled tasks: run Celery beat in Docker for periodic maintenance
 - CPU‑only mode is suitable for small corpora; GPU recommended for indexing speed and reranking
-- Conservative worker defaults (`CELERY_CONCURRENCY=1`)—tune to hardware and workload
+- Worker concurrency now auto-scales by default (cores-1, minimum 1); set `CELERY_CONCURRENCY` to pin it or `CELERY_MAX_CONCURRENCY` to cap the auto value
 - Planned: hybrid search improvements, broader formats/OCR, additional embedding/reranker options, MCP integration
 
 ### Performance
