@@ -511,12 +511,31 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
             now = datetime.now(UTC)
 
             user_id = None
-            if operation_uuid:
-                operation = await operation_repo.get_by_uuid(operation_uuid)
+            if operation_uuid and hasattr(operation_repo, "get_by_uuid"):
+                try:
+                    op_obj = operation_repo.get_by_uuid(operation_uuid)
+                    operation = await op_obj if inspect.isawaitable(op_obj) else op_obj
+                except Exception as exc:  # pragma: no cover - fail open for optional enrichment
+                    logger.warning(
+                        "Failed to fetch operation %s for projection %s: %s",
+                        operation_uuid,
+                        projection_id,
+                        exc,
+                    )
+                    operation = None
+
                 if operation:
                     user_id = getattr(operation, "user_id", None)
 
-            async with _operation_updates(operation_uuid, user_id=user_id) as updater:
+            operation_updates_fn = _operation_updates
+            supports_user_id = "user_id" in inspect.signature(operation_updates_fn).parameters
+            updates_ctx = (
+                operation_updates_fn(operation_uuid, user_id=user_id)
+                if supports_user_id
+                else operation_updates_fn(operation_uuid)
+            )
+
+            async with updates_ctx as updater:
                 try:
                     await projection_repo.update_status(
                         run.uuid,
