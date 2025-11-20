@@ -480,6 +480,14 @@ async def start_chunking_operation(
 
         websocket_channel = f"chunking:{collection_uuid}:{operation['uuid']}"
 
+        # Dispatch background processing via Celery
+        try:
+            from packages.webui.tasks import celery_app
+
+            celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+        except Exception as exc:  # pragma: no cover - defensive dispatch
+            logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc)
+
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
             collection_id=collection_uuid,
@@ -544,8 +552,25 @@ async def update_chunking_strategy(
         )
 
         if update_request.reprocess_existing:
+            operation = await collection_service.create_operation(
+                collection_id=collection_id,
+                operation_type="rechunking",
+                config={
+                    "strategy": update_request.strategy.value,
+                    "config": update_request.config.model_dump() if update_request.config else {},
+                },
+                user_id=_current_user["id"],
+            )
+
+            try:
+                from packages.webui.tasks import celery_app
+
+                celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc)
+
             return ChunkingOperationResponse(
-                operation_id=operation_id,
+                operation_id=operation["uuid"],
                 collection_id=collection_id,
                 status=ChunkingStatus.PENDING,
                 strategy=update_request.strategy,
