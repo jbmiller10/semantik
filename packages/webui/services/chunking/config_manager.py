@@ -58,7 +58,12 @@ class ChunkingConfigManager:
         Returns:
             List of strategy information dictionaries
         """
-        return [self.get_strategy_info(strategy_id) for strategy_id in list_api_strategy_ids()]
+        strategies = []
+        for strategy_id in list_api_strategy_ids():
+            info = self.get_strategy_info(strategy_id)
+            # Include plugin strategies in listings; flag is_plugin already set in metadata
+            strategies.append(info)
+        return strategies
 
     def merge_configs(
         self,

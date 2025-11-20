@@ -116,7 +116,36 @@ case "$SERVICE" in
     worker)
         run_strict_env_validation "worker" false
         echo "Starting Celery worker..."
-        exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY:-1}"
+        # Choose a sensible default: all available CPU cores minus one, capped by CELERY_MAX_CONCURRENCY (if set)
+        # This avoids oversubscribing memory when the container can see many host CPUs.
+        if [ -z "${CELERY_CONCURRENCY:-}" ]; then
+            if command -v nproc >/dev/null 2>&1; then
+                _cores=$(nproc)
+            else
+                _cores=$(python - <<'PY'
+import os
+print(os.cpu_count() or 1)
+PY
+)
+            fi
+
+            if [ "${_cores}" -gt 1 ] 2>/dev/null; then
+                CELERY_CONCURRENCY=$((_cores - 1))
+            else
+                CELERY_CONCURRENCY=1
+            fi
+
+            # Optional safety cap
+            if [ -n "${CELERY_MAX_CONCURRENCY:-}" ]; then
+                # shellcheck disable=SC2072
+                if [ "${CELERY_CONCURRENCY}" -gt "${CELERY_MAX_CONCURRENCY}" ]; then
+                    CELERY_CONCURRENCY=${CELERY_MAX_CONCURRENCY}
+                fi
+            fi
+        fi
+
+        echo "Using Celery concurrency=${CELERY_CONCURRENCY}"
+        exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY}"
         ;;
         
     flower)
