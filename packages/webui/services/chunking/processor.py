@@ -8,8 +8,10 @@ and fallback mechanisms.
 import logging
 from typing import Any
 
+from packages.shared.chunking.domain.entities.chunk import Chunk as DomainChunk
 from packages.shared.chunking.domain.services.chunking_strategies import get_strategy
 from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError, DocumentTooLargeError
+from packages.shared.text_processing.base_chunker import ChunkResult
 
 logger = logging.getLogger(__name__)
 
@@ -158,41 +160,121 @@ class ChunkingProcessor:
         chunks: list[Any],
         strategy: str,
     ) -> list[dict[str, Any]]:
-        """Format chunks into standardized structure."""
-        formatted = []
+        """Format chunks into a standardized structure."""
+        formatted: list[dict[str, Any]] = []
 
         for i, chunk in enumerate(chunks):
-            if isinstance(chunk, str):
-                content = chunk
-                metadata: dict[str, Any] = {"chunk_size": len(content), "position": i}
-                token_count = len(content) // 4
-                quality_score = 0.8
+            content: str | None = None
+            metadata: dict[str, Any] = {}
+            token_count: int | None = None
+            quality_score: float = 0.8
+            chunk_id: str | None = None
+            chunk_index = i
+            start_offset: int | None = None
+            end_offset: int | None = None
+
+            if isinstance(chunk, DomainChunk):
+                content = chunk.content
+                meta = chunk.metadata
+                metadata = {
+                    "chunk_id": meta.chunk_id,
+                    "document_id": meta.document_id,
+                    "chunk_index": meta.chunk_index,
+                    "start_offset": meta.start_offset,
+                    "end_offset": meta.end_offset,
+                    "token_count": meta.token_count,
+                    "strategy_name": meta.strategy_name,
+                    "semantic_score": meta.semantic_score,
+                    "semantic_density": meta.semantic_density,
+                    "confidence_score": meta.confidence_score,
+                    "overlap_percentage": meta.overlap_percentage,
+                    "hierarchy_level": meta.hierarchy_level,
+                    "section_title": meta.section_title,
+                }
+                if meta.custom_attributes:
+                    metadata["custom_attributes"] = meta.custom_attributes
+                chunk_id = meta.chunk_id
+                chunk_index = meta.chunk_index
+                token_count = meta.token_count
+                quality_score = meta.confidence_score or quality_score
+                start_offset = meta.start_offset
+                end_offset = meta.end_offset
+            elif isinstance(chunk, ChunkResult):
+                content = chunk.text
+                metadata = dict(chunk.metadata or {})
+                chunk_id = chunk.chunk_id
+                chunk_index = metadata.get("chunk_index", i)
+                token_count = metadata.get("token_count")
+                start_offset = chunk.start_offset
+                end_offset = chunk.end_offset
             elif isinstance(chunk, dict):
                 content = chunk.get("content") or chunk.get("text") or str(chunk)
                 metadata = chunk.get("metadata", {}).copy()
-                metadata.setdefault("chunk_size", len(content))
-                metadata["position"] = i
+                chunk_id = chunk.get("chunk_id") or metadata.get("chunk_id")
+                chunk_index = chunk.get("chunk_index", chunk.get("index", i))
                 token_candidate = chunk.get("token_count")
-                token_count = len(content) // 4 if token_candidate is None else int(token_candidate)
-                quality_score = chunk.get("quality_score", 0.8)
-            else:
-                content = str(chunk)
-                metadata = {"position": i, "chunk_size": len(content)}
+                token_count = token_candidate if token_candidate is not None else metadata.get("token_count")
+                quality_score = chunk.get("quality_score", metadata.get("quality_score", quality_score))
+                start_offset = chunk.get("start_offset")
+                end_offset = chunk.get("end_offset")
+            elif isinstance(chunk, str):
+                content = chunk
+                metadata = {}
                 token_count = len(content) // 4
-                quality_score = 0.8
+            else:
+                # Fallback for unexpected types
+                content = str(chunk)
+                metadata = {}
+                token_count = len(content) // 4
 
-            formatted.append(
-                {
-                    "content": content,
-                    "text": content,
-                    "index": i,
-                    "strategy": strategy,
-                    "metadata": metadata,
-                    "char_count": len(content),
-                    "token_count": token_count,
-                    "quality_score": quality_score,
-                }
+            if content is None:
+                content = ""
+
+            # Normalize metadata
+            metadata = metadata or {}
+            effective_chunk_size = (
+                end_offset - start_offset
+                if start_offset is not None and end_offset is not None and end_offset > start_offset
+                else len(content)
             )
+            metadata.setdefault("chunk_size", effective_chunk_size)
+
+            # Promote common hierarchical fields from custom_attributes for compatibility
+            custom_attrs = metadata.get("custom_attributes")
+            if isinstance(custom_attrs, dict):
+                for key in ("parent_chunk_id", "child_chunk_ids", "chunk_sizes", "node_id", "is_leaf"):
+                    if key in custom_attrs and key not in metadata:
+                        metadata[key] = custom_attrs[key]
+
+            # Calculate token count if missing
+            token_count = int(token_count) if token_count is not None else len(content) // 4
+
+            try:
+                normalized_chunk_index = int(chunk_index)
+            except (TypeError, ValueError):
+                normalized_chunk_index = i
+            metadata.setdefault("position", normalized_chunk_index)
+
+            formatted_chunk: dict[str, Any] = {
+                "content": content,
+                "text": content,
+                "index": normalized_chunk_index,
+                "chunk_index": normalized_chunk_index,
+                "strategy": strategy,
+                "metadata": metadata,
+                "char_count": len(content),
+                "token_count": token_count,
+                "quality_score": quality_score,
+            }
+
+            if chunk_id:
+                formatted_chunk["chunk_id"] = chunk_id
+            if start_offset is not None:
+                formatted_chunk["start_offset"] = start_offset
+            if end_offset is not None:
+                formatted_chunk["end_offset"] = end_offset
+
+            formatted.append(formatted_chunk)
 
         return formatted
 

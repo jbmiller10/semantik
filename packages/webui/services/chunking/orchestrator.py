@@ -380,6 +380,11 @@ class ChunkingOrchestrator:
         # Merge configuration
         merged_config = self.config_manager.merge_configs(strategy, config)
 
+        # Extract document identifier early for deterministic chunk ids
+        document_id = None
+        if metadata:
+            document_id = metadata.get("document_id") or metadata.get("doc_id") or metadata.get("id")
+
         # Execute chunking with fallback
         fallback_used = False
         fallback_reason: str | None = None
@@ -411,6 +416,55 @@ class ChunkingOrchestrator:
         if metadata:
             for chunk in chunks:
                 chunk["metadata"] = {**chunk.get("metadata", {}), **metadata}
+
+        # Ensure each chunk has a deterministic chunk_id expected by downstream tasks
+        chunk_id_map: dict[str, str] = {}
+        for idx, chunk in enumerate(chunks):
+            chunk_index_candidate = chunk.get("chunk_index", chunk.get("index", idx))
+            try:
+                chunk_index = int(chunk_index_candidate)
+            except (TypeError, ValueError):
+                chunk_index = idx
+
+            existing_chunk_id = chunk.get("chunk_id") or (chunk.get("metadata") or {}).get("chunk_id")
+            if document_id:
+                new_chunk_id = f"{document_id}_{chunk_index:04d}"
+            else:
+                new_chunk_id = existing_chunk_id or f"chunk_{uuid.uuid4().hex}"
+
+            if existing_chunk_id and existing_chunk_id != new_chunk_id:
+                chunk_id_map[existing_chunk_id] = new_chunk_id
+
+            chunk["chunk_id"] = new_chunk_id
+            chunk["chunk_index"] = chunk_index
+
+            chunk_metadata = chunk.setdefault("metadata", {})
+            chunk_metadata["chunk_id"] = new_chunk_id
+            chunk_metadata.setdefault("chunk_index", chunk_index)
+            if document_id:
+                chunk_metadata.setdefault("document_id", document_id)
+
+        if chunk_id_map:
+            for chunk in chunks:
+                chunk_metadata = chunk.get("metadata") or {}
+                parent_id = chunk_metadata.get("parent_chunk_id")
+                if isinstance(parent_id, str) and parent_id in chunk_id_map:
+                    chunk_metadata["parent_chunk_id"] = chunk_id_map[parent_id]
+
+                child_ids = chunk_metadata.get("child_chunk_ids")
+                if isinstance(child_ids, list):
+                    chunk_metadata["child_chunk_ids"] = [chunk_id_map.get(child_id, child_id) for child_id in child_ids]
+
+                custom_attrs = chunk_metadata.get("custom_attributes")
+                if isinstance(custom_attrs, dict):
+                    parent_attr = custom_attrs.get("parent_chunk_id")
+                    if isinstance(parent_attr, str) and parent_attr in chunk_id_map:
+                        custom_attrs["parent_chunk_id"] = chunk_id_map[parent_attr]
+                    child_attr_ids = custom_attrs.get("child_chunk_ids")
+                    if isinstance(child_attr_ids, list):
+                        custom_attrs["child_chunk_ids"] = [
+                            chunk_id_map.get(child_id, child_id) for child_id in child_attr_ids
+                        ]
 
         return chunks
 
