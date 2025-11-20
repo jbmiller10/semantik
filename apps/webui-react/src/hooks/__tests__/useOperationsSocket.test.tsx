@@ -4,14 +4,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useOperationsSocket } from '../useOperationsSocket';
 import { useAuthStore } from '../../stores/authStore';
+import type { useWebSocket as useWebSocketHook } from '../useWebSocket';
 
 // Mock useWebSocket so we can observe URL and reconnect calls
 const reconnectMock = vi.fn();
-const captured: { url: string | null; opts: any } = { url: null, opts: null };
+type UseWebSocketOptions = Parameters<typeof useWebSocketHook>[1];
+const captured: { url: string | null; opts: UseWebSocketOptions | null } = { url: null, opts: null };
 
 vi.mock('../useWebSocket', () => {
   return {
-    useWebSocket: (url: string | null, opts: any) => {
+    useWebSocket: (url: string | null, opts: UseWebSocketOptions) => {
       captured.url = url;
       captured.opts = opts;
       return {

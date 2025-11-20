@@ -136,7 +136,7 @@ class CeleryTaskWithOperationUpdates:
                 "from_instance": self._publisher_id,
                 "timestamp": time.time(),
             }
-            
+
             # Publish to operation channel
             publish_result = redis_client.publish(
                 f"operation:{self.operation_id}",
