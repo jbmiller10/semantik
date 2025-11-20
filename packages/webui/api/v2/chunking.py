@@ -12,7 +12,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
@@ -20,7 +20,6 @@ from packages.shared.chunking.infrastructure.exceptions import ApplicationError,
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE
 from packages.webui.api.v2.chunking_schemas import (
-    ChunkingConfigBase,
     ChunkingOperationRequest,
     ChunkingOperationResponse,
     ChunkingProgress,
@@ -439,7 +438,6 @@ async def clear_preview_cache(
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
-    background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
     service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
@@ -487,7 +485,7 @@ async def start_chunking_operation(
             collection_id=collection_uuid,
             status=ChunkingStatus.PENDING,
             strategy=chunking_request.strategy,
-            estimated_time_seconds=validation_result.get("estimated_time"),
+            estimated_time_seconds=None,
             queued_position=1,  # Would be calculated from actual queue
             websocket_channel=websocket_channel,
         )
@@ -518,7 +516,6 @@ async def start_chunking_operation(
 )
 async def update_chunking_strategy(
     collection_id: str,
-    background_tasks: BackgroundTasks,
     request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
@@ -885,7 +882,7 @@ async def list_configurations(
     summary="Get chunking operation progress",
 )
 async def get_operation_progress(
-    operation_id: str,
+    operation_id: str,  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
 ) -> ChunkingProgress:
     """

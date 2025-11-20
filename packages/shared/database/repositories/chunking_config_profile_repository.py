@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import ChunkingConfigProfile
 
@@ -110,8 +112,6 @@ class ChunkingConfigProfileRepository:
         """Set all profiles for user to non-default."""
 
         await self.session.execute(
-            update(ChunkingConfigProfile)
-            .where(ChunkingConfigProfile.created_by == user_id)
-            .values(is_default=False)
+            update(ChunkingConfigProfile).where(ChunkingConfigProfile.created_by == user_id).values(is_default=False)
         )
         await self.session.flush()

@@ -6,11 +6,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from packages.shared.config import settings
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,
 )
+from packages.shared.database.repositories.collection_repository import CollectionRepository
+from packages.shared.database.repositories.document_repository import DocumentRepository
 from packages.webui.services.chunking.cache import ChunkingCache
 from packages.webui.services.chunking.config_manager import ChunkingConfigManager
 from packages.webui.services.chunking.metrics import ChunkingMetrics

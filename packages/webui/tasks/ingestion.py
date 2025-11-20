@@ -914,7 +914,11 @@ async def _process_append_operation_impl(
                         content=combined_text,
                         strategy=strategy,
                         config=config,
-                        metadata={**combined_metadata, "document_id": doc.id} if combined_metadata else {"document_id": doc.id},
+                        metadata=(
+                            {**combined_metadata, "document_id": doc.id}
+                            if combined_metadata
+                            else {"document_id": doc.id}
+                        ),
                     )
 
                     fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in chunks)

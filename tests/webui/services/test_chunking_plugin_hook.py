@@ -2,10 +2,16 @@
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
 import packages.webui.services.chunking.strategy_registry as strategy_registry
-from packages.webui.services.chunking import ChunkingCache, ChunkingConfigManager, ChunkingMetrics, ChunkingProcessor, ChunkingValidator
+from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
+from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from packages.webui.services.chunking import (
+    ChunkingCache,
+    ChunkingConfigManager,
+    ChunkingMetrics,
+    ChunkingProcessor,
+    ChunkingValidator,
+)
 from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 from packages.webui.services.chunking.strategy_registry import register_strategy_definition
 from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
