@@ -214,7 +214,7 @@ curl -X POST http://localhost:8080/api/v2/search \
 ## Roadmap / Limitations
 - Scheduled tasks: run Celery beat in Docker for periodic maintenance
 - CPU‑only mode is suitable for small corpora; GPU recommended for indexing speed and reranking
-- Worker concurrency now auto-scales by default (cores-1, minimum 1); set `CELERY_CONCURRENCY` to pin it or `CELERY_MAX_CONCURRENCY` to cap the auto value
+- Worker concurrency now auto-scales by default (cores-1, minimum 1); set `CELERY_CONCURRENCY` to pin it or `CELERY_MAX_CONCURRENCY` to cap the auto value (compose default 4). Embed calls are throttled per worker via `EMBEDDING_CONCURRENCY_PER_WORKER` (default 1).
 - Planned: hybrid search improvements, broader formats/OCR, additional embedding/reranker options, MCP integration
 
 ### Performance
