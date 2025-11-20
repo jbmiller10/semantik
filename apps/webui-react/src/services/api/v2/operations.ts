@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { Operation } from '../../../types/collection';
+import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
 
 export const operationsV2Api = {
   /**
@@ -45,21 +46,14 @@ export const operationsV2Api = {
    * @param operationId - The operation ID to track
    * @returns WebSocket URL with authentication token
    */
-  getWebSocketUrl: (operationId: string): string => {
-    // Get auth state from Zustand store persisted in localStorage
-    const authStorage = localStorage.getItem('auth-storage');
-    let token = '';
-    
-    if (authStorage) {
-      try {
-        const authState = JSON.parse(authStorage);
-        token = authState.state?.token || '';
-      } catch (error) {
-        console.error('Failed to parse auth storage:', error);
-      }
-    }
-    
-    const baseUrl = window.location.origin.replace(/^http/, 'ws');
-    return `${baseUrl}/ws/operations/${operationId}?token=${encodeURIComponent(token)}`;
+  getWebSocketUrl: (operationId: string, token?: string | null): string | null => {
+    return buildWebSocketUrl(`/ws/operations/${operationId}`, getAuthToken(token));
+  },
+
+  /**
+   * Global operations feed (broadcast for all operations)
+   */
+  getGlobalWebSocketUrl: (token?: string | null): string | null => {
+    return buildWebSocketUrl('/ws/operations', getAuthToken(token));
   },
 };

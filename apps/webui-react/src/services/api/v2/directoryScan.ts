@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { DirectoryScanRequest, DirectoryScanResponse } from './types';
+import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
 
 /**
  * Directory scan API endpoints for v2 API
@@ -22,22 +23,8 @@ export const directoryScanV2Api = {
    * @param scanId - The scan ID to track
    * @returns WebSocket URL with authentication token
    */
-  getWebSocketUrl: (scanId: string): string => {
-    // Get auth state from Zustand store persisted in localStorage
-    const authStorage = localStorage.getItem('auth-storage');
-    let token = '';
-    
-    if (authStorage) {
-      try {
-        const authState = JSON.parse(authStorage);
-        token = authState.state?.token || '';
-      } catch (error) {
-        console.error('Failed to parse auth storage:', error);
-      }
-    }
-    
-    const baseUrl = window.location.origin.replace(/^http/, 'ws');
-    return `${baseUrl}/ws/directory-scan/${scanId}?token=${encodeURIComponent(token)}`;
+  getWebSocketUrl: (scanId: string): string | null => {
+    return buildWebSocketUrl(`/ws/directory-scan/${scanId}`, getAuthToken());
   },
 };
 

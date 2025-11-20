@@ -36,9 +36,14 @@ describe('useOperationsSocket', () => {
     captured.opts = null;
     // reset auth store
     useAuthStore.setState({ token: null, refreshToken: null, user: null });
+
+    // Ensure we start from a clean runtime config
+    delete (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__;
   });
 
   it('builds websocket URL from auth token and reconnects on token change', () => {
+    (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__ = 'https://api.example.com/prefix';
+
     // seed initial token
     useAuthStore.setState({ token: 'token-1', user: { id: 1, username: 'u', email: 'u@example.com', is_active: true, created_at: 'now' }, refreshToken: null });
 
@@ -50,7 +55,7 @@ describe('useOperationsSocket', () => {
 
     const { rerender } = renderHook(() => useOperationsSocket(), { wrapper });
 
-    expect(captured.url).toContain('token-1');
+    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-1');
     // Initial effect triggers a reconnect once on mount.
     expect(reconnectMock).toHaveBeenCalledTimes(1);
 
@@ -61,7 +66,7 @@ describe('useOperationsSocket', () => {
 
     rerender();
 
-    expect(captured.url).toContain('token-2');
+    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-2');
     expect(reconnectMock).toHaveBeenCalledTimes(2);
   });
 });
