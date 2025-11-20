@@ -981,6 +981,10 @@ async def _process_append_operation_impl(
                                     logger.error(error_msg)
                                     raise ValueError(error_msg) from exc
 
+                    # Ensure no open transaction lingers while we call external vector upserts
+                    if session.in_transaction():
+                        await session.commit()
+
                     points = []
                     for i, chunk in enumerate(chunks):
                         point = PointStruct(
