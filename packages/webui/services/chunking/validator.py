@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.webui.services.chunking.strategy_registry import list_api_strategy_ids
 
 logger = logging.getLogger(__name__)
 
@@ -26,18 +27,6 @@ class ChunkingValidator:
     MAX_OVERLAP_RATIO = 0.5  # 50% max overlap
     MAX_CONTENT_SIZE = 10 * 1024 * 1024  # 10MB
     MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10MB
-
-    # Valid strategies
-    VALID_STRATEGIES = [
-        "fixed_size",
-        "sliding_window",
-        "semantic",
-        "recursive",
-        "document_structure",
-        "markdown",
-        "hierarchical",
-        "hybrid",
-    ]
 
     def __init__(
         self,
@@ -136,11 +125,13 @@ class ChunkingValidator:
         if not strategy:
             raise ValidationError(field="strategy", value=None, reason="Strategy is required")
 
-        if strategy not in self.VALID_STRATEGIES:
+        valid_strategies = list_api_strategy_ids()
+
+        if strategy not in valid_strategies:
             raise ValidationError(
                 field="strategy",
                 value=strategy,
-                reason=f"Invalid strategy. Valid strategies: {', '.join(self.VALID_STRATEGIES)}",
+                reason=f"Invalid strategy. Valid strategies: {', '.join(valid_strategies)}",
             )
 
     def validate_config(self, strategy: str, config: dict[str, Any]) -> None:

@@ -203,10 +203,9 @@ async def get_chunking_orchestrator_dependency(
 async def get_chunking_service_adapter_dependency(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
-    """Provide adapter-compatible chunking dependency for legacy flows."""
-    from packages.webui.services.chunking.container import resolve_api_chunking_dependency
+    """Backward-compatible alias returning the orchestrator."""
 
-    return await resolve_api_chunking_dependency(db, prefer_adapter=True)
+    return await get_chunking_orchestrator_dependency(db)
 
 
 async def get_current_user_optional(

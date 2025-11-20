@@ -14,6 +14,7 @@ from typing import Any, TypeVar, cast
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
 from packages.shared.metrics.prometheus import registry
+from packages.webui.services.dtos import ServiceStrategyMetrics
 
 MetricT = TypeVar("MetricT")
 
@@ -204,6 +205,19 @@ class ChunkingMetrics:
             original_strategy: Strategy that failed
         """
         self.fallback_counter.labels(original_strategy=original_strategy).inc()
+
+    def get_metrics_by_strategy(self, period_days: int = 30) -> list[ServiceStrategyMetrics]:  # noqa: ARG002
+        """
+        Return placeholder metrics per strategy (no persisted metrics yet).
+
+        Args:
+            period_days: Lookback window (unused placeholder)
+        """
+
+        try:
+            return ServiceStrategyMetrics.create_default_metrics()
+        except Exception:
+            return []
 
     def record_cache_hit(self, operation_type: str = "preview") -> None:
         """

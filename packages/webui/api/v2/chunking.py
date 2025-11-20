@@ -12,15 +12,15 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
+from packages.shared.database.exceptions import AccessDeniedError
 
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE
 from packages.webui.api.v2.chunking_schemas import (
-    ChunkingConfigBase,
     ChunkingOperationRequest,
     ChunkingOperationResponse,
     ChunkingProgress,
@@ -45,10 +45,9 @@ from packages.webui.api.v2.chunking_schemas import (
 )
 from packages.webui.auth import get_current_user
 from packages.webui.config.rate_limits import RateLimitConfig
-from packages.webui.dependencies import get_chunking_service_adapter_dependency, get_collection_for_user_safe
+from packages.webui.dependencies import get_chunking_orchestrator_dependency, get_collection_for_user_safe
 from packages.webui.rate_limiter import check_circuit_breaker, create_rate_limit_decorator, rate_limit_dependency
-from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
-from packages.webui.services.chunking_service import ChunkingService
+from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
 
 # ChunkingStrategyRegistry removed - all strategy logic now in service layer
 from packages.webui.services.factory import get_collection_service
@@ -58,7 +57,7 @@ if TYPE_CHECKING:
 
     from packages.webui.services.collection_service import CollectionService
 
-ChunkingServiceLike = ChunkingServiceAdapter | ChunkingService
+ChunkingServiceLike = ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ async def application_exception_handler(
 )
 async def list_strategies(
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> list[StrategyInfo]:
     """
     Get a list of all available chunking strategies with their descriptions,
@@ -117,20 +116,8 @@ async def list_strategies(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Get DTOs from service and convert to API models
-        strategy_payloads = await service.get_available_strategies_for_api()
-
-        strategy_infos: list[StrategyInfo] = []
-        for payload in strategy_payloads:
-            resolved = await _resolve_service_payload(payload)
-            if isinstance(resolved, StrategyInfo):
-                strategy_infos.append(resolved)
-            elif isinstance(resolved, dict):
-                strategy_infos.append(StrategyInfo.model_validate(resolved))
-            else:  # pragma: no cover - defensive programming for unexpected payloads
-                raise TypeError(f"Unsupported strategy payload type: {type(resolved)!r}")
-
-        return strategy_infos
+        strategies = await service.get_available_strategies()
+        return [entry.to_api_model() for entry in strategies]
 
     except Exception as e:
         logger.error(f"Failed to list strategies: {e}")
@@ -148,7 +135,7 @@ async def list_strategies(
 async def get_strategy_details(
     strategy_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> StrategyInfo:
     """
     Get detailed information about a specific chunking strategy including
@@ -157,21 +144,18 @@ async def get_strategy_details(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Get DTO from service
-        strategy_payload = await service.get_strategy_details(strategy_id)
+        strategies = await service.get_available_strategies()
+        resolved = next((s for s in strategies if s.id == strategy_id), None)
+        if not resolved:
+            for candidate in strategies:
+                if candidate.id.lower() == strategy_id.lower():
+                    resolved = candidate
+                    break
 
-        if not strategy_payload:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Strategy '{strategy_id}' not found",
-            )
+        if not resolved:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Strategy '{strategy_id}' not found")
 
-        resolved = await _resolve_service_payload(strategy_payload)
-        if isinstance(resolved, StrategyInfo):
-            return resolved
-        if isinstance(resolved, dict):
-            return StrategyInfo.model_validate(resolved)
-        raise TypeError(f"Unsupported strategy payload type: {type(resolved)!r}")
+        return resolved.to_api_model()
 
     except HTTPException:
         raise
@@ -191,7 +175,7 @@ async def get_strategy_details(
 async def recommend_strategy(
     file_types: list[str] = Query(..., description="List of file types to analyze"),
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> StrategyRecommendation:
     """
     Get a strategy recommendation based on the provided file types.
@@ -200,14 +184,7 @@ async def recommend_strategy(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Get DTO from service
-        recommendation_payload: Any
-        if isinstance(service, ChunkingServiceAdapter):
-            primary_type = file_types[0] if file_types else None
-            recommendation_payload = await service.recommend_strategy(file_type=primary_type)
-        else:
-            recommendation_payload = await service.recommend_strategy(file_types=file_types)
-
+        recommendation_payload = await service.recommend_strategy(file_type=file_types[0] if file_types else None)
         resolved = await _resolve_service_payload(recommendation_payload)
         if isinstance(resolved, StrategyRecommendation):
             return resolved
@@ -239,7 +216,7 @@ async def recommend_strategy(
 async def generate_preview(
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
     correlation_id: str = Header(None, alias="X-Correlation-ID"),
 ) -> PreviewResponse:
     """
@@ -261,25 +238,15 @@ async def generate_preview(
     check_circuit_breaker(request)
 
     try:
-        preview_payload: Any
-        if isinstance(service, ChunkingServiceAdapter):
-            preview_payload = await service.orchestrator.preview_chunks(
-                content=preview_request.content,
-                document_id=preview_request.document_id,
-                strategy=preview_request.strategy.value,
-                config=preview_request.config.model_dump() if preview_request.config else None,
-                user_id=_current_user["id"],
-                use_cache=True,
-                max_chunks=preview_request.max_chunks,
-            )
-        else:
-            preview_payload = await service.preview_chunking(
-                content=preview_request.content or "",
-                strategy=preview_request.strategy.value,
-                config=preview_request.config.model_dump() if preview_request.config else None,
-                max_chunks=preview_request.max_chunks,
-                cache_result=True,
-            )
+        preview_payload = await service.preview_chunks(
+            content=preview_request.content,
+            document_id=preview_request.document_id,
+            strategy=preview_request.strategy.value,
+            config=preview_request.config.model_dump() if preview_request.config else None,
+            user_id=_current_user["id"],
+            use_cache=True,
+            max_chunks=preview_request.max_chunks,
+        )
 
         resolved = await _resolve_service_payload(preview_payload)
         if isinstance(resolved, PreviewResponse):
@@ -331,7 +298,7 @@ async def generate_preview(
 async def compare_strategies(
     request: Request,  # Required for rate limiting
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> CompareResponse:
     """
     Compare multiple chunking strategies on the same content.
@@ -359,23 +326,14 @@ async def compare_strategies(
                 # strategy is already a string key from the dict, not an enum
                 configs_dict[strategy] = config.model_dump()
 
-        compare_payload: Any
-        if isinstance(service, ChunkingServiceAdapter):
-            compare_payload = await service.orchestrator.compare_strategies(
-                content=compare_request.content or "",
-                strategies=strategy_names,
-                base_config=None,
-                strategy_configs=configs_dict,
-                user_id=None,
-                max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
-            )
-        else:
-            compare_payload = await service.compare_strategies_for_api(
-                content=compare_request.content or "",
-                strategies=strategy_names,
-                configs=configs_dict,
-                max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
-            )
+        compare_payload = await service.compare_strategies(
+            content=compare_request.content or "",
+            strategies=strategy_names,
+            base_config=None,
+            strategy_configs=configs_dict,
+            user_id=_current_user.get("id") if _current_user else None,
+            max_chunks_per_strategy=compare_request.max_chunks_per_strategy,
+        )
 
         resolved = await _resolve_service_payload(compare_payload)
         if isinstance(resolved, CompareResponse):
@@ -405,7 +363,7 @@ async def get_cached_preview(
     request: Request,  # Required for rate limiting
     preview_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> PreviewResponse:
     """
     Retrieve cached preview results by preview ID.
@@ -417,14 +375,7 @@ async def get_cached_preview(
     check_circuit_breaker(request)
 
     try:
-        preview_payload: Any
-        if isinstance(service, ChunkingServiceAdapter):
-            preview_payload = await service.get_cached_preview_by_id(preview_id)
-        else:
-            preview_payload = await service.get_cached_preview_by_id(
-                preview_id=preview_id,
-                user_id=_current_user.get("id") if _current_user else None,
-            )
+        preview_payload: Any = await service.get_cached_preview_by_id(preview_id)
 
         if not preview_payload:
             raise HTTPException(
@@ -459,7 +410,7 @@ async def get_cached_preview(
 async def clear_preview_cache(
     preview_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
 ) -> None:
     """
     Clear cached preview results for a specific preview ID.
@@ -488,10 +439,9 @@ async def clear_preview_cache(
 async def start_chunking_operation(
     request: Request,  # Required for rate limiting
     collection_uuid: str,  # Changed from collection_id to match dependency
-    background_tasks: BackgroundTasks,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -509,30 +459,12 @@ async def start_chunking_operation(
 
     try:
         config_payload = chunking_request.config.model_dump() if chunking_request.config else {}
-        if isinstance(service, ChunkingServiceAdapter):
-            user_id = _current_user.get("id") if _current_user else None
-            validation_result = await service.validate_config_for_collection(
-                collection_id=collection_uuid,
-                strategy=chunking_request.strategy.value,
-                config=config_payload,
-                user_id=int(user_id) if user_id is not None else 0,
-            )
-        else:
-            validation_result = await service.validate_config_for_collection(
-                collection_id=collection_uuid,
-                strategy=chunking_request.strategy.value,
-                config=config_payload,
-            )
-
-        # Check if configuration is valid
-        if not validation_result.get("valid", True):
-            # Return 400 for invalid configuration
-            errors = validation_result.get("errors", [])
-            error_msg = "; ".join(errors) if errors else "Configuration validation failed"
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid configuration: {error_msg}",
-            )
+        try:
+            service.validator.validate_strategy(chunking_request.strategy.value)
+            if config_payload:
+                service.validator.validate_config(chunking_request.strategy.value, config_payload)
+        except ValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         # Create operation record
         operation = await collection_service.create_operation(
@@ -547,35 +479,26 @@ async def start_chunking_operation(
             user_id=_current_user["id"],
         )
 
-        # Start chunking operation and get WebSocket channel
-        websocket_channel, _ = await service.start_chunking_operation(
-            collection_id=collection_uuid,
-            strategy=chunking_request.strategy.value,
-            config=chunking_request.config.model_dump() if chunking_request.config else {},
-            user_id=_current_user["id"],
-        )
+        websocket_channel = f"chunking:{collection_uuid}:{operation['uuid']}"
 
-        task_service = service if isinstance(service, ChunkingService) else service._ensure_legacy_service()
+        # Dispatch background processing via Celery
+        try:
+            from packages.webui.tasks import celery_app
 
-        # Queue the chunking task
-        background_tasks.add_task(
-            process_chunking_operation,
-            operation["uuid"],
-            collection_uuid,
-            chunking_request.strategy,
-            chunking_request.config,
-            chunking_request.document_ids,
-            _current_user["id"],
-            websocket_channel,
-            task_service,
-        )
+            celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+        except Exception as exc:  # pragma: no cover - defensive dispatch
+            logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Chunking task could not be queued; retry later.",
+            ) from exc
 
         return ChunkingOperationResponse(
             operation_id=operation["uuid"],
             collection_id=collection_uuid,
             status=ChunkingStatus.PENDING,
             strategy=chunking_request.strategy,
-            estimated_time_seconds=validation_result.get("estimated_time"),
+            estimated_time_seconds=None,
             queued_position=1,  # Would be calculated from actual queue
             websocket_channel=websocket_channel,
         )
@@ -606,11 +529,10 @@ async def start_chunking_operation(
 )
 async def update_chunking_strategy(
     collection_id: str,
-    background_tasks: BackgroundTasks,
     request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
     collection_service: CollectionService = Depends(get_collection_service),
 ) -> ChunkingOperationResponse:
     """
@@ -635,7 +557,6 @@ async def update_chunking_strategy(
         )
 
         if update_request.reprocess_existing:
-            # Create reprocessing operation
             operation = await collection_service.create_operation(
                 collection_id=collection_id,
                 operation_type="rechunking",
@@ -646,20 +567,16 @@ async def update_chunking_strategy(
                 user_id=_current_user["id"],
             )
 
-            task_service = service if isinstance(service, ChunkingService) else service._ensure_legacy_service()
+            try:
+                from packages.webui.tasks import celery_app
 
-            # Queue reprocessing task
-            background_tasks.add_task(
-                process_chunking_operation,
-                operation["uuid"],
-                collection_id,
-                update_request.strategy,
-                update_request.config,
-                None,  # Process all documents
-                _current_user["id"],
-                websocket_channel,
-                task_service,
-            )
+                celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Rechunking task could not be queued; retry later.",
+                ) from exc
 
             return ChunkingOperationResponse(
                 operation_id=operation["uuid"],
@@ -700,7 +617,7 @@ async def get_collection_chunks(
     document_id: str | None = Query(None, description="Filter by document"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> ChunkListResponse:
     """
     Get paginated list of chunks for a collection.
@@ -740,7 +657,7 @@ async def get_chunking_stats(
     collection_id: str,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     collection: dict = Depends(get_collection_for_user_safe),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> ChunkingStats:
     """
     Get detailed chunking statistics and metrics for a collection.
@@ -748,12 +665,10 @@ async def get_chunking_stats(
     Router is now a thin controller - all logic in service!
     """
     try:
-        # Get DTO from service
-        stats_dto = await service.get_collection_chunk_stats(
+        stats_dto = await service.get_collection_statistics(
             collection_id=collection_id,
+            user_id=_current_user.get("id", 0),
         )
-
-        # Convert DTO to API response model
         return cast(ChunkingStats, stats_dto.to_api_model())
 
     except ApplicationError as e:
@@ -781,7 +696,7 @@ async def get_global_metrics(
     request: Request,  # Required for rate limiting
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
 ) -> GlobalMetrics:
     """
     Get global chunking metrics across all collections for the specified period.
@@ -816,7 +731,7 @@ async def get_global_metrics(
 async def get_metrics_by_strategy(
     period_days: int = Query(30, ge=1, le=365, description="Period in days"),
     _current_user: dict[str, Any] = Depends(get_current_user),
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> list[StrategyMetrics]:
     """
     Get chunking metrics grouped by strategy for the specified period.
@@ -826,8 +741,8 @@ async def get_metrics_by_strategy(
     try:
         # Get DTOs from service (method always returns a list)
         metrics_dtos = await service.get_metrics_by_strategy(
-            _period_days=period_days,
-            _user_id=_current_user.get("id") if _current_user else None,
+            period_days=period_days,
+            user_id=_current_user.get("id") if _current_user else None,
         )
 
         # Convert DTOs to API response models
@@ -849,14 +764,17 @@ async def get_metrics_by_strategy(
 async def get_quality_scores(
     collection_id: str | None = Query(None, description="Specific collection ID"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
 ) -> QualityAnalysis:
     """
     Analyze chunk quality across collections or for a specific collection.
 
     """
     try:
-        quality_dto = await service.get_quality_scores(collection_id=collection_id)
+        quality_dto = await service.get_quality_scores(
+            collection_id=collection_id,
+            user_id=_current_user.get("id") if _current_user else None,
+        )
         payload = await _resolve_service_payload(quality_dto)
         return cast(QualityAnalysis, payload)
     except ApplicationError as e:
@@ -877,7 +795,7 @@ async def get_quality_scores(
 async def analyze_document(
     request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> DocumentAnalysisResponse:
     """
     Analyze a document to recommend the best chunking strategy.
@@ -917,7 +835,7 @@ async def analyze_document(
 async def save_configuration(
     request: Request,
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
 ) -> SavedConfiguration:
     """
     Save a custom chunking configuration for reuse.
@@ -962,7 +880,7 @@ async def list_configurations(
     strategy: ChunkingStrategy | None = Query(None, description="Filter by strategy"),  # noqa: ARG001
     is_default: bool | None = Query(None, description="Filter default configs"),  # noqa: ARG001
     _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),  # noqa: ARG001
 ) -> list[SavedConfiguration]:
     """
     List all saved chunking configurations for the current user.
@@ -1002,60 +920,43 @@ async def list_configurations(
 )
 async def get_operation_progress(
     operation_id: str,
-    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
-    service: ChunkingServiceLike = Depends(get_chunking_service_adapter_dependency),  # noqa: ARG001
+    _current_user: dict[str, Any] = Depends(get_current_user),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> ChunkingProgress:
     """
     Get the current progress of a chunking operation.
     """
     try:
-        progress = await service.get_chunking_progress(
-            operation_id=operation_id,
-        )
+        user_id = _current_user.get("id") if _current_user else None
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
 
+        progress = await service.get_chunking_progress(operation_id=operation_id, user_id=int(user_id))
         if not progress:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Operation not found",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
+
+        status_value = progress.get("status")
+        status_enum = status_value if isinstance(status_value, ChunkingStatus) else ChunkingStatus(status_value)
 
         return ChunkingProgress(
             operation_id=operation_id,
-            status=ChunkingStatus(progress["status"]),
-            progress_percentage=progress["progress_percentage"],
-            documents_processed=progress["documents_processed"],
-            total_documents=progress["total_documents"],
-            chunks_created=progress["chunks_created"],
+            status=status_enum,
+            progress_percentage=float(progress.get("progress_percentage", 0.0)),
+            documents_processed=int(progress.get("documents_processed", 0)),
+            total_documents=int(progress.get("total_documents", 0)),
+            chunks_created=int(progress.get("chunks_created", 0)),
             current_document=progress.get("current_document"),
             estimated_time_remaining=progress.get("estimated_time_remaining"),
-            errors=progress.get("errors", []),
+            errors=progress.get("errors", []) or [],
         )
 
     except HTTPException:
         raise
+    except AccessDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Failed to get operation progress: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get operation progress",
         ) from e
-
-
-# Background task helper
-async def process_chunking_operation(
-    operation_id: str,
-    _collection_id: str,
-    _strategy: ChunkingStrategy,
-    _config: ChunkingConfigBase | None,
-    _document_ids: list[str] | None,
-    _user_id: int,
-    _websocket_channel: str,
-    service: ChunkingService,
-) -> None:
-    """
-    Background task to process chunking operation.
-    Delegates to service layer for actual processing.
-    """
-    await service.process_chunking_operation(
-        operation_id=operation_id,
-    )

@@ -322,7 +322,7 @@ Modern chunking system (`packages/shared/chunking/`) with domain-driven design:
 - `HIERARCHICAL`: Document structure-aware
 - `HYBRID`: Combined approach
 
-Use `ChunkingService` for all chunking operations. Legacy `text_processing.chunking` module is deprecated.
+Use `ChunkingOrchestrator` for all chunking operations. Legacy `ChunkingService` and `text_processing.chunking` modules are deprecated.
 
 ## WebSocket Architecture
 

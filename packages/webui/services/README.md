@@ -278,10 +278,10 @@ async def test_create_collection():
 6. Implement batch operations
 ## Chunking Composition Root
 
-Phase 2 introduces `packages/webui/services/chunking/container.py` as the central wiring module for chunking workflows. The container assembles cache, metrics, validator, processor, and config manager collaborators around the orchestrator and exposes helpers tailored to each execution context.
+`packages/webui/services/chunking/container.py` is the single composition root for chunking workflows. The container assembles cache, metrics, validator, processor, and config manager collaborators around the orchestrator.
 
-- **FastAPI**: depend on `packages/webui.dependencies.get_chunking_service_adapter_dependency` for legacy-compatible routes or `get_chunking_orchestrator_dependency` when working directly with service DTOs.
-- **Celery/tasks**: call `packages/webui.services.chunking.container.resolve_celery_chunking_service` so workers receive an adapter (or the legacy service) without manual wiring.
-- **Tests**: patch the resolver functions rather than instantiating `ChunkingService` directly; this keeps fixtures aligned with production wiring and honors the feature toggle.
+- **FastAPI**: depend on `packages.webui.dependencies.get_chunking_orchestrator_dependency`.
+- **Celery/tasks**: call `packages.webui.services.chunking.container.resolve_celery_chunking_orchestrator` so workers receive a cache-less orchestrator without additional wiring.
+- **Tests**: patch these resolver functions instead of instantiating services manually; fixtures stay aligned with production wiring.
 
-The rollout toggle `settings.USE_CHUNKING_ORCHESTRATOR` controls whether the container yields the orchestrator-backed adapter or falls back to the monolithic `ChunkingService`. Callers should use the container entry points exclusively so flipping the flag requires no further code changes.
+Chunking now flows exclusively through the orchestrator; legacy adapters and the monolithic `ChunkingService` have been removed. External plugins should register a strategy definition via `register_strategy_definition` and bind an implementation with `ChunkingStrategyFactory.register_strategy`; see `docs/api/CHUNKING_API.md` for a minimal plugin example.
