@@ -27,9 +27,13 @@ class _Session:
         self.added = []
         self.executed = []
         self.flushed = False
+        self.next_result = None
+        self.values: list = []
 
     async def execute(self, stmt):
         self.executed.append(stmt)
+        if self.next_result is not None:
+            return self.next_result
         # Return empty result by default
         return _Result(None)
 
@@ -38,6 +42,47 @@ class _Session:
 
     def add(self, obj):
         self.added.append(obj)
+
+
+@pytest.mark.asyncio()
+async def test_upsert_profile_preserves_default_flag_when_not_provided():
+    session = _Session()
+    existing = ChunkingConfigProfile(
+        name="demo",
+        description=None,
+        strategy="recursive",
+        config={},
+        created_by=1,
+        is_default=True,
+    )
+
+    session.next_result = _Result(existing)
+    repo = ChunkingConfigProfileRepository(session)
+
+    profile = await repo.upsert_profile(
+        user_id=1,
+        name="demo",
+        strategy="semantic",
+        config={"chunk_size": 999},
+        description="updated",
+        is_default=None,
+        tags=["x"],
+    )
+
+    assert profile.is_default is True, "Default flag should remain unchanged when not explicitly set"
+    assert profile.config["chunk_size"] == 999
+
+
+@pytest.mark.asyncio()
+async def test_clear_defaults_and_increment_usage():
+    session = _Session()
+    repo = ChunkingConfigProfileRepository(session)
+
+    await repo.clear_defaults(user_id=3)
+    await repo.increment_usage(profile_id=9)
+
+    # Two execute calls recorded with update statements
+    assert len(session.executed) == 2
 
 
 @pytest.mark.asyncio()

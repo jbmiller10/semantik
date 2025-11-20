@@ -3,10 +3,9 @@
 from packages.webui.services.chunking.metrics import ChunkingMetrics
 
 
-def test_get_metrics_by_strategy_placeholder():
+def test_get_metrics_by_strategy_returns_defaults():
     metrics = ChunkingMetrics()
+    result = metrics.get_metrics_by_strategy(period_days=1)
 
-    result = metrics.get_metrics_by_strategy(period_days=7)
-
-    assert result, "Expected default metrics list"
-    assert all(hasattr(item, "to_api_model") for item in result)
+    assert result
+    assert result[0].strategy

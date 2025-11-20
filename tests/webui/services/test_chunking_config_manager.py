@@ -82,3 +82,12 @@ async def test_config_manager_merge_defaults():
     merged = manager.merge_configs("recursive", {"chunk_size": 123})
     assert merged["chunk_size"] == 123
     assert "strategy" not in merged
+
+
+def test_recommend_strategy_for_markdown_and_short_content():
+    manager = ChunkingConfigManager(profile_repo=None)
+
+    rec = manager.recommend_strategy(file_type=".md", content_length=400, document_type="technical")
+
+    assert rec["strategy"]
+    assert rec["suggested_config"]["chunk_size"] == 500

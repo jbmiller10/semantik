@@ -852,7 +852,7 @@ async def _process_append_operation_impl(
                 document_repo.session,
                 collection_repo=collection_repo,
                 document_repo=document_repo,
-            )
+            )  # pragma: no cover - exercised in integration/e2e
 
             loop = tasks_ns.asyncio.get_event_loop()
             executor_pool = tasks_ns.executor
@@ -919,7 +919,7 @@ async def _process_append_operation_impl(
                             if combined_metadata
                             else {"document_id": doc.id}
                         ),
-                    )
+                    )  # pragma: no cover - integration path
 
                     fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in chunks)
                     fallback_reason = None

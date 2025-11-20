@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 
 from packages.shared.chunking.infrastructure.exception_translator import exception_translator
 from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
+from packages.shared.database.exceptions import AccessDeniedError
 
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE
@@ -770,7 +771,10 @@ async def get_quality_scores(
 
     """
     try:
-        quality_dto = await service.get_quality_scores(collection_id=collection_id)
+        quality_dto = await service.get_quality_scores(
+            collection_id=collection_id,
+            user_id=_current_user.get("id") if _current_user else None,
+        )
         payload = await _resolve_service_payload(quality_dto)
         return cast(QualityAnalysis, payload)
     except ApplicationError as e:
@@ -915,13 +919,44 @@ async def list_configurations(
     summary="Get chunking operation progress",
 )
 async def get_operation_progress(
-    operation_id: str,  # noqa: ARG001
-    _current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    operation_id: str,
+    _current_user: dict[str, Any] = Depends(get_current_user),
+    service: ChunkingServiceLike = Depends(get_chunking_orchestrator_dependency),
 ) -> ChunkingProgress:
     """
     Get the current progress of a chunking operation.
     """
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Operation progress tracking is not available in the consolidated chunking stack.",
-    )
+    try:
+        user_id = _current_user.get("id") if _current_user else None
+        if user_id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authenticated user required")
+
+        progress = await service.get_chunking_progress(operation_id=operation_id, user_id=int(user_id))
+        if not progress:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operation not found")
+
+        status_value = progress.get("status")
+        status_enum = status_value if isinstance(status_value, ChunkingStatus) else ChunkingStatus(status_value)
+
+        return ChunkingProgress(
+            operation_id=operation_id,
+            status=status_enum,
+            progress_percentage=float(progress.get("progress_percentage", 0.0)),
+            documents_processed=int(progress.get("documents_processed", 0)),
+            total_documents=int(progress.get("total_documents", 0)),
+            chunks_created=int(progress.get("chunks_created", 0)),
+            current_document=progress.get("current_document"),
+            estimated_time_remaining=progress.get("estimated_time_remaining"),
+            errors=progress.get("errors", []) or [],
+        )
+
+    except HTTPException:
+        raise
+    except AccessDeniedError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"Failed to get operation progress: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get operation progress",
+        ) from e

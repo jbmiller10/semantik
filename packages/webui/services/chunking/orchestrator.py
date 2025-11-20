@@ -5,6 +5,7 @@ Main coordinator that orchestrates chunking operations across all specialized se
 """
 
 import contextlib
+import json
 import logging
 import time
 import uuid
@@ -19,8 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
+from packages.shared.database.exceptions import AccessDeniedError
+from packages.shared.database.models import OperationStatus
 from packages.shared.database.repositories.collection_repository import CollectionRepository
 from packages.shared.database.repositories.document_repository import DocumentRepository
+from packages.shared.database.repositories.operation_repository import OperationRepository
 from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
 from packages.webui.services.dtos import (
     ServiceChunkingStats,
@@ -776,6 +780,7 @@ class ChunkingOrchestrator:
     async def get_quality_scores(
         self,
         collection_id: str | None = None,
+        user_id: int | None = None,
     ) -> ServiceQualityAnalysis:
         """Provide a lightweight quality analysis."""
 
@@ -783,8 +788,10 @@ class ChunkingOrchestrator:
         base_quality = 0.8
         issues: list[str] = []
         if collection_id:
+            if user_id is None:
+                raise ValidationError(field="user_id", value=user_id, reason="User required for collection metrics")
             try:
-                stats = await self.get_collection_statistics(collection_id, user_id=0)
+                stats = await self.get_collection_statistics(collection_id, user_id=user_id)
                 if stats.avg_chunk_size < 200:
                     base_quality -= 0.1
                     issues.append("Average chunk size is very small")
@@ -1148,6 +1155,217 @@ class ChunkingOrchestrator:
             quality += 0.2
 
         return min(1.0, quality)
+
+    async def get_chunking_progress(self, operation_id: str, *, user_id: int | None = None) -> dict[str, Any] | None:
+        """Return best-effort progress for a chunking operation."""
+
+        if self.db_session is None:
+            raise RuntimeError("Progress tracking requires a database session")
+
+        operation_repo = OperationRepository(self.db_session)
+
+        operation = await operation_repo.get_by_uuid(operation_id)
+        if not operation:
+            return None
+
+        if user_id is not None:
+            # Basic ownership/visibility checks to align with REST permissions
+            await self.db_session.refresh(operation, ["collection"])
+            owner_id = getattr(operation, "user_id", None)
+            collection_owner = getattr(getattr(operation, "collection", None), "owner_id", None)
+            collection_public = getattr(getattr(operation, "collection", None), "is_public", False)
+
+            if owner_id not in (None, user_id) and collection_owner not in (None, user_id) and not collection_public:
+                raise AccessDeniedError(str(user_id), "operation", operation_id)
+
+        status_value = self._map_operation_status(getattr(operation, "status", None))
+        meta = getattr(operation, "meta", {}) or {}
+
+        documents_processed = self._coerce_int(
+            meta.get("documents_processed")
+            or meta.get("processed")
+            or meta.get("documents_added")
+            or meta.get("removed"),
+            default=0,
+        )
+        total_documents = self._coerce_int(
+            meta.get("total_documents")
+            or meta.get("total")
+            or meta.get("total_files_scanned")
+            or meta.get("documents_total"),
+            default=0,
+        )
+        chunks_created = self._coerce_int(
+            meta.get("chunks_created")
+            or meta.get("total_chunks")
+            or meta.get("vector_count")
+            or meta.get("chunks_total"),
+            default=0,
+        )
+
+        progress_percentage: float | None = 100.0 if status_value == "completed" else None
+        current_document = meta.get("current_document")
+        errors = meta.get("errors") or meta.get("failed_documents") or []
+        estimated_time_remaining = meta.get("estimated_time_remaining")
+
+        stream_progress = await self._read_stream_progress(operation_id)
+        if stream_progress:
+            status_from_stream = stream_progress.get("status")
+            if status_from_stream:
+                status_value = status_from_stream
+
+            progress_percentage = stream_progress.get("progress_percentage", progress_percentage)
+            documents_processed = stream_progress.get("documents_processed", documents_processed)
+            total_documents = stream_progress.get("total_documents", total_documents)
+            chunks_created = stream_progress.get("chunks_created", chunks_created)
+            current_document = stream_progress.get("current_document", current_document)
+            errors = stream_progress.get("errors", errors)
+            estimated_time_remaining = stream_progress.get("estimated_time_remaining", estimated_time_remaining)
+
+        if progress_percentage is None:
+            # Fallback best guess
+            if total_documents and documents_processed:
+                progress_percentage = min(100.0, (documents_processed / max(total_documents, 1)) * 100)
+            elif status_value in {"failed", "cancelled"}:
+                progress_percentage = 100.0
+            else:
+                progress_percentage = 0.0
+
+        return {
+            "operation_id": operation_id,
+            "status": status_value,
+            "progress_percentage": float(progress_percentage),
+            "documents_processed": int(documents_processed or 0),
+            "total_documents": int(total_documents or 0),
+            "chunks_created": int(chunks_created or 0),
+            "current_document": current_document,
+            "estimated_time_remaining": estimated_time_remaining,
+            "errors": errors or [],
+        }
+
+    async def _read_stream_progress(self, operation_id: str) -> dict[str, Any] | None:
+        """Fetch the latest progress message from Redis if available."""
+
+        redis_client = getattr(self.cache, "redis", None)
+        if redis_client is None:
+            return None
+
+        try:
+            entries = await redis_client.xrevrange(
+                f"operation-progress:{operation_id}", max="+", min="-", count=1
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("Failed to read progress stream for %s: %s", operation_id, exc)
+            return None
+
+        if not entries:
+            return None
+
+        _, fields = entries[0]
+        raw_message = fields.get("message")
+        if not raw_message:
+            return None
+
+        try:
+            message = json.loads(raw_message)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("Failed to parse progress message for %s: %s", operation_id, exc)
+            return None
+
+        return self._normalise_progress_message(message)
+
+    def _normalise_progress_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        """Convert Redis progress messages to a unified structure."""
+
+        payload = message.get("data") or {}
+        msg_type = str(message.get("type") or "").lower()
+
+        processed = payload.get("processed") or payload.get("documents_added") or payload.get("removed")
+        failed = payload.get("failed") or payload.get("documents_failed") or 0
+        total = payload.get("total") or payload.get("total_files_scanned") or payload.get("total_documents")
+
+        progress_pct = payload.get("progress_percent")
+        if progress_pct is None and processed is not None and total:
+            try:
+                progress_pct = (self._coerce_float(processed) + self._coerce_float(failed)) / self._coerce_float(total)
+                progress_pct *= 100
+            except Exception:  # pragma: no cover - defensive
+                progress_pct = None
+
+        status_value = self._status_from_message_type(msg_type)
+
+        documents_processed = None
+        if processed is not None:
+            try:
+                documents_processed = int(self._coerce_float(processed) + self._coerce_float(failed))
+            except Exception:
+                documents_processed = processed
+
+        total_documents = self._coerce_int(total)
+        chunks_created = self._coerce_int(
+            payload.get("chunks_created")
+            or payload.get("vectors_created")
+            or payload.get("total_vectors_created"),
+        )
+
+        return {
+            "status": status_value,
+            "progress_percentage": progress_pct,
+            "documents_processed": documents_processed,
+            "total_documents": total_documents,
+            "chunks_created": chunks_created,
+            "current_document": payload.get("current_document"),
+            "estimated_time_remaining": payload.get("estimated_time_remaining"),
+            "errors": payload.get("errors") or payload.get("failed_documents") or [],
+        }
+
+    def _status_from_message_type(self, msg_type: str) -> str | None:
+        """Map Redis message types to chunking status values."""
+
+        mapping = {
+            "operation_completed": "completed",
+            "append_completed": "completed",
+            "index_completed": "completed",
+            "operation_failed": "failed",
+            "operation_started": "in_progress",
+            "document_processed": "in_progress",
+            "scanning_documents": "in_progress",
+            "scanning_completed": "in_progress",
+        }
+        return mapping.get(msg_type, None)
+
+    def _map_operation_status(self, status: OperationStatus | str | None) -> str:
+        """Normalize operation status to ChunkingStatus-compatible string."""
+
+        if isinstance(status, OperationStatus):
+            status_value = status.value
+        else:
+            status_value = str(status or "pending").lower()
+
+        mapping = {
+            "pending": "pending",
+            "processing": "in_progress",
+            "in_progress": "in_progress",
+            "completed": "completed",
+            "failed": "failed",
+            "cancelled": "cancelled",
+        }
+
+        return mapping.get(status_value, "pending")
+
+    def _coerce_int(self, value: Any, default: int | None = None) -> int | None:
+        """Safely cast a value to int when possible."""
+
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _coerce_float(self, value: Any) -> float:
+        """Safely convert values to float."""
+        return float(value) if value is not None else 0.0
 
     def _calculate_variance(self, stats: dict[str, Any]) -> float:
         """Calculate chunk size variance."""
