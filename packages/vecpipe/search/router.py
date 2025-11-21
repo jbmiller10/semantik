@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 import inspect
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from shared.config import settings
 from shared.contracts.search import (
     BatchSearchRequest,
     BatchSearchResponse,
@@ -17,8 +16,8 @@ from shared.contracts.search import (
     SearchResponse,
 )
 from vecpipe.search import service
-from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 from vecpipe.search import state as search_state
+from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 
 logger = logging.getLogger(__name__)
 

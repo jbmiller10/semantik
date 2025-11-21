@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
-from fastapi import FastAPI
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 from shared.config import settings
 from shared.embedding.service import get_embedding_service
