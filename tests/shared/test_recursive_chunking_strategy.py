@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
 
 
 @pytest.mark.asyncio()

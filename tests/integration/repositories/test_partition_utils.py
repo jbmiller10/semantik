@@ -8,8 +8,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from packages.shared.database.models import Chunk
-from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
+from shared.database.models import Chunk
+from shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
 
 
 @pytest.mark.asyncio()

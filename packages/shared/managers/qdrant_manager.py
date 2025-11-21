@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import CollectionInfo, Distance, PointStruct, VectorParams
+
 from shared.metrics.collection_metrics import QdrantOperationTimer
 
 if TYPE_CHECKING:

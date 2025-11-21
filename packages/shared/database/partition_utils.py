@@ -17,7 +17,7 @@ from sqlalchemy import Select, and_, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Chunk
+from shared.database.models import Chunk
 
 logger = logging.getLogger(__name__)
 

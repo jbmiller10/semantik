@@ -6,10 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Collection, CollectionStatus, Operation, OperationType
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
+from shared.database.models import Collection, CollectionStatus, Operation, OperationType
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 
 
 @pytest.fixture()
@@ -84,6 +85,23 @@ def mock_document_repo() -> AsyncMock:
     mock.count_for_collection = AsyncMock()
     mock.exists_by_hash = AsyncMock()
     mock.get_by_file_path = AsyncMock()
+
+    return mock
+
+
+@pytest.fixture()
+def mock_projection_repo() -> AsyncMock:
+    """Mock projection run repository with async methods."""
+    mock = AsyncMock(spec=ProjectionRunRepository)
+
+    mock.create = AsyncMock()
+    mock.get_by_uuid = AsyncMock()
+    mock.list_for_collection = AsyncMock()
+    mock.update_status = AsyncMock()
+    mock.update_metadata = AsyncMock()
+    mock.set_operation_uuid = AsyncMock()
+    mock.delete = AsyncMock()
+    mock.find_latest_completed_by_metadata_hash = AsyncMock()
 
     return mock
 

@@ -13,10 +13,8 @@ trap cleanup EXIT INT TERM
 
 # Start the backend services
 echo "Starting backend services..."
-cd packages/webui
-python main.py &
+PYTHONPATH=packages:${PYTHONPATH:-} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload &
 BACKEND_PID=$!
-cd ../..
 
 # Wait for backend to be ready
 echo "Waiting for backend to start..."

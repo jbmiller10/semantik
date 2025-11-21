@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies import (
+from shared.chunking.domain.services.chunking_strategies import (
     CharacterChunkingStrategy,
     HierarchicalChunkingStrategy,
     HybridChunkingStrategy,
@@ -16,7 +16,7 @@ from packages.shared.chunking.domain.services.chunking_strategies import (
     RecursiveChunkingStrategy,
     SemanticChunkingStrategy,
 )
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
 class TestCharacterChunkingStrategy:
@@ -270,7 +270,7 @@ class TestSemanticChunkingStrategy:
     def strategy(self) -> Generator[Any, None, None]:
         """Create a semantic chunking strategy instance with mocked embeddings."""
         with patch(
-            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
+            "shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
         ) as mock_sim:
             # Mock similarity to return reasonable values
             mock_sim.return_value = 0.7
@@ -684,7 +684,7 @@ Third topic returning to technical AI discussions."""
 
         # Act
         with patch(
-            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
+            "shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy._calculate_similarity"
         ) as mock_sim:
             mock_sim.side_effect = [0.2, 0.9, 0.3] * 20
             chunks = strategy.chunk(text, config)
@@ -724,7 +724,7 @@ Third topic returning to technical AI discussions."""
 
         # Make semantic strategy fail
         with patch(
-            "packages.shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy.chunk"
+            "shared.chunking.domain.services.chunking_strategies.semantic.SemanticChunkingStrategy.chunk"
         ) as mock_semantic:
             mock_semantic.side_effect = Exception("Semantic strategy failed")
 

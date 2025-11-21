@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, CheckCircle, Info } from 'lucide-react';
 import { CHUNKING_STRATEGIES } from '../../types/chunking';
-import type { ChunkingStrategyType } from '../../types/chunking';
+import type { ChunkingStrategy, ChunkingStrategyType } from '../../types/chunking';
 
 interface ChunkingStrategyGuideProps {
   onClose: () => void;
@@ -191,6 +191,39 @@ export function ChunkingStrategyGuide({
               <h3 className="text-lg font-medium text-gray-900 mb-4">How Each Strategy Chunks Text</h3>
               
               {/* Visual Examples */}
+              {(() => {
+                const entries = Object.entries(CHUNKING_STRATEGIES) as [ChunkingStrategyType, ChunkingStrategy][];
+                const withVisuals = entries.filter(([, strat]) => Boolean(strat.visualExample?.url));
+                if (!withVisuals.length) return null;
+
+                return (
+                  <div className="grid md:grid-cols-2 gap-6 mb-6" data-testid="chunking-visual-examples">
+                    {withVisuals.map(([strategyType, strategy]) => (
+                      <div key={strategyType} className="border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white">
+                        <div className="p-4 border-b border-gray-100">
+                          <h4 className="font-medium text-gray-900">{strategy.name}</h4>
+                          <p className="text-xs text-gray-500 mt-1">{strategy.description}</p>
+                        </div>
+                        <div className="relative bg-gray-50">
+                          <img
+                            src={strategy.visualExample?.url}
+                            alt={strategy.visualExample?.caption || `${strategy.name} visual example`}
+                            className="w-full h-56 object-cover"
+                            loading="lazy"
+                          />
+                          {strategy.visualExample?.caption && (
+                            <div className="absolute bottom-0 w-full bg-black/60 text-white text-xs px-3 py-2">
+                              {strategy.visualExample.caption}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Legacy static examples (fallback when no visuals supplied) */}
               <div className="space-y-6">
                 {/* Character-based Example */}
                 <div className="border border-gray-200 rounded-lg p-4">

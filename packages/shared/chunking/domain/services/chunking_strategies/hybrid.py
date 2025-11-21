@@ -10,16 +10,16 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
 
 if TYPE_CHECKING:
-    from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
+    from shared.chunking.unified.base import UnifiedChunkingStrategy
 
 
 class ContentAnalysis(TypedDict):

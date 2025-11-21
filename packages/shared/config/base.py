@@ -1,7 +1,6 @@
 # shared/config/base.py
 
 from pathlib import Path
-from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -77,8 +76,6 @@ class BaseConfig(BaseSettings):
     # Pydantic model config
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        # Create data/log directories if they don't exist
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
+    # NOTE: Keep this class free of side effects. Runtime code is
+    # responsible for creating directories or other resources that depend on
+    # these paths (see shared.config.runtime.ensure_base_directories).

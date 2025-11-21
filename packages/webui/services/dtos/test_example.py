@@ -3,7 +3,7 @@ Example usage of the service layer DTOs.
 This demonstrates how the service layer can use these DTOs to encapsulate business logic.
 """
 
-from packages.webui.services.dtos.chunking_dtos import ServiceChunkPreview, ServicePreviewResponse, ServiceStrategyInfo
+from webui.services.dtos.chunking_dtos import ServiceChunkPreview, ServicePreviewResponse, ServiceStrategyInfo
 
 
 def example_usage() -> None:

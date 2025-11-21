@@ -17,12 +17,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
-from packages.shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
+from shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 
 class MockChunkingStrategy(ChunkingStrategy):

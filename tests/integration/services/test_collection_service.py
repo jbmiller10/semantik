@@ -7,22 +7,17 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
-from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from sqlalchemy import select
 
-from packages.shared.database.exceptions import AccessDeniedError as PackageAccessDeniedError
-from packages.shared.database.exceptions import InvalidStateError as PackageInvalidStateError
-from packages.shared.database.models import (
-    Collection,
-    CollectionStatus,
-    Operation,
-    OperationStatus,
-    OperationType,
-    User,
+from shared.database.exceptions import (
+    AccessDeniedError as PackageAccessDeniedError,
+    AccessDeniedError as SharedAccessDeniedError,
+    InvalidStateError as PackageInvalidStateError,
+    InvalidStateError as SharedInvalidStateError,
 )
-from packages.webui.services import collection_service as collection_service_module
-from packages.webui.services.factory import create_collection_service
+from shared.database.models import Collection, CollectionStatus, Operation, OperationStatus, OperationType, User
+from webui.services import collection_service as collection_service_module
+from webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio()

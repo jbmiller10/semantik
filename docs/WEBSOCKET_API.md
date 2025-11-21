@@ -456,7 +456,7 @@ The WebSocket endpoint is registered at the FastAPI application level, not in th
 
 ```python
 # In main.py or app initialization
-from packages.webui.api.v2.operations import operation_websocket
+from webui.api.v2.operations import operation_websocket
 
 # Register WebSocket endpoint directly on the app
 app.add_api_websocket_route(

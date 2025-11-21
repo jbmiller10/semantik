@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
-from packages.webui.services.dtos.api_models import ChunkingStrategy
-from packages.webui.services.dtos.chunking_dtos import (
+from webui.services.dtos.api_models import ChunkingStrategy
+from webui.services.dtos.chunking_dtos import (
     ServiceChunkList,
     ServiceChunkRecord,
     ServiceDocumentAnalysis,

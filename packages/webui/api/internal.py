@@ -5,13 +5,13 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.config import settings
 from shared.database import get_db
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.webui.dependencies import get_collection_repository
+from webui.dependencies import get_collection_repository
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 

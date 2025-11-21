@@ -8,7 +8,7 @@ including error handling and edge cases.
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-from packages.webui.services.dtos.api_models import (
+from webui.services.dtos.api_models import (
     ChunkingConfigBase,
     ChunkingStats,
     ChunkingStrategy,
@@ -18,7 +18,7 @@ from packages.webui.services.dtos.api_models import (
     StrategyInfo,
     StrategyRecommendation,
 )
-from packages.webui.services.dtos.chunking_dtos import (
+from webui.services.dtos.chunking_dtos import (
     ServiceChunkingStats,
     ServiceChunkPreview,
     ServiceCompareResponse,
@@ -142,7 +142,7 @@ class TestServiceStrategyInfo:
 
         assert result.default_config.strategy == ChunkingStrategy.SEMANTIC
 
-    @patch("packages.webui.services.dtos.chunking_dtos.logger")
+    @patch("webui.services.dtos.chunking_dtos.logger")
     def test_to_api_model_validation_error_handling(self, mock_logger):
         """Test handling of ValidationError in config creation."""
         dto = ServiceStrategyInfo(
@@ -241,7 +241,7 @@ class TestServicePreviewResponse:
 
         assert result.cached is True
 
-    @patch("packages.webui.services.dtos.chunking_dtos.logger")
+    @patch("webui.services.dtos.chunking_dtos.logger")
     def test_to_api_model_config_validation_error(self, mock_logger):
         """Test handling of config validation error."""
         dto = ServicePreviewResponse(
@@ -558,7 +558,7 @@ class TestServiceChunkingStats:
 class TestErrorHandling:
     """Test error handling across all DTOs."""
 
-    @patch("packages.webui.services.dtos.chunking_dtos.logger")
+    @patch("webui.services.dtos.chunking_dtos.logger")
     def test_logging_on_validation_errors(self, mock_logger):
         """Test that validation errors are logged appropriately."""
         # Create DTO with invalid config that will cause ValidationError
@@ -578,7 +578,7 @@ class TestErrorHandling:
         mock_logger.warning.assert_called()
         assert result.config.strategy == ChunkingStrategy.FIXED_SIZE
 
-    @patch("packages.webui.services.dtos.chunking_dtos.logger")
+    @patch("webui.services.dtos.chunking_dtos.logger")
     def test_invalid_strategy_conversions(self, mock_logger):
         """Test handling of invalid strategy values across DTOs."""
         # Test ServicePreviewResponse with invalid strategy
@@ -603,7 +603,7 @@ class TestErrorHandling:
         mock_logger.warning.assert_called()
         assert result2.strategy == ChunkingStrategy.FIXED_SIZE  # Fallback
 
-    @patch("packages.webui.services.dtos.chunking_dtos.logger")
+    @patch("webui.services.dtos.chunking_dtos.logger")
     def test_invalid_alternative_strategies(self, mock_logger):
         """Test handling of invalid alternative strategies."""
         dto = ServiceStrategyRecommendation(

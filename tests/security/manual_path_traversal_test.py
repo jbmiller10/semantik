@@ -7,7 +7,7 @@ Run this to verify the security implementation.
 
 import time
 
-from packages.webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
+from webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
 
 
 def test_path(path: str) -> tuple[bool, str]:

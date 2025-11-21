@@ -7,16 +7,16 @@ Queries the status and progress of chunking operations.
 from datetime import UTC, datetime
 from typing import Any
 
-from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
-from packages.shared.chunking.application.dto.responses import (
+from shared.chunking.application.dto.requests import GetOperationStatusRequest
+from shared.chunking.application.dto.responses import (
     ChunkDTO,
     GetOperationStatusResponse,
     OperationMetrics,
     OperationStatus,
 )
-from packages.shared.chunking.application.interfaces.repositories import ChunkingOperationRepository, ChunkRepository
-from packages.shared.chunking.application.interfaces.services import MetricsService
-from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus as DomainOperationStatus
+from shared.chunking.application.interfaces.repositories import ChunkingOperationRepository, ChunkRepository
+from shared.chunking.application.interfaces.services import MetricsService
+from shared.chunking.domain.value_objects.operation_status import OperationStatus as DomainOperationStatus
 
 
 class GetOperationStatusUseCase:

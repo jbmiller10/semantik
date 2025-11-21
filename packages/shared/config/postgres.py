@@ -33,6 +33,12 @@ class PostgresConfig(BaseSettings):
     DB_POOL_RECYCLE: int = Field(default=3600, description="Connection recycle time in seconds")
     DB_POOL_PRE_PING: bool = Field(default=True, description="Test connections before use")
 
+    # Session/statement timeouts
+    DB_IDLE_IN_TX_TIMEOUT_MS: int = Field(
+        default=60000,
+        description="PostgreSQL idle_in_transaction_session_timeout in milliseconds (0 disables)",
+    )
+
     # Query settings
     DB_ECHO: bool = Field(default=False, description="Echo SQL queries (debug mode)")
     DB_ECHO_POOL: bool = Field(default=False, description="Echo connection pool events")
@@ -117,7 +123,7 @@ class PostgresConfig(BaseSettings):
                     "jit": "off",  # Disable JIT for more predictable performance
                     "statement_timeout": f"{self.DB_QUERY_TIMEOUT * 1000}",  # Convert to milliseconds
                     "lock_timeout": "5000",  # 5 seconds
-                    "idle_in_transaction_session_timeout": "60000",  # 60 seconds
+                    "idle_in_transaction_session_timeout": str(max(self.DB_IDLE_IN_TX_TIMEOUT_MS, 0)),
                 },
             }
 

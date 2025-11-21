@@ -11,14 +11,10 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from starlette.requests import Request
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.api.v2.schemas import (
-    CollectionSearchRequest,
-    CollectionSearchResponse,
-    SingleCollectionSearchRequest,
-)
-from packages.webui.api.v2.search import multi_collection_search, single_collection_search
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import Collection, CollectionStatus
+from webui.api.v2.schemas import CollectionSearchRequest, CollectionSearchResponse, SingleCollectionSearchRequest
+from webui.api.v2.search import multi_collection_search, single_collection_search
 
 
 @pytest.fixture()
@@ -155,7 +151,7 @@ class TestMultiCollectionSearch:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert isinstance(response, CollectionSearchResponse)
@@ -223,7 +219,7 @@ class TestMultiCollectionSearch:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.partial_failure is True
@@ -237,7 +233,7 @@ class TestMultiCollectionSearch:
         self,
         mock_user: dict[str, Any],
     ) -> None:
-        """Legacy hybrid/keyword modes are normalized before delegating to SearchService."""
+        """Hybrid/keyword modes are forwarded using canonical values."""
 
         scope = {
             "type": "http",
@@ -261,16 +257,15 @@ class TestMultiCollectionSearch:
             query="legacy",
             search_type="hybrid",
             hybrid_mode="weighted",
-            keyword_mode="bm25",
+            keyword_mode="any",
         )
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
         assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
-        assert "hybrid_search_mode" not in call_kwargs
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
@@ -343,7 +338,7 @@ class TestMultiCollectionSearch:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.reranking_used is False
@@ -409,7 +404,7 @@ class TestSearchReranking:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify the service was called with correct reranking parameters
@@ -499,7 +494,7 @@ class TestSearchReranking:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify the service was called with correct reranking parameters
@@ -596,7 +591,7 @@ class TestSearchReranking:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.reranking_used is True
@@ -642,7 +637,7 @@ class TestSearchReranking:
             "processing_time_ms": 150,
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify service was called with reranking enabled
@@ -698,7 +693,7 @@ class TestSingleCollectionSearch:
             "processing_time_ms": 100,
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify service was called with correct params
@@ -744,7 +739,7 @@ class TestSingleCollectionSearch:
         )
 
         with (
-            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
             pytest.raises(HTTPException) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
@@ -775,7 +770,7 @@ class TestSingleCollectionSearch:
         )
 
         with (
-            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
             pytest.raises(HTTPException) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
@@ -803,7 +798,7 @@ class TestSingleCollectionSearch:
         mock_search_service.single_collection_search.side_effect = Exception("Database connection failed")
 
         with (
-            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
             pytest.raises(HTTPException) as exc_info,
         ):
             await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
@@ -849,7 +844,7 @@ class TestMultiCollectionSearchEdgeCases:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.query == "test @#$%^&*() <script>alert('xss')</script>"
@@ -902,7 +897,7 @@ class TestMultiCollectionSearchEdgeCases:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify metadata filter was passed to service
@@ -959,7 +954,7 @@ class TestMultiCollectionSearchEdgeCases:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify search type was passed correctly
@@ -1013,7 +1008,7 @@ class TestMultiCollectionSearchEdgeCases:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify score threshold was passed
@@ -1045,7 +1040,7 @@ class TestMultiCollectionSearchEdgeCases:
         )
 
         with (
-            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
             pytest.raises(HTTPException) as exc_info,
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
@@ -1073,7 +1068,7 @@ class TestMultiCollectionSearchEdgeCases:
         mock_search_service.multi_collection_search.side_effect = Exception("Unexpected error")
 
         with (
-            patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service),
+            patch("webui.api.v2.search.get_search_service", return_value=mock_search_service),
             pytest.raises(HTTPException) as exc_info,
         ):
             await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
@@ -1091,7 +1086,7 @@ class TestHybridSearchParameters:
         mock_user: dict[str, Any],
         mock_collections: list[MagicMock],
     ) -> None:
-        """Legacy hybrid params should be mapped and results sorted by reranked score."""
+        """Hybrid params should be forwarded and results sorted by reranked score."""
 
         scope = {
             "type": "http",
@@ -1107,8 +1102,8 @@ class TestHybridSearchParameters:
             query="hybrid legacy mapping",
             k=3,
             search_type="hybrid",
-            hybrid_mode="relative_score",
-            keyword_mode="bm25",
+            hybrid_mode="weighted",
+            keyword_mode="any",
             use_reranker=True,
         )
 
@@ -1157,7 +1152,7 @@ class TestHybridSearchParameters:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         mock_search_service.multi_collection_search.assert_awaited_once()
@@ -1223,7 +1218,7 @@ class TestHybridSearchParameters:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify hybrid parameters were passed
@@ -1279,7 +1274,7 @@ class TestHybridSearchParameters:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.search_type == "code"
@@ -1399,7 +1394,7 @@ class TestSearchResultFormatting:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         assert response.total_results == 0
@@ -1472,7 +1467,7 @@ class TestSearchResultFormatting:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Check file name extraction
@@ -1527,7 +1522,7 @@ class TestSearchResultFormatting:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Check defaults for missing fields
@@ -1577,7 +1572,7 @@ class TestSearchResultFormatting:
             "processing_time_ms": 75,
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await single_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Verify metadata filter was passed
@@ -1620,7 +1615,7 @@ class TestSearchResultFormatting:
             },
         }
 
-        with patch("packages.webui.api.v2.search.get_search_service", return_value=mock_search_service):
+        with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
             response = await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
 
         # Check timing conversion (seconds to milliseconds)

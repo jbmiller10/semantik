@@ -9,7 +9,7 @@ from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
 
-from packages.shared.metrics.prometheus import registry
+from shared.metrics.prometheus import registry
 
 
 def _get_or_create_metric(

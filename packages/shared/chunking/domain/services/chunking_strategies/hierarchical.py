@@ -6,9 +6,9 @@ This module provides a wrapper around the unified hierarchical chunking strategy
 to make it compatible with domain tests that expect specific methods to patch.
 """
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
 
 
 class HierarchicalChunkingStrategy(DomainStrategyAdapter):

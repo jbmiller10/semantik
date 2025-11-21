@@ -10,18 +10,18 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from packages.webui.api.schemas import ErrorResponse
-from packages.webui.api.v2.schemas import (
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from webui.api.schemas import ErrorResponse
+from webui.api.v2.schemas import (
     CollectionSearchRequest,
     CollectionSearchResponse,
     CollectionSearchResult,
     SingleCollectionSearchRequest,
 )
-from packages.webui.auth import get_current_user
-from packages.webui.rate_limiter import limiter
-from packages.webui.services.factory import get_search_service
-from packages.webui.services.search_service import SearchService
+from webui.auth import get_current_user
+from webui.rate_limiter import limiter
+from webui.services.factory import get_search_service
+from webui.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def multi_collection_search(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        logger.error(f"Search failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed") from e
 
 

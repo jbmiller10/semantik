@@ -1,7 +1,8 @@
 import asyncio
 
-from shared.database import pg_connection_manager
 from sqlalchemy import text
+
+from shared.database import pg_connection_manager
 
 
 async def check_operations() -> None:

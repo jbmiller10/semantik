@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from packages.shared.database.models import Collection
-from packages.webui.dependencies import get_collection_for_user
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import Collection
+from webui.dependencies import get_collection_for_user
 
 
 @pytest.mark.asyncio()
@@ -48,7 +48,7 @@ class TestGetCollectionForUser:
     ) -> None:
         """Test successful retrieval of collection with proper permissions."""
         # Arrange
-        with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
+        with patch("webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_collection)
 
@@ -65,7 +65,7 @@ class TestGetCollectionForUser:
     async def test_get_collection_for_user_not_found(self, mock_db: AsyncMock, mock_user: dict[str, Any]) -> None:
         """Test HTTPException 404 when collection is not found."""
         # Arrange
-        with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
+        with patch("webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(
                 side_effect=EntityNotFoundError("Collection", "nonexistent-uuid")
@@ -81,7 +81,7 @@ class TestGetCollectionForUser:
     async def test_get_collection_for_user_access_denied(self, mock_db: AsyncMock, mock_user: dict[str, Any]) -> None:
         """Test HTTPException 403 when user lacks permission."""
         # Arrange
-        with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
+        with patch("webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(
                 side_effect=AccessDeniedError("123", "Collection", "private-collection")
@@ -107,7 +107,7 @@ class TestGetCollectionForUser:
             "is_superuser": False,
         }
 
-        with patch("packages.webui.dependencies.CollectionRepository") as mock_repo:
+        with patch("webui.dependencies.CollectionRepository") as mock_repo:
             mock_repo_instance = mock_repo.return_value
             mock_repo_instance.get_by_uuid_with_permission_check = AsyncMock(return_value=mock_collection)
 

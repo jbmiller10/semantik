@@ -2,9 +2,9 @@
 
 """Unit tests for the shared error classifier."""
 
-from packages.webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingMemoryError
-from packages.webui.services.chunking_error_handler import ChunkingErrorType
-from packages.webui.utils.error_classifier import (
+from webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingMemoryError
+from webui.services.chunking_error_handler import ChunkingErrorType
+from webui.utils.error_classifier import (
     ClassificationRule,
     build_chunking_error_classifier,
     get_default_chunking_error_classifier,

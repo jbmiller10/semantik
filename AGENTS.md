@@ -4,7 +4,7 @@
 Semantik is a polyglot monorepo. Python services live in `packages/`: `vecpipe` powers ingestion/search workers, `webui` exposes the FastAPI backend, and `shared` holds contracts, config, and utilities shared across services. The React frontend sits in `apps/webui-react` (Vite project with assets in `public/`). Database migrations live under `alembic/`. Shell automation and orchestration scripts are in `scripts/`. All automated tests reside in `tests/` with domain-specific folders (`tests/domain`, `tests/performance`, `tests/e2e`), and sample documents live in `data/`.
 
 ## Build, Test, and Development Commands
-Run `make dev-install` for a full `uv` sync of Python dependencies and tooling; use `npm install --prefix apps/webui-react` (or `make frontend-install`) for the UI. `make dev` starts the integrated stack via `scripts/dev.sh`. For API-only hot reload, use `make run`. Frontend iterations happen through `make frontend-dev`. Server-side builds rely on `make build`; React production bundles come from `npm run build --prefix apps/webui-react`. Docker workflows (`make docker-up`, `make docker-down`, `make docker-dev-up`) provision services and secrets automatically.
+Run `make dev-install` for a full `uv` sync of Python dependencies and tooling; use `npm install --prefix apps/webui-react` (or `make frontend-install`) for the UI. `make dev` starts the integrated stack via `scripts/dev.sh`. For API-only hot reload, use `make run`. Frontend iterations happen through `make frontend-dev`. Server-side builds rely on `make build`; React production bundles come from `npm run build --prefix apps/webui-react`. Docker workflows (`make docker-up`, `make docker-down`, `make docker-dev-up`) provision services and secrets automatically. **JWT secrets are no longer generated on import**—set `JWT_SECRET_KEY` in your environment (generate once with `uv run python scripts/generate_jwt_secret.py --write`).
 
 `make docker-down` now mirrors `docker compose down` and keeps named volumes; run `make docker-down-clean` when you explicitly want to blow away volumes (e.g., to reset Postgres data).
 
@@ -15,6 +15,19 @@ Always ensure Black and Ruff pass before marking a ticket complete—rerun `make
 
 ## Testing Guidelines
 Invoke `make test` or `uv run pytest tests -v` for the full Python suite. Generate coverage with `make test-coverage` (report in `htmlcov/`). E2E suites in `tests/e2e` require the Docker stack and run via `make test-e2e`. UI checks run with `npm test --prefix apps/webui-react`. Name new test files `test_<feature>.py` (Python) or `<Component>.test.tsx` (frontend) and keep fixtures within `tests/fixtures` or colocated `__fixtures__`.
+
+### Frontend E2E (Cypress)
+A minimal Cypress harness exists for projection visualization flows (`cypress/e2e/projection_visualize.cy.ts`) with config in `cypress.config.ts` (base URL `http://localhost:5173`). To run these tests:
+
+- Start the backend as usual, e.g.:
+- `source .env && uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload`
+- Start the frontend dev server:
+  - `npm run dev:frontend`
+- Install Cypress once at the repo root:
+  - `npm install -D cypress`
+- Then run Cypress against the projection spec:
+  - Interactive: `npx cypress open` (select `cypress/e2e/projection_visualize.cy.ts`)
+  - Headless: `npx cypress run --spec cypress/e2e/projection_visualize.cy.ts`
 
 ### Dedicated Test Database
 The project includes a dedicated PostgreSQL instance for integration and API tests to ensure test isolation. Start it using the `testing` Docker Compose profile:

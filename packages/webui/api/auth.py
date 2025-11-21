@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+
 from shared.database.base import AuthRepository, UserRepository
 from webui.auth import (
     Token,
@@ -19,8 +20,7 @@ from webui.auth import (
     get_password_hash,
     pwd_context,
 )
-
-from packages.webui.dependencies import get_auth_repository, get_user_repository
+from webui.dependencies import get_auth_repository, get_user_repository
 
 logger = logging.getLogger(__name__)
 

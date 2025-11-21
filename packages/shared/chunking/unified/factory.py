@@ -10,15 +10,15 @@ import logging
 from enum import Enum
 from typing import Any
 
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
-from packages.shared.chunking.unified.character_strategy import CharacterChunkingStrategy
-from packages.shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
-from packages.shared.chunking.unified.hybrid_strategy import HybridChunkingStrategy
-from packages.shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
-from packages.shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
-from packages.shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
-from packages.shared.text_processing.base_chunker import ChunkResult
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.chunking.unified.character_strategy import CharacterChunkingStrategy
+from shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
+from shared.chunking.unified.hybrid_strategy import HybridChunkingStrategy
+from shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
+from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
+from shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
+from shared.text_processing.base_chunker import ChunkResult
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ class TextProcessingStrategyAdapter:
         Returns:
             List of chunk dictionaries
         """
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+        from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Use parameters passed from factory or defaults
         max_tokens = self.params.get("max_tokens", 1000)
@@ -305,7 +305,7 @@ class TextProcessingStrategyAdapter:
         Returns:
             List of chunk dictionaries
         """
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+        from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Use parameters passed from factory or defaults
         max_tokens = self.params.get("max_tokens", 1000)
@@ -429,7 +429,7 @@ class TextProcessingStrategyAdapter:
 
         # Convert to domain config for validation
         try:
-            from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+            from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
             # Handle both token-based and character-based parameters
             if "max_tokens" in config or "overlap_tokens" in config:
@@ -475,7 +475,7 @@ class TextProcessingStrategyAdapter:
         Returns:
             Estimated number of chunks
         """
-        from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+        from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
         # Handle both token-based and character-based parameter names
         if "max_tokens" in config:

@@ -8,9 +8,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import select
 
-from packages.shared.database.models import Document
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.webui.services.document_scanning_service import DocumentScanningService
+from shared.database.models import Document
+from shared.database.repositories.document_repository import DocumentRepository
+from webui.services.document_scanning_service import DocumentScanningService
 
 if TYPE_CHECKING:
     from pathlib import Path

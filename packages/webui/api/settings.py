@@ -3,7 +3,6 @@ Settings and database management routes for the Web UI
 """
 
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +12,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Add parent directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-
-from packages.shared.config import settings
-from packages.shared.database import get_db
-from packages.shared.database.models import (
+from shared.config import settings
+from shared.database import get_db
+from shared.database.models import (
     Collection,
     CollectionAuditLog,
     CollectionPermission,
@@ -28,7 +24,7 @@ from packages.shared.database.models import (
     Operation,
     OperationMetrics,
 )
-from packages.webui.auth import get_current_user
+from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 

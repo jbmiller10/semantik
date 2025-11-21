@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, Any
 import psutil
 import pytest
 
-from packages.shared.database.models import OperationType
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
+from shared.database.models import OperationType
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.services.resource_manager import ResourceEstimate, ResourceManager
 
 if TYPE_CHECKING:
     from datetime import datetime

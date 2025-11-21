@@ -6,8 +6,11 @@ from typing import Any
 
 from celery import Celery
 from celery.signals import worker_process_init
+
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.config.runtime import ensure_webui_directories, require_jwt_secret
+from shared.database.postgres_database import pg_connection_manager
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -96,6 +99,8 @@ def _build_testing_overrides() -> dict[str, Any]:
 def _create_celery_app() -> Celery:
     """Instantiate and configure the Celery app."""
     try:
+        ensure_webui_directories(shared_settings)
+        require_jwt_secret(shared_settings)
         ensure_internal_api_key(shared_settings)
     except RuntimeError as exc:
         logger.error("Failed to initialise internal API key for Celery: %s", exc)
@@ -140,4 +145,9 @@ celery_app = _create_celery_app()
 @worker_process_init.connect
 def init_worker_process(**kwargs: Any) -> None:  # noqa: ARG001
     """Initialize worker process - prepare for database connections."""
-    logger.info("Worker process initialized - database will be initialized per task")
+    # Reset the connection manager state to ensure we don't use inherited
+    # connections from the parent process (which are not fork-safe).
+    # This forces a fresh engine creation when the first task runs.
+    pg_connection_manager._engine = None
+    pg_connection_manager._sessionmaker = None
+    logger.info("Worker process initialized - database connection reset")

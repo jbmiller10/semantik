@@ -6,13 +6,10 @@ import re
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies import CharacterChunkingStrategy
-from packages.shared.chunking.domain.services.streaming_strategies import (
-    StreamingCharacterStrategy,
-    StreamingMarkdownStrategy,
-)
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.domain.services.chunking_strategies import CharacterChunkingStrategy
+from shared.chunking.domain.services.streaming_strategies import StreamingCharacterStrategy, StreamingMarkdownStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 

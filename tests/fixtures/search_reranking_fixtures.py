@@ -7,7 +7,7 @@ Provides reusable mocks and test data for reranking tests.
 from typing import Any
 from unittest.mock import MagicMock
 
-from packages.shared.database.models import Collection, CollectionStatus
+from shared.database.models import Collection, CollectionStatus
 
 
 def create_mock_collection(

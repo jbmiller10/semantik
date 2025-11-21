@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import (
     adjust_embeddings_dimension,
@@ -57,7 +58,7 @@ class TestDimensionValidationIntegration:
         """Test that search API validates query embedding dimensions."""
         pytest.skip("Search service integration test needs updating for new architecture")
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
+        with patch("shared.embedding.dense.embedding_service", mock_embedding_service):
             # Create search service
             search_service = SearchService()
 
@@ -90,7 +91,7 @@ class TestDimensionValidationIntegration:
         mock_embedding_service._service.get_dimension.return_value = 512
         mock_embedding_service.embed_single.return_value = np.random.rand(512)
 
-        with patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service):
+        with patch("shared.embedding.dense.embedding_service", mock_embedding_service):
             search_service = SearchService()
 
             # Mock Qdrant with different dimension
@@ -101,7 +102,7 @@ class TestDimensionValidationIntegration:
             search_service._client = mock_qdrant
 
             # Test query with dimension adjustment
-            with patch("packages.shared.embedding.validation.adjust_embeddings_dimension") as mock_adjust:
+            with patch("shared.embedding.validation.adjust_embeddings_dimension") as mock_adjust:
                 mock_adjust.return_value = [np.random.rand(384).tolist()]
 
                 query = "test query"
@@ -119,7 +120,7 @@ class TestDimensionValidationIntegration:
         pytest.skip("Indexing task test needs updating for new architecture")
 
         with (
-            patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service),
+            patch("shared.embedding.dense.embedding_service", mock_embedding_service),
             patch("packages.worker.tasks.indexing_tasks.get_collection") as mock_get_collection,
         ):
             mock_get_collection.return_value = mock_collection
@@ -144,7 +145,7 @@ class TestDimensionValidationIntegration:
         mock_embedding_service._service.get_dimension.return_value = 512
 
         with (
-            patch("packages.shared.embedding.dense.embedding_service", mock_embedding_service),
+            patch("shared.embedding.dense.embedding_service", mock_embedding_service),
             patch("packages.worker.tasks.reindexing_tasks.get_collection") as mock_get_collection,
         ):
             mock_get_collection.return_value = mock_collection
@@ -239,7 +240,7 @@ class TestDimensionValidationIntegration:
         pytest.skip("End-to-end test needs updating for new architecture")
 
         # Mock dependencies
-        with patch("packages.vecpipe.api.search_api.SearchService") as mock_search_service_class:
+        with patch("vecpipe.api.search_api.SearchService") as mock_search_service_class:
             mock_service = MagicMock()
             mock_search_service_class.return_value = mock_service
 
