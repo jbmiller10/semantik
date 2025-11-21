@@ -56,6 +56,27 @@ SEARCH_INSTRUCTIONS = {
 }
 
 
+def _get_patched_callable(name: str, default: Any) -> Any:
+    """Return a callable patched on vecpipe.search_api if present.
+
+    Integration tests patch functions on the public entrypoint module rather than
+    this service module. To honor those patches we look for an override on
+    ``vecpipe.search_api`` and use it when it differs from the local default.
+    """
+
+    try:
+        import vecpipe.search_api as search_api
+
+        candidate = getattr(search_api, name, None)
+        if candidate is not None and candidate is not default:
+            return candidate
+    except Exception:
+        # Best effort only; fall back to local implementation when anything goes wrong
+        pass
+
+    return default
+
+
 def generate_mock_embedding(text: str, vector_dim: int | None = None) -> list[float]:
     """Generate mock embedding for testing (fallback when real embeddings unavailable)."""
     if vector_dim is None:
@@ -125,13 +146,24 @@ def _calculate_candidate_k(requested_k: int) -> int:
 
 
 async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any] | None]:
-    """Fetch collection vector dimension and optional metadata."""
+    """Fetch collection vector dimension and optional metadata.
+
+    Falls back to a one-off httpx client when the global qdrant client has not
+    been initialized yet (e.g., when FastAPI lifespan isn't started in tests).
+    """
+
     vector_dim = 1024
-    if search_state.qdrant_client is None:
-        raise RuntimeError("Qdrant client not initialized")
+    client = search_state.qdrant_client
+    created_client = False
+
+    if client is None:
+        client = httpx.AsyncClient(
+            base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
+        )
+        created_client = True
 
     try:
-        response = await search_state.qdrant_client.get(f"/collections/{collection_name}")
+        response = await client.get(f"/collections/{collection_name}")
         response.raise_for_status()
         info = response.json()["result"]
         if "config" in info and "params" in info["config"]:
@@ -140,6 +172,9 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     except Exception as e:  # pragma: no cover - warning path
         logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
         return vector_dim, None
+    finally:
+        if created_client:
+            await client.aclose()
 
 
 async def perform_search(request: SearchRequest) -> SearchResponse:
@@ -206,9 +241,11 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         )
 
         if not settings.USE_MOCK_EMBEDDINGS:
-            query_vector = await generate_embedding_async(request.query, model_name, quantization, instruction)
+            generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
+            query_vector = await generate_fn(request.query, model_name, quantization, instruction)
         else:
-            query_vector = generate_mock_embedding(request.query, vector_dim)
+            mock_fn = _get_patched_callable("generate_mock_embedding", generate_mock_embedding)
+            query_vector = mock_fn(request.query, vector_dim)
 
         embed_time = (time.time() - embed_start) * 1000
 
@@ -476,7 +513,8 @@ async def perform_hybrid_search(
         vector_dim, _ = await _get_collection_info(collection_name)
 
         if not settings.USE_MOCK_EMBEDDINGS:
-            query_vector = await generate_embedding_async(query, model_name, quantization)
+            generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
+            query_vector = await generate_fn(query, model_name, quantization)
             query_dim = len(query_vector)
             try:
                 validate_dimension_compatibility(
@@ -562,9 +600,8 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
         instruction = SEARCH_INSTRUCTIONS.get(request.search_type, SEARCH_INSTRUCTIONS["semantic"])
 
         logger.info("Generating embeddings for %s queries", len(request.queries))
-        embedding_tasks = [
-            generate_embedding_async(query, model_name, quantization, instruction) for query in request.queries
-        ]
+        generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
+        embedding_tasks = [generate_fn(query, model_name, quantization, instruction) for query in request.queries]
 
         query_vectors = await asyncio.gather(*embedding_tasks)
 

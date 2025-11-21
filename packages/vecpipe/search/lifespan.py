@@ -12,7 +12,7 @@ from fastapi import FastAPI
 
 from shared.config import settings
 from shared.embedding.service import get_embedding_service
-from shared.metrics.prometheus import start_metrics_server
+from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources
@@ -20,10 +20,26 @@ from vecpipe.search.state import clear_resources, set_resources
 logger = logging.getLogger(__name__)
 
 
+def _resolve_start_metrics_server() -> Any:
+    """Return a metrics starter function, honoring any patch on search_api."""
+
+    try:
+        import vecpipe.search_api as search_api
+
+        patched = getattr(search_api, "start_metrics_server", None)
+        if patched:
+            return patched
+    except Exception:
+        pass
+
+    return _base_start_metrics_server
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     """Manage application lifecycle."""
-    start_metrics_server(settings.METRICS_PORT)
+    start_metrics = _resolve_start_metrics_server()
+    start_metrics(settings.METRICS_PORT)
     logger.info("Metrics server started on port %s", settings.METRICS_PORT)
 
     qdrant = httpx.AsyncClient(
