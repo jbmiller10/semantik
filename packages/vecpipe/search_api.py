@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Thin entrypoint for the vecpipe search API."""
 
+import vecpipe.model_manager as model_manager
 from shared.config import settings
+from shared.embedding.service import get_embedding_service
+from shared.metrics.prometheus import start_metrics_server
 from vecpipe.search.app import app, create_app
 from vecpipe.search.lifespan import lifespan
 from vecpipe.search.metrics import (
@@ -54,6 +57,9 @@ __all__ = [
     "search_requests",
     "embedding_generation_latency",
     "get_or_create_metric",
+    "model_manager",
+    "get_embedding_service",
+    "start_metrics_server",
 ]
 
 
