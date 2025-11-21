@@ -7,17 +7,12 @@ Uses the shared.embedding.EmbeddingService for all embedding operations
 import argparse
 import asyncio
 import logging
-import sys
 import uuid
-from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
-
-# Add parent directory to path to import shared modules
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
 from shared.embedding import EmbeddingService

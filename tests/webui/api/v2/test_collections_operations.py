@@ -3,7 +3,7 @@
 import pytest
 from httpx import AsyncClient
 
-from packages.shared.database.models import OperationStatus
+from shared.database.models import OperationStatus
 
 
 @pytest.mark.asyncio()

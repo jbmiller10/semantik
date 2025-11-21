@@ -8,16 +8,16 @@ persistent store for user-defined configurations.
 import logging
 from typing import Any
 
-from packages.shared.database.models import ChunkingConfigProfile
-from packages.shared.database.repositories.chunking_config_profile_repository import (
+from shared.database.models import ChunkingConfigProfile
+from shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,
 )
-from packages.webui.services.chunking.strategy_registry import (
+from webui.services.chunking.strategy_registry import (
     get_strategy_defaults,
     get_strategy_metadata,
     list_api_strategy_ids,
 )
-from packages.webui.services.dtos.chunking_dtos import ServiceSavedConfiguration
+from webui.services.dtos.chunking_dtos import ServiceSavedConfiguration
 
 logger = logging.getLogger(__name__)
 

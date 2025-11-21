@@ -7,11 +7,9 @@ REST API for vector similarity search with Qwen3 support
 import asyncio
 import hashlib
 import logging
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -30,8 +28,6 @@ from shared.contracts.search import (
     SearchResult,
 )
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 from prometheus_client import Counter, Histogram  # noqa: E402
 from shared.config import settings  # noqa: E402
 from shared.database.exceptions import DimensionMismatchError  # noqa: E402

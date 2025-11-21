@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
-from packages.shared.chunking.infrastructure.exception_translator import exception_translator
-from packages.shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
-from packages.shared.database.exceptions import AccessDeniedError
+from shared.chunking.infrastructure.exception_translator import exception_translator
+from shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
+from shared.database.exceptions import AccessDeniedError
 
 # All exceptions now handled through the infrastructure layer
 # Old chunking_exceptions module deleted as we're PRE-RELEASE
-from packages.webui.api.v2.chunking_schemas import (
+from webui.api.v2.chunking_schemas import (
     ChunkingOperationRequest,
     ChunkingOperationResponse,
     ChunkingProgress,
@@ -43,19 +43,19 @@ from packages.webui.api.v2.chunking_schemas import (
     StrategyMetrics,
     StrategyRecommendation,
 )
-from packages.webui.auth import get_current_user
-from packages.webui.config.rate_limits import RateLimitConfig
-from packages.webui.dependencies import get_chunking_orchestrator_dependency, get_collection_for_user_safe
-from packages.webui.rate_limiter import check_circuit_breaker, create_rate_limit_decorator, rate_limit_dependency
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.auth import get_current_user
+from webui.config.rate_limits import RateLimitConfig
+from webui.dependencies import get_chunking_orchestrator_dependency, get_collection_for_user_safe
+from webui.rate_limiter import check_circuit_breaker, create_rate_limit_decorator, rate_limit_dependency
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
 
 # ChunkingStrategyRegistry removed - all strategy logic now in service layer
-from packages.webui.services.factory import get_collection_service
+from webui.services.factory import get_collection_service
 
 if TYPE_CHECKING:
     from fastapi.responses import JSONResponse
 
-    from packages.webui.services.collection_service import CollectionService
+    from webui.services.collection_service import CollectionService
 
 ChunkingServiceLike = ChunkingOrchestrator
 
@@ -483,7 +483,7 @@ async def start_chunking_operation(
 
         # Dispatch background processing via Celery
         try:
-            from packages.webui.tasks import celery_app
+            from webui.tasks import celery_app
 
             celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
         except Exception as exc:  # pragma: no cover - defensive dispatch
@@ -568,7 +568,7 @@ async def update_chunking_strategy(
             )
 
             try:
-                from packages.webui.tasks import celery_app
+                from webui.tasks import celery_app
 
                 celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
             except Exception as exc:  # pragma: no cover

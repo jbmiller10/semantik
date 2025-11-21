@@ -55,7 +55,7 @@ uv run pytest tests/webui/services/test_search_service_reranking.py -v
 uv run pytest tests/integration/test_search_reranking_integration.py -v
 
 # Run with coverage
-uv run pytest tests/ -k "rerank" --cov=packages.webui --cov-report=html
+uv run pytest tests/ -k "rerank" --cov=webui --cov-report=html
 ```
 
 ### Frontend Tests

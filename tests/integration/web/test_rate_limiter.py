@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from httpx import AsyncClient
 from slowapi.errors import RateLimitExceeded
 
-from packages.webui.middleware.rate_limit import RateLimitMiddleware
+from webui.middleware.rate_limit import RateLimitMiddleware
 
 
 @pytest.fixture()
@@ -18,7 +18,7 @@ def rate_limited_app(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/11")
     monkeypatch.setenv("RATE_LIMIT_BYPASS_TOKEN", "bypass-token")
 
-    from packages.webui import rate_limiter
+    from webui import rate_limiter
 
     importlib.reload(rate_limiter)
 

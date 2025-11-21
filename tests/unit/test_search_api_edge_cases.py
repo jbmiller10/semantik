@@ -12,9 +12,9 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-import packages.vecpipe.search_api as search_api_module
-from packages.shared.contracts.search import BatchSearchRequest, SearchRequest
-from packages.vecpipe.search_api import (
+import vecpipe.search_api as search_api_module
+from shared.contracts.search import BatchSearchRequest, SearchRequest
+from vecpipe.search_api import (
     PointPayload,
     UpsertPoint,
     UpsertRequest,
@@ -30,7 +30,7 @@ from packages.vecpipe.search_api import (
 @pytest.fixture()
 def mock_settings() -> Generator[Any, None, None]:
     """Mock settings for testing."""
-    with patch("packages.vecpipe.search_api.settings") as mock:
+    with patch("vecpipe.search_api.settings") as mock:
         mock.QDRANT_HOST = "localhost"
         mock.QDRANT_PORT = 6333
         mock.DEFAULT_COLLECTION = "test_collection"
@@ -86,7 +86,7 @@ def mock_embedding_service() -> None:
 @pytest.fixture()
 def mock_hybrid_engine() -> Generator[Any, None, None]:
     """Mock hybrid search engine."""
-    with patch("packages.vecpipe.search_api.HybridSearchEngine") as mock_class:
+    with patch("vecpipe.search_api.HybridSearchEngine") as mock_class:
         engine = Mock()
         engine.extract_keywords = Mock(return_value=["test", "query"])
         engine.hybrid_search = Mock(
@@ -133,7 +133,7 @@ def test_client_for_search_api(
     app.dependency_overrides.clear()
 
     # Patch settings during test
-    with patch("packages.vecpipe.search_api.settings", mock_settings):
+    with patch("vecpipe.search_api.settings", mock_settings):
         # Create test client
         client = TestClient(app)
         yield client
@@ -157,10 +157,10 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             mock_get_reranker.return_value = "test-reranker"
 
@@ -236,10 +236,10 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             mock_get_reranker.return_value = "test-reranker"
 
@@ -280,10 +280,10 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             mock_get_reranker.return_value = "test-reranker"
 
@@ -338,8 +338,8 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = True
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.HybridSearchEngine") as mock_engine_class,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.HybridSearchEngine") as mock_engine_class,
         ):
             # Make hybrid engine initialization fail
             mock_engine_class.side_effect = Exception("Failed to initialize hybrid engine")
@@ -355,8 +355,8 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
         ):
             # Make embedding generation fail for second query
             mock_model_manager.generate_embedding_async.side_effect = [
@@ -380,11 +380,11 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
             patch("qdrant_client.QdrantClient"),
-            patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Make metadata fetch fail
             mock_get_metadata.side_effect = Exception("Metadata fetch failed")
@@ -407,7 +407,7 @@ class TestSearchAPIEdgeCases:
     @pytest.mark.asyncio()
     async def test_upsert_with_http_error_parsing(self, mock_qdrant_client) -> None:
         """Test upsert error parsing when response format is unexpected."""
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
+        with patch("vecpipe.search_api.qdrant_client", mock_qdrant_client):
             # Mock collection info first
             mock_get_response = Mock()
             mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
@@ -446,9 +446,9 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Mock collection info with missing/invalid structure
             mock_qdrant_client.get.return_value.json.return_value = {
@@ -480,9 +480,9 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {
@@ -533,10 +533,10 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker,
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             mock_get_reranker.return_value = "test-reranker"
 
@@ -583,9 +583,9 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {
@@ -629,9 +629,9 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {
@@ -716,9 +716,9 @@ class TestSearchAPIEdgeCases:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client),
-            patch("packages.vecpipe.search_api.model_manager", mock_model_manager),
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search_qdrant,
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
+            patch("vecpipe.search_api.model_manager", mock_model_manager),
+            patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Mock collection info
             mock_qdrant_client.get.return_value.json.return_value = {

@@ -8,10 +8,10 @@ and fallback mechanisms.
 import logging
 from typing import Any
 
-from packages.shared.chunking.domain.entities.chunk import Chunk as DomainChunk
-from packages.shared.chunking.domain.services.chunking_strategies import get_strategy
-from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError, DocumentTooLargeError
-from packages.shared.text_processing.base_chunker import ChunkResult
+from shared.chunking.domain.entities.chunk import Chunk as DomainChunk
+from shared.chunking.domain.services.chunking_strategies import get_strategy
+from shared.chunking.infrastructure.exceptions import ChunkingStrategyError, DocumentTooLargeError
+from shared.text_processing.base_chunker import ChunkResult
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class ChunkingProcessor:
 
         # Execute chunking
         # Create a ChunkConfig object for strategies that need it
-        from packages.shared.chunking.domain.value_objects import ChunkConfig
+        from shared.chunking.domain.value_objects import ChunkConfig
 
         chunk_config = ChunkConfig(
             strategy_name=factory_name,

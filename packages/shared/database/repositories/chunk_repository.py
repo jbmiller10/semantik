@@ -13,8 +13,8 @@ from typing import Any
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Chunk
-from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
+from shared.database.models import Chunk
+from shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
 
 logger = logging.getLogger(__name__)
 

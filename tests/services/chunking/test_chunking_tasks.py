@@ -1,4 +1,4 @@
-"""Task-level tests for :mod:`packages.webui.chunking_tasks`."""
+"""Task-level tests for :mod:`webui.chunking_tasks`."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from packages.webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingTimeoutError
-from packages.webui.chunking_tasks import ChunkingTask, _execute_chunking_task
-from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
+from webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingTimeoutError
+from webui.chunking_tasks import ChunkingTask, _execute_chunking_task
+from webui.services.chunking.operation_manager import ChunkingOperationManager
 
 
 class _StubClassifier:
@@ -51,7 +51,7 @@ def test_process_chunking_operation_invokes_manager(monkeypatch: pytest.MonkeyPa
         return {"status": "success"}
 
     monkeypatch.setattr(
-        "packages.webui.chunking_tasks._process_chunking_operation_async",
+        "webui.chunking_tasks._process_chunking_operation_async",
         fake_async,
     )
 
@@ -172,7 +172,7 @@ def test_circuit_breaker_transitions(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"status": "ok"}
 
     monkeypatch.setattr(
-        "packages.webui.chunking_tasks._process_chunking_operation_async",
+        "webui.chunking_tasks._process_chunking_operation_async",
         fake_async,
     )
 

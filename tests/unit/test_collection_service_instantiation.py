@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.webui.services.collection_service import CollectionService
-from packages.webui.services.factory import create_collection_service
+from webui.services.collection_service import CollectionService
+from webui.services.factory import create_collection_service
 
 
 class TestCollectionServiceInstantiation:
@@ -50,7 +50,7 @@ class TestCollectionServiceInstantiation:
         # Mock database session
         db_session = AsyncMock()
 
-        with patch("packages.webui.services.factory.qdrant_connection_manager.get_client", return_value=MagicMock()):
+        with patch("webui.services.factory.qdrant_connection_manager.get_client", return_value=MagicMock()):
             service = create_collection_service(db_session)
 
         # Verify service was created
@@ -72,7 +72,7 @@ class TestCollectionServiceInstantiation:
         mock_qdrant.get_collections.return_value = mock_collections_response
         mock_qdrant.delete_collection = MagicMock()
 
-        with patch("packages.webui.services.factory.qdrant_connection_manager.get_client", return_value=mock_qdrant):
+        with patch("webui.services.factory.qdrant_connection_manager.get_client", return_value=mock_qdrant):
             service = create_collection_service(db_session)
 
             # Mock repository methods

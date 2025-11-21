@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from packages.webui.tasks import monitor_partition_health, refresh_collection_chunking_stats
+from webui.tasks import monitor_partition_health, refresh_collection_chunking_stats
 
 
 class TestChunkingCeleryTasks:
     """Test cases for chunking-related Celery tasks."""
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.tasks.logger")
     def test_refresh_collection_chunking_stats_success(self, mock_logger, mock_session_local) -> None:
         """Test successful refresh of collection chunking stats."""
         # Mock the async context manager
@@ -40,7 +40,7 @@ class TestChunkingCeleryTasks:
         mock_logger.info.assert_any_call("Starting refresh of collection_chunking_stats materialized view")
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.tasks.logger")
     def test_refresh_collection_chunking_stats_failure(self, mock_logger, mock_session_local) -> None:
         """Test failed refresh of collection chunking stats."""
         # Mock the async context manager to raise an error
@@ -60,8 +60,8 @@ class TestChunkingCeleryTasks:
         assert error_msg in error_log
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.services.partition_monitoring_service.PartitionMonitoringService")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.services.partition_monitoring_service.PartitionMonitoringService")
+    @patch("webui.tasks.logger")
     def test_monitor_partition_health_success_no_alerts(
         self, mock_logger, mock_service_class, mock_session_local
     ) -> None:
@@ -111,8 +111,8 @@ class TestChunkingCeleryTasks:
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.services.partition_monitoring_service.PartitionMonitoringService")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.services.partition_monitoring_service.PartitionMonitoringService")
+    @patch("webui.tasks.logger")
     def test_monitor_partition_health_with_warnings(self, mock_logger, mock_service_class, mock_session_local) -> None:
         """Test partition health monitoring with warnings."""
         # Mock the monitoring service with warnings
@@ -166,8 +166,8 @@ class TestChunkingCeleryTasks:
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.services.partition_monitoring_service.PartitionMonitoringService")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.services.partition_monitoring_service.PartitionMonitoringService")
+    @patch("webui.tasks.logger")
     def test_monitor_partition_health_with_errors(self, mock_logger, mock_service_class, mock_session_local) -> None:
         """Test partition health monitoring with critical errors."""
         # Mock the monitoring service with errors
@@ -226,8 +226,8 @@ class TestChunkingCeleryTasks:
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.services.partition_monitoring_service.PartitionMonitoringService")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.services.partition_monitoring_service.PartitionMonitoringService")
+    @patch("webui.tasks.logger")
     def test_monitor_partition_health_service_failure(
         self, mock_logger, mock_service_class, mock_session_local
     ) -> None:
@@ -270,7 +270,7 @@ class TestChunkingCeleryTasks:
         mock_logger.info.assert_any_call("Starting partition health monitoring")
 
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.tasks.logger")
     def test_monitor_partition_health_exception(self, mock_logger, mock_session_local) -> None:
         """Test partition health monitoring with unexpected exception."""
         error_msg = "Unexpected error occurred"

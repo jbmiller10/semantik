@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`packages.webui.services.chunking.operation_manager`."""
+"""Unit tests for :mod:`webui.services.chunking.operation_manager`."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from packages.webui.api.chunking_exceptions import (
+from webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingResourceLimitError,
     ChunkingTimeoutError,
 )
-from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
+from webui.services.chunking.operation_manager import ChunkingOperationManager
 
 
 class _StubClassifier:

@@ -9,9 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
 
-from packages.shared.database import get_db
-from packages.webui.dependencies import get_auth_repository, get_user_repository
-from packages.webui.main import app
+from shared.database import get_db
+from webui.dependencies import get_auth_repository, get_user_repository
+from webui.main import app
 
 # Create pwd_context locally to avoid imports from shared.database
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -111,12 +111,12 @@ def mock_repositories() -> tuple[MagicMock, MagicMock, dict[str, dict]]:
 def client(mock_repositories) -> Generator[TestClient, None, None]:
     """Create a test client with mocked repositories."""
     # Mock the database connection manager to prevent real DB connections
-    with patch("packages.webui.main.pg_connection_manager") as mock_pg_manager:
+    with patch("webui.main.pg_connection_manager") as mock_pg_manager:
         mock_pg_manager.initialize = AsyncMock()
         mock_pg_manager.close = AsyncMock()
 
         # Mock the WebSocket manager as well
-        with patch("packages.webui.main.ws_manager") as mock_ws_manager:
+        with patch("webui.main.ws_manager") as mock_ws_manager:
             mock_ws_manager.startup = AsyncMock()
             mock_ws_manager.shutdown = AsyncMock()
 
@@ -284,7 +284,7 @@ def test_user_login_failure(client) -> None:
 def test_get_me_protected(client, monkeypatch, mock_repositories) -> None:  # noqa: ARG001
     """Test that /me endpoint requires authentication."""
     # Test without token - should fail when auth is enabled
-    monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", False)
+    monkeypatch.setattr("webui.auth.settings.DISABLE_AUTH", False)
     response = client.get("/api/auth/me")
     assert response.status_code == 401
     assert "not authenticated" in response.json()["detail"].lower()
@@ -296,7 +296,7 @@ def test_get_me_protected(client, monkeypatch, mock_repositories) -> None:  # no
 
     # Register and login to get valid token
     # Re-enable DISABLE_AUTH for registration/login to work with mocks
-    monkeypatch.setattr("packages.webui.auth.settings.DISABLE_AUTH", True)
+    monkeypatch.setattr("webui.auth.settings.DISABLE_AUTH", True)
 
     registration_data = {
         "username": "protecteduser",

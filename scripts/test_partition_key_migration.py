@@ -18,8 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from packages.shared.config import Settings
-from packages.shared.database.partition_utils import PartitionImplementationDetector
+from shared.config import Settings
+from shared.database.partition_utils import PartitionImplementationDetector
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

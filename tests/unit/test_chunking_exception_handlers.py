@@ -12,12 +12,12 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from packages.webui.api.chunking_exception_handlers import (
+from webui.api.chunking_exception_handlers import (
     _create_error_response,
     _sanitize_error_detail,
     register_chunking_exception_handlers,
 )
-from packages.webui.api.chunking_exceptions import (
+from webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
@@ -29,7 +29,7 @@ from packages.webui.api.chunking_exceptions import (
     ChunkingValidationError,
     ResourceType,
 )
-from packages.webui.middleware.correlation import CorrelationMiddleware
+from webui.middleware.correlation import CorrelationMiddleware
 
 
 @pytest.fixture()
@@ -306,7 +306,7 @@ class TestExceptionHandlers:
 class TestErrorResponseCreation:
     """Test error response creation logic."""
 
-    @patch("packages.webui.api.chunking_exception_handlers.logger")
+    @patch("webui.api.chunking_exception_handlers.logger")
     def test_create_error_response_logging(self, mock_logger: MagicMock) -> None:
         """Test error response creation logs appropriately."""
         request = MagicMock(spec=Request)

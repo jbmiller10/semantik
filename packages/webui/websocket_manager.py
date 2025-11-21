@@ -13,7 +13,7 @@ import redis.asyncio as aioredis
 import redis.asyncio as redis
 from fastapi import WebSocket
 
-from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
+from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class RedisStreamWebSocketManager:
                     logger.info(f"Attempting to connect to Redis (attempt {attempt + 1}/{max_retries})")
 
                     # Always use from_url with retries; tests patch this call
-                    from packages.shared.config import settings as _settings
+                    from shared.config import settings as _settings
 
                     redis_url = getattr(_settings, "REDIS_URL", "redis://localhost:6379/0")
                     redis_client = await redis.from_url(redis_url, decode_responses=True)
@@ -237,10 +237,14 @@ class RedisStreamWebSocketManager:
                 operation = await self._get_operation_func(operation_id)
             else:
                 # Use default implementation
-                from packages.shared.database.database import AsyncSessionLocal
-                from packages.shared.database.repositories.operation_repository import OperationRepository
+                from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
+                from shared.database.repositories.operation_repository import OperationRepository
 
-                async with AsyncSessionLocal() as session:  # type: ignore[misc]
+                session_factory = AsyncSessionLocal
+                if session_factory is None:
+                    session_factory = await ensure_async_sessionmaker()
+
+                async with session_factory() as session:
                     operation_repo = OperationRepository(session)
                     operation = await operation_repo.get_by_uuid(operation_id)
 

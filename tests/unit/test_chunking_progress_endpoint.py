@@ -10,9 +10,9 @@ from fastapi.testclient import TestClient
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-from packages.webui.api.v2.chunking import get_chunking_orchestrator_dependency
-from packages.webui.auth import get_current_user
-from packages.webui.main import app
+from webui.api.v2.chunking import get_chunking_orchestrator_dependency
+from webui.auth import get_current_user
+from webui.main import app
 
 
 class _FakeProgressService:

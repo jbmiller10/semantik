@@ -18,7 +18,7 @@ import json
 
 import numpy as np
 
-import packages.webui.tasks.projection as projection_module
+import webui.tasks.projection as projection_module
 
 
 class _DummySession:
@@ -436,7 +436,7 @@ def test_compute_projection_uses_overflow_category_bucket(monkeypatch: pytest.Mo
     legend_by_index = {entry["index"]: entry for entry in legend}
 
     # Every non-overflow index present in cat.u8.bin must have a legend entry.
-    from packages.webui.tasks.projection import OVERFLOW_CATEGORY_INDEX, OVERFLOW_LEGEND_LABEL
+    from webui.tasks.projection import OVERFLOW_CATEGORY_INDEX, OVERFLOW_LEGEND_LABEL
 
     for idx in {int(v) for v in cat_values if int(v) < OVERFLOW_CATEGORY_INDEX}:
         assert idx in legend_by_index

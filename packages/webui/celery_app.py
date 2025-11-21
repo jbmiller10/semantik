@@ -8,6 +8,7 @@ from celery import Celery
 from celery.signals import worker_process_init
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.config.runtime import ensure_webui_directories, require_jwt_secret
 from shared.database.postgres_database import pg_connection_manager
 
 # Configure logging
@@ -97,6 +98,8 @@ def _build_testing_overrides() -> dict[str, Any]:
 def _create_celery_app() -> Celery:
     """Instantiate and configure the Celery app."""
     try:
+        ensure_webui_directories(shared_settings)
+        require_jwt_secret(shared_settings)
         ensure_internal_api_key(shared_settings)
     except RuntimeError as exc:
         logger.error("Failed to initialise internal API key for Celery: %s", exc)

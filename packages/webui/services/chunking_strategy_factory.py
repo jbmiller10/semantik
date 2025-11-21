@@ -7,10 +7,10 @@ removing the direct dependency and logic from routers.
 
 from typing import Any
 
-from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
-from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
-from packages.webui.services.chunking.strategy_registry import (
+from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
+from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
+from webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
+from webui.services.chunking.strategy_registry import (
     get_api_to_internal_map,
     get_internal_to_primary_api_map,
     get_strategy_metadata,

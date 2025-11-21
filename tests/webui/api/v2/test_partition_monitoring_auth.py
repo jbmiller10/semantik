@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from packages.shared.config import settings
-from packages.webui.auth import get_current_user
-from packages.webui.main import app
+from shared.config import settings
+from webui.auth import get_current_user
+from webui.main import app
 
 if TYPE_CHECKING:  # pragma: no cover
     from httpx import AsyncClient
@@ -59,7 +59,7 @@ async def test_partition_health_superuser_success(
     app.dependency_overrides[get_current_user] = override_superuser
 
     try:
-        with patch("packages.webui.api.v2.partition_monitoring.PartitionMonitoringService") as mock_service_cls:
+        with patch("webui.api.v2.partition_monitoring.PartitionMonitoringService") as mock_service_cls:
             mock_instance = mock_service_cls.return_value
             mock_instance.check_partition_health = AsyncMock(return_value=_stub_monitoring_result())
 
@@ -119,7 +119,7 @@ async def test_partition_health_internal_api_key_allows_access(
 def monitoring_service_stub():
     """Ensure service calls are stubbed to avoid DB dependencies."""
 
-    with patch("packages.webui.api.v2.partition_monitoring.PartitionMonitoringService") as mock_service_cls:
+    with patch("webui.api.v2.partition_monitoring.PartitionMonitoringService") as mock_service_cls:
         mock_instance = mock_service_cls.return_value
         mock_instance.check_partition_health = AsyncMock(return_value=_stub_monitoring_result())
         yield mock_instance

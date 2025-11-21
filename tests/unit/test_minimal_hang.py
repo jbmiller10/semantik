@@ -4,7 +4,7 @@
 
 def test_hierarchical_chunker_malicious():
     """Test the malicious input handling."""
-    from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+    from shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
 
     chunker = HierarchicalChunker()
 

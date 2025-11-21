@@ -10,9 +10,9 @@ from shared.database.repositories.operation_repository import OperationRepositor
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database import get_db
-from packages.shared.managers import QdrantManager
-from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
+from shared.database import get_db
+from shared.managers import QdrantManager
+from webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 from .chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
 from .chunking.container import get_redis_manager as container_get_redis_manager

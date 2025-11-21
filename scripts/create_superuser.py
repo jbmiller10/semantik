@@ -19,8 +19,8 @@ else:
 
 from sqlalchemy import select
 
-from packages.shared.database import get_db, pwd_context
-from packages.shared.database.models import User
+from shared.database import get_db, pwd_context
+from shared.database.models import User
 
 
 async def create_superuser(username: str, email: str, password: str) -> bool:

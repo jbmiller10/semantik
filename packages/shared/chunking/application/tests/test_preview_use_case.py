@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from packages.shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
-from packages.shared.chunking.application.dto.responses import PreviewResponse
-from packages.shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
+from shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
+from shared.chunking.application.dto.responses import PreviewResponse
+from shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
 
 
 @pytest.mark.asyncio()

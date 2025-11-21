@@ -7,15 +7,15 @@ from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from packages.shared.database.exceptions import (
+from shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
 )
-from packages.shared.database.models import CollectionStatus, OperationType
-from packages.shared.managers import QdrantManager
-from packages.webui.services.collection_service import CollectionService
+from shared.database.models import CollectionStatus, OperationType
+from shared.managers import QdrantManager
+from webui.services.collection_service import CollectionService
 
 # Fixtures are now imported from conftest.py
 
@@ -92,7 +92,7 @@ class TestCreateCollection:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
             collection_dict, operation_dict = await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -174,7 +174,7 @@ class TestCreateCollection:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(user_id=1, name="Test Collection")
 
         # Verify default values were used
@@ -240,7 +240,7 @@ class TestCreateCollection:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -288,7 +288,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -383,8 +383,8 @@ class TestAddSource:
         mock_operation_repo.create.return_value = mock_operation
 
         with (
-            patch("packages.webui.services.collection_service.asyncio.sleep", new=AsyncMock()) as mock_sleep,
-            patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task,
+            patch("webui.services.collection_service.asyncio.sleep", new=AsyncMock()) as mock_sleep,
+            patch("webui.celery_app.celery_app.send_task") as mock_send_task,
         ):
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
@@ -442,7 +442,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
             )
@@ -464,7 +464,7 @@ class TestAddSource:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
             )
@@ -490,7 +490,7 @@ class TestReindexCollection:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.reindex_collection(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
@@ -549,7 +549,7 @@ class TestReindexCollection:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.reindex_collection(collection_id=str(mock_collection.uuid), user_id=1)
 
         # Verify new_config is same as previous_config
@@ -755,7 +755,7 @@ class TestRemoveSource:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task:
+        with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/remove"
             )
@@ -810,7 +810,7 @@ class TestRemoveSource:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.remove_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/remove"
             )
@@ -1242,7 +1242,7 @@ class TestCollectionServiceEdgeCases:
         mock_collection_repo.create.return_value = mock_collection
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.create_collection(user_id=1, name="Test Collection", config=None)
 
         # Verify defaults were used
@@ -1269,7 +1269,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source", source_config=None
             )
@@ -1296,7 +1296,7 @@ class TestCollectionServiceEdgeCases:
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
-        with patch("packages.webui.celery_app.celery_app.send_task"):
+        with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path1"
             )
@@ -1334,7 +1334,7 @@ class TestCollectionServiceEdgeCases:
 
         task_ids = []
         with (
-            patch("packages.webui.celery_app.celery_app.send_task") as mock_send_task,
+            patch("webui.celery_app.celery_app.send_task") as mock_send_task,
             patch(
                 "uuid.uuid4",
                 side_effect=[

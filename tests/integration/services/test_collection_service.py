@@ -11,9 +11,9 @@ from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedEr
 from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from sqlalchemy import select
 
-from packages.shared.database.exceptions import AccessDeniedError as PackageAccessDeniedError
-from packages.shared.database.exceptions import InvalidStateError as PackageInvalidStateError
-from packages.shared.database.models import (
+from shared.database.exceptions import AccessDeniedError as PackageAccessDeniedError
+from shared.database.exceptions import InvalidStateError as PackageInvalidStateError
+from shared.database.models import (
     Collection,
     CollectionStatus,
     Operation,
@@ -21,8 +21,8 @@ from packages.shared.database.models import (
     OperationType,
     User,
 )
-from packages.webui.services import collection_service as collection_service_module
-from packages.webui.services.factory import create_collection_service
+from webui.services import collection_service as collection_service_module
+from webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio()

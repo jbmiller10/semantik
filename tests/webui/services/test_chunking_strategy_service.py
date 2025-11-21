@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import ChunkingStrategy
-from packages.webui.services.chunking_strategy_service import ChunkingStrategyService
+from shared.database.models import ChunkingStrategy
+from webui.services.chunking_strategy_service import ChunkingStrategyService
 
 
 class TestChunkingStrategyService:

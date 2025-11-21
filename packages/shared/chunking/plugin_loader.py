@@ -22,8 +22,8 @@ import os
 from importlib import metadata
 from typing import Any
 
-from packages.webui.services.chunking.strategy_registry import register_strategy_definition
-from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from webui.services.chunking.strategy_registry import register_strategy_definition
+from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
 logger = logging.getLogger(__name__)
 
