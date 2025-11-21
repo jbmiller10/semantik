@@ -12,6 +12,7 @@ import pytest
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models import IntegerIndexParams
 from qdrant_client.models import CollectionInfo, Distance, PayloadIndexInfo, PayloadSchemaType
+
 from shared.managers.qdrant_manager import QdrantManager
 
 # mypy: ignore-errors

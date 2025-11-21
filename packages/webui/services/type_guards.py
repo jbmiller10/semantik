@@ -11,6 +11,7 @@ from typing import Any, TypeGuard
 
 import redis
 import redis.asyncio as aioredis
+
 from shared.utils.testing_utils import is_testing
 
 logger = logging.getLogger(__name__)

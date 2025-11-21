@@ -6,6 +6,7 @@ from typing import Any
 
 from celery import Celery
 from celery.signals import worker_process_init
+
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
 from shared.config.runtime import ensure_webui_directories, require_jwt_secret

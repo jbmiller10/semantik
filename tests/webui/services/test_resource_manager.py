@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from shared.managers import QdrantCollectionNotFoundError
 from webui.services.resource_manager import ResourceEstimate, ResourceManager
 

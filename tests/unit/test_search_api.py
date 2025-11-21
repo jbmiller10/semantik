@@ -9,10 +9,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
-import vecpipe.search_api as search_api_module
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from prometheus_client import Counter, Histogram
+
+import vecpipe.search_api as search_api_module
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.search_api import (
     PointPayload,

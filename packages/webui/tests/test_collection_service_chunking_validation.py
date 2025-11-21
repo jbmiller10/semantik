@@ -4,11 +4,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.database.models import Collection
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.services.collection_service import CollectionService
 
 

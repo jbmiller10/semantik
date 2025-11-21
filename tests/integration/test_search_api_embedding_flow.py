@@ -12,6 +12,7 @@ import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
+
 from vecpipe import model_manager, search_api
 from vecpipe.search_api import app
 

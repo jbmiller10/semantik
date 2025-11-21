@@ -7,6 +7,7 @@ Separated from integration tests to isolate functionality.
 """
 
 import pytest
+
 from shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
 
 

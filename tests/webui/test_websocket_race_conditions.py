@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+
 from webui.websocket_manager import RedisStreamWebSocketManager
 
 

@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI, Request
 from httpx import AsyncClient
 from slowapi.errors import RateLimitExceeded
+
 from webui.middleware.rate_limit import RateLimitMiddleware
 
 

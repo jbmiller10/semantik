@@ -6,6 +6,7 @@ import uuid
 from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 
 import pytest
+
 from shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,

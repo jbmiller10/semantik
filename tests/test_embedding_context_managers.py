@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 from numpy.typing import NDArray
+
 from shared.embedding.base import BaseEmbeddingService
 from shared.embedding.context import (
     ManagedEmbeddingService,

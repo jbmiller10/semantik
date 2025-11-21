@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import redis.asyncio as redis
+
 from shared.config import settings
 
 logger = logging.getLogger(__name__)

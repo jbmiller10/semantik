@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+
 from shared.database.factory import create_collection_repository
 from vecpipe.maintenance import QdrantMaintenanceService
 from webui.api.internal import router, verify_internal_api_key
