@@ -282,7 +282,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                                   key={index}
                                   className={`px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors ${index !== doc.chunks.length - 1 ? 'border-b border-gray-200' : ''
                                     }`}
-                                  onClick={() => {/* TODO: Open chunk detail/context view */ }}
+                                  onClick={() => handleViewDocument(chunk.collection_id, docId, chunk.chunk_id)}
                                 >
                                   <p className="text-sm text-gray-700 line-clamp-3">{chunk.content}</p>
                                   <div className="mt-2 flex items-center justify-between">

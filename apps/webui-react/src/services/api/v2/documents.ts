@@ -32,6 +32,22 @@ export const documentsV2Api = {
   /**
    * Get document metadata (if we add this endpoint in the future)
    */
-  get: (collectionUuid: string, documentUuid: string) => 
+  get: (collectionUuid: string, documentUuid: string) =>
     apiClient.get<DocumentResponse>(`/api/v2/collections/${collectionUuid}/documents/${documentUuid}`),
+
+  /**
+   * Get chunk by ID
+   * Returns chunk content and position data for highlighting
+   */
+  getChunk: async (collectionUuid: string, chunkId: string) => {
+    const response = await apiClient.get<{
+      id: string;
+      content: string;
+      start_offset: number | null;
+      end_offset: number | null;
+      chunk_index: number;
+      document_id: string;
+    }>(`/api/v2/collections/${collectionUuid}/chunks/${chunkId}`);
+    return response.data;
+  },
 };

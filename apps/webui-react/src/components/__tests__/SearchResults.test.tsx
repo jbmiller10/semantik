@@ -209,7 +209,7 @@ describe('SearchResults', () => {
     })
   })
 
-  it('handles chunk click for document viewing', async () => {
+  it('handles chunk row click to open document viewer', async () => {
     const user = userEvent.setup()
 
     mockSearchStore({ results: mockResults })
@@ -220,14 +220,38 @@ describe('SearchResults', () => {
     const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
     await user.click(firstDoc!)
 
-    // Click on view document button
-    const viewButtons = screen.getAllByText('View Document →')
-    await user.click(viewButtons[0])
+    // Click on the first chunk row directly
+    const firstChunkContent = screen.getByText('This is the first chunk of document 1')
+    const chunkRow = firstChunkContent.closest('.cursor-pointer')
+    await user.click(chunkRow!)
 
     expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
       collectionId: 'collection1',
       docId: 'doc1',
       chunkId: 'chunk1',
+    })
+  })
+
+  it('handles chunk row click for second chunk with correct chunk ID', async () => {
+    const user = userEvent.setup()
+
+    mockSearchStore({ results: mockResults })
+
+    render(<SearchResults />)
+
+    // Expand first document
+    const firstDoc = screen.getByText('document1.txt').closest('.cursor-pointer')
+    await user.click(firstDoc!)
+
+    // Click on the second chunk row
+    const secondChunkContent = screen.getByText('This is the second chunk of document 1')
+    const chunkRow = secondChunkContent.closest('.cursor-pointer')
+    await user.click(chunkRow!)
+
+    expect(mockSetShowDocumentViewer).toHaveBeenCalledWith({
+      collectionId: 'collection1',
+      docId: 'doc1',
+      chunkId: 'chunk2',
     })
   })
 
