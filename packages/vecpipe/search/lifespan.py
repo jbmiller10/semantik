@@ -22,17 +22,27 @@ logger = logging.getLogger(__name__)
 
 def _resolve_start_metrics_server() -> Any:
     """Return a metrics starter function, honoring any patch on search_api."""
+    # 1) If this module's symbol is patched (common in unit tests), use it.
+    patched_local = globals().get("start_metrics_server")
+    if patched_local and patched_local is not _base_start_metrics_server:
+        return patched_local
 
+    # 2) If the public entrypoint module has been patched, honor that.
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "start_metrics_server", None)
-        if patched:
+        if patched and patched is not _base_start_metrics_server:
             return patched
     except Exception:
         pass
 
+    # 3) Fall back to the base implementation
     return _base_start_metrics_server
+
+
+# Expose a patchable reference for unit tests that mock vecpipe.search.lifespan.start_metrics_server
+start_metrics_server = _base_start_metrics_server
 
 
 @asynccontextmanager
