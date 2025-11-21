@@ -88,13 +88,14 @@ class WebuiConfig(BaseConfig):
                         continue
                     roots.append(Path(entry).expanduser().resolve())
 
-        default_mounts: list[Path] = []
-        default_override = getattr(self, "_default_document_mounts", None)
-        candidates = default_override if default_override is not None else (Path("/mnt/docs"),)
-        for candidate in candidates:
-            if isinstance(candidate, Path) and candidate.exists():
-                default_mounts.append(candidate.resolve())
-        roots.extend(default_mounts)
+        if not roots:
+            default_mounts: list[Path] = []
+            default_override = getattr(self, "_default_document_mounts", None)
+            candidates = default_override if default_override is not None else (Path("/mnt/docs"),)
+            for candidate in candidates:
+                if isinstance(candidate, Path) and candidate.exists():
+                    default_mounts.append(candidate.resolve())
+            roots.extend(default_mounts)
 
         # Always allow the loaded_dir by default for compatibility
         roots.append(self.loaded_dir.resolve())
