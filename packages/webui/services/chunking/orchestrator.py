@@ -15,6 +15,9 @@ from datetime import UTC, datetime, timedelta
 from statistics import fmean
 from typing import Any
 
+from sqlalchemy import and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
 from shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
 from shared.database.exceptions import AccessDeniedError
@@ -22,8 +25,6 @@ from shared.database.models import OperationStatus
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
 from webui.services.dtos import (
     ServiceChunkingStats,

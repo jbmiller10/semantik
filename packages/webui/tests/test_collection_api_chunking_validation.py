@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, status
 from httpx import AsyncClient
+
 from shared.database.models import Collection
 
 

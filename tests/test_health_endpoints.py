@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
 from vecpipe.search_api import app
 
 

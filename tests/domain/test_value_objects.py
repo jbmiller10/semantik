@@ -5,6 +5,7 @@
 from datetime import UTC, datetime
 
 import pytest
+
 from shared.chunking.domain.exceptions import InvalidConfigurationError
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata

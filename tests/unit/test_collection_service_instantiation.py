@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from webui.services.collection_service import CollectionService
 from webui.services.factory import create_collection_service
 

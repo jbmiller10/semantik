@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+
 from webui.api.chunking_exception_handlers import (
     _create_error_response,
     _sanitize_error_detail,

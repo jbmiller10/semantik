@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig

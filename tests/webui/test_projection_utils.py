@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+
 import webui.tasks.projection as projection_module
 
 

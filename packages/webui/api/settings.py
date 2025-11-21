@@ -8,6 +8,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from qdrant_client import AsyncQdrantClient
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.config import settings
 from shared.database import get_db
 from shared.database.models import (
@@ -20,9 +24,6 @@ from shared.database.models import (
     Operation,
     OperationMetrics,
 )
-from sqlalchemy import delete, func, select
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)

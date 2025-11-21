@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from webui.middleware.correlation import (
     CorrelationIdFilter,
     CorrelationMiddleware,

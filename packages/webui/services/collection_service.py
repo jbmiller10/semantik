@@ -6,6 +6,8 @@ import re
 import uuid
 from typing import Any, cast
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from shared.database.exceptions import (
     AccessDeniedError,
@@ -18,9 +20,8 @@ from shared.database.repositories.collection_repository import CollectionReposit
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.managers import QdrantManager
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.celery_app import celery_app
-from webui.qdrant import get_qdrant_manager, qdrant_manager
+from webui.qdrant import get_qdrant_manager
 from webui.services.chunking_config_builder import ChunkingConfigBuilder
 from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 

@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
-import vecpipe.search_api as search_api_module
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
+import vecpipe.search_api as search_api_module
 from shared.contracts.search import BatchSearchRequest, SearchRequest
 from vecpipe.search_api import (
     PointPayload,

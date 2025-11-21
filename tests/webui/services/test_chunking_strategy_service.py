@@ -4,8 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import uuid4
 
 import pytest
-from shared.database.models import ChunkingStrategy
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.database.models import ChunkingStrategy
 from webui.services.chunking_strategy_service import ChunkingStrategyService
 
 

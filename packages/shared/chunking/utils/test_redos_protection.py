@@ -4,6 +4,7 @@
 import time
 
 import pytest
+
 from shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.utils.input_validator import ChunkingInputValidator

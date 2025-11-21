@@ -36,8 +36,9 @@ def test_staging_create_list_delete(mock_datetime) -> None:
     # list + cleanup behavior
     assert manager.list_collections() == [expected_staging]
 
-    with patch.object(manager, "_is_staging_collection_old", return_value=True), patch(
-        "packages.shared.managers.qdrant_manager.time.sleep"
+    with (
+        patch.object(manager, "_is_staging_collection_old", return_value=True),
+        patch("packages.shared.managers.qdrant_manager.time.sleep"),
     ):
         deleted = manager.cleanup_orphaned_collections(active_collections=[], dry_run=False)
 

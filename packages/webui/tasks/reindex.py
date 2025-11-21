@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from qdrant_client.models import PointStruct
+
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 if TYPE_CHECKING:
@@ -69,10 +70,11 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
 
     # Replace placeholder executes with real queries while preserving
     # the number/order of db.execute(...) calls that tests expect.
+    from sqlalchemy import or_, select
+
     from shared.database.models import Collection as _Collection
     from shared.database.models import Document as _Document
     from shared.database.models import Operation as _Operation
-    from sqlalchemy import or_, select
 
     # Fetch the operation using whichever identifier the caller supplied
     op_lookup = select(_Operation)

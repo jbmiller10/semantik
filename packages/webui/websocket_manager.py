@@ -12,6 +12,7 @@ from typing import Any
 import redis.asyncio as aioredis
 import redis.asyncio as redis
 from fastapi import WebSocket
+
 from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 
 logger = logging.getLogger(__name__)

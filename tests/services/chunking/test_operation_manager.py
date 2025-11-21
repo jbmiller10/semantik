@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
 from webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,

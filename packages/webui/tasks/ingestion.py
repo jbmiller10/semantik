@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
+
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -446,10 +447,11 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     )
 
     # Replace placeholder executes with real queries
+    from sqlalchemy import select
+
     from shared.database.models import Collection as _Collection
     from shared.database.models import Document as _Document
     from shared.database.models import Operation as _Operation
-    from sqlalchemy import select
 
     # Fetch the operation using whichever identifier the caller supplied
     op_lookup = select(_Operation)
@@ -593,6 +595,7 @@ async def _process_index_operation(
 ) -> dict[str, Any]:
     """Process INDEX operation - Initial collection creation with monitoring."""
     from qdrant_client.models import Distance, VectorParams
+
     from shared.database.collection_metadata import ensure_metadata_collection, store_collection_metadata
     from shared.embedding.models import get_model_config
     from shared.embedding.validation import get_model_dimension

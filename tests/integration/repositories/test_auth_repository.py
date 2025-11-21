@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from shared.database.exceptions import InvalidUserIdError
 from shared.database.models import RefreshToken
-from sqlalchemy import select
 from webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
 
 
