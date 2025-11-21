@@ -90,7 +90,7 @@ CELERY_RESULT_BACKEND=redis://redis:6379/0  # Celery result backend
 #### Authentication & Security
 ```bash
 # JWT Configuration
-JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: openssl rand -hex 32
+JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: uv run python scripts/generate_jwt_secret.py --write
 JWT_ALGORITHM=HS256                                 # JWT signing algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES=1440                    # Access token expiration (24 hours)
 
@@ -358,7 +358,7 @@ DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 1. **Generate Secure Keys**
    ```bash
    # JWT Secret
-   export JWT_SECRET_KEY=$(openssl rand -hex 32)
+   export JWT_SECRET_KEY=$(uv run python scripts/generate_jwt_secret.py)
    
    # Database Password
    export POSTGRES_PASSWORD=$(openssl rand -hex 32)
@@ -461,7 +461,7 @@ docker compose run --rm webui alembic upgrade head
    ```bash
    # Error: JWT_SECRET_KEY not configured
    # Solution: Generate and set secret
-   export JWT_SECRET_KEY=$(openssl rand -hex 32)
+   export JWT_SECRET_KEY=$(uv run python scripts/generate_jwt_secret.py)
    ```
 
 2. **Database Connection Failed**

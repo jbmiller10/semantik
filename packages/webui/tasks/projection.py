@@ -456,11 +456,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
     pg_manager = PostgresConnectionManager()
     await pg_manager.initialize()
 
-    if pg_manager.sessionmaker is None:
+    session_factory = getattr(pg_manager, "sessionmaker", None) or getattr(pg_manager, "_sessionmaker", None)
+    if session_factory is None:
         await pg_manager.close()
         raise RuntimeError("Failed to initialize projection session maker")
-
-    session_factory = pg_manager.sessionmaker
     session: Any | None = None
     session_guard: Callable[[], Any] | None = None
 
