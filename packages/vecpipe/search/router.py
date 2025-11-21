@@ -34,9 +34,11 @@ async def model_status() -> dict[str, Any]:
 async def root() -> dict[str, Any]:
     """Health check with collection info."""
     try:
+        cfg = service._get_settings()
+
         if search_state.qdrant_client is None:
             raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-        response = await search_state.qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
+        response = await search_state.qdrant_client.get(f"/collections/{cfg.DEFAULT_COLLECTION}")
         maybe_coro = response.raise_for_status()
         if inspect.isawaitable(maybe_coro):
             await maybe_coro
@@ -45,14 +47,14 @@ async def root() -> dict[str, Any]:
         health_info: dict[str, Any] = {
             "status": "healthy",
             "collection": {
-                "name": settings.DEFAULT_COLLECTION,
+                "name": cfg.DEFAULT_COLLECTION,
                 "points_count": info["points_count"],
                 "vector_size": info["config"]["params"]["vectors"]["size"] if "config" in info else None,
             },
-            "embedding_mode": "mock" if settings.USE_MOCK_EMBEDDINGS else "real",
+            "embedding_mode": "mock" if cfg.USE_MOCK_EMBEDDINGS else "real",
         }
 
-        if not settings.USE_MOCK_EMBEDDINGS and search_state.embedding_service:
+        if not cfg.USE_MOCK_EMBEDDINGS and search_state.embedding_service:
             model_info = search_state.embedding_service.get_model_info()
             health_info["embedding_service"] = {
                 "current_model": search_state.embedding_service.current_model_name,
@@ -149,10 +151,11 @@ async def keyword_search(
 @router.get("/collection/info")
 async def collection_info() -> dict[str, Any]:
     try:
+        cfg = service._get_settings()
         client = service._get_qdrant_client()
         if client is None:
             raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-        response = await client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
+        response = await client.get(f"/collections/{cfg.DEFAULT_COLLECTION}")
         maybe_coro = response.raise_for_status()
         if inspect.isawaitable(maybe_coro):
             await maybe_coro
