@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from shared.database.models import CollectionStatus, OperationType
 
 if TYPE_CHECKING:

@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 from qdrant_client.models import PointStruct
-
 from vecpipe.ingest_qdrant import move_file, process_parquet_file
 
 

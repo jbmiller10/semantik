@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import status
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
 from shared.database.models import Collection, CollectionStatus
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from webui.main import app
 from webui.main import app as main_app
 from webui.services.factory import get_collection_service

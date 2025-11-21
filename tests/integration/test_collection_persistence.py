@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from qdrant_client import QdrantClient
-
 from shared.database.repositories.collection_repository import CollectionRepository
 from webui.tasks import _process_index_operation
 

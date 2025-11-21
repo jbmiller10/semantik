@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
-
 from shared.database import get_db
 from webui.dependencies import get_auth_repository, get_user_repository
 from webui.main import app

@@ -12,7 +12,6 @@ import logging
 from typing import Any, cast
 
 from llama_index.core.embeddings import BaseEmbedding
-
 from shared.embedding.dense import embedding_service
 from shared.text_processing.exceptions import EmbeddingError, EmbeddingServiceNotInitializedError
 

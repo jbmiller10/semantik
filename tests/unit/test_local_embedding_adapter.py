@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
-
 from shared.text_processing.embedding_adapter import LocalEmbeddingAdapter
 from shared.text_processing.exceptions import EmbeddingError, EmbeddingServiceNotInitializedError
 

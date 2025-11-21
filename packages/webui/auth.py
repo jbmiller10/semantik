@@ -13,7 +13,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, EmailStr, field_validator
-
 from shared.config import settings
 from shared.database import create_auth_repository, create_user_repository, get_db_session, pwd_context
 

@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from shared.text_processing.chunking import TokenChunker
 from shared.text_processing.extraction import extract_and_serialize
 

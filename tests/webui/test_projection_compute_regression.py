@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 import json
 
 import numpy as np
-
 import webui.tasks.projection as projection_module
 
 

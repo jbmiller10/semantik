@@ -20,11 +20,10 @@ from typing import Any
 
 from fastapi import HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
+from shared.database import pg_connection_manager
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-
-from shared.database import pg_connection_manager
 from webui.config.rate_limits import CircuitBreakerConfig, RateLimitConfig
 
 logger = logging.getLogger(__name__)

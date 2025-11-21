@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 import redis.asyncio as redis
 from fastapi import WebSocket
-
 from webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
 from webui.websocket_manager import RedisStreamWebSocketManager
 

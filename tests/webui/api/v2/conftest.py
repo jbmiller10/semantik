@@ -7,7 +7,6 @@ import pytest
 import pytest_asyncio
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
-
 from shared.database import get_db
 from webui.auth import create_access_token, get_current_user
 from webui.dependencies import get_collection_for_user as original_get_collection_for_user

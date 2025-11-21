@@ -9,8 +9,6 @@ from typing import Annotated, Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.config import settings
 from shared.database import (
     ApiKeyRepository,
@@ -31,6 +29,7 @@ from shared.database.models import Collection
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.auth import get_current_user
 from webui.auth import security as http_bearer_security
 

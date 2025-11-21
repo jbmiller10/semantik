@@ -50,14 +50,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-# Ensure both ``shared.database.models`` and
-# ``shared.database.models`` resolve to the same module instance.
-# This prevents SQLAlchemy from creating duplicate model classes for the
-# same tables when the codebase imports models through either prefix.
-if __name__ == "shared.database.models":
+# Ensure both ``shared.database.models`` and ``packages.shared.database.models``
+# resolve to the same module instance. This prevents SQLAlchemy from creating
+# duplicate model classes for the same tables when mixed import prefixes are
+# used across the codebase or in downstream scripts.
+if __name__ in {"shared.database.models", "packages.shared.database.models"}:
     sys.modules.setdefault("shared.database.models", sys.modules[__name__])
-elif __name__ == "shared.database.models":
-    sys.modules.setdefault("shared.database.models", sys.modules[__name__])
+    sys.modules.setdefault("packages.shared.database.models", sys.modules[__name__])
 
 
 # Create the declarative base

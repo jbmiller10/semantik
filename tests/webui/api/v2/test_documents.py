@@ -8,11 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.config import settings
 from shared.database.exceptions import EntityNotFoundError
 from shared.database.models import Collection, Document, DocumentStatus
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.api.v2.documents import get_document_content
 
 

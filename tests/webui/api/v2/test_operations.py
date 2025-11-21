@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
-
 from shared.database.models import OperationStatus
 from webui.celery_app import celery_app
 

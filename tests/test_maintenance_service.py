@@ -3,7 +3,6 @@
 from unittest.mock import Mock, patch
 
 import pytest
-
 from vecpipe.maintenance import QdrantMaintenanceService
 
 # Mock settings before importing maintenance module

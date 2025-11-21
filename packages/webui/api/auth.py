@@ -19,7 +19,6 @@ from webui.auth import (
     get_password_hash,
     pwd_context,
 )
-
 from webui.dependencies import get_auth_repository, get_user_repository
 
 logger = logging.getLogger(__name__)

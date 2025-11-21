@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from shared.config import settings
 from webui.auth import get_current_user
 from webui.main import app

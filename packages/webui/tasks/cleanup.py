@@ -13,8 +13,8 @@ from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
-from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
+from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 
 if TYPE_CHECKING:
     from types import ModuleType

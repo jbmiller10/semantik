@@ -12,7 +12,6 @@ This module tests the security features implemented in HierarchicalChunker:
 import logging
 
 import pytest
-
 from shared.text_processing.strategies.hierarchical_chunker import (
     MAX_CHUNK_SIZE,
     MAX_HIERARCHY_DEPTH,

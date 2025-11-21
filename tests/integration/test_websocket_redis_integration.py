@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
-
 from webui.tasks import CeleryTaskWithOperationUpdates
 from webui.websocket_manager import RedisStreamWebSocketManager
 

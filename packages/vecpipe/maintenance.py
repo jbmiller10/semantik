@@ -7,6 +7,7 @@ Removes vectors for deleted documents from all collections
 import argparse
 import json
 import logging
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +16,6 @@ from typing import Any
 import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
-
 from shared.config import settings
 
 from .document_tracker import DocumentChangeTracker

@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-
 from shared.contracts.errors import (
     ErrorDetail,
     ErrorResponse,

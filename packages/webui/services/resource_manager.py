@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import psutil
-
 from shared.managers import QdrantCollectionNotFoundError
 
 logger = logging.getLogger(__name__)

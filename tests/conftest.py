@@ -18,6 +18,7 @@ os.environ["ENV"] = "test"
 os.environ["DISABLE_RATE_LIMITING"] = "true"
 os.environ["REDIS_URL"] = "redis://localhost:6379"
 os.environ.setdefault("PROMETHEUS_DISABLE_SERVER", "true")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only")
 
 import importlib  # noqa: E402
 
@@ -411,7 +412,6 @@ def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
     # Clear Prometheus metrics registry to avoid duplicate metric registration
     from prometheus_client import REGISTRY
-
     from shared.metrics.prometheus import registry
 
     # Clear all collectors from the custom registry

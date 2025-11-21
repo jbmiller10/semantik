@@ -13,7 +13,6 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
 from webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,

@@ -13,7 +13,7 @@ trap cleanup EXIT INT TERM
 
 # Start the backend services
 echo "Starting backend services..."
-uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload &
+PYTHONPATH=packages:${PYTHONPATH:-} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload &
 BACKEND_PID=$!
 
 # Wait for backend to be ready

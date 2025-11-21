@@ -1,6 +1,5 @@
 # shared/config/webui.py
 
-from functools import cached_property
 from pathlib import Path
 
 from pydantic import field_validator
@@ -62,7 +61,7 @@ class WebuiConfig(BaseConfig):
         """Return resolved document root if configured or overridden in tests."""
 
         if getattr(self, "_document_root", None) is not None:
-            return getattr(self, "_document_root")
+            return self._document_root
 
         if not self.DOCUMENT_ROOT:
             return None

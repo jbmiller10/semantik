@@ -10,11 +10,10 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.database.models import Chunk
 from shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
+from sqlalchemy import and_, delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

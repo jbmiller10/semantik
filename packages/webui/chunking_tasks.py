@@ -28,8 +28,6 @@ from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.chunking.plugin_loader import load_chunking_plugins
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
@@ -38,6 +36,7 @@ from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,

@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
-
 from shared.text_processing.chunking_factory import ChunkingFactory
 
 

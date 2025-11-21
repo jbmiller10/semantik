@@ -7,11 +7,10 @@ Handles validation of inputs, configurations, and permissions for chunking opera
 import logging
 from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.services.chunking.strategy_registry import list_api_strategy_ids
 
 logger = logging.getLogger(__name__)

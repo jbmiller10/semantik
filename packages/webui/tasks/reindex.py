@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from qdrant_client.models import PointStruct
-
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 if TYPE_CHECKING:

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import psutil
 import pytest
-
 from shared.database.models import OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.operation_repository import OperationRepository

@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
-
 from webui.api.schemas import DirectoryScanProgress
 from webui.services.directory_scan_service import MAX_FILE_SIZE, DirectoryScanService
 
