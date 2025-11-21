@@ -112,6 +112,11 @@ class WebuiConfig(BaseConfig):
 
         if self.document_root_path is not None:
             return True
+
+        override_roots = getattr(self, "_document_allowed_roots", None)
+        if override_roots:
+            return True
+
         if self.DOCUMENT_ALLOWED_ROOTS:
             return True
 
