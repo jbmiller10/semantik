@@ -12,7 +12,6 @@ import pytest
 from fastapi import HTTPException
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, ProjectionRunStatus
-
 from webui.services import projection_service as projection_module
 from webui.services.projection_service import (
     ProjectionService,

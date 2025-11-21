@@ -4,9 +4,8 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
-
 from shared.database.models import Collection, Operation
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio()

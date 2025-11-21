@@ -10,7 +10,6 @@ from typing import Any
 
 import torch
 from fastapi import APIRouter, Depends
-
 from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)

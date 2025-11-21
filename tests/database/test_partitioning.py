@@ -13,14 +13,13 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.chunking.infrastructure.repositories.partition_manager import (
     DistributionStats,
     PartitionHealth,
     PartitionManager,
 )
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # The db_session fixture from conftest.py in this directory will be automatically discovered by pytest
 

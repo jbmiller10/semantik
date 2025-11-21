@@ -20,4 +20,4 @@ echo "Access the interface at: http://localhost:8080"
 echo ""
 
 # Run the web UI
-uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080
+PYTHONPATH=packages:${PYTHONPATH:-} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080

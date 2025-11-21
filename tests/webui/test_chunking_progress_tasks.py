@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from webui import chunking_tasks
 from webui.services.progress_manager import ProgressSendResult
 

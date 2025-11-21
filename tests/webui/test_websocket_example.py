@@ -6,8 +6,8 @@ from enum import Enum
 from unittest.mock import MagicMock
 
 import pytest
-
 from webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
+
 from tests.webui.test_websocket_helpers import (
     BASE_DELAY,
     WebSocketTestHarness,

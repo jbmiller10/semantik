@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
 from shared.chunking.application.dto.requests import ChunkingStrategy, ProcessDocumentRequest
 from shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
 from shared.chunking.application.use_cases.process_document import ProcessDocumentUseCase

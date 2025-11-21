@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
-
 from webui.api.v2.operations import operation_websocket
 
 

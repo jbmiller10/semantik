@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from shared.text_processing.base_chunker import ChunkResult
 from shared.text_processing.strategies.hierarchical_chunker import (
     MAX_HIERARCHY_DEPTH,

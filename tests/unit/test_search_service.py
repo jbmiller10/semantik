@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
-
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
 from webui.services.search_service import SearchService

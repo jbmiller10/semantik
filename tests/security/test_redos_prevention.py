@@ -11,7 +11,6 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from shared.chunking.utils.input_validator import ChunkingInputValidator as InputValidator
 from shared.chunking.utils.safe_regex import SafeRegex
 from shared.utils.regex_safety import (

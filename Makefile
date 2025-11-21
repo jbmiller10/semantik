@@ -224,7 +224,7 @@ fix: format
 check: lint type-check test
 
 run:
-	uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload
+	PYTHONPATH=packages$${PYTHONPATH:+:$$PYTHONPATH} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload
 
 # Frontend commands
 frontend-install:
@@ -265,3 +265,5 @@ docker-dev-down:
 
 docker-dev-logs:
 	docker compose --profile backend logs -f
+# Ensure repository-local packages are importable without installation
+export PYTHONPATH := packages$(if $(PYTHONPATH),:$(PYTHONPATH),)

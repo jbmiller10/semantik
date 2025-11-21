@@ -15,12 +15,13 @@ from pathlib import Path
 if Path("/app").exists():
     sys.path.insert(0, "/app")
 else:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from sqlalchemy import select
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root))
+    sys.path.insert(0, str(root / "packages"))
 
 from shared.database import get_db, pwd_context
 from shared.database.models import User
+from sqlalchemy import select
 
 
 async def create_superuser(username: str, email: str, password: str) -> bool:

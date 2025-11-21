@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-
 from shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,

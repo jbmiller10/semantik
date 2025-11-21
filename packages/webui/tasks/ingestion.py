@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
+from shared.database import pg_connection_manager
+from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
     OperationTimer,
     QdrantOperationTimer,
@@ -27,7 +29,6 @@ from shared.metrics.collection_metrics import (
     collection_memory_usage_bytes,
     collections_total,
 )
-
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from . import reindex as reindex_tasks
@@ -119,7 +120,6 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of collection operation processing with enhanced monitoring."""
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
-    from shared.database.postgres_database import PostgresConnectionManager
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
@@ -425,11 +425,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     with contextlib.suppress(Exception):
                         await db.rollback()
     finally:
-        if close_pg_manager:
-            close_fn = getattr(pg_manager, "close", None)
-            if close_fn is not None:
-                with contextlib.suppress(Exception):
-                    await await_if_awaitable(close_fn())
+        pass
 
 
 async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
@@ -1137,7 +1133,6 @@ async def _process_remove_source_operation(
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process REMOVE_SOURCE operation - Remove documents from a source with monitoring."""
-    from shared.database.database import AsyncSessionLocal
     from shared.database.models import DocumentStatus
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
@@ -1332,7 +1327,6 @@ def _handle_task_failure(
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
     """Async implementation of failure handling."""
-    from shared.database.database import AsyncSessionLocal
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.operation_repository import OperationRepository

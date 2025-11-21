@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 import redis.asyncio as redis
-
 from webui.websocket.scalable_manager import ScalableWebSocketManager
 
 

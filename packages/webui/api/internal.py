@@ -10,7 +10,6 @@ from shared.database import get_db
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from webui.dependencies import get_collection_repository
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])

@@ -4,14 +4,13 @@ import logging
 
 import httpx
 from fastapi import Depends
+from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.database import get_db
 from shared.managers import QdrantManager
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
 
 from .chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator

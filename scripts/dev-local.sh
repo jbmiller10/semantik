@@ -55,4 +55,4 @@ echo -e "${YELLOW}WebUI will be available at: http://localhost:8080${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}"
 
 # Run with uv to ensure correct environment
-uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload
+PYTHONPATH=packages:${PYTHONPATH:-} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload

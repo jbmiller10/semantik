@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 
 import pytest
-
 from webui.services.chunking.cache import ChunkingCache
 
 

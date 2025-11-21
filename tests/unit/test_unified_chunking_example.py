@@ -7,7 +7,6 @@ to the new unified implementation.
 """
 
 import pytest
-
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.exceptions import InvalidConfigurationError
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig

@@ -7,9 +7,8 @@ from uuid import uuid4
 
 import pytest
 from shared.database.exceptions import InvalidUserIdError
-from sqlalchemy import select
-
 from shared.database.models import RefreshToken
+from sqlalchemy import select
 from webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
 
 

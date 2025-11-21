@@ -6,10 +6,9 @@ such as ensuring default data exists.
 
 import logging
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.chunking.plugin_loader import load_chunking_plugins
 from shared.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.services.chunking_strategy_service import ChunkingStrategyService
 
 logger = logging.getLogger(__name__)

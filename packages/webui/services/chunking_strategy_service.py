@@ -7,10 +7,9 @@ including creation, updates, and default strategy initialization.
 import logging
 from typing import Any
 
+from shared.database.models import ChunkingStrategy
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.database.models import ChunkingStrategy
 
 logger = logging.getLogger(__name__)
 

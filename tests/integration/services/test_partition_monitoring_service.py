@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import text
-
 from webui.services.partition_monitoring_service import (
     MonitoringResult,
     PartitionHealthStatus,

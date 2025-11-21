@@ -115,7 +115,6 @@ def build_chunking_rules() -> list[ClassificationRule]:
     """Construct the canonical rule list for chunking errors."""
 
     from celery.exceptions import SoftTimeLimitExceeded
-
     from webui.api.chunking_exceptions import (
         ChunkingDependencyError,
         ChunkingMemoryError,

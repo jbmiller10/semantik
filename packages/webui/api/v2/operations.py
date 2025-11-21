@@ -10,7 +10,6 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-
 from shared.database import get_db
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from shared.database.repositories.operation_repository import OperationRepository

@@ -8,9 +8,8 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.database.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from webui.dependencies import require_admin_or_internal_key
 from webui.services.partition_monitoring_service import PartitionMonitoringService
 

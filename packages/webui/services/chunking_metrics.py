@@ -8,7 +8,6 @@ strategy usage, and fallback scenarios.
 from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
-
 from shared.metrics.prometheus import registry
 
 

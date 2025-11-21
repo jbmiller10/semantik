@@ -1,7 +1,6 @@
 """Ensure the chunking plugin registry integrates with the orchestrator."""
 
 import pytest
-
 import webui.services.chunking.strategy_registry as strategy_registry
 from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy

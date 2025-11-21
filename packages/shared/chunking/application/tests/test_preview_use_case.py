@@ -7,7 +7,6 @@ Demonstrates testability with mocked dependencies.
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-
 from shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
 from shared.chunking.application.dto.responses import PreviewResponse
 from shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase

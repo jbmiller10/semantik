@@ -8,12 +8,11 @@ import argparse
 import asyncio
 import logging
 import uuid
+from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from tqdm.asyncio import tqdm
-
 from shared.config import settings
 from shared.embedding import EmbeddingService
 from shared.metrics.prometheus import (
@@ -28,6 +27,7 @@ from shared.metrics.prometheus import (
     record_file_processed,
     start_metrics_server,
 )
+from tqdm.asyncio import tqdm
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

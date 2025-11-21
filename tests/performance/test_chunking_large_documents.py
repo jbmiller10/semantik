@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from shared.text_processing.chunking_factory import ChunkingFactory
 
 pytestmark = [pytest.mark.performance, pytest.mark.anyio]

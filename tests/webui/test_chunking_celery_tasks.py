@@ -4,7 +4,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-
 from webui.tasks import monitor_partition_health, refresh_collection_chunking_stats
 
 

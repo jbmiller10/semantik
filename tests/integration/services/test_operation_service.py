@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-
 from shared.database.models import OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
 from webui.services.operation_service import OperationService, celery_app

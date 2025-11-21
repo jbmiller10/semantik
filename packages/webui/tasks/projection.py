@@ -77,7 +77,6 @@ from shared.database.postgres_database import PostgresConnectionManager
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-
 from webui.tasks.utils import (
     CeleryTaskWithOperationUpdates,
     _sanitize_error_message,

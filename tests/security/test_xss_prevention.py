@@ -5,7 +5,6 @@ This module tests various XSS attack vectors to ensure proper sanitization.
 """
 
 import pytest
-
 from shared.chunks.metadata_sanitizer import MetadataSanitizer
 
 

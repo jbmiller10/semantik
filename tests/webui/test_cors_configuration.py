@@ -3,9 +3,8 @@
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 import webui.main
+from fastapi.testclient import TestClient
 from webui.main import _validate_cors_origins, create_app
 
 # Import the module so we can patch it properly

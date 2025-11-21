@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from webui.middleware.csp import CSPMiddleware
 
 DEFAULT_POLICY = (

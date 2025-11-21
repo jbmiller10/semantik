@@ -177,9 +177,7 @@ class TestHybridChunkerReDoSProtection:
                 raise TimeoutError("Simulated timeout")
             return original_safe_regex(pattern, text, flags)
 
-        with patch(
-            "shared.text_processing.strategies.hybrid_chunker.safe_regex_findall", side_effect=mock_safe_regex
-        ):
+        with patch("shared.text_processing.strategies.hybrid_chunker.safe_regex_findall", side_effect=mock_safe_regex):
             is_file, density = chunker._analyze_markdown_content(test_text, None)
 
             # Should still return a result despite some patterns failing

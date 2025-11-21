@@ -3,7 +3,6 @@
 import copy
 
 import pytest
-
 from webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,

@@ -15,7 +15,9 @@ from typing import Any, cast
 import httpx
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
+from prometheus_client import Counter, Histogram  # noqa: E402
 from pydantic import BaseModel, Field
+from shared.config import settings  # noqa: E402
 
 # Import contracts from shared
 from shared.contracts.search import (
@@ -27,9 +29,6 @@ from shared.contracts.search import (
     SearchResponse,
     SearchResult,
 )
-
-from prometheus_client import Counter, Histogram  # noqa: E402
-from shared.config import settings  # noqa: E402
 from shared.database.exceptions import DimensionMismatchError  # noqa: E402
 from shared.embedding.service import get_embedding_service  # noqa: E402
 from shared.embedding.validation import validate_dimension_compatibility  # noqa: E402

@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
 from shared.database import get_db
 from webui.auth import get_current_user
 from webui.dependencies import get_collection_for_user

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect, status
-
 from shared.database.exceptions import ValidationError
 from webui.api.schemas import DirectoryScanProgress, DirectoryScanRequest, DirectoryScanResponse, ErrorResponse
 from webui.auth import get_current_user, get_current_user_websocket
