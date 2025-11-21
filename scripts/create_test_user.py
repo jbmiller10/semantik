@@ -11,10 +11,11 @@ else:
 
 import os
 
-from shared.config.postgres import postgres_config
-from shared.database.models import User
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from shared.config.postgres import postgres_config
+from shared.database.models import User
 from webui.auth import get_password_hash
 
 if "JWT_SECRET_KEY" not in os.environ:

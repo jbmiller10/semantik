@@ -19,9 +19,10 @@ else:
     sys.path.insert(0, str(root))
     sys.path.insert(0, str(root / "packages"))
 
+from sqlalchemy import select
+
 from shared.database import get_db, pwd_context
 from shared.database.models import User
-from sqlalchemy import select
 
 
 async def create_superuser(username: str, email: str, password: str) -> bool:

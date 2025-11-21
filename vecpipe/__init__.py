@@ -15,4 +15,3 @@ if _PACKAGES_DIR.is_dir():
 _module = importlib.import_module("packages.vecpipe")
 sys.modules[__name__] = _module
 sys.modules.setdefault("packages.vecpipe", _module)
-

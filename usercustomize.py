@@ -13,7 +13,6 @@ import importlib
 import sys
 from pathlib import Path
 
-
 _ROOT = Path(__file__).resolve().parent
 _PACKAGES_DIR = _ROOT / "packages"
 
@@ -40,4 +39,3 @@ def _alias_top_level(name: str) -> None:
 
 for _pkg in ("shared", "webui", "vecpipe"):
     _alias_top_level(_pkg)
-

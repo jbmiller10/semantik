@@ -20,4 +20,3 @@ if _PACKAGES_DIR.is_dir():
 _module = importlib.import_module("packages.shared")
 sys.modules[__name__] = _module
 sys.modules.setdefault("packages.shared", _module)
-

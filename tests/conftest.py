@@ -412,6 +412,7 @@ def _reset_singletons() -> None:
     """Reset any singleton instances between tests."""
     # Clear Prometheus metrics registry to avoid duplicate metric registration
     from prometheus_client import REGISTRY
+
     from shared.metrics.prometheus import registry
 
     # Clear all collectors from the custom registry
