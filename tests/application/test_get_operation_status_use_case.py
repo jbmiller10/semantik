@@ -8,14 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-
-from packages.shared.chunking.application.dto.requests import GetOperationStatusRequest
-from packages.shared.chunking.application.dto.responses import GetOperationStatusResponse
-from packages.shared.chunking.application.dto.responses import OperationStatus as DTOOperationStatus
-from packages.shared.chunking.application.use_cases.get_operation_status import GetOperationStatusUseCase
-from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
+from shared.chunking.application.dto.requests import GetOperationStatusRequest
+from shared.chunking.application.dto.responses import GetOperationStatusResponse
+from shared.chunking.application.dto.responses import OperationStatus as DTOOperationStatus
+from shared.chunking.application.use_cases.get_operation_status import GetOperationStatusUseCase
+from shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.operation_status import OperationStatus
 
 
 class TestGetOperationStatusUseCase:

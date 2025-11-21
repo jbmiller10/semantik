@@ -77,8 +77,7 @@ from shared.database.postgres_database import PostgresConnectionManager
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-
-from packages.webui.tasks.utils import (
+from webui.tasks.utils import (
     CeleryTaskWithOperationUpdates,
     _sanitize_error_message,
     celery_app,
@@ -456,11 +455,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
     pg_manager = PostgresConnectionManager()
     await pg_manager.initialize()
 
-    if pg_manager._sessionmaker is None:
+    session_factory = getattr(pg_manager, "sessionmaker", None) or getattr(pg_manager, "_sessionmaker", None)
+    if session_factory is None:
         await pg_manager.close()
         raise RuntimeError("Failed to initialize projection session maker")
-
-    session_factory = pg_manager._sessionmaker
     session: Any | None = None
     session_guard: Callable[[], Any] | None = None
 

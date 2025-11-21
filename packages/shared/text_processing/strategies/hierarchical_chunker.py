@@ -9,8 +9,8 @@ import logging
 from collections.abc import AsyncGenerator, Iterator
 from typing import Any
 
-from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
-from packages.shared.text_processing.base_chunker import ChunkResult
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from shared.text_processing.base_chunker import ChunkResult
 
 # Try to import NodeRelationship, fall back if not available
 try:
@@ -207,7 +207,7 @@ class HierarchicalChunker:
             except Exception as e:
                 # Parser failed, fallback to character
                 logger.warning(f"Hierarchical chunking failed (mocked parser), falling back to character: {e}")
-                from packages.shared.chunking.unified.factory import (
+                from shared.chunking.unified.factory import (
                     TextProcessingStrategyAdapter,
                     UnifiedChunkingFactory,
                 )
@@ -235,7 +235,7 @@ class HierarchicalChunker:
         except Exception as e:
             # On error, fallback to character chunking
             logger.warning(f"Hierarchical chunking failed, falling back to character: {e}")
-            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+            from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             # Create character chunker with similar config
             unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)
@@ -438,7 +438,7 @@ class HierarchicalChunker:
                 # Parser failed, fallback to character
                 logger.error(f"Hierarchical chunking failed in stream: {e}")
                 logger.warning("Using fallback chunking strategy")
-                from packages.shared.chunking.unified.factory import (
+                from shared.chunking.unified.factory import (
                     TextProcessingStrategyAdapter,
                     UnifiedChunkingFactory,
                 )
@@ -496,7 +496,7 @@ class HierarchicalChunker:
             except Exception as e:
                 # Parser failed, fallback to character
                 logger.warning(f"Hierarchical chunking failed (mocked parser), falling back to character: {e}")
-                from packages.shared.chunking.unified.factory import (
+                from shared.chunking.unified.factory import (
                     TextProcessingStrategyAdapter,
                     UnifiedChunkingFactory,
                 )
@@ -524,7 +524,7 @@ class HierarchicalChunker:
         except Exception as e:
             # On error, fallback to character chunking
             logger.warning(f"Hierarchical chunking failed, falling back to character: {e}")
-            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+            from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             # Create character chunker with similar config
             unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)

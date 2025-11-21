@@ -9,13 +9,12 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
+import vecpipe.search_api as search_api_module
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from prometheus_client import Counter, Histogram
-
-import packages.vecpipe.search_api as search_api_module
-from packages.vecpipe.memory_utils import InsufficientMemoryError
-from packages.vecpipe.search_api import (
+from vecpipe.memory_utils import InsufficientMemoryError
+from vecpipe.search_api import (
     PointPayload,
     UpsertPoint,
     UpsertRequest,
@@ -94,7 +93,7 @@ def mock_embedding_service() -> None:
 @pytest.fixture()
 def mock_hybrid_engine() -> Generator[Any, None, None]:
     """Mock hybrid search engine."""
-    with patch("packages.vecpipe.search_api.HybridSearchEngine") as mock_class:
+    with patch("vecpipe.search_api.HybridSearchEngine") as mock_class:
         engine = Mock()
         engine.extract_keywords = Mock(return_value=["test", "query"])
         engine.hybrid_search = Mock(
@@ -139,7 +138,7 @@ def test_client_for_search_api(
     search_api_module.embedding_service = mock_embedding_service
 
     # Patch settings during test
-    with patch("packages.vecpipe.search_api.settings", mock_settings):
+    with patch("vecpipe.search_api.settings", mock_settings):
         # Create test client
         client = TestClient(app)
         yield client
@@ -195,11 +194,11 @@ class TestSearchAPI:
         """Test application lifespan management."""
         # Test that lifespan context manager starts and cleans up properly
         with (
-            patch("packages.vecpipe.search_api.settings", mock_settings),
-            patch("packages.vecpipe.search_api.httpx.AsyncClient") as mock_httpx,
-            patch("packages.vecpipe.search_api.start_metrics_server") as mock_start_metrics,
-            patch("packages.vecpipe.search_api.get_embedding_service") as mock_get_service,
-            patch("packages.vecpipe.model_manager.ModelManager") as mock_mm_class,
+            patch("vecpipe.search_api.settings", mock_settings),
+            patch("vecpipe.search_api.httpx.AsyncClient") as mock_httpx,
+            patch("vecpipe.search_api.start_metrics_server") as mock_start_metrics,
+            patch("vecpipe.search_api.get_embedding_service") as mock_get_service,
+            patch("vecpipe.model_manager.ModelManager") as mock_mm_class,
         ):
             mock_httpx.return_value = mock_qdrant_client
             mock_service = AsyncMock()
@@ -347,9 +346,9 @@ class TestSearchAPI:
 
         # Mock search_qdrant function and metadata
         with (
-            patch("packages.vecpipe.search_api.search_qdrant") as mock_search,
+            patch("vecpipe.search_api.search_qdrant") as mock_search,
             patch("qdrant_client.QdrantClient"),
-            patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
         ):
             mock_get_metadata.return_value = None
             mock_search.return_value = [
@@ -382,7 +381,7 @@ class TestSearchAPI:
         """Test search with reranking enabled."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
-        with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
+        with patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
             mock_get_reranker.return_value = "test-reranker"
 
             # Mock collection info
@@ -422,9 +421,9 @@ class TestSearchAPI:
 
             # Mock metadata and search_qdrant
             with (
-                patch("packages.vecpipe.search_api.search_qdrant") as mock_search,
+                patch("vecpipe.search_api.search_qdrant") as mock_search,
                 patch("qdrant_client.QdrantClient"),
-                patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+                patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
             ):
                 mock_get_metadata.return_value = None
                 mock_search.return_value = [
@@ -517,12 +516,12 @@ class TestSearchAPI:
         # Mock metadata lookup
         with (
             patch("qdrant_client.QdrantClient"),
-            patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
         ):
             mock_get_metadata.return_value = None
 
             # Test Qdrant HTTP error during search
-            with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
+            with patch("vecpipe.search_api.search_qdrant") as mock_search:
                 mock_search.side_effect = httpx.HTTPStatusError(
                     "Bad request", request=Mock(), response=Mock(status_code=400)
                 )
@@ -570,7 +569,7 @@ class TestSearchAPI:
         """Test /search/batch endpoint."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
-        with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
+        with patch("vecpipe.search_api.search_qdrant") as mock_search:
             # Mock search results for each query
             mock_search.return_value = [
                 {"score": 0.9, "payload": {"path": "/test/batch.txt", "chunk_id": "chunk-1", "doc_id": "doc-1"}}
@@ -622,7 +621,7 @@ class TestSearchAPI:
     def test_list_models_endpoint(self, test_client_for_search_api, mock_embedding_service) -> None:
         """Test /models endpoint."""
         with patch(
-            "packages.shared.embedding.QUANTIZED_MODEL_INFO",
+            "shared.embedding.QUANTIZED_MODEL_INFO",
             {
                 "test-model": {
                     "description": "Test embedding model",
@@ -730,7 +729,7 @@ class TestSearchAPI:
     @pytest.mark.asyncio()
     async def test_upsert_error_handling(self, mock_qdrant_client) -> None:
         """Test /upsert endpoint error handling."""
-        with patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant_client):
+        with patch("vecpipe.search_api.qdrant_client", mock_qdrant_client):
             # Mock collection info first
             mock_get_response = Mock()
             mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
@@ -763,8 +762,8 @@ class TestSearchAPI:
     def test_suggest_models_endpoint(self, test_client_for_search_api, mock_model_manager) -> None:
         """Test /models/suggest endpoint."""
         with (
-            patch("packages.vecpipe.memory_utils.get_gpu_memory_info") as mock_gpu_info,
-            patch("packages.vecpipe.memory_utils.suggest_model_configuration") as mock_suggest,
+            patch("vecpipe.memory_utils.get_gpu_memory_info") as mock_gpu_info,
+            patch("vecpipe.memory_utils.suggest_model_configuration") as mock_suggest,
         ):
             # Test with GPU available
             mock_gpu_info.return_value = (8000, 16000)  # 8GB free, 16GB total
@@ -831,7 +830,7 @@ class TestSearchAPI:
 
         with (
             patch("qdrant_client.QdrantClient") as mock_sync_client,
-            patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
         ):
             # Mock collection metadata
             mock_get_metadata.return_value = {
@@ -857,7 +856,7 @@ class TestSearchAPI:
             mock_qdrant_client.post.return_value = mock_search_response
 
             # Mock search_qdrant
-            with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
+            with patch("vecpipe.search_api.search_qdrant") as mock_search:
                 mock_search.return_value = []
 
                 response = test_client_for_search_api.post("/search", json={"query": "test", "k": 5})
@@ -891,11 +890,11 @@ class TestSearchAPI:
         # Mock metadata and search_qdrant
         with (
             patch("qdrant_client.QdrantClient"),
-            patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
         ):
             mock_get_metadata.return_value = None
 
-            with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
+            with patch("vecpipe.search_api.search_qdrant") as mock_search:
                 mock_search.return_value = []
 
                 response = test_client_for_search_api.get(
@@ -948,7 +947,7 @@ class TestSearchAPI:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         # Mock the generate_embedding_async function to return None
-        with patch("packages.vecpipe.search_api.model_manager", mock_model_manager):
+        with patch("vecpipe.search_api.model_manager", mock_model_manager):
             mock_model_manager.generate_embedding_async.return_value = None
 
             with pytest.raises(RuntimeError) as exc_info:
@@ -963,7 +962,7 @@ class TestSearchAPI:
 
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
-        with patch("packages.vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
+        with patch("vecpipe.search_api.get_reranker_for_embedding_model") as mock_get_reranker:
             mock_get_reranker.return_value = "test-reranker"
 
             # Mock collection info
@@ -994,11 +993,11 @@ class TestSearchAPI:
             # Mock metadata and search_qdrant
             with (
                 patch("qdrant_client.QdrantClient"),
-                patch("packages.shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+                patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
             ):
                 mock_get_metadata.return_value = None
 
-                with patch("packages.vecpipe.search_api.search_qdrant") as mock_search:
+                with patch("vecpipe.search_api.search_qdrant") as mock_search:
                     mock_search.return_value = [
                         {
                             "id": "1",

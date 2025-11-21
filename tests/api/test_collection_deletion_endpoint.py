@@ -5,14 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import status
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
+from shared.database.models import Collection, CollectionStatus
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.main import app
-from packages.webui.main import app as main_app
-from packages.webui.services.factory import get_collection_service
+from webui.main import app
+from webui.main import app as main_app
+from webui.services.factory import get_collection_service
 
 
 @pytest.mark.asyncio()

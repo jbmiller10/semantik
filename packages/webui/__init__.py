@@ -5,6 +5,11 @@ Document Embedding Web UI Package
 # Test-time monkeypatch for fakeredis AsyncMock compatibility
 import contextlib
 import os as _os
+import sys as _sys
+
+# Ensure absolute imports like ``import webui.auth`` resolve even when this
+# module is first imported via the ``packages.webui`` name.
+_sys.modules["webui"] = _sys.modules[__name__]
 
 if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
     try:
@@ -43,15 +48,20 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
         # If fakeredis isn't available, skip patching
         pass
 
-# Backward compatibility shim for old uvicorn command
-# This allows "python -m uvicorn webui.app:app" to still work
+# Import Celery app
+try:
+    from .celery_app import celery_app
+except Exception as exc:  # pragma: no cover - fail fast with guidance
+    raise RuntimeError(
+        "Failed to import webui.celery_app. Ensure required environment (e.g., JWT_SECRET_KEY) "
+        "and dependencies are configured before importing webui."
+    ) from exc
+
 try:
     from .main import app
-except ImportError:
-    # If main.py doesn't exist yet, try to import from app.py
-    from .app import app
-
-# Import Celery app
-from .celery_app import celery_app
+except Exception as exc:  # pragma: no cover
+    raise RuntimeError(
+        "Failed to import webui.main. Verify configuration (including JWT_SECRET_KEY) and dependencies."
+    ) from exc
 
 __all__ = ["app", "celery_app"]

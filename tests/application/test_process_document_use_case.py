@@ -7,12 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
-from packages.shared.chunking.application.dto.requests import ChunkingStrategy, ProcessDocumentRequest
-from packages.shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
-from packages.shared.chunking.application.use_cases.process_document import ProcessDocumentUseCase
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.application.dto.requests import ChunkingStrategy, ProcessDocumentRequest
+from shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
+from shared.chunking.application.use_cases.process_document import ProcessDocumentUseCase
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class TestProcessDocumentUseCase:
@@ -169,7 +168,7 @@ class TestProcessDocumentUseCase:
         """Test successful synchronous document processing."""
         # Arrange
         operation_id = str(uuid4())
-        with patch("packages.shared.chunking.application.use_cases.process_document.uuid4") as mock_uuid:
+        with patch("shared.chunking.application.use_cases.process_document.uuid4") as mock_uuid:
             mock_uuid.return_value = operation_id
 
             # Act

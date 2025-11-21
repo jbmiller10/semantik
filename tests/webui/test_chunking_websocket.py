@@ -17,9 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
-
-from packages.webui.api.v2.chunking_schemas import ChunkingStatus
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from webui.api.v2.chunking_schemas import ChunkingStatus
+from webui.websocket_manager import RedisStreamWebSocketManager
 
 
 @pytest.fixture()

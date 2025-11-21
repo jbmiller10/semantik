@@ -6,13 +6,12 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from packages.shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
-from packages.shared.chunking.application.dto.responses import CompareStrategiesResponse, StrategyMetrics
-from packages.shared.chunking.application.use_cases.compare_strategies import CompareStrategiesUseCase
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.exceptions import StrategyNotFoundError
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
+from shared.chunking.application.dto.responses import CompareStrategiesResponse, StrategyMetrics
+from shared.chunking.application.use_cases.compare_strategies import CompareStrategiesUseCase
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.exceptions import StrategyNotFoundError
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class TestCompareStrategiesUseCase:

@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from packages.webui.middleware.csp import CSPMiddleware
+from webui.middleware.csp import CSPMiddleware
 
 DEFAULT_POLICY = (
     "default-src 'self'; "

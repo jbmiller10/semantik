@@ -5,8 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
-from packages.shared.config.internal_api_key import ensure_internal_api_key
+from shared.config.internal_api_key import ensure_internal_api_key
 
 
 class DummyConfig:

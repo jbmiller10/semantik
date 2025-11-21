@@ -21,8 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 from qdrant_client.models import PointStruct
-
-from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
+from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -47,7 +46,7 @@ from .utils import (
 
 def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
-    return import_module("packages.webui.tasks")
+    return import_module("webui.tasks")
 
 
 async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
@@ -945,10 +944,14 @@ async def _validate_reindex(
 async def _cleanup_staging_resources(collection_id: str, operation: dict) -> None:  # noqa: ARG001
     """Clean up staging resources for failed reindex operation."""
     try:
-        from shared.database.database import AsyncSessionLocal
+        from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
         from shared.database.repositories.collection_repository import CollectionRepository
 
-        async with AsyncSessionLocal() as session:
+        session_factory = AsyncSessionLocal
+        if session_factory is None:
+            session_factory = await ensure_async_sessionmaker()
+
+        async with session_factory() as session:
             collection_repo = CollectionRepository(session)
             collection = await collection_repo.get_by_uuid(collection_id)
 

@@ -2,9 +2,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from packages.shared.managers import QdrantCollectionNotFoundError
-from packages.webui.services.resource_manager import ResourceEstimate, ResourceManager
+from shared.managers import QdrantCollectionNotFoundError
+from webui.services.resource_manager import ResourceEstimate, ResourceManager
 
 
 @pytest.mark.asyncio()
@@ -35,8 +34,8 @@ async def test_can_allocate_checks_system_resources(monkeypatch):
     class FakeDisk:
         free = 100 * 1024 * 1024 * 1024  # 100GB
 
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.virtual_memory", lambda: FakeVM)
-    monkeypatch.setattr("packages.webui.services.resource_manager.psutil.disk_usage", lambda _: FakeDisk)
+    monkeypatch.setattr("webui.services.resource_manager.psutil.virtual_memory", lambda: FakeVM)
+    monkeypatch.setattr("webui.services.resource_manager.psutil.disk_usage", lambda _: FakeDisk)
 
     async def fake_usage(_user_id: int) -> dict[str, float]:  # noqa: ARG001
         return {"storage_gb": 0}
@@ -108,7 +107,7 @@ def frozen_resource_manager_clock(monkeypatch):
         def advance(cls, seconds: float) -> None:
             cls._now = cls._now + timedelta(seconds=seconds)
 
-    monkeypatch.setattr("packages.webui.services.resource_manager.datetime", FrozenDateTime)
+    monkeypatch.setattr("webui.services.resource_manager.datetime", FrozenDateTime)
     return FrozenDateTime
 
 

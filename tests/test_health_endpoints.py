@@ -4,8 +4,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
-from packages.vecpipe.search_api import app
+from vecpipe.search_api import app
 
 
 @pytest.fixture()
@@ -123,14 +122,14 @@ class TestWebuiHealthEndpoints:
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
 
         with (
-            patch("packages.webui.api.health.ws_manager.redis", mock_redis),
+            patch("webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
             patch(
-                "packages.webui.api.health._check_embedding_service_health",
+                "webui.api.health._check_embedding_service_health",
                 side_effect=mock_check_embedding_service_health,
             ),
-            patch("packages.webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
-            patch("packages.webui.api.health.qdrant_manager", mock_qdrant_manager),
+            patch("webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
+            patch("webui.api.health.qdrant_manager", mock_qdrant_manager),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 200
@@ -174,14 +173,14 @@ class TestWebuiHealthEndpoints:
         mock_qdrant_manager.get_client = Mock(return_value=mock_qdrant_client)
 
         with (
-            patch("packages.webui.api.health.ws_manager.redis", mock_redis),
+            patch("webui.api.health.ws_manager.redis", mock_redis),
             patch("httpx.AsyncClient.get", side_effect=mock_get),
             patch(
-                "packages.webui.api.health._check_embedding_service_health",
+                "webui.api.health._check_embedding_service_health",
                 side_effect=mock_check_embedding_service_health,
             ),
-            patch("packages.webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
-            patch("packages.webui.api.health.qdrant_manager", mock_qdrant_manager),
+            patch("webui.api.health.check_postgres_connection", side_effect=mock_check_postgres),
+            patch("webui.api.health.qdrant_manager", mock_qdrant_manager),
         ):
             response = test_client.get("/api/health/readyz")
             assert response.status_code == 503  # Should be 503 when not ready
@@ -216,8 +215,8 @@ class TestVecpipeHealthEndpoints:
         mock_embedding.get_model_info.return_value = {"model_name": "test-model", "dimension": 384}
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant),
-            patch("packages.vecpipe.search_api.embedding_service", mock_embedding),
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant),
+            patch("vecpipe.search_api.embedding_service", mock_embedding),
         ):
             response = vecpipe_app.get("/health")
             assert response.status_code == 200
@@ -228,7 +227,7 @@ class TestVecpipeHealthEndpoints:
 
     def test_vecpipe_health_qdrant_unhealthy(self, vecpipe_app) -> None:
         """Test vecpipe health when Qdrant is unhealthy"""
-        with patch("packages.vecpipe.search_api.qdrant_client", None):
+        with patch("vecpipe.search_api.qdrant_client", None):
             response = vecpipe_app.get("/health")
             assert response.status_code == 503
             data = response.json()["detail"]
@@ -252,8 +251,8 @@ class TestVecpipeHealthEndpoints:
         mock_embedding.is_initialized = False
 
         with (
-            patch("packages.vecpipe.search_api.qdrant_client", mock_qdrant),
-            patch("packages.vecpipe.search_api.embedding_service", mock_embedding),
+            patch("vecpipe.search_api.qdrant_client", mock_qdrant),
+            patch("vecpipe.search_api.embedding_service", mock_embedding),
         ):
             response = vecpipe_app.get("/health")
             assert response.status_code == 200

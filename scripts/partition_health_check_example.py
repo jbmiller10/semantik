@@ -9,10 +9,9 @@ the health of the partition key implementation in production.
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from shared.database import get_db
+from shared.database.partition_utils import PartitionImplementationDetector
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.database import get_db
-from packages.shared.database.partition_utils import PartitionImplementationDetector
 
 # Example API router for health checks
 router = APIRouter(prefix="/admin/partition", tags=["admin", "monitoring"])
@@ -232,7 +231,7 @@ def create_celery_task(celery_app):
             },
         }
     """
-    from packages.shared.database import get_async_session
+    from shared.database import get_async_session
 
     @celery_app.task(name="check_partition_health")
     def check_partition_health():
@@ -266,7 +265,7 @@ def create_cli_command():
     """
     import asyncio
 
-    from packages.shared.database import get_async_session
+    from shared.database import get_async_session
 
     def command(sample_size: int, report: bool):
         async def run():
@@ -300,7 +299,7 @@ if __name__ == "__main__":
 
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-    from packages.shared.database import get_async_session
+    from shared.database import get_async_session
 
     async def main():
         async with get_async_session() as db:

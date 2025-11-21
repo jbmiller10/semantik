@@ -1,7 +1,6 @@
 import pytest
 from fastapi import HTTPException
-
-from packages.webui.api.v2 import chunking as chunking_module
+from webui.api.v2 import chunking as chunking_module
 
 
 class _Req:
@@ -42,7 +41,7 @@ async def test_start_chunking_operation_enqueues(monkeypatch):
             sent_task["task"] = (name, args, kwargs)
             return "ok"
 
-    monkeypatch.setattr("packages.webui.tasks.celery_app", _CeleryApp())
+    monkeypatch.setattr("webui.tasks.celery_app", _CeleryApp())
 
     req = _Req(
         {
@@ -105,7 +104,7 @@ async def test_update_chunking_strategy_reprocess_enqueues(monkeypatch):
             sent["call"] = (args, kwargs)
             return "ok"
 
-    monkeypatch.setattr("packages.webui.tasks.celery_app", _CeleryApp())
+    monkeypatch.setattr("webui.tasks.celery_app", _CeleryApp())
 
     req = _Req(
         {
@@ -137,7 +136,7 @@ async def test_start_chunking_operation_raises_when_celery_unavailable(monkeypat
             called["sent"] = True
             raise RuntimeError("no broker")
 
-    monkeypatch.setattr("packages.webui.tasks.celery_app", _CeleryApp())
+    monkeypatch.setattr("webui.tasks.celery_app", _CeleryApp())
 
     req = _Req(
         {
@@ -169,7 +168,7 @@ async def test_update_chunking_strategy_fails_when_reprocess_enqueue_fails(monke
         def send_task(self, *_args, **_kwargs):
             raise RuntimeError("no broker")
 
-    monkeypatch.setattr("packages.webui.tasks.celery_app", _CeleryApp())
+    monkeypatch.setattr("webui.tasks.celery_app", _CeleryApp())
 
     req = _Req(
         {

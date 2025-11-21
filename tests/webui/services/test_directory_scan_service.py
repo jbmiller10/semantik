@@ -8,9 +8,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from packages.webui.api.schemas import DirectoryScanResponse
-from packages.webui.services.directory_scan_service import (
+from webui.api.schemas import DirectoryScanResponse
+from webui.services.directory_scan_service import (
     HASH_CHUNK_SIZE,
     MAX_FILE_SIZE,
     PROGRESS_UPDATE_INTERVAL,
@@ -27,7 +26,7 @@ def directory_scan_service() -> DirectoryScanService:
 @pytest.fixture()
 def mock_ws_manager() -> AsyncMock:
     """Mock websocket manager."""
-    with patch("packages.webui.services.directory_scan_service.ws_manager") as mock:
+    with patch("webui.services.directory_scan_service.ws_manager") as mock:
         mock.send_to_operation = AsyncMock()
         yield mock
 

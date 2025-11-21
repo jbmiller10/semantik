@@ -1,20 +1,19 @@
 """Ensure the chunking plugin registry integrates with the orchestrator."""
 
 import pytest
-
-import packages.webui.services.chunking.strategy_registry as strategy_registry
-from packages.shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.webui.services.chunking import (
+import webui.services.chunking.strategy_registry as strategy_registry
+from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,
     ChunkingMetrics,
     ChunkingProcessor,
     ChunkingValidator,
 )
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-from packages.webui.services.chunking.strategy_registry import register_strategy_definition
-from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.chunking.strategy_registry import register_strategy_definition
+from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
 
 class DemoPluginStrategy(ChunkingStrategy):

@@ -11,12 +11,11 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.api.v2 import search as search_api
-from packages.webui.auth import get_current_user
-from packages.webui.services.factory import get_search_service
-from packages.webui.services.search_service import SearchService
+from shared.database.models import Collection, CollectionStatus
+from webui.api.v2 import search as search_api
+from webui.auth import get_current_user
+from webui.services.factory import get_search_service
+from webui.services.search_service import SearchService
 
 
 @pytest.fixture()

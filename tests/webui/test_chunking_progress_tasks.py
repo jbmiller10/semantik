@@ -6,9 +6,8 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
-from packages.webui import chunking_tasks
-from packages.webui.services.progress_manager import ProgressSendResult
+from webui import chunking_tasks
+from webui.services.progress_manager import ProgressSendResult
 
 
 class FakeProgressManager:

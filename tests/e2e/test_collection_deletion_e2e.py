@@ -5,10 +5,9 @@ These tests verify the complete flow from UI interaction to database cleanup.
 
 import pytest
 from playwright.sync_api import Page, expect
+from shared.database.models import Collection, Document, Operation
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.database.models import Collection, Document, Operation
 
 
 @pytest.mark.e2e()

@@ -20,12 +20,11 @@ from typing import Any
 
 from fastapi import HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
+from shared.database import pg_connection_manager
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-
-from packages.shared.database import pg_connection_manager
-from packages.webui.config.rate_limits import CircuitBreakerConfig, RateLimitConfig
+from webui.config.rate_limits import CircuitBreakerConfig, RateLimitConfig
 
 logger = logging.getLogger(__name__)
 
@@ -316,7 +315,7 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
         if (
             limit == RateLimitConfig.PROCESS_RATE
             and os.getenv("TESTING", "false").lower() == "true"
-            and pg_connection_manager._sessionmaker is None
+            and pg_connection_manager.sessionmaker is None
         ):
 
             placeholder = _placeholder_limit(

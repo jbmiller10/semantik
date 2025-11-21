@@ -22,7 +22,7 @@ def model_manager(monkeypatch):
     importlib.reload(dense_module)
     importlib.reload(embedding_service_module)
 
-    from packages.vecpipe import model_manager as model_manager_module
+    from vecpipe import model_manager as model_manager_module
 
     importlib.reload(model_manager_module)
     return model_manager_module.ModelManager(unload_after_seconds=0)

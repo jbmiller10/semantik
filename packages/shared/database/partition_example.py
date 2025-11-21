@@ -10,9 +10,8 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
+from shared.database.repositories import ChunkRepository
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.database.repositories import ChunkRepository
 
 
 class ChunkingServiceExample:
@@ -136,7 +135,7 @@ class ChunkingServiceExample:
 async def main() -> None:
     """Run the examples."""
     # This is just for demonstration - in real code, get session from dependency injection
-    from packages.shared.database import get_db
+    from shared.database import get_db
 
     async for session in get_db():
         service = ChunkingServiceExample(session)

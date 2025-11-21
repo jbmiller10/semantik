@@ -6,14 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, status
 from httpx import AsyncClient
-
-from packages.shared.database.models import Collection
+from shared.database.models import Collection
 
 
 @pytest.fixture()
 def test_app() -> FastAPI:
     """Create a test FastAPI app with mocked dependencies."""
-    from packages.webui.api.v2.collections import router as collections_router
+    from webui.api.v2.collections import router as collections_router
 
     app = FastAPI()
     app.include_router(collections_router, prefix="/api/v2")
@@ -25,7 +24,7 @@ def test_app() -> FastAPI:
 async def authenticated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Create an authenticated test client."""
     # Mock authentication
-    with patch("packages.webui.auth.get_current_user") as mock_get_user:
+    with patch("webui.auth.get_current_user") as mock_get_user:
         mock_user = {"id": 1, "username": "testuser"}
         mock_get_user.return_value = mock_user
 
@@ -36,7 +35,7 @@ async def authenticated_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient,
 @pytest.mark.asyncio()
 async def test_create_collection_with_invalid_chunking_strategy(authenticated_client: AsyncClient) -> None:
     """Test that API returns 400 for invalid chunking strategy."""
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
@@ -65,7 +64,7 @@ async def test_create_collection_with_invalid_chunking_strategy(authenticated_cl
 @pytest.mark.asyncio()
 async def test_create_collection_with_invalid_chunking_config(authenticated_client: AsyncClient) -> None:
     """Test that API returns 400 for invalid chunking config."""
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
@@ -92,7 +91,7 @@ async def test_create_collection_with_invalid_chunking_config(authenticated_clie
 @pytest.mark.asyncio()
 async def test_create_collection_with_config_but_no_strategy(authenticated_client: AsyncClient) -> None:
     """Test that API returns 400 when config is provided without strategy."""
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.create_collection = AsyncMock(
@@ -119,7 +118,7 @@ async def test_update_collection_with_invalid_chunking_strategy(authenticated_cl
     """Test that API returns 400 for invalid chunking strategy on update."""
     collection_id = "test-uuid-123"
 
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.update_collection = AsyncMock(
@@ -144,7 +143,7 @@ async def test_update_collection_with_invalid_config_for_strategy(authenticated_
     """Test that API returns 400 for invalid config on update."""
     collection_id = "test-uuid-123"
 
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock service to raise ValueError
         mock_service = MagicMock()
         mock_service.update_collection = AsyncMock(
@@ -168,7 +167,7 @@ async def test_update_collection_with_invalid_config_for_strategy(authenticated_
 @pytest.mark.asyncio()
 async def test_successful_collection_creation_with_valid_chunking(authenticated_client: AsyncClient) -> None:
     """Test that valid chunking configuration is accepted."""
-    with patch("packages.webui.api.v2.collections.get_collection_service") as mock_get_service:
+    with patch("webui.api.v2.collections.get_collection_service") as mock_get_service:
         # Mock successful creation
         mock_collection = MagicMock(spec=Collection)
         mock_collection.uuid = "new-uuid-123"

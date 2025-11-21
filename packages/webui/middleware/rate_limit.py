@@ -14,8 +14,7 @@ from jwt.exceptions import InvalidTokenError
 from shared.config import settings
 from slowapi.middleware import _find_route_handler, _should_exempt, sync_check_limits
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from packages.webui.rate_limiter import ensure_limiter_runtime_state
+from webui.rate_limiter import ensure_limiter_runtime_state
 
 logger = logging.getLogger(__name__)
 

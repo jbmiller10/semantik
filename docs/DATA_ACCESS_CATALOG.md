@@ -72,7 +72,7 @@ while True:
 **Location:** `packages/shared/managers/qdrant_manager.py:442-477`
 
 **Usage Pattern in Codebase:**
-- **Imports:** `from packages.webui.tasks.utils import resolve_qdrant_manager`
+- **Imports:** `from webui.tasks.utils import resolve_qdrant_manager`
 - **Pattern:** All ingestion tasks use `resolve_qdrant_manager()` to get QdrantManager instance
 - **Example:** `packages/webui/tasks/ingestion.py:541, 761`
 
@@ -547,7 +547,7 @@ async with CeleryTaskWithOperationUpdates(operation_id) as updater:
 **Recommended Approach:** Use Qdrant scroll with QdrantManager
 
 ```python
-from packages.webui.tasks.utils import resolve_qdrant_manager
+from webui.tasks.utils import resolve_qdrant_manager
 
 async def fetch_embeddings_for_projection(
     collection_id: str,
@@ -743,7 +743,7 @@ async def compute_projection_with_progress(
 
 ```python
 from fastapi import Depends, HTTPException
-from packages.webui.dependencies import get_current_user
+from webui.dependencies import get_current_user
 
 @router.post("/collections/{collection_id}/projections")
 async def create_projection(

@@ -6,13 +6,8 @@ Helps diagnose configuration and model loading issues
 
 import logging
 import sys
-from pathlib import Path
 
 import torch
-
-# Add parent directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from shared.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

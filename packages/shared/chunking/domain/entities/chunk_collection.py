@@ -8,8 +8,8 @@ enforces collection-level business rules.
 
 from collections.abc import Iterator
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.exceptions import InvalidChunkError
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.exceptions import InvalidChunkError
 
 
 class ChunkCollection:
@@ -326,7 +326,7 @@ class ChunkCollection:
     def _create_merged_chunk(self, chunks: list[Chunk]) -> Chunk:
         """Create a single chunk from multiple chunks."""
         # This is a simplified merge - in practice, you'd want more sophisticated logic
-        from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+        from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
         first = chunks[0]
         last = chunks[-1]

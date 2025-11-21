@@ -7,10 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-
-from packages.shared.chunking.application.dto.requests import CancelOperationRequest
-from packages.shared.chunking.application.dto.responses import CancelOperationResponse, OperationStatus
-from packages.shared.chunking.application.use_cases.cancel_operation import CancelOperationUseCase
+from shared.chunking.application.dto.requests import CancelOperationRequest
+from shared.chunking.application.dto.responses import CancelOperationResponse, OperationStatus
+from shared.chunking.application.use_cases.cancel_operation import CancelOperationUseCase
 
 
 class TestCancelOperationUseCase:

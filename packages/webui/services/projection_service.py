@@ -17,9 +17,8 @@ from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.document_repository import DocumentRepository
-
-from packages.webui.celery_app import celery_app
-from packages.webui.utils.qdrant_manager import qdrant_manager
+from webui.celery_app import celery_app
+from webui.utils.qdrant_manager import qdrant_manager
 
 if TYPE_CHECKING:
     from shared.database.repositories.collection_repository import CollectionRepository

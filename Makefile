@@ -78,7 +78,7 @@ test-e2e:
 	uv run pytest tests -v -m e2e
 
 test-coverage:
-	uv run pytest tests -v --cov=packages.vecpipe --cov=packages.webui --cov=packages.shared --cov-report=html --cov-report=term
+	uv run pytest tests -v --cov=vecpipe --cov=webui --cov=shared --cov-report=html --cov-report=term
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -224,7 +224,7 @@ fix: format
 check: lint type-check test
 
 run:
-	cd packages/webui && python -m uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+	PYTHONPATH=packages$${PYTHONPATH:+:$$PYTHONPATH} uv run uvicorn webui.main:app --host 0.0.0.0 --port 8080 --reload
 
 # Frontend commands
 frontend-install:
@@ -265,3 +265,5 @@ docker-dev-down:
 
 docker-dev-logs:
 	docker compose --profile backend logs -f
+# Ensure repository-local packages are importable without installation
+export PYTHONPATH := packages$(if $(PYTHONPATH),:$(PYTHONPATH),)

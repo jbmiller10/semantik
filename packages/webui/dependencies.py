@@ -9,10 +9,8 @@ from typing import Annotated, Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.config import settings
-from packages.shared.database import (
+from shared.config import settings
+from shared.database import (
     ApiKeyRepository,
     AuthRepository,
     UserRepository,
@@ -25,14 +23,15 @@ from packages.shared.database import (
     get_db,
     pg_connection_manager,
 )
-from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
-from packages.shared.database.exceptions import EntityNotFoundError
-from packages.shared.database.models import Collection
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.auth import get_current_user
-from packages.webui.auth import security as http_bearer_security
+from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
+from shared.database.exceptions import EntityNotFoundError
+from shared.database.models import Collection
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from sqlalchemy.ext.asyncio import AsyncSession
+from webui.auth import get_current_user
+from webui.auth import security as http_bearer_security
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +192,7 @@ async def get_chunking_orchestrator_dependency(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Provide chunking orchestrator via composition root."""
-    from packages.webui.services.chunking.container import (
+    from webui.services.chunking.container import (
         get_chunking_orchestrator as container_get_chunking_orchestrator,
     )
 

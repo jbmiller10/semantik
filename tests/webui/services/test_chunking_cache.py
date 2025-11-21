@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
-
-from packages.webui.services.chunking.cache import ChunkingCache
+from webui.services.chunking.cache import ChunkingCache
 
 
 @pytest.mark.asyncio()

@@ -7,9 +7,8 @@ This module tests the security validation for chunking operations.
 """
 
 import pytest
-
-from packages.webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
-from packages.webui.services.chunking_validation import ChunkingInputValidator
+from webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
+from webui.services.chunking_validation import ChunkingInputValidator
 
 
 class TestChunkingSecurityValidator:

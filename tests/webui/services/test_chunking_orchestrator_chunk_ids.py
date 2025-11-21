@@ -3,15 +3,14 @@
 import copy
 
 import pytest
-
-from packages.webui.services.chunking import (
+from webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,
     ChunkingMetrics,
     ChunkingProcessor,
     ChunkingValidator,
 )
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
 
 
 def _orchestrator() -> ChunkingOrchestrator:

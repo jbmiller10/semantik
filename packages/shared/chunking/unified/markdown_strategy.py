@@ -12,11 +12,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
-from packages.shared.chunking.utils.safe_regex import SafeRegex
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.chunking.utils.safe_regex import SafeRegex
 
 logger = logging.getLogger(__name__)
 

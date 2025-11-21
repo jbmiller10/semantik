@@ -4,11 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-
-from packages.shared.database.models import Chunk, OperationStatus
-from packages.shared.database.partition_utils import compute_partition_key_from_hash
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-from packages.webui.services.dtos.chunking_dtos import ServiceStrategyInfo
+from shared.database.models import Chunk, OperationStatus
+from shared.database.partition_utils import compute_partition_key_from_hash
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.dtos.chunking_dtos import ServiceStrategyInfo
 
 
 @pytest.mark.asyncio()

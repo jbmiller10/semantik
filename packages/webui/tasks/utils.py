@@ -24,6 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import redis.asyncio as redis
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import update_collection_stats
 from webui.celery_app import celery_app
@@ -38,9 +39,9 @@ except RuntimeError as exc:
     raise
 
 
-# Re-export orchestrator for tests that patch packages.webui.tasks.ChunkingOrchestrator
+# Re-export orchestrator for tests that patch webui.tasks.ChunkingOrchestrator
 try:  # Prefer packages.* import path to match test patch targets
-    from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
+    from webui.services.chunking.orchestrator import ChunkingOrchestrator
 except Exception:  # Fallback for runtime usage paths
     try:
         from webui.services.chunking.orchestrator import ChunkingOrchestrator  # type: ignore
@@ -79,6 +80,13 @@ CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 
 # Background task executor
 executor = ThreadPoolExecutor(max_workers=8)
+
+
+async def _get_session_factory():
+    factory = AsyncSessionLocal
+    if factory is None:
+        factory = await ensure_async_sessionmaker()
+    return factory
 
 
 class CeleryTaskWithOperationUpdates:
@@ -306,12 +314,12 @@ async def _audit_log_operation(
 ) -> None:
     """Create an audit log entry for a collection operation."""
     try:
-        from shared.database.database import AsyncSessionLocal
         from shared.database.models import CollectionAuditLog
 
         sanitized_details = _sanitize_audit_details(details)
 
-        async with AsyncSessionLocal() as session:
+        session_factory = await _get_session_factory()
+        async with session_factory() as session:
             audit_log = CollectionAuditLog(
                 collection_id=collection_id,
                 operation_id=operation_id,
@@ -332,10 +340,10 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
         # Get operation ID (database ID, not UUID)
         operation = await operation_repo.get_by_uuid(operation_id)
         if operation:
-            from shared.database.database import AsyncSessionLocal
             from shared.database.models import OperationMetrics
 
-            async with AsyncSessionLocal() as session:
+            session_factory = await _get_session_factory()
+            async with session_factory() as session:
                 for metric_name, metric_value in metrics.items():
                     if isinstance(metric_value, int | float):
                         metric = OperationMetrics(
@@ -353,7 +361,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
 async def _update_collection_metrics(collection_id: str, documents: int, vectors: int, size_bytes: int) -> None:
     """Update collection metrics in Prometheus."""
     try:
-        tasks_module = import_module("packages.webui.tasks")
+        tasks_module = import_module("webui.tasks")
         update_stats = getattr(tasks_module, "update_collection_stats", update_collection_stats)
         update_stats(collection_id, documents, vectors, size_bytes)
     except Exception as exc:
@@ -385,7 +393,7 @@ def _select_patchable(tasks_module: Any, attr: str, fallback_module: Any) -> Any
 
 def resolve_qdrant_manager() -> Any:
     """Return the current qdrant_manager, honoring patches on tasks or utils."""
-    tasks_module = import_module("packages.webui.tasks")
+    tasks_module = import_module("webui.tasks")
     utils_module = import_module("webui.utils.qdrant_manager")
 
     return _select_patchable(tasks_module, "qdrant_manager", utils_module)
@@ -393,7 +401,7 @@ def resolve_qdrant_manager() -> Any:
 
 def resolve_qdrant_manager_class() -> Any:
     """Return the QdrantManager class, honoring patches on tasks or shared libs."""
-    tasks_module = import_module("packages.webui.tasks")
+    tasks_module = import_module("webui.tasks")
     managers_module = import_module("shared.managers.qdrant_manager")
 
     return _select_patchable(tasks_module, "QdrantManager", managers_module)
@@ -412,7 +420,7 @@ _WORKER_EVENT_LOOP_ATTR = "_celery_worker_event_loop"
 def resolve_awaitable_sync(value: Any) -> Any:
     """Resolve coroutine-like values from synchronous contexts without recreating loops."""
     if inspect.isawaitable(value):
-        tasks_module = import_module("packages.webui.tasks")
+        tasks_module = import_module("webui.tasks")
         asyncio_module = tasks_module.asyncio
 
         # Allow tests to keep patching asyncio.run while letting production code

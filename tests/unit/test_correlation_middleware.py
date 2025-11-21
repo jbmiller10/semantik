@@ -11,8 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from packages.webui.middleware.correlation import (
+from webui.middleware.correlation import (
     CorrelationIdFilter,
     CorrelationMiddleware,
     configure_logging_with_correlation,
@@ -301,7 +300,7 @@ class TestHelperFunctions:
 class TestMiddlewareLogging:
     """Test middleware logging functionality."""
 
-    @patch("packages.webui.middleware.correlation.logger")
+    @patch("webui.middleware.correlation.logger")
     async def test_middleware_logs_requests(self, mock_logger: MagicMock, app: FastAPI) -> None:
         """Test middleware logs incoming requests."""
         client = TestClient(app)
@@ -331,7 +330,7 @@ class TestMiddlewareLogging:
             },
         )
 
-    @patch("packages.webui.middleware.correlation.logger")
+    @patch("webui.middleware.correlation.logger")
     async def test_middleware_logs_errors(self, mock_logger: MagicMock, app: FastAPI) -> None:
         """Test middleware logs errors with correlation ID."""
         client = TestClient(app)

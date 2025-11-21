@@ -11,8 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import WebSocket
-
-from packages.webui.api.v2.operations import operation_websocket
+from webui.api.v2.operations import operation_websocket
 
 
 class TestOperationsWebSocket:
@@ -69,10 +68,10 @@ class TestOperationsWebSocket:
         # Mock authentication
         mock_user = {"id": "1", "username": "testuser"}
         with (
-            patch("packages.webui.api.v2.operations.get_current_user_websocket", return_value=mock_user),
-            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
-            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
-            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+            patch("webui.api.v2.operations.get_current_user_websocket", return_value=mock_user),
+            patch("webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("webui.api.v2.operations.get_db") as mock_get_db,
+            patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
         ):
             # Mock the OperationService class
             mock_service_instance = AsyncMock()
@@ -85,7 +84,7 @@ class TestOperationsWebSocket:
             mock_service_class.return_value = mock_service_instance
 
             # Also mock OperationRepository since it's created in the handler
-            with patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class:
+            with patch("webui.api.v2.operations.OperationRepository") as mock_repo_class:
                 mock_repo = AsyncMock()
                 mock_repo_class.return_value = mock_repo
 
@@ -127,16 +126,16 @@ class TestOperationsWebSocket:
         mock_user = {"id": "42", "username": "ping-user"}
 
         with (
-            patch("packages.webui.api.v2.operations.get_current_user_websocket", return_value=mock_user),
-            patch("packages.webui.api.v2.operations.OperationService") as mock_service_class,
-            patch("packages.webui.api.v2.operations.get_db") as mock_get_db,
-            patch("packages.webui.api.v2.operations.ws_manager") as mock_ws_manager,
+            patch("webui.api.v2.operations.get_current_user_websocket", return_value=mock_user),
+            patch("webui.api.v2.operations.OperationService") as mock_service_class,
+            patch("webui.api.v2.operations.get_db") as mock_get_db,
+            patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
         ):
             mock_service_instance = AsyncMock()
             mock_service_instance.verify_websocket_access = AsyncMock(return_value=None)
             mock_service_class.return_value = mock_service_instance
 
-            with patch("packages.webui.api.v2.operations.OperationRepository") as mock_repo_class:
+            with patch("webui.api.v2.operations.OperationRepository") as mock_repo_class:
                 mock_repo_class.return_value = AsyncMock()
 
                 async def mock_db_generator() -> Generator[Any, None, None]:

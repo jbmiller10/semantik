@@ -6,17 +6,16 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-from packages.shared.chunking.domain.exceptions import (
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+from shared.chunking.domain.exceptions import (
     ChunkingDomainError,
     DocumentTooLargeError,
     InvalidConfigurationError,
     InvalidStateError,
 )
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class TestDomainExceptions:
@@ -251,7 +250,7 @@ class TestBusinessRuleEnforcement:
         operation.start()
         operation._started_at = start_time
 
-        with patch("packages.shared.chunking.domain.entities.chunking_operation.datetime") as mock_datetime:
+        with patch("shared.chunking.domain.entities.chunking_operation.datetime") as mock_datetime:
             mock_datetime.now.return_value = timeout_time
             is_valid, issues = operation.validate_results()
 

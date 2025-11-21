@@ -8,13 +8,13 @@ Each strategy implements a specific algorithm for breaking text into chunks.
 
 from typing import cast
 
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.character import CharacterChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.hierarchical import HierarchicalChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.hybrid import HybridChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.recursive import RecursiveChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.character import CharacterChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.hierarchical import HierarchicalChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.hybrid import HybridChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.recursive import RecursiveChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
 
 __all__ = [
     "ChunkingStrategy",

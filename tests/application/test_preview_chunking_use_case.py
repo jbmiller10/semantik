@@ -6,13 +6,12 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from packages.shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
-from packages.shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
-from packages.shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.exceptions import InvalidConfigurationError, StrategyNotFoundError
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.application.dto.requests import ChunkingStrategy, PreviewRequest
+from shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
+from shared.chunking.application.use_cases.preview_chunking import PreviewChunkingUseCase
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.exceptions import InvalidConfigurationError, StrategyNotFoundError
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class TestPreviewChunkingUseCase:

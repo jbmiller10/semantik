@@ -12,9 +12,8 @@ import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
-
-from packages.vecpipe import model_manager, search_api
-from packages.vecpipe.search_api import app
+from vecpipe import model_manager, search_api
+from vecpipe.search_api import app
 
 
 class TestSearchAPIEmbeddingFlow:
@@ -38,7 +37,7 @@ class TestSearchAPIEmbeddingFlow:
         - The specific embedding model used (depends on settings)
         """
         with (
-            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
             patch("httpx.AsyncClient.get") as mock_get,
         ):
             # Mock Qdrant collection info
@@ -94,7 +93,7 @@ class TestSearchAPIEmbeddingFlow:
                 assert isinstance(search_call.kwargs["query_vector"], list)
                 assert len(search_call.kwargs["query_vector"]) > 0
 
-    @patch("packages.vecpipe.search_api.model_manager")
+    @patch("vecpipe.search_api.model_manager")
     def test_embedding_service_dependency_structure(self, mock_model_manager) -> None:
         """Document and verify the current dependency structure.
 
@@ -131,7 +130,7 @@ class TestSearchAPIEmbeddingFlow:
         though the actual model used depends on settings and availability.
         """
         with (
-            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
             patch("httpx.AsyncClient.get") as mock_get,
         ):
             # Mock responses
@@ -150,7 +149,7 @@ class TestSearchAPIEmbeddingFlow:
             mock_qdrant_instance.search = AsyncMock(return_value=[])
 
             # Need to patch metrics server to avoid port conflicts
-            with patch("packages.vecpipe.search_api.start_metrics_server"), TestClient(app) as client:
+            with patch("vecpipe.search_api.start_metrics_server"), TestClient(app) as client:
                 response = client.post(
                     "/search",
                     json={

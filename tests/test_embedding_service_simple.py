@@ -8,12 +8,12 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from packages.shared.config.vecpipe import VecpipeConfig
-from packages.shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO, EmbeddingService
+from shared.config.vecpipe import VecpipeConfig
+from shared.embedding import POPULAR_MODELS, QUANTIZED_MODEL_INFO, EmbeddingService
 
 # Mock the metrics module before importing
 
-sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
+sys.modules["shared.metrics.prometheus"] = MagicMock()
 
 
 class TestEmbeddingService(unittest.TestCase):

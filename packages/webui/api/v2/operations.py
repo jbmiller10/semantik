@@ -10,17 +10,16 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-
-from packages.shared.database import get_db
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.api.schemas import ErrorResponse, OperationResponse
-from packages.webui.auth import get_current_user, get_current_user_websocket
-from packages.webui.services.factory import get_operation_service
-from packages.webui.services.operation_service import OperationService
+from shared.database import get_db
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.api.schemas import ErrorResponse, OperationResponse
+from webui.auth import get_current_user, get_current_user_websocket
+from webui.services.factory import get_operation_service
+from webui.services.operation_service import OperationService
 
 # Use the scalable WebSocket manager for horizontal scaling
-from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
+from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 

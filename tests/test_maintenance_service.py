@@ -3,11 +3,10 @@
 from unittest.mock import Mock, patch
 
 import pytest
-
-from packages.vecpipe.maintenance import QdrantMaintenanceService
+from vecpipe.maintenance import QdrantMaintenanceService
 
 # Mock settings before importing maintenance module
-with patch("packages.vecpipe.maintenance.settings") as mock_settings:
+with patch("vecpipe.maintenance.settings") as mock_settings:
     mock_settings.DEFAULT_COLLECTION = "work_docs"
     mock_settings.QDRANT_HOST = "localhost"
     mock_settings.QDRANT_PORT = 6333
@@ -23,12 +22,12 @@ def mock_qdrant_client() -> Mock:
 @pytest.fixture()
 def maintenance_service(mock_qdrant_client, monkeypatch) -> QdrantMaintenanceService:
     """Create a maintenance service instance with mocked dependencies."""
-    monkeypatch.setattr("packages.vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
-    monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
-    monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_PORT", 6333)
-    monkeypatch.setattr("packages.vecpipe.maintenance.settings.INTERNAL_API_KEY", None)
+    monkeypatch.setattr("vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
+    monkeypatch.setattr("vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
+    monkeypatch.setattr("vecpipe.maintenance.settings.QDRANT_PORT", 6333)
+    monkeypatch.setattr("vecpipe.maintenance.settings.INTERNAL_API_KEY", None)
 
-    with patch("packages.vecpipe.maintenance.QdrantClient", return_value=mock_qdrant_client):
+    with patch("vecpipe.maintenance.QdrantClient", return_value=mock_qdrant_client):
         return QdrantMaintenanceService(
             qdrant_host="localhost", qdrant_port=6333, webui_host="localhost", webui_port=8080
         )
@@ -82,12 +81,12 @@ class TestQdrantMaintenanceService:
     def test_internal_api_key_configuration(self, monkeypatch) -> None:
         """Test that maintenance service is properly configured."""
         # Test that service can be created with API key configured
-        monkeypatch.setattr("packages.vecpipe.maintenance.settings.INTERNAL_API_KEY", "test-api-key")
-        monkeypatch.setattr("packages.vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
-        monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
-        monkeypatch.setattr("packages.vecpipe.maintenance.settings.QDRANT_PORT", 6333)
+        monkeypatch.setattr("vecpipe.maintenance.settings.INTERNAL_API_KEY", "test-api-key")
+        monkeypatch.setattr("vecpipe.maintenance.settings.DEFAULT_COLLECTION", "work_docs")
+        monkeypatch.setattr("vecpipe.maintenance.settings.QDRANT_HOST", "localhost")
+        monkeypatch.setattr("vecpipe.maintenance.settings.QDRANT_PORT", 6333)
 
-        with patch("packages.vecpipe.maintenance.QdrantClient"):
+        with patch("vecpipe.maintenance.QdrantClient"):
             service = QdrantMaintenanceService(webui_host="localhost", webui_port=8080)
             collections = service.get_operation_collections()
 

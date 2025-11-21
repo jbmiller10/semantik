@@ -11,9 +11,8 @@ import random
 import time
 
 import pytest
-
-from packages.shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 
 class TestUTF8BoundaryHandling:

@@ -3,7 +3,7 @@
 This module contains the main task entrypoints for collection operations along with
 helpers that drive INDEX, APPEND, REMOVE_SOURCE, and compatibility flows used in
 tests. The implementation leans on utilities consolidated in
-``packages.webui.tasks.utils`` and delegates reindex-specific logic to the
+``webui.tasks.utils`` and delegates reindex-specific logic to the
 ``reindex`` module.
 """
 
@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any, cast
 import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
+from shared.database import pg_connection_manager
+from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
     OperationTimer,
     QdrantOperationTimer,
@@ -27,8 +29,7 @@ from shared.metrics.collection_metrics import (
     collection_memory_usage_bytes,
     collections_total,
 )
-
-from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
+from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from . import reindex as reindex_tasks
 from .utils import (
@@ -41,7 +42,6 @@ from .utils import (
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
     _audit_log_operation,
-    _is_mock_like,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
@@ -72,7 +72,7 @@ _embedding_semaphore = asyncio.Semaphore(_get_embedding_concurrency())
 
 def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
-    return import_module("packages.webui.tasks")
+    return import_module("webui.tasks")
 
 
 @celery_app.task(bind=True)
@@ -120,7 +120,6 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
 async def _process_collection_operation_async(operation_id: str, celery_task: Any) -> dict[str, Any]:
     """Async implementation of collection operation processing with enhanced monitoring."""
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
-    from shared.database.postgres_database import PostgresConnectionManager
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
     from shared.database.repositories.operation_repository import OperationRepository
@@ -133,34 +132,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
     process = psutil.Process()
     tasks_ns = _tasks_namespace()
 
-    shared_db_root = import_module("shared.database")
-    shared_db_module = import_module("shared.database.database")
+    await pg_connection_manager.initialize()
 
-    pg_manager_override = getattr(tasks_ns, "_pg_connection_manager_override", None)
-    if pg_manager_override is not None:
-        pg_manager = pg_manager_override
-        close_pg_manager = False
-    else:
-        pg_manager = getattr(shared_db_root, "pg_connection_manager", None)
-        close_pg_manager = False
-        if pg_manager is None:
-            pg_manager = PostgresConnectionManager()
-            close_pg_manager = True
-
-    initialize_fn = getattr(pg_manager, "initialize", None)
-    if initialize_fn is not None:
-        await await_if_awaitable(initialize_fn())
-
-    session_factory = getattr(pg_manager, "_sessionmaker", None)
-    if session_factory is None or _is_mock_like(session_factory):
+    session_factory = pg_connection_manager.sessionmaker
+    if session_factory is None:
+        # Fallback to a patched AsyncSessionLocal (used in tests)
+        shared_db_module = import_module("shared.database.database")
         session_factory = getattr(shared_db_module, "AsyncSessionLocal", None)
 
     if session_factory is None or not callable(session_factory):
-        if close_pg_manager:
-            close_fn = getattr(pg_manager, "close", None)
-            if close_fn is not None:
-                with contextlib.suppress(Exception):
-                    await await_if_awaitable(close_fn())
         raise RuntimeError("Failed to initialize database connection for this task")
 
     def _safe_cpu_seconds(proc: Any) -> float:
@@ -445,11 +425,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     with contextlib.suppress(Exception):
                         await db.rollback()
     finally:
-        if close_pg_manager:
-            close_fn = getattr(pg_manager, "close", None)
-            if close_fn is not None:
-                with contextlib.suppress(Exception):
-                    await await_if_awaitable(close_fn())
+        pass
 
 
 async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -> dict[str, Any]:
@@ -1157,7 +1133,6 @@ async def _process_remove_source_operation(
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
     """Process REMOVE_SOURCE operation - Remove documents from a source with monitoring."""
-    from shared.database.database import AsyncSessionLocal
     from shared.database.models import DocumentStatus
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.document_repository import DocumentRepository
@@ -1273,7 +1248,9 @@ async def _process_remove_source_operation(
             logger.error("Failed to remove vectors for batch: %s", exc)
             deletion_errors.append(f"Batch {i//batch_size + 1} error: {str(exc)}")
 
-    async with AsyncSessionLocal() as session, session.begin():
+    session_factory = pg_connection_manager.sessionmaker or await ensure_async_sessionmaker()
+
+    async with session_factory() as session, session.begin():
         doc_repo_tx = DocumentRepository(session)
         collection_repo_tx = CollectionRepository(session)
 
@@ -1350,7 +1327,6 @@ def _handle_task_failure(
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
     """Async implementation of failure handling."""
-    from shared.database.database import AsyncSessionLocal
     from shared.database.models import CollectionStatus, OperationStatus, OperationType
     from shared.database.repositories.collection_repository import CollectionRepository
     from shared.database.repositories.operation_repository import OperationRepository
@@ -1360,7 +1336,9 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
     collection = None
     collection_id = None
 
-    async with AsyncSessionLocal() as db:
+    session_factory = pg_connection_manager.sessionmaker or await ensure_async_sessionmaker()
+
+    async with session_factory() as db:
         operation_repo = OperationRepository(db)
         collection_repo = CollectionRepository(db)
 

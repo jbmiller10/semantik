@@ -14,9 +14,8 @@ import pytest
 import pytest_asyncio
 import redis.asyncio as redis
 from fastapi import WebSocket
-
-from packages.webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
-from packages.webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
+from webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
+from webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
 
 _global_ws_manager = ws_manager
 ws_manager1 = ws_manager
@@ -593,7 +592,7 @@ class TestRedisStreamWebSocketManager:
         websockets = [AsyncMock(spec=WebSocket) for _ in range(5)]
 
         # Connect all websockets concurrently
-        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             mock_operation = MagicMock()
             mock_operation.status = "processing"
@@ -648,8 +647,8 @@ class TestRedisStreamWebSocketManager:
         # Mock the database session and repository
         # Since these are imported inside the function, we need to patch the correct path
         with (
-            patch("packages.shared.database.database.AsyncSessionLocal") as mock_session_local,
-            patch("packages.shared.database.repositories.operation_repository.OperationRepository") as mock_repo_class,
+            patch("shared.database.database.AsyncSessionLocal") as mock_session_local,
+            patch("shared.database.repositories.operation_repository.OperationRepository") as mock_repo_class,
         ):
             # Set up the mocks
             mock_session = AsyncMock()

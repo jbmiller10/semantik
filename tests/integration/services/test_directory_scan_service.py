@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
-
-from packages.webui.api.schemas import DirectoryScanProgress
-from packages.webui.services.directory_scan_service import MAX_FILE_SIZE, DirectoryScanService
+from webui.api.schemas import DirectoryScanProgress
+from webui.services.directory_scan_service import MAX_FILE_SIZE, DirectoryScanService
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,7 +30,7 @@ class TestDirectoryScanServiceIntegration:
             messages.append(DirectoryScanProgress(**payload))
 
         monkeypatch.setattr(
-            "packages.webui.services.directory_scan_service.ws_manager.send_to_operation",
+            "webui.services.directory_scan_service.ws_manager.send_to_operation",
             fake_send,
         )
         return messages
