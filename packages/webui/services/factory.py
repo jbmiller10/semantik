@@ -14,8 +14,10 @@ from shared.database.repositories.projection_run_repository import ProjectionRun
 from shared.managers import QdrantManager
 from webui.qdrant import qdrant_manager as qdrant_connection_manager
 
-from .chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
-from .chunking.container import get_redis_manager as container_get_redis_manager
+from .chunking.container import (
+    get_chunking_orchestrator as container_get_chunking_orchestrator,
+    get_redis_manager as container_get_redis_manager,
+)
 from .chunking.orchestrator import ChunkingOrchestrator
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService

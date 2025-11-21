@@ -15,8 +15,7 @@ from shared.contracts.search import (
     SearchRequest,
     SearchResponse,
 )
-from vecpipe.search import service
-from vecpipe.search import state as search_state
+from vecpipe.search import service, state as search_state
 from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 
 logger = logging.getLogger(__name__)

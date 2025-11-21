@@ -72,9 +72,7 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
     # the number/order of db.execute(...) calls that tests expect.
     from sqlalchemy import or_, select
 
-    from shared.database.models import Collection as _Collection
-    from shared.database.models import Document as _Document
-    from shared.database.models import Operation as _Operation
+    from shared.database.models import Collection as _Collection, Document as _Document, Operation as _Operation
 
     # Fetch the operation using whichever identifier the caller supplied
     op_lookup = select(_Operation)

@@ -3,9 +3,7 @@
 import pytest
 
 from shared.database.models import ChunkingConfigProfile
-from shared.database.repositories.chunking_config_profile_repository import (
-    ChunkingConfigProfileRepository,
-)
+from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
 
 
 class _Result:

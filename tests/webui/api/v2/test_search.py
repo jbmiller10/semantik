@@ -13,11 +13,7 @@ from starlette.requests import Request
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
-from webui.api.v2.schemas import (
-    CollectionSearchRequest,
-    CollectionSearchResponse,
-    SingleCollectionSearchRequest,
-)
+from webui.api.v2.schemas import CollectionSearchRequest, CollectionSearchResponse, SingleCollectionSearchRequest
 from webui.api.v2.search import multi_collection_search, single_collection_search
 
 

@@ -9,11 +9,7 @@ import pytest
 from numpy.typing import NDArray
 
 from shared.embedding.base import BaseEmbeddingService
-from shared.embedding.context import (
-    ManagedEmbeddingService,
-    embedding_service_context,
-    temporary_embedding_service,
-)
+from shared.embedding.context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
 
 
 class MockEmbeddingService(BaseEmbeddingService):

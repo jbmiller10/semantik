@@ -21,14 +21,7 @@ from vecpipe.search.metrics import (
     search_requests,
 )
 from vecpipe.search.router import batch_search, hybrid_search, keyword_search, search_post
-from vecpipe.search.schemas import (
-    EmbedRequest,
-    EmbedResponse,
-    PointPayload,
-    UpsertPoint,
-    UpsertRequest,
-    UpsertResponse,
-)
+from vecpipe.search.schemas import EmbedRequest, EmbedResponse, PointPayload, UpsertPoint, UpsertRequest, UpsertResponse
 from vecpipe.search.service import (
     embed_texts,
     generate_embedding_async,

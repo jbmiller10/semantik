@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from shared.database.exceptions import (
     AccessDeniedError,
     DatabaseOperationError,
@@ -14,7 +16,6 @@ from shared.database.exceptions import (
 )
 from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
-from sqlalchemy import select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

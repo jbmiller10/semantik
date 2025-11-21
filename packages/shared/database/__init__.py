@@ -16,8 +16,11 @@ Import Organization:
 from passlib.context import CryptContext
 
 from .base import ApiKeyRepository, AuthRepository, BaseRepository, CollectionRepository, UserRepository
-from .collection_metadata import ensure_metadata_collection, store_collection_metadata
-from .collection_metadata import get_collection_metadata as get_collection_metadata_qdrant
+from .collection_metadata import (
+    ensure_metadata_collection,
+    get_collection_metadata as get_collection_metadata_qdrant,
+    store_collection_metadata,
+)
 from .database import AsyncSessionLocal, get_db
 from .exceptions import (
     AccessDeniedError,

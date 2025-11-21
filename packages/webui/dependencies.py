@@ -25,14 +25,12 @@ from shared.database import (
     get_db,
     pg_connection_manager,
 )
-from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
-from shared.database.exceptions import EntityNotFoundError
+from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from webui.auth import get_current_user
-from webui.auth import security as http_bearer_security
+from webui.auth import get_current_user, security as http_bearer_security
 
 logger = logging.getLogger(__name__)
 
@@ -193,9 +191,7 @@ async def get_chunking_orchestrator_dependency(
     db: AsyncSession = Depends(get_db),
 ) -> Any:
     """Provide chunking orchestrator via composition root."""
-    from webui.services.chunking.container import (
-        get_chunking_orchestrator as container_get_chunking_orchestrator,
-    )
+    from webui.services.chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
 
     return await container_get_chunking_orchestrator(db)
 

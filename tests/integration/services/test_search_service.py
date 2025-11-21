@@ -9,9 +9,11 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
-from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
-from shared.database.exceptions import EntityNotFoundError
+from shared.database.exceptions import (
+    AccessDeniedError as PackagesAccessDeniedError,
+    AccessDeniedError as SharedAccessDeniedError,
+    EntityNotFoundError,
+)
 from shared.database.models import CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
 from webui.services.search_service import SearchService
