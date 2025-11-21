@@ -28,7 +28,7 @@ from shared.database.database import AsyncSessionLocal, ensure_async_sessionmake
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import update_collection_stats
 from webui.celery_app import celery_app
-from webui.utils.qdrant_manager import qdrant_manager
+from webui.qdrant import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -394,9 +394,9 @@ def _select_patchable(tasks_module: Any, attr: str, fallback_module: Any) -> Any
 def resolve_qdrant_manager() -> Any:
     """Return the current qdrant_manager, honoring patches on tasks or utils."""
     tasks_module = import_module("webui.tasks")
-    utils_module = import_module("webui.utils.qdrant_manager")
+    qdrant_module = import_module("webui.qdrant")
 
-    return _select_patchable(tasks_module, "qdrant_manager", utils_module)
+    return _select_patchable(tasks_module, "qdrant_manager", qdrant_module)
 
 
 def resolve_qdrant_manager_class() -> Any:
