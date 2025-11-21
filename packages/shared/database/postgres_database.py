@@ -10,11 +10,12 @@ from contextlib import asynccontextmanager
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
-from shared.config.postgres import PostgresConfig, postgres_config
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+
+from shared.config.postgres import PostgresConfig, postgres_config
 
 logger = logging.getLogger(__name__)
 
@@ -161,12 +162,6 @@ async def get_postgres_db() -> AsyncGenerator[AsyncSession, None]:
         AsyncSession: Database session for the request
     """
     testing_mode = os.getenv("TESTING", "false").lower() == "true"
-
-    # Short-circuit in testing when no sessionmaker is available
-    if testing_mode and pg_connection_manager.sessionmaker is None:
-        stub_session = cast(AsyncSession, AsyncMock(name="TestAsyncSession"))
-        yield stub_session
-        return
 
     try:
         async with pg_connection_manager.get_session() as session:
