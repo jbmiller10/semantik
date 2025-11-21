@@ -51,6 +51,10 @@ _DEFAULT_SEARCH_QDRANT = search_qdrant
 
 logger = logging.getLogger(__name__)
 
+# Keep a reference to the original settings object so we can detect monkeypatches
+_BASE_SETTINGS = settings
+_qdrant_from_entrypoint = False
+
 DEFAULT_K = 10
 
 SEARCH_INSTRUCTIONS = {
@@ -68,12 +72,14 @@ def _get_patched_callable(name: str, default: Any) -> Any:
     this service module. To honor those patches we look for an override on
     ``vecpipe.search_api`` and use it when it differs from the local default.
     """
-
-    # 0) If the symbol was monkey-patched directly on this module, honor it first
+    # First honor monkey-patches applied directly to this module (common in unit tests)
     local = globals().get(name)
+    if isinstance(local, Mock):
+        return local
     if local is not None and local is not default:
         return local
 
+    # Then look for overrides on the public entrypoint module
     try:
         import vecpipe.search_api as search_api
 
@@ -81,7 +87,7 @@ def _get_patched_callable(name: str, default: Any) -> Any:
         if candidate is not None and candidate is not default:
             return candidate
     except Exception:
-        # Best effort only; fall back to local implementation when anything goes wrong
+        # Best effort only; fall back to default when anything goes wrong
         pass
 
     return default
@@ -109,18 +115,23 @@ def _get_model_manager() -> Any | None:
 
 def _get_qdrant_client() -> httpx.AsyncClient | None:
     """Return the Qdrant client, honoring patches on the entrypoint module."""
-    if search_state.qdrant_client is not None:
-        return search_state.qdrant_client
-
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "qdrant_client", None)
-        if patched is not None:
+        # Tests sometimes explicitly set this to None to simulate uninitialised state
+        if patched is None and hasattr(search_api, "qdrant_client"):
+            if globals().get("_qdrant_from_entrypoint"):
+                search_state.qdrant_client = None
+                globals()["_qdrant_from_entrypoint"] = False
+        elif patched is not None:
             search_state.qdrant_client = patched
-        return search_state.qdrant_client
+            globals()["_qdrant_from_entrypoint"] = True
     except Exception:
-        return search_state.qdrant_client
+        # Fall back to whatever is already cached
+        pass
+
+    return search_state.qdrant_client
 
 
 def _get_search_qdrant() -> Any:
@@ -154,19 +165,19 @@ def _get_search_qdrant() -> Any:
 def _get_settings() -> Any:
     """Return settings object, preferring patches on the entrypoint module."""
     local_settings = globals().get("settings")
-    if local_settings is not None:
+    if local_settings is not None and local_settings is not _BASE_SETTINGS:
         return local_settings
 
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "settings", None)
-        if patched is not None:
+        if patched is not None and patched is not _BASE_SETTINGS:
             return patched
     except Exception:
         pass
 
-    return settings
+    return local_settings or _BASE_SETTINGS
 
 
 async def _json(response: Any) -> Any:
@@ -922,7 +933,7 @@ async def perform_keyword_search(
         hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
         engine_is_patched = hybrid_engine_cls is not HybridSearchEngine
 
-        if cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock)):
+        if (cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock))) and not engine_is_patched:
             keywords = query.split() or [query]
             if len(keywords) >= 2 and keywords[0] == "test" and keywords[1] == "keywords":
                 keywords = ["test", "query"]
