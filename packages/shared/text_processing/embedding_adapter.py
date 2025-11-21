@@ -13,8 +13,8 @@ from typing import Any, cast
 
 from llama_index.core.embeddings import BaseEmbedding
 
-from packages.shared.embedding.dense import embedding_service
-from packages.shared.text_processing.exceptions import EmbeddingError, EmbeddingServiceNotInitializedError
+from shared.embedding.dense import embedding_service
+from shared.text_processing.exceptions import EmbeddingError, EmbeddingServiceNotInitializedError
 
 logger = logging.getLogger(__name__)
 

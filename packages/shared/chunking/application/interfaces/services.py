@@ -10,7 +10,7 @@ from enum import Enum
 from typing import Any, Self
 
 # Import repository interfaces - forward reference to avoid circular imports
-from packages.shared.chunking.application.interfaces.repositories import (
+from shared.chunking.application.interfaces.repositories import (
     CheckpointRepository,
     ChunkingOperationRepository,
     ChunkRepository,

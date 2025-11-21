@@ -10,8 +10,8 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from packages.shared.config.postgres import postgres_config
-from packages.shared.database.models import (
+from shared.config.postgres import postgres_config
+from shared.database.models import (
     ApiKey,
     Base,
     ChunkingConfig,

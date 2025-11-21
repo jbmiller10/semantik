@@ -12,15 +12,15 @@ from collections.abc import Callable
 from enum import Enum
 from typing import Any, TypedDict
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
-from packages.shared.chunking.unified.character_strategy import CharacterChunkingStrategy
-from packages.shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
-from packages.shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
-from packages.shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
-from packages.shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
-from packages.shared.chunking.utils.safe_regex import SafeRegex
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.unified.base import UnifiedChunkingStrategy
+from shared.chunking.unified.character_strategy import CharacterChunkingStrategy
+from shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
+from shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
+from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
+from shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
+from shared.chunking.utils.safe_regex import SafeRegex
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
             )
 
             # Create new chunk with updated metadata
-            from packages.shared.chunking.domain.entities.chunk import Chunk
+            from shared.chunking.domain.entities.chunk import Chunk
 
             updated_chunk = Chunk(
                 content=chunk.content,

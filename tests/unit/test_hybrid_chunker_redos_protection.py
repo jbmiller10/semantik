@@ -25,8 +25,8 @@ try:
 except ImportError:
     HAS_REGEX = False
 
-from packages.shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
-from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
+from shared.chunking.utils.safe_regex import RegexTimeout, SafeRegex
+from shared.text_processing.strategies.hybrid_chunker import HybridChunker
 
 # Define test constants and helpers
 REGEX_TIMEOUT = 1  # Default timeout from SafeRegex
@@ -178,7 +178,7 @@ class TestHybridChunkerReDoSProtection:
             return original_safe_regex(pattern, text, flags)
 
         with patch(
-            "packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall", side_effect=mock_safe_regex
+            "shared.text_processing.strategies.hybrid_chunker.safe_regex_findall", side_effect=mock_safe_regex
         ):
             is_file, density = chunker._analyze_markdown_content(test_text, None)
 
@@ -195,7 +195,7 @@ class TestHybridChunkerReDoSProtection:
 
         # Mock safe_regex_findall to fail
         with patch(
-            "packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall",
+            "shared.text_processing.strategies.hybrid_chunker.safe_regex_findall",
             side_effect=Exception("Regex failed"),
         ):
             coherence = chunker._estimate_semantic_coherence(test_text)
@@ -222,7 +222,7 @@ class TestHybridChunkerReDoSProtection:
     def test_compile_markdown_patterns_timeout_handling(self) -> None:
         """Test that pattern compilation handles timeouts gracefully."""
         # Create a new chunker and mock the timeout context
-        with patch("packages.shared.text_processing.strategies.hybrid_chunker.timeout") as mock_timeout:
+        with patch("shared.text_processing.strategies.hybrid_chunker.timeout") as mock_timeout:
             # Make timeout raise TimeoutError for specific patterns
             def timeout_side_effect(seconds) -> None:  # noqa: ARG001
                 class TimeoutContext:
@@ -265,7 +265,7 @@ class TestHybridChunkerReDoSProtection:
         """
 
         # Mock some pattern executions to fail
-        with patch("packages.shared.text_processing.strategies.hybrid_chunker.safe_regex_findall") as mock_safe:
+        with patch("shared.text_processing.strategies.hybrid_chunker.safe_regex_findall") as mock_safe:
             call_count = 0
 
             def side_effect(pattern, text, flags=0) -> None:  # noqa: ARG001

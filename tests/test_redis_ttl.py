@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from packages.webui.background_tasks import STREAM_MAX_LENGTH, TTL_CONFIG, RedisCleanupTask
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from webui.background_tasks import STREAM_MAX_LENGTH, TTL_CONFIG, RedisCleanupTask
+from webui.websocket_manager import RedisStreamWebSocketManager
 
 
 @pytest.mark.asyncio()
@@ -169,7 +169,7 @@ async def test_cleanup_task_metrics_logging() -> None:
     mock_redis.xtrim = AsyncMock(return_value=0)
 
     # Mock logger to capture metrics
-    with patch("packages.webui.background_tasks.logger") as mock_logger:
+    with patch("webui.background_tasks.logger") as mock_logger:
         cleanup_task = RedisCleanupTask(mock_redis)
         await cleanup_task._perform_cleanup()
 

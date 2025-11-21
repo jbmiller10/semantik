@@ -116,7 +116,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
 
     from celery.exceptions import SoftTimeLimitExceeded
 
-    from packages.webui.api.chunking_exceptions import (
+    from webui.api.chunking_exceptions import (
         ChunkingDependencyError,
         ChunkingMemoryError,
         ChunkingPartialFailureError,
@@ -125,7 +125,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
         ChunkingTimeoutError,
         ChunkingValidationError,
     )
-    from packages.webui.services.chunking_error_handler import ChunkingErrorType
+    from webui.services.chunking_error_handler import ChunkingErrorType
 
     def _is_instance(expected: tuple[type[Exception], ...]) -> RulePredicate:
         return lambda exc, _msg: isinstance(exc, expected)
@@ -250,7 +250,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
 def chunking_enum_code_map() -> dict[Any, str]:
     """Return canonical enum→code mapping for chunking errors."""
 
-    from packages.webui.services.chunking_error_handler import ChunkingErrorType
+    from webui.services.chunking_error_handler import ChunkingErrorType
 
     return {
         ChunkingErrorType.MEMORY_ERROR: "memory_error",
@@ -271,7 +271,7 @@ def chunking_enum_code_map() -> dict[Any, str]:
 def get_default_chunking_error_classifier() -> ErrorClassifier:
     """Return the shared chunking error classifier singleton."""
 
-    from packages.webui.services.chunking_error_handler import ChunkingErrorType
+    from webui.services.chunking_error_handler import ChunkingErrorType
 
     return ErrorClassifier(
         rules=build_chunking_rules(),

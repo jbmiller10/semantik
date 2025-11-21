@@ -4,7 +4,6 @@ Creates and configures the FastAPI application
 """
 
 import logging
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,17 +13,14 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from shared.config import settings as shared_settings
+from shared.config.internal_api_key import ensure_internal_api_key
+from shared.config.runtime import ensure_webui_directories, require_jwt_secret
+from shared.database import pg_connection_manager
+from shared.embedding import configure_global_embedding_service
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 from starlette.responses import Response
-
-# Add parent directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
-from shared.config import settings as shared_settings
-from shared.config.internal_api_key import ensure_internal_api_key
-from shared.database import pg_connection_manager
-from shared.embedding import configure_global_embedding_service
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +135,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Configure logging with correlation support
     configure_logging_with_correlation()
     logger.info("Logging configured with correlation ID support")
+
+    # Prepare filesystem and required secrets
+    ensure_webui_directories(shared_settings)
+    require_jwt_secret(shared_settings)
+    logger.info("Runtime directories prepared and JWT secret validated")
 
     # Initialize PostgreSQL connection
     logger.info("Initializing PostgreSQL connection...")

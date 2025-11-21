@@ -30,35 +30,35 @@ from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.plugin_loader import load_chunking_plugins
-from packages.shared.database import pg_connection_manager
-from packages.shared.database.database import AsyncSessionLocal
-from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
-from packages.shared.database.repositories.chunk_repository import ChunkRepository
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.api.chunking_exceptions import (
+from shared.chunking.plugin_loader import load_chunking_plugins
+from shared.database import pg_connection_manager
+from shared.database.database import AsyncSessionLocal
+from shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
+from shared.database.repositories.chunk_repository import ChunkRepository
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingPartialFailureError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
 )
-from packages.webui.celery_app import celery_app
-from packages.webui.middleware.correlation import get_or_generate_correlation_id
-from packages.webui.services.chunking.container import (
+from webui.celery_app import celery_app
+from webui.middleware.correlation import get_or_generate_correlation_id
+from webui.services.chunking.container import (
     build_chunking_operation_manager,
     resolve_celery_chunking_orchestrator,
 )
-from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
-from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.factory import get_redis_manager
-from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
-from packages.webui.services.type_guards import ensure_sync_redis
-from packages.webui.tasks import executor as chunk_executor
-from packages.webui.tasks import extract_and_serialize_thread_safe
-from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+from webui.services.chunking.operation_manager import ChunkingOperationManager
+from webui.services.chunking_error_handler import ChunkingErrorHandler
+from webui.services.factory import get_redis_manager
+from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
+from webui.services.type_guards import ensure_sync_redis
+from webui.tasks import executor as chunk_executor
+from webui.tasks import extract_and_serialize_thread_safe
+from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -652,10 +652,12 @@ async def _process_chunking_operation_async(
     partial_failure = False
 
     try:
-        if not pg_connection_manager._sessionmaker:
+        if not pg_connection_manager.sessionmaker:
             await pg_connection_manager.initialize()
 
-        session_factory = cast(Callable[[], AsyncSession], AsyncSessionLocal)
+        session_factory = pg_connection_manager.sessionmaker or cast(Callable[[], AsyncSession], AsyncSessionLocal)
+        if session_factory is None:
+            raise RuntimeError("Database sessionmaker not initialized")
         async with session_factory() as db:
             operation_repo = OperationRepository(db)
             collection_repo = CollectionRepository(db)

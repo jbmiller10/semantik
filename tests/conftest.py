@@ -34,14 +34,14 @@ from httpx import AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
 
-celery_module = importlib.import_module("packages.webui.celery_app")  # noqa: E402
-from packages.shared.database import get_db  # noqa: E402
-from packages.shared.database.factory import (  # noqa: E402
+celery_module = importlib.import_module("webui.celery_app")  # noqa: E402
+from shared.database import get_db  # noqa: E402
+from shared.database.factory import (  # noqa: E402
     create_auth_repository,
     create_collection_repository,
     create_user_repository,
 )
-from packages.shared.database.models import (  # noqa: E402
+from shared.database.models import (  # noqa: E402
     Base,
     Collection,
     CollectionStatus,
@@ -52,10 +52,10 @@ from packages.shared.database.models import (  # noqa: E402
     OperationType,
     User,
 )
-from packages.webui.auth import create_access_token, get_current_user  # noqa: E402
-from packages.webui.main import app  # noqa: E402
-from packages.webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
-from packages.webui.websocket_manager import RedisStreamWebSocketManager  # noqa: E402
+from webui.auth import create_access_token, get_current_user  # noqa: E402
+from webui.main import app  # noqa: E402
+from webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
+from webui.websocket_manager import RedisStreamWebSocketManager  # noqa: E402
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -201,12 +201,12 @@ def use_fakeredis():
         patch("redis.asyncio.from_url", return_value=fake_async_redis),
         patch("redis.asyncio.ConnectionPool.from_url", return_value=fake_async_redis.connection_pool),
         # Also patch the WebSocket manager's Redis imports
-        patch("packages.webui.websocket.scalable_manager.redis.from_url", return_value=fake_async_redis),
-        patch("packages.webui.websocket_manager.redis.from_url", return_value=fake_async_redis),
-        patch("packages.webui.websocket_manager.aioredis.from_url", return_value=fake_async_redis),
+        patch("webui.websocket.scalable_manager.redis.from_url", return_value=fake_async_redis),
+        patch("webui.websocket_manager.redis.from_url", return_value=fake_async_redis),
+        patch("webui.websocket_manager.aioredis.from_url", return_value=fake_async_redis),
         # Patch service manager imports
-        patch("packages.webui.services.redis_manager.aioredis.from_url", return_value=fake_async_redis),
-        patch("packages.webui.services.redis_manager.redis.from_url", return_value=fake_sync_redis),
+        patch("webui.services.redis_manager.aioredis.from_url", return_value=fake_async_redis),
+        patch("webui.services.redis_manager.redis.from_url", return_value=fake_sync_redis),
     ):
         # Also need to handle Redis() constructor with connection pool
         original_sync_redis_init = sync_redis.Redis.__init__
@@ -261,8 +261,8 @@ def test_client(test_user) -> None:
 
     # Mock the lifespan events to prevent real connections
     with (
-        patch("packages.webui.main.pg_connection_manager") as mock_pg,
-        patch("packages.webui.main.ws_manager") as mock_ws,
+        patch("webui.main.pg_connection_manager") as mock_pg,
+        patch("webui.main.ws_manager") as mock_ws,
     ):
         # Mock the async methods
         mock_pg.initialize = AsyncMock()
@@ -412,7 +412,7 @@ def _reset_singletons() -> None:
     # Clear Prometheus metrics registry to avoid duplicate metric registration
     from prometheus_client import REGISTRY
 
-    from packages.shared.metrics.prometheus import registry
+    from shared.metrics.prometheus import registry
 
     # Clear all collectors from the custom registry
     collectors_to_remove = list(registry._collector_to_names.keys())

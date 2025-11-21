@@ -1,8 +1,9 @@
 # shared/config/webui.py
 
-import secrets
+from functools import cached_property
 from pathlib import Path
-from typing import Any
+
+from pydantic import field_validator
 
 from .base import BaseConfig
 
@@ -14,7 +15,7 @@ class WebuiConfig(BaseConfig):
     """
 
     # JWT Authentication Configuration
-    JWT_SECRET_KEY: str = "default-secret-key"  # MUST be overridden in .env
+    JWT_SECRET_KEY: str  # MUST be provided via environment
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     ALGORITHM: str = "HS256"
     DISABLE_AUTH: bool = False  # Set to True for development only
@@ -46,109 +47,65 @@ class WebuiConfig(BaseConfig):
     DOCUMENT_ROOT: str | None = None
     DOCUMENT_ALLOWED_ROOTS: str | None = None
 
-    def __init__(self, **kwargs: Any) -> None:
-        """Initialize configuration with JWT secret key validation."""
-        super().__init__(**kwargs)
+    # Keep side-effect free; runtime code is responsible for validating/creating paths and
+    # ensuring JWT secrets are present (see shared.config.runtime).
 
-        # Determine document root directory and ensure it exists
-        self._document_root: Path | None = None
-        self._document_allowed_roots: tuple[Path, ...] = ()
-        self._default_document_mounts: tuple[Path, ...] = ()
-        if self.DOCUMENT_ROOT:
-            raw_document_root = Path(self.DOCUMENT_ROOT).expanduser()
-            raw_document_root.mkdir(parents=True, exist_ok=True)
-            self._document_root = raw_document_root.resolve()
-        extra_roots = []
-        raw_allowed = kwargs.get("DOCUMENT_ALLOWED_ROOTS") or self.DOCUMENT_ALLOWED_ROOTS
+    @field_validator("JWT_SECRET_KEY")
+    @classmethod
+    def _validate_jwt_secret(cls, value: str) -> str:
+        if not value or not value.strip():
+            raise ValueError("JWT_SECRET_KEY must be set via environment (use scripts/generate_jwt_secret.py)")
+        return value
+
+    @cached_property
+    def document_root_path(self) -> Path | None:
+        """Return resolved document root if configured."""
+
+        if not self.DOCUMENT_ROOT:
+            return None
+        return Path(self.DOCUMENT_ROOT).expanduser().resolve()
+
+    @cached_property
+    def document_allowed_roots(self) -> tuple[Path, ...]:
+        """Additional directories allowed for serving document content."""
+
+        explicit_roots: list[Path] = []
+        raw_allowed = self.DOCUMENT_ALLOWED_ROOTS
         if raw_allowed:
             for entry in str(raw_allowed).split(":"):
                 entry = entry.strip()
                 if not entry:
                     continue
-                extra_roots.append(Path(entry).expanduser().resolve())
-        self._document_allowed_roots = tuple(extra_roots)
+                explicit_roots.append(Path(entry).expanduser().resolve())
+
+        roots: list[Path] = []
+        if self.document_root_path is not None:
+            roots.append(self.document_root_path)
+        roots.extend(explicit_roots)
 
         default_mounts: list[Path] = []
         for candidate in (Path("/mnt/docs"),):
             if candidate.exists():
                 default_mounts.append(candidate.resolve())
-        self._default_document_mounts = tuple(default_mounts)
+        roots.extend(default_mounts)
 
-        # JWT Secret Key file path (in the data directory)
-        jwt_secret_file = self.data_dir / ".jwt_secret"
+        # Always allow the loaded_dir by default
+        roots.append(self.loaded_dir.resolve())
 
-        # Handle JWT secret key based on environment
-        if self.ENVIRONMENT == "production":
-            # In production, JWT_SECRET_KEY must be explicitly set via environment variable
-            if self.JWT_SECRET_KEY == "default-secret-key" or not self.JWT_SECRET_KEY:
-                raise ValueError(
-                    "JWT_SECRET_KEY must be explicitly set via environment variable in production. "
-                    "Generate a secure key using: openssl rand -hex 32"
-                )
-        else:
-            # In development, allow auto-generation or reading from file
-            if self.JWT_SECRET_KEY == "default-secret-key":
-                # Check if .jwt_secret file exists
-                if jwt_secret_file.exists():
-                    # Read the secret from file
-                    try:
-                        self.JWT_SECRET_KEY = jwt_secret_file.read_text().strip()
-                        if not self.JWT_SECRET_KEY:
-                            raise ValueError("JWT secret file is empty")
-                    except Exception as e:
-                        raise ValueError(f"Failed to read JWT secret from {jwt_secret_file}: {e}") from e
-                else:
-                    # Generate a new secret and save it to file
-                    self.JWT_SECRET_KEY = secrets.token_hex(32)
-                    try:
-                        jwt_secret_file.write_text(self.JWT_SECRET_KEY)
-                        # Set secure permissions (readable only by owner)
-                        jwt_secret_file.chmod(0o600)
-                    except Exception as e:
-                        # If we can't write the file, continue with the generated secret
-                        # but warn the user
-                        import logging
-
-                        logging.warning(
-                            f"Generated JWT secret key but failed to save to {jwt_secret_file}: {e}. "
-                            "The key will be regenerated on next startup unless JWT_SECRET_KEY is set."
-                        )
+        return tuple(dict.fromkeys(roots))
 
     @property
     def document_root(self) -> Path | None:
         """Root directory where document content is stored when configured."""
-
-        return self._document_root
-
-    @property
-    def document_allowed_roots(self) -> tuple[Path, ...]:
-        """Additional directories allowed for serving document content."""
-
-        explicit_roots: list[Path] = []
-        if self._document_root is not None:
-            explicit_roots.append(self._document_root)
-        if self._document_allowed_roots:
-            explicit_roots.extend(self._document_allowed_roots)
-
-        roots: list[Path] = []
-        if explicit_roots:
-            roots.extend(explicit_roots)
-        else:
-            roots.extend(self._default_document_mounts)
-
-        roots.append(self.loaded_dir.resolve())
-
-        # Preserve order while removing duplicates
-        return tuple(dict.fromkeys(roots))
+        return self.document_root_path
 
     @property
     def should_enforce_document_roots(self) -> bool:
         """Return True when document access must be constrained to known roots."""
 
-        if self._document_root is not None:
+        if self.document_root_path is not None:
             return True
-        if self._document_allowed_roots:
+        if self.DOCUMENT_ALLOWED_ROOTS:
             return True
-        if self._default_document_mounts:
-            return True
-        return False
+        # Only enforce defaults when /mnt/docs exists
+        return any(root.exists() for root in self.document_allowed_roots)

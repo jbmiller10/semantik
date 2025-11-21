@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.shared.database.exceptions import AccessDeniedError, InvalidStateError
-from packages.webui.services.factory import create_collection_service
+from shared.database.exceptions import AccessDeniedError, InvalidStateError
+from webui.services.factory import create_collection_service
 
 
 class TestCollectionServiceMockIntegration:
@@ -18,7 +18,7 @@ class TestCollectionServiceMockIntegration:
         db_session = AsyncMock()
 
         # Mock the qdrant_connection_manager.get_client() in factory to return a mock client
-        with patch("packages.webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
+        with patch("webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
             mock_qdrant_client = MagicMock()
             mock_connection_manager.get_client.return_value = mock_qdrant_client
 
@@ -59,7 +59,7 @@ class TestCollectionServiceMockIntegration:
         db_session = AsyncMock()
 
         # Mock the qdrant_connection_manager.get_client() in factory to return a mock client
-        with patch("packages.webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
+        with patch("webui.services.factory.qdrant_connection_manager") as mock_connection_manager:
             mock_qdrant_client = MagicMock()
             mock_connection_manager.get_client.return_value = mock_qdrant_client
 

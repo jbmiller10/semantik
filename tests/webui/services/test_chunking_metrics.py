@@ -1,6 +1,6 @@
 """Lightweight coverage for chunking metrics helpers."""
 
-from packages.webui.services.chunking.metrics import ChunkingMetrics
+from webui.services.chunking.metrics import ChunkingMetrics
 
 
 def test_get_metrics_by_strategy_returns_defaults():

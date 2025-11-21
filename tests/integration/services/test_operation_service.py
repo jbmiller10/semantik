@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from packages.shared.database.models import OperationStatus, OperationType
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.services.operation_service import OperationService, celery_app
+from shared.database.models import OperationStatus, OperationType
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.services.operation_service import OperationService, celery_app
 
 
 @pytest.mark.asyncio()

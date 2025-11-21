@@ -9,8 +9,8 @@ import pytest
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from sqlalchemy import select
 
-from packages.shared.database.models import Operation, OperationStatus, OperationType
-from packages.shared.database.repositories.operation_repository import OperationRepository
+from shared.database.models import Operation, OperationStatus, OperationType
+from shared.database.repositories.operation_repository import OperationRepository
 
 
 @pytest.mark.asyncio()

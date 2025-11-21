@@ -9,10 +9,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.webui.services.chunking.strategy_registry import list_api_strategy_ids
+from shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from webui.services.chunking.strategy_registry import list_api_strategy_ids
 
 logger = logging.getLogger(__name__)
 

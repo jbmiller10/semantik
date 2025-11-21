@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 from unittest.mock import MagicMock
 
-from packages.shared.embedding import (
+from shared.embedding import (
     EmbeddingService,
     cleanup,
     get_embedding_service,
@@ -22,7 +22,7 @@ from packages.shared.embedding import (
 )
 
 # Mock metrics before importing
-sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
+sys.modules["shared.metrics.prometheus"] = MagicMock()
 
 
 class TestThreadSafety(unittest.TestCase):

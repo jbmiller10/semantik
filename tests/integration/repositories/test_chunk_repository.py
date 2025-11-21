@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from packages.shared.database.models import Chunk
-from packages.shared.database.repositories.chunk_repository import ChunkRepository
+from shared.database.models import Chunk
+from shared.database.repositories.chunk_repository import ChunkRepository
 
 
 @pytest.mark.asyncio()

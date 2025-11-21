@@ -2,15 +2,15 @@
 
 import pytest
 
-from packages.shared.chunking.infrastructure.exceptions import ValidationError
-from packages.webui.services.chunking import (
+from shared.chunking.infrastructure.exceptions import ValidationError
+from webui.services.chunking import (
     ChunkingCache,
     ChunkingConfigManager,
     ChunkingProcessor,
     ChunkingValidator,
 )
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-from packages.webui.services.dtos import (
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.dtos import (
     ServiceChunkPreview,
     ServiceStrategyComparison,
     ServiceStrategyMetrics,

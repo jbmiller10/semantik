@@ -20,7 +20,7 @@ from webui.auth import (
     pwd_context,
 )
 
-from packages.webui.dependencies import get_auth_repository, get_user_repository
+from webui.dependencies import get_auth_repository, get_user_repository
 
 logger = logging.getLogger(__name__)
 

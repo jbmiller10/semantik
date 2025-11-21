@@ -5,9 +5,9 @@ sys.path.insert(0, "/app")
 
 from sqlalchemy.orm import sessionmaker
 
-import packages.webui.auth.utils as auth_utils
-from packages.shared.database.models.user import User
-from packages.shared.database.session import get_db_engine
+import webui.auth.utils as auth_utils
+from shared.database.models.user import User
+from shared.database.session import get_db_engine
 
 engine = get_db_engine()
 Session = sessionmaker(bind=engine)

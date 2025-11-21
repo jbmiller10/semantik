@@ -11,8 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
 @dataclass

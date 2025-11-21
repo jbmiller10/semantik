@@ -8,22 +8,22 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import ChunkingStrategyError
-from packages.shared.database.exceptions import (
+from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
+from shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
 )
-from packages.shared.database.models import Collection, CollectionStatus, OperationType
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.shared.managers import QdrantManager
-from packages.webui.celery_app import celery_app
-from packages.webui.services.chunking_config_builder import ChunkingConfigBuilder
-from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
-from packages.webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
+from shared.database.models import Collection, CollectionStatus, OperationType
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from shared.managers import QdrantManager
+from webui.celery_app import celery_app
+from webui.services.chunking_config_builder import ChunkingConfigBuilder
+from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
 
 if TYPE_CHECKING:
     from qdrant_client import QdrantClient
@@ -787,7 +787,7 @@ class CollectionService:
         Raises:
             ValueError: If invalid filter values provided
         """
-        from packages.shared.database.models import OperationStatus, OperationType
+        from shared.database.models import OperationStatus, OperationType
 
         # Validate filters first
         if status:
@@ -856,7 +856,7 @@ class CollectionService:
         Raises:
             ValueError: If invalid filter values provided
         """
-        from packages.shared.database.models import DocumentStatus
+        from shared.database.models import DocumentStatus
 
         # Validate status filter first
         if status:

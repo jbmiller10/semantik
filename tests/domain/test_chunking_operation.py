@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.entities.chunking_operation import ChunkingOperation
-from packages.shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.entities.chunking_operation import ChunkingOperation
+from shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.domain.value_objects.operation_status import OperationStatus
 
 
 class TestChunkingOperation:
@@ -355,7 +355,7 @@ class TestChunkingOperation:
         assert is_valid is False
         assert any("Insufficient coverage" in issue for issue in issues)
 
-    @patch("packages.shared.chunking.domain.entities.chunking_operation.datetime")
+    @patch("shared.chunking.domain.entities.chunking_operation.datetime")
     def test_validate_results_with_timeout(self, mock_datetime, chunking_operation) -> None:
         """Test validation fails when operation times out."""
         # Arrange

@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from packages.webui.tasks import (
+from webui.tasks import (
     CLEANUP_DELAY_MAX_SECONDS,
     CLEANUP_DELAY_MIN_SECONDS,
     CeleryTaskWithOperationUpdates,
@@ -69,7 +69,7 @@ def create_mock_async_session_local(mock_session) -> None:
 class TestTaskHelperFunctions:
     """Test various helper functions used in tasks."""
 
-    @patch("packages.webui.tasks.test_task")
+    @patch("webui.tasks.test_task")
     def test_test_task(self, mock_test_task) -> None:
         """Test the test_task for Celery verification."""
         # Mock the decorated task to return expected result
@@ -357,14 +357,14 @@ class TestMetricsRecording:
         assert mock_session.add.call_count == 5
         mock_session.commit.assert_called_once()
 
-    @patch("packages.webui.tasks.update_collection_stats")
+    @patch("webui.tasks.update_collection_stats")
     async def test_update_collection_metrics(self, mock_update_stats) -> None:
         """Test collection metrics update."""
         await _update_collection_metrics("col-123", 100, 1000, 10240000)
 
         mock_update_stats.assert_called_once_with("col-123", 100, 1000, 10240000)
 
-    @patch("packages.webui.tasks.update_collection_stats")
+    @patch("webui.tasks.update_collection_stats")
     async def test_update_collection_metrics_failure(self, mock_update_stats) -> None:
         """Test collection metrics update handles failures."""
         mock_update_stats.side_effect = Exception("Metrics error")
@@ -469,7 +469,7 @@ class TestStagingCleanup:
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.tasks.qdrant_manager")
+    @patch("webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_success(
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
     ) -> None:
@@ -547,7 +547,7 @@ class TestStagingCleanup:
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
     @patch("shared.database.database.AsyncSessionLocal")
-    @patch("packages.webui.tasks.qdrant_manager")
+    @patch("webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_qdrant_failure(
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
     ) -> None:
@@ -605,10 +605,10 @@ class TestCleanupOldResults:
         assert "celery_results_deleted" in result
         assert result["celery_results_deleted"] >= 0
 
-    @patch("packages.webui.tasks.logger")
+    @patch("webui.tasks.logger")
     def test_cleanup_old_results_with_error(self, mock_logger) -> None:
         """Test cleanup handles errors gracefully."""
-        with patch("packages.webui.tasks.datetime") as mock_datetime:
+        with patch("webui.tasks.datetime") as mock_datetime:
             mock_datetime.now.side_effect = Exception("Time error")
 
             result = cleanup_old_results()

@@ -8,7 +8,7 @@ from playwright.sync_api import Page, expect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Collection, Document, Operation
+from shared.database.models import Collection, Document, Operation
 
 
 @pytest.mark.e2e()

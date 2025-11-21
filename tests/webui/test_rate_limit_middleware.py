@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 from shared.config import settings
 
-from packages.webui.middleware.rate_limit import RateLimitMiddleware
+from webui.middleware.rate_limit import RateLimitMiddleware
 
 
 def create_app() -> FastAPI:

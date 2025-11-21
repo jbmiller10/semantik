@@ -18,15 +18,15 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
-from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
-from packages.shared.database.exceptions import AccessDeniedError
-from packages.shared.database.models import OperationStatus
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
-from packages.webui.services.dtos import (
+from shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
+from shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
+from shared.database.exceptions import AccessDeniedError
+from shared.database.models import OperationStatus
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.services.chunking_constants import MAX_PREVIEW_CONTENT_SIZE
+from webui.services.dtos import (
     ServiceChunkingStats,
     ServiceChunkList,
     ServiceChunkPreview,
@@ -619,7 +619,7 @@ class ChunkingOrchestrator:
         if not self.db_session:
             raise ValidationError(field="db_session", value=None, reason="Database session unavailable")
 
-        from packages.shared.database.models import (
+        from shared.database.models import (
             Chunk,
             Document,
             Operation,
@@ -629,7 +629,7 @@ class ChunkingOrchestrator:
 
         collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
         if not collection:
-            from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
+            from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
             raise ResourceNotFoundError("Collection", str(collection_id))
 
@@ -697,8 +697,8 @@ class ChunkingOrchestrator:
         if not self.db_session:
             raise ValidationError(field="db_session", value=None, reason="Database session unavailable")
 
-        from packages.shared.chunking.infrastructure.exceptions import ResourceNotFoundError
-        from packages.shared.database.models import Chunk
+        from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
+        from shared.database.models import Chunk
 
         collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
         if not collection:
@@ -753,7 +753,7 @@ class ChunkingOrchestrator:
         if not self.db_session:
             raise ValidationError(field="db_session", value=None, reason="Database session unavailable")
 
-        from packages.shared.database.models import Chunk, Collection, Document, Operation, OperationStatus
+        from shared.database.models import Chunk, Collection, Document, Operation, OperationStatus
 
         period_end = datetime.now(UTC)
         safe_days = max(period_days, 1)

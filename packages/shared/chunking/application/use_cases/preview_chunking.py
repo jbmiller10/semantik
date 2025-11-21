@@ -8,9 +8,9 @@ This use case is designed for quick feedback without full processing overhead.
 import time
 from uuid import uuid4
 
-from packages.shared.chunking.application.dto.requests import PreviewRequest
-from packages.shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
-from packages.shared.chunking.application.interfaces.services import (
+from shared.chunking.application.dto.requests import PreviewRequest
+from shared.chunking.application.dto.responses import ChunkDTO, PreviewResponse
+from shared.chunking.application.interfaces.services import (
     ChunkingStrategyFactory,
     DocumentService,
     MetricsService,

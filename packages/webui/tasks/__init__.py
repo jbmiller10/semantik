@@ -1,7 +1,7 @@
 """Domain-specific Celery task package.
 
 This module glues together the newly modularized task implementations while
-preserving the public surface previously exposed via ``packages.webui.tasks``.
+preserving the public surface previously exposed via ``webui.tasks``.
 Importing this package registers all task modules so existing task names remain
 available to Celery.
 """
@@ -14,7 +14,7 @@ from typing import Any
 
 import httpx
 
-from packages.webui.services.chunking.container import resolve_celery_chunking_orchestrator
+from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from .cleanup import (
     cleanup_old_collections,
@@ -141,7 +141,7 @@ __all__ = [
 
 
 def _load_module(name: str) -> Any:
-    return import_module(f"packages.webui.tasks.{name}")
+    return import_module(f"webui.tasks.{name}")
 
 
 _PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "utils"))

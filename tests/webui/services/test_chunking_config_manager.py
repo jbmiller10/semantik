@@ -4,11 +4,11 @@ from typing import Any
 
 import pytest
 
-from packages.shared.database.models import ChunkingConfigProfile
-from packages.shared.database.repositories.chunking_config_profile_repository import (
+from shared.database.models import ChunkingConfigProfile
+from shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,
 )
-from packages.webui.services.chunking.config_manager import ChunkingConfigManager
+from webui.services.chunking.config_manager import ChunkingConfigManager
 
 
 class _FakeResult:

@@ -5,11 +5,11 @@ import time
 
 import pytest
 
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.utils.input_validator import ChunkingInputValidator
-from packages.shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
-from packages.shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
+from shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.utils.input_validator import ChunkingInputValidator
+from shared.chunking.utils.regex_monitor import RegexPerformanceMonitor
+from shared.chunking.utils.safe_regex import RegexTimeoutError, SafeRegex
 
 
 class TestSafeRegex:

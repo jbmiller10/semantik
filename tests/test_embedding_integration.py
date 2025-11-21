@@ -11,7 +11,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
-from packages.shared.embedding import (
+from shared.embedding import (
     EmbeddingService,
     cleanup,
     embedding_service,
@@ -19,10 +19,10 @@ from packages.shared.embedding import (
     get_embedding_service,
     get_embedding_service_sync,
 )
-from packages.shared.embedding.dense import DenseEmbeddingService
+from shared.embedding.dense import DenseEmbeddingService
 
 # Mock metrics before importing
-sys.modules["packages.shared.metrics.prometheus"] = MagicMock()
+sys.modules["shared.metrics.prometheus"] = MagicMock()
 
 
 class TestEmbeddingIntegration(unittest.TestCase):

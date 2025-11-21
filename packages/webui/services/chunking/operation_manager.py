@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from packages.webui.api.chunking_exceptions import (
+from webui.api.chunking_exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingResourceLimitError,
