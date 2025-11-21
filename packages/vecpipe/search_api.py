@@ -41,6 +41,13 @@ from vecpipe.search.service import (
 )
 from vecpipe.search_utils import search_qdrant
 
+# Placeholder bindings to satisfy export contract; actual values live in ``vecpipe.search.state``.
+model_manager = None
+state_model_manager = None
+qdrant_client = None
+embedding_service = None
+executor = None
+
 __all__ = [
     "app",
     "create_app",
@@ -93,6 +100,12 @@ _FORWARDED_ATTRS = {
 
 class _SearchApiModule(types.ModuleType):
     """Module wrapper that keeps public globals synced with ``vecpipe.search.state``."""
+
+    def __getattribute__(self, name: str) -> Any:
+        target = _FORWARDED_ATTRS.get(name)
+        if target:
+            return getattr(search_state, target)
+        return super().__getattribute__(name)
 
     def __getattr__(self, name: str) -> Any:
         target = _FORWARDED_ATTRS.get(name)
