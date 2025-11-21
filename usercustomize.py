@@ -2,14 +2,15 @@
 
 Python automatically imports ``usercustomize`` (after ``sitecustomize``) if it
 is importable on ``sys.path``. Because the repository root is on ``sys.path``
-whenever commands are executed from the repo, this hook ensures ``shared``,
-``webui``, and ``vecpipe`` resolve correctly even when the wheel isn't
-installed and ``PYTHONPATH`` is unset.
+for repo-local commands, this hook ensures ``shared`` and ``vecpipe`` resolve
+correctly even when the wheel isn't installed and ``PYTHONPATH`` is unset.
+``webui`` stays importable via the ``packages`` path but is intentionally not
+aliased here to avoid triggering its Celery bootstrap before callers set
+environment flags (e.g., ``TESTING``).
 """
 
 from __future__ import annotations
 
-import importlib
 import sys
 from pathlib import Path
 
@@ -24,18 +25,19 @@ if _PACKAGES_DIR.is_dir():
 
 
 def _alias_top_level(name: str) -> None:
-    """Alias ``packages.<name>`` to ``<name>`` so both prefixes share modules."""
+    """Alias ``packages.<name>`` to ``<name>`` if already loaded.
+
+    Avoids importing modules eagerly (e.g., ``packages.webui`` spins up Celery).
+    """
 
     qualified = f"packages.{name}"
-    try:
-        module = importlib.import_module(qualified)
-    except Exception:  # pragma: no cover - aliasing best-effort
+    module = sys.modules.get(qualified) or sys.modules.get(name)
+    if module is None:
         return
 
-    # Ensure both keys reference the same module object.
     sys.modules.setdefault(name, module)
     sys.modules.setdefault(qualified, module)
 
 
-for _pkg in ("shared", "webui", "vecpipe"):
+for _pkg in ("shared", "vecpipe"):
     _alias_top_level(_pkg)
