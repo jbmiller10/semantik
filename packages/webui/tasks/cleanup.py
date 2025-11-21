@@ -2,7 +2,7 @@
 
 These tasks cover lifecycle management of Celery results, Qdrant collections, and
 periodic maintenance such as refreshing materialized views or monitoring
-partitions. They import shared helpers from ``packages.webui.tasks.utils`` to stay
+partitions. They import shared helpers from ``webui.tasks.utils`` to stay
 aligned with the refactored module structure.
 """
 
@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
+from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
 from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 
 if TYPE_CHECKING:
@@ -30,7 +31,14 @@ from .utils import (
 
 def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
-    return import_module("packages.webui.tasks")
+    return import_module("webui.tasks")
+
+
+async def _resolve_session_factory():
+    factory = AsyncSessionLocal
+    if factory is None:
+        factory = await ensure_async_sessionmaker()
+    return factory
 
 
 @celery_app.task(name="webui.tasks.cleanup_old_results")
@@ -60,7 +68,6 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
 @celery_app.task(name="webui.tasks.refresh_collection_chunking_stats")
 def refresh_collection_chunking_stats() -> dict[str, Any]:
     """Refresh the collection_chunking_stats materialized view."""
-    from shared.database.database import AsyncSessionLocal
     from sqlalchemy import text
 
     stats: dict[str, Any] = {"status": "success", "duration_seconds": 0.0, "error": None}
@@ -73,7 +80,8 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
         log.info("Starting refresh of collection_chunking_stats materialized view")
 
         async def _refresh_view() -> None:
-            async with AsyncSessionLocal() as session:
+            session_factory = await _resolve_session_factory()
+            async with session_factory() as session:
                 await session.execute(text("SELECT refresh_collection_chunking_stats()"))
                 await session.commit()
 
@@ -98,9 +106,7 @@ def refresh_collection_chunking_stats() -> dict[str, Any]:
 @celery_app.task(name="webui.tasks.monitor_partition_health")
 def monitor_partition_health() -> dict[str, Any]:
     """Monitor partition health and alert on imbalances."""
-    from shared.database.database import AsyncSessionLocal
-
-    from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
+    from webui.services.partition_monitoring_service import PartitionMonitoringService
 
     tasks_ns = _tasks_namespace()
     log = getattr(tasks_ns, "logger", logger)
@@ -109,7 +115,8 @@ def monitor_partition_health() -> dict[str, Any]:
         log.info("Starting partition health monitoring")
 
         async def _check_health() -> dict[str, Any]:
-            async with AsyncSessionLocal() as session:
+            session_factory = await _resolve_session_factory()
+            async with session_factory() as session:
                 service = PartitionMonitoringService(session)
                 monitoring_result = await service.check_partition_health()
 
@@ -321,10 +328,10 @@ def cleanup_qdrant_collections(collection_names: list[str], staging_age_hours: i
 
 async def _get_active_collections() -> set[str]:
     """Get all active Qdrant collection names from the database."""
-    from shared.database.database import AsyncSessionLocal
     from shared.database.repositories.collection_repository import CollectionRepository
 
-    async with AsyncSessionLocal() as session:
+    session_factory = await _resolve_session_factory()
+    async with session_factory() as session:
         collection_repo = CollectionRepository(session)
 
         collections = await collection_repo.list_all()
@@ -348,10 +355,10 @@ async def _get_active_collections() -> set[str]:
 async def _audit_collection_deletion(collection_name: str, vector_count: int) -> None:
     """Create audit log entry for collection deletion."""
     try:
-        from shared.database.database import AsyncSessionLocal
         from shared.database.models import CollectionAuditLog
 
-        async with AsyncSessionLocal() as session:
+        session_factory = await _resolve_session_factory()
+        async with session_factory() as session:
             audit_log = CollectionAuditLog(
                 collection_id=None,
                 operation_id=None,
@@ -375,10 +382,10 @@ async def _audit_collection_deletions_batch(deletions: list[tuple[str, int]]) ->
         return
 
     try:
-        from shared.database.database import AsyncSessionLocal
         from shared.database.models import CollectionAuditLog
 
-        async with AsyncSessionLocal() as session:
+        session_factory = await _resolve_session_factory()
+        async with session_factory() as session:
             deleted_at = datetime.now(UTC).isoformat()
 
             for collection_name, vector_count in deletions:

@@ -17,8 +17,8 @@ def test_metrics_endpoint_returns_prometheus_payload(
     test_client: TestClient, auth_headers: dict[str, str], test_user: dict[str, Any], monkeypatch
 ) -> None:
     """Ensure the /api/metrics endpoint returns Prometheus-formatted data."""
-    from packages.webui.api import metrics as metrics_module
-    from packages.webui.main import app
+    from webui.api import metrics as metrics_module
+    from webui.main import app
 
     expected_metrics = "# HELP embedding_operations_created_total\nembedding_operations_created_total 3"
 
@@ -48,8 +48,8 @@ def test_metrics_endpoint_reports_error_when_remote_unhealthy(
     test_client: TestClient, auth_headers: dict[str, str], test_user: dict[str, Any], monkeypatch
 ) -> None:
     """Ensure the endpoint surfaces a clear error if remote metrics are unavailable."""
-    from packages.webui.api import metrics as metrics_module
-    from packages.webui.main import app
+    from webui.api import metrics as metrics_module
+    from webui.main import app
 
     fallback_port = 9876
 

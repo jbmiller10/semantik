@@ -5,8 +5,7 @@
 import time
 
 from prometheus_client import generate_latest
-
-from packages.shared.metrics.prometheus import (
+from shared.metrics.prometheus import (
     cpu_utilization,
     memory_total,
     memory_used,

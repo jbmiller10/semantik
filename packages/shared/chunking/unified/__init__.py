@@ -6,13 +6,13 @@ This module provides a single, consolidated implementation of all chunking strat
 eliminating duplication between domain-based and LlamaIndex-based implementations.
 """
 
-from packages.shared.chunking.unified.base import UnifiedChunkingStrategy, UnifiedChunkResult
-from packages.shared.chunking.unified.character_strategy import CharacterChunkingStrategy
-from packages.shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
-from packages.shared.chunking.unified.hybrid_strategy import HybridChunkingStrategy
-from packages.shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
-from packages.shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
-from packages.shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
+from shared.chunking.unified.base import UnifiedChunkingStrategy, UnifiedChunkResult
+from shared.chunking.unified.character_strategy import CharacterChunkingStrategy
+from shared.chunking.unified.hierarchical_strategy import HierarchicalChunkingStrategy
+from shared.chunking.unified.hybrid_strategy import HybridChunkingStrategy
+from shared.chunking.unified.markdown_strategy import MarkdownChunkingStrategy
+from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
+from shared.chunking.unified.semantic_strategy import SemanticChunkingStrategy
 
 __all__ = [
     "UnifiedChunkingStrategy",

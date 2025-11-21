@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import ApiKeyRepository, AuthRepository, UserRepository
-from .database import AsyncSessionLocal
+from .database import AsyncSessionLocal, ensure_async_sessionmaker
 
 if TYPE_CHECKING:
     from .repositories.chunk_repository import ChunkRepository
@@ -32,7 +32,7 @@ def create_user_repository(session: AsyncSession) -> UserRepository:
     Returns:
         PostgreSQL UserRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLUserRepository
+    from webui.repositories.postgres import PostgreSQLUserRepository
 
     return PostgreSQLUserRepository(session)
 
@@ -46,7 +46,7 @@ def create_auth_repository(session: AsyncSession) -> AuthRepository:
     Returns:
         PostgreSQL AuthRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLAuthRepository
+    from webui.repositories.postgres import PostgreSQLAuthRepository
 
     return PostgreSQLAuthRepository(session)
 
@@ -60,7 +60,7 @@ def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     Returns:
         PostgreSQL ApiKeyRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLApiKeyRepository
+    from webui.repositories.postgres import PostgreSQLApiKeyRepository
 
     return PostgreSQLApiKeyRepository(session)
 
@@ -157,9 +157,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession instance
     """
-    if AsyncSessionLocal is None:
-        raise RuntimeError("Database not initialized")
-    async with AsyncSessionLocal() as session:
+    sessionmaker = AsyncSessionLocal
+    if sessionmaker is None:
+        sessionmaker = await ensure_async_sessionmaker()
+    async with sessionmaker() as session:
         try:
             yield session
             await session.commit()

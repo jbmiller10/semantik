@@ -16,10 +16,6 @@ from typing import Any
 import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
-
-# Add parent directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
 from shared.config import settings
 
 from .document_tracker import DocumentChangeTracker

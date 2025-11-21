@@ -11,8 +11,7 @@ from unittest.mock import patch
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
-
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from shared.text_processing.chunking_factory import ChunkingFactory
 
 
 # Create SemanticChunker using the factory
@@ -235,7 +234,7 @@ Climate change affects global temperatures. Data science involves statistical an
         assert estimate_small >= 1
         assert estimate_large >= 1
 
-    @patch("packages.shared.chunking.unified.semantic_strategy.logger")
+    @patch("shared.chunking.unified.semantic_strategy.logger")
     def test_semantic_chunker_error_handling(self, mock_logger, mock_embed_model, sample_texts):
         """Test error handling in semantic chunker."""
         chunker = create_semantic_chunker(mock_embed_model)

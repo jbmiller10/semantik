@@ -8,11 +8,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from shared.database.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.database.database import get_db
-from packages.webui.dependencies import require_admin_or_internal_key
-from packages.webui.services.partition_monitoring_service import PartitionMonitoringService
+from webui.dependencies import require_admin_or_internal_key
+from webui.services.partition_monitoring_service import PartitionMonitoringService
 
 logger = logging.getLogger(__name__)
 

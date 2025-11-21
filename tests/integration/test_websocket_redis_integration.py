@@ -7,9 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
-
-from packages.webui.tasks import CeleryTaskWithOperationUpdates
-from packages.webui.websocket_manager import RedisStreamWebSocketManager
+from webui.tasks import CeleryTaskWithOperationUpdates
+from webui.websocket_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketRedisIntegration:
@@ -203,14 +202,14 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create WebSocket client
             ws_client = mock_websocket_factory("client1")
 
             # Mock operation repository
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
 
                 # Create mock operation object
                 class MockStatus(Enum):
@@ -287,14 +286,14 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create multiple clients
             clients = [mock_websocket_factory(f"client{i}") for i in range(3)]
 
             # Mock operation repository
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -352,7 +351,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Send some updates before any client connects
@@ -363,7 +362,7 @@ class TestWebSocketRedisIntegration:
             # Now connect a client
             client = mock_websocket_factory("client1")
 
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -417,7 +416,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager1.startup()
             await manager2.startup()
 
@@ -425,7 +424,7 @@ class TestWebSocketRedisIntegration:
             client1 = mock_websocket_factory("client1")
             client2 = mock_websocket_factory("client2")
 
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -487,7 +486,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Send some updates
@@ -516,7 +515,7 @@ class TestWebSocketRedisIntegration:
 
         # Simulate Redis connection failure
         with (
-            patch("packages.webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -529,7 +528,7 @@ class TestWebSocketRedisIntegration:
         # System should still work for direct broadcasts
         client = mock_websocket_factory("client1")
 
-        with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+        with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
             mock_repo = AsyncMock()
             # Create simple mock operation
             mock_operation = type(
@@ -598,13 +597,13 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create a client that will disconnect
             client = mock_websocket_factory("client1")
 
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(
@@ -649,7 +648,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("packages.webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create clients for different operations
@@ -659,7 +658,7 @@ class TestWebSocketRedisIntegration:
                 "operation3": [mock_websocket_factory(f"operation3_client{i}") for i in range(2)],
             }
 
-            with patch("packages.shared.database.factory.create_operation_repository") as mock_create_repo:
+            with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
                 mock_repo = AsyncMock()
                 # Create simple mock operation
                 mock_operation = type(

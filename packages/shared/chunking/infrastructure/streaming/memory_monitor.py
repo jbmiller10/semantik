@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import psutil
 
 if TYPE_CHECKING:
-    from packages.shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
+    from shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import ChunkingConfigProfile
+from shared.database.models import ChunkingConfigProfile
 
 logger = logging.getLogger(__name__)
 

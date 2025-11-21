@@ -7,8 +7,8 @@ This module provides backward compatibility for tests that import MarkdownChunke
 
 from typing import Any
 
-from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
-from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 
 class MarkdownChunker(BaseChunker):

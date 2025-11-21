@@ -117,7 +117,7 @@ Stop services: `make docker-down` (keeps volumes) or `make docker-down-clean` (r
 
 ## Configuration (env)
 Common variables (see `.env.docker.example` and docs for full list):
-- Auth: `JWT_SECRET_KEY`
+- Auth: `JWT_SECRET_KEY` (generate once with `uv run python scripts/generate_jwt_secret.py --write` or via the setup wizard)
 - Database: `DATABASE_URL` or `POSTGRES_HOST|PORT|DB|USER|PASSWORD`
 - Redis: `REDIS_URL` (Celery + progress streams)
 - Qdrant: `QDRANT_HOST`, `QDRANT_PORT`

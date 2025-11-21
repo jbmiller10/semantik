@@ -12,9 +12,8 @@ from typing import Any
 
 import pytest
 from llama_index.core.embeddings import MockEmbedding
-
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
-from packages.shared.text_processing.chunking_metrics import ChunkingPerformanceMonitor
+from shared.text_processing.chunking_factory import ChunkingFactory
+from shared.text_processing.chunking_metrics import ChunkingPerformanceMonitor
 
 
 @pytest.fixture()

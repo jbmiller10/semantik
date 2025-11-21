@@ -7,14 +7,13 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from httpx import AsyncClient
-
-from packages.shared.database.models import (
+from shared.database.models import (
     OperationStatus,
     OperationType,
     ProjectionRun,
     ProjectionRunStatus,
 )
-from packages.webui.services.projection_service import compute_projection_metadata_hash
+from webui.services.projection_service import compute_projection_metadata_hash
 
 
 @pytest.mark.asyncio()
@@ -441,7 +440,7 @@ async def test_select_projection_region_happy_path(
     """Selecting points should return items and missing_ids in a stable schema."""
 
     # Route projection artifacts under a temporary data directory
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -550,9 +549,9 @@ async def test_select_projection_region_resolves_chunk_metadata_via_embedding_ve
 ) -> None:
     """Selection should resolve chunk metadata when original_ids store vector IDs."""
 
-    from packages.shared.database.models import Document
-    from packages.shared.database.repositories.chunk_repository import ChunkRepository
-    from packages.webui import services as services_pkg
+    from shared.database.models import Document
+    from shared.database.repositories.chunk_repository import ChunkRepository
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -675,7 +674,7 @@ async def test_select_projection_region_degraded_flag(
 ) -> None:
     """Selection responses should surface degraded projections."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -766,7 +765,7 @@ async def test_select_projection_missing_ids_marks_run_degraded(
 ) -> None:
     """Missing ids artifact should mark the projection run degraded."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -890,7 +889,7 @@ async def test_delete_completed_projection_removes_only_target(
     """Deleting a completed projection removes its artifacts and DB row without affecting others."""
 
     # Route projection artifacts under a temporary data directory
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -959,7 +958,7 @@ async def test_stream_missing_artifact_marks_run_degraded(
 ) -> None:
     """Streaming a missing artifact should mark the projection run degraded."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -1013,7 +1012,7 @@ async def test_stream_projection_artifact_happy_path(
 ) -> None:
     """Streaming an existing artifact should return bytes with stable headers."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -1066,7 +1065,7 @@ async def test_stream_projection_artifact_forbidden_for_non_owner(
 ) -> None:
     """Streaming artifacts from another user's collection should be forbidden."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))
@@ -1107,7 +1106,7 @@ async def test_stream_projection_artifact_rejects_invalid_name(
 ) -> None:
     """Artifact names outside the allowed set should be rejected defensively."""
 
-    from packages.webui import services as services_pkg
+    from webui import services as services_pkg
 
     projection_service_module = services_pkg.projection_service
     monkeypatch.setattr(projection_service_module, "settings", SimpleNamespace(data_dir=tmp_path))

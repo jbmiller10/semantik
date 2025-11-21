@@ -5,9 +5,7 @@ Provides JWT-based authentication with user management
 """
 
 import logging
-import sys
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, cast
 
 import jwt
@@ -15,10 +13,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, EmailStr, field_validator
-
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-# Import database module
 from shared.config import settings
 from shared.database import create_auth_repository, create_user_repository, get_db_session, pwd_context
 

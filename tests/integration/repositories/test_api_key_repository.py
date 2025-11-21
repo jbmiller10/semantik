@@ -7,10 +7,9 @@ from uuid import uuid4
 
 import pytest
 from shared.database.exceptions import EntityNotFoundError, InvalidUserIdError
+from shared.database.models import ApiKey
 from sqlalchemy import select
-
-from packages.shared.database.models import ApiKey
-from packages.webui.repositories.postgres.api_key_repository import PostgreSQLApiKeyRepository
+from webui.repositories.postgres.api_key_repository import PostgreSQLApiKeyRepository
 
 
 @pytest.mark.asyncio()

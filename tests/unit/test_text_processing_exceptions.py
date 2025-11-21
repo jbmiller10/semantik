@@ -10,8 +10,7 @@ packages/shared/text_processing/exceptions.py to ensure:
 """
 
 import pytest
-
-from packages.shared.text_processing.exceptions import (  # Factory errors; Specific chunking errors; Specific validation errors; Base exceptions; Specific embedding errors
+from shared.text_processing.exceptions import (  # Factory errors; Specific chunking errors; Specific validation errors; Base exceptions; Specific embedding errors
     ChunkerCreationError,
     ChunkingError,
     ChunkSizeError,

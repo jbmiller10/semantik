@@ -23,7 +23,7 @@ scalability. When working with partitioned tables:
 3. Be aware that cross-partition queries are expensive
 4. The partition key must be part of any unique constraint or primary key
 
-See the Chunk model and packages.shared.database.partition_utils for detailed
+See the Chunk model and shared.database.partition_utils for detailed
 examples and utilities for working with partitioned tables.
 """
 
@@ -50,13 +50,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
-# Ensure both ``shared.database.models`` and
-# ``packages.shared.database.models`` resolve to the same module instance.
-# This prevents SQLAlchemy from creating duplicate model classes for the
-# same tables when the codebase imports models through either prefix.
-if __name__ == "packages.shared.database.models":
+# Ensure both ``shared.database.models`` and ``packages.shared.database.models``
+# resolve to the same module instance. This prevents SQLAlchemy from creating
+# duplicate model classes for the same tables when mixed import prefixes are
+# used across the codebase or in downstream scripts.
+if __name__ in {"shared.database.models", "packages.shared.database.models"}:
     sys.modules.setdefault("shared.database.models", sys.modules[__name__])
-elif __name__ == "shared.database.models":
     sys.modules.setdefault("packages.shared.database.models", sys.modules[__name__])
 
 

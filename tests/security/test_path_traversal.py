@@ -13,8 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
-
-from packages.webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
+from webui.services.chunking_security import ChunkingSecurityValidator, ValidationError
 
 
 class TestPathTraversalSecurity:

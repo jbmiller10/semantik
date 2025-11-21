@@ -7,12 +7,11 @@ import pytest
 import pytest_asyncio
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
-
-from packages.shared.database import get_db
-from packages.webui.auth import create_access_token, get_current_user
-from packages.webui.dependencies import get_collection_for_user as original_get_collection_for_user
-from packages.webui.main import app
-from packages.webui.services import factory as services_factory
+from shared.database import get_db
+from webui.auth import create_access_token, get_current_user
+from webui.dependencies import get_collection_for_user as original_get_collection_for_user
+from webui.main import app
+from webui.services import factory as services_factory
 
 
 @pytest.fixture(name="reset_redis_manager")

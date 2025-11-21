@@ -10,10 +10,10 @@ import tempfile
 import tracemalloc
 from pathlib import Path
 
-from packages.shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager
-from packages.shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
-from packages.shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager
+from shared.chunking.infrastructure.streaming.memory_pool import MemoryPool
+from shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 
 def test_utf8_boundary() -> None:

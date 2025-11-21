@@ -26,4 +26,4 @@ def __getattr__(name: str) -> Any:  # pragma: no cover - thin import shim
         from .factory import create_projection_service as _create_projection_service
 
         return _create_projection_service
-    raise AttributeError(f"module 'packages.webui.services' has no attribute {name!r}")
+    raise AttributeError(f"module 'webui.services' has no attribute {name!r}")

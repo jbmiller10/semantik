@@ -4,8 +4,7 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-
-from packages.shared.contracts.errors import (
+from shared.contracts.errors import (
     ErrorDetail,
     ErrorResponse,
     InsufficientResourcesErrorResponse,
@@ -15,7 +14,7 @@ from packages.shared.contracts.errors import (
     create_not_found_error,
     create_validation_error,
 )
-from packages.shared.contracts.search import (
+from shared.contracts.search import (
     BatchSearchRequest,
     HybridSearchRequest,
     HybridSearchResult,

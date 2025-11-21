@@ -1,4 +1,4 @@
-"""Focused tests for helper utilities in packages.webui.tasks.projection."""
+"""Focused tests for helper utilities in webui.tasks.projection."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-import packages.webui.tasks.projection as projection_module
+import webui.tasks.projection as projection_module
 
 
 @pytest.mark.parametrize(

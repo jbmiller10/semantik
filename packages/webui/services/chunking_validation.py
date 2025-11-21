@@ -7,9 +7,9 @@ to prevent injection attacks, resource exhaustion, and other vulnerabilities.
 
 from typing import Any
 
-from packages.shared.chunking.infrastructure.exceptions import ValidationError
-from packages.shared.chunks.metadata_sanitizer import MetadataSanitizer
-from packages.shared.utils.regex_safety import safe_regex_search, search_with_fallback
+from shared.chunking.infrastructure.exceptions import ValidationError
+from shared.chunks.metadata_sanitizer import MetadataSanitizer
+from shared.utils.regex_safety import safe_regex_search, search_with_fallback
 
 
 class ChunkingInputValidator:

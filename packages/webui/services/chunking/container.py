@@ -5,28 +5,28 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from packages.shared.config import settings
-from packages.shared.database.repositories.chunking_config_profile_repository import (
+from shared.config import settings
+from shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,
 )
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.webui.services.chunking.cache import ChunkingCache
-from packages.webui.services.chunking.config_manager import ChunkingConfigManager
-from packages.webui.services.chunking.metrics import ChunkingMetrics
-from packages.webui.services.chunking.operation_manager import (
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from webui.services.chunking.cache import ChunkingCache
+from webui.services.chunking.config_manager import ChunkingConfigManager
+from webui.services.chunking.metrics import ChunkingMetrics
+from webui.services.chunking.operation_manager import (
     DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
     DEFAULT_DEAD_LETTER_TTL_SECONDS,
     ChunkingOperationManager,
 )
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-from packages.webui.services.chunking.processor import ChunkingProcessor
-from packages.webui.services.chunking.validator import ChunkingValidator
-from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.redis_manager import RedisConfig, RedisManager
-from packages.webui.services.type_guards import ensure_async_redis, ensure_sync_redis
-from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.chunking.processor import ChunkingProcessor
+from webui.services.chunking.validator import ChunkingValidator
+from webui.services.chunking_error_handler import ChunkingErrorHandler
+from webui.services.redis_manager import RedisConfig, RedisManager
+from webui.services.type_guards import ensure_async_redis, ensure_sync_redis
+from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis

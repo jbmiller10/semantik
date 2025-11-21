@@ -5,9 +5,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from qdrant_client import QdrantClient
-
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.webui.tasks import _process_index_operation
+from shared.database.repositories.collection_repository import CollectionRepository
+from webui.tasks import _process_index_operation
 
 
 @pytest.fixture()
@@ -32,7 +31,7 @@ async def test_collection_creation_persists_in_qdrant(mock_qdrant_client) -> Non
     """Test that collections created in tasks persist in Qdrant."""
 
     # Mock the qdrant manager to return our mock client
-    with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+    with patch("webui.tasks.qdrant_manager") as mock_qdrant_manager:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         # Create a mock collection
         collection = Mock()
@@ -88,7 +87,7 @@ async def test_collection_creation_rollback_on_db_failure(mock_qdrant_client) ->
     """Test that Qdrant collection is deleted if database update fails."""
 
     # Mock the qdrant manager to return our mock client
-    with patch("packages.webui.tasks.qdrant_manager") as mock_qdrant_manager:
+    with patch("webui.tasks.qdrant_manager") as mock_qdrant_manager:
         mock_qdrant_manager.get_client.return_value = mock_qdrant_client
         # Create a mock collection
         collection = Mock()

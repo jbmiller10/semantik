@@ -8,12 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import FileResponse
+from shared.config import settings
+from shared.database.exceptions import EntityNotFoundError
+from shared.database.models import Collection, Document, DocumentStatus
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from packages.shared.config import settings
-from packages.shared.database.exceptions import EntityNotFoundError
-from packages.shared.database.models import Collection, Document, DocumentStatus
-from packages.webui.api.v2.documents import get_document_content
+from webui.api.v2.documents import get_document_content
 
 
 @pytest.fixture()
@@ -91,7 +90,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -116,7 +115,7 @@ class TestGetDocumentContent:
         mock_document_repo.get_by_id.side_effect = EntityNotFoundError("Document", "nonexistent-doc-id")
 
         with (
-            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -146,7 +145,7 @@ class TestGetDocumentContent:
         mock_document_repo.get_by_id.return_value = mock_document
 
         with (
-            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -176,7 +175,7 @@ class TestGetDocumentContent:
         mock_document_repo.get_by_id.return_value = mock_document
 
         with (
-            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -208,7 +207,7 @@ class TestGetDocumentContent:
         mock_document_repo.get_by_id.return_value = mock_document
 
         with (
-            patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -249,7 +248,7 @@ class TestGetDocumentContent:
             mock_document_repo.get_by_id.return_value = mock_document
 
             with (
-                patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+                patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
                 pytest.raises(HTTPException) as exc_info,
             ):
                 await get_document_content(
@@ -290,7 +289,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -329,7 +328,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -367,7 +366,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -395,7 +394,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -422,7 +421,7 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,

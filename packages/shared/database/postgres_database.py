@@ -8,13 +8,14 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any, cast
+from unittest.mock import AsyncMock
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from packages.shared.config.postgres import PostgresConfig, postgres_config
+from shared.config.postgres import PostgresConfig, postgres_config
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,12 @@ class PostgresConnectionManager:
         self.config = config or postgres_config
         self._engine: AsyncEngine | None = None
         self._sessionmaker: async_sessionmaker[AsyncSession] | None = None
+
+    @property
+    def sessionmaker(self) -> async_sessionmaker[AsyncSession] | None:
+        """Return the current async sessionmaker if initialised."""
+
+        return self._sessionmaker
 
     async def initialize(self) -> None:
         """Initialize the database engine and session factory."""
@@ -95,6 +102,15 @@ class PostgresConnectionManager:
             autocommit=False,
         )
 
+        # Publish the sessionmaker for legacy imports (e.g., shared.database.database.AsyncSessionLocal)
+        try:
+            from shared.database import database as _db_module
+
+            _db_module.AsyncSessionLocal = self._sessionmaker
+        except Exception:
+            # Avoid raising during initialization due to optional import timing
+            logger.debug("Unable to publish sessionmaker to shared.database.database", exc_info=True)
+
     async def close(self) -> None:
         """Close the database engine."""
         if self._engine:
@@ -157,7 +173,6 @@ async def get_postgres_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
         logger.warning("PostgreSQL session unavailable in testing mode; using async stub: %s", exc)
-        from unittest.mock import AsyncMock
 
         stub_session = cast(AsyncSession, AsyncMock(name="TestAsyncSession"))
         yield stub_session

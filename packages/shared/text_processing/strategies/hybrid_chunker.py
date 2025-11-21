@@ -10,11 +10,11 @@ from enum import Enum
 from re import Pattern
 from typing import Any
 
-from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
-from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 # Add ChunkingFactory for test compatibility
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from shared.text_processing.chunking_factory import ChunkingFactory
 
 
 # Mock functions for ReDoS protection tests
@@ -267,7 +267,7 @@ class HybridChunker(BaseChunker):
 
         # Fall back to UnifiedChunkingFactory only if ChunkingFactory failed normally
         try:
-            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+            from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
             chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
@@ -507,7 +507,7 @@ class HybridChunker(BaseChunker):
 
     def _emergency_single_chunk(self, text: str, doc_id: str, original_strategy: ChunkingStrategy) -> list[ChunkResult]:
         """Create a single emergency chunk when all strategies fail."""
-        from packages.shared.text_processing.base_chunker import ChunkResult
+        from shared.text_processing.base_chunker import ChunkResult
 
         emergency_chunk = ChunkResult(
             chunk_id=f"{doc_id}_0000",

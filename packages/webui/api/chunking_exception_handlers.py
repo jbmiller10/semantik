@@ -13,8 +13,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-from packages.webui.api.chunking_exceptions import (
+from webui.api.chunking_exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
@@ -27,8 +26,8 @@ from packages.webui.api.chunking_exceptions import (
 )
 
 try:
-    from packages.shared.chunking.infrastructure.exception_translator import exception_translator
-    from packages.shared.chunking.infrastructure.exceptions import (
+    from shared.chunking.infrastructure.exception_translator import exception_translator
+    from shared.chunking.infrastructure.exceptions import (
         ApplicationException,
         BaseChunkingException,
         DomainException,
@@ -40,7 +39,7 @@ except ImportError:
     INFRASTRUCTURE_AVAILABLE = False
 
 try:
-    from packages.webui.middleware.correlation import get_or_generate_correlation_id
+    from webui.middleware.correlation import get_or_generate_correlation_id
 except ImportError:
     # Define fallback with proper typing
     def get_or_generate_correlation_id(request: Request | None = None) -> str:

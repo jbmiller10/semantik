@@ -688,10 +688,14 @@ class ScalableWebSocketManager:
         """Send current operation state to newly connected client."""
         try:
             # Import here to avoid circular dependencies
-            from shared.database.database import AsyncSessionLocal
+            from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
             from shared.database.repositories.operation_repository import OperationRepository
 
-            async with AsyncSessionLocal() as session:
+            session_factory = AsyncSessionLocal
+            if session_factory is None:
+                session_factory = await ensure_async_sessionmaker()
+
+            async with session_factory() as session:
                 operation_repo = OperationRepository(session)
                 operation = await operation_repo.get_by_uuid(operation_id)
 

@@ -9,10 +9,9 @@ This module tests the error handling framework for chunking operations.
 from typing import Any
 
 import pytest
-
-from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingResourceLimitError, ResourceType
-from packages.webui.services.chunking_error_handler import (
+from shared.text_processing.base_chunker import ChunkResult
+from webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingResourceLimitError, ResourceType
+from webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,
     ChunkingOperationResult,

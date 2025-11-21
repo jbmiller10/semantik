@@ -6,8 +6,8 @@ Unit tests for ChunkingStrategyRegistry.
 This module tests the chunking strategy registry and its methods.
 """
 
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
-from packages.webui.services.chunking_strategies import ChunkingStrategyRegistry
+from webui.api.v2.chunking_schemas import ChunkingStrategy
+from webui.services.chunking_strategies import ChunkingStrategyRegistry
 
 
 class TestChunkingStrategyRegistry:

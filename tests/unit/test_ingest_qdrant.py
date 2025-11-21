@@ -6,14 +6,13 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 from qdrant_client.models import PointStruct
-
-from packages.vecpipe.ingest_qdrant import move_file, process_parquet_file
+from vecpipe.ingest_qdrant import move_file, process_parquet_file
 
 
 class TestProcessParquetFile:
     """Test suite for process_parquet_file function"""
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
     def test_process_parquet_file_success(self, mock_read_table) -> None:
         """Test successful processing of a parquet file"""
         # Create mock table with column structure
@@ -71,7 +70,7 @@ class TestProcessParquetFile:
         assert len(points) == 1
         assert points[0].id == "id3"
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
     def test_process_parquet_file_empty_file(self, mock_read_table) -> None:
         """Test processing an empty parquet file"""
         # Create mock table with empty columns
@@ -102,7 +101,7 @@ class TestProcessParquetFile:
         assert result is True
         mock_client.upsert.assert_not_called()
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
     def test_process_parquet_file_missing_columns(self, mock_read_table) -> None:
         """Test handling of parquet file with missing required columns"""
         # Create mock table that raises KeyError for missing column
@@ -129,8 +128,8 @@ class TestProcessParquetFile:
         # Should fail
         assert result is False
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    @patch("packages.vecpipe.ingest_qdrant.time.sleep")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.time.sleep")
     def test_process_parquet_file_with_retries(self, mock_sleep, mock_read_table) -> None:
         """Test retry logic when upsert fails"""
         # Setup mock table
@@ -172,8 +171,8 @@ class TestProcessParquetFile:
         mock_sleep.assert_any_call(2)  # First retry: RETRY_DELAY * (2^0) = 2
         mock_sleep.assert_any_call(4)  # Second retry: RETRY_DELAY * (2^1) = 4
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    @patch("packages.vecpipe.ingest_qdrant.time.sleep")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.time.sleep")
     def test_process_parquet_file_max_retries_exceeded(self, mock_sleep, mock_read_table) -> None:
         """Test failure when max retries are exceeded"""
         # Setup mock table
@@ -206,7 +205,7 @@ class TestProcessParquetFile:
         assert result is False
         assert mock_client.upsert.call_count == 5  # Initial + 4 retries
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
     def test_process_parquet_file_read_error(self, mock_read_table) -> None:
         """Test handling of parquet read errors"""
         mock_read_table.side_effect = Exception("Corrupt file")
@@ -271,8 +270,8 @@ class TestMoveFile:
 class TestFileHandlingIntegration:
     """Test the integration of process_parquet_file with file movement"""
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    @patch("packages.vecpipe.ingest_qdrant.move_file")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.move_file")
     def test_successful_processing_moves_to_loaded(self, mock_move_file, mock_read_table) -> None:
         """Test that successfully processed files are moved to loaded directory"""
         # Setup successful processing
@@ -294,8 +293,8 @@ class TestFileHandlingIntegration:
         # In actual usage, the calling code would handle the move
         # This test verifies the return value that triggers the move
 
-    @patch("packages.vecpipe.ingest_qdrant.pq.read_table")
-    @patch("packages.vecpipe.ingest_qdrant.move_file")
+    @patch("vecpipe.ingest_qdrant.pq.read_table")
+    @patch("vecpipe.ingest_qdrant.move_file")
     def test_failed_processing_moves_to_rejects(self, mock_move_file, mock_read_table) -> None:
         """Test that failed files would be moved to rejects directory"""
         # Setup failed processing

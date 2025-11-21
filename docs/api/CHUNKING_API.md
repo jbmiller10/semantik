@@ -141,8 +141,8 @@ Minimal example (register at import time in your plugin module):
 
 ```python
 from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.webui.services.chunking.strategy_registry import register_strategy_definition
-from packages.webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from webui.services.chunking.strategy_registry import register_strategy_definition
+from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
 
 
 class DemoPluginStrategy(ChunkingStrategy):

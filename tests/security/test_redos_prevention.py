@@ -11,10 +11,9 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-from packages.shared.chunking.utils.input_validator import ChunkingInputValidator as InputValidator
-from packages.shared.chunking.utils.safe_regex import SafeRegex
-from packages.shared.utils.regex_safety import (
+from shared.chunking.utils.input_validator import ChunkingInputValidator as InputValidator
+from shared.chunking.utils.safe_regex import SafeRegex
+from shared.utils.regex_safety import (
     RegexTimeout,
     analyze_pattern_complexity,
     compile_safe,
@@ -24,7 +23,7 @@ from packages.shared.utils.regex_safety import (
     search_with_fallback,
     simplify_pattern,
 )
-from packages.webui.services.chunking_validation import ChunkingInputValidator
+from webui.services.chunking_validation import ChunkingInputValidator
 
 
 class TestRegexSafetyModule:
@@ -108,7 +107,7 @@ class TestRegexSafetyModule:
         assert result.group() == "123"
 
         # Test with a pattern that would timeout (mocked)
-        with patch("packages.shared.utils.regex_safety.safe_regex_search") as mock_search:
+        with patch("shared.utils.regex_safety.safe_regex_search") as mock_search:
             # First call times out, second succeeds
             mock_search.side_effect = [RegexTimeout("Timeout"), MagicMock(group=lambda: "test")]
             result = search_with_fallback(r"(a+)+b", "aaaa", timeout=0.1)
@@ -215,7 +214,7 @@ class TestChunkingValidation:
         # Should complete in under 2 seconds (generous margin for slow CI)
         assert elapsed < 2.0
 
-    @patch("packages.shared.utils.regex_safety.safe_regex_search")
+    @patch("shared.utils.regex_safety.safe_regex_search")
     def test_validate_content_handles_timeout(self, mock_search):
         """Test that validation handles regex timeouts gracefully."""
         # Make search timeout
@@ -273,7 +272,7 @@ class TestInputValidator:
         assert "a" * 100 not in result
         assert "test" in result
 
-    @patch("packages.shared.utils.regex_safety.safe_regex_findall")
+    @patch("shared.utils.regex_safety.safe_regex_findall")
     def test_sanitize_text_handles_timeout(self, mock_findall):
         """Test that sanitization handles timeouts gracefully."""
         # Make findall timeout

@@ -7,10 +7,9 @@ from uuid import uuid4
 
 import pytest
 from shared.database.exceptions import InvalidUserIdError
+from shared.database.models import RefreshToken
 from sqlalchemy import select
-
-from packages.shared.database.models import RefreshToken
-from packages.webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
+from webui.repositories.postgres.auth_repository import PostgreSQLAuthRepository
 
 
 @pytest.mark.asyncio()

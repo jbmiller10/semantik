@@ -12,9 +12,8 @@ from datetime import UTC, datetime
 from typing import Any, TypeVar, cast
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, Summary
-
-from packages.shared.metrics.prometheus import registry
-from packages.webui.services.dtos import ServiceStrategyMetrics
+from shared.metrics.prometheus import registry
+from webui.services.dtos import ServiceStrategyMetrics
 
 MetricT = TypeVar("MetricT")
 

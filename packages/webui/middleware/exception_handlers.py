@@ -6,9 +6,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
+from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 from starlette.status import HTTP_403_FORBIDDEN
-
-from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 
 from .correlation import get_or_generate_correlation_id
 

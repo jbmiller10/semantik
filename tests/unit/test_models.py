@@ -5,13 +5,8 @@ from collections.abc import Generator
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
-
-from packages.shared.config.postgres import postgres_config
-from packages.shared.database.models import (
+from shared.config.postgres import postgres_config
+from shared.database.models import (
     ApiKey,
     Base,
     ChunkingConfig,
@@ -32,6 +27,10 @@ from packages.shared.database.models import (
     RefreshToken,
     User,
 )
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 
 @pytest.fixture()

@@ -9,9 +9,8 @@ This module tests the Redis client management functionality.
 import pytest
 import redis
 import redis.asyncio as aioredis
-
-from packages.webui.services.redis_manager import RedisConfig, RedisManager
-from packages.webui.services.type_guards import (
+from webui.services.redis_manager import RedisConfig, RedisManager
+from webui.services.type_guards import (
     ensure_async_redis,
     ensure_sync_redis,
     is_async_redis,

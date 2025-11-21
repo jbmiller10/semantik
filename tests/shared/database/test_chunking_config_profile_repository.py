@@ -1,9 +1,8 @@
 """Repository-level tests for chunking config profiles (lightweight, no DB)."""
 
 import pytest
-
-from packages.shared.database.models import ChunkingConfigProfile
-from packages.shared.database.repositories.chunking_config_profile_repository import (
+from shared.database.models import ChunkingConfigProfile
+from shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,
 )
 

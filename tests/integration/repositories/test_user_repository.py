@@ -7,10 +7,9 @@ from uuid import uuid4
 
 import pytest
 from shared.database.exceptions import EntityAlreadyExistsError, InvalidUserIdError
+from shared.database.models import User
 from sqlalchemy import select
-
-from packages.shared.database.models import User
-from packages.webui.repositories.postgres.user_repository import PostgreSQLUserRepository
+from webui.repositories.postgres.user_repository import PostgreSQLUserRepository
 
 
 @pytest.mark.asyncio()

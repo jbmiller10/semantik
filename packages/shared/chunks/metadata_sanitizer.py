@@ -8,7 +8,7 @@ to prevent XSS attacks in metadata fields throughout the application.
 import html
 from typing import Any
 
-from packages.shared.utils.regex_safety import safe_regex_search
+from shared.utils.regex_safety import safe_regex_search
 
 
 class MetadataSanitizer:
