@@ -579,7 +579,7 @@ class TestSearchService:
         mock_collection.quantization = "float16"
         mock_collection.name = "Legacy Collection"
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="hybrid_search_mode"):
             await search_service.search_single_collection(
                 collection=mock_collection,
                 query="legacy modes",

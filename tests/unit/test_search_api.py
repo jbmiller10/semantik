@@ -15,8 +15,8 @@ from fastapi.testclient import TestClient
 from prometheus_client import Counter, Histogram
 
 import vecpipe.search_api as search_api_module
-from vecpipe.search import state as search_state
 from vecpipe.memory_utils import InsufficientMemoryError
+from vecpipe.search import state as search_state
 from vecpipe.search_api import (
     PointPayload,
     UpsertPoint,
@@ -91,6 +91,56 @@ def mock_embedding_service() -> None:
 
     service.get_model_info = Mock(side_effect=mock_get_model_info)
     return service
+
+
+def test_search_api_globals_follow_search_state() -> None:
+    """search_api exposes live search_state resources for callers and patchers."""
+    sentinel_from_state = object()
+    sentinel_from_api = object()
+
+    from vecpipe.search.service import _get_model_manager, _get_qdrant_client
+
+    original = {
+        "qdrant_client": search_state.qdrant_client,
+        "model_manager": search_state.model_manager,
+        "embedding_service": search_state.embedding_service,
+        "executor": search_state.executor,
+    }
+
+    try:
+        search_state.qdrant_client = sentinel_from_state
+        search_state.model_manager = sentinel_from_state
+        search_state.embedding_service = sentinel_from_state
+        search_state.executor = sentinel_from_state
+
+        assert search_api_module.qdrant_client is sentinel_from_state
+        assert search_api_module.model_manager is sentinel_from_state
+        assert search_api_module.state_model_manager is sentinel_from_state
+        assert search_api_module.embedding_service is sentinel_from_state
+        assert search_api_module.executor is sentinel_from_state
+
+        search_api_module.qdrant_client = sentinel_from_api
+        search_api_module.model_manager = sentinel_from_api
+        search_api_module.embedding_service = sentinel_from_api
+        search_api_module.executor = sentinel_from_api
+
+        # Helpers in search.service should propagate entrypoint patches back into shared state
+        assert _get_qdrant_client() is sentinel_from_api
+        assert _get_model_manager() is sentinel_from_api
+        assert search_state.qdrant_client is sentinel_from_api
+        assert search_state.model_manager is sentinel_from_api
+        assert search_state.embedding_service is sentinel_from_api
+        assert search_state.executor is sentinel_from_api
+        assert search_api_module.embedding_service is sentinel_from_api
+        assert search_api_module.executor is sentinel_from_api
+    finally:
+        search_state.qdrant_client = original["qdrant_client"]
+        search_state.model_manager = original["model_manager"]
+        search_state.embedding_service = original["embedding_service"]
+        search_state.executor = original["executor"]
+
+        for name in ("qdrant_client", "model_manager", "embedding_service", "executor"):
+            search_api_module.__dict__.pop(name, None)
 
 
 @pytest.fixture()

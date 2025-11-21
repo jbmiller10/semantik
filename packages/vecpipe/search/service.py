@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import logging
 import time
-from typing import Any, Iterable
-from unittest.mock import AsyncMock, Mock
-import inspect
 import types
+from contextlib import suppress
+from typing import Any
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 from fastapi import HTTPException
@@ -30,6 +31,7 @@ from shared.metrics.prometheus import metrics_collector
 from vecpipe.hybrid_search import HybridSearchEngine
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
+from vecpipe.search import state as search_state
 from vecpipe.search.metrics import (
     embedding_generation_latency,
     search_errors,
@@ -39,12 +41,9 @@ from vecpipe.search.metrics import (
 from vecpipe.search.schemas import (
     EmbedRequest,
     EmbedResponse,
-    PointPayload,
-    UpsertPoint,
     UpsertRequest,
     UpsertResponse,
 )
-from vecpipe.search import state as search_state
 from vecpipe.search_utils import parse_search_results, search_qdrant
 
 _DEFAULT_SEARCH_QDRANT = search_qdrant
@@ -279,9 +278,9 @@ def _calculate_candidate_k(requested_k: int) -> int:
     min_candidates_raw = RERANK_CONFIG.get("min_candidates", 20)
     max_candidates_raw = RERANK_CONFIG.get("max_candidates", 200)
 
-    multiplier = int(multiplier_raw) if isinstance(multiplier_raw, (int, float, str)) else 5
-    min_candidates = int(min_candidates_raw) if isinstance(min_candidates_raw, (int, float, str)) else 20
-    max_candidates = int(max_candidates_raw) if isinstance(max_candidates_raw, (int, float, str)) else 200
+    multiplier = int(multiplier_raw) if isinstance(multiplier_raw, int | float | str) else 5
+    min_candidates = int(min_candidates_raw) if isinstance(min_candidates_raw, int | float | str) else 20
+    max_candidates = int(max_candidates_raw) if isinstance(max_candidates_raw, int | float | str) else 200
 
     return max(min_candidates, min(requested_k * multiplier, max_candidates))
 
@@ -299,9 +298,7 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     created_client = False
 
     if client is None:
-        client = httpx.AsyncClient(
-            base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
-        )
+        client = httpx.AsyncClient(base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", timeout=httpx.Timeout(60.0))
         created_client = True
 
     try:
@@ -329,7 +326,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
     search_requests.labels(endpoint="/search", search_type=request.search_type).inc()
 
     client = _get_qdrant_client()
-    test_mode = isinstance(client, (AsyncMock, Mock))
+    test_mode = isinstance(client, AsyncMock | Mock)
 
     if test_mode and _get_model_manager() is None:
         dummy_mgr = Mock()
@@ -360,6 +357,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
         try:
             from qdrant_client import QdrantClient
+
             from shared.database.collection_metadata import get_collection_metadata
 
             sync_client = QdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
@@ -376,8 +374,6 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                 )
         except Exception as e:  # pragma: no cover - best effort path
             logger.warning(f"Could not get collection metadata: {e}")
-        manager = _get_model_manager()
-        fallback_model = getattr(manager, "current_model_key", None) if manager else None
         model_name = request.model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
         quantization = request.quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION
         if test_mode:
@@ -385,7 +381,10 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
         if collection_model and model_name != collection_model:
             logger.warning(
-                "Collection %s created with model %s but searching with %s", collection_name, collection_model, model_name
+                "Collection %s created with model %s but searching with %s",
+                collection_name,
+                collection_model,
+                model_name,
             )
         if collection_quantization and quantization != collection_quantization:
             logger.warning(
@@ -440,10 +439,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         if test_mode:
             model_mgr = _get_model_manager()
             if model_mgr and hasattr(model_mgr, "generate_embedding_async"):
-                try:
+                with suppress(Exception):
                     await model_mgr.generate_embedding_async(request.query, model_name, quantization, instruction)
-                except Exception:
-                    pass
 
         embed_time = (time.time() - embed_start) * 1000
 
@@ -490,9 +487,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
             if client is None:
                 raise RuntimeError("Qdrant client not initialized")
-            response = await client.post(
-                f"/collections/{collection_name}/points/search", json=search_request
-            )
+            response = await client.post(f"/collections/{collection_name}/points/search", json=search_request)
             if hasattr(response, "raise_for_status"):
                 maybe_coro = response.raise_for_status()
                 if inspect.isawaitable(maybe_coro):
@@ -578,7 +573,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                             if not r.content and r.chunk_id in content_map:
                                 r.content = content_map[r.chunk_id]
 
-                documents = [r.content if r.content else f"Document from {r.path} (chunk {r.chunk_id})" for r in results]
+                documents = [
+                    r.content if r.content else f"Document from {r.path} (chunk {r.chunk_id})" for r in results
+                ]
                 instruction = RERANKING_INSTRUCTIONS.get(request.search_type, RERANKING_INSTRUCTIONS["general"])
 
                 logger.info("Reranking %s documents with %s/%s", len(documents), reranker_model, reranker_quantization)
@@ -601,10 +598,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                         result.score = score
                         reranked_results.append(result)
 
-                if reranked_results:
-                    results = reranked_results
-                else:
-                    results = results[: request.k]
+                results = reranked_results if reranked_results else results[: request.k]
                 reranker_model_used = f"{reranker_model}/{reranker_quantization}"
 
             except InsufficientMemoryError as e:
@@ -656,7 +650,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
     except RuntimeError as e:
         logger.error("Embedding generation failed: %s", e)
         search_errors.labels(endpoint="/search", error_type="embedding_error").inc()
-        raise HTTPException(status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details.") from e
+        raise HTTPException(
+            status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details."
+        ) from e
     except Exception as e:  # pragma: no cover - uncaught path
         logger.error("Search error: %s", e)
         search_errors.labels(endpoint="/search", error_type="unknown_error").inc()
@@ -734,6 +730,7 @@ async def perform_hybrid_search(
 
         try:
             from qdrant_client import QdrantClient
+
             from shared.database.collection_metadata import get_collection_metadata
 
             sync_client = QdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
@@ -755,7 +752,10 @@ async def perform_hybrid_search(
 
         if collection_model and model_name != collection_model:
             logger.warning(
-                "Collection %s created with model %s but searching with %s", collection_name, collection_model, model_name
+                "Collection %s created with model %s but searching with %s",
+                collection_name,
+                collection_model,
+                model_name,
             )
 
         hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
@@ -860,8 +860,7 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
 
         search_fn = _get_search_qdrant()
         search_tasks = [
-            search_fn(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name, vector, request.k)
-            for vector in query_vectors
+            search_fn(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name, vector, request.k) for vector in query_vectors
         ]
 
         all_results = await asyncio.gather(*search_tasks)
@@ -933,7 +932,7 @@ async def perform_keyword_search(
         hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
         engine_is_patched = hybrid_engine_cls is not HybridSearchEngine
 
-        if (cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock))) and not engine_is_patched:
+        if (cfg.USE_MOCK_EMBEDDINGS or isinstance(client, AsyncMock | Mock)) and not engine_is_patched:
             keywords = query.split() or [query]
             if len(keywords) >= 2 and keywords[0] == "test" and keywords[1] == "keywords":
                 keywords = ["test", "query"]
@@ -959,7 +958,14 @@ async def perform_keyword_search(
         hybrid_engine = hybrid_engine_cls(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name)
 
         keywords = hybrid_engine.extract_keywords(query)
-        logger.info("Processing keyword search '%s' -> %s (k=%s, collection=%s, mode=%s)", query, keywords, k, collection_name, mode)
+        logger.info(
+            "Processing keyword search '%s' -> %s (k=%s, collection=%s, mode=%s)",
+            query,
+            keywords,
+            k,
+            collection_name,
+            mode,
+        )
 
         results = hybrid_engine.search_by_keywords(keywords=keywords, limit=k, mode=mode)
 
@@ -1028,7 +1034,12 @@ async def embed_texts(request: EmbedRequest) -> EmbedResponse:
                 logger.info("Processed %s/%s texts", i + len(batch_texts), len(request.texts))
 
         total_time = (time.time() - start_time) * 1000
-        logger.info("Embedding generation completed: %s embeddings in %.2fms (%s batches)", len(embeddings), total_time, batch_count)
+        logger.info(
+            "Embedding generation completed: %s embeddings in %.2fms (%s batches)",
+            len(embeddings),
+            total_time,
+            batch_count,
+        )
 
         search_latency.labels(endpoint="/embed", search_type="embedding").observe(time.time() - start_time)
 
@@ -1071,9 +1082,11 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
         client = _get_qdrant_client()
         if client is None:
             raise RuntimeError("Qdrant client not initialized")
-        test_mode = isinstance(client, (AsyncMock, Mock))
+        test_mode = isinstance(client, AsyncMock | Mock)
 
-        logger.info("Processing upsert request: %s points to collection '%s'", len(request.points), request.collection_name)
+        logger.info(
+            "Processing upsert request: %s points to collection '%s'", len(request.points), request.collection_name
+        )
 
         if not test_mode:
             try:
@@ -1139,9 +1152,7 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
             upsert_request["wait"] = True
 
         try:
-            response = await client.put(
-                f"/collections/{request.collection_name}/points", json=upsert_request
-            )
+            response = await client.put(f"/collections/{request.collection_name}/points", json=upsert_request)
             maybe_coro = response.raise_for_status()
             if inspect.isawaitable(maybe_coro):
                 await maybe_coro
@@ -1149,14 +1160,14 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
             search_errors.labels(endpoint="/upsert", error_type="qdrant_error").inc()
             error_detail = _extract_qdrant_error(e)
             detail_text = (
-                f"Vector database error: {error_detail}"
-                if error_detail != "Vector database error"
-                else error_detail
+                f"Vector database error: {error_detail}" if error_detail != "Vector database error" else error_detail
             )
             raise HTTPException(status_code=502, detail=detail_text) from e
 
         total_time = (time.time() - start_time) * 1000
-        logger.info("Upsert completed: %s points to '%s' in %.2fms", len(request.points), request.collection_name, total_time)
+        logger.info(
+            "Upsert completed: %s points to '%s' in %.2fms", len(request.points), request.collection_name, total_time
+        )
         search_latency.labels(endpoint="/upsert", search_type="vector_upload").observe(time.time() - start_time)
 
         return UpsertResponse(
@@ -1174,9 +1185,7 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
 
         error_detail = _extract_qdrant_error(e)
         detail_text = (
-            f"Vector database error: {error_detail}"
-            if error_detail != "Vector database error"
-            else error_detail
+            f"Vector database error: {error_detail}" if error_detail != "Vector database error" else error_detail
         )
 
         raise HTTPException(status_code=502, detail=detail_text) from e
@@ -1267,7 +1276,9 @@ async def list_models() -> dict[str, Any]:
     return {
         "models": models,
         "current_model": search_state.embedding_service.current_model_name if search_state.embedding_service else None,
-        "current_quantization": search_state.embedding_service.current_quantization if search_state.embedding_service else None,
+        "current_quantization": (
+            search_state.embedding_service.current_quantization if search_state.embedding_service else None
+        ),
     }
 
 

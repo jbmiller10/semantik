@@ -2,7 +2,6 @@
 
 from fastapi import FastAPI
 
-from shared.config import settings
 from vecpipe.search.lifespan import lifespan
 from vecpipe.search.router import router
 
