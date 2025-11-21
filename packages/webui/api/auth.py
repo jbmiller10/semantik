@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+
 from shared.database.base import AuthRepository, UserRepository
 from webui.auth import (
     Token,

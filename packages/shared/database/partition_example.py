@@ -10,8 +10,9 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
-from shared.database.repositories import ChunkRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.database.repositories import ChunkRepository
 
 
 class ChunkingServiceExample:

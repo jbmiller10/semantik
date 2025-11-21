@@ -22,6 +22,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
+
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
 from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker

@@ -8,6 +8,7 @@ import logging
 import sys
 
 import torch
+
 from shared.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

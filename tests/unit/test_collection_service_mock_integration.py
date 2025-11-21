@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from shared.database.exceptions import AccessDeniedError, InvalidStateError
 from webui.services.factory import create_collection_service
 

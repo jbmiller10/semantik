@@ -11,6 +11,7 @@ import random
 import time
 
 import pytest
+
 from shared.chunking.infrastructure.streaming.processor import StreamingDocumentProcessor
 from shared.chunking.infrastructure.streaming.window import StreamingWindow
 

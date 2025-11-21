@@ -4,12 +4,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.database.models import Collection, CollectionStatus, Operation, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture()

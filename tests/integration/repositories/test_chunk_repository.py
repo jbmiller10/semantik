@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
+
 from shared.database.models import Chunk
 from shared.database.repositories.chunk_repository import ChunkRepository
-from sqlalchemy import select
 
 
 @pytest.mark.asyncio()

@@ -11,11 +11,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.config import settings
 from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError
 from shared.database.models import Collection
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.auth import get_current_user
 from webui.dependencies import create_document_repository, get_collection_for_user
 

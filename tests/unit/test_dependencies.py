@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection
 from webui.dependencies import get_collection_for_user

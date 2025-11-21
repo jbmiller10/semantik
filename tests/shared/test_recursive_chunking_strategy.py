@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.recursive_strategy import RecursiveChunkingStrategy
 

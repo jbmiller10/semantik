@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from shared.config.base import BaseConfig
 from shared.config.webui import WebuiConfig
 from shared.database import database as db_module

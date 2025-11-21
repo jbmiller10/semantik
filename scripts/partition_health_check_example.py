@@ -9,9 +9,10 @@ the health of the partition key implementation in production.
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.database import get_db
 from shared.database.partition_utils import PartitionImplementationDetector
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Example API router for health checks
 router = APIRouter(prefix="/admin/partition", tags=["admin", "monitoring"])

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from webui.api.schemas import DirectoryScanResponse
 from webui.services.directory_scan_service import (
     HASH_CHUNK_SIZE,

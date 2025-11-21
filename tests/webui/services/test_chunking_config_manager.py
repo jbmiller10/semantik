@@ -3,6 +3,7 @@
 from typing import Any
 
 import pytest
+
 from shared.database.models import ChunkingConfigProfile
 from shared.database.repositories.chunking_config_profile_repository import (
     ChunkingConfigProfileRepository,

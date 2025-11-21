@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+
 from shared.database import check_postgres_connection
 from webui.qdrant import qdrant_manager
 from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager

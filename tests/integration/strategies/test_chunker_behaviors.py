@@ -5,6 +5,7 @@ from __future__ import annotations
 import string
 
 import pytest
+
 from shared.text_processing.base_chunker import ChunkResult
 from shared.text_processing.chunking_factory import ChunkingFactory
 

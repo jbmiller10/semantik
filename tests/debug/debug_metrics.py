@@ -2,6 +2,7 @@
 
 import psutil
 from prometheus_client import generate_latest
+
 from shared.metrics.prometheus import cpu_utilization, memory_utilization, metrics_collector, registry
 
 # First, let's check current system metrics

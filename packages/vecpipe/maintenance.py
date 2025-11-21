@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
+
 from shared.config import settings
 
 from .document_tracker import DocumentChangeTracker
