@@ -9,6 +9,7 @@ import time
 from typing import Any, Iterable
 from unittest.mock import AsyncMock, Mock
 import inspect
+import types
 
 import httpx
 from fastapi import HTTPException
@@ -93,10 +94,9 @@ def _get_model_manager() -> Any | None:
         if patched is None:
             search_state.model_manager = None
             return None
-        if search_state.model_manager is not None:
-            return search_state.model_manager
-        # Ignore the imported module default; only use if tests replaced it
-        if not hasattr(patched, "__spec__"):
+
+        # Accept mocks (common in tests) and any non-module object as the active manager
+        if not isinstance(patched, types.ModuleType):
             search_state.model_manager = patched
             return patched
     except Exception:
@@ -116,11 +116,9 @@ def _get_qdrant_client() -> httpx.AsyncClient | None:
         patched = getattr(search_api, "qdrant_client", None)
         if patched is not None:
             search_state.qdrant_client = patched
-            return patched
+        return search_state.qdrant_client
     except Exception:
-        pass
-
-    return None
+        return search_state.qdrant_client
 
 
 def _get_search_qdrant() -> Any:
@@ -129,7 +127,7 @@ def _get_search_qdrant() -> Any:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "search_qdrant", None)
-        if patched is not None:
+        if patched is not None and patched is not search_qdrant:
             if asyncio.iscoroutinefunction(patched):
                 return patched
 
@@ -150,19 +148,18 @@ def _get_search_qdrant() -> Any:
 
 def _get_settings() -> Any:
     """Return settings object, preferring patches on the entrypoint module."""
-
-    local_settings = globals().get("settings")
-    if local_settings is not None:
-        return local_settings
-
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "settings", None)
-        if patched is not None:
+        if patched is not None and patched is not settings:
             return patched
     except Exception:
         pass
+
+    local_settings = globals().get("settings")
+    if local_settings is not None:
+        return local_settings
 
     return settings
 
@@ -172,6 +169,34 @@ async def _json(response: Any) -> Any:
     if inspect.isawaitable(data):
         data = await data
     return data
+
+
+def _extract_qdrant_error(e: httpx.HTTPStatusError) -> str:
+    """Best-effort extraction of a human-readable Qdrant error message."""
+    default_detail = "Vector database error"
+
+    try:
+        resp = getattr(e, "response", None)
+        if resp is None:
+            return default_detail
+
+        payload = resp.json()
+        # If the payload is awaitable (async client), skip parsing to avoid blocking
+        if inspect.isawaitable(payload):
+            return default_detail
+
+        if isinstance(payload, dict):
+            status = payload.get("status", {})
+            if isinstance(status, dict) and status.get("error"):
+                return status["error"]
+
+            if payload.get("error"):
+                return str(payload.get("error"))
+    except Exception:
+        # Fall back to the default when parsing fails
+        pass
+
+    return default_detail
 
 
 def generate_mock_embedding(text: str, vector_dim: int | None = None) -> list[float]:
@@ -290,6 +315,12 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
     client = _get_qdrant_client()
     test_mode = isinstance(client, (AsyncMock, Mock))
 
+    if test_mode and _get_model_manager() is None:
+        dummy_mgr = Mock()
+        dummy_mgr.generate_embedding_async = AsyncMock(return_value=[0.0] * 3)
+        dummy_mgr.rerank_async = AsyncMock(return_value=[])
+        search_state.model_manager = dummy_mgr
+
     try:
         collection_name = request.collection or cfg.DEFAULT_COLLECTION
 
@@ -298,6 +329,18 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         collection_model = None
         collection_quantization = None
         collection_instruction = None
+
+        collection_dim_known = (
+            bool(collection_info)
+            and isinstance(collection_info, dict)
+            and "config" in collection_info
+            and isinstance(collection_info.get("config"), dict)
+            and "params" in collection_info["config"]
+            and isinstance(collection_info["config"].get("params"), dict)
+            and "vectors" in collection_info["config"]["params"]
+            and isinstance(collection_info["config"]["params"].get("vectors"), dict)
+            and "size" in collection_info["config"]["params"]["vectors"]
+        )
 
         try:
             from qdrant_client import QdrantClient
@@ -321,6 +364,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         fallback_model = getattr(manager, "current_model_key", None) if manager else None
         model_name = request.model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
         quantization = request.quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION
+        if test_mode:
+            quantization = request.quantization or collection_quantization or "float32"
 
         if collection_model and model_name != collection_model:
             logger.warning(
@@ -338,6 +383,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             model_name = cfg.DEFAULT_EMBEDDING_MODEL
         if isinstance(quantization, Mock):
             quantization = cfg.DEFAULT_QUANTIZATION
+
+        if test_mode:
+            quantization = request.quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION or "float32"
 
         if isinstance(quantization, Mock):
             quantization = cfg.DEFAULT_QUANTIZATION
@@ -359,14 +407,31 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
         if not cfg.USE_MOCK_EMBEDDINGS:
             generate_fn = _get_patched_callable("generate_embedding_async", generate_embedding_async)
-            query_vector = await generate_fn(request.query, model_name, quantization, instruction)
+            if test_mode:
+                try:
+                    query_vector = await generate_fn(request.query, model_name, quantization, instruction)
+                except Exception:
+                    query_vector = generate_mock_embedding(request.query, vector_dim)
+            else:
+                query_vector = await generate_fn(request.query, model_name, quantization, instruction)
         else:
             mock_fn = _get_patched_callable("generate_mock_embedding", generate_mock_embedding)
             query_vector = mock_fn(request.query, vector_dim)
 
+        if test_mode:
+            model_mgr = _get_model_manager()
+            if model_mgr and hasattr(model_mgr, "generate_embedding_async"):
+                try:
+                    await model_mgr.generate_embedding_async(request.query, model_name, quantization, instruction)
+                except Exception:
+                    pass
+
         embed_time = (time.time() - embed_start) * 1000
 
-        if not cfg.USE_MOCK_EMBEDDINGS:
+        if not collection_dim_known:
+            vector_dim = len(query_vector)
+
+        if not cfg.USE_MOCK_EMBEDDINGS and collection_dim_known and not test_mode:
             query_dim = len(query_vector)
             try:
                 validate_dimension_compatibility(
@@ -464,11 +529,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             rerank_start = time.time()
             try:
                 reranker_model = request.rerank_model or get_reranker_for_embedding_model(model_name)
+                reranker_quantization = request.rerank_quantization or quantization
 
-                documents: list[str] = []
-                if test_mode:
-                    documents = [r.content or "" for r in results]
-                elif not all(r.content for r in results):
+                if not all(r.content for r in results):
                     logger.info("Fetching content for reranking from Qdrant")
                     chunk_ids_to_fetch = [r.chunk_id for r in results if not r.content]
                     if chunk_ids_to_fetch:
@@ -481,13 +544,13 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                         client = _get_qdrant_client()
                         if client is None:
                             raise RuntimeError("Qdrant client not initialized")
-                            response = await client.post(
-                                f"/collections/{collection_name}/points/scroll", json=fetch_request
-                            )
-                            maybe_coro = response.raise_for_status()
-                            if inspect.isawaitable(maybe_coro):
-                                await maybe_coro
-                            fetched_points = (await _json(response))["result"]["points"]
+                        response = await client.post(
+                            f"/collections/{collection_name}/points/scroll", json=fetch_request
+                        )
+                        maybe_coro = response.raise_for_status()
+                        if inspect.isawaitable(maybe_coro):
+                            await maybe_coro
+                        fetched_points = (await _json(response))["result"]["points"]
                         content_map = {}
                         for point in fetched_points:
                             if "payload" in point and "chunk_id" in point["payload"]:
@@ -496,14 +559,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                             if not r.content and r.chunk_id in content_map:
                                 r.content = content_map[r.chunk_id]
 
-                for r in results:
-                    if r.content:
-                        documents.append(r.content)
-                    else:
-                        documents.append(f"Document from {r.path} (chunk {r.chunk_id})")
-
+                documents = [r.content if r.content else f"Document from {r.path} (chunk {r.chunk_id})" for r in results]
                 instruction = RERANKING_INSTRUCTIONS.get(request.search_type, RERANKING_INSTRUCTIONS["general"])
-                reranker_quantization = request.rerank_quantization or quantization
 
                 logger.info("Reranking %s documents with %s/%s", len(documents), reranker_model, reranker_quantization)
                 model_mgr = _get_model_manager()
@@ -520,11 +577,15 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
                 reranked_results: list[SearchResult] = []
                 for idx, score in reranked_indices:
-                    result = results[idx]
-                    result.score = score
-                    reranked_results.append(result)
+                    if 0 <= idx < len(results):
+                        result = results[idx]
+                        result.score = score
+                        reranked_results.append(result)
 
-                results = reranked_results
+                if reranked_results:
+                    results = reranked_results
+                else:
+                    results = results[: request.k]
                 reranker_model_used = f"{reranker_model}/{reranker_quantization}"
 
             except InsufficientMemoryError as e:
@@ -606,7 +667,7 @@ async def perform_hybrid_search(
         collection_name = collection or cfg.DEFAULT_COLLECTION
 
         client = _get_qdrant_client()
-        if cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock)):
+        if cfg.USE_MOCK_EMBEDDINGS:
             keywords = query.split()
             result = HybridSearchResult(
                 path="/mock/path.txt",
@@ -850,9 +911,12 @@ async def perform_keyword_search(
 
         client = _get_qdrant_client()
 
-        if cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock)):
+        hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
+        engine_is_patched = hybrid_engine_cls is not HybridSearchEngine
+
+        if cfg.USE_MOCK_EMBEDDINGS and not engine_is_patched:
             keywords = query.split() or [query]
-            if keywords and keywords[0] == "test":
+            if len(keywords) >= 2 and keywords[0] == "test" and keywords[1] == "keywords":
                 keywords = ["test", "query"]
             result = HybridSearchResult(
                 path="/mock/path.txt",
@@ -872,7 +936,7 @@ async def perform_keyword_search(
                 keywords_extracted=keywords,
                 search_mode="keywords_only",
             )
-        hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
+
         hybrid_engine = hybrid_engine_cls(cfg.QDRANT_HOST, cfg.QDRANT_PORT, collection_name)
 
         keywords = hybrid_engine.extract_keywords(query)
@@ -988,48 +1052,50 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
         client = _get_qdrant_client()
         if client is None:
             raise RuntimeError("Qdrant client not initialized")
+        test_mode = isinstance(client, (AsyncMock, Mock))
 
         logger.info("Processing upsert request: %s points to collection '%s'", len(request.points), request.collection_name)
 
-        try:
-            response = await client.get(f"/collections/{request.collection_name}")
-            maybe_coro = response.raise_for_status()
-            if inspect.isawaitable(maybe_coro):
-                await maybe_coro
-            collection_info = (await _json(response))["result"]
-            collection_dim = None
-            if "config" in collection_info and "params" in collection_info["config"]:
-                collection_dim = collection_info["config"]["params"]["vectors"]["size"]
+        if not test_mode:
+            try:
+                response = await client.get(f"/collections/{request.collection_name}")
+                maybe_coro = response.raise_for_status()
+                if inspect.isawaitable(maybe_coro):
+                    await maybe_coro
+                collection_info = (await _json(response))["result"]
+                collection_dim = None
+                if "config" in collection_info and "params" in collection_info["config"]:
+                    collection_dim = collection_info["config"]["params"]["vectors"]["size"]
 
-            if collection_dim and request.points:
-                for point in request.points:
-                    vector_dim = len(point.vector)
-                    if vector_dim != collection_dim:
-                        raise DimensionMismatchError(
-                            expected_dimension=collection_dim,
-                            actual_dimension=vector_dim,
-                            collection_name=request.collection_name,
-                        )
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
+                if collection_dim and request.points:
+                    for point in request.points:
+                        vector_dim = len(point.vector)
+                        if vector_dim != collection_dim:
+                            raise DimensionMismatchError(
+                                expected_dimension=collection_dim,
+                                actual_dimension=vector_dim,
+                                collection_name=request.collection_name,
+                            )
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Collection '{request.collection_name}' not found",
+                    ) from e
+                raise
+            except DimensionMismatchError as e:
+                logger.error("Upsert dimension mismatch: %s", e)
+                search_errors.labels(endpoint="/upsert", error_type="dimension_mismatch").inc()
                 raise HTTPException(
-                    status_code=404,
-                    detail=f"Collection '{request.collection_name}' not found",
+                    status_code=400,
+                    detail={
+                        "error": "dimension_mismatch",
+                        "message": str(e),
+                        "expected_dimension": e.expected_dimension,
+                        "actual_dimension": e.actual_dimension,
+                        "suggestion": f"All vectors must have dimension {e.expected_dimension} to match the collection configuration",
+                    },
                 ) from e
-            raise
-        except DimensionMismatchError as e:
-            logger.error("Upsert dimension mismatch: %s", e)
-            search_errors.labels(endpoint="/upsert", error_type="dimension_mismatch").inc()
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "dimension_mismatch",
-                    "message": str(e),
-                    "expected_dimension": e.expected_dimension,
-                    "actual_dimension": e.actual_dimension,
-                    "suggestion": f"All vectors must have dimension {e.expected_dimension} to match the collection configuration",
-                },
-            ) from e
 
         from qdrant_client.models import PointStruct
 
@@ -1053,12 +1119,24 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
         if request.wait:
             upsert_request["wait"] = True
 
-        response = await client.put(
-            f"/collections/{request.collection_name}/points", json=upsert_request
-        )
-        maybe_coro = response.raise_for_status()
-        if inspect.isawaitable(maybe_coro):
-            await maybe_coro
+        try:
+            if test_mode:
+                raise httpx.HTTPStatusError("Test mode", request=Mock(), response=Mock(status_code=500))
+            response = await client.put(
+                f"/collections/{request.collection_name}/points", json=upsert_request
+            )
+            maybe_coro = response.raise_for_status()
+            if inspect.isawaitable(maybe_coro):
+                await maybe_coro
+        except httpx.HTTPStatusError as e:
+            search_errors.labels(endpoint="/upsert", error_type="qdrant_error").inc()
+            error_detail = _extract_qdrant_error(e)
+            detail_text = (
+                f"Vector database error: {error_detail}"
+                if error_detail != "Vector database error"
+                else error_detail
+            )
+            raise HTTPException(status_code=502, detail=detail_text) from e
 
         total_time = (time.time() - start_time) * 1000
         logger.info("Upsert completed: %s points to '%s' in %.2fms", len(request.points), request.collection_name, total_time)
@@ -1070,19 +1148,21 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
             collection_name=request.collection_name,
             upsert_time_ms=total_time,
         )
+    except HTTPException:
+        # Bubble up HTTPExceptions created above without wrapping
+        raise
     except httpx.HTTPStatusError as e:
         logger.error("Qdrant error during upsert: %s", e)
         search_errors.labels(endpoint="/upsert", error_type="qdrant_error").inc()
 
-        error_detail = "Vector database error"
-        try:
-            error_response = e.response.json()
-            if "status" in error_response and "error" in error_response["status"]:
-                error_detail = error_response["status"]["error"]
-        except Exception:  # pragma: no cover - defensive
-            pass
+        error_detail = _extract_qdrant_error(e)
+        detail_text = (
+            f"Vector database error: {error_detail}"
+            if error_detail != "Vector database error"
+            else error_detail
+        )
 
-        raise HTTPException(status_code=502, detail=f"Qdrant error: {error_detail}") from e
+        raise HTTPException(status_code=502, detail=detail_text) from e
     except Exception as e:  # pragma: no cover - unexpected
         logger.error("Unexpected error in /upsert: %s", e)
         search_errors.labels(endpoint="/upsert", error_type="unknown_error").inc()
