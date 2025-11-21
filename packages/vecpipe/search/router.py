@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query
@@ -36,7 +37,9 @@ async def root() -> dict[str, Any]:
         if search_state.qdrant_client is None:
             raise HTTPException(status_code=503, detail="Qdrant client not initialized")
         response = await search_state.qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
-        response.raise_for_status()
+        maybe_coro = response.raise_for_status()
+        if inspect.isawaitable(maybe_coro):
+            await maybe_coro
         info = response.json()["result"]
 
         health_info: dict[str, Any] = {
@@ -146,11 +149,17 @@ async def keyword_search(
 @router.get("/collection/info")
 async def collection_info() -> dict[str, Any]:
     try:
-        if search_state.qdrant_client is None:
+        client = service._get_qdrant_client()
+        if client is None:
             raise HTTPException(status_code=503, detail="Qdrant client not initialized")
-        response = await search_state.qdrant_client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
-        response.raise_for_status()
-        return dict(response.json()["result"])
+        response = await client.get(f"/collections/{settings.DEFAULT_COLLECTION}")
+        maybe_coro = response.raise_for_status()
+        if inspect.isawaitable(maybe_coro):
+            await maybe_coro
+        result = response.json()
+        if inspect.isawaitable(result):
+            result = await result
+        return dict(result["result"])
     except Exception as e:  # pragma: no cover - fallback
         logger.error("Failed to get collection info: %s", e)
         raise HTTPException(status_code=502, detail="Failed to get collection info") from e
