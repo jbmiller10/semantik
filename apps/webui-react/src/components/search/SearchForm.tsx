@@ -333,12 +333,11 @@ export default function SearchForm({ collections }: SearchFormProps) {
                             <select
                                 id="fusion-mode"
                                 value={searchParams.hybridMode}
-                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'weighted' | 'reciprocal_rank' | 'relative_score' })}
+                                onChange={(e) => validateAndUpdateSearchParams({ hybridMode: e.target.value as 'weighted' | 'filter' })}
                                 className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm"
                             >
                                 <option value="weighted">Weighted Sum</option>
-                                <option value="reciprocal_rank">Reciprocal Rank Fusion (RRF)</option>
-                                <option value="relative_score">Relative Score Fusion</option>
+                                <option value="filter">Keyword Filter</option>
                             </select>
                         </div>
                     </div>
