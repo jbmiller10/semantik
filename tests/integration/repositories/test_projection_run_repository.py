@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from shared.database.exceptions import EntityNotFoundError, ValidationError
 from shared.database.models import ProjectionRun, ProjectionRunStatus
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
-from sqlalchemy import select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

@@ -115,13 +115,13 @@ class SearchService:
 
         # Build search request for this collection
         base_params = dict(search_params)
-        legacy_hybrid_mode = base_params.pop("hybrid_search_mode", None)
-        canonical_hybrid_mode = base_params.get("hybrid_mode") or legacy_hybrid_mode
+        if "hybrid_search_mode" in base_params:
+            raise ValueError("legacy field 'hybrid_search_mode' is no longer supported")
 
-        if canonical_hybrid_mode is not None:
-            base_params["hybrid_mode"] = normalize_hybrid_mode(canonical_hybrid_mode)
+        if "hybrid_mode" in base_params and base_params["hybrid_mode"] is not None:
+            base_params["hybrid_mode"] = normalize_hybrid_mode(base_params["hybrid_mode"])
 
-        if "keyword_mode" in base_params or canonical_hybrid_mode is not None:
+        if "keyword_mode" in base_params:
             base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
 
         collection_search_params = {
@@ -263,7 +263,7 @@ class SearchService:
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
-        # Normalize legacy hybrid/keyword modes for backward compatibility
+        # Validate requested hybrid/keyword modes
         hybrid_mode = normalize_hybrid_mode(hybrid_mode)
         keyword_mode = normalize_keyword_mode(keyword_mode)
 

@@ -12,6 +12,7 @@ import jwt
 import pytest
 from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
+
 from webui.auth import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     UserCreate,

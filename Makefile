@@ -59,11 +59,11 @@ dev-install:
 	uv sync --frozen
 
 format:
-	uv run black packages/vecpipe packages/webui packages/shared tests
-	uv run isort packages/vecpipe packages/webui packages/shared tests
+	uv run black packages/vecpipe packages/webui packages/shared tests scripts
+	uv run isort packages/vecpipe packages/webui packages/shared tests scripts
 
 lint:
-	uv run ruff check packages/vecpipe packages/webui packages/shared tests
+	uv run ruff check packages/vecpipe packages/webui packages/shared tests scripts
 
 type-check:
 	uv run mypy packages/vecpipe packages/webui packages/shared --ignore-missing-imports

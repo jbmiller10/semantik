@@ -14,10 +14,7 @@ from fastapi import HTTPException
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import OperationStatus, ProjectionRunStatus
 from webui.services import projection_service as projection_module
-from webui.services.projection_service import (
-    ProjectionService,
-    compute_projection_metadata_hash,
-)
+from webui.services.projection_service import ProjectionService, compute_projection_metadata_hash
 
 
 def test_encode_projection_without_operation() -> None:

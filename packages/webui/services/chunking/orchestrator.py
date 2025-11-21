@@ -18,8 +18,11 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.chunking.infrastructure.exceptions import DocumentTooLargeError, ValidationError
-from shared.chunking.infrastructure.exceptions import PermissionDeniedError as InfraPermissionDeniedError
+from shared.chunking.infrastructure.exceptions import (
+    DocumentTooLargeError,
+    PermissionDeniedError as InfraPermissionDeniedError,
+    ValidationError,
+)
 from shared.database.exceptions import AccessDeniedError
 from shared.database.models import OperationStatus
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -619,13 +622,7 @@ class ChunkingOrchestrator:
         if not self.db_session:
             raise ValidationError(field="db_session", value=None, reason="Database session unavailable")
 
-        from shared.database.models import (
-            Chunk,
-            Document,
-            Operation,
-            OperationStatus,
-            OperationType,
-        )
+        from shared.database.models import Chunk, Document, Operation, OperationStatus, OperationType
 
         collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
         if not collection:

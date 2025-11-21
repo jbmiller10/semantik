@@ -13,11 +13,7 @@ from starlette.requests import Request
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
-from webui.api.v2.schemas import (
-    CollectionSearchRequest,
-    CollectionSearchResponse,
-    SingleCollectionSearchRequest,
-)
+from webui.api.v2.schemas import CollectionSearchRequest, CollectionSearchResponse, SingleCollectionSearchRequest
 from webui.api.v2.search import multi_collection_search, single_collection_search
 
 
@@ -237,7 +233,7 @@ class TestMultiCollectionSearch:
         self,
         mock_user: dict[str, Any],
     ) -> None:
-        """Legacy hybrid/keyword modes are normalized before delegating to SearchService."""
+        """Hybrid/keyword modes are forwarded using canonical values."""
 
         scope = {
             "type": "http",
@@ -261,7 +257,7 @@ class TestMultiCollectionSearch:
             query="legacy",
             search_type="hybrid",
             hybrid_mode="weighted",
-            keyword_mode="bm25",
+            keyword_mode="any",
         )
 
         with patch("webui.api.v2.search.get_search_service", return_value=mock_search_service):
@@ -270,7 +266,6 @@ class TestMultiCollectionSearch:
         call_kwargs = mock_search_service.multi_collection_search.call_args.kwargs
         assert call_kwargs["hybrid_mode"] == "weighted"
         assert call_kwargs["keyword_mode"] == "any"
-        assert "hybrid_search_mode" not in call_kwargs
 
     @pytest.mark.asyncio()
     async def test_multi_collection_search_no_reranking_same_model(
@@ -1091,7 +1086,7 @@ class TestHybridSearchParameters:
         mock_user: dict[str, Any],
         mock_collections: list[MagicMock],
     ) -> None:
-        """Legacy hybrid params should be mapped and results sorted by reranked score."""
+        """Hybrid params should be forwarded and results sorted by reranked score."""
 
         scope = {
             "type": "http",
@@ -1107,8 +1102,8 @@ class TestHybridSearchParameters:
             query="hybrid legacy mapping",
             k=3,
             search_type="hybrid",
-            hybrid_mode="relative_score",
-            keyword_mode="bm25",
+            hybrid_mode="weighted",
+            keyword_mode="any",
             use_reranker=True,
         )
 

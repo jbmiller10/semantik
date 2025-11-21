@@ -5,12 +5,13 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from shared.database.base import AuthRepository
-from shared.database.exceptions import DatabaseOperationError, InvalidUserIdError
-from shared.database.models import RefreshToken, User
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.database.base import AuthRepository
+from shared.database.exceptions import DatabaseOperationError, InvalidUserIdError
+from shared.database.models import RefreshToken, User
 
 from .base import PostgreSQLBaseRepository
 

@@ -5,8 +5,7 @@ import pytest
 
 from shared.config.base import BaseConfig
 from shared.config.webui import WebuiConfig
-from shared.database import database as db_module
-from shared.database import pg_connection_manager
+from shared.database import database as db_module, pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker, get_db
 
 

@@ -31,15 +31,31 @@ async def search_qdrant(
     Returns:
         List of search results from Qdrant
     """
-    # Initialize async client
-    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
+    # Prefer the globally injected client when available (tests patch this)
+    try:
+        from vecpipe.search import state as search_state
 
-    # Perform search
+        state_client = getattr(search_state, "qdrant_client", None)
+        if state_client is not None and hasattr(state_client, "search"):
+            results = await state_client.search(
+                collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
+            )
+            return [
+                {
+                    "id": point.id,
+                    "score": point.score,
+                    "payload": point.payload if with_payload else None,
+                }
+                for point in results
+            ]
+    except Exception:
+        # Fall through to default client
+        pass
+
+    client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
     results = await client.search(
         collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
     )
-
-    # Convert results to dictionary format for backward compatibility
     return [
         {"id": point.id, "score": point.score, "payload": point.payload if with_payload else None} for point in results
     ]

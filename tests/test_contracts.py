@@ -175,7 +175,7 @@ class TestSearchContractsExtended:
     def test_hybrid_search_request(self) -> None:
         """Test HybridSearchRequest validation."""
 
-        req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
+        req = HybridSearchRequest(query="test query", k=15, mode="weighted", keyword_mode="all", score_threshold=0.7)
         assert req.query == "test query"
         assert req.k == 15
         assert req.mode == "weighted"

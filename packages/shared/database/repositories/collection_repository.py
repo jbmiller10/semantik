@@ -5,6 +5,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import delete, desc, func, or_, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from shared.database.exceptions import (
     AccessDeniedError,
     DatabaseOperationError,
@@ -13,10 +18,6 @@ from shared.database.exceptions import (
     ValidationError,
 )
 from shared.database.models import Collection, CollectionStatus, Document
-from sqlalchemy import delete, desc, func, or_, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
