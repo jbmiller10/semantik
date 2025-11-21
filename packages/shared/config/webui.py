@@ -57,39 +57,46 @@ class WebuiConfig(BaseConfig):
             raise ValueError("JWT_SECRET_KEY must be set via environment (use scripts/generate_jwt_secret.py)")
         return value
 
-    @cached_property
+    @property
     def document_root_path(self) -> Path | None:
-        """Return resolved document root if configured."""
+        """Return resolved document root if configured or overridden in tests."""
+
+        if getattr(self, "_document_root", None) is not None:
+            return getattr(self, "_document_root")
 
         if not self.DOCUMENT_ROOT:
             return None
         return Path(self.DOCUMENT_ROOT).expanduser().resolve()
 
-    @cached_property
+    @property
     def document_allowed_roots(self) -> tuple[Path, ...]:
         """Additional directories allowed for serving document content."""
-
-        explicit_roots: list[Path] = []
-        raw_allowed = self.DOCUMENT_ALLOWED_ROOTS
-        if raw_allowed:
-            for entry in str(raw_allowed).split(":"):
-                entry = entry.strip()
-                if not entry:
-                    continue
-                explicit_roots.append(Path(entry).expanduser().resolve())
 
         roots: list[Path] = []
         if self.document_root_path is not None:
             roots.append(self.document_root_path)
-        roots.extend(explicit_roots)
+
+        override_roots = getattr(self, "_document_allowed_roots", None)
+        if override_roots is not None:
+            roots.extend(override_roots)
+        else:
+            raw_allowed = self.DOCUMENT_ALLOWED_ROOTS
+            if raw_allowed:
+                for entry in str(raw_allowed).split(":"):
+                    entry = entry.strip()
+                    if not entry:
+                        continue
+                    roots.append(Path(entry).expanduser().resolve())
 
         default_mounts: list[Path] = []
-        for candidate in (Path("/mnt/docs"),):
-            if candidate.exists():
+        default_override = getattr(self, "_default_document_mounts", None)
+        candidates = default_override if default_override is not None else (Path("/mnt/docs"),)
+        for candidate in candidates:
+            if isinstance(candidate, Path) and candidate.exists():
                 default_mounts.append(candidate.resolve())
         roots.extend(default_mounts)
 
-        # Always allow the loaded_dir by default
+        # Always allow the loaded_dir by default for compatibility
         roots.append(self.loaded_dir.resolve())
 
         return tuple(dict.fromkeys(roots))
@@ -107,5 +114,7 @@ class WebuiConfig(BaseConfig):
             return True
         if self.DOCUMENT_ALLOWED_ROOTS:
             return True
-        # Only enforce defaults when /mnt/docs exists
-        return any(root.exists() for root in self.document_allowed_roots)
+
+        default_mounts = getattr(self, "_default_document_mounts", None)
+        candidates = default_mounts if default_mounts is not None else (Path("/mnt/docs"),)
+        return any(isinstance(mount, Path) and mount.exists() for mount in candidates)

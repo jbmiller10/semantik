@@ -224,7 +224,7 @@ from datetime import datetime, UTC
 
 from packages.shared.database.models import Collection, CollectionStatus, OperationType
 from packages.shared.database.exceptions import EntityAlreadyExistsError, InvalidStateError
-from packages.webui.services.collection_service import CollectionService
+from webui.services.collection_service import CollectionService
 
 class TestCollectionService:
     """Test CollectionService implementation"""
@@ -274,7 +274,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Operation, OperationType, OperationStatus
-from packages.webui.repositories.operation_repository import OperationRepository
+from webui.repositories.operation_repository import OperationRepository
 
 class TestOperationRepository:
     """Test OperationRepository implementation"""
@@ -340,7 +340,7 @@ class TestCollectionsAPIV2:
 import pytest
 import asyncio
 from fastapi.testclient import TestClient
-from packages.webui.main import app
+from webui.main import app
 
 class TestWebSocketIntegration:
     """Test WebSocket integration with operations"""
@@ -379,7 +379,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from fastapi.testclient import TestClient
 
 from packages.shared.database import Base, User, Collection
-from packages.webui.main import app
+from webui.main import app
 
 @pytest_asyncio.fixture
 async def async_session():
@@ -429,7 +429,7 @@ def mock_celery_task(monkeypatch):
     mock_task.delay.return_value.id = "mock-task-id"
     
     monkeypatch.setattr(
-        "packages.webui.tasks.index_collection",
+        "webui.tasks.index_collection",
         mock_task
     )
     return mock_task
@@ -959,7 +959,7 @@ uv run pytest --cov=packages --cov-report=html --cov-report=term-missing
 open htmlcov/index.html
 
 # Coverage by package
-uv run pytest --cov=packages.webui --cov=packages.vecpipe --cov=packages.shared
+uv run pytest --cov=webui --cov=vecpipe --cov=shared
 ```
 
 ### Frontend Coverage

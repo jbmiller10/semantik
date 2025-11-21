@@ -21,7 +21,7 @@ class ChunkingValidator:
     """Service responsible for validation of chunking operations."""
 
     # Configuration constraints
-    MIN_CHUNK_SIZE = 50
+    MIN_CHUNK_SIZE = 10
     MAX_CHUNK_SIZE = 10000
     MIN_OVERLAP = 0
     MAX_OVERLAP_RATIO = 0.5  # 50% max overlap
@@ -125,9 +125,12 @@ class ChunkingValidator:
         if not strategy:
             raise ValidationError(field="strategy", value=None, reason="Strategy is required")
 
+        from webui.services.chunking.strategy_registry import resolve_api_identifier
+
+        resolved = resolve_api_identifier(strategy)
         valid_strategies = list_api_strategy_ids()
 
-        if strategy not in valid_strategies:
+        if not resolved or resolved not in valid_strategies:
             raise ValidationError(
                 field="strategy",
                 value=strategy,
