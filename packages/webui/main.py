@@ -8,6 +8,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+
+# Ensure repo-local packages are importable when running this file directly
+import sys
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, WebSocket
