@@ -53,7 +53,7 @@ export interface SearchRequest {
   use_reranker?: boolean;
   rerank_model?: string | null;
   hybrid_alpha?: number;
-  hybrid_mode?: 'filter' | 'rerank' | 'weighted' | 'reciprocal_rank' | 'relative_score';
+  hybrid_mode?: 'filter' | 'weighted';
   keyword_mode?: 'any' | 'all';
 }
 

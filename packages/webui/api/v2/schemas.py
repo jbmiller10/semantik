@@ -57,6 +57,7 @@ class CollectionSearchRequest(BaseModel):
         return v
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "collection_uuids": [
@@ -69,7 +70,7 @@ class CollectionSearchRequest(BaseModel):
                 "use_reranker": True,
                 "score_threshold": 0.5,
             }
-        }
+        },
     )
 
 
@@ -179,6 +180,7 @@ class SingleCollectionSearchRequest(BaseModel):
     include_content: bool = Field(default=True, description="Include chunk content in results")
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "collection_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -188,7 +190,7 @@ class SingleCollectionSearchRequest(BaseModel):
                 "use_reranker": False,
                 "score_threshold": 0.7,
             }
-        }
+        },
     )
 
 

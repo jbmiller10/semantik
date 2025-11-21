@@ -21,7 +21,7 @@ describe('SearchInterface - Network Error Handling', () => {
         searchType: 'semantic' as const,
         useReranker: false,
         hybridAlpha: 0.7,
-        hybridMode: 'rerank' as const,
+        hybridMode: 'weighted' as const,
         keywordMode: 'any' as const,
         rerankModel: null,
         rerankQuantization: null,
@@ -82,7 +82,7 @@ describe('SearchInterface - Network Error Handling', () => {
     await user.selectOptions(searchTypeSelect, 'hybrid')
 
     const hybridModeSelect = screen.getByLabelText(/Fusion Mode/i)
-    await user.selectOptions(hybridModeSelect, 'reciprocal_rank')
+    await user.selectOptions(hybridModeSelect, 'filter')
 
     // Keyword mode selector seems to be removed from UI, skipping interaction
     // const keywordModeSelect = screen.getByRole('combobox', { name: /keyword matching/i })
@@ -95,7 +95,7 @@ describe('SearchInterface - Network Error Handling', () => {
       expect(capturedBody).not.toBeNull()
     })
 
-    expect(capturedBody.hybrid_mode).toBe('reciprocal_rank')
+    expect(capturedBody.hybrid_mode).toBe('filter')
     // expect(capturedBody.keyword_mode).toBe('all')
     expect(capturedBody.search_type).toBe('hybrid')
   })
