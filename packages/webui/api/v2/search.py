@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.schemas import (

@@ -55,7 +55,7 @@ from shared.database.models import (  # noqa: E402
 )
 from webui.auth import create_access_token, get_current_user  # noqa: E402
 from webui.main import app  # noqa: E402
-from webui.utils.qdrant_manager import qdrant_manager  # noqa: E402
+from webui.qdrant import qdrant_manager  # noqa: E402
 from webui.websocket_manager import RedisStreamWebSocketManager  # noqa: E402
 
 # Add parent directory to path for imports

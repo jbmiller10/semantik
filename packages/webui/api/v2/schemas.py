@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from webui.api.schemas import SearchResult as BaseSearchResult
 

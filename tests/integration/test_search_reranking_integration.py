@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from shared.database.models import Collection, CollectionStatus
 from webui.api.v2 import search as search_api
 from webui.auth import get_current_user

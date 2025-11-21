@@ -7,6 +7,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from httpx import AsyncClient
+
 from shared.database.models import (
     OperationStatus,
     OperationType,

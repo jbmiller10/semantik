@@ -4,7 +4,9 @@ import asyncio
 import logging
 import re
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from shared.database.exceptions import (
@@ -18,14 +20,10 @@ from shared.database.repositories.collection_repository import CollectionReposit
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.managers import QdrantManager
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.celery_app import celery_app
+from webui.qdrant import get_qdrant_manager
 from webui.services.chunking_config_builder import ChunkingConfigBuilder
 from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
-from webui.utils.qdrant_manager import qdrant_manager as _legacy_qdrant_manager
-
-if TYPE_CHECKING:
-    from qdrant_client import QdrantClient
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +32,6 @@ QDRANT_COLLECTION_PREFIX = "collection_"
 DEFAULT_VECTOR_DIMENSION = 1536  # Default vector dimension for embeddings
 
 # Backward compatibility for tests that monkeypatch the module-level manager
-qdrant_manager = _legacy_qdrant_manager
-
-
-class _LightweightQdrantManager:
-    """Minimal adapter that mirrors the list/delete surface of QdrantManager."""
-
-    def __init__(self, client: "QdrantClient") -> None:
-        self.client = client
-
-    def list_collections(self) -> list[str]:  # pragma: no cover - thin wrapper
-        collections = self.client.get_collections()
-        return [col.name for col in collections.collections]
 
 
 class CollectionService:
@@ -57,7 +43,7 @@ class CollectionService:
         collection_repo: CollectionRepository,
         operation_repo: OperationRepository,
         document_repo: DocumentRepository,
-        qdrant_manager: QdrantManager | _LightweightQdrantManager | None,
+        qdrant_manager: QdrantManager | None,
     ):
         """Initialize the collection service."""
         self.db_session = db_session
@@ -66,18 +52,13 @@ class CollectionService:
         self.document_repo = document_repo
         self.qdrant_manager = qdrant_manager
 
-    def _ensure_qdrant_manager(self) -> QdrantManager | _LightweightQdrantManager | None:
+    def _ensure_qdrant_manager(self) -> QdrantManager | None:
         """Lazily resolve a Qdrant manager, honoring test monkeypatches."""
         if self.qdrant_manager is not None:
             return self.qdrant_manager
 
         try:
-            client = qdrant_manager.get_client()
-            try:
-                self.qdrant_manager = QdrantManager(client)
-            except Exception:
-                # Fall back to a lightweight adapter when the shared manager cannot be built
-                self.qdrant_manager = _LightweightQdrantManager(client)
+            self.qdrant_manager = get_qdrant_manager()
         except Exception as exc:  # pragma: no cover - network dependent
             logger.warning("Qdrant manager unavailable: %s", exc)
             return None
@@ -643,7 +624,6 @@ class CollectionService:
             manager = self._ensure_qdrant_manager()
             if manager is None or not hasattr(manager, "rename_collection"):
                 raise RuntimeError("Qdrant manager is not available to rename collection")
-            # After hasattr check, we know this is a QdrantManager, not _LightweightQdrantManager
             qdrant_manager_for_rename = cast(QdrantManager, manager)
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name

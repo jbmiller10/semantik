@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.infrastructure.streaming.checkpoint import CheckpointManager, StreamingCheckpoint

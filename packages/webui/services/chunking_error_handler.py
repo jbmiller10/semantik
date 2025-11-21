@@ -18,6 +18,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 
 import psutil
+
 from shared.database.models import CollectionStatus
 from webui.api.chunking_exceptions import ResourceType
 from webui.middleware.correlation import get_correlation_id
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
+
     from shared.text_processing.base_chunker import ChunkResult
     from webui.utils.error_classifier import ErrorClassificationResult, ErrorClassifier
 

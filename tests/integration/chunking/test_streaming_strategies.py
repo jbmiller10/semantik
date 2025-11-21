@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
+
 from shared.chunking.domain.services.chunking_strategies import CharacterChunkingStrategy
 from shared.chunking.domain.services.streaming_strategies import (
     StreamingCharacterStrategy,

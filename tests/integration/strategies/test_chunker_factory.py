@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from shared.text_processing.chunking_factory import ChunkingFactory
 from shared.text_processing.strategies.character_chunker import CharacterChunker
 from shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker

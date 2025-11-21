@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.entities.chunking_operation import ChunkingOperation
 from shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError

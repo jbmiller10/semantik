@@ -17,6 +17,7 @@ import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from prometheus_client import Counter, Histogram  # noqa: E402
 from pydantic import BaseModel, Field
+
 from shared.config import settings  # noqa: E402
 
 # Import contracts from shared

@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
+
 from webui.websocket.scalable_manager import ScalableWebSocketManager
 from webui.websocket_manager import RedisStreamWebSocketManager
 

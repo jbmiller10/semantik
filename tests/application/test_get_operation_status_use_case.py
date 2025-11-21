@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+
 from shared.chunking.application.dto.requests import GetOperationStatusRequest
 from shared.chunking.application.dto.responses import GetOperationStatusResponse
 from shared.chunking.application.dto.responses import OperationStatus as DTOOperationStatus

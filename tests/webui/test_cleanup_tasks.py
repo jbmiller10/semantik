@@ -28,7 +28,7 @@ class TestCleanupOldCollections:
         assert result["collection_id"] == "collection-123"
 
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
-    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("webui.qdrant.qdrant_manager")
     def test_cleanup_old_collections_success(self, mock_conn_manager, mock_timer) -> None:
         """Test successful cleanup of collections."""
 
@@ -75,7 +75,7 @@ class TestCleanupQdrantCollections:
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks.asyncio.run")
-    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("webui.qdrant.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_system(
         self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
@@ -110,7 +110,7 @@ class TestCleanupQdrantCollections:
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks.asyncio.run")
-    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("webui.qdrant.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_active(
         self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
@@ -142,7 +142,7 @@ class TestCleanupQdrantCollections:
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks.asyncio.run")
-    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("webui.qdrant.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_skip_recent_staging(
         self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit, mock_timer
@@ -182,7 +182,7 @@ class TestCleanupQdrantCollections:
     @patch("shared.metrics.collection_metrics.QdrantOperationTimer")
     @patch("webui.tasks._audit_collection_deletions_batch")
     @patch("webui.tasks.asyncio.run")
-    @patch("webui.utils.qdrant_manager.qdrant_manager")
+    @patch("webui.qdrant.qdrant_manager")
     @patch("shared.managers.qdrant_manager.QdrantManager")  # Patch at the actual import location
     def test_cleanup_qdrant_collections_successful_deletion(
         self, mock_qdrant_manager_class, mock_conn_manager, mock_asyncio_run, mock_audit_batch, mock_timer

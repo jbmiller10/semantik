@@ -6,9 +6,10 @@ from datetime import datetime
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
+
 from shared.database.exceptions import EntityAlreadyExistsError, InvalidUserIdError
 from shared.database.models import User
-from sqlalchemy import select
 from webui.repositories.postgres.user_repository import PostgreSQLUserRepository
 
 
