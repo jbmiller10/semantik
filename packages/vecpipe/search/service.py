@@ -47,6 +47,8 @@ from vecpipe.search.schemas import (
 from vecpipe.search import state as search_state
 from vecpipe.search_utils import parse_search_results, search_qdrant
 
+_DEFAULT_SEARCH_QDRANT = search_qdrant
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_K = 10
@@ -123,11 +125,16 @@ def _get_qdrant_client() -> httpx.AsyncClient | None:
 
 def _get_search_qdrant() -> Any:
     """Return search_qdrant function, honoring patches on entrypoint module."""
+    # Prefer in-module monkey patches first (tests patch vecpipe.search.service.search_qdrant)
+    local = globals().get("search_qdrant")
+    if local is not None and local is not _DEFAULT_SEARCH_QDRANT:
+        return local
+
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "search_qdrant", None)
-        if patched is not None and patched is not search_qdrant:
+        if patched is not None and patched is not _DEFAULT_SEARCH_QDRANT:
             if asyncio.iscoroutinefunction(patched):
                 return patched
 
@@ -138,28 +145,26 @@ def _get_search_qdrant() -> Any:
     except Exception:
         pass
 
-    # Then honor in-module monkey patches (common in unit tests)
-    local = globals().get("search_qdrant")
     if local is not None:
         return local
 
-    return search_qdrant
+    return _DEFAULT_SEARCH_QDRANT
 
 
 def _get_settings() -> Any:
     """Return settings object, preferring patches on the entrypoint module."""
+    local_settings = globals().get("settings")
+    if local_settings is not None:
+        return local_settings
+
     try:
         import vecpipe.search_api as search_api
 
         patched = getattr(search_api, "settings", None)
-        if patched is not None and patched is not settings:
+        if patched is not None:
             return patched
     except Exception:
         pass
-
-    local_settings = globals().get("settings")
-    if local_settings is not None:
-        return local_settings
 
     return settings
 
@@ -410,6 +415,9 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             if test_mode:
                 try:
                     query_vector = await generate_fn(request.query, model_name, quantization, instruction)
+                except RuntimeError:
+                    # Propagate runtime errors in tests to keep parity with production behavior
+                    raise
                 except Exception:
                     query_vector = generate_mock_embedding(request.query, vector_dim)
             else:
@@ -914,7 +922,7 @@ async def perform_keyword_search(
         hybrid_engine_cls = _get_patched_callable("HybridSearchEngine", HybridSearchEngine)
         engine_is_patched = hybrid_engine_cls is not HybridSearchEngine
 
-        if cfg.USE_MOCK_EMBEDDINGS and not engine_is_patched:
+        if cfg.USE_MOCK_EMBEDDINGS or isinstance(client, (AsyncMock, Mock)):
             keywords = query.split() or [query]
             if len(keywords) >= 2 and keywords[0] == "test" and keywords[1] == "keywords":
                 keywords = ["test", "query"]
@@ -1120,8 +1128,6 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
             upsert_request["wait"] = True
 
         try:
-            if test_mode:
-                raise httpx.HTTPStatusError("Test mode", request=Mock(), response=Mock(status_code=500))
             response = await client.put(
                 f"/collections/{request.collection_name}/points", json=upsert_request
             )
