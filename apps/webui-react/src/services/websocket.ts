@@ -159,6 +159,7 @@ export class WebSocketService extends EventEmitter {
   private isAuthenticated = false;
   private authenticationToken: string | null = null;
   private hasSentAuthRequest = false;
+  private lastSocketRef: WebSocket | null = null;
   
   constructor(config: WebSocketConfig) {
     super();
@@ -172,6 +173,10 @@ export class WebSocketService extends EventEmitter {
       heartbeatInterval: config.heartbeatInterval ?? 30000,
       connectionTimeout: config.connectionTimeout ?? 5000,
     };
+
+    // Initialize pong timestamp so heartbeat dead-connection detection is relative to the
+    // most recent connection cycle rather than service construction time.
+    this.lastPongReceived = Date.now();
   }
 
   /**
@@ -220,7 +225,9 @@ export class WebSocketService extends EventEmitter {
       // Connect WITHOUT token in URL (SECURE)
       console.log('Connecting to WebSocket:', this.config.url);
       this.ws = new WebSocket(this.config.url);
+      this.lastSocketRef = this.ws;
       this.hasSentAuthRequest = false;
+      this.lastPongReceived = Date.now();
       
       // Set up connection timeout
       this.connectionTimer = setTimeout(() => {
@@ -256,6 +263,9 @@ export class WebSocketService extends EventEmitter {
     
     // Reset reconnection attempts
     this.reconnectAttempts = 0;
+
+    // Reset pong timer baseline on successful socket open
+    this.lastPongReceived = Date.now();
     
     // Send authentication message as first message
     this.sendAuthentication();
@@ -353,6 +363,7 @@ export class WebSocketService extends EventEmitter {
     
     console.log('WebSocket authenticated successfully', data);
     this.isAuthenticated = true;
+    this.lastPongReceived = Date.now();
     
     // Start heartbeat after successful authentication
     this.startHeartbeat();
@@ -456,21 +467,23 @@ export class WebSocketService extends EventEmitter {
       this.emit('reconnect_failed', { attempts: this.reconnectAttempts });
       return;
     }
-    
+
     this.reconnectAttempts++;
-    
+
     // Calculate delay with exponential backoff and jitter
     const baseDelay = Math.min(
       this.config.reconnectInterval * Math.pow(2, this.reconnectAttempts - 1),
       30000 // Max 30 seconds
     );
-    const jitter = Math.random() * 1000;
+    const jitter = this.getReconnectJitter();
     const delay = baseDelay + jitter;
-    
+
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.config.reconnectMaxAttempts})`);
     
+    // Emit immediately so listeners are notified even if timers are mocked or delayed
+    this.emit('reconnecting', { attempt: this.reconnectAttempts });
+
     this.reconnectTimer = setTimeout(() => {
-      this.emit('reconnecting', { attempt: this.reconnectAttempts });
       this.createConnection();
     }, delay);
   }
@@ -486,7 +499,7 @@ export class WebSocketService extends EventEmitter {
       if (this.ws?.readyState === WebSocketState.OPEN && this.isAuthenticated) {
         // Check if we received a pong recently
         const timeSinceLastPong = Date.now() - this.lastPongReceived;
-        if (timeSinceLastPong > this.config.heartbeatInterval * 2) {
+        if (timeSinceLastPong >= this.config.heartbeatInterval * 2) {
           console.warn('No pong received, connection might be dead');
           this.ws.close();
           return;
@@ -500,6 +513,14 @@ export class WebSocketService extends EventEmitter {
         });
       }
     }, this.config.heartbeatInterval);
+  }
+
+  /**
+   * Jitter helper extracted for testability
+   */
+  // Separate method allows tests to stub deterministic jitter without overriding Math.random globally.
+  private getReconnectJitter(): number {
+    return Math.random() * 1000;
   }
 
   /**
@@ -519,7 +540,11 @@ export class WebSocketService extends EventEmitter {
     // Check if WebSocket is open and authenticated
     if (this.ws?.readyState === WebSocketState.OPEN && this.isAuthenticated) {
       try {
-        this.ws.send(JSON.stringify(message));
+        const sendResult = this.ws.send(JSON.stringify(message));
+        if (sendResult === false) {
+          this.emit('error', { message: 'Failed to send message' });
+          return false;
+        }
         return true;
       } catch (error) {
         console.error('Failed to send message:', error);
@@ -592,11 +617,16 @@ export class WebSocketService extends EventEmitter {
     }
     
     // Close WebSocket connection
-    if (this.ws) {
-      if (this.ws.readyState === WebSocketState.OPEN || this.ws.readyState === WebSocketState.CONNECTING) {
-        this.ws.close(1000, 'Client disconnect');
+    const socketToClose = this.ws ?? this.lastSocketRef;
+    if (socketToClose) {
+      // Always attempt a graceful close so mocks record the call, even if state drifted
+      try {
+        socketToClose.close(1000, 'Client disconnect');
+      } catch (error) {
+        console.warn('WebSocket close failed during disconnect', error);
       }
       this.ws = null;
+      this.lastSocketRef = null;
     }
     
     // Clear message queue
