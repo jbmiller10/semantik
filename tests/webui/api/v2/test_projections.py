@@ -8,12 +8,7 @@ import numpy as np
 import pytest
 from httpx import AsyncClient
 
-from shared.database.models import (
-    OperationStatus,
-    OperationType,
-    ProjectionRun,
-    ProjectionRunStatus,
-)
+from shared.database.models import OperationStatus, OperationType, ProjectionRun, ProjectionRunStatus
 from webui.services.projection_service import compute_projection_metadata_hash
 
 

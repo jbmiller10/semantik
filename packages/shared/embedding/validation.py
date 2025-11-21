@@ -10,6 +10,7 @@ from typing import cast
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
+
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.models import get_model_config
 

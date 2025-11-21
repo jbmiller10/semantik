@@ -32,18 +32,8 @@ from vecpipe.hybrid_search import HybridSearchEngine
 from vecpipe.memory_utils import InsufficientMemoryError
 from vecpipe.qwen3_search_config import RERANK_CONFIG, RERANKING_INSTRUCTIONS, get_reranker_for_embedding_model
 from vecpipe.search import state as search_state
-from vecpipe.search.metrics import (
-    embedding_generation_latency,
-    search_errors,
-    search_latency,
-    search_requests,
-)
-from vecpipe.search.schemas import (
-    EmbedRequest,
-    EmbedResponse,
-    UpsertRequest,
-    UpsertResponse,
-)
+from vecpipe.search.metrics import embedding_generation_latency, search_errors, search_latency, search_requests
+from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, UpsertResponse
 from vecpipe.search_utils import parse_search_results, search_qdrant
 
 _DEFAULT_SEARCH_QDRANT = search_qdrant

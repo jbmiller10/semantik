@@ -7,10 +7,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
-from shared.database.models import Collection, ProjectionRun, ProjectionRunStatus
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import selectinload
+
+from shared.database.exceptions import DatabaseOperationError, EntityNotFoundError, ValidationError
+from shared.database.models import Collection, ProjectionRun, ProjectionRunStatus
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

@@ -3,6 +3,7 @@ Unit tests for dimension validation utilities.
 """
 
 import pytest
+
 from shared.database.exceptions import DimensionMismatchError
 from shared.embedding.validation import (
     adjust_embeddings_dimension,

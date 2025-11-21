@@ -3,18 +3,9 @@
 import pytest
 
 from shared.chunking.infrastructure.exceptions import ValidationError
-from webui.services.chunking import (
-    ChunkingCache,
-    ChunkingConfigManager,
-    ChunkingProcessor,
-    ChunkingValidator,
-)
+from webui.services.chunking import ChunkingCache, ChunkingConfigManager, ChunkingProcessor, ChunkingValidator
 from webui.services.chunking.orchestrator import ChunkingOrchestrator
-from webui.services.dtos import (
-    ServiceChunkPreview,
-    ServiceStrategyComparison,
-    ServiceStrategyMetrics,
-)
+from webui.services.dtos import ServiceChunkPreview, ServiceStrategyComparison, ServiceStrategyMetrics
 
 
 class _DummyMetrics:

@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends
+
 from shared.config import settings as webui_settings
 from webui.auth import User, get_current_user
 
@@ -38,8 +39,8 @@ def update_metrics_loop() -> None:
 if METRICS_PORT:
     try:
         from prometheus_client import generate_latest as _generate_latest
-        from shared.metrics.prometheus import registry as _registry
-        from shared.metrics.prometheus import start_metrics_server
+
+        from shared.metrics.prometheus import registry as _registry, start_metrics_server
 
         generate_latest = _generate_latest
         registry = _registry
