@@ -34,7 +34,7 @@ export interface SearchParams {
   rerankQuantization?: string;
   useReranker: boolean;
   hybridAlpha?: number;
-  hybridMode?: 'filter' | 'rerank' | 'weighted' | 'reciprocal_rank' | 'relative_score';
+  hybridMode?: 'filter' | 'weighted';
   keywordMode?: 'any' | 'all';
 }
 
@@ -101,7 +101,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     searchType: 'semantic',
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'rerank',
+    hybridMode: 'weighted',
     keywordMode: 'any',
   },
   collections: [],

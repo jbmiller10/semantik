@@ -9,9 +9,7 @@ import logging
 from typing import Any
 
 from shared.database.models import ChunkingConfigProfile
-from shared.database.repositories.chunking_config_profile_repository import (
-    ChunkingConfigProfileRepository,
-)
+from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
 from webui.services.chunking.strategy_registry import (
     get_strategy_defaults,
     get_strategy_metadata,

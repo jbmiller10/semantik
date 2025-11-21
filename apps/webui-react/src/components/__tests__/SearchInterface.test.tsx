@@ -121,7 +121,7 @@ describe('SearchInterface', () => {
     rerankModel: 'BAAI/bge-reranker-v2-m3',
     rerankQuantization: 'int8',
     hybridAlpha: 0.95,
-    hybridMode: 'rerank' as const,
+    hybridMode: 'weighted' as const,
     keywordMode: 'any' as const,
   }
 

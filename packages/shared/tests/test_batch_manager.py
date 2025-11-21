@@ -5,6 +5,7 @@ import time
 from unittest.mock import Mock, patch
 
 import pytest
+
 from shared.embedding.batch_manager import AdaptiveBatchSizeManager
 
 

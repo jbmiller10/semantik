@@ -47,17 +47,13 @@ from webui.api.chunking_exceptions import (
 )
 from webui.celery_app import celery_app
 from webui.middleware.correlation import get_or_generate_correlation_id
-from webui.services.chunking.container import (
-    build_chunking_operation_manager,
-    resolve_celery_chunking_orchestrator,
-)
+from webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_orchestrator
 from webui.services.chunking.operation_manager import ChunkingOperationManager
 from webui.services.chunking_error_handler import ChunkingErrorHandler
 from webui.services.factory import get_redis_manager
 from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 from webui.services.type_guards import ensure_sync_redis
-from webui.tasks import executor as chunk_executor
-from webui.tasks import extract_and_serialize_thread_safe
+from webui.tasks import executor as chunk_executor, extract_and_serialize_thread_safe
 from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)

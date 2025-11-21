@@ -23,8 +23,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 try:
-    from websockets.exceptions import ConnectionClosedError
-    from websockets.exceptions import ConnectionClosedOK as ConnectionClosedOKError
+    from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK as ConnectionClosedOKError
 except Exception:  # pragma: no cover - fallback if websockets not available
 
     class ConnectionClosedOKError(Exception):  # type: ignore[no-redef]

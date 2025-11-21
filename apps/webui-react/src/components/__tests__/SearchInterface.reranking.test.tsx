@@ -61,7 +61,7 @@ describe('SearchInterface Reranking Tests', () => {
         rerankModel: undefined,
         rerankQuantization: undefined,
         hybridAlpha: 0.7,
-        hybridMode: 'rerank',
+        hybridMode: 'weighted',
         keywordMode: 'any',
       },
       results: [],

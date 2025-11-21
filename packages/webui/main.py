@@ -40,15 +40,17 @@ from shared.embedding import configure_global_embedding_service
 
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
-from .api.v2 import chunking as v2_chunking
-from .api.v2 import collections as v2_collections
-from .api.v2 import directory_scan as v2_directory_scan
-from .api.v2 import documents as v2_documents
-from .api.v2 import operations as v2_operations
-from .api.v2 import partition_monitoring as v2_partition_monitoring
-from .api.v2 import projections as v2_projections
-from .api.v2 import search as v2_search
-from .api.v2 import system as v2_system
+from .api.v2 import (
+    chunking as v2_chunking,
+    collections as v2_collections,
+    directory_scan as v2_directory_scan,
+    documents as v2_documents,
+    operations as v2_operations,
+    partition_monitoring as v2_partition_monitoring,
+    projections as v2_projections,
+    search as v2_search,
+    system as v2_system,
+)
 from .api.v2.directory_scan import directory_scan_websocket
 from .api.v2.operations import operation_websocket, operation_websocket_global
 from .background_tasks import start_background_tasks, stop_background_tasks

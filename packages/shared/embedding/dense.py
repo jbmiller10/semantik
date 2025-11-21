@@ -14,12 +14,13 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
-from shared.config.vecpipe import VecpipeConfig
-from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
+from shared.config.vecpipe import VecpipeConfig
+from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
 
 from .base import BaseEmbeddingService
 

@@ -9,8 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from shared.database.repositories.document_repository import DocumentRepository
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.database.repositories.document_repository import DocumentRepository
 
 logger = logging.getLogger(__name__)
 

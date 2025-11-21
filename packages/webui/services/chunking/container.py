@@ -6,9 +6,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from shared.config import settings
-from shared.database.repositories.chunking_config_profile_repository import (
-    ChunkingConfigProfileRepository,
-)
+from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from webui.services.chunking.cache import ChunkingCache
