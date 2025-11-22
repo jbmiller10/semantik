@@ -540,7 +540,12 @@ export class WebSocketService extends EventEmitter {
     // Check if WebSocket is open and authenticated
     if (this.ws?.readyState === WebSocketState.OPEN && this.isAuthenticated) {
       try {
-        this.ws.send(JSON.stringify(message));
+        const sendFn = this.ws.send as unknown as (this: WebSocket, data: string) => boolean | void;
+        const sendResult = sendFn.call(this.ws, JSON.stringify(message));
+        if (sendResult === false) {
+          this.emit('error', { message: 'Failed to send message' });
+          return false;
+        }
         return true;
       } catch (error) {
         console.error('Failed to send message:', error);
