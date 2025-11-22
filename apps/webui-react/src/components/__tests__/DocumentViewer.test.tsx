@@ -508,4 +508,225 @@ describe('DocumentViewer', () => {
       expect(mockDocx.renderAsync).toHaveBeenCalled();
     });
   });
+
+  it('scrolls and highlights the matching chunk when chunkId is provided', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders,
+    });
+
+    const html = `
+      <div>
+        <p data-chunk-id="chunk-1">Alpha content</p>
+        <div style="margin-top:1200px" data-chunk-id="chunk-2">Target chunk text</div>
+        <p data-chunk-id="chunk-3">Omega content</p>
+      </div>
+    `;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: () => Promise.resolve(html),
+    });
+
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollSpy,
+    });
+
+    render(
+      <DocumentViewer
+        collectionId="c-1"
+        docId="d-1"
+        chunkId="chunk-2"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const target = document.querySelector('[data-chunk-id="chunk-2"]') as HTMLElement;
+      expect(target).toBeInTheDocument();
+      expect(target.classList.contains('chunk-highlight')).toBe(true);
+      expect(scrollSpy).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  it('should find chunk by id attribute when data-chunk-id is not present', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders,
+    });
+
+    const html = `
+      <div>
+        <p id="chunk-100">Content with id attribute</p>
+      </div>
+    `;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: () => Promise.resolve(html),
+    });
+
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollSpy,
+    });
+
+    render(
+      <DocumentViewer
+        collectionId="c-1"
+        docId="d-1"
+        chunkId="chunk-100"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const target = document.querySelector('#chunk-100') as HTMLElement;
+      expect(target).toBeInTheDocument();
+      expect(target.classList.contains('chunk-highlight')).toBe(true);
+      expect(scrollSpy).toHaveBeenCalled();
+    });
+  });
+
+  it('should not highlight or scroll when chunkId does not match any element', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders,
+    });
+
+    const html = `
+      <div>
+        <p data-chunk-id="chunk-1">Some content</p>
+      </div>
+    `;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: () => Promise.resolve(html),
+    });
+
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollSpy,
+    });
+
+    render(
+      <DocumentViewer
+        collectionId="c-1"
+        docId="d-1"
+        chunkId="non-existent-chunk"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Some content')).toBeInTheDocument();
+    });
+
+    // Should not call scrollIntoView when chunk not found
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('should not highlight chunks in PDF documents', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders,
+    });
+
+    const mockBlob = new Blob(['fake pdf data'], { type: 'application/pdf' });
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'application/pdf' }),
+      blob: () => Promise.resolve(mockBlob),
+    });
+
+    const scrollSpy = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollSpy,
+    });
+
+    render(
+      <DocumentViewer
+        collectionId="c-1"
+        docId="d-1"
+        chunkId="chunk-1"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockPdfViewer).toHaveBeenCalled();
+    });
+
+    // PDF documents should not attempt chunk highlighting
+    expect(scrollSpy).not.toHaveBeenCalled();
+  });
+
+  it('should cleanup highlight class on unmount', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders,
+    });
+
+    const html = `
+      <div>
+        <p data-chunk-id="chunk-cleanup">Content to cleanup</p>
+      </div>
+    `;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: () => Promise.resolve(html),
+    });
+
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const { unmount } = render(
+      <DocumentViewer
+        collectionId="c-1"
+        docId="d-1"
+        chunkId="chunk-cleanup"
+        onClose={vi.fn()}
+      />,
+    );
+
+    let target: HTMLElement;
+    await waitFor(() => {
+      target = document.querySelector('[data-chunk-id="chunk-cleanup"]') as HTMLElement;
+      expect(target).toBeInTheDocument();
+      expect(target.classList.contains('chunk-highlight')).toBe(true);
+    });
+
+    unmount();
+
+    // Verify cleanup removed the highlight class
+    expect(target!.classList.contains('chunk-highlight')).toBe(false);
+  });
 });

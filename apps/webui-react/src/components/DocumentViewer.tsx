@@ -112,12 +112,40 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
   const contentRef = useRef<HTMLDivElement>(null);
   const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+  const highlightedElRef = useRef<HTMLElement | null>(null);
 
-  // TODO: Implement chunk highlighting/scrolling when chunkId is provided
-  // The chunkId parameter is now available for future enhancement
-  if (chunkId) {
-    // Future: scroll to and highlight chunk
-  }
+  // Highlight + scroll-to-chunk when chunkId is provided (non-PDF)
+  useEffect(() => {
+    if (!chunkId || loading || isPdf) return;
+
+    const container = contentRef.current;
+    if (!container) return;
+
+    // Remove previous highlight
+    if (highlightedElRef.current) {
+      highlightedElRef.current.classList.remove('chunk-highlight');
+      highlightedElRef.current = null;
+    }
+
+    const target = (container.querySelector(
+      `[data-chunk-id="${chunkId}"]`,
+    ) || container.querySelector(`#${chunkId}`)) as HTMLElement | null;
+
+    if (target) {
+      highlightedElRef.current = target;
+      target.classList.add('chunk-highlight');
+      if (typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    return () => {
+      if (highlightedElRef.current) {
+        highlightedElRef.current.classList.remove('chunk-highlight');
+        highlightedElRef.current = null;
+      }
+    };
+  }, [chunkId, loading, isPdf]);
 
   const updateBlobUrl = (newUrl: string | null) => {
     if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
@@ -344,7 +372,9 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <>
+      <style>{`.chunk-highlight{background:#fef3c7;border-radius:4px;box-shadow:0 0 0 2px rgba(251,191,36,0.5);}`}</style>
+      <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen p-4">
         <div className="fixed inset-0 bg-black opacity-50" onClick={onClose} />
         
@@ -407,7 +437,8 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
