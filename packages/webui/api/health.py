@@ -8,7 +8,6 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from shared.database import check_postgres_connection
-from webui.qdrant import qdrant_manager
 from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
@@ -98,6 +97,8 @@ async def _check_database_health() -> dict[str, Any]:
 async def _check_qdrant_health() -> dict[str, Any]:
     """Check Qdrant connection health with timeout."""
     try:
+        # Lazy import to avoid circular import during startup
+        from webui.qdrant import qdrant_manager
 
         def _qdrant_check() -> int:
             client = qdrant_manager.get_client()
