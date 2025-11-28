@@ -8,7 +8,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status**: Pre-release, undergoing active refactoring from "job-centric" to "collection-centric" architecture.
 
-**Current Branch**: `embedding-viz` - Embedding visualization feature development (recently merged to main)
 **Main Branch**: `main` - Stable production branch
 
 ## Architecture
@@ -61,7 +60,7 @@ All services use `docker-entrypoint.sh` which:
 # Install dependencies (uses uv with lock file)
 uv sync --frozen
 
-# Code quality checks (runs format + lint + type-check + test)
+# Code quality checks (runs lint + type-check + test)
 make check
 
 # Run individual checks
@@ -486,9 +485,15 @@ semantik/
 ├── packages/
 │   ├── shared/           # Cross-service models, repos, utilities
 │   │   ├── database/     # SQLAlchemy models, repositories
-│   │   ├── chunking/     # Domain-driven chunking (NEW)
+│   │   ├── chunking/     # Domain-driven chunking
+│   │   ├── chunks/       # Chunk utilities
 │   │   ├── config/       # Pydantic settings
-│   │   └── managers/     # Qdrant management
+│   │   ├── contracts/    # Service contracts/interfaces
+│   │   ├── embedding/    # Embedding service abstraction
+│   │   ├── managers/     # Qdrant management
+│   │   ├── metrics/      # Metrics utilities
+│   │   ├── text_processing/ # Text extraction and processing
+│   │   └── utils/        # Common utilities
 │   ├── webui/            # Main API service
 │   │   ├── api/v2/       # API routers (thin controllers)
 │   │   ├── services/     # Business logic
