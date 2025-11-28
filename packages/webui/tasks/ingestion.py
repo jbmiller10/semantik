@@ -1012,6 +1012,8 @@ async def _process_append_operation_impl(
                                 "path": doc.file_path,
                                 "content": chunk["text"],
                                 "metadata": chunk.get("metadata", {}),
+                                "start_offset": chunk.get("start_offset"),
+                                "end_offset": chunk.get("end_offset"),
                             },
                         )
                         points.append(point)

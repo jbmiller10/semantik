@@ -44,10 +44,7 @@ except RuntimeError as exc:
 try:  # Prefer packages.* import path to match test patch targets
     from webui.services.chunking.orchestrator import ChunkingOrchestrator
 except Exception:  # Fallback for runtime usage paths
-    try:
-        from webui.services.chunking.orchestrator import ChunkingOrchestrator  # type: ignore
-    except Exception:  # As a last resort, define a placeholder
-        ChunkingOrchestrator = None  # type: ignore
+    ChunkingOrchestrator = cast(Any, None)
 
 
 # Task timeout constants
@@ -83,7 +80,7 @@ CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 executor = ThreadPoolExecutor(max_workers=8)
 
 
-async def _get_session_factory():
+async def _get_session_factory() -> Any:
     factory = AsyncSessionLocal
     if factory is None:
         factory = await ensure_async_sessionmaker()

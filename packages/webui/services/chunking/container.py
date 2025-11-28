@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from shared.config import settings
 from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
@@ -64,7 +64,7 @@ async def get_async_redis_client() -> aioredis.Redis | None:
     try:
         manager = get_redis_manager()
         client = await manager.async_client()
-        return ensure_async_redis(client)
+        return cast(aioredis.Redis | None, ensure_async_redis(client))
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Async Redis unavailable for chunking cache: %s", exc)
         return None
@@ -76,7 +76,7 @@ def get_sync_redis_client() -> Redis | None:
     try:
         manager = get_redis_manager()
         client = manager.sync_client
-        return ensure_sync_redis(client)
+        return cast(Redis | None, ensure_sync_redis(client))
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Sync Redis unavailable for chunking tasks: %s", exc)
         return None

@@ -537,11 +537,14 @@ class CollectionService:
         Returns:
             Tuple of (collections list, total count)
         """
-        return await self.collection_repo.list_for_user(
-            user_id=user_id,
-            offset=offset,
-            limit=limit,
-            include_public=include_public,
+        return cast(
+            tuple[list[Collection], int],
+            await self.collection_repo.list_for_user(
+                user_id=user_id,
+                offset=offset,
+                limit=limit,
+                include_public=include_public,
+            ),
         )
 
     async def update(self, collection_id: str, user_id: int, updates: dict[str, Any]) -> Collection:

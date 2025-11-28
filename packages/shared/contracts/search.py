@@ -112,6 +112,9 @@ class SearchResult(BaseModel):
     chunk_index: int | None = None
     total_chunks: int | None = None
     operation_uuid: str | None = Field(None, max_length=200)
+    # Offset fields for precise highlighting in document viewer
+    start_offset: int | None = Field(None, description="Character offset where chunk starts in source document")
+    end_offset: int | None = Field(None, description="Character offset where chunk ends in source document")
 
 
 class SearchResponse(BaseModel):

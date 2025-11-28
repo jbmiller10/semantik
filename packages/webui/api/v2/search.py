@@ -86,6 +86,8 @@ async def multi_collection_search(
                     collection_id=res.get("collection_id"),
                     collection_name=res.get("collection_name"),
                     embedding_model=res.get("embedding_model", ""),
+                    start_offset=res.get("start_offset"),
+                    end_offset=res.get("end_offset"),
                 )
             )
 
@@ -115,7 +117,7 @@ async def multi_collection_search(
                     {
                         "collection_id": str(cd["collection_id"]),
                         "collection_name": cd["collection_name"],
-                        "error": cd["error"],
+                        "error_message": cd["error"],
                     }
                     for cd in metadata["collection_details"]
                     if "error" in cd

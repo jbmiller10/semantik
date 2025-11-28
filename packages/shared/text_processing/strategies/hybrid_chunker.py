@@ -8,7 +8,7 @@ This module provides backward compatibility for tests that import HybridChunker 
 import re
 from enum import Enum
 from re import Pattern
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import BaseChunker, ChunkResult
@@ -86,7 +86,9 @@ class HybridChunker(BaseChunker):
         unified_strategy = UnifiedChunkingFactory.create_strategy(
             "hybrid", use_llama_index=True, embed_model=embed_model
         )
-        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
+        self._chunker: TextProcessingStrategyAdapter = TextProcessingStrategyAdapter(
+            unified_strategy, **params
+        )
 
         # Initialize parent
         super().__init__(**kwargs)
@@ -242,7 +244,8 @@ class HybridChunker(BaseChunker):
         """Get or create a cached chunker for the given strategy."""
         # Initialize cache if needed
         if not hasattr(self, "_chunker_cache"):
-            self._chunker_cache: dict[str, BaseChunker] = {}
+            # Cache can hold either legacy BaseChunker implementations or the unified adapter
+            self._chunker_cache: dict[str, BaseChunker | TextProcessingStrategyAdapter] = {}
 
         # Create cache key from strategy and params
         cache_key = f"{strategy}_{str(params)}"
@@ -270,7 +273,7 @@ class HybridChunker(BaseChunker):
             from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
-            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
+            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))
             self._chunker_cache[cache_key] = chunker
             return chunker
         except Exception as e:
@@ -308,7 +311,7 @@ class HybridChunker(BaseChunker):
                     return False
 
             # Delegate to underlying chunker for other validations
-            return self._chunker.validate_config(config)
+            return cast(bool, self._chunker.validate_config(config))
         except Exception:
             return False
 
@@ -364,7 +367,7 @@ class HybridChunker(BaseChunker):
             )
 
             # Try to chunk with the selected strategy
-            chunks = selected_chunker.chunk_text(text, doc_id, metadata)
+            chunks = cast(list[ChunkResult], selected_chunker.chunk_text(text, doc_id, metadata))
 
             # Add hybrid-specific metadata
             for i, chunk in enumerate(chunks):
@@ -395,7 +398,7 @@ class HybridChunker(BaseChunker):
                     if hasattr(self.fallback_strategy, "value")
                     else str(self.fallback_strategy)
                 )
-                chunks = fallback_chunker.chunk_text(text, doc_id, metadata)
+                chunks = cast(list[ChunkResult], fallback_chunker.chunk_text(text, doc_id, metadata))
 
                 # Add fallback metadata
                 for chunk in chunks:
@@ -451,7 +454,7 @@ class HybridChunker(BaseChunker):
             )
 
             # Try to chunk with the selected strategy
-            chunks = await selected_chunker.chunk_text_async(text, doc_id, metadata)
+            chunks = cast(list[ChunkResult], await selected_chunker.chunk_text_async(text, doc_id, metadata))
 
             # Add hybrid-specific metadata
             for i, chunk in enumerate(chunks):
@@ -482,7 +485,9 @@ class HybridChunker(BaseChunker):
                     if hasattr(self.fallback_strategy, "value")
                     else str(self.fallback_strategy)
                 )
-                chunks = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+                chunks = cast(
+                    list[ChunkResult], await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+                )
 
                 # Add fallback metadata
                 for chunk in chunks:

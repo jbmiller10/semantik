@@ -5,7 +5,7 @@ This module provides security-focused validation for all chunking inputs
 to prevent injection attacks, resource exhaustion, and other vulnerabilities.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.infrastructure.exceptions import ValidationError
 from shared.chunks.metadata_sanitizer import MetadataSanitizer
@@ -273,7 +273,7 @@ class ChunkingInputValidator:
             Sanitized metadata dictionary
         """
         # Delegate to the centralized sanitizer for comprehensive XSS protection
-        return MetadataSanitizer.sanitize_metadata(metadata)
+        return cast(dict[str, Any], MetadataSanitizer.sanitize_metadata(metadata))
 
     @classmethod
     def validate_priority(cls, priority: int, correlation_id: str) -> None:

@@ -6,7 +6,7 @@ persistent store for user-defined configurations.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from shared.database.models import ChunkingConfigProfile
 from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
@@ -39,7 +39,7 @@ class ChunkingConfigManager:
         Returns:
             Default configuration dictionary
         """
-        return get_strategy_defaults(strategy, context="manager")
+        return cast(dict[str, Any], get_strategy_defaults(strategy, context="manager"))
 
     def get_strategy_info(self, strategy: str) -> dict[str, Any]:
         """

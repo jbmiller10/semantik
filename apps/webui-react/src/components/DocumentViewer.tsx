@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import Mark from 'mark.js';
 import { documentsV2Api } from '../services/api/v2';
 import { getErrorMessage } from '../utils/errorUtils';
 import PdfViewer from './PdfViewer';
@@ -17,10 +18,6 @@ declare global {
     };
     DOMPurify: {
       sanitize: (dirty: string) => string;
-    };
-    Mark: new (element: HTMLElement) => {
-      mark: (term: string, options?: Record<string, unknown>) => void;
-      unmark: () => void;
     };
     emlformat: {
       parse: (emlContent: string) => { html: string; headers: Record<string, string> };
@@ -47,6 +44,9 @@ interface DocumentViewerProps {
   collectionId: string;
   docId: string;
   chunkId?: string;
+  chunkContent?: string;  // Content to highlight in the document (fallback)
+  startOffset?: number;   // Character offset where chunk starts in source document
+  endOffset?: number;     // Character offset where chunk ends in source document
   query?: string;
   onClose: () => void;
 }
@@ -65,7 +65,7 @@ const SCRIPT_CONFIGS = {
   }
 };
 
-// Helper function to dynamically load scripts with SRI
+// Helper function to dynamically load scripts with optional SRI
 const loadScript = (config: typeof SCRIPT_CONFIGS[keyof typeof SCRIPT_CONFIGS]): Promise<void> => {
   return new Promise((resolve, reject) => {
     // Check if script is already loaded
@@ -77,7 +77,9 @@ const loadScript = (config: typeof SCRIPT_CONFIGS[keyof typeof SCRIPT_CONFIGS]):
 
     const script = document.createElement('script');
     script.src = config.url;
-    script.integrity = config.integrity;
+    if (config.integrity) {
+      script.integrity = config.integrity;
+    }
     script.crossOrigin = config.crossOrigin;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error(`Failed to load script: ${config.url}`));
@@ -103,49 +105,164 @@ const DOCX_RENDER_OPTIONS = {
   renderEndnotes: true,
 } as const;
 
-function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewerProps) {
+function DocumentViewer({ collectionId, docId, chunkId: _chunkId, chunkContent, startOffset, endOffset, onClose }: DocumentViewerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [isPdf, setIsPdf] = useState(false);
+  const [rawText, setRawText] = useState<string | null>(null);  // Store raw text for offset-based highlighting
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const markInstanceRef = useRef<InstanceType<typeof window.Mark> | null>(null);
+  const markInstanceRef = useRef<Mark | null>(null);
   const blobUrlRef = useRef<string | null>(null);
-  const highlightedElRef = useRef<HTMLElement | null>(null);
 
-  // Highlight + scroll-to-chunk when chunkId is provided (non-PDF)
+  // Highlight chunk using offset-based positioning (preferred) or text matching (fallback)
   useEffect(() => {
-    if (!chunkId || loading || isPdf) return;
+    if (loading || isPdf) {
+      return;
+    }
 
     const container = contentRef.current;
-    if (!container) return;
-
-    // Remove previous highlight
-    if (highlightedElRef.current) {
-      highlightedElRef.current.classList.remove('chunk-highlight');
-      highlightedElRef.current = null;
+    if (!container) {
+      return;
     }
 
-    const target = (container.querySelector(
-      `[data-chunk-id="${chunkId}"]`,
-    ) || container.querySelector(`#${chunkId}`)) as HTMLElement | null;
-
-    if (target) {
-      highlightedElRef.current = target;
-      target.classList.add('chunk-highlight');
-      if (typeof target.scrollIntoView === 'function') {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Clear any previous highlights
+    const clearHighlights = () => {
+      if (markInstanceRef.current) {
+        markInstanceRef.current.unmark();
       }
-    }
+      // Also remove any offset-based highlights
+      container.querySelectorAll('mark.chunk-highlight').forEach(el => {
+        const parent = el.parentNode;
+        if (parent) {
+          parent.replaceChild(document.createTextNode(el.textContent || ''), el);
+          parent.normalize();
+        }
+      });
+    };
+
+    // Offset-based highlighting - uses character offsets from the raw source text
+    const highlightByOffset = () => {
+      if (startOffset === undefined || endOffset === undefined || !rawText) {
+        return false;
+      }
+
+      // Extract the chunk text from raw source using offsets
+      const chunkText = rawText.substring(startOffset, endOffset);
+      if (!chunkText) {
+        return false;
+      }
+
+      // Walk the DOM tree to find text nodes and map offsets
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let currentOffset = 0;
+      let startNode: Text | null = null;
+      let endNode: Text | null = null;
+      let startNodeOffset = 0;
+      let endNodeOffset = 0;
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text;
+        const nodeText = node.textContent || '';
+        const nodeLength = nodeText.length;
+
+        // Check if this node contains the start offset
+        if (!startNode && currentOffset + nodeLength > startOffset) {
+          startNode = node;
+          startNodeOffset = startOffset - currentOffset;
+        }
+
+        // Check if this node contains the end offset
+        if (!endNode && currentOffset + nodeLength >= endOffset) {
+          endNode = node;
+          endNodeOffset = endOffset - currentOffset;
+          break;
+        }
+
+        currentOffset += nodeLength;
+      }
+
+      if (startNode && endNode) {
+        try {
+          const range = document.createRange();
+          range.setStart(startNode, Math.min(startNodeOffset, startNode.length));
+          range.setEnd(endNode, Math.min(endNodeOffset, endNode.length));
+
+          // Wrap the range in a highlight mark
+          const highlight = document.createElement('mark');
+          highlight.className = 'chunk-highlight';
+          highlight.style.backgroundColor = '#fef3c7';
+          highlight.style.borderRadius = '4px';
+          highlight.style.boxShadow = '0 0 0 2px rgba(251, 191, 36, 0.5)';
+
+          range.surroundContents(highlight);
+
+          // Scroll to the highlight
+          setTimeout(() => {
+            highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+
+          return true;
+        } catch {
+          // Range manipulation can fail if nodes are not siblings - fall back to text matching
+          return false;
+        }
+      }
+
+      return false;
+    };
+
+    // Fallback: Text-based highlighting using mark.js
+    const highlightWithMarkJs = () => {
+      if (!chunkContent) {
+        return;
+      }
+
+      const instance = new Mark(container);
+      markInstanceRef.current = instance;
+
+      // Normalize whitespace
+      const normalizedChunk = chunkContent.trim().replace(/\s+/g, ' ');
+      const words = normalizedChunk.split(' ');
+
+      // Try first 8 words
+      const phrase = words.slice(0, Math.min(8, words.length)).join(' ');
+
+      instance.mark(phrase, {
+        separateWordSearch: false,
+        acrossElements: true,
+        done: (count: number) => {
+          if (count > 0) {
+            const firstMark = container.querySelector('mark');
+            if (firstMark) {
+              setTimeout(() => {
+                firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 100);
+            }
+          }
+        }
+      });
+    };
+
+    // Wait for content to render, then highlight
+    const timeoutId = setTimeout(() => {
+      clearHighlights();
+
+      // Try offset-based highlighting first (preferred)
+      const success = highlightByOffset();
+
+      // Fall back to text matching if offset-based failed
+      if (!success && chunkContent) {
+        highlightWithMarkJs();
+      }
+    }, 400);
 
     return () => {
-      if (highlightedElRef.current) {
-        highlightedElRef.current.classList.remove('chunk-highlight');
-        highlightedElRef.current = null;
-      }
+      clearTimeout(timeoutId);
+      clearHighlights();
     };
-  }, [chunkId, loading, isPdf]);
+  }, [loading, isPdf, startOffset, endOffset, rawText, chunkContent]);
 
   const updateBlobUrl = (newUrl: string | null) => {
     if (blobUrlRef.current && blobUrlRef.current !== newUrl) {
@@ -197,17 +314,20 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
         if (contentType.includes('text/') || contentType.includes('application/json')) {
           // Text-based content - read as text
           const text = await response.text();
-          
+
+          // Store raw text for offset-based highlighting
+          setRawText(text);
+
           if (contentRef.current) {
             // Display text content directly
             if (contentType.includes('text/html')) {
               // Sanitize HTML content for security
-              contentRef.current.innerHTML = window.DOMPurify ? 
+              contentRef.current.innerHTML = window.DOMPurify ?
                 window.DOMPurify.sanitize(text) : text;
             } else if (contentType.includes('text/markdown')) {
               // Parse markdown if marked.js is available
               const html = window.marked ? window.marked.parse(text) : `<pre>${text}</pre>`;
-              contentRef.current.innerHTML = window.DOMPurify ? 
+              contentRef.current.innerHTML = window.DOMPurify ?
                 window.DOMPurify.sanitize(html) : html;
             } else {
               // Display plain text or JSON

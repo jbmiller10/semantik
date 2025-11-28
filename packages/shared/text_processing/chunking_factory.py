@@ -96,7 +96,7 @@ class ChunkingFactory:
         cls.register_strategy("recursive", RecursiveChunker)
         cls.register_strategy("semantic", SemanticChunker)
         cls.register_strategy("markdown", MarkdownChunker)
-        cls.register_strategy("hierarchical", HierarchicalChunker)  # type: ignore[arg-type]
+        cls.register_strategy("hierarchical", HierarchicalChunker)
         cls.register_strategy("hybrid", HybridChunker)
 
     @classmethod

@@ -73,6 +73,8 @@ export interface SearchResult {
   embedding_model: string;
   metadata?: Record<string, unknown>;
   highlights?: string[];
+  start_offset?: number | null;
+  end_offset?: number | null;
 }
 
 export interface SearchResponse {

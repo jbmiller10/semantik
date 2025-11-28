@@ -6,7 +6,7 @@ chunking configurations, removing business logic from routers.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
 from webui.services.chunking.strategy_registry import get_strategy_defaults, resolve_api_identifier
@@ -210,7 +210,7 @@ class ChunkingConfigBuilder:
 
     def get_default_config(self, strategy: ChunkingStrategyEnum) -> dict[str, Any]:
         """Get default configuration for a strategy."""
-        return get_strategy_defaults(strategy, context="builder")
+        return cast(dict[str, Any], get_strategy_defaults(strategy, context="builder"))
 
     def validate_parameter(
         self,

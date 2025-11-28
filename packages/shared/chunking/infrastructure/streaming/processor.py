@@ -13,7 +13,7 @@ import logging
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import aiofiles  # type: ignore[import-untyped]
@@ -497,7 +497,7 @@ class StreamingDocumentProcessor:
         """
         # Rough estimate: assume average 4 bytes per token
         estimated_tokens = file_size // 4
-        return config.estimate_chunks(estimated_tokens)
+        return cast(int, config.estimate_chunks(estimated_tokens))
 
     def get_memory_usage(self) -> dict[str, Any]:
         """

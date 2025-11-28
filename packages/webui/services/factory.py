@@ -5,6 +5,7 @@ import logging
 import httpx
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import cast
 
 from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -36,7 +37,7 @@ def get_redis_manager() -> RedisManager:
 
     manager = container_get_redis_manager()
     logger.debug("Reusing Redis manager from chunking container")
-    return manager
+    return cast(RedisManager, manager)
 
 
 def create_collection_service(
@@ -295,21 +296,24 @@ async def get_directory_scan_service() -> DirectoryScanService:
 async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
     """Create orchestrator using composition root."""
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
     """FastAPI dependency for orchestrator injection (new architecture)."""
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_service(
     db: AsyncSession = Depends(get_db),
-) -> ChunkingOrchestrator:
-    """Backward-compatible dependency returning the orchestrator."""
+    ) -> ChunkingOrchestrator:
+        """Backward-compatible dependency returning the orchestrator."""
 
-    return await get_chunking_orchestrator(db)
+        orchestrator = await get_chunking_orchestrator(db)
+        return orchestrator
 
 
 # Expose commonly used dependency providers to builtins for tests that

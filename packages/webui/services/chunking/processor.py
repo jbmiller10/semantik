@@ -169,7 +169,7 @@ class ChunkingProcessor:
             token_count: int | None = None
             quality_score: float = 0.8
             chunk_id: str | None = None
-            chunk_index = i
+            chunk_index: int | str | None = i
             start_offset: int | None = None
             end_offset: int | None = None
 
@@ -249,10 +249,13 @@ class ChunkingProcessor:
             # Calculate token count if missing
             token_count = int(token_count) if token_count is not None else len(content) // 4
 
-            try:
-                normalized_chunk_index = int(chunk_index)
-            except (TypeError, ValueError):
+            if chunk_index is None:
                 normalized_chunk_index = i
+            else:
+                try:
+                    normalized_chunk_index = int(chunk_index)
+                except (TypeError, ValueError):
+                    normalized_chunk_index = i
             metadata.setdefault("position", normalized_chunk_index)
 
             formatted_chunk: dict[str, Any] = {

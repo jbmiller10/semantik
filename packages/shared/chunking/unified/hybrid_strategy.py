@@ -10,7 +10,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from enum import Enum
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -421,4 +421,4 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
 
         # Hybrid strategy estimate depends on which strategy would be selected
         # Use recursive strategy estimate as default
-        return self._recursive_strategy.estimate_chunks(content_length, config)
+        return cast(int, self._recursive_strategy.estimate_chunks(content_length, config))

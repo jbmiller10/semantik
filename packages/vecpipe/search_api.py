@@ -127,7 +127,7 @@ class _SearchApiModule(types.ModuleType):
 
 
 # Ensure attribute access on this module always mirrors the shared runtime state.
-sys.modules[__name__].__class__ = _SearchApiModule  # type: ignore[misc]
+sys.modules[__name__].__class__ = _SearchApiModule
 
 
 if __name__ == "__main__":
