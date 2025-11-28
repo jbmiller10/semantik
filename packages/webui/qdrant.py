@@ -7,7 +7,7 @@ from threading import Lock
 
 from qdrant_client import QdrantClient
 
-from packages.webui.utils.retry import exponential_backoff_retry
+from webui.utils.retry import exponential_backoff_retry
 from shared.config import settings
 from shared.managers.qdrant_manager import QdrantManager
 
