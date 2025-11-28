@@ -8,7 +8,7 @@ ensuring efficient use of PostgreSQL partitioning by collection_id.
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -331,7 +331,9 @@ class ChunkRepository(PartitionAwareMixin):
         Returns:
             Dictionary with statistics
         """
-        return await ChunkPartitionHelper.get_partition_statistics(self.session, collection_id)
+        return cast(
+            dict[str, Any], await ChunkPartitionHelper.get_partition_statistics(self.session, collection_id)
+        )
 
     async def count_chunks_by_document(self, document_id: str, collection_id: str) -> int:
         """Count chunks for a document with partition pruning.

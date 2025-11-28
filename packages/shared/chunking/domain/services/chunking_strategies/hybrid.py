@@ -8,7 +8,7 @@ content characteristics to achieve optimal results.
 
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
@@ -337,7 +337,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         if not sections:
             # Fall back to recursive if no sections identified
-            return self._recursive_strategy.chunk(content, config, progress_callback)
+            return cast(list[Chunk], self._recursive_strategy.chunk(content, config, progress_callback))
 
         total_sections = len(sections)
         chunk_index = 0
@@ -361,13 +361,15 @@ class HybridChunkingStrategy(ChunkingStrategy):
             try:
                 # Handle semantic strategy which doesn't accept progress_callback
                 if isinstance(strategy, DomainStrategyAdapter):
-                    section_chunks = strategy.chunk(section_content, config)
+                    section_chunks = cast(list[Chunk], strategy.chunk(section_content, config))
                 else:
-                    section_chunks = strategy.chunk(section_content, config, None)
+                    section_chunks = cast(
+                        list[Chunk], strategy.chunk(section_content, config, None)
+                    )
             except Exception as e:
                 # Fall back to character strategy if the selected strategy fails
                 print(f"Strategy {section_type} failed: {e}. Falling back to character strategy.")
-                section_chunks = self._character_strategy.chunk(section_content, config, None)
+                section_chunks = cast(list[Chunk], self._character_strategy.chunk(section_content, config, None))
 
             # Adjust chunk metadata for correct offsets
             for chunk in section_chunks:
@@ -430,20 +432,20 @@ class HybridChunkingStrategy(ChunkingStrategy):
             List of chunks
         """
         # Select and apply primary strategy with error handling
-        chunks = []
+        chunks: list[Chunk] = []
         try:
             if primary_strategy == "markdown":
-                chunks = self._markdown_strategy.chunk(content, config, progress_callback)
+                chunks = cast(list[Chunk], self._markdown_strategy.chunk(content, config, progress_callback))
             elif primary_strategy == "semantic":
-                chunks = self._semantic_strategy.chunk(content, config)
+                chunks = cast(list[Chunk], self._semantic_strategy.chunk(content, config))
             elif primary_strategy == "character":
-                chunks = self._character_strategy.chunk(content, config, progress_callback)
+                chunks = cast(list[Chunk], self._character_strategy.chunk(content, config, progress_callback))
             else:
-                chunks = self._recursive_strategy.chunk(content, config, progress_callback)
+                chunks = cast(list[Chunk], self._recursive_strategy.chunk(content, config, progress_callback))
         except Exception as e:
             # Fall back to character strategy if primary fails
             print(f"Primary strategy {primary_strategy} failed: {e}. Falling back to character strategy.")
-            chunks = self._character_strategy.chunk(content, config, progress_callback)
+            chunks = cast(list[Chunk], self._character_strategy.chunk(content, config, progress_callback))
 
         # Update strategy name in metadata
         updated_chunks = []
@@ -604,7 +606,7 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         # Hybrid typically produces similar to recursive
         estimated_tokens = content_length // 4
-        return config.estimate_chunks(estimated_tokens)
+        return cast(int, config.estimate_chunks(estimated_tokens))
 
     def _build_consensus(self, strategy_results: dict[str, list[Chunk]]) -> list[Chunk]:
         """

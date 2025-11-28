@@ -5,7 +5,7 @@ This module provides a centralized factory for instantiating chunking strategies
 removing the direct dependency and logic from routers.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
@@ -163,7 +163,7 @@ class ChunkingStrategyFactory:
         """
         internal = resolve_internal_strategy_name(name)
         if internal:
-            return internal
+            return cast(str, internal)
         return str(name).lower().strip()
 
     @classmethod

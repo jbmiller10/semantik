@@ -81,6 +81,8 @@ def parse_search_results(qdrant_results: list[dict]) -> list[dict]:
             "doc_id": payload.get("doc_id"),
             "content": payload.get("content"),
             "metadata": payload.get("metadata"),
+            "start_offset": payload.get("start_offset"),
+            "end_offset": payload.get("end_offset"),
         }
         results.append(result)
     return results

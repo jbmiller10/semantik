@@ -6,10 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Semantik** is a self-hosted semantic search engine that transforms private file servers into AI-powered knowledge bases without data ever leaving your hardware. Built with privacy-first architecture for technically proficient users.
 
-**Current Status**: Pre-release, undergoing active refactoring from "job-centric" to "collection-centric" architecture.
+**Status**: Pre-release, actively developed. APIs and defaults may evolve.
 
-**Current Branch**: `embedding-viz` - Embedding visualization feature development (recently merged to main)
-**Main Branch**: `main` - Stable production branch
+## Coding Style & Naming Conventions
+
+**Python**:
+- 4-space indentation, 120-character lines, exhaustive typing
+- Modules: `snake_case` (e.g., `search_api.py`)
+- Pytest fixtures: `snake_case`
+- Run `make format` and `make lint` before marking work complete
+
+**Frontend**:
+- React components: `PascalCase` (e.g., `SearchResults.tsx`)
+- Files in `apps/webui-react/src/`
+
+**Config Files**:
+- JSON/YAML: `kebab-case`
+
+## Commit Guidelines
+
+Use Conventional Commit formatting:
+- `feat(search): add reranker fallback`
+- `fix(webui): guard empty filter`
+- Reference PR IDs: `(#212)`
+- Squash local WIP commits before merge
 
 ## Architecture
 
@@ -17,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Backend**: Python 3.11+, FastAPI, SQLAlchemy, Celery, Redis
 - **Frontend**: React 19, TypeScript, Vite, Zustand, React Query, TailwindCSS
 - **Databases**: PostgreSQL (metadata), Qdrant (vectors)
-- **DevOps**: Docker, Docker Compose, Alembic (migrations), uv (dependency management)
+- **DevOps**: Docker Compose, Alembic (migrations), uv (dependency management)
 
 ### Service Architecture
 
@@ -65,10 +85,25 @@ uv sync --frozen
 make check
 
 # Run individual checks
-make format      # Black + isort
+make format      # Black + isort (alias: make fix)
 make lint        # Ruff
 make type-check  # Mypy
-make test        # Pytest with coverage
+make test        # Pytest
+```
+
+### Running Locally
+
+```bash
+# Run webui API locally with hot reload
+make run
+
+# Full development environment (all services)
+make dev
+
+# Backend services in Docker + webui locally with hot reload
+make docker-dev-up
+# Then in another terminal:
+make run
 ```
 
 ### Docker Operations
@@ -89,7 +124,11 @@ make docker-logs-webui
 make docker-logs-vecpipe
 
 # Stop services
-make docker-down
+make docker-down          # Keeps volumes
+make docker-down-clean    # Removes volumes (data loss)
+
+# Generate JWT secret (one-time setup, or use make wizard)
+uv run python scripts/generate_jwt_secret.py --write
 
 # Access service shells
 make docker-shell-webui
@@ -138,11 +177,19 @@ uv run pytest tests/webui/api/v2/test_chunking_direct.py -v
 uv run pytest tests/webui/api/v2/test_chunking_direct.py::test_function_name -v
 ```
 
-**Test Database**: Uses dedicated `postgres_test` container (port 55432) activated with `--profile testing` to isolate test data.
+**Test Database**: Uses dedicated `postgres_test` container (port 55432) activated with `--profile testing` to isolate test data. Configure via `.env.test` with `POSTGRES_TEST_PORT`, `POSTGRES_TEST_DB`, `POSTGRES_TEST_USER`, `POSTGRES_TEST_PASSWORD`.
+
+```bash
+# Start dedicated test database
+docker compose --profile testing up -d postgres_test
+```
 
 ### Frontend Development
 
 ```bash
+# Install dependencies
+make frontend-install
+
 # Build frontend
 make frontend-build
 
@@ -156,31 +203,31 @@ npm run test:ui           # Interactive test UI (Vitest)
 npm run test:coverage     # Coverage report
 npm run test:e2e          # Playwright E2E tests (requires running services)
 npm run test:e2e:ui       # Playwright UI mode for debugging
-
-# Backend E2E tests (Playwright in Python)
-make test-e2e            # Requires services running via make docker-up
 ```
 
 **Test Organization:**
 - Unit tests: `apps/webui-react/src/**/__tests__/*.test.ts(x)`
-- E2E tests (frontend): `apps/webui-react/playwright/`
+- E2E tests (Playwright): `apps/webui-react/playwright/`
 - E2E tests (backend): `tests/e2e/`
-- Cypress tests: `cypress/e2e/` (legacy, being migrated to Playwright)
+- Cypress tests: `cypress/e2e/` (projection visualization flows)
 
-### Local Development Mode
-
+**Cypress E2E** (for projection visualization):
 ```bash
-# Start backend services in Docker + run webui locally with hot reload
-make docker-dev-up
-# Then in another terminal:
-cd packages/webui && uv run uvicorn main:app --host 0.0.0.0 --port 8080 --reload
+# Install Cypress (repo root)
+npm install -D cypress
+
+# Interactive mode
+npx cypress open
+
+# Headless
+npx cypress run --spec cypress/e2e/projection_visualize.cy.ts
 ```
 
 ## Code Architecture Patterns
 
 ### Three-Layer Architecture (Critical)
 
-**API Layer** (`packages/webui/api/`)
+**API Layer** (`packages/webui/api/v2/`)
 - FastAPI routers ONLY
 - No business logic, no direct database calls
 - Delegates everything to service layer
@@ -273,10 +320,15 @@ async def create_collection_and_index(collection_data: dict):
 
 ### Frontend State Management
 
-**Zustand stores** (`apps/webui-react/src/stores/`) handle all client-side state with optimistic updates:
+**Zustand stores** (`apps/webui-react/src/stores/`) handle all client-side state:
+- `authStore.ts` - Authentication state
+- `collectionStore.ts` - Collection management
+- `searchStore.ts` - Search state
+- `chunkingStore.ts` - Chunking configuration
+- `uiStore.ts` - UI state
 
+**Optimistic update pattern:**
 ```typescript
-// Optimistic update pattern
 updateCollection: async (id, updates) => {
   get().optimisticUpdateCollection(id, updates);  // Update UI immediately
   try {
@@ -284,7 +336,6 @@ updateCollection: async (id, updates) => {
     await get().fetchCollectionById(id);  // Re-fetch canonical state
   } catch (error) {
     await get().fetchCollectionById(id);  // Revert on failure
-    // Handle error...
   }
 }
 ```
@@ -308,21 +359,35 @@ Background operations tracked via `OperationType` enum:
 - `INDEX`: Initial collection indexing
 - `APPEND`: Add new documents to collection
 - `REINDEX`: Blue-green reindexing with zero downtime
-- `DELETE`: Collection deletion
 - `REMOVE_SOURCE`: Remove documents by source path
 
-### Chunking Strategies
+### Chunking Architecture
 
-Modern chunking system (`packages/shared/chunking/`) with domain-driven design:
+Two-level chunking system:
 
-- `CHARACTER`: Simple character-based splitting
-- `RECURSIVE`: Intelligent hierarchical splitting
-- `MARKDOWN`: Markdown-aware preservation
-- `SEMANTIC`: Meaning-based boundaries
-- `HIERARCHICAL`: Document structure-aware
-- `HYBRID`: Combined approach
+**High-Level (Service Layer)**: `packages/webui/services/chunking/`
+- `ChunkingOrchestrator` - Coordinates all chunking operations
+- Handles caching, metrics, validation, and operation management
+- Use this for application-level chunking needs
 
-Use `ChunkingOrchestrator` for all chunking operations. Legacy `ChunkingService` and `text_processing.chunking` modules are deprecated.
+**Low-Level (Shared Library)**: `packages/shared/chunking/`
+- Domain-driven design with `unified/` factory pattern
+- `UnifiedChunkingFactory.create_strategy()` - Creates strategy instances
+- Strategies: `CHARACTER`, `RECURSIVE`, `MARKDOWN`, `SEMANTIC`, `HIERARCHICAL`, `HYBRID`
+
+```python
+# High-level usage (recommended for services)
+from webui.services.chunking import ChunkingOrchestrator
+orchestrator = ChunkingOrchestrator(...)
+result = await orchestrator.process_document(...)
+
+# Low-level usage (for direct strategy access)
+from shared.chunking.unified import UnifiedChunkingFactory
+strategy = UnifiedChunkingFactory.create_strategy("recursive", config)
+chunks = strategy.chunk(text)
+```
+
+**Legacy**: `packages/shared/text_processing/chunking` is deprecated.
 
 ## WebSocket Architecture
 
@@ -348,25 +413,19 @@ Use `ChunkingOrchestrator` for all chunking operations. Legacy `ChunkingService`
 - `apps/webui-react/src/components/EmbeddingVisualizationTab.tsx` - Visualization UI
 - `apps/webui-react/src/hooks/useProjectionTooltip.ts` - Tooltip/selection logic
 
-### Database Models
-- `ProjectionRun` - Tracks projection metadata, status, and storage paths
-- Linked to `Operation` for async processing and progress tracking
-
 ### API Endpoints
 - `POST /api/v2/collections/{collection_id}/projections` - Start projection build
 - `GET /api/v2/collections/{collection_id}/projections` - List projections
 - `GET /api/v2/projections/{projection_id}` - Get projection metadata
 - `GET /api/v2/projections/{projection_id}/arrays/{artifact}` - Stream projection data
 - `POST /api/v2/projections/{projection_id}/select` - Resolve tooltip/selection data
+- `DELETE /api/v2/projections/{projection_id}` - Delete projection
 
 ### Critical Patterns
 - Projection runs are **immutable** - recompute creates new runs
 - Sampling applied during compute to limit point count (default: 10,000)
 - WebGPU forced via `embeddingAtlasWebgpuPatch.ts` for compatibility
 - Tooltips use LRU cache (`utils/lruCache.ts`) to minimize API calls
-- Cluster labels computed from filenames for semantic grouping
-
-**Documentation**: See `docs/EMBEDDING_VISUALIZATION.md` for complete technical details.
 
 ## Security Guidelines
 
@@ -378,6 +437,7 @@ Use `ChunkingOrchestrator` for all chunking operations. Legacy `ChunkingService`
 6. **Rate Limiting**: Configured per-endpoint via `RateLimitConfig`
 7. **Path Traversal**: All file paths validated through `packages.shared.utils.security.validate_safe_path()`
 8. **Environment Validation**: `scripts/validate_env.py` enforces required config at startup
+9. **Data Maintenance**: Use `packages/vecpipe/maintenance.py` to rotate embeddings or clear indexes when working with sensitive data
 
 ### Security Testing
 
@@ -407,18 +467,6 @@ All endpoints must pass security tests in `tests/security/`:
 - Security tests for all user-controlled inputs
 - Run `make check` before committing
 
-## Critical Refactoring Context
-
-**Ongoing Migration**: "job-centric" → "collection-centric" terminology
-
-- ❌ OLD: Jobs, job_id, job tables
-- ✅ NEW: Operations, operation_id, operations tables
-
-**When adding features:**
-- Use "operation" terminology exclusively
-- Never introduce new "job" references
-- Update any legacy "job" code you encounter
-
 ## Common Pitfalls
 
 1. **Async/Sync Mixing**: Never call blocking I/O in async functions
@@ -429,6 +477,7 @@ All endpoints must pass security tests in `tests/security/`:
 6. **Frontend Cache Invalidation**: Re-fetch after mutations
 7. **Environment Variables**: Use `.env` files, never hardcode
 8. **Missing Environment Validation**: Test new required vars in `scripts/validate_env.py`
+9. **Partition Errors After DB Reset**: After resetting Postgres volume, run `uv run alembic upgrade head` to install helper functions like `get_partition_key`. All chunk inserts in tests should use `ChunkRepository` or `PartitionAwareMixin.bulk_insert_partitioned`
 
 ## Debugging Multi-Service Issues
 
@@ -441,9 +490,6 @@ make docker-logs
 docker compose logs -f webui
 docker compose logs -f vecpipe
 docker compose logs -f worker
-
-# Follow specific container
-docker logs -f semantik-webui
 ```
 
 **Debugging database issues:**
@@ -486,31 +532,42 @@ semantik/
 ├── packages/
 │   ├── shared/           # Cross-service models, repos, utilities
 │   │   ├── database/     # SQLAlchemy models, repositories
-│   │   ├── chunking/     # Domain-driven chunking (NEW)
+│   │   ├── chunking/     # Domain-driven chunking
+│   │   │   └── unified/  # Factory pattern for strategies
 │   │   ├── config/       # Pydantic settings
 │   │   └── managers/     # Qdrant management
 │   ├── webui/            # Main API service
 │   │   ├── api/v2/       # API routers (thin controllers)
 │   │   ├── services/     # Business logic
+│   │   │   └── chunking/ # ChunkingOrchestrator and sub-services
 │   │   ├── middleware/   # HTTP middleware
+│   │   ├── tasks/        # Celery tasks
 │   │   └── websocket/    # WebSocket management
 │   └── vecpipe/          # Embedding & search service
 ├── apps/
 │   └── webui-react/      # React frontend
-│       ├── src/
-│       │   ├── stores/   # Zustand state management
-│       │   ├── components/
-│       │   └── api/      # API client
+│       └── src/
+│           ├── stores/   # Zustand state management
+│           ├── components/
+│           ├── hooks/
+│           ├── api/      # API client
+│           └── utils/    # Utilities (lruCache, etc.)
 ├── tests/                # Test suite
 │   ├── webui/           # WebUI integration tests
 │   ├── shared/          # Shared library tests
 │   ├── security/        # Security vulnerability tests
 │   ├── e2e/             # End-to-end tests
+│   ├── domain/          # Domain logic tests
+│   ├── fixtures/        # Test fixtures
 │   └── conftest.py      # Pytest configuration
+├── cypress/             # Cypress E2E tests
+│   └── e2e/             # Test specs (projection visualization)
 ├── scripts/             # Utility scripts
 │   ├── validate_env.py  # Environment validation (used at startup)
-│   └── install_uv.sh    # uv installation for Docker
+│   ├── generate_jwt_secret.py
+│   └── partition_maintenance.py
 ├── alembic/             # Database migrations
+├── data/                # Sample documents and projection artifacts
 ├── docker-entrypoint.sh # Service startup orchestration
 ├── Makefile             # Development commands
 └── docker-compose.yml   # Service orchestration
@@ -518,11 +575,8 @@ semantik/
 
 ## Additional Resources
 
-- [API Reference](docs/API_REFERENCE.md) - Complete REST and WebSocket API documentation
+- [Documentation Index](docs/DOCUMENTATION_INDEX.md) - Complete documentation with reading paths
+- [API Reference](docs/API_REFERENCE.md) - REST and WebSocket API documentation
 - [Architecture Guide](docs/ARCH.md) - Detailed system design
 - [Testing Guide](docs/TESTING.md) - Testing patterns and practices
-- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
-
-## Migration Note
-
-Semantik is in pre-release. Breaking changes may occur between versions as we optimize the foundation. Always review the changelog when upgrading.
+- [Embedding Visualization](docs/EMBEDDING_VISUALIZATION.md) - Projection feature details

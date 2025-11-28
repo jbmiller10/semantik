@@ -22,6 +22,8 @@ export interface SearchResult {
   reranked_score?: number;
   embedding_model?: string;
   metadata?: Record<string, unknown>;
+  start_offset?: number | null;
+  end_offset?: number | null;
 }
 
 export interface SearchParams {

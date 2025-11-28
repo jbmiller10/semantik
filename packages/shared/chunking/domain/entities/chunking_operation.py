@@ -7,7 +7,7 @@ the chunking process and maintains operation-level invariants.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.entities.chunk_collection import ChunkCollection
@@ -359,7 +359,7 @@ class ChunkingOperation:
         # Estimate tokens in document (rough approximation)
         estimated_tokens = len(self._document_content) // 4  # ~4 chars per token
 
-        return self._config.estimate_chunks(estimated_tokens)
+        return cast(int, self._config.estimate_chunks(estimated_tokens))
 
     def _calculate_duration(self) -> float:
         """

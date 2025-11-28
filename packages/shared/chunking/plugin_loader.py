@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import os
 from importlib import metadata
+from importlib.metadata import EntryPoints
 from typing import Any
 
 from webui.services.chunking.strategy_registry import register_strategy_definition
@@ -67,7 +68,7 @@ def load_chunking_plugins() -> list[str]:
 
     try:
         eps = metadata.entry_points()
-        ep_group = eps.select(group=ENTRYPOINT_GROUP) if hasattr(eps, "select") else eps.get(ENTRYPOINT_GROUP, [])
+        ep_group = eps.select(group=ENTRYPOINT_GROUP) if hasattr(eps, "select") else eps.get(ENTRYPOINT_GROUP, EntryPoints())
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Unable to query entry points for chunking plugins: %s", exc)
         return []

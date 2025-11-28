@@ -6,6 +6,8 @@ This module provides a wrapper around the unified hierarchical chunking strategy
 to make it compatible with domain tests that expect specific methods to patch.
 """
 
+from typing import cast
+
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
@@ -52,7 +54,7 @@ class HierarchicalChunkingStrategy(DomainStrategyAdapter):
             List of hierarchical chunks
         """
         # Delegate to the wrapped strategy
-        chunks = self.strategy.chunk(content, config)
+        chunks = cast(list[Chunk], self.strategy.chunk(content, config))
 
         # Fix metadata placement - move hierarchy-related fields to custom_attributes
         for chunk in chunks:

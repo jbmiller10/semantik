@@ -5,7 +5,7 @@ Compatibility wrapper for CharacterChunker.
 This module provides backward compatibility for tests that import CharacterChunker directly.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import BaseChunker, ChunkResult
@@ -31,7 +31,9 @@ class CharacterChunker(BaseChunker):
 
         # Create unified strategy directly
         unified_strategy = UnifiedChunkingFactory.create_strategy("character", use_llama_index=True)
-        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
+        self._chunker: TextProcessingStrategyAdapter = TextProcessingStrategyAdapter(
+            unified_strategy, **params
+        )
 
         # Initialize parent
         super().__init__(**kwargs)
@@ -50,7 +52,7 @@ class CharacterChunker(BaseChunker):
             return False
 
         # Delegate to underlying chunker for other validation
-        return self._chunker.validate_config(config)
+        return cast(bool, self._chunker.validate_config(config))
 
     def chunk_text(
         self,
@@ -59,7 +61,7 @@ class CharacterChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Synchronous chunking method."""
-        return self._chunker.chunk_text(text, doc_id, metadata)
+        return cast(list[ChunkResult], self._chunker.chunk_text(text, doc_id, metadata))
 
     async def chunk_text_async(
         self,
@@ -68,8 +70,8 @@ class CharacterChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Asynchronous chunking method."""
-        return await self._chunker.chunk_text_async(text, doc_id, metadata)
+        return cast(list[ChunkResult], await self._chunker.chunk_text_async(text, doc_id, metadata))
 
     def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:
         """Estimate number of chunks for capacity planning."""
-        return self._chunker.estimate_chunks(text_length, config)
+        return cast(int, self._chunker.estimate_chunks(text_length, config))

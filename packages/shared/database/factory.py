@@ -6,7 +6,7 @@ All repositories now use PostgreSQL exclusively - SQLite support has been remove
 
 import logging
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,7 @@ def create_user_repository(session: AsyncSession) -> UserRepository:
     """
     from webui.repositories.postgres import PostgreSQLUserRepository
 
-    return PostgreSQLUserRepository(session)
+    return cast(UserRepository, PostgreSQLUserRepository(session))
 
 
 def create_auth_repository(session: AsyncSession) -> AuthRepository:
@@ -48,7 +48,7 @@ def create_auth_repository(session: AsyncSession) -> AuthRepository:
     """
     from webui.repositories.postgres import PostgreSQLAuthRepository
 
-    return PostgreSQLAuthRepository(session)
+    return cast(AuthRepository, PostgreSQLAuthRepository(session))
 
 
 def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
@@ -62,7 +62,7 @@ def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     """
     from webui.repositories.postgres import PostgreSQLApiKeyRepository
 
-    return PostgreSQLApiKeyRepository(session)
+    return cast(ApiKeyRepository, PostgreSQLApiKeyRepository(session))
 
 
 def create_operation_repository(session: AsyncSession) -> "OperationRepository":

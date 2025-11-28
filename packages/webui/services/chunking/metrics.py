@@ -215,7 +215,7 @@ class ChunkingMetrics:
         """
 
         try:
-            return ServiceStrategyMetrics.create_default_metrics()
+            return cast(list[ServiceStrategyMetrics], ServiceStrategyMetrics.create_default_metrics())
         except Exception:
             return []
 

@@ -34,7 +34,7 @@ def _tasks_namespace() -> ModuleType:
     return import_module("webui.tasks")
 
 
-async def _resolve_session_factory():
+async def _resolve_session_factory() -> Any:
     factory = AsyncSessionLocal
     if factory is None:
         factory = await ensure_async_sessionmaker()

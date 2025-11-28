@@ -570,4 +570,4 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
 
         # Markdown chunking creates chunks based on structure
         base_estimate = config.estimate_chunks(estimated_tokens)
-        return max(1, base_estimate)
+        return max(1, int(base_estimate))

@@ -15,13 +15,10 @@ def get_or_create_metric(
     **kwargs: Any,
 ) -> Any:
     """Create a metric or return an existing one if already registered."""
-    try:
-        # Try to get existing collector from registry
-        for collector in registry._collector_to_names:  # type: ignore[attr-defined]
-            if hasattr(collector, "_name") and collector._name == name:  # pragma: no cover - registry internals
-                return collector
-    except AttributeError:
-        pass
+    # Try to get existing collector from registry
+    for collector in getattr(registry, "_collector_to_names", {}):  # pragma: no cover - registry internals
+        if hasattr(collector, "_name") and collector._name == name:
+            return collector
 
     if labels:
         return metric_class(name, description, labels, registry=registry, **kwargs)

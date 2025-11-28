@@ -5,7 +5,7 @@ Compatibility wrapper for SemanticChunker.
 This module provides backward compatibility for tests that import SemanticChunker directly.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import BaseChunker, ChunkResult
@@ -35,7 +35,10 @@ class SemanticChunker(BaseChunker):
         unified_strategy = UnifiedChunkingFactory.create_strategy(
             "semantic", use_llama_index=True, embed_model=embed_model
         )
-        self._chunker = TextProcessingStrategyAdapter(unified_strategy, **params)
+        # Keep the adapter typed so mypy can follow return types
+        self._chunker: TextProcessingStrategyAdapter = TextProcessingStrategyAdapter(
+            unified_strategy, **params
+        )
 
     def chunk_text(
         self,
@@ -44,7 +47,7 @@ class SemanticChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Override to add semantic metadata."""
-        results = self._chunker.chunk_text(text, doc_id, metadata)
+        results = cast(list[ChunkResult], self._chunker.chunk_text(text, doc_id, metadata))
 
         # Add semantic metadata for test compatibility
         for result in results:
@@ -62,7 +65,7 @@ class SemanticChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Async version with semantic metadata."""
-        results = await self._chunker.chunk_text_async(text, doc_id, metadata)
+        results = cast(list[ChunkResult], await self._chunker.chunk_text_async(text, doc_id, metadata))
 
         # Add semantic metadata for test compatibility
         for result in results:
@@ -89,7 +92,7 @@ class SemanticChunker(BaseChunker):
     def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate configuration."""
         # Delegate to underlying chunker
-        return self._chunker.validate_config(config)
+        return cast(bool, self._chunker.validate_config(config))
 
     def __getattr__(self, name: str) -> Any:
         """Delegate all attributes to the actual chunker."""

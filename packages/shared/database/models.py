@@ -132,7 +132,10 @@ class OperationType(str, enum.Enum):
 
         if isinstance(value, str):
             normalized = value.lower()
-            return cls._value2member_map_.get(normalized) or cls.__members__.get(value.upper())
+            return cast(
+                OperationType | None,
+                cls._value2member_map_.get(normalized) or cls.__members__.get(value.upper()),
+            )
         return None
 
     def __str__(self) -> str:  # pragma: no cover - simple helper for driver bindings

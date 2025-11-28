@@ -361,6 +361,8 @@ class SearchResult(BaseModel):
     metadata: dict[str, Any]
     file_name: str
     file_path: str
+    start_offset: int | None = None
+    end_offset: int | None = None
 
 
 class SearchResponse(BaseModel):

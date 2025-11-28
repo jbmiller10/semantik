@@ -9,7 +9,7 @@ import logging
 import time
 import types
 from contextlib import suppress
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -120,7 +120,7 @@ def _get_qdrant_client() -> httpx.AsyncClient | None:
         # Fall back to whatever is already cached
         pass
 
-    return search_state.qdrant_client
+    return cast(httpx.AsyncClient | None, search_state.qdrant_client)
 
 
 def _get_search_qdrant() -> Any:
@@ -193,7 +193,7 @@ def _extract_qdrant_error(e: httpx.HTTPStatusError) -> str:
         if isinstance(payload, dict):
             status = payload.get("status", {})
             if isinstance(status, dict) and status.get("error"):
-                return status["error"]
+                return str(status["error"])
 
             if payload.get("error"):
                 return str(payload.get("error"))

@@ -45,6 +45,8 @@ class WebuiConfig(BaseConfig):
     # Document storage configuration
     DOCUMENT_ROOT: str | None = None
     DOCUMENT_ALLOWED_ROOTS: str | None = None
+    _document_root: Path | None = None
+    _document_allowed_roots: tuple[Path, ...] | None = None
 
     # Keep side-effect free; runtime code is responsible for validating/creating paths and
     # ensuring JWT secrets are present (see shared.config.runtime).

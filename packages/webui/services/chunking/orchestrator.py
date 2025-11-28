@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from statistics import fmean
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +84,7 @@ class ChunkingOrchestrator:
         """
         self.processor = processor
         self.cache = cache
-        self.metrics = metrics
+        self.metrics: ChunkingMetrics = metrics
         self.validator = validator
         self.config_manager = config_manager
         self.db_session = db_session
@@ -624,7 +624,10 @@ class ChunkingOrchestrator:
 
         from shared.database.models import Chunk, Document, Operation, OperationStatus, OperationType
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if not self.collection_repo:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
@@ -697,7 +700,10 @@ class ChunkingOrchestrator:
         from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
         from shared.database.models import Chunk
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if not self.collection_repo:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise ResourceNotFoundError("Collection", str(collection_id))
 
@@ -830,9 +836,11 @@ class ChunkingOrchestrator:
         """Return metrics grouped by strategy (placeholder with sensible defaults)."""
 
         try:
-            return await self.metrics.get_metrics_by_strategy(period_days=period_days)
+            metrics: list[ServiceStrategyMetrics] = self.metrics.get_metrics_by_strategy(period_days=period_days)
         except Exception:  # pragma: no cover - defensive
-            return ServiceStrategyMetrics.create_default_metrics()
+            return cast(list[ServiceStrategyMetrics], ServiceStrategyMetrics.create_default_metrics())
+
+        return metrics
 
     async def get_quality_scores(
         self,

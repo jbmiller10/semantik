@@ -66,10 +66,24 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
     }
   }, [groupedByCollection, expandedCollections.size]);
 
-  const handleViewDocument = (collectionId: string | undefined, docId: string, chunkId?: string) => {
+  const handleViewDocument = (
+    collectionId: string | undefined,
+    docId: string,
+    chunkId?: string,
+    chunkContent?: string,
+    startOffset?: number | null,
+    endOffset?: number | null
+  ) => {
     // Ensure we always have a valid collection ID, defaulting to 'unknown' if missing
     const safeCollectionId = collectionId || 'unknown';
-    setShowDocumentViewer({ collectionId: safeCollectionId, docId, chunkId });
+    setShowDocumentViewer({
+      collectionId: safeCollectionId,
+      docId,
+      chunkId,
+      chunkContent,
+      startOffset: startOffset ?? undefined,
+      endOffset: endOffset ?? undefined,
+    });
   };
 
   const toggleDocExpansion = (docId: string) => {
@@ -282,7 +296,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                                   key={index}
                                   className={`px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors ${index !== doc.chunks.length - 1 ? 'border-b border-gray-200' : ''
                                     }`}
-                                  onClick={() => handleViewDocument(chunk.collection_id, docId, chunk.chunk_id)}
+                                  onClick={() => handleViewDocument(chunk.collection_id, docId, chunk.chunk_id, chunk.content, chunk.start_offset, chunk.end_offset)}
                                 >
                                   <p className="text-sm text-gray-700 line-clamp-3">{chunk.content}</p>
                                   <div className="mt-2 flex items-center justify-between">
@@ -294,7 +308,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                                       className="text-blue-600 hover:text-blue-800 text-sm"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleViewDocument(chunk.collection_id, docId, chunk.chunk_id);
+                                        handleViewDocument(chunk.collection_id, docId, chunk.chunk_id, chunk.content, chunk.start_offset, chunk.end_offset);
                                       }}
                                     >
                                       View Document →

@@ -8,7 +8,7 @@ compatible with both the domain-based and text_processing interfaces.
 
 import logging
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 from shared.chunking.unified.base import UnifiedChunkingStrategy
@@ -131,7 +131,7 @@ class DomainStrategyAdapter:
         Args:
             unified_strategy: The unified strategy to adapt
         """
-        self.strategy = unified_strategy
+        self.strategy: UnifiedChunkingStrategy = unified_strategy
 
     def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to the wrapped strategy."""
@@ -154,7 +154,7 @@ class TextProcessingStrategyAdapter:
             unified_strategy: The unified strategy to adapt
             **params: Additional parameters for configuration
         """
-        self.strategy = unified_strategy
+        self.strategy: UnifiedChunkingStrategy = unified_strategy
         self.strategy_name = unified_strategy.name
 
         # Filter out known token-based parameters, ignore strategy-specific ones
@@ -506,4 +506,4 @@ class TextProcessingStrategyAdapter:
             strategy_name=self.strategy.name,
         )
 
-        return self.strategy.estimate_chunks(text_length, domain_config)
+        return cast(int, self.strategy.estimate_chunks(text_length, domain_config))
