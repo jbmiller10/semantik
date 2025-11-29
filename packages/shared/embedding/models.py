@@ -13,7 +13,20 @@ from typing import Any
 
 @dataclass
 class ModelConfig:
-    """Configuration for an embedding model."""
+    """Configuration for an embedding model.
+
+    Asymmetric Embedding Support:
+        Many retrieval models need different handling for queries vs documents.
+        Set `is_asymmetric=True` and configure the appropriate prefixes/instructions.
+
+        For prefix-based models (E5, BGE):
+            - query_prefix: Prefix added to queries (e.g., "query: ")
+            - document_prefix: Prefix added to documents (e.g., "passage: ")
+
+        For instruction-based models (Qwen):
+            - default_query_instruction: Task instruction for queries
+            - Documents typically use no instruction (raw text)
+    """
 
     name: str
     dimension: int
@@ -24,6 +37,12 @@ class ModelConfig:
     memory_estimate: dict[str, int] | None = None
     requires_instruction: bool = False
     pooling_method: str = "mean"  # mean, cls, last_token
+
+    # Asymmetric embedding support
+    is_asymmetric: bool = False
+    query_prefix: str = ""  # For prefix-based models (e.g., "query: " for E5)
+    document_prefix: str = ""  # For prefix-based models (e.g., "passage: " for E5)
+    default_query_instruction: str = ""  # For instruction-based models (Qwen)
 
     def __post_init__(self) -> None:
         if self.memory_estimate is None:
@@ -45,12 +64,21 @@ class ModelConfig:
             "recommended_quantization": self.recommended_quantization,
             "memory_estimate": self.memory_estimate,
             "max_sequence_length": self.max_sequence_length,
+            "is_asymmetric": self.is_asymmetric,
+            "query_prefix": self.query_prefix,
+            "document_prefix": self.document_prefix,
+            "default_query_instruction": self.default_query_instruction,
         }
 
 
+# Default query instruction for Qwen models
+_QWEN_DEFAULT_QUERY_INSTRUCTION = (
+    "Given a web search query, retrieve relevant passages that answer the query"
+)
+
 # Model configurations
 MODEL_CONFIGS = {
-    # Qwen3 Embedding Models
+    # Qwen3 Embedding Models - instruction-based asymmetric
     "Qwen/Qwen3-Embedding-0.6B": ModelConfig(
         name="Qwen/Qwen3-Embedding-0.6B",
         dimension=1024,
@@ -61,6 +89,8 @@ MODEL_CONFIGS = {
         memory_estimate={"float32": 2400, "float16": 1200, "int8": 600},
         requires_instruction=True,
         pooling_method="last_token",
+        is_asymmetric=True,
+        default_query_instruction=_QWEN_DEFAULT_QUERY_INSTRUCTION,
     ),
     "Qwen/Qwen3-Embedding-4B": ModelConfig(
         name="Qwen/Qwen3-Embedding-4B",
@@ -72,6 +102,8 @@ MODEL_CONFIGS = {
         memory_estimate={"float32": 16000, "float16": 8000, "int8": 4000},
         requires_instruction=True,
         pooling_method="last_token",
+        is_asymmetric=True,
+        default_query_instruction=_QWEN_DEFAULT_QUERY_INSTRUCTION,
     ),
     "Qwen/Qwen3-Embedding-8B": ModelConfig(
         name="Qwen/Qwen3-Embedding-8B",
@@ -83,14 +115,17 @@ MODEL_CONFIGS = {
         memory_estimate={"float32": 32000, "float16": 16000, "int8": 8000},
         requires_instruction=True,
         pooling_method="last_token",
+        is_asymmetric=True,
+        default_query_instruction=_QWEN_DEFAULT_QUERY_INSTRUCTION,
     ),
-    # Popular sentence-transformers models
+    # Popular sentence-transformers models - symmetric (no prefix needed)
     "sentence-transformers/all-MiniLM-L6-v2": ModelConfig(
         name="sentence-transformers/all-MiniLM-L6-v2",
         dimension=384,
         description="Fast, lightweight model for general use",
         max_sequence_length=256,
         memory_estimate={"float32": 90, "float16": 45, "int8": 23},
+        is_asymmetric=False,  # Symmetric model
     ),
     "sentence-transformers/all-mpnet-base-v2": ModelConfig(
         name="sentence-transformers/all-mpnet-base-v2",
@@ -98,13 +133,18 @@ MODEL_CONFIGS = {
         description="High-quality general-purpose embeddings",
         max_sequence_length=384,
         memory_estimate={"float32": 420, "float16": 210, "int8": 105},
+        is_asymmetric=False,  # Symmetric model
     ),
+    # BGE models - prefix-based asymmetric
     "BAAI/bge-large-en-v1.5": ModelConfig(
         name="BAAI/bge-large-en-v1.5",
         dimension=1024,
         description="State-of-the-art English embeddings",
         max_sequence_length=512,
         memory_estimate={"float32": 1300, "float16": 650, "int8": 325},
+        is_asymmetric=True,
+        query_prefix="Represent this sentence for searching relevant passages: ",
+        document_prefix="",  # No prefix for documents
     ),
 }
 

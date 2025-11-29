@@ -43,7 +43,7 @@ describe('useOperationsSocket', () => {
     delete (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__;
   });
 
-  it('builds websocket URL from auth token and reconnects on token change', () => {
+  it('builds websocket URL from auth token and updates URL on token change', () => {
     (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__ = 'https://api.example.com/prefix';
 
     // seed initial token
@@ -58,8 +58,7 @@ describe('useOperationsSocket', () => {
     const { rerender } = renderHook(() => useOperationsSocket(), { wrapper });
 
     expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-1');
-    // Initial effect triggers a reconnect once on mount.
-    expect(reconnectMock).toHaveBeenCalledTimes(1);
+    // useWebSocket handles connection internally, no explicit reconnect call needed
 
     // change token
     act(() => {
@@ -68,7 +67,7 @@ describe('useOperationsSocket', () => {
 
     rerender();
 
+    // URL should be updated with new token - useWebSocket will reconnect automatically
     expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-2');
-    expect(reconnectMock).toHaveBeenCalledTimes(2);
   });
 });

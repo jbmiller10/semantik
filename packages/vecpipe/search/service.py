@@ -237,8 +237,18 @@ async def generate_embedding_async(
     model_name: str | None = None,
     quantization: str | None = None,
     instruction: str | None = None,
+    mode: str | None = None,
 ) -> list[float]:
-    """Generate an embedding using the model manager or fall back to mock embeddings."""
+    """Generate an embedding using the model manager or fall back to mock embeddings.
+
+    Args:
+        text: Text to embed
+        model_name: Model name override
+        quantization: Quantization override
+        instruction: Custom instruction for instruction-aware models
+        mode: Embedding mode - 'query' for search queries, 'document' for indexing.
+              Defaults to 'query'.
+    """
     cfg = _get_settings()
 
     if cfg.USE_MOCK_EMBEDDINGS:
@@ -250,10 +260,14 @@ async def generate_embedding_async(
 
     model = model_name or cfg.DEFAULT_EMBEDDING_MODEL
     quant = quantization or cfg.DEFAULT_QUANTIZATION
-    instruction = instruction or "Represent this sentence for searching relevant passages:"
+    # Only apply default instruction for query mode (or when mode is not specified)
+    if mode == "document":
+        instruction = instruction  # Keep as provided (typically None for documents)
+    else:
+        instruction = instruction or "Represent this sentence for searching relevant passages:"
 
     start_time = time.time()
-    embedding = await model_mgr.generate_embedding_async(text, model, quant, instruction)
+    embedding = await model_mgr.generate_embedding_async(text, model, quant, instruction, mode=mode)
     embedding_generation_latency.observe(time.time() - start_time)
 
     if embedding is None:
@@ -1015,7 +1029,12 @@ async def embed_texts(request: EmbedRequest) -> EmbedResponse:
         for i in range(0, len(request.texts), request.batch_size):
             batch_texts = request.texts[i : i + request.batch_size]
             batch_embeddings = await model_mgr.generate_embeddings_batch_async(
-                batch_texts, request.model_name, request.quantization, request.instruction, request.batch_size
+                batch_texts,
+                request.model_name,
+                request.quantization,
+                instruction=request.instruction,
+                batch_size=request.batch_size,
+                mode=request.mode,
             )
             embeddings.extend(batch_embeddings)
             batch_count += 1

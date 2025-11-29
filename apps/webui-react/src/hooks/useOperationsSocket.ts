@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useUIStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useUpdateOperationInCache } from './useCollectionOperations';
@@ -17,7 +17,8 @@ export function useOperationsSocket() {
         return operationsV2Api.getGlobalWebSocketUrl(token);
     }, [token]);
 
-    const { readyState, reconnect } = useWebSocket(wsUrl, {
+    // useWebSocket handles connection/reconnection when wsUrl changes
+    const { readyState } = useWebSocket(wsUrl, {
         onMessage: (event: MessageEvent) => {
             try {
                 const rawMessage = JSON.parse(event.data);
@@ -67,13 +68,6 @@ export function useOperationsSocket() {
             }
         },
     });
-
-    // If the token changes, reconnect with the new token
-    useEffect(() => {
-        if (wsUrl) {
-            reconnect();
-        }
-    }, [wsUrl, reconnect]);
 
     return {
         readyState,

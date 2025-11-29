@@ -43,8 +43,46 @@
   </module>
   
   <module path="embedding/">
-    <purpose>Embedding service abstraction</purpose>
-    <pattern>Singleton with lazy loading</pattern>
+    <purpose>Plugin-based embedding provider system</purpose>
+    <pattern>Factory + Registry with auto-detection</pattern>
+    <architecture>
+      - plugin_base.py: BaseEmbeddingPlugin + EmbeddingProviderDefinition
+      - provider_registry.py: Provider metadata registry (LRU cached)
+      - factory.py: EmbeddingProviderFactory with model auto-detection
+      - plugin_loader.py: Entry point discovery (semantik.embedding_providers)
+      - types.py: EmbeddingMode enum (QUERY, DOCUMENT)
+      - providers/: Built-in provider implementations
+    </architecture>
+    <built-in-providers>
+      - DenseLocalEmbeddingProvider: sentence-transformers, Qwen (GPU/CPU)
+      - MockEmbeddingProvider: Deterministic testing embeddings
+    </built-in-providers>
+    <asymmetric-mode>
+      Many retrieval models need different processing for queries vs documents:
+      - EmbeddingMode.QUERY: Search queries (applies prefixes/instructions)
+      - EmbeddingMode.DOCUMENT: Document indexing (typically no prefix)
+
+      ModelConfig fields: is_asymmetric, query_prefix, document_prefix, default_query_instruction
+      EmbeddingProviderDefinition: supports_asymmetric flag
+    </asymmetric-mode>
+    <usage>
+      from shared.embedding.factory import EmbeddingProviderFactory
+      from shared.embedding.types import EmbeddingMode
+
+      provider = EmbeddingProviderFactory.create_provider("model-name")
+
+      # Query mode (default)
+      embeddings = await provider.embed_texts(texts, mode=EmbeddingMode.QUERY)
+
+      # Document mode
+      embeddings = await provider.embed_texts(texts, mode=EmbeddingMode.DOCUMENT)
+    </usage>
+    <api-endpoints>
+      GET /embedding/providers - List providers
+      GET /embedding/providers/{id} - Provider details
+      GET /embedding/models - List all models
+      GET /embedding/models/{name}/supported - Check support
+    </api-endpoints>
   </module>
   
   <module path="managers/">
