@@ -113,17 +113,48 @@ export const handlers = [
     })
   }),
 
-  // Models endpoints
+  // Models endpoints - returns dict of models with provider metadata
   http.get('/api/models', () => {
     return HttpResponse.json({
-      models: [
-        {
-          name: 'Qwen/Qwen3-Embedding-0.6B',
-          size: '600M',
-          description: 'Small efficient embedding model',
-          is_downloaded: true,
-        }
-      ]
+      models: {
+        'BAAI/bge-large-en-v1.5': {
+          model_name: 'BAAI/bge-large-en-v1.5',
+          dimension: 1024,
+          description: 'BGE Large English v1.5 (High quality)',
+          provider: 'dense_local',
+          supports_quantization: true,
+          recommended_quantization: 'float16',
+          is_asymmetric: true,
+        },
+        'Qwen/Qwen3-Embedding-0.6B': {
+          model_name: 'Qwen/Qwen3-Embedding-0.6B',
+          dimension: 1024,
+          description: 'Qwen3-Embedding-0.6B (Default - Fast)',
+          provider: 'dense_local',
+          supports_quantization: true,
+          recommended_quantization: 'float16',
+          is_asymmetric: true,
+        },
+        'sentence-transformers/all-MiniLM-L6-v2': {
+          model_name: 'sentence-transformers/all-MiniLM-L6-v2',
+          dimension: 384,
+          description: 'All-MiniLM-L6-v2 (Lightweight)',
+          provider: 'dense_local',
+          supports_quantization: true,
+          recommended_quantization: 'float32',
+          is_asymmetric: false,
+        },
+        'test-plugin/model-v1': {
+          model_name: 'test-plugin/model-v1',
+          dimension: 768,
+          description: 'Test Plugin Model',
+          provider: 'test_plugin',
+          supports_quantization: false,
+          is_asymmetric: false,
+        },
+      },
+      current_device: 'cuda:0',
+      using_real_embeddings: true,
     })
   }),
 

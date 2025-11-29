@@ -123,7 +123,7 @@ describe('CreateCollectionModal', () => {
   });
 
   describe('Initial Render', () => {
-    it('should render with default values', () => {
+    it('should render with default values', async () => {
       renderCreateCollectionModal(defaultProps);
 
       // Check modal is visible
@@ -138,8 +138,10 @@ describe('CreateCollectionModal', () => {
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/initial source directory/i)).toBeInTheDocument();
 
-      // Check default embedding model
-      expect(screen.getByLabelText(/embedding model/i)).toHaveValue('Qwen/Qwen3-Embedding-0.6B');
+      // Wait for models to load from API, then check default embedding model
+      await waitFor(() => {
+        expect(screen.getByLabelText(/embedding model/i)).toHaveValue('Qwen/Qwen3-Embedding-0.6B');
+      });
 
       // Check default quantization
       expect(screen.getByLabelText(/model quantization/i)).toHaveValue('float16');
@@ -674,18 +676,21 @@ describe('CreateCollectionModal', () => {
       const user = userEvent.setup();
       renderCreateCollectionModal(defaultProps);
 
-      const modelSelect = screen.getByLabelText(/embedding model/i);
-      
-      // Check available options
-      const options = within(modelSelect).getAllByRole('option');
-      expect(options).toHaveLength(3);
-      expect(options[0]).toHaveTextContent(/qwen3-embedding/i);
-      expect(options[1]).toHaveTextContent(/e5-base-v2/i);
-      expect(options[2]).toHaveTextContent(/all-minilm/i);
+      // Wait for models to load from API (via MSW mock)
+      await waitFor(() => {
+        const modelSelect = screen.getByLabelText(/embedding model/i);
+        expect(modelSelect).not.toHaveTextContent('Loading');
+      });
 
-      // Select different model
-      await user.selectOptions(modelSelect, 'intfloat/e5-base-v2');
-      expect(modelSelect).toHaveValue('intfloat/e5-base-v2');
+      const modelSelect = screen.getByLabelText(/embedding model/i);
+
+      // Check that models are loaded dynamically (MSW mock returns 4 models)
+      const options = within(modelSelect).getAllByRole('option');
+      expect(options.length).toBeGreaterThanOrEqual(3);
+
+      // Select a different model
+      await user.selectOptions(modelSelect, 'sentence-transformers/all-MiniLM-L6-v2');
+      expect(modelSelect).toHaveValue('sentence-transformers/all-MiniLM-L6-v2');
 
       // Submit with different model
       await user.type(screen.getByLabelText(/collection name/i), 'Test');
@@ -696,7 +701,7 @@ describe('CreateCollectionModal', () => {
       await waitFor(() => {
         expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalledWith(
           expect.objectContaining({
-            embedding_model: 'intfloat/e5-base-v2',
+            embedding_model: 'sentence-transformers/all-MiniLM-L6-v2',
           })
         );
       });

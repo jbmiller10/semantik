@@ -350,6 +350,46 @@ Response:
 }
 ```
 
+### UI Model Discovery
+
+The `/api/models` endpoint aggregates all models (built-in and plugin) for the UI model selector:
+
+```http
+GET /api/models
+```
+
+Response:
+```json
+{
+  "models": {
+    "Qwen/Qwen3-Embedding-0.6B": {
+      "model_name": "Qwen/Qwen3-Embedding-0.6B",
+      "dimension": 1024,
+      "description": "Qwen3-Embedding-0.6B (Default - Fast)",
+      "provider": "dense_local",
+      "supports_quantization": true,
+      "recommended_quantization": "float16",
+      "is_asymmetric": true
+    },
+    "your-org/custom-model": {
+      "model_name": "your-org/custom-model",
+      "dimension": 768,
+      "description": "Custom Plugin Model",
+      "provider": "your_plugin",
+      "supports_quantization": false
+    }
+  },
+  "current_device": "cuda:0",
+  "using_real_embeddings": true
+}
+```
+
+**Key Points:**
+- Plugin models automatically appear in the UI model selector
+- Models are sorted alphabetically in the dropdown
+- Plugin models display their provider name (e.g., "(your_plugin)") to distinguish from built-in models
+- The `current_device` field shows the active compute device
+
 ## Configuration
 
 ### Environment Variables
