@@ -67,7 +67,12 @@ def load_chunking_plugins() -> list[str]:
 
     try:
         eps = metadata.entry_points()
-        ep_group = eps.select(group=ENTRYPOINT_GROUP) if hasattr(eps, "select") else eps.get(ENTRYPOINT_GROUP, [])
+        if hasattr(eps, "select"):
+            ep_group = eps.select(group=ENTRYPOINT_GROUP)
+        elif isinstance(eps, dict):
+            ep_group = eps.get(ENTRYPOINT_GROUP, ())
+        else:
+            ep_group = ()
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Unable to query entry points for chunking plugins: %s", exc)
         return []

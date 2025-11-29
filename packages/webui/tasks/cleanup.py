@@ -13,6 +13,8 @@ from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
 from shared.metrics.collection_metrics import QdrantOperationTimer, record_metric_safe
 
@@ -34,10 +36,11 @@ def _tasks_namespace() -> ModuleType:
     return import_module("webui.tasks")
 
 
-async def _resolve_session_factory():
+async def _resolve_session_factory() -> async_sessionmaker[AsyncSession]:
     factory = AsyncSessionLocal
     if factory is None:
         factory = await ensure_async_sessionmaker()
+    assert factory is not None
     return factory
 
 

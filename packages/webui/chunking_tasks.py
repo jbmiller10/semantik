@@ -68,7 +68,7 @@ def get_redis_client() -> Redis:
     """Get sync Redis client instance for Celery tasks."""
     redis_manager = get_redis_manager()
     client = redis_manager.sync_client
-    return ensure_sync_redis(client)
+    return cast(Redis, ensure_sync_redis(client))
 
 
 _progress_update_manager: ProgressUpdateManager | None = None
