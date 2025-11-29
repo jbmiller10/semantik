@@ -74,3 +74,27 @@ async def api_client(
         yield client
 
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture()
+async def api_client_unauthenticated(
+    db_session,
+    use_fakeredis,
+    reset_redis_manager,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an AsyncClient WITHOUT auth override for testing auth requirements."""
+
+    _ = use_fakeredis
+    _ = reset_redis_manager
+
+    async def override_get_db() -> AsyncGenerator[Any, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    # Note: get_current_user is NOT overridden - authentication is enforced
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()

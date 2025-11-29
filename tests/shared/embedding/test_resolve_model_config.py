@@ -315,7 +315,7 @@ class TestResolveModelConfigIntegration:
 class TestDenseEmbeddingServicePluginConfig:
     """Tests for DenseEmbeddingService using plugin-resolved config."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_dense_service_uses_plugin_dimension_in_mock_mode(
         self, empty_registry: None
     ) -> None:
@@ -330,7 +330,7 @@ class TestDenseEmbeddingServicePluginConfig:
         assert service.dimension == 512  # ConfigAwarePlugin.PLUGIN_DIMENSION
         await service.cleanup()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_dense_service_raises_for_unknown_model_in_mock_mode(
         self, empty_registry: None
     ) -> None:
@@ -346,7 +346,7 @@ class TestDenseEmbeddingServicePluginConfig:
         with pytest.raises(RuntimeError, match="No model configuration found"):
             await service.initialize("completely/unknown-model-xyz")
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_embedding_service_generate_embeddings_uses_plugin_dimension(
         self, empty_registry: None
     ) -> None:
