@@ -569,5 +569,5 @@ class MarkdownChunkingStrategy(UnifiedChunkingStrategy):
         estimated_tokens = content_length // 4
 
         # Markdown chunking creates chunks based on structure
-        base_estimate = config.estimate_chunks(estimated_tokens)
+        base_estimate = int(config.estimate_chunks(estimated_tokens))
         return max(1, base_estimate)

@@ -497,7 +497,7 @@ class StreamingDocumentProcessor:
         """
         # Rough estimate: assume average 4 bytes per token
         estimated_tokens = file_size // 4
-        return config.estimate_chunks(estimated_tokens)
+        return int(config.estimate_chunks(estimated_tokens))
 
     def get_memory_usage(self) -> dict[str, Any]:
         """

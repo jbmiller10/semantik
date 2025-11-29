@@ -624,7 +624,10 @@ class ChunkingOrchestrator:
 
         from shared.database.models import Chunk, Document, Operation, OperationStatus, OperationType
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if self.collection_repo is None:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
@@ -697,7 +700,10 @@ class ChunkingOrchestrator:
         from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
         from shared.database.models import Chunk
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if self.collection_repo is None:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise ResourceNotFoundError("Collection", str(collection_id))
 
@@ -830,7 +836,7 @@ class ChunkingOrchestrator:
         """Return metrics grouped by strategy (placeholder with sensible defaults)."""
 
         try:
-            return await self.metrics.get_metrics_by_strategy(period_days=period_days)
+            return self.metrics.get_metrics_by_strategy(period_days=period_days)
         except Exception:  # pragma: no cover - defensive
             return ServiceStrategyMetrics.create_default_metrics()
 

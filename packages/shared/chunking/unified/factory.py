@@ -506,4 +506,4 @@ class TextProcessingStrategyAdapter:
             strategy_name=self.strategy.name,
         )
 
-        return self.strategy.estimate_chunks(text_length, domain_config)
+        return int(self.strategy.estimate_chunks(text_length, domain_config))

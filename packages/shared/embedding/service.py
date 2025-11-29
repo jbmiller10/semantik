@@ -121,6 +121,8 @@ async def get_embedding_service(
                         _embedding_service = DenseEmbeddingService(**kwargs)
                     _current_model_name = None
 
+            if _embedding_service is None:
+                raise RuntimeError("Embedding service not initialized")
             return _embedding_service
     except Exception as e:
         logger.error(f"Failed to create embedding service: {e}")

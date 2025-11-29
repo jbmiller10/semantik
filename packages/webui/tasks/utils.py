@@ -22,6 +22,7 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
@@ -42,12 +43,10 @@ except RuntimeError as exc:
 
 # Re-export orchestrator for tests that patch webui.tasks.ChunkingOrchestrator
 try:  # Prefer packages.* import path to match test patch targets
-    from webui.services.chunking.orchestrator import ChunkingOrchestrator
-except Exception:  # Fallback for runtime usage paths
-    try:
-        from webui.services.chunking.orchestrator import ChunkingOrchestrator  # type: ignore
-    except Exception:  # As a last resort, define a placeholder
-        ChunkingOrchestrator = None  # type: ignore
+    from webui.services.chunking.orchestrator import ChunkingOrchestrator as _ChunkingOrchestrator
+    ChunkingOrchestrator = _ChunkingOrchestrator
+except Exception:  # As a last resort, define a placeholder
+    ChunkingOrchestrator: Any | None = None
 
 
 # Task timeout constants
@@ -83,10 +82,11 @@ CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 executor = ThreadPoolExecutor(max_workers=8)
 
 
-async def _get_session_factory():
+async def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     factory = AsyncSessionLocal
     if factory is None:
         factory = await ensure_async_sessionmaker()
+    assert factory is not None
     return factory
 
 

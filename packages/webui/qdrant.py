@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from threading import Lock
+from typing import Any, cast
 
 from qdrant_client import QdrantClient
 
@@ -22,7 +23,7 @@ class UnifiedQdrantManager(QdrantManager):
 
     def get_client(self) -> QdrantClient:
         """Return the underlying Qdrant client (compat with old manager)."""
-        return self.client
+        return cast(QdrantClient, self.client)
 
 
 _manager_lock = Lock()
@@ -71,7 +72,7 @@ class _LazyQdrantManagerProxy:
     def _resolve(self) -> UnifiedQdrantManager:
         return get_qdrant_manager()
 
-    def __getattr__(self, item: str):
+    def __getattr__(self, item: str) -> Any:
         return getattr(self._resolve(), item)
 
     def __repr__(self) -> str:  # pragma: no cover - diagnostic helper

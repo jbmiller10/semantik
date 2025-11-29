@@ -17,7 +17,7 @@ def get_or_create_metric(
     """Create a metric or return an existing one if already registered."""
     try:
         # Try to get existing collector from registry
-        for collector in registry._collector_to_names:  # type: ignore[attr-defined]
+        for collector in registry._collector_to_names:
             if hasattr(collector, "_name") and collector._name == name:  # pragma: no cover - registry internals
                 return collector
     except AttributeError:
