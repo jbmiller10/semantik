@@ -24,7 +24,7 @@ from .dense import (
     embedding_service,
     enhanced_embedding_service,
 )
-from .factory import EmbeddingProviderFactory, get_all_supported_models, get_model_config_from_providers
+from .factory import EmbeddingProviderFactory, get_all_supported_models, get_model_config_from_providers, resolve_model_config
 from .models import (
     POPULAR_MODELS,
     QUANTIZED_MODEL_INFO,
@@ -88,6 +88,7 @@ __all__ = [
     # Factory utilities
     "get_all_supported_models",
     "get_model_config_from_providers",
+    "resolve_model_config",
     # Batch management
     "AdaptiveBatchSizeManager",
     # Service functions

@@ -239,3 +239,37 @@ def get_model_config_from_providers(model_name: str) -> Any:
             if config is not None:
                 return config
     return None
+
+
+def resolve_model_config(model_name: str) -> Any:
+    """Resolve model configuration from providers or built-in configs.
+
+    Provides unified model config resolution that:
+    1. First checks registered providers (including plugins)
+    2. Falls back to built-in MODEL_CONFIGS if no provider has the config
+
+    This ensures plugin models are visible to all code that needs
+    model configuration (batch sizing, dimension validation, etc.).
+
+    Args:
+        model_name: HuggingFace model name or other model identifier
+
+    Returns:
+        ModelConfig if found by any provider or in built-ins, None otherwise
+
+    Example:
+        >>> config = resolve_model_config("my-plugin/custom-model")
+        >>> if config:
+        ...     dimension = config.dimension
+        ... else:
+        ...     dimension = DEFAULT_DIMENSION  # safe fallback
+    """
+    # First try providers (includes plugins)
+    config = get_model_config_from_providers(model_name)
+    if config is not None:
+        return config
+
+    # Fall back to built-in configs
+    from .models import get_model_config as builtin_get_model_config
+
+    return builtin_get_model_config(model_name)
