@@ -9,7 +9,7 @@ including error sanitization and structured JSON responses.
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -165,7 +165,7 @@ if INFRASTRUCTURE_AVAILABLE:
         )
 
         # Use the exception translator to create the response
-        return exception_translator.create_error_response(exc, correlation_id)
+        return cast(JSONResponse, exception_translator.create_error_response(exc, correlation_id))
 
 
 async def handle_application_exception(request: Request, exc: Any) -> JSONResponse:

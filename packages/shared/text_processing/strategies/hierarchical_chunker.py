@@ -526,7 +526,8 @@ class HierarchicalChunker:
                 overlap_tokens=self.chunk_overlap // 4,
             )
 
-            results: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, metadata)  # type: ignore
+            results = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+            results = cast(list[ChunkResult], results)
 
             # Update strategy in metadata to show it's character fallback
             for result in results:
