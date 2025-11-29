@@ -132,7 +132,7 @@ class ModelManager:
         new_provider_name = EmbeddingProviderFactory.get_provider_for_model(model_name)
         if new_provider_name is None:
             available = EmbeddingProviderFactory.list_available_providers()
-            raise ValueError(f"No provider found for model: {model_name}. " f"Available providers: {available}")
+            raise ValueError(f"No provider found for model: {model_name}. Available providers: {available}")
 
         # Switch providers if needed (different provider type or different model)
         if self._provider is None or self._provider_name != new_provider_name or self.current_model_key != model_key:
