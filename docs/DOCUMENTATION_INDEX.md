@@ -27,6 +27,7 @@ Welcome to the Semantik documentation! This index provides an organized overview
 - **[COLLECTION_MANAGEMENT.md](./COLLECTION_MANAGEMENT.md)** - User guide for creating and managing document collections.
 - **[SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md)** - Semantic search implementation, optimization strategies, and advanced features.
 - **[EMBEDDING_CONTEXT_MANAGERS.md](./EMBEDDING_CONTEXT_MANAGERS.md)** - Model management, GPU optimization, and embedding strategies.
+- **[EMBEDDING_PLUGINS.md](./EMBEDDING_PLUGINS.md)** - Plugin architecture for embedding providers with external plugin support.
 - **[RERANKING.md](./RERANKING.md)** - Cross-encoder reranking for improved search accuracy.
 
 ### 🏗️ Architecture & Infrastructure
@@ -87,6 +88,8 @@ For developers building applications with Semantik or contributing to the projec
 5. **[TESTING.md](./TESTING.md)** - Writing and running tests
 6. **[FRONTEND_ARCH.md](./FRONTEND_ARCH.md)** - Frontend development guide
 7. **[WEBUI_BACKEND.md](./WEBUI_BACKEND.md)** - Backend service patterns
+8. **[CHUNKING_PLUGINS.md](./CHUNKING_PLUGINS.md)** - Creating custom chunking strategies
+9. **[EMBEDDING_PLUGINS.md](./EMBEDDING_PLUGINS.md)** - Creating custom embedding providers
 
 ### Operations Path
 

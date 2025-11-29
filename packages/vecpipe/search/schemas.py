@@ -1,6 +1,6 @@
 """Local Pydantic schemas used by the vecpipe search API."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,9 @@ class EmbedRequest(BaseModel):
     model_name: str = Field(..., description="Embedding model name")
     quantization: str = Field("float32", description="Model quantization type: float32, float16, int8")
     instruction: str | None = Field(None, description="Optional instruction for embedding generation")
+    mode: Literal["query", "document"] | None = Field(
+        None, description="Embedding mode: 'query' for search queries, 'document' for indexing. Defaults to 'query'."
+    )
     batch_size: int = Field(32, ge=1, le=256, description="Batch size for processing")
 
 

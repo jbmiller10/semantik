@@ -36,12 +36,12 @@ class CollectionSearchRequest(BaseModel):
     @field_validator("keyword_mode", mode="before")
     @classmethod
     def normalize_keyword_mode(cls, value: str) -> str:
-        return normalize_keyword_mode(value)
+        return str(normalize_keyword_mode(value))
 
     @field_validator("hybrid_mode", mode="before")
     @classmethod
     def normalize_hybrid_mode(cls, value: str) -> str:
-        return normalize_hybrid_mode(value)
+        return str(normalize_hybrid_mode(value))
 
     @field_validator("collection_uuids")
     @classmethod

@@ -31,6 +31,7 @@ from shared.database.repositories.collection_repository import CollectionReposit
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from webui.auth import get_current_user, security as http_bearer_security
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -189,16 +190,17 @@ async def get_document_repository(db: AsyncSession = Depends(get_db)) -> Documen
 
 async def get_chunking_orchestrator_dependency(
     db: AsyncSession = Depends(get_db),
-) -> Any:
+) -> ChunkingOrchestrator:
     """Provide chunking orchestrator via composition root."""
     from webui.services.chunking.container import get_chunking_orchestrator as container_get_chunking_orchestrator
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_service_adapter_dependency(
     db: AsyncSession = Depends(get_db),
-) -> Any:
+) -> ChunkingOrchestrator:
     """Backward-compatible alias returning the orchestrator."""
 
     return await get_chunking_orchestrator_dependency(db)
@@ -228,7 +230,7 @@ async def get_current_user_optional(
     override = request.app.dependency_overrides.get(get_current_user)
 
     if override is None:
-        return await get_current_user(credentials)
+        return cast(dict[str, Any] | None, await get_current_user(credentials))
 
     call_target = cast(Callable[..., Any], override)
 

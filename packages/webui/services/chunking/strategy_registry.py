@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 
-from webui.api.v2.chunking_schemas import ChunkingStrategy
+from shared.chunking.types import ChunkingStrategy
 
 DefaultContext = Literal["manager", "builder", "factory"]
 

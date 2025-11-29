@@ -52,7 +52,7 @@ class HierarchicalChunkingStrategy(DomainStrategyAdapter):
             List of hierarchical chunks
         """
         # Delegate to the wrapped strategy
-        chunks = self.strategy.chunk(content, config)
+        chunks: list[Chunk] = self.strategy.chunk(content, config)
 
         # Fix metadata placement - move hierarchy-related fields to custom_attributes
         for chunk in chunks:

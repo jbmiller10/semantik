@@ -145,7 +145,7 @@ class TestAuditLogging:
     """Test audit logging functionality."""
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_audit_log_operation_success(self, mock_async_session_local, mock_audit_log_class) -> None:
         """Test successful audit log creation."""
         # Create a proper async session mock
@@ -192,7 +192,7 @@ class TestAuditLogging:
         mock_session.add.assert_called_once_with(mock_audit_log)
         mock_session.commit.assert_called_once()
 
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_audit_log_operation_failure(self, mock_async_session_local) -> None:
         """Test audit log creation handles failures gracefully."""
         # Create a mock session that fails on commit
@@ -214,7 +214,7 @@ class TestAuditLogging:
         # Function should complete without raising
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.cleanup.AsyncSessionLocal")
     async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class) -> None:
         """Test audit logging for collection deletion."""
         # Create a proper async session mock
@@ -253,7 +253,7 @@ class TestAuditLogging:
         mock_session.commit.assert_called_once()
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.cleanup.AsyncSessionLocal")
     async def test_audit_collection_deletions_batch(self, mock_session_local, mock_audit_log_class) -> None:
         """Test batch audit logging for multiple collection deletions."""
         # Create a proper async session mock
@@ -302,7 +302,7 @@ class TestMetricsRecording:
     """Test metrics recording functionality."""
 
     @patch("shared.database.models.OperationMetrics")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_record_operation_metrics_success(self, mock_session_local, mock_metrics_class) -> None:
         """Test successful operation metrics recording."""
         # Create a proper async session mock
@@ -377,7 +377,7 @@ class TestActiveCollections:
     """Test active collections retrieval."""
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_get_active_collections(self, mock_session_local, mock_repo_class) -> None:
         """Test getting active collections from database."""
         # Create a proper async session mock
@@ -427,7 +427,7 @@ class TestActiveCollections:
     # col3 has no vector store name, so nothing from it
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_get_active_collections_with_string_staging(self, mock_session_local, mock_repo_class) -> None:
         """Test handling of staging info as dict."""
         # Create a proper async session mock
@@ -468,7 +468,7 @@ class TestStagingCleanup:
     """Test staging resource cleanup."""
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     @patch("webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_success(
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
@@ -515,7 +515,7 @@ class TestStagingCleanup:
         mock_repo.update.assert_called_once_with("col-123", {"qdrant_staging": None})
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_cleanup_staging_resources_no_staging(self, mock_session_local, mock_repo_class) -> None:
         """Test cleanup when no staging exists."""
         # Create a proper async session mock
@@ -546,7 +546,7 @@ class TestStagingCleanup:
         mock_repo.update.assert_not_called()
 
     @patch("shared.database.repositories.collection_repository.CollectionRepository")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     @patch("webui.tasks.qdrant_manager")
     async def test_cleanup_staging_resources_qdrant_failure(
         self, mock_qdrant_manager, mock_session_local, mock_repo_class
@@ -739,7 +739,7 @@ class TestEdgeCases:
         assert calculate_cleanup_delay(10**9) == CLEANUP_DELAY_MAX_SECONDS
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("shared.database.database.AsyncSessionLocal")
+    @patch("webui.tasks.utils.AsyncSessionLocal")
     async def test_audit_log_with_circular_reference(self, mock_session_local, mock_audit_log_class) -> None:
         """Test audit logging handles circular references in details."""
         # Create a proper async session mock

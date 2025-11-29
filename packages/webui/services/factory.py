@@ -1,6 +1,7 @@
 """Factory functions for creating service instances with dependencies."""
 
 import logging
+from typing import cast
 
 import httpx
 from fastapi import Depends
@@ -34,7 +35,7 @@ logger = logging.getLogger(__name__)
 def get_redis_manager() -> RedisManager:
     """Backward-compatible wrapper over chunking container Redis manager."""
 
-    manager = container_get_redis_manager()
+    manager = cast(RedisManager, container_get_redis_manager())
     logger.debug("Reusing Redis manager from chunking container")
     return manager
 
@@ -295,13 +296,15 @@ async def get_directory_scan_service() -> DirectoryScanService:
 async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
     """Create orchestrator using composition root."""
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
     """FastAPI dependency for orchestrator injection (new architecture)."""
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_service(

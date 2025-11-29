@@ -110,6 +110,9 @@ async def process_document_async(
         record_chunks_created(len(texts))
 
         # Generate embeddings using the unified service with timing
+        # Use DOCUMENT mode since we're indexing documents, not searching
+        from shared.embedding.types import EmbeddingMode
+
         with TimingContext(embedding_batch_duration):
             embeddings = embedding_service.generate_embeddings(
                 texts=texts,
@@ -117,6 +120,7 @@ async def process_document_async(
                 quantization=args.quantization,
                 batch_size=args.batch_size,
                 show_progress=False,  # Disable per-file progress since we have overall progress
+                mode=EmbeddingMode.DOCUMENT,
             )
 
         if embeddings is None:

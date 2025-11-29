@@ -45,6 +45,7 @@ from .api.v2 import (
     collections as v2_collections,
     directory_scan as v2_directory_scan,
     documents as v2_documents,
+    embedding as v2_embedding,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
     projections as v2_projections,
@@ -299,6 +300,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_collections.router)
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)
+    app.include_router(v2_embedding.router)
     app.include_router(v2_operations.router)
     app.include_router(v2_projections.router)
     app.include_router(v2_partition_monitoring.router)

@@ -86,6 +86,7 @@ async def process_document(document: Document, collection: Collection, session: 
             "quantization": collection.quantization or "float16",
             "instruction": None,
             "batch_size": 32,
+            "mode": "document",  # Document indexing uses document mode
         }
 
         print(f"  Generating embeddings for {len(texts)} chunks...")

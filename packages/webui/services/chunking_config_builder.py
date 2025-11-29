@@ -210,7 +210,8 @@ class ChunkingConfigBuilder:
 
     def get_default_config(self, strategy: ChunkingStrategyEnum) -> dict[str, Any]:
         """Get default configuration for a strategy."""
-        return get_strategy_defaults(strategy, context="builder")
+        result: dict[str, Any] = get_strategy_defaults(strategy, context="builder")
+        return result
 
     def validate_parameter(
         self,

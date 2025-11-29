@@ -538,7 +538,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
             if chunks:
                 texts = [c.get("text", "") for c in chunks]
-                embed_req = {"texts": texts, "model_name": collection.get("embedding_model")}
+                embed_req = {"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"}
                 upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
@@ -595,7 +595,7 @@ async def _process_index_operation(
     from qdrant_client.models import Distance, VectorParams
 
     from shared.database.collection_metadata import ensure_metadata_collection, store_collection_metadata
-    from shared.embedding.models import get_model_config
+    from shared.embedding.factory import resolve_model_config
     from shared.embedding.validation import get_model_dimension
     from shared.metrics.collection_metrics import record_qdrant_operation
 
@@ -624,7 +624,8 @@ async def _process_index_operation(
         vector_dim = config.get("vector_dim")
         if not vector_dim:
             model_name = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
-            model_config = get_model_config(model_name)
+            # Use resolve_model_config to check providers (including plugins) first
+            model_config = resolve_model_config(model_name)
             if model_config:
                 vector_dim = model_config.dimension
             else:
@@ -943,6 +944,7 @@ async def _process_append_operation_impl(
                         "quantization": quantization,
                         "instruction": instruction,
                         "batch_size": batch_size,
+                        "mode": "document",  # Document indexing uses document mode
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:

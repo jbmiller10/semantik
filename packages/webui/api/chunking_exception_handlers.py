@@ -9,12 +9,12 @@ including error sanitization and structured JSON responses.
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
@@ -165,7 +165,7 @@ if INFRASTRUCTURE_AVAILABLE:
         )
 
         # Use the exception translator to create the response
-        return exception_translator.create_error_response(exc, correlation_id)
+        return cast(JSONResponse, exception_translator.create_error_response(exc, correlation_id))
 
 
 async def handle_application_exception(request: Request, exc: Any) -> JSONResponse:
@@ -297,19 +297,19 @@ def register_chunking_exception_handlers(app: FastAPI) -> None:
     """
     # Type-cast handlers to match FastAPI's expected signature
     # FastAPI expects: Callable[[Request, Exception], Response]
-    app.add_exception_handler(ChunkingMemoryError, handle_chunking_memory_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingTimeoutError, handle_chunking_timeout_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingValidationError, handle_chunking_validation_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingStrategyError, handle_chunking_strategy_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingResourceLimitError, handle_chunking_resource_limit_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingPartialFailureError, handle_chunking_partial_failure_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingConfigurationError, handle_chunking_configuration_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingDependencyError, handle_chunking_dependency_error)  # type: ignore[arg-type]
-    app.add_exception_handler(ChunkingError, handle_base_chunking_error)  # type: ignore[arg-type]  # Base class as fallback
+    app.add_exception_handler(ChunkingMemoryError, handle_chunking_memory_error)
+    app.add_exception_handler(ChunkingTimeoutError, handle_chunking_timeout_error)
+    app.add_exception_handler(ChunkingValidationError, handle_chunking_validation_error)
+    app.add_exception_handler(ChunkingStrategyError, handle_chunking_strategy_error)
+    app.add_exception_handler(ChunkingResourceLimitError, handle_chunking_resource_limit_error)
+    app.add_exception_handler(ChunkingPartialFailureError, handle_chunking_partial_failure_error)
+    app.add_exception_handler(ChunkingConfigurationError, handle_chunking_configuration_error)
+    app.add_exception_handler(ChunkingDependencyError, handle_chunking_dependency_error)
+    app.add_exception_handler(ChunkingError, handle_base_chunking_error)  # Base class as fallback
 
     # Register infrastructure handlers if available
     if INFRASTRUCTURE_AVAILABLE:
-        app.add_exception_handler(BaseChunkingException, handle_chunking_exception)  # type: ignore[arg-type]
+        app.add_exception_handler(BaseChunkingException, handle_chunking_exception)
         app.add_exception_handler(ApplicationException, handle_application_exception)
         app.add_exception_handler(DomainException, handle_domain_exception)
         app.add_exception_handler(InfrastructureException, handle_infrastructure_exception)

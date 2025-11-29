@@ -408,4 +408,4 @@ class CharacterChunkingStrategy(UnifiedChunkingStrategy):
         # Convert character length to estimated tokens
         estimated_tokens = content_length // 4
 
-        return config.estimate_chunks(estimated_tokens)
+        return int(config.estimate_chunks(estimated_tokens))

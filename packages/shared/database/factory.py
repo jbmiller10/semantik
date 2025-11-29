@@ -34,7 +34,8 @@ def create_user_repository(session: AsyncSession) -> UserRepository:
     """
     from webui.repositories.postgres import PostgreSQLUserRepository
 
-    return PostgreSQLUserRepository(session)
+    result: UserRepository = PostgreSQLUserRepository(session)
+    return result
 
 
 def create_auth_repository(session: AsyncSession) -> AuthRepository:
@@ -48,7 +49,8 @@ def create_auth_repository(session: AsyncSession) -> AuthRepository:
     """
     from webui.repositories.postgres import PostgreSQLAuthRepository
 
-    return PostgreSQLAuthRepository(session)
+    result: AuthRepository = PostgreSQLAuthRepository(session)
+    return result
 
 
 def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
@@ -62,7 +64,8 @@ def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     """
     from webui.repositories.postgres import PostgreSQLApiKeyRepository
 
-    return PostgreSQLApiKeyRepository(session)
+    result: ApiKeyRepository = PostgreSQLApiKeyRepository(session)
+    return result
 
 
 def create_operation_repository(session: AsyncSession) -> "OperationRepository":
