@@ -56,15 +56,9 @@ class TestModelSupport:
 
     def test_supports_model_sentence_transformers(self) -> None:
         """Test detection of sentence-transformers models."""
-        assert DenseLocalEmbeddingProvider.supports_model(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
-        assert DenseLocalEmbeddingProvider.supports_model(
-            "sentence-transformers/all-mpnet-base-v2"
-        )
-        assert DenseLocalEmbeddingProvider.supports_model(
-            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        )
+        assert DenseLocalEmbeddingProvider.supports_model("sentence-transformers/all-MiniLM-L6-v2")
+        assert DenseLocalEmbeddingProvider.supports_model("sentence-transformers/all-mpnet-base-v2")
+        assert DenseLocalEmbeddingProvider.supports_model("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     def test_supports_model_qwen(self) -> None:
         """Test detection of Qwen embedding models."""
@@ -100,9 +94,7 @@ class TestModelConfig:
 
     def test_get_model_config_known_model(self) -> None:
         """Test getting config for a known model."""
-        config = DenseLocalEmbeddingProvider.get_model_config(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        config = DenseLocalEmbeddingProvider.get_model_config("sentence-transformers/all-MiniLM-L6-v2")
 
         # Should return a config if the model is in MODEL_CONFIGS
         # Note: Result depends on what's in MODEL_CONFIGS

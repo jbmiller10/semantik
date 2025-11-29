@@ -1298,9 +1298,7 @@ async def list_models() -> dict[str, Any]:
                 "description": model_info.get("description", ""),
                 "dimension": model_info.get("dimension"),
                 "supports_quantization": model_info.get("supports_quantization", True),
-                "recommended_quantization": model_info.get(
-                    "recommended_quantization", "float32"
-                ),
+                "recommended_quantization": model_info.get("recommended_quantization", "float32"),
                 "memory_estimate": model_info.get("memory_estimate", {}),
                 "is_qwen3": "Qwen3-Embedding" in model_name,
                 # New plugin-aware fields
@@ -1433,21 +1431,25 @@ async def embedding_info() -> dict[str, Any]:
             model_name = current_model_key
             quantization = provider_info.get("quantization", "unknown")
 
-        info.update({
-            "current_model": model_name,
-            "quantization": quantization,
-            "device": provider_info.get("device"),
-            "provider": model_status.get("embedding_provider"),
-            "dimension": provider_info.get("dimension"),
-            "model_details": provider_info,
-        })
+        info.update(
+            {
+                "current_model": model_name,
+                "quantization": quantization,
+                "device": provider_info.get("device"),
+                "provider": model_status.get("embedding_provider"),
+                "dimension": provider_info.get("dimension"),
+                "model_details": provider_info,
+            }
+        )
     elif search_state.model_manager is not None:
         # Model not loaded yet (lazy loading) - still indicate availability
         info["note"] = "Embedding model loaded on first use"
         # Include defaults from settings
-        info.update({
-            "default_model": cfg.DEFAULT_EMBEDDING_MODEL,
-            "default_quantization": cfg.DEFAULT_QUANTIZATION,
-        })
+        info.update(
+            {
+                "default_model": cfg.DEFAULT_EMBEDDING_MODEL,
+                "default_quantization": cfg.DEFAULT_QUANTIZATION,
+            }
+        )
 
     return info

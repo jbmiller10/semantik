@@ -128,9 +128,7 @@ class TestMockProviderEmbedding:
         return provider
 
     @pytest.mark.asyncio()
-    async def test_embed_texts_shape(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_texts_shape(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test embedding shape is correct."""
         texts = ["hello", "world", "test"]
         embeddings = await initialized_provider.embed_texts(texts)
@@ -139,18 +137,14 @@ class TestMockProviderEmbedding:
         assert embeddings.dtype == np.float32
 
     @pytest.mark.asyncio()
-    async def test_embed_texts_empty(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_texts_empty(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test embedding empty list."""
         embeddings = await initialized_provider.embed_texts([])
 
         assert embeddings.shape == (0, 384)
 
     @pytest.mark.asyncio()
-    async def test_embed_single_shape(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_single_shape(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test single embedding shape."""
         embedding = await initialized_provider.embed_single("hello")
 
@@ -158,9 +152,7 @@ class TestMockProviderEmbedding:
         assert embedding.dtype == np.float32
 
     @pytest.mark.asyncio()
-    async def test_embed_texts_deterministic(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_texts_deterministic(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test that embeddings are deterministic."""
         text = "hello world"
 
@@ -170,9 +162,7 @@ class TestMockProviderEmbedding:
         np.testing.assert_array_equal(embedding1, embedding2)
 
     @pytest.mark.asyncio()
-    async def test_same_text_same_embedding(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_same_text_same_embedding(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test same text produces same embedding across calls."""
         text = "consistent text"
 
@@ -187,9 +177,7 @@ class TestMockProviderEmbedding:
             np.testing.assert_array_equal(embeddings[0], embeddings[i])
 
     @pytest.mark.asyncio()
-    async def test_different_text_different_embedding(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_different_text_different_embedding(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test different text produces different embeddings."""
         embedding1 = await initialized_provider.embed_single("hello")
         embedding2 = await initialized_provider.embed_single("world")
@@ -214,25 +202,19 @@ class TestMockProviderEmbedding:
             await provider.embed_single("hello")
 
     @pytest.mark.asyncio()
-    async def test_embed_texts_invalid_input_raises(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_texts_invalid_input_raises(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test that non-list input raises ValueError."""
         with pytest.raises(ValueError, match="must be a list"):
             await initialized_provider.embed_texts("not a list")  # type: ignore[arg-type]
 
     @pytest.mark.asyncio()
-    async def test_embed_single_invalid_input_raises(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embed_single_invalid_input_raises(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test that non-string input raises ValueError."""
         with pytest.raises(ValueError, match="must be a string"):
             await initialized_provider.embed_single(123)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio()
-    async def test_embeddings_normalized(
-        self, initialized_provider: MockEmbeddingProvider
-    ) -> None:
+    async def test_embeddings_normalized(self, initialized_provider: MockEmbeddingProvider) -> None:
         """Test that embeddings are normalized by default."""
         embedding = await initialized_provider.embed_single("test text")
 

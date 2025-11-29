@@ -55,9 +55,7 @@ class TestEmbeddingModeUsage:
     def test_mode_in_function_signature(self) -> None:
         """Test that mode can be used as optional parameter."""
 
-        def embed_with_mode(
-            _text: str, mode: EmbeddingMode | None = None
-        ) -> str:
+        def embed_with_mode(_text: str, mode: EmbeddingMode | None = None) -> str:
             if mode is None:
                 mode = EmbeddingMode.QUERY
             return f"Embedded with {mode.value} mode"

@@ -20,18 +20,14 @@ if TYPE_CHECKING:
 class TestProviderRegistration:
     """Tests for provider registration in the factory."""
 
-    def test_register_provider(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_register_provider(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test registering a provider class."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
         assert "dummy" in _PROVIDER_CLASSES
         assert _PROVIDER_CLASSES["dummy"] == dummy_plugin_class
 
-    def test_unregister_provider(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_unregister_provider(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test unregistering a provider class."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
         assert "dummy" in _PROVIDER_CLASSES
@@ -59,9 +55,7 @@ class TestProviderRegistration:
         providers = EmbeddingProviderFactory.list_available_providers()
         assert len(providers) == 0
 
-    def test_get_provider_class(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_get_provider_class(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test getting a provider class by name."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
@@ -73,9 +67,7 @@ class TestProviderRegistration:
         result = EmbeddingProviderFactory.get_provider_class("nonexistent")
         assert result is None
 
-    def test_clear_providers(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_clear_providers(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test clearing all providers."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
         assert len(_PROVIDER_CLASSES) == 1
@@ -97,9 +89,7 @@ class TestProviderCreation:
 
         assert isinstance(provider, dummy_plugin_class)
 
-    def test_create_provider_by_name(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_create_provider_by_name(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test creating a provider by explicit name."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
@@ -124,9 +114,7 @@ class TestProviderCreation:
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
         config = {"test_key": "test_value"}
-        provider = EmbeddingProviderFactory.create_provider(
-            "dummy/my-model", config=config
-        )
+        provider = EmbeddingProviderFactory.create_provider("dummy/my-model", config=config)
 
         assert provider.config == config
 
@@ -136,9 +124,7 @@ class TestProviderCreation:
         """Test that kwargs are passed to the provider constructor."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
-        provider = EmbeddingProviderFactory.create_provider(
-            "dummy/my-model", dimension=256
-        )
+        provider = EmbeddingProviderFactory.create_provider("dummy/my-model", dimension=256)
 
         assert provider.dimension == 256
 
@@ -146,9 +132,7 @@ class TestProviderCreation:
 class TestModelSupport:
     """Tests for model support checking."""
 
-    def test_is_model_supported_true(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_is_model_supported_true(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test checking if a model is supported (positive case)."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
@@ -158,9 +142,7 @@ class TestModelSupport:
         """Test checking if a model is supported (negative case)."""
         assert EmbeddingProviderFactory.is_model_supported("unknown/model") is False
 
-    def test_get_provider_for_model(
-        self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]
-    ) -> None:
+    def test_get_provider_for_model(self, empty_registry: None, dummy_plugin_class: type[BaseEmbeddingPlugin]) -> None:
         """Test getting the provider name for a model."""
         EmbeddingProviderFactory.register_provider("dummy", dummy_plugin_class)
 
@@ -188,18 +170,14 @@ class TestBuiltinProviders:
 
     def test_create_provider_sentence_transformer(self, clean_registry: None) -> None:
         """Test auto-detection of sentence-transformer models."""
-        provider = EmbeddingProviderFactory.create_provider(
-            "sentence-transformers/all-MiniLM-L6-v2"
-        )
+        provider = EmbeddingProviderFactory.create_provider("sentence-transformers/all-MiniLM-L6-v2")
 
         # Should create a DenseLocalEmbeddingProvider
         assert provider.INTERNAL_NAME == "dense_local"
 
     def test_create_provider_qwen(self, clean_registry: None) -> None:
         """Test auto-detection of Qwen models."""
-        provider = EmbeddingProviderFactory.create_provider(
-            "Qwen/Qwen3-Embedding-0.6B"
-        )
+        provider = EmbeddingProviderFactory.create_provider("Qwen/Qwen3-Embedding-0.6B")
 
         # Should create a DenseLocalEmbeddingProvider
         assert provider.INTERNAL_NAME == "dense_local"
@@ -238,9 +216,7 @@ class TestHelperFunctions:
         result = get_model_config_from_providers("dummy/my-model")
         assert result is None
 
-    def test_get_model_config_from_providers_builtin(
-        self, clean_registry: None
-    ) -> None:
+    def test_get_model_config_from_providers_builtin(self, clean_registry: None) -> None:
         """Test getting model config for built-in models."""
         result = get_model_config_from_providers("mock")
 

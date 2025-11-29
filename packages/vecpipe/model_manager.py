@@ -83,9 +83,7 @@ class ModelManager:
         """Update the last reranker used timestamp - must be called within reranker_lock."""
         self.last_reranker_used = time.time()
 
-    async def _ensure_provider_initialized(
-        self, model_name: str, quantization: str
-    ) -> "BaseEmbeddingPlugin":
+    async def _ensure_provider_initialized(self, model_name: str, quantization: str) -> "BaseEmbeddingPlugin":
         """Ensure the embedding provider is initialized for the given model.
 
         This method:
@@ -134,17 +132,10 @@ class ModelManager:
         new_provider_name = EmbeddingProviderFactory.get_provider_for_model(model_name)
         if new_provider_name is None:
             available = EmbeddingProviderFactory.list_available_providers()
-            raise ValueError(
-                f"No provider found for model: {model_name}. "
-                f"Available providers: {available}"
-            )
+            raise ValueError(f"No provider found for model: {model_name}. " f"Available providers: {available}")
 
         # Switch providers if needed (different provider type or different model)
-        if (
-            self._provider is None
-            or self._provider_name != new_provider_name
-            or self.current_model_key != model_key
-        ):
+        if self._provider is None or self._provider_name != new_provider_name or self.current_model_key != model_key:
             if self._provider is not None:
                 logger.info(
                     "Switching provider from '%s' to '%s' for model '%s'",
@@ -269,9 +260,7 @@ class ModelManager:
             embedding_mode = EmbeddingMode.DOCUMENT
 
         # Generate embedding using provider (native async)
-        embedding = await provider.embed_single(
-            text, mode=embedding_mode, instruction=instruction
-        )
+        embedding = await provider.embed_single(text, mode=embedding_mode, instruction=instruction)
         result: list[float] = embedding.tolist()
         return result
 

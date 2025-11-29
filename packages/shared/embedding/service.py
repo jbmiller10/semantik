@@ -80,9 +80,7 @@ async def get_embedding_service(
 
                 if current_provider != new_provider:
                     # Need a different provider type
-                    logger.info(
-                        f"Switching providers: {current_provider} -> {new_provider} for model {model_name}"
-                    )
+                    logger.info(f"Switching providers: {current_provider} -> {new_provider} for model {model_name}")
                     if _embedding_service.is_initialized:
                         await _embedding_service.cleanup()
                     need_new_service = True
@@ -107,9 +105,7 @@ async def get_embedding_service(
                     # Use factory to create appropriate provider
                     from .factory import EmbeddingProviderFactory
 
-                    _embedding_service = EmbeddingProviderFactory.create_provider(
-                        model_name, config=config, **kwargs
-                    )
+                    _embedding_service = EmbeddingProviderFactory.create_provider(model_name, config=config, **kwargs)
                     _current_model_name = model_name
                 else:
                     # Fall back to DenseEmbeddingService for backward compatibility
@@ -148,9 +144,7 @@ async def initialize_embedding_service(
     try:
         # Extract service creation kwargs
         mock_mode = kwargs.get("mock_mode", False)
-        service = await get_embedding_service(
-            config=config, model_name=model_name, mock_mode=mock_mode
-        )
+        service = await get_embedding_service(config=config, model_name=model_name, mock_mode=mock_mode)
 
         if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
             await service.initialize(model_name, **kwargs)

@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from statistics import fmean
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,9 +42,9 @@ from webui.services.dtos import (
     ServiceSavedConfiguration,
     ServiceStrategyComparison,
     ServiceStrategyInfo,
-    ServiceStrategyMetrics,
     ServiceStrategyRecommendation,
 )
+from webui.services.dtos.chunking_dtos import ServiceStrategyMetrics
 
 from .cache import ChunkingCache
 from .config_manager import ChunkingConfigManager
@@ -842,7 +842,7 @@ class ChunkingOrchestrator:
             # Fall back to default structure if unexpected type is returned
             return ServiceStrategyMetrics.create_default_metrics()
         except Exception:  # pragma: no cover - defensive
-            return ServiceStrategyMetrics.create_default_metrics()
+            return ServiceStrategyMetrics.create_default_metrics()  # type: ignore[no-any-return]
 
     async def get_quality_scores(
         self,
