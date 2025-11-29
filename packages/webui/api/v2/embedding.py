@@ -15,7 +15,7 @@ from shared.embedding.provider_registry import (
 )
 from webui.auth import get_current_user
 
-router = APIRouter(prefix="/embedding", tags=["embedding"])
+router = APIRouter(prefix="/api/v2/embedding", tags=["embedding-v2"])
 
 
 @router.get("/providers")
