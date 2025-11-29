@@ -9,6 +9,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException
 
 from shared.embedding.factory import EmbeddingProviderFactory, get_all_supported_models, get_model_config_from_providers
+from shared.embedding.plugin_loader import ensure_providers_registered
 from shared.embedding.provider_registry import (
     get_provider_definition,
     list_provider_metadata_list,
@@ -30,6 +31,8 @@ async def list_embedding_providers(
     Returns:
         List of provider metadata dictionaries
     """
+    # Ensure built-in providers and plugins are registered before querying
+    ensure_providers_registered()
     return cast(list[dict[str, Any]], list_provider_metadata_list())
 
 
@@ -49,6 +52,8 @@ async def get_provider_info(
     Raises:
         HTTPException: 404 if provider not found
     """
+    # Ensure built-in providers and plugins are registered before querying
+    ensure_providers_registered()
     definition = get_provider_definition(provider_id)
     if not definition:
         raise HTTPException(status_code=404, detail=f"Provider not found: {provider_id}")
@@ -67,6 +72,8 @@ async def list_embedding_models(
     Returns:
         List of model configuration dictionaries with provider information
     """
+    # Ensure built-in providers and plugins are registered before querying
+    ensure_providers_registered()
     return cast(list[dict[str, Any]], get_all_supported_models())
 
 
@@ -86,6 +93,8 @@ async def get_model_info(
     Raises:
         HTTPException: 404 if model not found
     """
+    # Ensure built-in providers and plugins are registered before querying
+    ensure_providers_registered()
     config = get_model_config_from_providers(model_name)
     if not config:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_name}")
@@ -111,6 +120,8 @@ async def check_model_support(
     Returns:
         Dictionary with support status and provider name
     """
+    # Ensure built-in providers and plugins are registered before querying
+    ensure_providers_registered()
     provider = EmbeddingProviderFactory.get_provider_for_model(model_name)
     return {
         "model_name": model_name,
