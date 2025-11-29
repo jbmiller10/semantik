@@ -17,8 +17,8 @@ def _register_builtin_providers() -> None:
 
     This is called automatically on module import.
     """
-    from ..factory import EmbeddingProviderFactory
-    from ..provider_registry import register_provider_definition
+    from shared.embedding.factory import EmbeddingProviderFactory
+    from shared.embedding.provider_registry import register_provider_definition
 
     # Register dense local provider
     EmbeddingProviderFactory.register_provider(

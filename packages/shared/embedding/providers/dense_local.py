@@ -18,20 +18,20 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
-from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
+from shared.embedding.models import MODEL_CONFIGS, ModelConfig, get_model_config
+from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
+from shared.embedding.types import EmbeddingMode
 from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
 
-from ..models import MODEL_CONFIGS, ModelConfig, get_model_config
-from ..plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
-from ..types import EmbeddingMode
-
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+    from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+
     from shared.config.vecpipe import VecpipeConfig
 
 logger = logging.getLogger(__name__)
@@ -125,12 +125,12 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         "Qwen/Qwen2-Embedding",
     )
 
-    def __init__(self, config: VecpipeConfig | None = None, **kwargs: Any) -> None:
+    def __init__(self, config: VecpipeConfig | None = None, **_kwargs: Any) -> None:
         """Initialize the dense local embedding provider.
 
         Args:
             config: Optional VecpipeConfig for configuration
-            **kwargs: Additional options
+            **_kwargs: Additional options (unused in base init)
         """
         self.model: PreTrainedModel | SentenceTransformer | None = None
         self.tokenizer: PreTrainedTokenizerBase | None = None
@@ -199,11 +199,7 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
                 return True
 
         # Check Qwen patterns
-        for pattern in cls._QWEN_PATTERNS:
-            if model_name.startswith(pattern):
-                return True
-
-        return False
+        return any(model_name.startswith(pattern) for pattern in cls._QWEN_PATTERNS)
 
     @classmethod
     def get_model_config(cls, model_name: str) -> ModelConfig | None:

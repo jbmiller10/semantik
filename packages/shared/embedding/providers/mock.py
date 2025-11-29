@@ -8,14 +8,17 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
-from numpy.typing import NDArray
 
-from ..models import ModelConfig, get_model_config
-from ..plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
-from ..types import EmbeddingMode
+from shared.embedding.models import ModelConfig, get_model_config
+from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    from shared.embedding.types import EmbeddingMode
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +191,9 @@ class MockEmbeddingProvider(BaseEmbeddingPlugin):
     async def embed_texts(
         self,
         texts: list[str],
-        batch_size: int = 32,
+        batch_size: int = 32,  # noqa: ARG002
         *,
-        mode: EmbeddingMode | None = None,  # noqa: ARG002 - unused but required by interface
+        mode: EmbeddingMode | None = None,  # noqa: ARG002
         **kwargs: Any,
     ) -> NDArray[np.float32]:
         """Generate deterministic embeddings for multiple texts.

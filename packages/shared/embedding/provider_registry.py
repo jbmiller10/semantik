@@ -13,10 +13,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .plugin_base import EmbeddingProviderDefinition
 
-# Import at runtime for registration
-if not TYPE_CHECKING:
-    from .plugin_base import EmbeddingProviderDefinition
-
 # Registry storage - maps api_id to definition
 _PROVIDERS: dict[str, EmbeddingProviderDefinition] = {}
 

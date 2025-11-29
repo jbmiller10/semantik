@@ -141,7 +141,9 @@ async def initialize_embedding_service(
     try:
         # Extract service creation kwargs
         mock_mode = kwargs.get("mock_mode", False)
-        service = await get_embedding_service(config=config, mock_mode=mock_mode)
+        service = await get_embedding_service(
+            config=config, model_name=model_name, mock_mode=mock_mode
+        )
 
         if not service.is_initialized or (hasattr(service, "model_name") and service.model_name != model_name):
             await service.initialize(model_name, **kwargs)

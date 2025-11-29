@@ -119,12 +119,12 @@ class BaseEmbeddingPlugin(BaseEmbeddingService):
     # Optional metadata for UI/API exposure
     METADATA: ClassVar[dict[str, Any]] = {}
 
-    def __init__(self, config: Any | None = None, **kwargs: Any) -> None:
+    def __init__(self, config: Any | None = None, **_kwargs: Any) -> None:
         """Initialize the plugin with optional configuration.
 
         Args:
             config: Optional configuration object (VecpipeConfig or similar)
-            **kwargs: Additional initialization options
+            **_kwargs: Additional initialization options (unused in base class)
         """
         self.config = config
 
@@ -156,7 +156,7 @@ class BaseEmbeddingPlugin(BaseEmbeddingService):
         """
 
     @classmethod
-    def get_model_config(cls, model_name: str) -> ModelConfig | None:
+    def get_model_config(cls, model_name: str) -> ModelConfig | None:  # noqa: ARG003
         """Get configuration for a specific model.
 
         Override this method in subclasses to provide model-specific configuration.
