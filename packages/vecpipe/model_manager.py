@@ -145,7 +145,12 @@ class ModelManager:
                     pass
 
     async def generate_embedding_async(
-        self, text: str, model_name: str, quantization: str, instruction: str | None = None
+        self,
+        text: str,
+        model_name: str,
+        quantization: str,
+        instruction: str | None = None,
+        mode: str | None = None,
     ) -> list[float] | None:
         """
         Generate embedding with lazy model loading
@@ -155,6 +160,7 @@ class ModelManager:
             model_name: Model to use
             quantization: Quantization type
             instruction: Optional instruction for the model
+            mode: Embedding mode - 'query' for search, 'document' for indexing
 
         Returns:
             Embedding vector or None if failed
@@ -183,15 +189,36 @@ class ModelManager:
                 values.append(0.0)
             return values[:1024]  # Standard mock size
 
+        # Convert mode string to EmbeddingMode enum
+        from shared.embedding.types import EmbeddingMode
+
+        embedding_mode = None
+        if mode == "query":
+            embedding_mode = EmbeddingMode.QUERY
+        elif mode == "document":
+            embedding_mode = EmbeddingMode.DOCUMENT
+
         # Use real embedding service
         loop = asyncio.get_event_loop()
         assert self.embedding_service is not None  # Already checked in ensure_model_loaded
         return await loop.run_in_executor(
-            self.executor, self.embedding_service.generate_single_embedding, text, model_name, quantization, instruction
+            self.executor,
+            self.embedding_service.generate_single_embedding,
+            text,
+            model_name,
+            quantization,
+            instruction,
+            embedding_mode,
         )
 
     async def generate_embeddings_batch_async(
-        self, texts: list[str], model_name: str, quantization: str, instruction: str | None = None, batch_size: int = 32
+        self,
+        texts: list[str],
+        model_name: str,
+        quantization: str,
+        instruction: str | None = None,
+        batch_size: int = 32,
+        mode: str | None = None,
     ) -> list[list[float]]:
         """
         Generate embeddings for multiple texts with lazy model loading using batch processing
@@ -202,6 +229,7 @@ class ModelManager:
             quantization: Quantization type
             instruction: Optional instruction for the model
             batch_size: Initial batch size for processing (will be adapted based on GPU memory)
+            mode: Embedding mode - 'query' for search, 'document' for indexing
 
         Returns:
             List of embedding vectors
@@ -236,6 +264,15 @@ class ModelManager:
                 embeddings.append(values[:1024])  # Standard mock size
             return embeddings
 
+        # Convert mode string to EmbeddingMode enum
+        from shared.embedding.types import EmbeddingMode
+
+        embedding_mode = None
+        if mode == "query":
+            embedding_mode = EmbeddingMode.QUERY
+        elif mode == "document":
+            embedding_mode = EmbeddingMode.DOCUMENT
+
         # Use real embedding service with batch processing
         loop = asyncio.get_event_loop()
         assert self.embedding_service is not None  # Already checked in ensure_model_loaded
@@ -250,6 +287,7 @@ class ModelManager:
             batch_size,  # Initial batch size - the service will handle adaptive sizing
             False,  # show_progress
             instruction,
+            embedding_mode,
         )
 
         if embeddings_array is None:

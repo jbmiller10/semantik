@@ -2,6 +2,9 @@
 
 This module provides the primary interface for embedding services throughout the application.
 It manages service lifecycle and provides both sync and async interfaces.
+
+The service now uses the plugin-based provider system, with auto-detection of the
+appropriate provider based on model name.
 """
 
 import asyncio
@@ -14,7 +17,6 @@ from numpy.typing import NDArray
 from shared.config.vecpipe import VecpipeConfig
 
 from .base import BaseEmbeddingService
-from .dense import DenseEmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -22,30 +24,97 @@ logger = logging.getLogger(__name__)
 _embedding_service: BaseEmbeddingService | None = None
 _service_lock = asyncio.Lock()
 
+# Track current model for service reuse
+_current_model_name: str | None = None
 
-async def get_embedding_service(config: VecpipeConfig | None = None, **kwargs: Any) -> BaseEmbeddingService:
+
+def _ensure_providers_registered() -> None:
+    """Ensure providers are registered before use."""
+    # Import triggers registration in providers/__init__.py
+    from . import providers as _  # noqa: F401
+
+
+async def get_embedding_service(
+    config: VecpipeConfig | None = None,
+    model_name: str | None = None,
+    **kwargs: Any,
+) -> BaseEmbeddingService:
     """Get or create the singleton embedding service instance.
+
+    Uses the plugin-based provider system to auto-detect the appropriate
+    provider based on model name.
 
     Args:
         config: Optional configuration object for dependency injection
+        model_name: Optional model name for provider auto-detection
         **kwargs: Options passed to service creation (e.g., mock_mode)
 
     Returns:
-        The initialized embedding service
+        The embedding service instance (may need initialization)
 
     Raises:
         RuntimeError: If service cannot be created
     """
-    global _embedding_service
+    global _embedding_service, _current_model_name
+
+    _ensure_providers_registered()
 
     try:
         async with _service_lock:
+            # Determine if we need a new service
+            need_new_service = False
+
             if _embedding_service is None:
+                need_new_service = True
+            elif model_name is not None and model_name != _current_model_name:
+                # Different model requested, may need different provider
+                from .factory import EmbeddingProviderFactory
+
+                current_provider = EmbeddingProviderFactory.get_provider_for_model(_current_model_name or "")
+                new_provider = EmbeddingProviderFactory.get_provider_for_model(model_name)
+
+                if current_provider != new_provider:
+                    # Need a different provider type
+                    logger.info(
+                        f"Switching providers: {current_provider} -> {new_provider} for model {model_name}"
+                    )
+                    if _embedding_service.is_initialized:
+                        await _embedding_service.cleanup()
+                    need_new_service = True
+
+            if need_new_service:
                 logger.info("Creating new embedding service instance")
-                if config is not None:
-                    _embedding_service = DenseEmbeddingService(config=config)
+
+                # Check for mock mode
+                mock_mode = kwargs.get("mock_mode", False)
+                if config is not None and hasattr(config, "USE_MOCK_EMBEDDINGS"):
+                    mock_mode = config.USE_MOCK_EMBEDDINGS
+
+                if mock_mode:
+                    # Use mock provider explicitly
+                    from .factory import EmbeddingProviderFactory
+
+                    _embedding_service = EmbeddingProviderFactory.create_provider_by_name(
+                        "mock", config=config, **kwargs
+                    )
+                    _current_model_name = "mock"
+                elif model_name is not None:
+                    # Use factory to create appropriate provider
+                    from .factory import EmbeddingProviderFactory
+
+                    _embedding_service = EmbeddingProviderFactory.create_provider(
+                        model_name, config=config, **kwargs
+                    )
+                    _current_model_name = model_name
                 else:
-                    _embedding_service = DenseEmbeddingService(**kwargs)
+                    # Fall back to DenseEmbeddingService for backward compatibility
+                    from .dense import DenseEmbeddingService
+
+                    if config is not None:
+                        _embedding_service = DenseEmbeddingService(config=config)
+                    else:
+                        _embedding_service = DenseEmbeddingService(**kwargs)
+                    _current_model_name = None
 
             return _embedding_service
     except Exception as e:

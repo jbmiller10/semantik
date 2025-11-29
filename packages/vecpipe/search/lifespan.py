@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from shared.config import settings
+from shared.embedding.plugin_loader import ensure_providers_registered, load_embedding_plugins
 from shared.embedding.service import get_embedding_service
 from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from vecpipe.model_manager import ModelManager
@@ -50,6 +51,15 @@ start_metrics_server = _base_start_metrics_server
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     """Manage application lifecycle."""
+    # Ensure embedding providers are registered before use
+    ensure_providers_registered()
+    logger.info("Built-in embedding providers registered")
+
+    # Load any external embedding plugins
+    registered_plugins = load_embedding_plugins()
+    if registered_plugins:
+        logger.info("Loaded embedding plugins: %s", ", ".join(registered_plugins))
+
     start_metrics = _resolve_start_metrics_server()
     start_metrics(settings.METRICS_PORT)
     logger.info("Metrics server started on port %s", settings.METRICS_PORT)

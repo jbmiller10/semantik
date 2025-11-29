@@ -538,7 +538,7 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
 
             if chunks:
                 texts = [c.get("text", "") for c in chunks]
-                embed_req = {"texts": texts, "model_name": collection.get("embedding_model")}
+                embed_req = {"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"}
                 upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
@@ -943,6 +943,7 @@ async def _process_append_operation_impl(
                         "quantization": quantization,
                         "instruction": instruction,
                         "batch_size": batch_size,
+                        "mode": "document",  # Document indexing uses document mode
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:

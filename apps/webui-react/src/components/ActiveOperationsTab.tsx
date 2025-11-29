@@ -9,7 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
 import { useOperationsSocket } from '../hooks/useOperationsSocket';
-import { useOperationProgress } from '../hooks/useOperationProgress';
+// Note: useOperationProgress removed - global useOperationsSocket handles all updates
 
 // Helper to safely get source_path from config
 function getSourcePath(config: Record<string, unknown> | undefined): string | null {
@@ -157,11 +157,8 @@ interface OperationListItemProps {
 }
 
 function OperationListItem({ operation, collectionName, onNavigateToCollection }: OperationListItemProps) {
-  // Maintain per-operation progress subscription so individual ops still receive fine-grained updates.
-  // Subscribe for any non-terminal operation so updates flow even if the global socket fails.
-  const isActive = operation.status === 'processing' || operation.status === 'pending';
-  useOperationProgress(isActive ? operation.id : null, { showToasts: false });
-
+  // Progress updates handled by global useOperationsSocket in parent component
+  // Removed per-operation WebSocket to avoid exceeding connection limits
 
   const formatOperationType = (type: string) => {
     switch (type) {

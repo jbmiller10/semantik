@@ -323,6 +323,35 @@ Modern chunking system (`packages/shared/chunking/`) with domain-driven design:
 
 Use `ChunkingOrchestrator` for all chunking operations. Legacy `ChunkingService` and `text_processing.chunking` modules are deprecated.
 
+### Embedding Providers
+
+Plugin-based embedding system (`packages/shared/embedding/`) with provider auto-detection:
+
+**Built-in Providers:**
+- `DenseLocalEmbeddingProvider`: Local embeddings using sentence-transformers and Qwen models (GPU/CPU)
+- `MockEmbeddingProvider`: Deterministic mock embeddings for testing
+
+**Asymmetric Embedding Mode:**
+Many retrieval models need different processing for queries vs documents. Use `EmbeddingMode`:
+- `QUERY`: For search queries (applies model-specific prefixes/instructions)
+- `DOCUMENT`: For document indexing (typically no prefix)
+
+```python
+from shared.embedding.factory import EmbeddingProviderFactory
+from shared.embedding.types import EmbeddingMode
+
+provider = EmbeddingProviderFactory.create_provider("Qwen/Qwen3-Embedding-0.6B")
+await provider.initialize("Qwen/Qwen3-Embedding-0.6B", quantization="float16")
+
+# For search queries (default)
+query_embeddings = await provider.embed_texts(["search query"], mode=EmbeddingMode.QUERY)
+
+# For document indexing
+doc_embeddings = await provider.embed_texts(["document text"], mode=EmbeddingMode.DOCUMENT)
+```
+
+**External plugins** can be added via entry points (`semantik.embedding_providers`). See `docs/EMBEDDING_PLUGINS.md` for details.
+
 ## WebSocket Architecture
 
 **Redis Pub/Sub** for horizontal scaling with per-user connection limits:
@@ -525,6 +554,8 @@ semantik/
 
 - [API Reference](docs/API_REFERENCE.md) - Complete REST and WebSocket API documentation
 - [Architecture Guide](docs/ARCH.md) - Detailed system design
+- [Embedding Plugins](docs/EMBEDDING_PLUGINS.md) - Creating custom embedding providers
+- [Chunking Plugins](docs/CHUNKING_PLUGINS.md) - Creating custom chunking strategies
 - [Testing Guide](docs/TESTING.md) - Testing patterns and practices
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 
