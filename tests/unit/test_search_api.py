@@ -69,21 +69,23 @@ def mock_model_manager() -> None:
     manager.generate_embeddings_batch_async = AsyncMock(side_effect=mock_batch_embed)
     manager.rerank_async = AsyncMock(return_value=[(0, 0.95), (1, 0.90)])
     # Return proper status data for health and embedding_info endpoints
-    manager.get_status = Mock(return_value={
-        "embedding_model_loaded": True,
-        "current_embedding_model": "test-model_float32",
-        "embedding_provider": "dense_local",
-        "is_mock_mode": False,
-        "provider_info": {
-            "model_name": "test-model",
-            "dimension": 1024,
-            "device": "cpu",
-            "quantization": "float32",
-            "max_sequence_length": 512,
-        },
-        "loaded_models": [],
-        "memory_usage": {},
-    })
+    manager.get_status = Mock(
+        return_value={
+            "embedding_model_loaded": True,
+            "current_embedding_model": "test-model_float32",
+            "embedding_provider": "dense_local",
+            "is_mock_mode": False,
+            "provider_info": {
+                "model_name": "test-model",
+                "dimension": 1024,
+                "device": "cpu",
+                "quantization": "float32",
+                "max_sequence_length": 512,
+            },
+            "loaded_models": [],
+            "memory_usage": {},
+        }
+    )
     manager.shutdown = Mock()
     manager.current_model_key = "test-model_float32"
     manager.current_reranker_key = None
@@ -804,9 +806,7 @@ class TestSearchAPI:
             assert result["current_model"] == "test-model"
             assert result["current_quantization"] == "float32"
 
-    def test_list_models_includes_plugin_models(
-        self, test_client_for_search_api, mock_model_manager
-    ) -> None:
+    def test_list_models_includes_plugin_models(self, test_client_for_search_api, mock_model_manager) -> None:
         """Test /models endpoint includes plugin models with is_plugin=True."""
         mock_models = [
             {
@@ -842,9 +842,7 @@ class TestSearchAPI:
 
             # Find models by name
             builtin = next(m for m in result["models"] if m["name"] == "builtin-model")
-            plugin = next(
-                m for m in result["models"] if m["name"] == "plugin-vendor/custom-model"
-            )
+            plugin = next(m for m in result["models"] if m["name"] == "plugin-vendor/custom-model")
 
             # Verify built-in model
             assert builtin["provider_id"] == "dense_local"

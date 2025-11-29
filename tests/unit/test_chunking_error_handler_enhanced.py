@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from redis.asyncio import Redis
 
-from shared.text_processing.base_chunker import ChunkResult
 from shared.chunking.exceptions import ResourceType
+from shared.text_processing.base_chunker import ChunkResult
 from webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,

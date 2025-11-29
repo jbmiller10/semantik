@@ -400,9 +400,7 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
         instruction = kwargs.get("instruction", None)
 
         # Apply mode-specific transformation
-        transformed_texts, effective_instruction = self._apply_mode_transform(
-            texts, effective_mode, instruction
-        )
+        transformed_texts, effective_instruction = self._apply_mode_transform(texts, effective_mode, instruction)
 
         return await asyncio.get_running_loop().run_in_executor(
             None, self._embed_texts_sync, transformed_texts, batch_size, normalize, show_progress, effective_instruction

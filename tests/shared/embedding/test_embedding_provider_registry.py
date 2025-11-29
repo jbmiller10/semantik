@@ -140,9 +140,7 @@ class TestProviderLookup:
 class TestProviderMetadata:
     """Tests for provider metadata methods."""
 
-    def test_list_provider_metadata(
-        self, empty_registry: None, dummy_definition: EmbeddingProviderDefinition
-    ) -> None:
+    def test_list_provider_metadata(self, empty_registry: None, dummy_definition: EmbeddingProviderDefinition) -> None:
         """Test listing provider metadata."""
         register_provider_definition(dummy_definition)
 
@@ -168,9 +166,7 @@ class TestProviderMetadata:
         fresh_metadata = list_provider_metadata_list()
         assert fresh_metadata[0]["name"] == original_name
 
-    def test_get_provider_metadata(
-        self, empty_registry: None, dummy_definition: EmbeddingProviderDefinition
-    ) -> None:
+    def test_get_provider_metadata(self, empty_registry: None, dummy_definition: EmbeddingProviderDefinition) -> None:
         """Test getting metadata for a specific provider."""
         register_provider_definition(dummy_definition)
 
@@ -265,9 +261,7 @@ class TestCacheInvalidation:
 class TestDefinitionToMetadataDict:
     """Tests for the EmbeddingProviderDefinition.to_metadata_dict method."""
 
-    def test_to_metadata_dict_basic(
-        self, dummy_definition: EmbeddingProviderDefinition
-    ) -> None:
+    def test_to_metadata_dict_basic(self, dummy_definition: EmbeddingProviderDefinition) -> None:
         """Test converting a definition to metadata dict."""
         metadata = dummy_definition.to_metadata_dict()
 
@@ -281,18 +275,14 @@ class TestDefinitionToMetadataDict:
         assert metadata["supports_batch_processing"] == dummy_definition.supports_batch_processing
         assert metadata["is_plugin"] == dummy_definition.is_plugin
 
-    def test_to_metadata_dict_supported_models(
-        self, dummy_definition: EmbeddingProviderDefinition
-    ) -> None:
+    def test_to_metadata_dict_supported_models(self, dummy_definition: EmbeddingProviderDefinition) -> None:
         """Test that supported_models is converted to list."""
         metadata = dummy_definition.to_metadata_dict()
 
         assert isinstance(metadata["supported_models"], list)
         assert "dummy-model" in metadata["supported_models"]
 
-    def test_to_metadata_dict_defensive_copy(
-        self, dummy_definition: EmbeddingProviderDefinition
-    ) -> None:
+    def test_to_metadata_dict_defensive_copy(self, dummy_definition: EmbeddingProviderDefinition) -> None:
         """Test that default_config is a defensive copy."""
         metadata = dummy_definition.to_metadata_dict()
 

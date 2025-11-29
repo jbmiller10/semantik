@@ -30,6 +30,13 @@ from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.chunking.exceptions import (
+    ChunkingDependencyError,
+    ChunkingMemoryError,
+    ChunkingPartialFailureError,
+    ChunkingStrategyError,
+    ChunkingTimeoutError,
+)
 from shared.chunking.plugin_loader import load_chunking_plugins
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
@@ -38,13 +45,6 @@ from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from shared.chunking.exceptions import (
-    ChunkingDependencyError,
-    ChunkingMemoryError,
-    ChunkingPartialFailureError,
-    ChunkingStrategyError,
-    ChunkingTimeoutError,
-)
 from webui.celery_app import celery_app
 from webui.middleware.correlation import get_or_generate_correlation_id
 from webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_orchestrator

@@ -61,9 +61,7 @@ class ValidPlugin(BaseEmbeddingPlugin):
         self.model_name = model_name
         self._initialized = True
 
-    async def embed_texts(
-        self, texts: list[str], batch_size: int = 32, **kwargs: Any
-    ) -> NDArray[np.float32]:
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
         return np.zeros((len(texts), self.dimension), dtype=np.float32)
 
     async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
@@ -183,9 +181,7 @@ class TestPluginLoader:
             _clear_caches()
             plugin_loader._reset_plugin_loader_state()
 
-    def test_plugin_loader_skips_invalid_contract(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_plugin_loader_skips_invalid_contract(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that invalid plugins are skipped."""
 
         class InvalidPlugin:
@@ -224,9 +220,7 @@ class TestPluginLoader:
             _clear_caches()
             plugin_loader._reset_plugin_loader_state()
 
-    def test_plugin_loader_handles_entry_point_error(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_plugin_loader_handles_entry_point_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that errors during entry point loading are handled."""
         plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
 
@@ -247,9 +241,7 @@ class TestPluginLoader:
         registered = plugin_loader.load_embedding_plugins()
         assert registered == []
 
-    def test_load_embedding_plugins_idempotent(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_load_embedding_plugins_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that load_embedding_plugins only loads once (idempotent)."""
         call_count = 0
 
@@ -316,8 +308,7 @@ class TestValidatePluginContract:
             @classmethod
             def get_definition(cls) -> EmbeddingProviderDefinition:
                 return EmbeddingProviderDefinition(
-                    api_id="test", internal_id="test", display_name="Test",
-                    description="Test", provider_type="local"
+                    api_id="test", internal_id="test", display_name="Test", description="Test", provider_type="local"
                 )
 
             @classmethod
@@ -363,8 +354,7 @@ class TestValidatePluginContract:
             @classmethod
             def get_definition(cls) -> EmbeddingProviderDefinition:
                 return EmbeddingProviderDefinition(
-                    api_id="test", internal_id="test", display_name="Test",
-                    description="Test", provider_type="local"
+                    api_id="test", internal_id="test", display_name="Test", description="Test", provider_type="local"
                 )
 
             @classmethod
@@ -410,8 +400,7 @@ class TestValidatePluginContract:
             @classmethod
             def get_definition(cls) -> EmbeddingProviderDefinition:
                 return EmbeddingProviderDefinition(
-                    api_id="test", internal_id="test", display_name="Test",
-                    description="Test", provider_type="local"
+                    api_id="test", internal_id="test", display_name="Test", description="Test", provider_type="local"
                 )
 
             @classmethod
@@ -457,8 +446,7 @@ class TestValidatePluginContract:
             @classmethod
             def get_definition(cls) -> EmbeddingProviderDefinition:
                 return EmbeddingProviderDefinition(
-                    api_id="test", internal_id="test", display_name="Test",
-                    description="Test", provider_type="local"
+                    api_id="test", internal_id="test", display_name="Test", description="Test", provider_type="local"
                 )
 
             @classmethod
@@ -489,9 +477,7 @@ class TestEnsureProvidersRegistered:
 
         assert first_count == second_count
 
-    def test_ensure_providers_registered_registers_builtins(
-        self, clean_registry: None
-    ) -> None:
+    def test_ensure_providers_registered_registers_builtins(self, clean_registry: None) -> None:
         """Test that ensure_providers_registered has builtins available.
 
         Note: We use clean_registry (not empty_registry) because the built-in
@@ -559,9 +545,7 @@ class TestServiceIntegration:
     """Tests for plugin loading integration with embedding service."""
 
     @pytest.mark.asyncio()
-    async def test_get_embedding_service_registers_plugins(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_get_embedding_service_registers_plugins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that get_embedding_service loads plugins via _ensure_providers_registered."""
         from shared.embedding import service
         from shared.embedding.service import _ensure_providers_registered

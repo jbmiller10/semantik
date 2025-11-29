@@ -13,6 +13,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from shared.chunking.infrastructure.exception_translator import exception_translator
 from shared.chunking.infrastructure.exceptions import ApplicationError, ValidationError
@@ -53,8 +54,6 @@ from webui.services.chunking.orchestrator import ChunkingOrchestrator
 from webui.services.factory import get_collection_service
 
 if TYPE_CHECKING:
-    from fastapi.responses import JSONResponse
-
     from webui.services.collection_service import CollectionService
 
 ChunkingServiceLike: TypeAlias = ChunkingOrchestrator

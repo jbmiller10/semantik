@@ -141,9 +141,7 @@ def dummy_plugin_class() -> type[BaseEmbeddingPlugin]:
             self.dimension = kwargs.get("dimension", 128)
             self._initialized = True
 
-        async def embed_texts(
-            self, texts: list[str], batch_size: int = 32, **kwargs: Any
-        ) -> NDArray[np.float32]:
+        async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
             if not self._initialized:
                 raise RuntimeError("Not initialized")
             # Return deterministic embeddings based on text length

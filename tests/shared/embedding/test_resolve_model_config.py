@@ -79,9 +79,7 @@ class ConfigAwarePlugin(BaseEmbeddingPlugin):
         self.model_name = model_name
         self._initialized = True
 
-    async def embed_texts(
-        self, texts: list[str], batch_size: int = 32, **kwargs: Any
-    ) -> NDArray[np.float32]:
+    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
         if not self._initialized:
             raise RuntimeError("Not initialized")
         return np.zeros((len(texts), self.PLUGIN_DIMENSION), dtype=np.float32)
@@ -154,9 +152,7 @@ class TestResolveModelConfigPlugin:
         assert config.name == "config_aware/test-model"
         assert config.dimension == ConfigAwarePlugin.PLUGIN_DIMENSION
 
-    def test_resolve_plugin_model_dimension_flows_correctly(
-        self, empty_registry: None
-    ) -> None:
+    def test_resolve_plugin_model_dimension_flows_correctly(self, empty_registry: None) -> None:
         """Test that plugin model dimension is correctly resolved."""
         EmbeddingProviderFactory.register_provider("config_aware", ConfigAwarePlugin)
 
@@ -186,9 +182,7 @@ class TestResolveModelConfigFallback:
 class TestResolveModelConfigPrecedence:
     """Tests for provider precedence over built-in configs."""
 
-    def test_provider_config_takes_precedence_over_builtin(
-        self, empty_registry: None
-    ) -> None:
+    def test_provider_config_takes_precedence_over_builtin(self, empty_registry: None) -> None:
         """Test that provider config is checked before built-in configs.
 
         If a plugin claims to support a built-in model name but returns
@@ -239,14 +233,10 @@ class TestResolveModelConfigPrecedence:
             async def initialize(self, model_name: str, **kwargs: Any) -> None:
                 self._initialized = True
 
-            async def embed_texts(
-                self, texts: list[str], batch_size: int = 32, **kwargs: Any
-            ) -> NDArray[np.float32]:
+            async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
                 return np.zeros((len(texts), self.OVERRIDE_DIMENSION), dtype=np.float32)
 
-            async def embed_single(
-                self, text: str, **kwargs: Any
-            ) -> NDArray[np.float32]:
+            async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
                 embeddings = await self.embed_texts([text], **kwargs)
                 return embeddings[0]
 
@@ -268,9 +258,7 @@ class TestResolveModelConfigPrecedence:
         assert config is not None
         assert config.dimension == OverridePlugin.OVERRIDE_DIMENSION
 
-    def test_builtin_used_when_no_provider_supports(
-        self, empty_registry: None
-    ) -> None:
+    def test_builtin_used_when_no_provider_supports(self, empty_registry: None) -> None:
         """Test that built-in config is used when no provider supports the model."""
         # Empty registry - no providers registered
         # But MODEL_CONFIGS still has built-in models
@@ -316,9 +304,7 @@ class TestDenseEmbeddingServicePluginConfig:
     """Tests for DenseEmbeddingService using plugin-resolved config."""
 
     @pytest.mark.asyncio()
-    async def test_dense_service_uses_plugin_dimension_in_mock_mode(
-        self, empty_registry: None
-    ) -> None:
+    async def test_dense_service_uses_plugin_dimension_in_mock_mode(self, empty_registry: None) -> None:
         """Test that DenseEmbeddingService mock mode uses plugin's dimension."""
         from shared.embedding.dense import DenseEmbeddingService
 
@@ -331,9 +317,7 @@ class TestDenseEmbeddingServicePluginConfig:
         await service.cleanup()
 
     @pytest.mark.asyncio()
-    async def test_dense_service_raises_for_unknown_model_in_mock_mode(
-        self, empty_registry: None
-    ) -> None:
+    async def test_dense_service_raises_for_unknown_model_in_mock_mode(self, empty_registry: None) -> None:
         """Test that DenseEmbeddingService raises for unknown models.
 
         Note: The ValueError is wrapped in RuntimeError by the initialize method's
@@ -347,9 +331,7 @@ class TestDenseEmbeddingServicePluginConfig:
             await service.initialize("completely/unknown-model-xyz")
 
     @pytest.mark.asyncio()
-    async def test_embedding_service_generate_embeddings_uses_plugin_dimension(
-        self, empty_registry: None
-    ) -> None:
+    async def test_embedding_service_generate_embeddings_uses_plugin_dimension(self, empty_registry: None) -> None:
         """Test EmbeddingService.generate_embeddings uses plugin dimension."""
         from shared.embedding.dense import EmbeddingService
 
@@ -365,9 +347,7 @@ class TestDenseEmbeddingServicePluginConfig:
         assert embeddings.shape[1] == 512
         service.shutdown()
 
-    def test_dense_local_provider_get_model_config_returns_builtin(
-        self, clean_registry: None
-    ) -> None:
+    def test_dense_local_provider_get_model_config_returns_builtin(self, clean_registry: None) -> None:
         """Test DenseLocalEmbeddingProvider.get_model_config returns built-in configs.
 
         Note: The provider's get_model_config returns configs it owns (built-in).

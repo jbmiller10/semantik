@@ -422,9 +422,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         instruction = kwargs.get("instruction", None)
 
         # Apply mode-specific transformation
-        transformed_texts, effective_instruction = self._apply_mode_transform(
-            texts, effective_mode, instruction
-        )
+        transformed_texts, effective_instruction = self._apply_mode_transform(texts, effective_mode, instruction)
 
         # Process in thread pool to avoid blocking
         return await asyncio.get_running_loop().run_in_executor(

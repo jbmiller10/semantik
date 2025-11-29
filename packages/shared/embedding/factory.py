@@ -103,10 +103,7 @@ class EmbeddingProviderFactory:
                 return provider_cls(config=config, **kwargs)
 
         available = list(_PROVIDER_CLASSES.keys())
-        raise ValueError(
-            f"No provider found for model: {model_name}. "
-            f"Available providers: {available}"
-        )
+        raise ValueError(f"No provider found for model: {model_name}. " f"Available providers: {available}")
 
     @classmethod
     def create_provider_by_name(
@@ -133,10 +130,7 @@ class EmbeddingProviderFactory:
         """
         if provider_name not in _PROVIDER_CLASSES:
             available = list(_PROVIDER_CLASSES.keys())
-            raise ValueError(
-                f"Unknown provider: {provider_name}. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"Unknown provider: {provider_name}. " f"Available: {available}")
 
         provider_cls = _PROVIDER_CLASSES[provider_name]
         logger.info("Creating provider by name: %s (%s)", provider_name, provider_cls.__name__)

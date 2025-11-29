@@ -72,9 +72,7 @@ class ModelConfig:
 
 
 # Default query instruction for Qwen models
-_QWEN_DEFAULT_QUERY_INSTRUCTION = (
-    "Given a web search query, retrieve relevant passages that answer the query"
-)
+_QWEN_DEFAULT_QUERY_INSTRUCTION = "Given a web search query, retrieve relevant passages that answer the query"
 
 # Model configurations
 MODEL_CONFIGS = {
