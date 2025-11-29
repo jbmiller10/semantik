@@ -144,13 +144,17 @@ class MockEmbeddingProvider(BaseEmbeddingPlugin):
         """
         self.model_name = model_name
 
-        # Try to get dimension from model config if it's a known model
-        model_config = get_model_config(model_name)
-        if model_config is not None:
-            self.dimension = model_config.dimension
+        # Check for explicit dimension kwarg first (allows override for testing)
+        if "dimension" in kwargs:
+            self.dimension = kwargs["dimension"]
         else:
-            # Use provided dimension or default
-            self.dimension = kwargs.get("dimension", 384)
+            # Try to get dimension from model config if it's a known model
+            model_config = get_model_config(model_name)
+            if model_config is not None:
+                self.dimension = model_config.dimension
+            else:
+                # Use default dimension
+                self.dimension = 384
 
         self._normalize = kwargs.get("normalize", True)
         self._initialized = True
