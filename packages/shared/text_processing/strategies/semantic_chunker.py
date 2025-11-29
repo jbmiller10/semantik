@@ -44,7 +44,7 @@ class SemanticChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Override to add semantic metadata."""
-        results = self._chunker.chunk_text(text, doc_id, metadata)
+        results: list[ChunkResult] = self._chunker.chunk_text(text, doc_id, metadata)
 
         # Add semantic metadata for test compatibility
         for result in results:
@@ -62,7 +62,7 @@ class SemanticChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Async version with semantic metadata."""
-        results = await self._chunker.chunk_text_async(text, doc_id, metadata)
+        results: list[ChunkResult] = await self._chunker.chunk_text_async(text, doc_id, metadata)
 
         # Add semantic metadata for test compatibility
         for result in results:
@@ -89,7 +89,8 @@ class SemanticChunker(BaseChunker):
     def validate_config(self, config: dict[str, Any]) -> bool:
         """Validate configuration."""
         # Delegate to underlying chunker
-        return self._chunker.validate_config(config)
+        result: bool = self._chunker.validate_config(config)
+        return result
 
     def __getattr__(self, name: str) -> Any:
         """Delegate all attributes to the actual chunker."""

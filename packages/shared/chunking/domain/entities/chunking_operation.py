@@ -359,7 +359,8 @@ class ChunkingOperation:
         # Estimate tokens in document (rough approximation)
         estimated_tokens = len(self._document_content) // 4  # ~4 chars per token
 
-        return self._config.estimate_chunks(estimated_tokens)
+        result: int = self._config.estimate_chunks(estimated_tokens)
+        return result
 
     def _calculate_duration(self) -> float:
         """

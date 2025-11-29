@@ -337,7 +337,8 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         if not sections:
             # Fall back to recursive if no sections identified
-            return self._recursive_strategy.chunk(content, config, progress_callback)
+            result: list[Chunk] = self._recursive_strategy.chunk(content, config, progress_callback)
+            return result
 
         total_sections = len(sections)
         chunk_index = 0
@@ -604,7 +605,8 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         # Hybrid typically produces similar to recursive
         estimated_tokens = content_length // 4
-        return config.estimate_chunks(estimated_tokens)
+        result: int = config.estimate_chunks(estimated_tokens)
+        return result
 
     def _build_consensus(self, strategy_results: dict[str, list[Chunk]]) -> list[Chunk]:
         """

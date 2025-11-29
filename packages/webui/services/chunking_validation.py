@@ -273,7 +273,8 @@ class ChunkingInputValidator:
             Sanitized metadata dictionary
         """
         # Delegate to the centralized sanitizer for comprehensive XSS protection
-        return MetadataSanitizer.sanitize_metadata(metadata)
+        result: dict[str, Any] = MetadataSanitizer.sanitize_metadata(metadata)
+        return result
 
     @classmethod
     def validate_priority(cls, priority: int, correlation_id: str) -> None:

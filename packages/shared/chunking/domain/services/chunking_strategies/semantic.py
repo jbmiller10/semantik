@@ -71,7 +71,7 @@ class SemanticChunkingStrategy(DomainStrategyAdapter):
             List of semantic chunks
         """
         # Delegate to the wrapped strategy but ensure semantic metadata is added
-        chunks = self.strategy.chunk(content, config)
+        chunks: list[Chunk] = self.strategy.chunk(content, config)
 
         # Add semantic-specific metadata if not present
         for chunk in chunks:
