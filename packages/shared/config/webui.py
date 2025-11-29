@@ -46,6 +46,11 @@ class WebuiConfig(BaseConfig):
     DOCUMENT_ROOT: str | None = None
     DOCUMENT_ALLOWED_ROOTS: str | None = None
 
+    # Runtime override hooks (used in tests)
+    _document_root: Path | None = None
+    _document_allowed_roots: tuple[Path, ...] | None = None
+    _default_document_mounts: tuple[Path, ...] | None = None
+
     # Keep side-effect free; runtime code is responsible for validating/creating paths and
     # ensuring JWT secrets are present (see shared.config.runtime).
 

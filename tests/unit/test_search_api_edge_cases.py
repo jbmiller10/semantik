@@ -692,12 +692,12 @@ class TestSearchAPIEdgeCases:
         assert response.status_code == 400
         assert "Cannot load models when using mock embeddings" in response.json()["detail"]
 
-        # Now test with embedding service not initialized
+        # Now test with model manager not initialized
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
-        # Temporarily set embedding_service to None
-        original_service = search_api_module.embedding_service
-        search_api_module.embedding_service = None
+        # Temporarily set model_manager to None
+        original_manager = search_api_module.model_manager
+        search_api_module.model_manager = None
 
         try:
             response = test_client_for_search_api.post(
@@ -708,7 +708,7 @@ class TestSearchAPIEdgeCases:
             assert "Model load failed" in response.json()["detail"]
         finally:
             # Restore original
-            search_api_module.embedding_service = original_service
+            search_api_module.model_manager = original_manager
 
     @pytest.mark.asyncio()
     async def test_search_with_score_threshold(self, mock_settings, mock_qdrant_client, mock_model_manager) -> None:

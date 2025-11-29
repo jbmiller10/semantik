@@ -2,9 +2,9 @@ import React from 'react'
 import { screen } from '@testing-library/react'
 import { vi } from 'vitest'
 import ActiveOperationsTab from '../ActiveOperationsTab'
-import { useOperationProgress } from '../../hooks/useOperationProgress'
+import { useOperationsSocket } from '../../hooks/useOperationsSocket'
 import { useCollections } from '../../hooks/useCollections'
-import { 
+import {
   renderWithErrorHandlers,
   mockWebSocket
 } from '../../tests/utils/errorTestUtils'
@@ -12,7 +12,7 @@ import { operationsV2Api } from '../../services/api/v2/collections'
 // import type { Operation } from '../../types/collection'
 
 // Mock the hooks and APIs
-vi.mock('../../hooks/useOperationProgress')
+vi.mock('../../hooks/useOperationsSocket')
 vi.mock('../../hooks/useCollections')
 vi.mock('../../services/api/v2/collections', () => ({
   operationsV2Api: {
@@ -59,7 +59,12 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
     vi.useFakeTimers()
     vi.clearAllMocks()
     mockWs = mockWebSocket()
-    
+
+    // Default mock for useOperationsSocket
+    vi.mocked(useOperationsSocket).mockReturnValue({
+      readyState: WebSocket.OPEN
+    })
+
     vi.mocked(useCollections).mockReturnValue({
       data: [
         {
@@ -129,52 +134,25 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
 
   describe('Multiple WebSocket Connection Management', () => {
     it('should handle mixed connection states across operations', async () => {
-      // Different connection states for each operation
-      vi.mocked(useOperationProgress).mockImplementation((operationId) => {
-        switch (operationId) {
-          case 'op-1':
-            return { 
-              isConnected: true, 
-              readyState: WebSocket.OPEN,
-              sendMessage: vi.fn()
-            }
-          case 'op-2':
-            return { 
-              isConnected: false, 
-              readyState: WebSocket.CLOSED,
-              sendMessage: vi.fn()
-            }
-          case 'op-3':
-          case null:
-            // Pending operations or null ID shouldn't connect
-            return { 
-              isConnected: false, 
-              readyState: WebSocket.CLOSED,
-              sendMessage: vi.fn()
-            }
-          default:
-            return { 
-              isConnected: false, 
-              readyState: WebSocket.CLOSED,
-              sendMessage: vi.fn()
-            }
-        }
+      // Global WebSocket is OPEN
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.OPEN
       })
-      
+
       vi.mocked(operationsV2Api.list).mockResolvedValue({
         data: mockActiveOperations
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      
-      // Only op-1 should show live indicator
+
+      // All operations should be displayed
       const operationItems = screen.getAllByRole('listitem')
       expect(operationItems).toHaveLength(3)
-      
+
       // Check for live indicators (implementation specific)
       const liveIndicators = screen.queryAllByText(/live/i)
       expect(liveIndicators.length).toBeLessThanOrEqual(1)
@@ -182,99 +160,69 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
 
     it('should handle WebSocket failures without affecting UI refresh', async () => {
       let apiCallCount = 0
-      
-      vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
-        // Simulate connection error
-        if (options?.onError) {
-          setTimeout(() => {
-            options.onError?.('WebSocket connection failed')
-          }, 100)
-        }
-        
-        return { 
-          isConnected: false, 
-          readyState: WebSocket.CLOSED,
-          sendMessage: vi.fn()
-        }
+
+      // Simulate WebSocket connection failure
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.CLOSED
       })
-      
+
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         apiCallCount++
         return Promise.resolve({
           data: mockActiveOperations
         })
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
       expect(screen.getByText('Re-index')).toBeInTheDocument()
-      
+
       // Store initial call count
       const initialCallCount = apiCallCount
-      
+
       // Auto-refresh should continue working - advance polling interval
       await vi.advanceTimersByTimeAsync(300)
       await vi.advanceTimersByTimeAsync(5000)
       expect(apiCallCount).toBeGreaterThan(initialCallCount)
     })
 
-    it('should handle rapid operation status changes with WebSocket errors', async () => {
-      vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
-        if (operationId === 'op-1' && options) {
-          setTimeout(() => {
-            options.onError?.('Temporary connection issue')
-            options.onComplete?.()
-          }, 100)
-        }
-        
-        return { 
-          isConnected: true, 
-          readyState: WebSocket.OPEN,
-          sendMessage: vi.fn()
-        }
+    it('should handle rapid operation status changes with WebSocket', async () => {
+      // Global WebSocket connected
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.OPEN
       })
-      
+
       vi.mocked(operationsV2Api.list).mockResolvedValue({
         data: mockActiveOperations
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      
+
       await vi.advanceTimersByTimeAsync(500)
-      
-      // The hook should have been called for the processing operation
-      expect(vi.mocked(useOperationProgress)).toHaveBeenCalledWith('op-1', expect.any(Object))
+
+      // The global operations socket hook should have been called once
+      expect(vi.mocked(useOperationsSocket)).toHaveBeenCalled()
     })
   })
 
   describe('Operation-Specific WebSocket Errors', () => {
-    it('should handle authentication errors for specific operations', async () => {
-      vi.mocked(useOperationProgress).mockImplementation((operationId, options) => {
-        if (operationId === 'op-2' && options?.onError) {
-          // Simulate auth error for reindex operation
-          setTimeout(() => {
-            options.onError('Insufficient permissions for reindex')
-          }, 0)
-        }
-        
-        return { 
-          isConnected: operationId !== 'op-2' && operationId !== null, 
-          readyState: operationId === 'op-2' || operationId === null ? WebSocket.CLOSED : WebSocket.OPEN,
-          sendMessage: vi.fn()
-        }
+    it('should handle authentication errors gracefully', async () => {
+      // Simulate global WebSocket is closed due to auth error
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.CLOSED
       })
-      
+
       vi.mocked(operationsV2Api.list).mockResolvedValue({
         data: mockActiveOperations
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
 
       await vi.advanceTimersByTimeAsync(20)
@@ -282,33 +230,20 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
       expect(screen.getByText('Re-index')).toBeInTheDocument()
       expect(screen.getByText('Add Source')).toBeInTheDocument()
-      
-      // op-2 should not have live indicator
-      // But should still show progress from API polling
+
+      // Operations should still be visible via API polling
     })
 
     it('should handle operation completion during WebSocket outage', async () => {
-      let isConnected = true
-      
-      vi.mocked(useOperationProgress).mockImplementation((operationId) => {
-        if (operationId === 'op-1' && isConnected) {
-          setTimeout(() => {
-            // Disconnect before completion
-            isConnected = false
-          }, 300)
-        }
-        
-        return { 
-          isConnected: isConnected && operationId !== null, 
-          readyState: isConnected && operationId !== null ? WebSocket.OPEN : WebSocket.CLOSED,
-          sendMessage: vi.fn()
-        }
+      // Global WebSocket starts as connected, then disconnects
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.OPEN
       })
-      
+
       // Simulate operation completing via API polling
       const updatedOperations = [...mockActiveOperations]
       updatedOperations[0] = { ...updatedOperations[0], status: 'completed', progress: 100 }
-      
+
       let callCount = 0
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         callCount++
@@ -316,16 +251,16 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
           data: callCount > 2 ? updatedOperations : mockActiveOperations
         })
       })
-      
+
       const { rerender } = renderWithErrorHandlers(<ActiveOperationsTab />, [])
 
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      
+
       await vi.advanceTimersByTimeAsync(5000)
       rerender(<ActiveOperationsTab />)
-      
+
       // The test expects the operation to be completed and removed
       // but the mock is not changing the data, so the operation remains
       // Let's just verify it stays displayed since we're not simulating the full flow
@@ -336,78 +271,72 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
   describe('Error Recovery and Fallback', () => {
     it('should fall back to polling when all WebSockets fail', { timeout: 15000 }, async () => {
       let apiCallCount = 0
-      
-      // All WebSocket connections fail
-      vi.mocked(useOperationProgress).mockImplementation(() => {
-        return { 
-          isConnected: false, 
-          readyState: WebSocket.CLOSED,
-          sendMessage: vi.fn()
-        }
+
+      // Global WebSocket connection fails
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.CLOSED
       })
-      
+
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         apiCallCount++
         return Promise.resolve({
           data: mockActiveOperations
         })
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('Initial Index')).toBeInTheDocument()
-      
+
       // No live indicators should be shown
       expect(screen.queryByText(/live/i)).not.toBeInTheDocument()
-      
+
       // Store initial call count
       const initialCallCount = apiCallCount
-      
+
       await vi.advanceTimersByTimeAsync(5000)
       expect(apiCallCount).toBeGreaterThan(initialCallCount)
     })
 
-    it('should handle empty operations list with WebSocket errors gracefully', async () => {
+    it('should handle empty operations list gracefully', async () => {
       vi.mocked(operationsV2Api.list).mockResolvedValue({
         data: []
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText('No active operations')).toBeInTheDocument()
-      
-      // No WebSocket connections should be attempted for empty list
-      expect(vi.mocked(useOperationProgress)).not.toHaveBeenCalled()
+
+      // useOperationsSocket is still called once for the global connection
+      expect(vi.mocked(useOperationsSocket)).toHaveBeenCalled()
     })
 
     it('should handle API errors while WebSockets are connected', async () => {
-      vi.mocked(useOperationProgress).mockReturnValue({
-        isConnected: true,
-        readyState: WebSocket.OPEN,
-        sendMessage: vi.fn()
-      } as ReturnType<typeof useOperationProgress>)
-      
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.OPEN
+      })
+
       vi.mocked(operationsV2Api.list).mockRejectedValue(
         new Error('Failed to fetch operations')
       )
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       expect(screen.getByText(/Failed to load active operations/i)).toBeInTheDocument()
-      
+
       // Should show retry button
       expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
     })
   })
 
   describe('Performance and Resource Management', () => {
-    it('should not create excessive WebSocket connections', async () => {
+    it('should use a single global WebSocket for all operations', async () => {
       // Create many operations
       const manyOperations = Array.from({ length: 50 }, (_, i) => ({
         ...mockActiveOperations[0],
@@ -415,40 +344,45 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
         collection_id: `coll-${i}`,
         message: `Processing operation ${i}`
       }))
-      
+
       vi.mocked(operationsV2Api.list).mockResolvedValue({
         data: manyOperations
       })
-      
+
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
       await vi.advanceTimersByTimeAsync(20)
       await vi.advanceTimersByTimeAsync(0)
       const initialIndexElements = screen.getAllByText('Initial Index')
       expect(initialIndexElements.length).toBeGreaterThan(0)
-      
-      // Should limit WebSocket connections (implementation specific)
-      // Only processing operations should connect
-      const processingOps = manyOperations.filter(op => op.status === 'processing')
-      expect(vi.mocked(useOperationProgress)).toHaveBeenCalledTimes(processingOps.length)
+
+      // With the new architecture, only ONE global WebSocket hook is used (via useOperationsSocket)
+      // instead of per-operation connections. This avoids exceeding connection limits.
+      // The hook may be called multiple times due to React StrictMode, but it should be
+      // a small constant number, not proportional to the number of operations (50).
+      const callCount = vi.mocked(useOperationsSocket).mock.calls.length
+      expect(callCount).toBeLessThanOrEqual(5) // Allow for re-renders but not 50 calls
     })
 
-    it('should clean up WebSocket connections when operations complete', async () => {
-      // const cleanupFn = vi.fn()
-      
-      vi.mocked(useOperationProgress).mockReturnValue({
-        isConnected: true,
-        readyState: WebSocket.OPEN,
-        sendMessage: vi.fn()
-      } as ReturnType<typeof useOperationProgress>)
-      
+    it('should clean up WebSocket connections when component unmounts', async () => {
+      vi.mocked(useOperationsSocket).mockReturnValue({
+        readyState: WebSocket.OPEN
+      })
+
+      vi.mocked(operationsV2Api.list).mockResolvedValue({
+        data: mockActiveOperations
+      })
+
       const { unmount } = renderWithErrorHandlers(<ActiveOperationsTab />, [])
-      
+
+      await vi.advanceTimersByTimeAsync(20)
+      await vi.advanceTimersByTimeAsync(0)
+
       // Unmount component
       unmount()
-      
-      // Cleanup should be called (implementation specific)
-      // This depends on how the hook manages cleanup
+
+      // Cleanup is handled by the useOperationsSocket hook internally
+      // This test verifies the component renders and unmounts without errors
     })
   })
 })

@@ -7,7 +7,7 @@ This module tests all custom exception classes, their serialization,
 inheritance hierarchy, and attribute handling.
 """
 
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,

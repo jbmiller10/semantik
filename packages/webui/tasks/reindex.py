@@ -251,7 +251,8 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
             texts = [c.get("text", "") for c in chunks]
             async with httpx.AsyncClient(timeout=60.0) as client:
                 await client.post(
-                    "http://vecpipe:8000/embed", json={"texts": texts, "model_name": collection.get("embedding_model")}
+                    "http://vecpipe:8000/embed",
+                    json={"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"},
                 )
                 await client.post(
                     "http://vecpipe:8000/upsert",
@@ -527,6 +528,7 @@ async def _process_reindex_operation_impl(
                         "quantization": quantization,
                         "instruction": instruction,
                         "batch_size": batch_size,
+                        "mode": "document",  # Document indexing uses document mode
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:

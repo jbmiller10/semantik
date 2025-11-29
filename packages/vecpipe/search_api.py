@@ -3,7 +3,7 @@
 
 import sys
 import types
-from typing import Any
+from typing import Any, cast
 
 from shared.config import settings
 from shared.embedding.service import get_embedding_service
@@ -127,7 +127,8 @@ class _SearchApiModule(types.ModuleType):
 
 
 # Ensure attribute access on this module always mirrors the shared runtime state.
-sys.modules[__name__].__class__ = _SearchApiModule  # type: ignore[misc]
+module = cast(_SearchApiModule, sys.modules[__name__])
+module.__class__ = _SearchApiModule
 
 
 if __name__ == "__main__":

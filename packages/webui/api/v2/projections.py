@@ -22,6 +22,8 @@ from webui.auth import get_current_user
 from webui.services.factory import get_projection_service
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from webui.services.projection_service import ProjectionService
 
 logger = logging.getLogger(__name__)
@@ -142,7 +144,7 @@ async def stream_projection_artifact(
     artifact_name: str,
     current_user: dict[str, Any] = Depends(get_current_user),
     service: ProjectionService = Depends(get_projection_service),
-):
+) -> StreamingResponse:
     """Stream one of the stored projection artifact files."""
 
     try:
@@ -165,7 +167,7 @@ async def stream_projection_artifact(
 
     file_stat = artifact_path.stat()
 
-    def _file_iterator(chunk_size: int = 1024 * 1024):
+    def _file_iterator(chunk_size: int = 1024 * 1024) -> Iterator[bytes]:
         with artifact_path.open("rb") as buffer:
             while True:
                 data = buffer.read(chunk_size)

@@ -14,7 +14,7 @@ try:
 except ImportError:
     torch = None  # type: ignore[assignment]
 
-from .models import get_model_config
+from .factory import resolve_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +94,8 @@ class AdaptiveBatchSizeManager:
         if safety_margin is None:
             safety_margin = self._default_safety_margin
 
-        # Get model configuration
-        model_config = get_model_config(model_name)
+        # Get model configuration (checks providers first, then built-ins)
+        model_config = resolve_model_config(model_name)
         if model_config is None:
             logger.warning(f"Unknown model: {model_name}, using conservative batch size")
             return 1

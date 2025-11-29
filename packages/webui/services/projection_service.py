@@ -185,7 +185,7 @@ class ProjectionService:
         created_at = run.created_at if isinstance(run.created_at, datetime) else None
         config = run.config if isinstance(run.config, dict) else None
         meta_raw = run.meta if isinstance(run.meta, dict) else None
-        meta = dict(meta_raw) if meta_raw is not None else {}
+        meta: dict[str, Any] = dict(meta_raw) if meta_raw is not None else {}
 
         projection_meta = meta.get("projection_artifacts")
         if isinstance(projection_meta, dict) and "color_by" in projection_meta and "color_by" not in meta:
@@ -205,8 +205,7 @@ class ProjectionService:
             if projection_degraded:
                 meta["degraded"] = True
 
-        if not meta:
-            meta = None
+        meta_for_response: dict[str, Any] | None = meta or None
 
         # Build base response
         response = {
@@ -218,7 +217,7 @@ class ProjectionService:
             "created_at": created_at,
             "operation_id": run.operation_uuid,
             "config": config,
-            "meta": meta,
+            "meta": meta_for_response,
             "message": message,
         }
 
@@ -731,10 +730,9 @@ class ProjectionService:
                     logger.warning("Failed to mark projection %s as degraded after invalid meta.json", run.uuid)
                 meta_payload = {}
 
-        run_meta = run.meta if isinstance(run.meta, dict) else {}
-        projection_meta = (
-            run_meta.get("projection_artifacts") if isinstance(run_meta.get("projection_artifacts"), dict) else {}
-        )
+        run_meta: dict[str, Any] = run.meta if isinstance(run.meta, dict) else {}
+        projection_meta_value = run_meta.get("projection_artifacts")
+        projection_meta: dict[str, Any] = projection_meta_value if isinstance(projection_meta_value, dict) else {}
         if not projection_meta and meta_payload:
             projection_meta = meta_payload
 
@@ -784,14 +782,14 @@ class ProjectionService:
                 qdrant_client = None
 
         for selected_id in ordered_ids:
-            index = id_to_index.get(selected_id)
-            if index is None:
+            retrieved_index = id_to_index.get(selected_id)
+            if retrieved_index is None:
                 missing_ids.append(selected_id)
                 continue
 
             original_identifier: str | None = None
-            if original_ids and 0 <= index < len(original_ids):
-                raw_identifier = original_ids[index]
+            if original_ids and 0 <= retrieved_index < len(original_ids):
+                raw_identifier = original_ids[retrieved_index]
                 original_identifier = str(raw_identifier)
             else:
                 raw_identifier = None
@@ -905,7 +903,7 @@ class ProjectionService:
             items.append(
                 {
                     "selected_id": selected_id,
-                    "index": index,
+                    "index": retrieved_index,
                     "original_id": original_identifier,
                     "chunk_id": chunk_data.get("chunk_id") if chunk_data else None,
                     "document_id": chunk_data.get("document_id") if chunk_data else None,

@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 
+from shared.chunking.exceptions import ChunkingDependencyError, ChunkingResourceLimitError, ResourceType
 from shared.text_processing.base_chunker import ChunkResult
-from webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingResourceLimitError, ResourceType
 from webui.services.chunking_error_handler import (
     ChunkingErrorHandler,
     ChunkingErrorType,

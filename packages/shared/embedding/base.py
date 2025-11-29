@@ -1,10 +1,13 @@
 """Base abstraction for embedding services."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from .types import EmbeddingMode
 
 
 class BaseEmbeddingService(ABC):
@@ -28,12 +31,22 @@ class BaseEmbeddingService(ABC):
         """
 
     @abstractmethod
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
+    async def embed_texts(
+        self,
+        texts: list[str],
+        batch_size: int = 32,
+        *,
+        mode: "EmbeddingMode | None" = None,
+        **kwargs: Any,
+    ) -> NDArray[np.float32]:
         """Generate embeddings for multiple texts.
 
         Args:
             texts: List of texts to embed
             batch_size: Number of texts to process at once
+            mode: Embedding mode - QUERY for search queries, DOCUMENT for indexing.
+                  If None, defaults to QUERY for backward compatibility.
+                  For asymmetric models (E5, BGE, Qwen), this affects prefix/instruction.
             **kwargs: Implementation-specific options (e.g., instruction, normalize)
 
         Returns:
@@ -45,11 +58,19 @@ class BaseEmbeddingService(ABC):
         """
 
     @abstractmethod
-    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
+    async def embed_single(
+        self,
+        text: str,
+        *,
+        mode: "EmbeddingMode | None" = None,
+        **kwargs: Any,
+    ) -> NDArray[np.float32]:
         """Generate embedding for a single text.
 
         Args:
             text: Text to embed
+            mode: Embedding mode - QUERY for search queries, DOCUMENT for indexing.
+                  If None, defaults to QUERY for backward compatibility.
             **kwargs: Implementation-specific options
 
         Returns:

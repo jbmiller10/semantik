@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useCreateCollection } from '../hooks/useCollections';
 import { useAddSource } from '../hooks/useCollectionOperations';
 import { useOperationProgress } from '../hooks/useOperationProgress';
+import { useEmbeddingModels } from '../hooks/useModels';
 import { useUIStore } from '../stores/uiStore';
 import { useChunkingStore } from '../stores/chunkingStore';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +39,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   const { strategyConfig } = useChunkingStore();
   const navigate = useNavigate();
   const { scanning, scanResult, error: scanError, startScan, reset: resetScan } = useDirectoryScan();
+  const { data: modelsData, isLoading: modelsLoading } = useEmbeddingModels();
   const formRef = useRef<HTMLFormElement>(null);
   
   const [formData, setFormData] = useState<CreateCollectionRequest>({
@@ -450,14 +452,31 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 id="embedding_model"
                 value={formData.embedding_model}
                 onChange={(e) => handleChange('embedding_model', e.target.value)}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                disabled={modelsLoading}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-gray-100 disabled:cursor-wait"
               >
-                <option value="Qwen/Qwen3-Embedding-0.6B">Qwen3-Embedding-0.6B (Default - Fast)</option>
-                <option value="intfloat/e5-base-v2">E5-Base-v2 (Balanced)</option>
-                <option value="sentence-transformers/all-MiniLM-L6-v2">All-MiniLM-L6-v2 (Lightweight)</option>
+                {modelsLoading ? (
+                  <option value="">Loading models...</option>
+                ) : modelsData?.models ? (
+                  Object.entries(modelsData.models)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([modelName, config]) => (
+                      <option key={modelName} value={modelName}>
+                        {config.description || modelName}
+                        {config.provider && config.provider !== 'dense_local' && ` (${config.provider})`}
+                      </option>
+                    ))
+                ) : (
+                  <option value="Qwen/Qwen3-Embedding-0.6B">Qwen3-Embedding-0.6B (Default - Fast)</option>
+                )}
               </select>
               <p className="mt-1 text-sm text-gray-500">
                 Choose the AI model for converting documents to searchable vectors
+                {modelsData?.current_device && (
+                  <span className="ml-1 text-gray-400">
+                    (running on {modelsData.current_device})
+                  </span>
+                )}
               </p>
             </div>
 

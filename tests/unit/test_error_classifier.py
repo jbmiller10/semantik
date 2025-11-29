@@ -2,7 +2,7 @@
 
 """Unit tests for the shared error classifier."""
 
-from webui.api.chunking_exceptions import ChunkingDependencyError, ChunkingMemoryError
+from shared.chunking.exceptions import ChunkingDependencyError, ChunkingMemoryError
 from webui.services.chunking_error_handler import ChunkingErrorType
 from webui.utils.error_classifier import (
     ClassificationRule,

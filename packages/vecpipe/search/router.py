@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
@@ -25,7 +25,7 @@ router = APIRouter()
 
 @router.get("/model/status")
 async def model_status() -> dict[str, Any]:
-    return await service.model_status()
+    return cast(dict[str, Any], await service.model_status())
 
 
 @router.get("/")
@@ -52,13 +52,14 @@ async def root() -> dict[str, Any]:
             "embedding_mode": "mock" if cfg.USE_MOCK_EMBEDDINGS else "real",
         }
 
-        if not cfg.USE_MOCK_EMBEDDINGS and search_state.embedding_service:
-            model_info = search_state.embedding_service.get_model_info()
+        # Get embedding status from model manager
+        if search_state.model_manager:
+            mgr_status = search_state.model_manager.get_status()
             health_info["embedding_service"] = {
-                "current_model": search_state.embedding_service.current_model_name,
-                "quantization": search_state.embedding_service.current_quantization,
-                "device": search_state.embedding_service.device,
-                "model_info": model_info,
+                "current_model": mgr_status.get("current_embedding_model"),
+                "provider": mgr_status.get("embedding_provider"),
+                "model_info": mgr_status.get("provider_info"),
+                "is_mock_mode": mgr_status.get("is_mock_mode"),
             }
 
         return health_info
@@ -69,7 +70,7 @@ async def root() -> dict[str, Any]:
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return await service.health()
+    return cast(dict[str, Any], await service.health())
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -168,7 +169,7 @@ async def collection_info() -> dict[str, Any]:
 
 @router.get("/models")
 async def list_models() -> dict[str, Any]:
-    return await service.list_models()
+    return cast(dict[str, Any], await service.list_models())
 
 
 @router.post("/models/load")
@@ -176,17 +177,17 @@ async def load_model(
     model_name: str = Body(..., description="Model name to load"),
     quantization: str = Body("float32", description="Quantization type"),
 ) -> dict[str, Any]:
-    return await service.load_model(model_name, quantization)
+    return cast(dict[str, Any], await service.load_model(model_name, quantization))
 
 
 @router.get("/models/suggest")
 async def suggest_models() -> dict[str, Any]:
-    return await service.suggest_models()
+    return cast(dict[str, Any], await service.suggest_models())
 
 
 @router.get("/embedding/info")
 async def embedding_info() -> dict[str, Any]:
-    return await service.embedding_info()
+    return cast(dict[str, Any], await service.embedding_info())
 
 
 @router.post("/embed", response_model=EmbedResponse)

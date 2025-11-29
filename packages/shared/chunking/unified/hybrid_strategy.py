@@ -421,4 +421,4 @@ class HybridChunkingStrategy(UnifiedChunkingStrategy):
 
         # Hybrid strategy estimate depends on which strategy would be selected
         # Use recursive strategy estimate as default
-        return self._recursive_strategy.estimate_chunks(content_length, config)
+        return int(self._recursive_strategy.estimate_chunks(content_length, config))

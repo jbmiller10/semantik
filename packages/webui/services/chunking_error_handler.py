@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import psutil
 
+from shared.chunking.exceptions import ResourceType
 from shared.database.models import CollectionStatus
-from webui.api.chunking_exceptions import ResourceType
 from webui.middleware.correlation import get_correlation_id
 
 logger = logging.getLogger(__name__)

@@ -211,7 +211,7 @@ class ChunkingProcessor:
                 content = chunk.get("content") or chunk.get("text") or str(chunk)
                 metadata = chunk.get("metadata", {}).copy()
                 chunk_id = chunk.get("chunk_id") or metadata.get("chunk_id")
-                chunk_index = chunk.get("chunk_index", chunk.get("index", i))
+                chunk_index = chunk.get("chunk_index", chunk.get("index", i)) or i
                 token_candidate = chunk.get("token_count")
                 token_count = token_candidate if token_candidate is not None else metadata.get("token_count")
                 quality_score = chunk.get("quality_score", metadata.get("quality_score", quality_score))

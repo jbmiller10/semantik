@@ -1,0 +1,346 @@
+  Phase 1: Database Schema & Core Data Structures
+
+  Goal: Prepare persistent storage and data contracts for non‑file‑based sources without breaking existing behavior.
+
+  ———
+
+  Ticket 1: Database Migration for Flexible Sources
+
+  Context:
+  The current schema assumes all sources are local directories and all documents are local files. We need to support arbitrary source types (e.g. web, Slack) while remaining backward
+  compatible.
+
+  Files to analyze:
+
+  - packages/shared/database/models.py
+  - alembic/ (directory structure)
+  - packages/shared/database/repositories/document_repository.py
+  - Any existing Alembic migration helpers (if present)
+
+  Requirements:
+
+  - Create a new Alembic revision.
+  - collection_sources table:
+      - Add source_config column (JSON/JSONB, nullable).
+      - Remove the hardcoded default "directory" from source_type (keep it nullable=False, but no default at the DB level).
+      - Data migration:
+          - For existing rows, backfill source_config as {"path": source_path} to make legacy directory sources usable by connectors without extra logic.
+  - documents table:
+      - Add uri column (String, nullable, indexed). This is the logical identifier for the document (URL, Slack message ID, file path, etc.).
+      - Add source_metadata column (JSON/JSONB, nullable) to store connector‑specific metadata (raw response, headers, Slack thread info, etc.).
+      - Data migration: for existing rows:
+          - uri = file_path so all existing documents remain addressable via uri.
+          - Leave source_metadata as NULL (preserve meta semantics as they are today).
+      - Indexes/constraints:
+          - Add a non‑unique index on uri or on (collection_id, uri) for efficient lookups.
+          - Consider (and document the decision) whether (collection_id, uri) should be unique; if yes, enforce as a unique index constrained to non‑NULL uri.
+  - ORM & repositories:
+      - Update Document and CollectionSource models in packages/shared/database/models.py to include:
+          - CollectionSource.source_config: JSON | None
+          - Document.uri: String | None
+          - Document.source_metadata: JSON | None
+      - Ensure any Enum/type‑level constraints on source_type (Pydantic, OpenAPI, etc.) are updated to allow generic strings (not only "directory"), or moved to validation rules instead of
+        DB defaults.
+      - Update DocumentRepository to:
+          - Continue to dedupe on collection_id + content_hash as today.
+          - Accept and persist optional uri and source_metadata when creating documents (e.g. via a new helper or extended create signature).
+  - Data compatibility:
+      - Ensure existing services that rely on source_type and file_path still behave identically after migration (local directory ingestion must remain unchanged).
+
+  Acceptance Criteria:
+
+  - alembic upgrade head and alembic downgrade -1 work on a clean DB and on a DB with existing data.
+  - Existing documents have uri populated exactly matching file_path.
+  - Existing collection_sources rows have source_config = {"path": source_path}.
+  - CollectionSource and Document ORM models compile and match the new columns.
+  - DocumentRepository.create(...) continues to work for existing callers and can optionally handle uri and source_metadata for new code paths.
+
+  ———
+
+  Ticket 2: Implement IngestedDocument DTO and Hashing Helper
+
+  Context:
+  We need a single, strict data contract for ingested documents across connectors (local, web, Slack, etc.) and a consistent way to compute content hashes.
+
+  Files to analyze:
+
+  - packages/shared/ (check for existing DTO patterns, e.g. packages/shared/dtos/)
+  - packages/shared/database/repositories/document_repository.py (to align dedupe semantics)
+  - packages/shared/text_processing/ (to see how content flows today)
+
+  Requirements:
+
+  - Create a new module packages/shared/dtos/ingestion.py.
+  - Define a dataclass (or Pydantic model if preferred for validation) IngestedDocument with:
+      - content: str — fully parsed text content returned by extraction/parsing.
+      - unique_id: str — logical identifier (URI, path, message ID, etc.).
+      - source_type: str — e.g. "directory", "web", "slack".
+      - metadata: dict[str, object] — raw/original metadata from the connector (headers, timestamps, etc.).
+      - content_hash: str — SHA‑256 hash of content (hex string; 64 chars).
+      - file_path: str | None = None — optional local file path for backward compatibility with file‑based sources.
+  - Implement a shared helper function in the same module or a nearby utility (e.g. packages/shared/utils/hashing.py):
+      - def compute_content_hash(content: str | bytes) -> str:
+          - Normalize encoding (utf-8) and newline behavior as needed.
+          - Return a lowercase SHA‑256 hex digest (64 chars).
+      - All connectors and DocumentRegistryService must use this helper for content hashing (do not reimplement hashing logic in multiple places).
+  - Typing:
+      - Use precise type hints (dict[str, Any] or a dedicated TypedDict/Pydantic metadata model rather than bare dict).
+      - Ensure import path works: from shared.dtos.ingestion import IngestedDocument.
+
+  Acceptance Criteria:
+
+  - IngestedDocument is importable via from shared.dtos.ingestion import IngestedDocument.
+  - compute_content_hash produces a deterministic, 64‑character hex string for sample inputs, with tests covering simple and multi‑byte cases.
+  - Type hints are strict and mypy passes for the new module.
+  - No existing code paths are broken; new DTO is additive until consumed in later tickets.
+
+  ———
+
+  Phase 2: Refactoring Core Services
+
+  Goal: Decouple file IO from parsing and centralize document registration/deduplication logic.
+
+  ———
+
+  Ticket 3: Refactor Extraction Logic (Separate Loader vs Parser)
+
+  Context:
+  packages/shared/text_processing/extraction.py currently both opens files from disk and parses them. We want to parse from in‑memory content (e.g. HTTP responses) while preserving existing
+  behavior for file‑based callers.
+
+  Files to analyze:
+
+  - packages/shared/text_processing/extraction.py
+  - Any call sites in packages/webui/tasks/ or services that use extract_and_serialize / extract_text.
+
+  Requirements:
+
+  - Introduce a new function in extraction.py:
+      - def parse_document_content(content: bytes | str, file_extension: str, metadata: dict[str, Any] | None = None) -> list[tuple[str, dict[str, Any]]]:
+          - Encapsulate the current unstructured.partition.auto.partition logic.
+          - Use a file‑like object or the text/file parameters from unstructured to support in‑memory content.
+          - Return the same shape as extract_and_serialize: list of (text, metadata) tuples.
+          - Merge any provided metadata (e.g. connector‑level info) into element metadata where appropriate.
+  - Refactor extract_and_serialize(filepath: str) to:
+      - Read the file from disk (Path(filepath).suffix to determine file_extension).
+      - Pass the raw bytes/string and extension into parse_document_content.
+      - Preserve logging and error semantics (same exceptions and error messages where possible).
+  - Keep extract_text behavior intact:
+      - Continue to build on top of extract_and_serialize and return joined text.
+  - Ensure no external callers see any behavioral changes:
+      - Signature and return type of extract_and_serialize remain unchanged.
+      - Timeouts, logging, and exception behavior remain compatible.
+
+  Acceptance Criteria:
+
+  - Existing unit tests for extract_and_serialize and extract_text still pass.
+  - New tests cover parse_document_content being called directly with raw str and bytes content and simple extensions (e.g. ".txt").
+  - Callers that pass file paths see identical output (modulo harmless metadata ordering) and error behavior.
+
+  ———
+
+  Ticket 4: Create DocumentRegistryService
+
+  Context:
+  DocumentScanningService mixes directory traversal (os.walk) with database registration and deduplication logic. We want a dedicated registry that other connectors can reuse for registration
+  and dedupe, driven by the IngestedDocument DTO.
+
+  Files to analyze:
+
+  - packages/webui/services/document_scanning_service.py
+  - packages/shared/database/repositories/document_repository.py
+  - packages/shared/dtos/ingestion.py (Ticket 2)
+
+  Requirements:
+
+  - Create packages/webui/services/document_registry_service.py with a DocumentRegistryService class that:
+      - Is initialized with an AsyncSession and DocumentRepository.
+      - Exposes a method like async def register(self, collection_id: str, ingested: IngestedDocument, source_id: int | None = None) -> dict[str, Any]:
+          - Use ingested.content_hash (validated via the hashing helper) to check for duplicates via DocumentRepository.get_by_content_hash.
+          - If a document with the same content_hash already exists in the collection:
+              - Return information indicating is_new=False, and the existing document ID.
+          - Otherwise:
+              - Create a new Document using DocumentRepository:
+                  - collection_id – from argument.
+                  - file_path – use ingested.file_path if present, otherwise fall back to ingested.unique_id for now.
+                  - file_name – derive from ingested.file_path or unique_id as appropriate.
+                  - file_size – if known from metadata; otherwise 0 or a reasonable default (document this choice).
+                  - content_hash – ingested.content_hash.
+                  - mime_type – optionally inferred or omitted initially.
+                  - source_id – passed through.
+                  - meta – set to ingested.metadata for now.
+                  - uri – ingested.unique_id.
+                  - source_metadata – ingested.metadata or a subset, consistent with your earlier decision in Ticket 1.
+              - Handle race conditions by respecting DocumentRepository.create’s existing dedupe logic and catching IntegrityError as it already does.
+          - Return a result dict consistent with the current _register_file output:
+              - is_new: bool
+              - document_id: str
+              - file_size: int
+  - Refactor DocumentScanningService:
+      - Move _calculate_file_hash logic into the shared hashing helper (Ticket 2), or ensure both use the same helper.
+      - Move the core registration code from _register_file into DocumentRegistryService.register where feasible.
+      - Keep DocumentScanningService as a backward‑compatible wrapper that:
+          - Walks the filesystem.
+          - Builds IngestedDocument DTOs from local files.
+          - Calls DocumentRegistryService.register for each file.
+          - Preserves the shape of its public return values and error behavior.
+  - Decide and document where content_hash is mandatory:
+      - IngestedDocument should always contain a content_hash.
+      - DocumentRegistryService validates and rejects DTOs with invalid hashes.
+
+  Acceptance Criteria:
+
+  - DocumentRegistryService can successfully insert new documents and skip duplicates based on content_hash.
+  - DocumentScanningService.scan_directory_and_register_documents behavior (stats, logging, dedupe) remains unchanged except for using the shared registry under the hood.
+  - Tests cover:
+      - Registering a new document via DTO.
+      - Registering a duplicate (same content_hash) and verifying dedupe.
+      - Race conditions handled via DocumentRepository.create as before.
+
+  ———
+
+  Phase 3: Connector Architecture
+
+  Goal: Introduce a reusable connector interface and adapter layer for various source types.
+
+  ———
+
+  Ticket 5: Define BaseConnector and ConnectorFactory
+
+  Context:
+  We need a standard interface for all connectors (directory, web, Slack, etc.) and a factory to resolve connectors by source_type.
+
+  Files to analyze:
+
+  - packages/shared/ (for base abstractions)
+  - packages/webui/services/ (to see where connectors will be consumed)
+
+  Requirements:
+
+  - Create packages/shared/connectors/base.py with:
+      - An abstract base class BaseConnector:
+          - def __init__(self, config: dict[str, object]): — store the validated connector config.
+          - async def authenticate(self) -> bool: — abstract; perform any auth/handshake, return True on success.
+          - def validate_config(self) -> None: — optional hook to validate config (can be concrete and reused).
+          - def __aiter__(self) -> AsyncIterator[IngestedDocument]: or
+            async def load_documents(self) -> AsyncIterator[IngestedDocument]: — decides the canonical interface.
+              - For clarity, stick to async def load_documents(...) -> AsyncIterator[IngestedDocument] and use async for in callers.
+  - Create packages/webui/services/connector_factory.py with:
+      - A ConnectorFactory class or module‑level function:
+          - def get_connector(source_type: str, config: dict[str, object]) -> BaseConnector:
+              - Normalize source_type (e.g. lowercasing).
+              - Look up a mapping { 'directory': LocalFileConnector, ... }.
+              - Instantiate the connector with config.
+              - Raise ValueError for unknown source_type.
+      - Keep registration simple for now (static mapping), but structure it so additional connectors can be added easily.
+  - Typing:
+      - Ensure factory and connectors depend on IngestedDocument from shared.dtos.ingestion.
+
+  Acceptance Criteria:
+
+  - BaseConnector enforces authenticate and load_documents implementation in subclasses.
+  - ConnectorFactory.get_connector('directory', {...}) returns a BaseConnector subclass instance (once LocalFileConnector is implemented).
+  - get_connector raises ValueError for unknown source_type in tests.
+
+  ———
+
+  Ticket 6: Implement LocalFileConnector
+
+  Context:
+  We want to port the existing directory scanning logic into a connector that yields IngestedDocument instances.
+
+  Files to analyze:
+
+  - packages/webui/services/document_scanning_service.py (for traversal and filtering logic)
+  - packages/shared/connectors/local.py (new file)
+  - packages/shared/text_processing/extraction.py
+  - packages/shared/dtos/ingestion.py
+  - packages/webui/services/document_registry_service.py
+
+  Requirements:
+
+  - Create packages/shared/connectors/local.py with:
+      - class LocalFileConnector(BaseConnector) that:
+          - Expects a config containing at least {"path": "<directory>"}, plus optional flags (recursive, include/exclude patterns, etc.).
+          - Implements authenticate as a simple existence check for the directory path (returns True or raises on failure).
+          - Implements load_documents by:
+              - Reusing os.walk logic from DocumentScanningService (supported extensions, size limits, etc.).
+              - For each supported file:
+                  - Reads bytes (streaming if needed).
+                  - Calls parse_document_content/extract_and_serialize to get text + metadata.
+                  - Produces an IngestedDocument with:
+                      - content = combined text for the document (consistent with how chunking expects content).
+                      - unique_id = file path string.
+                      - source_type = "directory".
+                      - metadata = metadata merged from extraction + file system info.
+                      - content_hash = compute_content_hash(content).
+                      - file_path = absolute or canonical file path.
+              - Yields one IngestedDocument per file.
+  - Register LocalFileConnector in ConnectorFactory:
+      - ConnectorFactory.get_connector('directory', config) returns an instance of LocalFileConnector.
+  - Backward compatibility:
+      - Keep DocumentScanningService in place for now; a later ticket (or part of Ticket 8) will shift the ingestion pipeline to use connectors + registry instead of directly scanning.
+
+  Acceptance Criteria:
+
+  - In a test harness, LocalFileConnector can iterate a test directory and yield IngestedDocument instances with expected content, metadata, and hashes.
+  - ConnectorFactory.get_connector('directory', {'path': '/tmp'}) returns a LocalFileConnector.
+  - Unsupported files and error conditions are handled consistently with the existing DocumentScanningService behavior (e.g. skipped or logged).
+
+  ———
+
+  Phase 4: API & Task Integration
+
+  Goal: Expose the new configuration schema via API and route ingestion through the connector + registry pipeline.
+
+  ———
+
+  Ticket 7: Update AddSource API Schema & Service Contract
+
+  Context:
+  The API currently accepts a string source_path and optional config. We need to move toward source_type + source_config while keeping the old shape working.
+
+  Files to analyze:
+
+  - packages/webui/api/schemas.py
+  - packages/webui/api/v2/collections.py
+  - packages/webui/services/collection_service.py
+  - packages/shared/database/models.py (CollectionSource)
+  - Any OpenAPI or client generation expectations
+
+  Requirements:
+
+  - Modify AddSourceRequest in packages/webui/api/schemas.py:
+      - Add fields:
+          - source_type: str = Field(default="directory", description="Type of source (e.g. directory, web, slack)")
+          - source_config: dict[str, Any] | None = Field(default=None, description="Connector-specific configuration")
+      - Keep source_path: str | None but mark it as deprecated in docstring/schema description.
+      - Add a validator (or model_validator) that:
+          - If source_path is provided and source_type/source_config are not:
+              - Set source_type = "directory".
+              - Set source_config = {"path": source_path}.
+          - If both source_path and source_config are present, prefer source_config but allow it for backward compatibility (document behavior).
+  - Update the v2 add_source endpoint in packages/webui/api/v2/collections.py:
+      - Call service.add_source with:
+          - source_type=add_source_request.source_type
+          - source_config=add_source_request.source_config or {}
+          - Optionally still pass source_path if the service currently depends on it, but treat it as legacy.
+  - Update CollectionService.add_source:
+      - Signature:
+
+        async def add_source(
+            self,
+            collection_id: str,
+            user_id: int,
+            source_type: str,
+            source_config: dict[str, Any] | None = None,
+            legacy_source_path: str | None = None,
+        ) -> dict[str, Any]:
+
+        or similar, with clear distinction between the new and legacy fields.
+      - Inside:
+          - Normalize:
+              - If legacy_source_path is provided and source_config is empty, derive source_config = {"path": legacy_source_path} and source_type = "directory".
+          - Persist a CollectionSource row with:
+              - source_type from request.
+              - source_path maintained for le

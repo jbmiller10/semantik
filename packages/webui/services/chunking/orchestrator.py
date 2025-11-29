@@ -42,9 +42,9 @@ from webui.services.dtos import (
     ServiceSavedConfiguration,
     ServiceStrategyComparison,
     ServiceStrategyInfo,
-    ServiceStrategyMetrics,
     ServiceStrategyRecommendation,
 )
+from webui.services.dtos.chunking_dtos import ServiceStrategyMetrics
 
 from .cache import ChunkingCache
 from .config_manager import ChunkingConfigManager
@@ -84,7 +84,7 @@ class ChunkingOrchestrator:
         """
         self.processor = processor
         self.cache = cache
-        self.metrics = metrics
+        self.metrics: ChunkingMetrics = metrics
         self.validator = validator
         self.config_manager = config_manager
         self.db_session = db_session
@@ -624,7 +624,10 @@ class ChunkingOrchestrator:
 
         from shared.database.models import Chunk, Document, Operation, OperationStatus, OperationType
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if self.collection_repo is None:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
 
@@ -697,7 +700,10 @@ class ChunkingOrchestrator:
         from shared.chunking.infrastructure.exceptions import ResourceNotFoundError
         from shared.database.models import Chunk
 
-        collection = await (self.collection_repo.get_by_uuid(collection_id) if self.collection_repo else None)
+        if self.collection_repo is None:
+            raise ValidationError(field="collection_repo", value=None, reason="Collection repository unavailable")
+
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise ResourceNotFoundError("Collection", str(collection_id))
 
@@ -830,9 +836,13 @@ class ChunkingOrchestrator:
         """Return metrics grouped by strategy (placeholder with sensible defaults)."""
 
         try:
-            return await self.metrics.get_metrics_by_strategy(period_days=period_days)
-        except Exception:  # pragma: no cover - defensive
+            metrics = self.metrics.get_metrics_by_strategy(period_days=period_days)
+            if isinstance(metrics, list):
+                return metrics
+            # Fall back to default structure if unexpected type is returned
             return ServiceStrategyMetrics.create_default_metrics()
+        except Exception:  # pragma: no cover - defensive
+            return ServiceStrategyMetrics.create_default_metrics()  # type: ignore[no-any-return]
 
     async def get_quality_scores(
         self,

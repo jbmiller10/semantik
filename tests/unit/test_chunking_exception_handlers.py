@@ -12,12 +12,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from webui.api.chunking_exception_handlers import (
-    _create_error_response,
-    _sanitize_error_detail,
-    register_chunking_exception_handlers,
-)
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
@@ -28,6 +23,11 @@ from webui.api.chunking_exceptions import (
     ChunkingTimeoutError,
     ChunkingValidationError,
     ResourceType,
+)
+from webui.api.chunking_exception_handlers import (
+    _create_error_response,
+    _sanitize_error_detail,
+    register_chunking_exception_handlers,
 )
 from webui.middleware.correlation import CorrelationMiddleware
 

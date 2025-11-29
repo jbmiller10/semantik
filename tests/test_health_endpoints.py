@@ -211,13 +211,17 @@ class TestVecpipeHealthEndpoints:
 
         mock_qdrant.get = mock_get
 
-        mock_embedding = Mock()
-        mock_embedding.is_initialized = True
-        mock_embedding.get_model_info.return_value = {"model_name": "test-model", "dimension": 384}
+        mock_model_manager = Mock()
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": True,
+            "current_embedding_model": "test-model_float32",
+            "embedding_provider": "dense_local",
+            "provider_info": {"dimension": 384},
+        }
 
         with (
-            patch("vecpipe.search_api.qdrant_client", mock_qdrant),
-            patch("vecpipe.search_api.embedding_service", mock_embedding),
+            patch("vecpipe.search.state.qdrant_client", mock_qdrant),
+            patch("vecpipe.search.state.model_manager", mock_model_manager),
         ):
             response = vecpipe_app.get("/health")
             assert response.status_code == 200
@@ -228,7 +232,18 @@ class TestVecpipeHealthEndpoints:
 
     def test_vecpipe_health_qdrant_unhealthy(self, vecpipe_app) -> None:
         """Test vecpipe health when Qdrant is unhealthy"""
-        with patch("vecpipe.search_api.qdrant_client", None):
+        mock_model_manager = Mock()
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": True,
+            "current_embedding_model": "test-model_float32",
+            "embedding_provider": "dense_local",
+            "provider_info": {"dimension": 384},
+        }
+
+        with (
+            patch("vecpipe.search.state.qdrant_client", None),
+            patch("vecpipe.search.state.model_manager", mock_model_manager),
+        ):
             response = vecpipe_app.get("/health")
             assert response.status_code == 503
             data = response.json()["detail"]
@@ -236,7 +251,7 @@ class TestVecpipeHealthEndpoints:
             assert data["components"]["qdrant"]["status"] == "unhealthy"
 
     def test_vecpipe_health_embedding_degraded(self, vecpipe_app) -> None:
-        """Test vecpipe health when embedding service is degraded"""
+        """Test vecpipe health when model manager is not initialized (degraded)"""
         mock_qdrant = Mock()
 
         # Create async mock for qdrant_client.get
@@ -248,12 +263,9 @@ class TestVecpipeHealthEndpoints:
 
         mock_qdrant.get = mock_get
 
-        mock_embedding = Mock()
-        mock_embedding.is_initialized = False
-
         with (
-            patch("vecpipe.search_api.qdrant_client", mock_qdrant),
-            patch("vecpipe.search_api.embedding_service", mock_embedding),
+            patch("vecpipe.search.state.qdrant_client", mock_qdrant),
+            patch("vecpipe.search.state.model_manager", None),
         ):
             response = vecpipe_app.get("/health")
             assert response.status_code == 200

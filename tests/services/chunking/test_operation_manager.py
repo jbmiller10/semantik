@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingResourceLimitError,

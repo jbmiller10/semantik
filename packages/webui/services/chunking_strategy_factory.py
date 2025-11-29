@@ -161,7 +161,7 @@ class ChunkingStrategyFactory:
         Returns:
             Normalized internal strategy name (may not be valid)
         """
-        internal = resolve_internal_strategy_name(name)
+        internal: str | None = resolve_internal_strategy_name(name)
         if internal:
             return internal
         return str(name).lower().strip()

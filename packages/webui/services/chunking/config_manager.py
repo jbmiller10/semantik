@@ -39,7 +39,8 @@ class ChunkingConfigManager:
         Returns:
             Default configuration dictionary
         """
-        return get_strategy_defaults(strategy, context="manager")
+        result: dict[str, Any] = get_strategy_defaults(strategy, context="manager")
+        return result
 
     def get_strategy_info(self, strategy: str) -> dict[str, Any]:
         """
