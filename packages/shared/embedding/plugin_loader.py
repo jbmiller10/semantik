@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 ENTRYPOINT_GROUP = "semantik.embedding_providers"
 ENV_FLAG = "SEMANTIK_ENABLE_EMBEDDING_PLUGINS"
 
+# Module-level flag for idempotent plugin loading
+_plugins_loaded = False
+_registered_plugins: list[str] = []
+
 
 def _should_enable_plugins() -> bool:
     """Check env flag to allow disabling plugin loading."""
@@ -84,14 +88,24 @@ def load_embedding_plugins() -> list[str]:
     2. Loads each entry point and validates the plugin contract
     3. Registers valid plugins with the factory and provider registry
 
+    This function is idempotent - subsequent calls return the cached result
+    without re-querying entry points.
+
     Returns:
         List of api_ids successfully registered.
     """
+    global _plugins_loaded, _registered_plugins
+
+    # Idempotent: only load once
+    if _plugins_loaded:
+        return list(_registered_plugins)
+
     from .factory import EmbeddingProviderFactory
     from .provider_registry import register_provider_definition
 
     if not _should_enable_plugins():
         logger.info("Embedding plugins disabled via %s", ENV_FLAG)
+        _plugins_loaded = True
         return []
 
     try:
@@ -187,15 +201,32 @@ def load_embedding_plugins() -> list[str]:
             )
             continue
 
+    # Mark as loaded and cache result
+    _plugins_loaded = True
+    _registered_plugins = registered
     return registered
 
 
 def ensure_providers_registered() -> None:
     """Ensure built-in providers are registered.
 
-    This imports the providers module which triggers auto-registration
-    of built-in providers. It's idempotent - calling multiple times
-    has no effect.
+    This calls the builtin provider registration function directly to ensure
+    providers are registered even if the module was already imported and the
+    registry was cleared. It's idempotent - calling multiple times is safe.
     """
-    # Import triggers registration in providers/__init__.py
-    from . import providers as _  # noqa: F401
+    # Import and call registration function directly to handle case where
+    # module was already imported but registry was cleared
+    from .providers import _register_builtin_providers
+
+    _register_builtin_providers()
+
+
+def _reset_plugin_loader_state() -> None:
+    """Reset plugin loader state for testing.
+
+    This allows tests to re-run plugin loading with fresh state.
+    Should only be used in tests.
+    """
+    global _plugins_loaded, _registered_plugins
+    _plugins_loaded = False
+    _registered_plugins = []

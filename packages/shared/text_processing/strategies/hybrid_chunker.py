@@ -270,7 +270,7 @@ class HybridChunker(BaseChunker):
             from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
-            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
+            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))
             self._chunker_cache[cache_key] = chunker
             return chunker
         except Exception as e:
@@ -308,7 +308,8 @@ class HybridChunker(BaseChunker):
                     return False
 
             # Delegate to underlying chunker for other validations
-            return self._chunker.validate_config(config)
+            result: bool = self._chunker.validate_config(config)
+            return result
         except Exception:
             return False
 
@@ -379,7 +380,8 @@ class HybridChunker(BaseChunker):
                         )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
-            return chunks
+            result: list[ChunkResult] = chunks
+            return result
 
         except Exception as e:
             # Strategy failed, use fallback
@@ -411,7 +413,8 @@ class HybridChunker(BaseChunker):
                             original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
                         )
 
-                return chunks
+                result_fallback: list[ChunkResult] = chunks
+                return result_fallback
 
             except Exception as fallback_error:
                 # Emergency: create single chunk
@@ -466,7 +469,8 @@ class HybridChunker(BaseChunker):
                         )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
-            return chunks
+            result_async: list[ChunkResult] = chunks
+            return result_async
 
         except Exception as e:
             # Strategy failed, use fallback
@@ -498,7 +502,8 @@ class HybridChunker(BaseChunker):
                             original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
                         )
 
-                return chunks
+                result_async_fallback: list[ChunkResult] = chunks
+                return result_async_fallback
 
             except Exception as fallback_error:
                 # Emergency: create single chunk

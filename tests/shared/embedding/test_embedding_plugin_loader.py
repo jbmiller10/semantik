@@ -6,6 +6,7 @@ from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pytest
 
 from shared.embedding import plugin_loader
 from shared.embedding.factory import _PROVIDER_CLASSES
@@ -17,7 +18,6 @@ from shared.embedding.provider_registry import (
 )
 
 if TYPE_CHECKING:
-    import pytest
     from numpy.typing import NDArray
 
 
@@ -104,6 +104,7 @@ class TestPluginLoader:
         original_classes = dict(_PROVIDER_CLASSES)
         original_providers = dict(_PROVIDERS)
         _clear_caches()
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
 
         try:
             registered = plugin_loader.load_embedding_plugins()
@@ -126,9 +127,11 @@ class TestPluginLoader:
             _PROVIDERS.clear()
             _PROVIDERS.update(original_providers)
             _clear_caches()
+            plugin_loader._reset_plugin_loader_state()
 
     def test_plugin_loader_disabled_via_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that plugins can be disabled via environment variable."""
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
         monkeypatch.setenv(plugin_loader.ENV_FLAG, "false")
 
         registered = plugin_loader.load_embedding_plugins()
@@ -137,6 +140,7 @@ class TestPluginLoader:
 
     def test_plugin_loader_disabled_via_env_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that plugins can be disabled with '0'."""
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
         monkeypatch.setenv(plugin_loader.ENV_FLAG, "0")
 
         registered = plugin_loader.load_embedding_plugins()
@@ -162,6 +166,7 @@ class TestPluginLoader:
         original_classes = dict(_PROVIDER_CLASSES)
         original_providers = dict(_PROVIDERS)
         _clear_caches()
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
 
         try:
             plugin_loader.load_embedding_plugins()
@@ -176,6 +181,7 @@ class TestPluginLoader:
             _PROVIDERS.clear()
             _PROVIDERS.update(original_providers)
             _clear_caches()
+            plugin_loader._reset_plugin_loader_state()
 
     def test_plugin_loader_skips_invalid_contract(
         self, monkeypatch: pytest.MonkeyPatch
@@ -202,6 +208,7 @@ class TestPluginLoader:
         original_classes = dict(_PROVIDER_CLASSES)
         original_providers = dict(_PROVIDERS)
         _clear_caches()
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
 
         try:
             registered = plugin_loader.load_embedding_plugins()
@@ -215,11 +222,13 @@ class TestPluginLoader:
             _PROVIDERS.clear()
             _PROVIDERS.update(original_providers)
             _clear_caches()
+            plugin_loader._reset_plugin_loader_state()
 
     def test_plugin_loader_handles_entry_point_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test that errors during entry point loading are handled."""
+        plugin_loader._reset_plugin_loader_state()  # Reset for fresh test
 
         class FailingEntryPoint:
             name = "failing_plugin"
@@ -237,6 +246,53 @@ class TestPluginLoader:
         # Should not raise, just return empty list
         registered = plugin_loader.load_embedding_plugins()
         assert registered == []
+
+    def test_load_embedding_plugins_idempotent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that load_embedding_plugins only loads once (idempotent)."""
+        call_count = 0
+
+        class DummyEntryPoint:
+            name = "test_plugin"
+
+            def load(self) -> type:
+                return ValidPlugin
+
+        class CountingEntryPoints:
+            def select(self, group: str) -> list:
+                nonlocal call_count
+                call_count += 1
+                return [DummyEntryPoint()]
+
+        monkeypatch.setenv(plugin_loader.ENV_FLAG, "true")
+        monkeypatch.setattr(metadata, "entry_points", lambda: CountingEntryPoints())
+
+        # Save original state and reset
+        original_classes = dict(_PROVIDER_CLASSES)
+        original_providers = dict(_PROVIDERS)
+        _clear_caches()
+        plugin_loader._reset_plugin_loader_state()
+
+        try:
+            # First call should query entry points
+            result1 = plugin_loader.load_embedding_plugins()
+            assert call_count == 1
+            assert "test_plugin" in result1
+
+            # Second call should be idempotent - no new entry_points query
+            result2 = plugin_loader.load_embedding_plugins()
+            assert call_count == 1  # Still 1, not 2
+            assert result2 == result1
+
+        finally:
+            # Restore state
+            _PROVIDER_CLASSES.clear()
+            _PROVIDER_CLASSES.update(original_classes)
+            _PROVIDERS.clear()
+            _PROVIDERS.update(original_providers)
+            _clear_caches()
+            plugin_loader._reset_plugin_loader_state()
 
 
 class TestValidatePluginContract:
@@ -497,3 +553,63 @@ class TestCoerceClass:
 
         result = plugin_loader._coerce_class(factory)
         assert result is None
+
+
+class TestServiceIntegration:
+    """Tests for plugin loading integration with embedding service."""
+
+    @pytest.mark.asyncio()
+    async def test_get_embedding_service_registers_plugins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test that get_embedding_service loads plugins via _ensure_providers_registered."""
+        from shared.embedding import service
+        from shared.embedding.service import _ensure_providers_registered
+
+        class DummyEntryPoint:
+            name = "test_plugin"
+
+            def load(self) -> type:
+                return ValidPlugin
+
+        class DummyEntryPoints:
+            def select(self, group: str) -> list:
+                return [DummyEntryPoint()]
+
+        monkeypatch.setenv(plugin_loader.ENV_FLAG, "true")
+        monkeypatch.setattr(metadata, "entry_points", lambda: DummyEntryPoints())
+
+        # Save original state and reset
+        original_classes = dict(_PROVIDER_CLASSES)
+        original_providers = dict(_PROVIDERS)
+        _clear_caches()
+        plugin_loader._reset_plugin_loader_state()
+
+        # Also reset service state
+        original_service = service._embedding_service
+        original_model = service._current_model_name
+        service._embedding_service = None
+        service._current_model_name = None
+
+        try:
+            # Call _ensure_providers_registered (what get_embedding_service calls)
+            _ensure_providers_registered()
+
+            # Verify plugin is registered in factory
+            assert "test_plugin" in _PROVIDER_CLASSES
+
+            # Verify definition is registered
+            definition = get_provider_definition("test_plugin")
+            assert definition is not None
+            assert definition.is_plugin is True
+
+        finally:
+            # Restore state
+            _PROVIDER_CLASSES.clear()
+            _PROVIDER_CLASSES.update(original_classes)
+            _PROVIDERS.clear()
+            _PROVIDERS.update(original_providers)
+            _clear_caches()
+            plugin_loader._reset_plugin_loader_state()
+            service._embedding_service = original_service
+            service._current_model_name = original_model

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 
+from shared.embedding import plugin_loader
 from shared.embedding.factory import _PROVIDER_CLASSES
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
 from shared.embedding.provider_registry import _PROVIDERS, _clear_caches
@@ -28,6 +29,7 @@ def clean_registry() -> Generator[None, None, None]:  # noqa: PT004
     original_classes = dict(_PROVIDER_CLASSES)
     original_providers = dict(_PROVIDERS)
     _clear_caches()
+    plugin_loader._reset_plugin_loader_state()
 
     yield
 
@@ -37,6 +39,7 @@ def clean_registry() -> Generator[None, None, None]:  # noqa: PT004
     _PROVIDERS.clear()
     _PROVIDERS.update(original_providers)
     _clear_caches()
+    plugin_loader._reset_plugin_loader_state()
 
 
 @pytest.fixture()
@@ -53,6 +56,7 @@ def empty_registry() -> Generator[None, None, None]:  # noqa: PT004
     _PROVIDER_CLASSES.clear()
     _PROVIDERS.clear()
     _clear_caches()
+    plugin_loader._reset_plugin_loader_state()
 
     yield
 
@@ -62,6 +66,7 @@ def empty_registry() -> Generator[None, None, None]:  # noqa: PT004
     _PROVIDERS.clear()
     _PROVIDERS.update(original_providers)
     _clear_caches()
+    plugin_loader._reset_plugin_loader_state()
 
 
 @pytest.fixture()
