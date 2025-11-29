@@ -12,7 +12,7 @@ class EmbeddingMode(str, Enum):
     Examples:
         - E5 models: "query: {text}" vs "passage: {text}"
         - BGE models: instruction prefix for queries, none for documents
-        - Qwen models: "Instruct: {task}\\nQuery: {text}" vs raw text
+        - Qwen models: "Instruct: {task}\\nQuery:{text}" vs raw text
 
     Usage:
         # For search queries

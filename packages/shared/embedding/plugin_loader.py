@@ -42,8 +42,9 @@ def _coerce_class(obj: Any) -> type | None:
         maybe_cls = obj()
         if isinstance(maybe_cls, type):
             return maybe_cls
-        if isinstance(maybe_cls, object):
-            return maybe_cls.__class__
+        # If callable returned an instance (not None), extract its class
+        if maybe_cls is not None:
+            return maybe_cls.__class__  # type: ignore[no-any-return]
     return None
 
 
@@ -154,6 +155,7 @@ def load_embedding_plugins() -> list[str]:
                     supports_quantization=definition.supports_quantization,
                     supports_instruction=definition.supports_instruction,
                     supports_batch_processing=definition.supports_batch_processing,
+                    supports_asymmetric=definition.supports_asymmetric,
                     supported_models=definition.supported_models,
                     default_config=dict(definition.default_config),
                     performance_characteristics=dict(definition.performance_characteristics),
