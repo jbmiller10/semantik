@@ -68,9 +68,24 @@ def mock_model_manager() -> None:
 
     manager.generate_embeddings_batch_async = AsyncMock(side_effect=mock_batch_embed)
     manager.rerank_async = AsyncMock(return_value=[(0, 0.95), (1, 0.90)])
-    manager.get_status = Mock(return_value={"loaded_models": [], "memory_usage": {}})
+    # Return proper status data for health and embedding_info endpoints
+    manager.get_status = Mock(return_value={
+        "embedding_model_loaded": True,
+        "current_embedding_model": "test-model_float32",
+        "embedding_provider": "dense_local",
+        "is_mock_mode": False,
+        "provider_info": {
+            "model_name": "test-model",
+            "dimension": 1024,
+            "device": "cpu",
+            "quantization": "float32",
+            "max_sequence_length": 512,
+        },
+        "loaded_models": [],
+        "memory_usage": {},
+    })
     manager.shutdown = Mock()
-    manager.current_model_key = "test-model"
+    manager.current_model_key = "test-model_float32"
     manager.current_reranker_key = None
     return manager
 
@@ -286,7 +301,14 @@ class TestSearchAPI:
         """Test /model/status endpoint."""
         response = test_client_for_search_api.get("/model/status")
         assert response.status_code == 200
-        assert response.json() == {"loaded_models": [], "memory_usage": {}}
+        result = response.json()
+        # Verify key status fields are present
+        assert "embedding_model_loaded" in result
+        assert "current_embedding_model" in result
+        assert "embedding_provider" in result
+        assert "provider_info" in result
+        assert result["embedding_model_loaded"] is True
+        assert result["current_embedding_model"] == "test-model_float32"
 
         # Test when model manager is not initialized
 
@@ -335,12 +357,16 @@ class TestSearchAPI:
         finally:
             search_state.qdrant_client = original_client
 
-    def test_health_endpoint(self, mock_qdrant_client, mock_model_manager, test_client_for_search_api) -> None:
+    def test_health_endpoint(
+        self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
+    ) -> None:
         """Test /health endpoint.
 
         Note: With the plugin-aware provider system, ModelManager handles embedding
         providers. Models are lazy-loaded, so "no model loaded" is considered healthy.
         """
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
         # Mock successful Qdrant response
         mock_response = Mock()
         mock_response.status_code = 200
@@ -356,6 +382,10 @@ class TestSearchAPI:
         assert result["components"]["qdrant"]["status"] == "healthy"
         assert result["components"]["qdrant"]["collections_count"] == 2
         assert result["components"]["embedding"]["status"] == "healthy"
+        assert result["components"]["embedding"]["model"] == "test-model_float32"
+        assert result["components"]["embedding"]["provider"] == "dense_local"
+        assert result["components"]["embedding"]["dimension"] == 1024
+        assert result["components"]["embedding"]["is_mock_mode"] is False
 
         # Test with no model loaded - should still be healthy due to lazy loading
         mock_model_manager.get_status.return_value = {
@@ -368,6 +398,8 @@ class TestSearchAPI:
         result = response.json()
         # No model loaded is OK because models are lazy-loaded
         assert result["status"] == "healthy"
+        assert result["components"]["embedding"]["is_mock_mode"] is False
+        assert result["components"]["embedding"]["note"] == "Embedding model loaded on first use"
 
         # Test with Qdrant error
         mock_qdrant_client.get.side_effect = Exception("Connection error")
@@ -379,6 +411,40 @@ class TestSearchAPI:
             assert response.status_code == 503
         finally:
             search_state.model_manager = original_manager
+
+    def test_health_endpoint_mock_mode(
+        self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """Test /health endpoint in mock mode."""
+        mock_settings.USE_MOCK_EMBEDDINGS = True
+
+        # Mock successful Qdrant response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"result": {"collections": [{"name": "col1"}]}}
+        mock_qdrant_client.get.return_value = mock_response
+
+        # Mock model manager status for mock mode
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": True,
+            "current_embedding_model": "mock_float32",
+            "embedding_provider": "mock",
+            "is_mock_mode": True,
+            "provider_info": {
+                "dimension": 384,
+                "is_mock": True,
+            },
+        }
+
+        search_state.qdrant_client = mock_qdrant_client
+
+        response = test_client_for_search_api.get("/health")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["status"] == "healthy"
+        assert result["components"]["embedding"]["status"] == "healthy"
+        assert result["components"]["embedding"]["is_mock_mode"] is True
+        assert result["components"]["embedding"]["provider"] == "mock"
 
     def test_search_post_endpoint(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
@@ -938,8 +1004,8 @@ class TestSearchAPI:
             assert result["gpu_available"] is False
             assert "No GPU detected" in result["message"]
 
-    def test_embedding_info_endpoint(self, mock_settings, mock_embedding_service, test_client_for_search_api) -> None:
-        """Test /embedding/info endpoint."""
+    def test_embedding_info_endpoint(self, mock_settings, mock_model_manager, test_client_for_search_api) -> None:
+        """Test /embedding/info endpoint with model loaded."""
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         response = test_client_for_search_api.get("/embedding/info")
@@ -947,25 +1013,86 @@ class TestSearchAPI:
         result = response.json()
         assert result["mode"] == "real"
         assert result["available"] is True
+        assert result["is_mock_mode"] is False
         assert result["current_model"] == "test-model"
         assert result["quantization"] == "float32"
         assert result["device"] == "cpu"
+        assert result["provider"] == "dense_local"
+        assert result["dimension"] == 1024
         assert "model_details" in result
+        assert result["model_details"]["dimension"] == 1024
 
-        # Test with mock embeddings
+    def test_embedding_info_endpoint_lazy_loading(
+        self, mock_settings, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """Test /embedding/info endpoint when model not yet loaded (lazy loading)."""
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        # Simulate model not loaded yet
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": False,
+            "current_embedding_model": None,
+            "embedding_provider": None,
+            "is_mock_mode": False,
+        }
+
+        response = test_client_for_search_api.get("/embedding/info")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["mode"] == "real"
+        assert result["available"] is True  # Available even if not loaded (capability-based)
+        assert result["is_mock_mode"] is False
+        assert result["note"] == "Embedding model loaded on first use"
+        assert result["default_model"] == "test-model"
+        assert result["default_quantization"] == "float32"
+        assert "current_model" not in result  # Not loaded yet
+
+    def test_embedding_info_endpoint_mock_mode(
+        self, mock_settings, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """Test /embedding/info endpoint in mock mode."""
         mock_settings.USE_MOCK_EMBEDDINGS = True
 
-        original_service = search_state.embedding_service
-        search_state.embedding_service = None
+        # Simulate mock mode with mock provider loaded
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": True,
+            "current_embedding_model": "mock_float32",
+            "embedding_provider": "mock",
+            "is_mock_mode": True,
+            "provider_info": {
+                "model_name": "mock",
+                "dimension": 384,
+                "device": "cpu",
+                "quantization": "float32",
+                "is_mock": True,
+            },
+        }
+
+        response = test_client_for_search_api.get("/embedding/info")
+        assert response.status_code == 200
+        result = response.json()
+        assert result["mode"] == "mock"
+        assert result["available"] is True
+        assert result["is_mock_mode"] is True
+        assert result["provider"] == "mock"
+        assert result["dimension"] == 384
+
+    def test_embedding_info_endpoint_no_model_manager(self, mock_settings, test_client_for_search_api) -> None:
+        """Test /embedding/info endpoint when ModelManager is not initialized."""
+        mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        original_manager = search_state.model_manager
+        search_state.model_manager = None
 
         try:
             response = test_client_for_search_api.get("/embedding/info")
             assert response.status_code == 200
             result = response.json()
-            assert result["mode"] == "mock"
-            assert result["available"] is False
+            assert result["mode"] == "real"
+            assert result["available"] is False  # Not available without ModelManager
+            assert result["is_mock_mode"] is False
         finally:
-            search_state.embedding_service = original_service
+            search_state.model_manager = original_manager
 
     def test_search_with_collection_metadata(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api

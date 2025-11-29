@@ -1241,6 +1241,7 @@ async def health() -> dict[str, Any]:
 
     try:
         # Get embedding status from model manager
+        cfg = _get_settings()
         if search_state.model_manager is None:
             health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Model manager not initialized"}
             health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
@@ -1253,6 +1254,7 @@ async def health() -> dict[str, Any]:
                     "model": mgr_status.get("current_embedding_model"),
                     "provider": mgr_status.get("embedding_provider"),
                     "dimension": provider_info.get("dimension") if provider_info else None,
+                    "is_mock_mode": cfg.USE_MOCK_EMBEDDINGS,
                 }
             else:
                 # No model loaded yet, but this is OK - lazy loading
@@ -1261,6 +1263,7 @@ async def health() -> dict[str, Any]:
                     "model": None,
                     "provider": None,
                     "note": "Embedding model loaded on first use",
+                    "is_mock_mode": cfg.USE_MOCK_EMBEDDINGS,
                 }
     except Exception as e:
         health_status["components"]["embedding"] = {"status": "unhealthy", "error": str(e)}
@@ -1405,26 +1408,46 @@ async def suggest_models() -> dict[str, Any]:
 async def embedding_info() -> dict[str, Any]:
     """Return information about the embedding configuration."""
     cfg = _get_settings()
+
+    # Get status from ModelManager (the source of truth)
+    model_status = search_state.model_manager.get_status() if search_state.model_manager else {}
+
     info: dict[str, Any] = {
         "mode": "mock" if cfg.USE_MOCK_EMBEDDINGS else "real",
-        "available": not cfg.USE_MOCK_EMBEDDINGS and search_state.embedding_service is not None,
+        # Available if ModelManager exists (even if model not yet loaded due to lazy loading)
+        "available": search_state.model_manager is not None,
+        "is_mock_mode": cfg.USE_MOCK_EMBEDDINGS,
     }
 
-    if not cfg.USE_MOCK_EMBEDDINGS and search_state.embedding_service:
-        info.update(
-            {
-                "current_model": search_state.embedding_service.current_model_name,
-                "quantization": search_state.embedding_service.current_quantization,
-                "device": search_state.embedding_service.device,
-                "default_model": cfg.DEFAULT_EMBEDDING_MODEL,
-                "default_quantization": cfg.DEFAULT_QUANTIZATION,
-            }
-        )
+    # Add model details from ModelManager status
+    if model_status.get("embedding_model_loaded"):
+        provider_info = model_status.get("provider_info", {})
+        current_model_key = model_status.get("current_embedding_model", "")
 
-        if search_state.embedding_service.current_model_name and search_state.embedding_service.current_quantization:
-            model_info = search_state.embedding_service.get_model_info(
-                search_state.embedding_service.current_model_name, search_state.embedding_service.current_quantization
-            )
-            info["model_details"] = model_info
+        # Parse model key format: "model_name_quantization"
+        if "_" in current_model_key:
+            parts = current_model_key.rsplit("_", 1)
+            model_name = parts[0]
+            quantization = parts[1] if len(parts) > 1 else "unknown"
+        else:
+            model_name = current_model_key
+            quantization = provider_info.get("quantization", "unknown")
+
+        info.update({
+            "current_model": model_name,
+            "quantization": quantization,
+            "device": provider_info.get("device"),
+            "provider": model_status.get("embedding_provider"),
+            "dimension": provider_info.get("dimension"),
+            "model_details": provider_info,
+        })
+    elif search_state.model_manager is not None:
+        # Model not loaded yet (lazy loading) - still indicate availability
+        info["note"] = "Embedding model loaded on first use"
+        # Include defaults from settings
+        info.update({
+            "default_model": cfg.DEFAULT_EMBEDDING_MODEL,
+            "default_quantization": cfg.DEFAULT_QUANTIZATION,
+        })
 
     return info
