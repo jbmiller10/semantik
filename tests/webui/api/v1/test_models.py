@@ -106,11 +106,18 @@ async def test_models_endpoint_requires_auth(
     api_client_unauthenticated: AsyncClient,
 ) -> None:
     """Verify /api/models requires authentication."""
+    from shared.config import settings
 
-    response = await api_client_unauthenticated.get("/api/models")
+    # Temporarily disable the DISABLE_AUTH setting to test real authentication
+    original_disable_auth = settings.DISABLE_AUTH
+    settings.DISABLE_AUTH = False
+    try:
+        response = await api_client_unauthenticated.get("/api/models")
 
-    # Should return 401 without auth header
-    assert response.status_code == 401
+        # Should return 401 without auth header
+        assert response.status_code == 401
+    finally:
+        settings.DISABLE_AUTH = original_disable_auth
 
 
 @pytest.mark.asyncio()

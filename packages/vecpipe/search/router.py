@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
@@ -25,7 +25,7 @@ router = APIRouter()
 
 @router.get("/model/status")
 async def model_status() -> dict[str, Any]:
-    return await service.model_status()
+    return cast(dict[str, Any], await service.model_status())
 
 
 @router.get("/")
@@ -70,7 +70,7 @@ async def root() -> dict[str, Any]:
 
 @router.get("/health")
 async def health() -> dict[str, Any]:
-    return await service.health()
+    return cast(dict[str, Any], await service.health())
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -169,7 +169,7 @@ async def collection_info() -> dict[str, Any]:
 
 @router.get("/models")
 async def list_models() -> dict[str, Any]:
-    return await service.list_models()
+    return cast(dict[str, Any], await service.list_models())
 
 
 @router.post("/models/load")
@@ -177,17 +177,17 @@ async def load_model(
     model_name: str = Body(..., description="Model name to load"),
     quantization: str = Body("float32", description="Quantization type"),
 ) -> dict[str, Any]:
-    return await service.load_model(model_name, quantization)
+    return cast(dict[str, Any], await service.load_model(model_name, quantization))
 
 
 @router.get("/models/suggest")
 async def suggest_models() -> dict[str, Any]:
-    return await service.suggest_models()
+    return cast(dict[str, Any], await service.suggest_models())
 
 
 @router.get("/embedding/info")
 async def embedding_info() -> dict[str, Any]:
-    return await service.embedding_info()
+    return cast(dict[str, Any], await service.embedding_info())
 
 
 @router.post("/embed", response_model=EmbedResponse)
