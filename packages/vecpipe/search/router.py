@@ -52,13 +52,14 @@ async def root() -> dict[str, Any]:
             "embedding_mode": "mock" if cfg.USE_MOCK_EMBEDDINGS else "real",
         }
 
-        if not cfg.USE_MOCK_EMBEDDINGS and search_state.embedding_service:
-            model_info = search_state.embedding_service.get_model_info()
+        # Get embedding status from model manager
+        if search_state.model_manager:
+            mgr_status = search_state.model_manager.get_status()
             health_info["embedding_service"] = {
-                "current_model": search_state.embedding_service.current_model_name,
-                "quantization": search_state.embedding_service.current_quantization,
-                "device": search_state.embedding_service.device,
-                "model_info": model_info,
+                "current_model": mgr_status.get("current_embedding_model"),
+                "provider": mgr_status.get("embedding_provider"),
+                "model_info": mgr_status.get("provider_info"),
+                "is_mock_mode": mgr_status.get("is_mock_mode"),
             }
 
         return health_info

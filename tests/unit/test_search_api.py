@@ -199,7 +199,7 @@ def test_client_for_search_api(
         patch("vecpipe.search_api.settings", mock_settings),
         patch("vecpipe.search.lifespan.httpx.AsyncClient", return_value=mock_qdrant_client),
         patch("vecpipe.search.lifespan.start_metrics_server"),
-        patch("vecpipe.search.lifespan.get_embedding_service", return_value=mock_embedding_facade),
+        # Note: get_embedding_service no longer used in lifespan - ModelManager handles providers
         patch("vecpipe.search.lifespan.ModelManager", return_value=mock_model_manager),
     ):
         client = TestClient(app)
@@ -254,32 +254,28 @@ class TestSearchAPI:
 
     @pytest.mark.asyncio()
     async def test_lifespan(self, mock_settings, mock_qdrant_client, mock_model_manager) -> None:
-        """Test application lifespan management."""
+        """Test application lifespan management.
+
+        Note: ModelManager now handles embedding providers internally,
+        so there's no separate embedding service initialization in lifespan.
+        """
         # Test that lifespan context manager starts and cleans up properly
         with (
             patch("vecpipe.search.lifespan.settings", mock_settings),
             patch("vecpipe.search.lifespan.httpx.AsyncClient") as mock_httpx,
             patch("vecpipe.search.lifespan.start_metrics_server") as mock_start_metrics,
-            patch("vecpipe.search.lifespan.get_embedding_service") as mock_get_service,
             patch("vecpipe.search.lifespan.ModelManager") as mock_mm_class,
         ):
             mock_httpx.return_value = mock_qdrant_client
-            mock_service = AsyncMock()
-            mock_service.initialize = AsyncMock()
-            mock_get_service.return_value = mock_service
             mock_mm_class.return_value = mock_model_manager
 
             # Test startup and shutdown
-
             test_app = FastAPI()
 
             async with lifespan(test_app):
                 # Verify initialization
                 mock_start_metrics.assert_called_once()
-                # The actual call will be with the real METRICS_PORT constant, not mock_settings.METRICS_PORT
                 mock_httpx.assert_called_once()
-                mock_get_service.assert_called_once()
-                mock_service.initialize.assert_called()
                 mock_mm_class.assert_called_once()
 
             # Verify cleanup
@@ -339,8 +335,12 @@ class TestSearchAPI:
         finally:
             search_state.qdrant_client = original_client
 
-    def test_health_endpoint(self, mock_qdrant_client, mock_embedding_service, test_client_for_search_api) -> None:
-        """Test /health endpoint."""
+    def test_health_endpoint(self, mock_qdrant_client, mock_model_manager, test_client_for_search_api) -> None:
+        """Test /health endpoint.
+
+        Note: With the plugin-aware provider system, ModelManager handles embedding
+        providers. Models are lazy-loaded, so "no model loaded" is considered healthy.
+        """
         # Mock successful Qdrant response
         mock_response = Mock()
         mock_response.status_code = 200
@@ -348,7 +348,6 @@ class TestSearchAPI:
         mock_qdrant_client.get.return_value = mock_response
 
         search_state.qdrant_client = mock_qdrant_client
-        search_state.embedding_service = mock_embedding_service
 
         response = test_client_for_search_api.get("/health")
         assert response.status_code == 200
@@ -358,24 +357,28 @@ class TestSearchAPI:
         assert result["components"]["qdrant"]["collections_count"] == 2
         assert result["components"]["embedding"]["status"] == "healthy"
 
-        # Test with uninitialized embedding service
-        mock_embedding_service.is_initialized = False
+        # Test with no model loaded - should still be healthy due to lazy loading
+        mock_model_manager.get_status.return_value = {
+            "embedding_model_loaded": False,
+            "current_embedding_model": None,
+            "embedding_provider": None,
+        }
         response = test_client_for_search_api.get("/health")
         assert response.status_code == 200
         result = response.json()
-        assert result["status"] == "degraded"
-        assert result["components"]["embedding"]["status"] == "unhealthy"
+        # No model loaded is OK because models are lazy-loaded
+        assert result["status"] == "healthy"
 
         # Test with Qdrant error
         mock_qdrant_client.get.side_effect = Exception("Connection error")
 
-        original_service = search_state.embedding_service
+        original_manager = search_state.model_manager
         try:
-            search_state.embedding_service = None
+            search_state.model_manager = None
             response = test_client_for_search_api.get("/health")
             assert response.status_code == 503
         finally:
-            search_state.embedding_service = original_service
+            search_state.model_manager = original_manager
 
     def test_search_post_endpoint(
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
@@ -683,31 +686,108 @@ class TestSearchAPI:
         assert result["name"] == "test_collection"
         assert result["points_count"] == 1000
 
-    def test_list_models_endpoint(self, test_client_for_search_api, mock_embedding_service) -> None:
-        """Test /models endpoint."""
-        with patch(
-            "shared.embedding.QUANTIZED_MODEL_INFO",
+    def test_list_models_endpoint(self, test_client_for_search_api, mock_model_manager) -> None:
+        """Test /models endpoint returns built-in models with provider info.
+
+        Note: Current model info now comes from ModelManager.get_status() using the
+        current_embedding_model key which is in format "model_name_quantization".
+        """
+        mock_models = [
             {
-                "test-model": {
-                    "description": "Test embedding model",
-                    "dimension": 768,
-                    "supports_quantization": True,
-                    "recommended_quantization": "float16",
-                    "memory_estimate": {"float32": 1024, "float16": 512},
-                }
-            },
+                "model_name": "test-model",
+                "name": "test-model",
+                "description": "Test embedding model",
+                "dimension": 768,
+                "supports_quantization": True,
+                "recommended_quantization": "float16",
+                "memory_estimate": {"float32": 1024, "float16": 512},
+                "provider": "dense_local",
+            }
+        ]
+
+        with patch(
+            "shared.embedding.factory.get_all_supported_models",
+            return_value=mock_models,
         ):
-            mock_embedding_service.current_model_name = "test-model"
-            mock_embedding_service.current_quantization = "float32"
+            # Mock model manager status with current model key
+            mock_model_manager.get_status.return_value = {
+                "embedding_model_loaded": True,
+                "current_embedding_model": "test-model_float32",
+                "embedding_provider": "dense_local",
+            }
 
             response = test_client_for_search_api.get("/models")
             assert response.status_code == 200
             result = response.json()
-            assert len(result["models"]) >= 1
-            # Check that models were returned
-            assert all("name" in model for model in result["models"])
+
+            assert len(result["models"]) == 1
+            model = result["models"][0]
+
+            # Verify existing fields (backward compatibility)
+            assert model["name"] == "test-model"
+            assert model["dimension"] == 768
+            assert model["description"] == "Test embedding model"
+            assert model["supports_quantization"] is True
+            assert model["recommended_quantization"] == "float16"
+
+            # Verify new plugin-aware fields
+            assert model["provider_id"] == "dense_local"
+            assert model["is_plugin"] is False
+
+            # Verify current model state
             assert result["current_model"] == "test-model"
             assert result["current_quantization"] == "float32"
+
+    def test_list_models_includes_plugin_models(
+        self, test_client_for_search_api, mock_model_manager
+    ) -> None:
+        """Test /models endpoint includes plugin models with is_plugin=True."""
+        mock_models = [
+            {
+                "model_name": "builtin-model",
+                "name": "builtin-model",
+                "description": "Built-in model",
+                "dimension": 768,
+                "provider": "dense_local",
+            },
+            {
+                "model_name": "plugin-vendor/custom-model",
+                "name": "plugin-vendor/custom-model",
+                "description": "Custom plugin model",
+                "dimension": 1024,
+                "provider": "custom_plugin_provider",
+            },
+        ]
+
+        with patch(
+            "shared.embedding.factory.get_all_supported_models",
+            return_value=mock_models,
+        ):
+            mock_model_manager.get_status.return_value = {
+                "embedding_model_loaded": False,
+                "current_embedding_model": None,
+            }
+
+            response = test_client_for_search_api.get("/models")
+            assert response.status_code == 200
+            result = response.json()
+
+            assert len(result["models"]) == 2
+
+            # Find models by name
+            builtin = next(m for m in result["models"] if m["name"] == "builtin-model")
+            plugin = next(
+                m for m in result["models"] if m["name"] == "plugin-vendor/custom-model"
+            )
+
+            # Verify built-in model
+            assert builtin["provider_id"] == "dense_local"
+            assert builtin["is_plugin"] is False
+
+            # Verify plugin model
+            assert plugin["provider_id"] == "custom_plugin_provider"
+            assert plugin["is_plugin"] is True
+            assert plugin["dimension"] == 1024
 
     def test_embed_endpoint(self, mock_model_manager, test_client_for_search_api) -> None:
         """Test /embed endpoint."""

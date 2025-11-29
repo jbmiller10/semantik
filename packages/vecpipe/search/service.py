@@ -1240,20 +1240,28 @@ async def health() -> dict[str, Any]:
         health_status["status"] = "unhealthy"
 
     try:
-        if search_state.embedding_service is None:
-            health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
+        # Get embedding status from model manager
+        if search_state.model_manager is None:
+            health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Model manager not initialized"}
             health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
         else:
-            if search_state.embedding_service.is_initialized:
-                model_info = search_state.embedding_service.get_model_info()
+            mgr_status = search_state.model_manager.get_status()
+            if mgr_status.get("embedding_model_loaded"):
+                provider_info = mgr_status.get("provider_info", {})
                 health_status["components"]["embedding"] = {
                     "status": "healthy",
-                    "model": model_info.get("model_name"),
-                    "dimension": model_info.get("dimension"),
+                    "model": mgr_status.get("current_embedding_model"),
+                    "provider": mgr_status.get("embedding_provider"),
+                    "dimension": provider_info.get("dimension") if provider_info else None,
                 }
             else:
-                health_status["components"]["embedding"] = {"status": "unhealthy", "error": "Service not initialized"}
-                health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
+                # No model loaded yet, but this is OK - lazy loading
+                health_status["components"]["embedding"] = {
+                    "status": "healthy",
+                    "model": None,
+                    "provider": None,
+                    "note": "Embedding model loaded on first use",
+                }
     except Exception as e:
         health_status["components"]["embedding"] = {"status": "unhealthy", "error": str(e)}
         health_status["status"] = "degraded" if health_status["status"] == "healthy" else "unhealthy"
@@ -1265,56 +1273,93 @@ async def health() -> dict[str, Any]:
 
 
 async def list_models() -> dict[str, Any]:
-    """List available embedding models and their properties."""
-    from shared.embedding import QUANTIZED_MODEL_INFO
+    """List available embedding models and their properties.
+
+    Returns models from all registered embedding providers (built-in + plugins),
+    with provider metadata for each model.
+    """
+    from shared.embedding.factory import get_all_supported_models
+
+    # Get all models from registered providers (built-in + plugins)
+    all_models = get_all_supported_models()
 
     models = []
-    for model_name, info in QUANTIZED_MODEL_INFO.items():
+    for model_info in all_models:
+        model_name = model_info.get("model_name") or model_info.get("name", "")
+        provider = model_info.get("provider", "unknown")
+
         models.append(
             {
+                # Existing fields (backward compatibility)
                 "name": model_name,
-                "description": info.get("description", ""),
-                "dimension": info.get("dimension"),
-                "supports_quantization": info.get("supports_quantization", True),
-                "recommended_quantization": info.get("recommended_quantization", "float32"),
-                "memory_estimate": info.get("memory_estimate", {}),
+                "description": model_info.get("description", ""),
+                "dimension": model_info.get("dimension"),
+                "supports_quantization": model_info.get("supports_quantization", True),
+                "recommended_quantization": model_info.get(
+                    "recommended_quantization", "float32"
+                ),
+                "memory_estimate": model_info.get("memory_estimate", {}),
                 "is_qwen3": "Qwen3-Embedding" in model_name,
+                # New plugin-aware fields
+                "provider_id": provider,
+                "is_plugin": provider not in ("dense_local", "mock"),
             }
         )
 
+    # Get current model info from model manager
+    current_model = None
+    current_quantization = None
+    if search_state.model_manager:
+        mgr_status = search_state.model_manager.get_status()
+        model_key = mgr_status.get("current_embedding_model")
+        if model_key:
+            # model_key is "model_name_quantization"
+            parts = model_key.rsplit("_", 1)
+            current_model = parts[0] if len(parts) > 1 else model_key
+            current_quantization = parts[1] if len(parts) > 1 else "float32"
+
     return {
         "models": models,
-        "current_model": search_state.embedding_service.current_model_name if search_state.embedding_service else None,
-        "current_quantization": (
-            search_state.embedding_service.current_quantization if search_state.embedding_service else None
-        ),
+        "current_model": current_model,
+        "current_quantization": current_quantization,
     }
 
 
 async def load_model(model_name: str, quantization: str = "float32") -> dict[str, Any]:
-    """Load a specific embedding model."""
+    """Load a specific embedding model.
+
+    This triggers eager model loading via the model manager. Models are normally
+    loaded lazily on first embedding request.
+    """
     cfg = _get_settings()
 
     if cfg.USE_MOCK_EMBEDDINGS:
         raise HTTPException(status_code=400, detail="Cannot load models when using mock embeddings")
 
     try:
-        if search_state.embedding_service is None:
-            raise HTTPException(status_code=503, detail="Embedding service not initialized")
+        model_mgr = _get_model_manager()
+        if model_mgr is None:
+            raise HTTPException(status_code=503, detail="Model manager not initialized")
 
-        if search_state.executor is None:
-            raise HTTPException(status_code=503, detail="Executor not initialized")
+        # Trigger model loading by generating a test embedding
+        # This ensures the provider is initialized with the requested model
+        await model_mgr.generate_embedding_async("warm-up", model_name, quantization)
 
-        loop = asyncio.get_event_loop()
-        success = await loop.run_in_executor(
-            search_state.executor, search_state.embedding_service.load_model, model_name, quantization
-        )
+        # Get status after loading
+        mgr_status = model_mgr.get_status()
+        model_info = mgr_status.get("provider_info", {})
 
-        if success:
-            model_info = search_state.embedding_service.get_model_info(model_name, quantization)
-            return {"status": "success", "model": model_name, "quantization": quantization, "info": model_info}
-        raise HTTPException(status_code=400, detail="Failed to load model")
+        return {
+            "status": "success",
+            "model": model_name,
+            "quantization": quantization,
+            "provider": mgr_status.get("embedding_provider"),
+            "info": model_info,
+        }
 
+    except ValueError as e:
+        # No provider found for model
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:  # pragma: no cover - fallback
         logger.error("Model load error: %s", e)
         raise HTTPException(status_code=500, detail=f"Model load failed: {str(e)}") from e

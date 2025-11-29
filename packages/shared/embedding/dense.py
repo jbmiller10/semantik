@@ -255,11 +255,16 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # If in mock mode, skip actual model loading
             if self.mock_mode:
                 logger.info(f"Mock mode: simulating initialization of {model_name}")
-                # Get dimension from config if available
-                from .models import get_model_config
+                # Get dimension from config - check providers (including plugins) first
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
-                self.dimension = config.dimension if config else 384
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
+                self.dimension = config.dimension
                 self._initialized = True
                 return
 
@@ -362,14 +367,14 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         For backward compatibility with DenseEmbeddingService.
         """
-        from .models import get_model_config
+        from .factory import resolve_model_config
 
         # Document mode: return texts unchanged, no instruction
         if mode == EmbeddingMode.DOCUMENT:
             return texts, None
 
         # Query mode: apply model-specific transformations
-        config = get_model_config(self.model_name) if self.model_name else None
+        config = resolve_model_config(self.model_name) if self.model_name else None
 
         if self.is_qwen_model:
             # Qwen uses instruction-based format
@@ -884,12 +889,17 @@ class EmbeddingService:
         try:
             # In mock mode, return mock info without loading
             if self.mock_mode and not self._service.is_initialized:
-                from .models import get_model_config
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
                 return {
                     "model_name": model_name,
-                    "dimension": config.dimension if config else 384,
+                    "dimension": config.dimension,
                     "device": self._service.device,
                     "max_sequence_length": 512,
                     "quantization": quantization,
@@ -965,11 +975,16 @@ class EmbeddingService:
             # Mock mode - return random embeddings
             if self.mock_mode:
                 logger.info(f"Mock mode: generating embeddings for {len(texts)} texts")
-                # Get dimension from model config if available
-                from .models import get_model_config
+                # Get dimension from config - check providers (including plugins) first
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
-                dim = config.dimension if config else 384
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
+                dim = config.dimension
                 return np.random.randn(len(texts), dim).astype(np.float32)
 
             # Ensure model is loaded

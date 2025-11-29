@@ -203,7 +203,12 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
 
     @classmethod
     def get_model_config(cls, model_name: str) -> ModelConfig | None:
-        """Get configuration for a specific model."""
+        """Get configuration for a specific model.
+
+        Returns config for models this provider owns (built-in MODEL_CONFIGS).
+        This is called by the factory during plugin resolution, so it must NOT
+        call resolve_model_config (which would cause infinite recursion).
+        """
         return get_model_config(model_name)
 
     @classmethod
@@ -357,7 +362,9 @@ class DenseLocalEmbeddingProvider(BaseEmbeddingPlugin):
             return texts, None
 
         # Query mode: apply model-specific transformations
-        config = get_model_config(self.model_name) if self.model_name else None
+        from shared.embedding.factory import resolve_model_config
+
+        config = resolve_model_config(self.model_name) if self.model_name else None
 
         if self.is_qwen_model:
             # Qwen uses instruction-based format, handled in _embed_qwen_texts

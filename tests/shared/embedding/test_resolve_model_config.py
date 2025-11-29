@@ -310,3 +310,74 @@ class TestResolveModelConfigIntegration:
         assert config is not None
         assert hasattr(config, "memory_estimate")  # batch_manager accesses this
         assert hasattr(config, "max_sequence_length")  # batch_manager accesses this
+
+
+class TestDenseEmbeddingServicePluginConfig:
+    """Tests for DenseEmbeddingService using plugin-resolved config."""
+
+    @pytest.mark.asyncio
+    async def test_dense_service_uses_plugin_dimension_in_mock_mode(
+        self, empty_registry: None
+    ) -> None:
+        """Test that DenseEmbeddingService mock mode uses plugin's dimension."""
+        from shared.embedding.dense import DenseEmbeddingService
+
+        EmbeddingProviderFactory.register_provider("config_aware", ConfigAwarePlugin)
+
+        service = DenseEmbeddingService(mock_mode=True)
+        await service.initialize("config_aware/test-model")
+
+        assert service.dimension == 512  # ConfigAwarePlugin.PLUGIN_DIMENSION
+        await service.cleanup()
+
+    @pytest.mark.asyncio
+    async def test_dense_service_raises_for_unknown_model_in_mock_mode(
+        self, empty_registry: None
+    ) -> None:
+        """Test that DenseEmbeddingService raises for unknown models.
+
+        Note: The ValueError is wrapped in RuntimeError by the initialize method's
+        exception handler.
+        """
+        from shared.embedding.dense import DenseEmbeddingService
+
+        service = DenseEmbeddingService(mock_mode=True)
+
+        with pytest.raises(RuntimeError, match="No model configuration found"):
+            await service.initialize("completely/unknown-model-xyz")
+
+    @pytest.mark.asyncio
+    async def test_embedding_service_generate_embeddings_uses_plugin_dimension(
+        self, empty_registry: None
+    ) -> None:
+        """Test EmbeddingService.generate_embeddings uses plugin dimension."""
+        from shared.embedding.dense import EmbeddingService
+
+        EmbeddingProviderFactory.register_provider("config_aware", ConfigAwarePlugin)
+
+        service = EmbeddingService(mock_mode=True)
+        embeddings = service.generate_embeddings(
+            texts=["test"],
+            model_name="config_aware/test-model",
+        )
+
+        assert embeddings is not None
+        assert embeddings.shape[1] == 512
+        service.shutdown()
+
+    def test_dense_local_provider_get_model_config_returns_builtin(
+        self, clean_registry: None
+    ) -> None:
+        """Test DenseLocalEmbeddingProvider.get_model_config returns built-in configs.
+
+        Note: The provider's get_model_config returns configs it owns (built-in).
+        It does NOT call resolve_model_config (that would cause infinite recursion).
+        Plugin configs are resolved at the factory level, not provider level.
+        """
+        from shared.embedding.providers.dense_local import DenseLocalEmbeddingProvider
+
+        # Should return built-in config
+        config = DenseLocalEmbeddingProvider.get_model_config("Qwen/Qwen3-Embedding-0.6B")
+
+        assert config is not None
+        assert config.dimension == 1024
