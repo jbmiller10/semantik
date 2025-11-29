@@ -12,7 +12,7 @@ from fastapi import Request
 from redis.asyncio import Redis
 
 from shared.text_processing.base_chunker import ChunkResult
-from webui.api.chunking_exceptions import ChunkingMemoryError
+from shared.chunking.exceptions import ChunkingMemoryError
 from webui.middleware.correlation import get_or_generate_correlation_id
 from webui.services.chunking_error_handler import ChunkingErrorHandler, ResourceType
 

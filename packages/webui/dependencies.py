@@ -230,7 +230,7 @@ async def get_current_user_optional(
     override = request.app.dependency_overrides.get(get_current_user)
 
     if override is None:
-        return await get_current_user(credentials)
+        return cast(dict[str, Any] | None, await get_current_user(credentials))
 
     call_target = cast(Callable[..., Any], override)
 

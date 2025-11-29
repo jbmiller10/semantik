@@ -116,7 +116,7 @@ def build_chunking_rules() -> list[ClassificationRule]:
 
     from celery.exceptions import SoftTimeLimitExceeded
 
-    from webui.api.chunking_exceptions import (
+    from shared.chunking.exceptions import (
         ChunkingDependencyError,
         ChunkingMemoryError,
         ChunkingPartialFailureError,

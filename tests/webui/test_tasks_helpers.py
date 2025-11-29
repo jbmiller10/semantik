@@ -214,7 +214,7 @@ class TestAuditLogging:
         # Function should complete without raising
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("webui.tasks.utils.AsyncSessionLocal")
+    @patch("webui.tasks.cleanup.AsyncSessionLocal")
     async def test_audit_collection_deletion(self, mock_session_local, mock_audit_log_class) -> None:
         """Test audit logging for collection deletion."""
         # Create a proper async session mock
@@ -253,7 +253,7 @@ class TestAuditLogging:
         mock_session.commit.assert_called_once()
 
     @patch("shared.database.models.CollectionAuditLog")
-    @patch("webui.tasks.utils.AsyncSessionLocal")
+    @patch("webui.tasks.cleanup.AsyncSessionLocal")
     async def test_audit_collection_deletions_batch(self, mock_session_local, mock_audit_log_class) -> None:
         """Test batch audit logging for multiple collection deletions."""
         # Create a proper async session mock

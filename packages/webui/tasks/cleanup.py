@@ -41,7 +41,7 @@ async def _resolve_session_factory() -> async_sessionmaker[AsyncSession]:
     if factory is None:
         factory = await ensure_async_sessionmaker()
     assert factory is not None
-    return factory
+    return cast(async_sessionmaker[AsyncSession], factory)
 
 
 @celery_app.task(name="webui.tasks.cleanup_old_results")

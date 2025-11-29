@@ -14,7 +14,7 @@ from typing import Any, cast
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,
