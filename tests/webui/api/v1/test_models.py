@@ -103,11 +103,11 @@ async def test_models_endpoint_models_keyed_by_name(
 
 @pytest.mark.asyncio()
 async def test_models_endpoint_requires_auth(
-    api_client: AsyncClient,
+    api_client_unauthenticated: AsyncClient,
 ) -> None:
     """Verify /api/models requires authentication."""
 
-    response = await api_client.get("/api/models")
+    response = await api_client_unauthenticated.get("/api/models")
 
     # Should return 401 without auth header
     assert response.status_code == 401

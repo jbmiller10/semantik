@@ -100,7 +100,7 @@ class DummyPluginProvider:
         return model_name.startswith("dummy/")
 
     @classmethod
-    def get_model_config(cls, model_name: str):
+    def get_model_config(cls, _model_name: str):
         return None
 
     @classmethod
@@ -142,7 +142,7 @@ class DummyPluginProvider:
 
 
 @pytest.fixture()
-def mock_dummy_plugin():
+def _mock_dummy_plugin():
     """Register dummy plugin directly with the factory.
 
     This simulates what happens when a plugin is discovered via entry points,
@@ -167,8 +167,9 @@ def mock_dummy_plugin():
     _reset_plugin_loader_state()
 
 
+@pytest.mark.usefixtures("_mock_dummy_plugin")
 @pytest.mark.asyncio()
-async def test_plugin_provider_used_for_model(mock_dummy_plugin):
+async def test_plugin_provider_used_for_model():
     """Test that a plugin provider is used when its model name is requested.
 
     This is the acceptance test for Ticket 1: Installing a dummy plugin via entry point
