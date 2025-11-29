@@ -17,7 +17,7 @@ from webui.api.chunking_exception_handlers import (
     _sanitize_error_detail,
     register_chunking_exception_handlers,
 )
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingConfigurationError,
     ChunkingDependencyError,
     ChunkingError,

@@ -59,19 +59,19 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 try:  # Optional UMAP dependency
-    import umap  # type: ignore[import]
+    import umap
 except Exception:  # pragma: no cover - optional dependency
-    umap = None  # type: ignore[assignment]
+    umap = None
 
 try:  # Optional scikit-learn dependency for t-SNE
-    from sklearn.manifold import TSNE  # type: ignore[import]
+    from sklearn.manifold import TSNE
 except Exception:  # pragma: no cover - optional dependency
-    TSNE = None  # type: ignore[assignment]
+    TSNE = None
 from shared.database.models import OperationStatus, ProjectionRunStatus
 from shared.database.postgres_database import PostgresConnectionManager
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -160,9 +160,12 @@ def _bucket_age(timestamp: datetime, now: datetime) -> str:
     return ">1y"
 
 
-def _extract_source_dir(payload: Mapping[str, Any]) -> str:
+def _extract_source_dir(payload: Mapping[str, Any] | None) -> str:
+    if not isinstance(payload, Mapping):
+        return UNKNOWN_CATEGORY_LABEL
     source_path = payload.get("source_path")
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    metadata_value = payload.get("metadata")
+    metadata = metadata_value if isinstance(metadata_value, Mapping) else {}
     if not source_path:
         source_path = payload.get("path") or metadata.get("source_path")
     if not source_path or not isinstance(source_path, str):
@@ -182,8 +185,11 @@ def _extract_source_dir(payload: Mapping[str, Any]) -> str:
     return str(path_obj) or UNKNOWN_CATEGORY_LABEL
 
 
-def _extract_filetype(payload: Mapping[str, Any]) -> str:
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+def _extract_filetype(payload: Mapping[str, Any] | None) -> str:
+    if not isinstance(payload, Mapping):
+        return UNKNOWN_CATEGORY_LABEL
+    metadata_value = payload.get("metadata")
+    metadata = metadata_value if isinstance(metadata_value, Mapping) else {}
     mime = payload.get("mime_type") or metadata.get("mime_type")
     if isinstance(mime, str) and mime:
         return mime.lower()
@@ -198,8 +204,11 @@ def _extract_filetype(payload: Mapping[str, Any]) -> str:
     return UNKNOWN_CATEGORY_LABEL
 
 
-def _extract_age_bucket(payload: Mapping[str, Any], now: datetime) -> str:
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+def _extract_age_bucket(payload: Mapping[str, Any] | None, now: datetime) -> str:
+    if not isinstance(payload, Mapping):
+        return UNKNOWN_CATEGORY_LABEL
+    metadata_value = payload.get("metadata")
+    metadata = metadata_value if isinstance(metadata_value, Mapping) else {}
     timestamp_value = (
         payload.get("ingested_at")
         or payload.get("created_at")
@@ -336,7 +345,7 @@ def _compute_tsne_projection(
     n_iter: int,
     metric: str,
     init: str = "pca",
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Compute a 2D t-SNE projection using scikit-learn."""
 
     if TSNE is None:
@@ -446,7 +455,7 @@ def compute_projection(self: Any, projection_id: str) -> dict[str, Any]:  # noqa
             "message": str(exc),
         }
 
-    return result
+    return cast(dict[str, Any], result)
 
 
 async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
@@ -781,7 +790,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
 
                     x_values = projection_array[:, 0]
                     y_values = projection_array[:, 1]
-                    ids_array = []
+                    raw_ids: list[int] = []
                     warned_fallback = False
                     int32_info = np.iinfo(np.int32)
                     for idx, point_id in enumerate(original_ids):
@@ -804,9 +813,9 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                                 warned_fallback = True
                             numeric = idx
 
-                        ids_array.append(numeric)
+                        raw_ids.append(int(numeric))
 
-                    ids_array = np.asarray(ids_array, dtype=np.int32)
+                    ids_array = np.asarray(raw_ids, dtype=np.int32)
                     categories_array = np.array(categories, dtype=np.uint8)
 
                     if not (
@@ -845,10 +854,10 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             }
                         )
 
-                    _write_binary(x_path, x_values, np.float32)
-                    _write_binary(y_path, y_values, np.float32)
-                    _write_binary(ids_path, ids_array, np.int32)
-                    _write_binary(cat_path, categories_array, np.uint8)
+                    _write_binary(x_path, x_values, np.dtype(np.float32))
+                    _write_binary(y_path, y_values, np.dtype(np.float32))
+                    _write_binary(ids_path, ids_array, np.dtype(np.int32))
+                    _write_binary(cat_path, categories_array, np.dtype(np.uint8))
 
                     meta_payload: dict[str, Any] = {
                         "projection_id": run.uuid,

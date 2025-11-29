@@ -38,7 +38,7 @@ from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingPartialFailureError,

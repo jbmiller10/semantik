@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 import logging
 import uuid
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
 
     from webui.services.collection_service import CollectionService
 
-ChunkingServiceLike = ChunkingOrchestrator
+ChunkingServiceLike: TypeAlias = ChunkingOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -93,9 +93,12 @@ async def application_exception_handler(
     exc: ApplicationError,
 ) -> JSONResponse:
     """Global handler for application exceptions with structured error responses."""
-    return exception_translator.create_error_response(
-        exc,
-        exc.correlation_id or str(uuid.uuid4()),
+    return cast(
+        JSONResponse,
+        exception_translator.create_error_response(
+            exc,
+            exc.correlation_id or str(uuid.uuid4()),
+        ),
     )
 
 

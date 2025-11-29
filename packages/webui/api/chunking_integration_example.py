@@ -51,7 +51,7 @@ This file demonstrates the changes needed in main.py to enable the new functiona
 import psutil
 from fastapi import APIRouter, Depends
 
-from webui.api.chunking_exceptions import ChunkingMemoryError, ChunkingValidationError
+from shared.chunking.exceptions import ChunkingMemoryError, ChunkingValidationError
 from webui.middleware.correlation import get_correlation_id
 
 router = APIRouter(prefix="/api/v2/chunking", tags=["chunking"])

@@ -312,8 +312,7 @@ async def get_chunking_service(
 ) -> ChunkingOrchestrator:
     """Backward-compatible dependency returning the orchestrator."""
 
-    orchestrator = await get_chunking_orchestrator(db)
-    return cast(ChunkingOrchestrator, orchestrator)
+    return await get_chunking_orchestrator(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

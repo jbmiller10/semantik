@@ -7,7 +7,7 @@ This module provides backward compatibility for tests that import HierarchicalCh
 
 import logging
 from collections.abc import AsyncGenerator, Iterator
-from typing import Any
+from typing import Any, cast
 
 from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 from shared.text_processing.base_chunker import ChunkResult
@@ -501,7 +501,8 @@ class HierarchicalChunker:
                     overlap_tokens=min(self.chunk_overlap // 4, max(self.chunk_sizes) // 32),
                 )
 
-                results: list[ChunkResult] = await fallback_chunker.chunk_text_async(text, doc_id, metadata)  # type: ignore
+                results = await fallback_chunker.chunk_text_async(text, doc_id, metadata)
+                results = cast(list[ChunkResult], results)
 
                 # Update strategy in metadata to show it's character fallback
                 for result in results:
@@ -512,6 +513,7 @@ class HierarchicalChunker:
         try:
             # Try hierarchical chunking
             results = await self._chunker.chunk_text_async(text, doc_id, metadata)
+            results = cast(list[ChunkResult], results)
         except Exception as e:
             # On error, fallback to character chunking
             logger.warning(f"Hierarchical chunking failed, falling back to character: {e}")

@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from statistics import fmean
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,7 +84,7 @@ class ChunkingOrchestrator:
         """
         self.processor = processor
         self.cache = cache
-        self.metrics = metrics
+        self.metrics: ChunkingMetrics = metrics
         self.validator = validator
         self.config_manager = config_manager
         self.db_session = db_session
@@ -836,7 +836,11 @@ class ChunkingOrchestrator:
         """Return metrics grouped by strategy (placeholder with sensible defaults)."""
 
         try:
-            return self.metrics.get_metrics_by_strategy(period_days=period_days)
+            metrics = self.metrics.get_metrics_by_strategy(period_days=period_days)
+            if isinstance(metrics, list):
+                return metrics
+            # Fall back to default structure if unexpected type is returned
+            return ServiceStrategyMetrics.create_default_metrics()
         except Exception:  # pragma: no cover - defensive
             return ServiceStrategyMetrics.create_default_metrics()
 

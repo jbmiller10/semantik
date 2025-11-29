@@ -43,10 +43,9 @@ except RuntimeError as exc:
 
 # Re-export orchestrator for tests that patch webui.tasks.ChunkingOrchestrator
 try:  # Prefer packages.* import path to match test patch targets
-    from webui.services.chunking.orchestrator import ChunkingOrchestrator as _ChunkingOrchestrator
-    ChunkingOrchestrator = _ChunkingOrchestrator
+    from webui.services.chunking.orchestrator import ChunkingOrchestrator
 except Exception:  # As a last resort, define a placeholder
-    ChunkingOrchestrator: Any | None = None
+    ChunkingOrchestrator = None
 
 
 # Task timeout constants
@@ -87,7 +86,7 @@ async def _get_session_factory() -> async_sessionmaker[AsyncSession]:
     if factory is None:
         factory = await ensure_async_sessionmaker()
     assert factory is not None
-    return factory
+    return cast(async_sessionmaker[AsyncSession], factory)
 
 
 class CeleryTaskWithOperationUpdates:
@@ -328,8 +327,7 @@ async def _audit_log_operation(
                 action=action,
                 details=sanitized_details,
             )
-            add_result = session.add(audit_log)
-            await await_if_awaitable(add_result)
+            session.add(audit_log)
             await session.commit()
     except Exception as exc:
         logger.warning("Failed to create audit log: %s", exc)
@@ -352,8 +350,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
                             metric_name=metric_name,
                             metric_value=float(metric_value),
                         )
-                        add_result = session.add(metric)
-                        await await_if_awaitable(add_result)
+                        session.add(metric)
                 await session.commit()
     except Exception as exc:
         logger.warning("Failed to record operation metrics: %s", exc)
