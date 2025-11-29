@@ -12,7 +12,7 @@ class _DummyMetrics:
     def __init__(self) -> None:
         self.called_with: int | None = None
 
-    async def get_metrics_by_strategy(self, period_days: int = 30):  # noqa: D401, ARG002
+    def get_metrics_by_strategy(self, period_days: int = 30):  # noqa: D401, ARG002
         self.called_with = period_days
         return ServiceStrategyMetrics.create_default_metrics()
 

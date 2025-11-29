@@ -903,7 +903,7 @@ class ProjectionService:
             items.append(
                 {
                     "selected_id": selected_id,
-                    "index": index,
+                    "index": retrieved_index,
                     "original_id": original_identifier,
                     "chunk_id": chunk_data.get("chunk_id") if chunk_data else None,
                     "document_id": chunk_data.get("document_id") if chunk_data else None,
