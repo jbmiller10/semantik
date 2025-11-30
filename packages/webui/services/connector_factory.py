@@ -48,7 +48,7 @@ class ConnectorFactory:
 
         if normalized_type not in _CONNECTOR_REGISTRY:
             available = list(_CONNECTOR_REGISTRY.keys()) or ["none registered"]
-            raise ValueError(f"Unknown source type: {source_type!r}. " f"Available types: {', '.join(available)}")
+            raise ValueError(f"Unknown source type: {source_type!r}. Available types: {', '.join(available)}")
 
         connector_cls = _CONNECTOR_REGISTRY[normalized_type]
         logger.debug(f"Creating connector for source_type={normalized_type}")
