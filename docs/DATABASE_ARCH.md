@@ -137,6 +137,8 @@ CREATE TABLE documents (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     meta JSON,                                  -- Additional metadata
+    uri VARCHAR,                                -- Logical identifier (URL, path, message ID, etc.)
+    source_metadata JSON,                       -- Connector-specific metadata (headers, timestamps, etc.)
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
     FOREIGN KEY (source_id) REFERENCES collection_sources(id)
 );
@@ -148,11 +150,17 @@ CREATE INDEX idx_documents_content_hash ON documents(content_hash);
 CREATE INDEX idx_documents_status ON documents(status);
 -- Composite unique index for duplicate prevention within collections
 CREATE UNIQUE INDEX idx_documents_collection_content_hash ON documents(collection_id, content_hash);
+-- Ensure logical identifiers are unique per collection when present
+CREATE UNIQUE INDEX idx_documents_collection_uri_unique
+    ON documents(collection_id, uri)
+    WHERE uri IS NOT NULL;
 ```
 
 **Key Points**:
 - Content hash enables duplicate detection across collections
 - Unique constraint on (collection_id, content_hash) prevents duplicates within a collection
+- `uri` provides a connector-agnostic logical identifier (URL, Slack message ID, file path, etc.)
+- Optional unique constraint on (collection_id, uri) (for non-NULL uri values) prevents duplicate logical documents
 - Supports soft delete via 'deleted' status for maintaining referential integrity
 - Tracks processing status and chunk creation
 - Cascade delete ensures cleanup when collection is removed
@@ -202,7 +210,8 @@ CREATE TABLE collection_sources (
     id SERIAL PRIMARY KEY,                      -- Auto-increment ID
     collection_id VARCHAR NOT NULL,             -- Parent collection
     source_path VARCHAR NOT NULL,               -- Path or URL
-    source_type VARCHAR NOT NULL DEFAULT 'directory', -- directory|file|url|github
+    source_type VARCHAR NOT NULL,               -- directory|web|slack|github|...
+    source_config JSON,                         -- Connector-specific configuration (e.g. {"path": "/data/docs"})
     document_count INTEGER NOT NULL DEFAULT 0,  -- Documents from this source
     size_bytes INTEGER NOT NULL DEFAULT 0,      -- Total size
     last_indexed_at TIMESTAMPTZ,                -- Last indexing time
@@ -214,6 +223,9 @@ CREATE TABLE collection_sources (
 
 -- Indexes
 CREATE INDEX idx_collection_sources_collection_id ON collection_sources(collection_id);
+-- Ensure a source path is only registered once per collection
+ALTER TABLE collection_sources
+    ADD CONSTRAINT uq_collection_source_path UNIQUE (collection_id, source_path);
 ```
 
 #### 5. Collection Permissions Table
@@ -791,8 +803,10 @@ async with create_collection_repository() as repo:
    └─> WebUI creates operation via OperationRepository
    └─> Celery worker picks up task
    
-3. Worker scans for documents
-   └─> Creates document records via DocumentRepository
+3. Worker resolves connector and scans for documents
+   └─> ConnectorFactory selects appropriate BaseConnector (e.g. LocalFileConnector for directory sources)
+   └─> Connectors yield IngestedDocument DTOs with content, metadata, and content_hash
+   └─> DocumentRegistryService registers documents via DocumentRepository with hash-based deduplication
    
 4. Extract and chunk text (using shared.text_processing)
    └─> Update document status via DocumentRepository

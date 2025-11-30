@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -304,7 +304,7 @@ class CollectionSourceRepository:
             if not source:
                 raise EntityNotFoundError("collection_source", str(source_id))
 
-            await self.session.delete(source)
+            await self.session.execute(delete(CollectionSource).where(CollectionSource.id == source.id))
             await self.session.flush()
 
             logger.info(f"Deleted collection source {source_id}")
