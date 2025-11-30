@@ -230,6 +230,10 @@ Authorization: Bearer {token}
       "id": 1,
       "source_path": "/docs/technical",
       "source_type": "directory",
+      "source_config": {
+        "path": "/docs/technical",
+        "recursive": true
+      },
       "document_count": 150,
       "size_bytes": 45678900,
       "last_indexed_at": "2024-01-15T14:30:00Z"
@@ -276,18 +280,30 @@ Authorization: Bearer {token}
 POST /api/v2/collections/{collection_id}/sources
 Authorization: Bearer {token}
 Content-Type: application/json
+```
 
+**Request (preferred flexible format):**
+```json
 {
   "source_type": "directory",
-  "source_path": "/docs/api",
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
-  },
-  "config": {
+  "source_config": {
+    "path": "/docs/api",
     "recursive": true,
     "follow_symlinks": false
+  },
+  "config": {
+    "filters": {
+      "extensions": [".md", ".txt", ".pdf"],
+      "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
+    }
   }
+}
+```
+
+**Request (legacy, still supported):**
+```json
+{
+  "source_path": "/docs/api"
 }
 ```
 
@@ -299,8 +315,20 @@ Content-Type: application/json
   "type": "append",
   "status": "pending",
   "config": {
+    "source_id": 1,
+    "source_type": "directory",
+    "source_config": {
+      "path": "/docs/api",
+      "recursive": true,
+      "follow_symlinks": false
+    },
     "source_path": "/docs/api",
-    "recursive": true
+    "additional_config": {
+      "filters": {
+        "extensions": [".md", ".txt", ".pdf"],
+        "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
+      }
+    }
   },
   "created_at": "2024-01-15T10:00:00Z",
   "started_at": null,
@@ -323,6 +351,7 @@ Authorization: Bearer {token}
   "type": "remove_source",
   "status": "pending",
   "config": {
+    "source_id": 1,
     "source_path": "/docs/api"
   },
   "created_at": "2024-01-15T11:00:00Z",

@@ -313,6 +313,22 @@ User Search Query
 10. WebSocket updates UI with real-time progress
 ```
 
+### Connector-Based Ingestion
+
+The indexing pipeline now uses a connector + registry abstraction:
+
+- **IngestedDocument DTO** (`shared.dtos.ingestion.IngestedDocument`) is the unified contract that all connectors emit.
+- **BaseConnector / LocalFileConnector** (`shared.connectors.base` / `shared.connectors.local`) encapsulate source-specific loading
+  (e.g., walking directories for `"directory"` sources) while returning in-memory content.
+- **ConnectorFactory** (`webui.services.connector_factory.ConnectorFactory`) resolves a connector implementation from `source_type`.
+- **DocumentRegistryService** (`webui.services.document_registry_service.DocumentRegistryService`) owns registration and
+  deduplication, using `content_hash` and the new `documents.uri` / `documents.source_metadata` fields to keep ingestion
+  consistent across all source types.
+
+Celery APPEND tasks call `ConnectorFactory.get_connector(...)` and then `DocumentRegistryService.register(...)` for each
+`IngestedDocument`, so adding a new source (for example, `"web"` or `"slack"`) only requires a new connector; the core
+pipeline does not change.
+
 ### Multi-Collection Search Flow
 
 ```
@@ -377,7 +393,10 @@ POST /api/v2/collections
 # Add a source to the collection (triggers APPEND operation)
 POST /api/v2/collections/{collection_id}/sources
 {
-    "source_path": "/data/docs/api-reference/"
+    "source_type": "directory",
+    "source_config": {
+        "path": "/data/docs/api-reference/"
+    }
 }
 
 # Search across multiple collections
