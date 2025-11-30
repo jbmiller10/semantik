@@ -16,6 +16,7 @@ from .database import AsyncSessionLocal, ensure_async_sessionmaker
 if TYPE_CHECKING:
     from .repositories.chunk_repository import ChunkRepository
     from .repositories.collection_repository import CollectionRepository
+    from .repositories.collection_source_repository import CollectionSourceRepository
     from .repositories.document_repository import DocumentRepository
     from .repositories.operation_repository import OperationRepository
     from .repositories.projection_run_repository import ProjectionRunRepository
@@ -118,6 +119,20 @@ def create_collection_repository(session: AsyncSession) -> "CollectionRepository
     return CollectionRepository(session)
 
 
+def create_collection_source_repository(session: AsyncSession) -> "CollectionSourceRepository":
+    """Create a collection source repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        CollectionSourceRepository instance
+    """
+    from .repositories.collection_source_repository import CollectionSourceRepository
+
+    return CollectionSourceRepository(session)
+
+
 def create_chunk_repository(session: AsyncSession) -> "ChunkRepository":
     """Create a chunk repository instance.
 
@@ -148,6 +163,7 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
         "operation": create_operation_repository(session),
         "document": create_document_repository(session),
         "collection": create_collection_repository(session),
+        "collection_source": create_collection_source_repository(session),
         "chunk": create_chunk_repository(session),
         "projection_run": create_projection_run_repository(session),
     }
