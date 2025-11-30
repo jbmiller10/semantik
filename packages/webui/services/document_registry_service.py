@@ -96,7 +96,7 @@ class DocumentRegistryService:
         existing_doc = await self.document_repo.get_by_content_hash(collection_id, ingested.content_hash)
         if existing_doc is not None:
             logger.debug(
-                f"Document with hash {ingested.content_hash[:16]}... already exists " f"in collection {collection_id}"
+                f"Document with hash {ingested.content_hash[:16]}... already exists in collection {collection_id}"
             )
             return {
                 "is_new": False,
