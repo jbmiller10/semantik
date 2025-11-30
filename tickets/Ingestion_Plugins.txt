@@ -485,3 +485,197 @@
   directory sources.
   - Tests for useAddSource, CreateCollectionModal, and AddDataToCollectionModal pass
   with the updated request shape.
+ Phase 6: Source Registry & Pipeline Hardening
+
+  Goal: Fully wire flexible sources through the database, ensure source‑aware removal, and tighten hashing behavior.
+
+  ———
+
+  Ticket 10: Persist CollectionSource and Link Documents via source_id
+
+  Context:
+  The flexible source schema is in place (collection_sources.source_config, documents.uri/source_metadata), and APPEND
+  operations now use connectors + DocumentRegistryService. However, no CollectionSource rows are created/updated when
+  sources are added, and documents are registered with source_id=None. This prevents source‑level analytics, removal, and
+  future multi‑connector scenarios.
+
+  Files to analyze:
+
+  - packages/shared/database/models.py (CollectionSource, Document)
+  - packages/shared/database/repositories/collection_repository.py
+  - packages/webui/services/collection_service.py
+  - packages/webui/tasks/ingestion.py (_process_append_operation_impl)
+  - packages/webui/services/document_registry_service.py
+  - Tests:
+      - tests/webui/services/test_collection_service.py::TestAddSource
+      - tests/integration/services/test_collection_service.py::TestCollectionServiceIntegration
+      - Any tests that assert on collection_sources or Document.source_id (if present)
+
+  Requirements:
+
+  - Repository layer:
+      - Create a dedicated repository for CollectionSource, e.g. packages/shared/database/repositories/
+        collection_source_repository.py:
+          - async def get_or_create(...) to find or create a CollectionSource for (collection_id, source_type,
+            source_path) (and optionally source_config).
+          - Helper methods for future use: get_by_id, list_by_collection, etc., but keep the initial surface minimal.
+  - CollectionService:
+      - Inject CollectionSourceRepository into CollectionService via the service factory (packages/webui/services/
+        factory.py).
+      - In CollectionService.add_source(...):
+          - After validating collection state, resolve or create a CollectionSource row:
+              - collection_id from argument.
+              - source_type from normalized input (default "directory").
+              - source_path:
+                  - For directory sources, derive from source_config["path"] or legacy_source_path.
+                  - For non‑directory sources, choose an appropriate display identifier (e.g. source_config["url"]).
+              - source_config persisted as JSON (full connector config).
+          - Store the CollectionSource.id in the operation config:
+              - Extend config to include source_id.
+              - Keep source_path and source_config in config for backward compatibility and display.
+  - Ingestion task:
+      - In _process_append_operation_impl:
+          - Read source_id from operation["config"] when present.
+          - For legacy operations lacking source_id:
+              - Option 1 (preferred): Resolve CollectionSource by (collection_id, source_type, source_path) using
+                CollectionSourceRepository.
+              - Option 2: Allow source_id to remain None but document that legacy operations are not source‑linked.
+          - Pass source_id into DocumentRegistryService.register(...) so all new documents are associated with their
+            source.
+  - DocumentRegistryService:
+      - Update docstring and internal comments to clarify that source_id is now the canonical link between documents
+        and CollectionSource.
+      - No behavioral change required beyond taking source_id from the new call sites (already supported).
+
+  Acceptance Criteria:
+
+  - CollectionService.add_source(...):
+      - Creates (or reuses) a CollectionSource with:
+          - collection_id matching the target collection.
+          - source_type and source_path consistent with the request.
+          - source_config persisted as the connector config.
+      - Stores source_id in the operation’s config.
+  - _process_append_operation_impl:
+      - Retrieves source_id from operation config when available and passes it to DocumentRegistryService.register(...).
+      - For legacy operations without source_id, behavior remains backward‑compatible (documents can still be ingested).
+  - Newly ingested documents for APPEND operations have Document.source_id set to the correct CollectionSource.id.
+  - Tests:
+      - Update tests/webui/services/test_collection_service.py::TestAddSource to assert that:
+          - CollectionSource is created/updated with the expected fields.
+          - Operation config includes source_id.
+      - Update tests/integration/services/
+        test_collection_service.py::test_add_source_creates_append_operation_and_sets_processing_status to use the new
+        add_source signature and to validate CollectionSource persistence and source_id in operation config.
+      - Add/extend tests to confirm that documents created via _process_append_operation_impl have source_id populated.
+
+  ———
+
+  Ticket 11: Restore and Modernize REMOVE_SOURCE Behavior Using Source Registry
+
+  Context:
+  _process_remove_source_operation currently calls document_repo.list_by_collection_and_source(collection["id"],
+  source_path), but DocumentRepository no longer exposes this method. At the same time, APPEND now routes through
+  DocumentRegistryService with the intent to attach documents to CollectionSource via source_id. REMOVE_SOURCE should
+  rely on the source registry instead of raw path filtering, while preserving backward compatibility for legacy
+  operations that only know source_path.
+
+  Files to analyze:
+
+  - packages/webui/tasks/ingestion.py (_process_remove_source_operation)
+  - packages/shared/database/repositories/document_repository.py
+  - packages/shared/database/repositories/collection_source_repository.py (from Ticket 10)
+  - packages/shared/database/models.py (Document.source_id, CollectionSource)
+  - Tests:
+      - tests/integration/services/test_collection_service.py::test_remove_source_creates_remove_operation
+      - Any existing REMOVE_SOURCE–related tests in tests/webui/services/test_collection_service.py
+      - E2E tests that exercise REMOVE_SOURCE (if present)
+
+  Requirements:
+
+  - Repository/API for locating documents by source:
+      - Add a method to DocumentRepository, e.g.:
+          - async def list_by_collection_and_source_id(collection_id: str, source_id: int) -> list[dict[str, Any]] or a
+            typed variant returning Document instances.
+      - Optionally, provide a compatibility helper to list documents for a collection by legacy source_path, using
+        file_path prefix and/or uri.
+  - Remove source task:
+      - Update _process_remove_source_operation to:
+          - Read source_id from operation["config"] when present.
+          - If source_id is present:
+              - Use DocumentRepository to list documents by (collection_id, source_id) instead of source_path.
+          - If source_id is not present (legacy operation):
+              - Fallback to a path‑based filter:
+                  - Either implement a dedicated repository method using file_path.startswith(source_path) in SQL,
+                  - Or, if that’s too invasive, document/re‑introduce a minimal helper to approximate the previous
+                    behavior.
+      - Ensure all downstream logging and auditing continues to use source_path (from config) for user‑visible messages,
+        but you may enrich logs with source_id for debugging.
+  - Qdrant deletion logic:
+      - No change in Qdrant interaction structure; the only change is how documents are fetched.
+      - The list of doc_ids must be derived from the new document selection (by source_id or path).
+  - Operation config and metrics:
+      - Preserve existing operation config fields (source_path) so frontend and audit logs remain valid.
+      - If source_id is present in config, ensure it is not removed or overwritten.
+
+  Acceptance Criteria:
+
+  - _process_remove_source_operation no longer references document_repo.list_by_collection_and_source (which doesn’t
+    exist).
+  - For operations created after Ticket 10:
+      - Documents to be removed are selected by collection_id + source_id (via the new repository method).
+      - Only documents belonging to the specified CollectionSource are deleted from Qdrant and the DB.
+  - For legacy REMOVE_SOURCE operations without source_id:
+      - The task still works using a path‑based filter that is behaviorally consistent with the pre‑refactor
+        implementation.
+  - Tests:
+      - Add unit tests for the new repository method(s) (or adapt existing contract tests) to ensure selection by
+        source_id behaves as expected.
+      - Extend/integrate tests to cover:
+          - REMOVE_SOURCE with a source_id‑backed operation (new path).
+          - REMOVE_SOURCE with legacy source_path‑only config (compatibility path).
+      - Existing integration tests for REMOVE_SOURCE continue to pass (or are updated to assert the new source‑aware
+        behavior).
+
+  ———
+
+  Ticket 12: Unify Hashing Logic in DocumentScanningService with compute_content_hash
+
+  Context:
+  Connectors and the new ingestion path use shared.utils.hashing.compute_content_hash for SHA‑256 content hashing, and
+  IngestedDocument/DocumentRepository.create enforce hash validity. However, DocumentScanningService._calculate_file_hash
+  still implements hashing directly with hashlib.sha256(). While the behavior matches, this duplicates logic and
+  increases the chance of future divergence.
+
+  Files to analyze:
+
+  - packages/webui/services/document_scanning_service.py
+  - packages/shared/utils/hashing.py
+  - Tests:
+      - tests/unit/test_hashing.py
+      - tests/integration/services/test_document_scanning_service.py
+
+  Requirements:
+
+  - Refactor DocumentScanningService._calculate_file_hash to delegate to compute_content_hash:
+      - Keep streaming file reads (to avoid loading large files entirely into memory).
+      - Instead of manually assembling a hex digest with hashlib, feed each chunk into a SHA‑256 object and then:
+          - Either refactor compute_content_hash to accept an existing hashlib object (if you want to reuse exactly one
+            implementation), or
+          - Wrap the streaming logic with a tiny helper that uses compute_content_hash on aggregated bytes when file
+            sizes are below a safe threshold, and falls back to a manual SHA‑256 only for very large files.
+      - Document the chosen approach in a short docstring comment so future refactors know why streaming is preserved.
+  - Ensure any behavior that depends on hash stability (dedupe, tests) is unaffected:
+      - Hash values for a given file content MUST remain identical to the previous implementation.
+
+  Acceptance Criteria:
+
+  - DocumentScanningService no longer hard‑codes its own SHA‑256 implementation; it uses compute_content_hash directly or
+    via a clearly documented wrapper.
+  - All existing tests related to hashing and scanning:
+      - tests/unit/test_hashing.py
+      - tests/integration/services/test_document_scanning_service.py
+        continue to pass without modification (hash outputs remain unchanged).
+  - New or updated tests confirm that:
+      - Hashes produced by DocumentScanningService match compute_content_hash for sample files (including multi‑byte and
+        larger content).
+      - No noticeable performance regression occurs for large files (streaming behavior retained where necessary).

@@ -257,13 +257,15 @@ class TestCollectionServiceIntegration:
         op_payload = await service.add_source(
             collection_id=collection_dict["id"],
             user_id=owner.id,
-            source_path="/mnt/data/new-docs",
-            source_config={"recursive": True},
+            source_type="directory",
+            source_config={"path": "/mnt/data/new-docs", "recursive": True},
         )
 
         assert op_payload["type"] == OperationType.APPEND.value
         assert op_payload["config"]["source_path"] == "/mnt/data/new-docs"
+        assert op_payload["config"]["source_config"]["path"] == "/mnt/data/new-docs"
         assert op_payload["config"]["source_config"]["recursive"] is True
+        assert op_payload["config"]["source_id"] is not None  # source_id now included
 
         # Celery task dispatched for the new operation
         assert len(capture_celery) == 1

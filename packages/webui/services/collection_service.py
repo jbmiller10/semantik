@@ -17,6 +17,7 @@ from shared.database.exceptions import (
 )
 from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.managers import QdrantManager
@@ -43,6 +44,7 @@ class CollectionService:
         collection_repo: CollectionRepository,
         operation_repo: OperationRepository,
         document_repo: DocumentRepository,
+        collection_source_repo: CollectionSourceRepository,
         qdrant_manager: QdrantManager | None,
     ):
         """Initialize the collection service."""
@@ -50,6 +52,7 @@ class CollectionService:
         self.collection_repo = collection_repo
         self.operation_repo = operation_repo
         self.document_repo = document_repo
+        self.collection_source_repo = collection_source_repo
         self.qdrant_manager = qdrant_manager
 
     def _ensure_qdrant_manager(self) -> QdrantManager | None:
@@ -239,8 +242,9 @@ class CollectionService:
             source_type = "directory"
 
         # Derive source_path for the operation config (for display/audit)
-        # This is the "path" within source_config for directory-type sources
-        source_path = source_config.get("path", "") if source_config else ""
+        # For directory sources, use "path"; for web sources, use "url"; otherwise first value
+        source_path = self._derive_source_path(source_type, source_config)
+
         # Get collection with permission check
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
             collection_uuid=collection_id, user_id=user_id
@@ -269,12 +273,26 @@ class CollectionService:
                     "Please wait for the current operation to complete."
                 )
 
-        # Create operation record with new structure
+        # Create or get existing CollectionSource
+        collection_source, is_new_source = await self.collection_source_repo.get_or_create(
+            collection_id=collection.id,
+            source_type=source_type,
+            source_path=source_path,
+            source_config=source_config,
+        )
+
+        if is_new_source:
+            logger.info(f"Created new CollectionSource {collection_source.id} for collection {collection.id}")
+        else:
+            logger.info(f"Reusing existing CollectionSource {collection_source.id} for collection {collection.id}")
+
+        # Create operation record with source_id included
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
             operation_type=OperationType.APPEND,
             config={
+                "source_id": collection_source.id,  # Link to CollectionSource for task
                 "source_type": source_type,
                 "source_config": source_config or {},
                 "source_path": source_path,  # Keep for backward compatibility/audit
@@ -307,6 +325,41 @@ class CollectionService:
             "completed_at": operation.completed_at,
             "error_message": operation.error_message,
         }
+
+    def _derive_source_path(self, source_type: str, source_config: dict[str, Any] | None) -> str:
+        """Derive display source path from source type and config.
+
+        Args:
+            source_type: Type of source (directory, web, slack, etc.)
+            source_config: Connector-specific configuration
+
+        Returns:
+            String path/identifier for display and deduplication
+        """
+        if not source_config:
+            return ""
+
+        # For directory sources, use "path"
+        if source_type == "directory":
+            path = source_config.get("path")
+            return str(path) if path is not None else ""
+
+        # For web sources, use "url"
+        if source_type == "web":
+            url = source_config.get("url")
+            return str(url) if url is not None else ""
+
+        # For other sources, try common keys or return first string value
+        for key in ["path", "url", "channel", "identifier"]:
+            if key in source_config and isinstance(source_config[key], str):
+                return str(source_config[key])
+
+        # Fallback: return first string value found
+        for value in source_config.values():
+            if isinstance(value, str):
+                return value
+
+        return ""
 
     async def reindex_collection(
         self, collection_id: str, user_id: int, config_updates: dict[str, Any] | None = None

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
@@ -81,6 +82,7 @@ def create_collection_service(
     collection_repo = CollectionRepository(db)
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
+    collection_source_repo = CollectionSourceRepository(db)
 
     qdrant_manager_instance = qdrant_manager_override
     if qdrant_manager_instance is None:
@@ -96,6 +98,7 @@ def create_collection_service(
         collection_repo=collection_repo,
         operation_repo=operation_repo,
         document_repo=document_repo,
+        collection_source_repo=collection_source_repo,
         qdrant_manager=qdrant_manager_instance,
     )
 

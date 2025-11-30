@@ -724,6 +724,11 @@ async def _process_append_operation_impl(
 
     op_config = operation.get("config", {})
 
+    # Extract source_id (required for document-source linking)
+    source_id = op_config.get("source_id")
+    if source_id is None:
+        raise ValueError("source_id is required in operation config for APPEND operation")
+
     # New format: source_type + source_config
     source_type = op_config.get("source_type", "directory")
     source_config = op_config.get("source_config")
@@ -787,7 +792,7 @@ async def _process_append_operation_impl(
                 result = await registry.register(
                     collection_id=collection["id"],
                     ingested=ingested_doc,
-                    source_id=None,
+                    source_id=source_id,
                 )
 
                 if result["is_new"]:
