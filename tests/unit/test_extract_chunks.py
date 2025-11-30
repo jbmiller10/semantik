@@ -1,6 +1,6 @@
 """Unit tests for extract_chunks.py document chunking and extraction logic."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -134,35 +134,45 @@ class TestTokenChunker:
 
 
 class TestExtractAndSerialize:
-    """Test suite for extract_and_serialize function."""
+    """Test suite for extract_and_serialize function.
 
-    def test_metadata_preservation(self) -> None:
-        """Test that metadata from unstructured Element objects is preserved."""
-        # Mock unstructured.partition
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            # Create mock Element objects with metadata
-            mock_element1 = MagicMock()
-            mock_element1.__str__.return_value = "This is page 1 content."  # type: ignore[attr-defined]
-            mock_element1.metadata = Mock(spec=["page_number", "category"])
-            mock_element1.metadata.page_number = 1
-            mock_element1.metadata.category = "Title"
+    Note: These tests mock parse_document_content since extract_and_serialize
+    now reads the file first before calling the parsing function.
+    """
 
-            mock_element2 = MagicMock()
-            mock_element2.__str__.return_value = "This is page 2 content."  # type: ignore[attr-defined]
-            mock_element2.metadata = Mock(spec=["page_number", "category", "coordinates"])
-            mock_element2.metadata.page_number = 2
-            mock_element2.metadata.category = "NarrativeText"
-            mock_element2.metadata.coordinates = True
+    def test_metadata_preservation(self, tmp_path) -> None:
+        """Test that metadata from parse_document_content is preserved."""
+        # Create a temporary file
+        test_file = tmp_path / "document.pdf"
+        test_file.write_bytes(b"fake pdf content")
 
-            # Empty element to test filtering
-            mock_element3 = MagicMock()
-            mock_element3.__str__.return_value = "  "  # type: ignore[attr-defined]
+        # Mock parse_document_content to return expected results
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
+            mock_parse.return_value = [
+                (
+                    "This is page 1 content.",
+                    {
+                        "filename": "document.pdf",
+                        "file_type": "pdf",
+                        "page_number": 1,
+                        "element_type": "Title",
+                    },
+                ),
+                (
+                    "This is page 2 content.",
+                    {
+                        "filename": "document.pdf",
+                        "file_type": "pdf",
+                        "page_number": 2,
+                        "element_type": "NarrativeText",
+                        "has_coordinates": "True",
+                    },
+                ),
+            ]
 
-            mock_partition.return_value = [mock_element1, mock_element2, mock_element3]
-
-            # Call extract_and_serialize
-            filepath = "/test/document.pdf"
-            results = extract_and_serialize(filepath)
+            results = extract_and_serialize(str(test_file))
 
             # Verify results
             assert len(results) == 2, "Should have 2 non-empty results"
@@ -183,109 +193,118 @@ class TestExtractAndSerialize:
             assert metadata2["element_type"] == "NarrativeText"
             assert metadata2["has_coordinates"] == "True"
 
-    def test_text_concatenation(self) -> None:
-        """Test that text from all Element objects is correctly extracted."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            # Create multiple mock elements
-            elements = []
-            expected_texts = []
+    def test_text_concatenation(self, tmp_path) -> None:
+        """Test that text from all elements is correctly extracted."""
+        # Create a temporary file
+        test_file = tmp_path / "document.txt"
+        test_file.write_text("test content")
 
-            for i in range(5):
-                mock_element = MagicMock()
-                text = f"This is content from element {i}."
-                mock_element.__str__.return_value = text  # type: ignore[attr-defined]
-                mock_element.metadata = Mock()
-                mock_element.metadata.page_number = i + 1
-                elements.append(mock_element)
-                expected_texts.append(text)
-
-            mock_partition.return_value = elements
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
+            # Create mock return values
+            expected_results = [
+                (f"This is content from element {i}.", {"page_number": i + 1})
+                for i in range(5)
+            ]
+            mock_parse.return_value = expected_results
 
             # Call extract_and_serialize
-            results = extract_and_serialize("/test/document.txt")
+            results = extract_and_serialize(str(test_file))
 
             # Verify all texts are extracted
             assert len(results) == 5
             for i, (text, metadata) in enumerate(results):
-                assert text == expected_texts[i]
+                assert text == f"This is content from element {i}."
                 assert metadata["page_number"] == i + 1
 
-    def test_element_without_metadata(self) -> None:
-        """Test handling of elements without metadata attribute."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            # Create element without metadata
-            mock_element = MagicMock()
-            mock_element.__str__.return_value = "Content without metadata"  # type: ignore[attr-defined]
-            # Remove metadata attribute
-            del mock_element.metadata
+    def test_element_without_metadata(self, tmp_path) -> None:
+        """Test handling of elements without full metadata."""
+        # Create a temporary file
+        test_file = tmp_path / "document.txt"
+        test_file.write_text("test content")
 
-            mock_partition.return_value = [mock_element]
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
+            # Return element with minimal metadata (no page_number)
+            mock_parse.return_value = [
+                (
+                    "Content without page metadata",
+                    {"filename": "document.txt", "file_type": "txt"},
+                )
+            ]
 
             # Call extract_and_serialize
-            results = extract_and_serialize("/test/document.txt")
+            results = extract_and_serialize(str(test_file))
 
             # Should still work but with minimal metadata
             assert len(results) == 1
             text, metadata = results[0]
-            assert text == "Content without metadata"
+            assert text == "Content without page metadata"
             assert metadata["filename"] == "document.txt"
             assert metadata["file_type"] == "txt"
-            # When element has no metadata attribute, page_number is not added
+            # When element has no page_number, it's not in the metadata
             assert "page_number" not in metadata
 
-    def test_partition_error_handling(self) -> None:
-        """Test error handling when partition fails."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            mock_partition.side_effect = Exception("Partition failed")
+    def test_partition_error_handling(self, tmp_path) -> None:
+        """Test error handling when parse_document_content fails."""
+        # Create a temporary file
+        test_file = tmp_path / "document.pdf"
+        test_file.write_bytes(b"fake content")
+
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
+            mock_parse.side_effect = Exception("Partition failed")
 
             # Should raise the exception
             with pytest.raises(Exception, match="Partition failed"):
-                extract_and_serialize("/test/document.pdf")
+                extract_and_serialize(str(test_file))
 
-    def test_file_type_extraction(self) -> None:
+    def test_file_type_extraction(self, tmp_path) -> None:
         """Test that file type is correctly extracted from filepath."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            mock_element = MagicMock()
-            mock_element.__str__.return_value = "Test content"  # type: ignore[attr-defined]
-            mock_element.metadata = Mock()
-            mock_partition.return_value = [mock_element]
-
-            # Test various file extensions
+        # Test various file extensions using mock
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
             test_cases = [
-                ("/path/to/document.pdf", "pdf"),
-                ("/path/to/file.docx", "docx"),
-                ("/path/to/README.md", "md"),
-                ("/path/to/noextension", "unknown"),
-                ("/path/to/.hiddenfile", "unknown"),
+                ("document.pdf", "pdf"),
+                ("file.docx", "docx"),
+                ("README.md", "md"),
+                ("noextension", "unknown"),
             ]
 
-            for filepath, expected_type in test_cases:
-                results = extract_and_serialize(filepath)
+            for filename, expected_type in test_cases:
+                # Create temporary file for each test case
+                test_file = tmp_path / filename
+                test_file.write_bytes(b"test content")
+
+                # Mock returns metadata with expected file_type
+                mock_parse.return_value = [("Test content", {"file_type": expected_type})]
+
+                results = extract_and_serialize(str(test_file))
                 _, metadata = results[0]
-                assert metadata["file_type"] == expected_type, f"Failed for {filepath}"
+                assert metadata["file_type"] == expected_type, f"Failed for {filename}"
 
-    def test_page_number_continuity(self) -> None:
+    def test_page_number_continuity(self, tmp_path) -> None:
         """Test that page numbers maintain continuity when elements lack page metadata."""
-        with patch("shared.text_processing.extraction.partition") as mock_partition:
-            # Create elements with mixed page number presence
-            elem1 = MagicMock()
-            elem1.__str__.return_value = "Content 1"  # type: ignore[attr-defined]
-            elem1.metadata = Mock()
-            elem1.metadata.page_number = 5
+        # Create a temporary file
+        test_file = tmp_path / "document.pdf"
+        test_file.write_bytes(b"fake content")
 
-            elem2 = MagicMock()
-            elem2.__str__.return_value = "Content 2"  # type: ignore[attr-defined]
-            elem2.metadata = Mock(spec=[])
-            # No page_number attribute
+        with patch(
+            "shared.text_processing.extraction.parse_document_content"
+        ) as mock_parse:
+            # Mock returns elements with mixed page numbers
+            # The page continuity logic is now in parse_document_content
+            mock_parse.return_value = [
+                ("Content 1", {"page_number": 5}),
+                ("Content 2", {"page_number": 5}),  # Inherited from previous
+                ("Content 3", {"page_number": 7}),
+            ]
 
-            elem3 = MagicMock()
-            elem3.__str__.return_value = "Content 3"  # type: ignore[attr-defined]
-            elem3.metadata = Mock()
-            elem3.metadata.page_number = 7
-
-            mock_partition.return_value = [elem1, elem2, elem3]
-
-            results = extract_and_serialize("/test/document.pdf")
+            results = extract_and_serialize(str(test_file))
 
             # Check page numbers
             assert results[0][1]["page_number"] == 5

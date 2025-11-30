@@ -292,8 +292,9 @@ class TestAddSource:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-                source_config={"recursive": True},
+                source_type="directory",
+                source_config={"path": "/path/to/source", "recursive": True},
+                additional_config={"chunk_size": 500},
             )
 
         # Verify permission check
@@ -304,14 +305,16 @@ class TestAddSource:
         # Verify active operations check
         mock_operation_repo.get_active_operations.assert_called_once_with(mock_collection.id)
 
-        # Verify operation creation
+        # Verify operation creation with new config structure
         mock_operation_repo.create.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             operation_type=OperationType.APPEND,
             config={
-                "source_path": "/path/to/source",
-                "source_config": {"recursive": True},
+                "source_type": "directory",
+                "source_config": {"path": "/path/to/source", "recursive": True},
+                "source_path": "/path/to/source",  # Extracted from source_config for audit
+                "additional_config": {"chunk_size": 500},
             },
         )
 
@@ -336,7 +339,9 @@ class TestAddSource:
 
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert "Cannot add source to collection in" in str(exc_info.value)
@@ -356,7 +361,9 @@ class TestAddSource:
 
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert "Cannot add source while another operation is in progress" in str(exc_info.value)
@@ -389,7 +396,7 @@ class TestAddSource:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
+                legacy_source_path="/path/to/source",
             )
 
         # Should poll until operations clear
@@ -412,7 +419,9 @@ class TestAddSource:
 
         with pytest.raises(EntityNotFoundError):
             await collection_service.add_source(
-                collection_id="nonexistent-uuid", user_id=1, source_path="/path/to/source"
+                collection_id="nonexistent-uuid",
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
     @pytest.mark.asyncio()
@@ -425,7 +434,11 @@ class TestAddSource:
         )
 
         with pytest.raises(AccessDeniedError):
-            await collection_service.add_source(collection_id="some-uuid", user_id=2, source_path="/path/to/source")
+            await collection_service.add_source(
+                collection_id="some-uuid",
+                user_id=2,
+                legacy_source_path="/path/to/source",
+            )
 
     @pytest.mark.asyncio()
     async def test_add_source_with_pending_status(
@@ -444,7 +457,9 @@ class TestAddSource:
 
         with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert result["uuid"] == mock_operation.uuid
@@ -466,7 +481,9 @@ class TestAddSource:
 
         with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert result["uuid"] == mock_operation.uuid
@@ -1271,12 +1288,16 @@ class TestCollectionServiceEdgeCases:
 
         with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source", source_config=None
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
+                # source_config and additional_config default to None
             )
 
-        # Verify empty dict was used for source_config
+        # Verify empty dict was used for source_config and additional_config
         call_args = mock_operation_repo.create.call_args[1]
-        assert call_args["config"]["source_config"] == {}
+        assert call_args["config"]["source_config"] == {"path": "/path/to/source"}
+        assert call_args["config"]["additional_config"] == {}
 
     @pytest.mark.asyncio()
     async def test_multiple_operations_coordination(
@@ -1298,7 +1319,9 @@ class TestCollectionServiceEdgeCases:
 
         with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path1"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path1",
             )
 
         # Second operation should fail if active operation exists
@@ -1307,7 +1330,9 @@ class TestCollectionServiceEdgeCases:
 
         with pytest.raises(InvalidStateError):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path2"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path2",
             )
 
         with pytest.raises(InvalidStateError):

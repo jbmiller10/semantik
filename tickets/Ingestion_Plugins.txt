@@ -344,3 +344,144 @@
           - Persist a CollectionSource row with:
               - source_type from request.
               - source_path maintained for le
+
+
+  Ticket 8: Update Ingestion Task Pipeline to Use Connectors & Registry
+
+  Context:
+  The Celery task that processes APPEND operations currently calls
+  DocumentScanningService directly and assumes directory‑based sources. We want it to
+  use ConnectorFactory + DocumentRegistryService so other connectors can be wired in.
+
+  Files to analyze:
+
+  - packages/webui/tasks/ingestion.py (_process_append_operation_impl)
+  - packages/webui/services/collection_service.py (for operation config shape)
+  - packages/webui/services/document_scanning_service.py
+  - packages/webui/services/document_registry_service.py
+  - packages/shared/connectors/base.py, packages/shared/connectors/local.py
+  - packages/shared/dtos/ingestion.py
+
+  Requirements:
+
+  - In _process_append_operation_impl:
+      - Extract from operation["config"]:
+          - source_type (default "directory" if missing).
+          - source_config (dict, may be { "path": source_path }).
+          - source_path (legacy).
+      - Fallback logic:
+          - If source_type/source_config are missing but source_path is present:
+              - Treat as source_type="directory", source_config={"path": source_path}.
+          - This ensures operations created before Ticket 7 continue to work.
+      - Instantiate DocumentRegistryService with the existing document_repo.session.
+      - Use ConnectorFactory.get_connector(source_type, source_config) to get a
+  connector.
+      - await connector.authenticate(), and bail out with a clear error if auth fails.
+      - Iterate documents:
+
+        async for ingested_doc in connector.load_documents():
+            result = await registry.register(collection["id"], ingested_doc,
+  source_id=<matching CollectionSource.id>)
+            # If is_new, run chunking + embedding, otherwise skip.
+          - Replace the current
+  DocumentScanningService.scan_directory_and_register_documents + manual filtering by
+  file_path.startswith(source_path):
+              - Register and track new documents via DocumentRegistryService.
+              - Then, for new documents (or unprocessed ones), run the existing chunking
+  + embedding block.
+          - Ensure file_path usage in downstream logging and status updates gracefully
+  falls back to ingested_doc.unique_id when no real file path exists.
+  - Compatibility mode:
+      - Optionally, for a transitional step:
+          - Reuse DocumentScanningService internally for "directory" until
+  LocalFileConnector is fully battle‑tested, but structure the code to make switching to
+  LocalFileConnector trivial.
+  - Metrics and logging:
+      - Preserve existing metrics (documents_added, duplicates_skipped,
+  failed_documents) by reconstructing these counters from registry results.
+      - Continue sending WebSocket updates via updater.send_update(...) with source
+  information derived from source_config (e.g. source_path or uri).
+
+  Acceptance Criteria:
+
+  - Adding a local directory source via the API still results in documents being indexed
+  in Qdrant with no noticeable regression in performance.
+  - _process_append_operation_impl no longer hard‑codes os.walk and
+  DocumentScanningService assumptions; instead it uses connectors + registry (or is
+  clearly structured to switch to them).
+  - The system is now technically capable of handling a new source_type (e.g. "web") by
+  plugging in a new connector without further changes to the ingestion task code.
+  - All existing integration/e2e tests for APPEND operations continue to pass.
+
+
+
+
+  Phase 5: Frontend Alignment
+
+  Goal: Align frontend types and UX with the new source configuration model while
+  preserving compatibility for directory sources.
+
+  ———
+
+  Ticket 9: Frontend AddSource Schema & UX Updates
+
+  Context:
+  The frontend currently sends { source_path, config } and assumes directory sources. We
+  need to support source_type + source_config while keeping the existing flows working.
+
+  Files to analyze:
+
+  - apps/webui-react/src/types/collection.ts
+  - apps/webui-react/src/hooks/useCollectionOperations.ts
+  - apps/webui-react/src/components/CreateCollectionModal.tsx
+  - apps/webui-react/src/components/AddDataToCollectionModal.tsx
+  - Components that display source_path from operation config or documents:
+      - apps/webui-react/src/components/ActiveOperationsTab.tsx
+      - apps/webui-react/src/components/OperationProgress.tsx
+      - apps/webui-react/src/components/CollectionDetailsModal.tsx
+      - apps/webui-react/src/hooks/useCollectionDocuments.ts
+
+  Requirements:
+
+  - Update frontend AddSourceRequest type (apps/webui-react/src/types/collection.ts):
+      - Extend to include:
+          - source_type?: string;  // default "directory" on backend
+          - source_config?: Record<string, unknown>;
+      - Keep source_path: string for now, but annotate/comment it as deprecated in favor
+  of source_type + source_config.
+  - Update useAddSource (useCollectionOperations.ts):
+      - By default, when the user provides a directory path:
+          - Call the API with both:
+              - source_type: 'directory'
+              - source_config: { path: sourcePath, ...existingConfig }
+              - And still include source_path for backward compatibility during rollout.
+  - Modals:
+      - CreateCollectionModal and AddDataToCollectionModal:
+          - Continue to ask for a directory path for now.
+          - Build the new AddSourceRequest shape as above when calling useAddSource.
+          - Optionally, surface source_type in the UI (e.g. label “Directory source”).
+  - Operation & document displays:
+      - ActiveOperationsTab / OperationProgress:
+          - Keep reading config.source_path for now.
+          - Optionally, enhance helper functions to:
+              - Prefer config.source_config.path when present, falling back to
+  config.source_path.
+      - CollectionDetailsModal and useCollectionDocuments:
+          - For now, continue aggregating on doc.source_path if exposed by the backend.
+          - When the backend begins returning additional fields (e.g. uri or
+  source_type), plan a follow‑up fix to show a more general “Source” column.
+  - Tests:
+      - Update Jest/Vitest tests that construct AddSourceRequest or assert on the
+  request payload to include source_type/source_config where appropriate.
+      - Keep tests validating that legacy shapes (only source_path) remain accepted.
+
+  Acceptance Criteria:
+
+  - Existing flows for adding a directory source (in both modals) still work without
+  changes to user behavior.
+  - The API payloads now include source_type='directory' and source_config={ path:
+  '<dir>' } in addition to source_path, enabling the backend’s new model.
+  - UI components that display source information continue to render correctly for
+  directory sources.
+  - Tests for useAddSource, CreateCollectionModal, and AddDataToCollectionModal pass
+  with the updated request shape.

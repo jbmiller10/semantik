@@ -1,11 +1,30 @@
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import type { Operation } from '../types/collection';
 
-// Helper to safely get source_path from config
-function getSourcePath(config: Record<string, unknown> | undefined): string | null {
-  if (!config || !('source_path' in config)) return null;
-  const sourcePath = config.source_path;
-  return typeof sourcePath === 'string' ? sourcePath : null;
+/**
+ * Extract display source from operation config.
+ * Prefers source_config.path when present, falls back to source_path.
+ */
+function getSourceDisplay(config: Record<string, unknown> | undefined): string | null {
+  if (!config) return null;
+
+  // New format: source_config.path or source_config.url
+  if ('source_config' in config && typeof config.source_config === 'object' && config.source_config !== null) {
+    const sourceConfig = config.source_config as Record<string, unknown>;
+    if ('path' in sourceConfig && typeof sourceConfig.path === 'string') {
+      return sourceConfig.path;
+    }
+    if ('url' in sourceConfig && typeof sourceConfig.url === 'string') {
+      return sourceConfig.url;
+    }
+  }
+
+  // Legacy format: source_path
+  if ('source_path' in config && typeof config.source_path === 'string') {
+    return config.source_path;
+  }
+
+  return null;
 }
 
 interface OperationProgressProps {
@@ -141,13 +160,13 @@ function OperationProgress({
       {showDetails && (
         <div className="text-xs text-gray-600 space-y-1">
           
-          {/* Source path from config */}
+          {/* Source from config */}
           {(() => {
-            const sourcePath = getSourcePath(operation.config);
-            return sourcePath ? (
+            const sourceDisplay = getSourceDisplay(operation.config);
+            return sourceDisplay ? (
               <div className="flex items-start">
                 <span className="text-gray-500 mr-2">Source:</span>
-                <span className="font-mono break-all">{sourcePath}</span>
+                <span className="font-mono break-all">{sourceDisplay}</span>
               </div>
             ) : null;
           })()}

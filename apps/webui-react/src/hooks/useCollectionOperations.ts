@@ -45,19 +45,23 @@ export function useAddSource() {
   const { addToast } = useUIStore();
 
   return useMutation({
-    mutationFn: async ({ 
-      collectionId, 
-      sourcePath, 
-      config 
-    }: { 
-      collectionId: string; 
-      sourcePath: string; 
+    mutationFn: async ({
+      collectionId,
+      sourcePath,
+      config
+    }: {
+      collectionId: string;
+      sourcePath: string;
       config?: AddSourceRequest['config'];
     }) => {
-      const response = await collectionsV2Api.addSource(collectionId, { 
-        source_path: sourcePath, 
-        config 
-      });
+      // Build new format while keeping source_path for backward compatibility
+      const request: AddSourceRequest = {
+        source_type: 'directory',
+        source_config: { path: sourcePath },
+        source_path: sourcePath,  // Keep for backward compatibility
+        config,
+      };
+      const response = await collectionsV2Api.addSource(collectionId, request);
       return { operation: response.data, collectionId };
     },
     onMutate: async ({ collectionId, sourcePath, config }) => {
@@ -73,13 +77,18 @@ export function useAddSource() {
         collectionKeys.detail(collectionId)
       );
 
-      // Create temporary operation
+      // Create temporary operation with both old and new format
       const tempOperation: Operation = {
         id: `temp-op-${Date.now()}`,
         collection_id: collectionId,
         type: 'append',
         status: 'pending',
-        config: { source_path: sourcePath, ...config },
+        config: {
+          source_path: sourcePath,
+          source_type: 'directory',
+          source_config: { path: sourcePath },
+          ...config
+        },
         created_at: new Date().toISOString(),
       };
 

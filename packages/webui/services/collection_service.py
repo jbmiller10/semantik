@@ -210,16 +210,20 @@ class CollectionService:
         self,
         collection_id: str,
         user_id: int,
-        source_path: str,
+        source_type: str = "directory",
         source_config: dict[str, Any] | None = None,
+        legacy_source_path: str | None = None,
+        additional_config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Add a source to an existing collection.
 
         Args:
             collection_id: UUID of the collection
             user_id: ID of the user performing the operation
-            source_path: Path to the source (file or directory)
-            source_config: Optional source-specific configuration
+            source_type: Type of source (e.g., "directory", "web", "slack")
+            source_config: Connector-specific configuration
+            legacy_source_path: Deprecated - for backward compatibility
+            additional_config: Additional config (chunk settings, metadata)
 
         Returns:
             Operation dictionary
@@ -229,6 +233,14 @@ class CollectionService:
             AccessDeniedError: If user doesn't have permission
             InvalidStateError: If collection is in invalid state
         """
+        # Normalize: derive source_config from legacy_source_path if needed
+        if source_config is None and legacy_source_path is not None:
+            source_config = {"path": legacy_source_path}
+            source_type = "directory"
+
+        # Derive source_path for the operation config (for display/audit)
+        # This is the "path" within source_config for directory-type sources
+        source_path = source_config.get("path", "") if source_config else ""
         # Get collection with permission check
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
             collection_uuid=collection_id, user_id=user_id
@@ -257,14 +269,16 @@ class CollectionService:
                     "Please wait for the current operation to complete."
                 )
 
-        # Create operation record
+        # Create operation record with new structure
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
             operation_type=OperationType.APPEND,
             config={
-                "source_path": source_path,
+                "source_type": source_type,
                 "source_config": source_config or {},
+                "source_path": source_path,  # Keep for backward compatibility/audit
+                "additional_config": additional_config or {},
             },
         )
 

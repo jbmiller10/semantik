@@ -47,6 +47,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -259,6 +260,10 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
+    # Flexible source fields (for non-file-based sources like web, Slack, etc.)
+    uri = Column(String, nullable=True)  # Logical identifier (URL, file path, message ID, etc.)
+    source_metadata = Column(JSON)  # Connector-specific metadata (headers, timestamps, etc.)
+
     # New chunking-related fields
     chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True, index=True)
     chunks_count = Column(Integer, nullable=False, default=0)
@@ -275,6 +280,13 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),
         Index("ix_documents_collection_id_chunking_completed_at", "collection_id", "chunking_completed_at"),
+        Index(
+            "ix_documents_collection_uri_unique",
+            "collection_id",
+            "uri",
+            unique=True,
+            postgresql_where=text("uri IS NOT NULL"),
+        ),
     )
 
 
@@ -364,7 +376,8 @@ class CollectionSource(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     source_path = Column(String, nullable=False)
-    source_type = Column(String, nullable=False, default="directory")  # directory, file, url, etc.
+    source_type = Column(String, nullable=False)  # directory, web, slack, etc.
+    source_config = Column(JSON)  # Connector-specific configuration (e.g. {"path": "..."})
     document_count = Column(Integer, nullable=False, default=0)
     size_bytes = Column(Integer, nullable=False, default=0)
     last_indexed_at = Column(DateTime(timezone=True))

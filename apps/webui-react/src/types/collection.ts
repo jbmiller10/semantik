@@ -85,7 +85,12 @@ export interface UpdateCollectionRequest {
 }
 
 export interface AddSourceRequest {
-  source_path: string;
+  /** @deprecated Use source_type + source_config instead */
+  source_path?: string;
+  /** Source type (e.g., "directory", "web", "slack"). Defaults to "directory" on backend. */
+  source_type?: string;
+  /** Source-specific configuration (e.g., { path: "/data/docs" } for directory) */
+  source_config?: Record<string, unknown>;
   config?: {
     chunk_size?: number;         // Deprecated: use chunking_config instead
     chunk_overlap?: number;      // Deprecated: use chunking_config instead
