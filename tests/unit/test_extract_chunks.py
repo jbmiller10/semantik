@@ -147,9 +147,7 @@ class TestExtractAndSerialize:
         test_file.write_bytes(b"fake pdf content")
 
         # Mock parse_document_content to return expected results
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             mock_parse.return_value = [
                 (
                     "This is page 1 content.",
@@ -199,14 +197,9 @@ class TestExtractAndSerialize:
         test_file = tmp_path / "document.txt"
         test_file.write_text("test content")
 
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             # Create mock return values
-            expected_results = [
-                (f"This is content from element {i}.", {"page_number": i + 1})
-                for i in range(5)
-            ]
+            expected_results = [(f"This is content from element {i}.", {"page_number": i + 1}) for i in range(5)]
             mock_parse.return_value = expected_results
 
             # Call extract_and_serialize
@@ -224,9 +217,7 @@ class TestExtractAndSerialize:
         test_file = tmp_path / "document.txt"
         test_file.write_text("test content")
 
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             # Return element with minimal metadata (no page_number)
             mock_parse.return_value = [
                 (
@@ -253,9 +244,7 @@ class TestExtractAndSerialize:
         test_file = tmp_path / "document.pdf"
         test_file.write_bytes(b"fake content")
 
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             mock_parse.side_effect = Exception("Partition failed")
 
             # Should raise the exception
@@ -265,9 +254,7 @@ class TestExtractAndSerialize:
     def test_file_type_extraction(self, tmp_path) -> None:
         """Test that file type is correctly extracted from filepath."""
         # Test various file extensions using mock
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             test_cases = [
                 ("document.pdf", "pdf"),
                 ("file.docx", "docx"),
@@ -293,9 +280,7 @@ class TestExtractAndSerialize:
         test_file = tmp_path / "document.pdf"
         test_file.write_bytes(b"fake content")
 
-        with patch(
-            "shared.text_processing.extraction.parse_document_content"
-        ) as mock_parse:
+        with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             # Mock returns elements with mixed page numbers
             # The page continuity logic is now in parse_document_content
             mock_parse.return_value = [

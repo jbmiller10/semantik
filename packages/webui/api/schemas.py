@@ -175,9 +175,7 @@ class AddSourceRequest(BaseModel):
     source_config: dict[str, Any] | None = Field(
         default=None,
         description="Connector-specific configuration",
-        json_schema_extra={
-            "example": {"path": "/data/docs", "recursive": True}
-        },
+        json_schema_extra={"example": {"path": "/data/docs", "recursive": True}},
     )
 
     # Legacy field (deprecated)

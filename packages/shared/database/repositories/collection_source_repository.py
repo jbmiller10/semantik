@@ -100,9 +100,7 @@ class CollectionSourceRepository:
             CollectionSource instance or None if not found
         """
         try:
-            result = await self.session.execute(
-                select(CollectionSource).where(CollectionSource.id == source_id)
-            )
+            result = await self.session.execute(select(CollectionSource).where(CollectionSource.id == source_id))
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Failed to get collection source {source_id}: {e}")
@@ -132,8 +130,7 @@ class CollectionSourceRepository:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(
-                f"Failed to get collection source for collection {collection_id} "
-                f"with path {source_path}: {e}"
+                f"Failed to get collection source for collection {collection_id} " f"with path {source_path}: {e}"
             )
             raise DatabaseOperationError("get", "collection_source", str(e)) from e
 
@@ -179,10 +176,7 @@ class CollectionSourceRepository:
                 if updated:
                     existing.updated_at = datetime.now(UTC)
                     await self.session.flush()
-                    logger.info(
-                        f"Updated existing collection source {existing.id} "
-                        f"for collection {collection_id}"
-                    )
+                    logger.info(f"Updated existing collection source {existing.id} " f"for collection {collection_id}")
 
                 return existing, False
 
@@ -219,9 +213,7 @@ class CollectionSourceRepository:
         """
         try:
             # Build base query
-            query = select(CollectionSource).where(
-                CollectionSource.collection_id == collection_id
-            )
+            query = select(CollectionSource).where(CollectionSource.collection_id == collection_id)
 
             # Get total count
             count_query = select(func.count()).select_from(query.subquery())

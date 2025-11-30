@@ -146,9 +146,7 @@ class TestCollectionSourceRepositoryIntegration:
         assert fetched.id == source.id
         assert fetched.source_path == source.source_path
 
-    async def test_get_by_id_returns_none_for_missing(
-        self, repository: CollectionSourceRepository
-    ) -> None:
+    async def test_get_by_id_returns_none_for_missing(self, repository: CollectionSourceRepository) -> None:
         """Missing sources should return None."""
         fetched = await repository.get_by_id(999999)
         assert fetched is None
@@ -290,12 +288,8 @@ class TestCollectionSourceRepositoryIntegration:
                 source_path=f"/data/page-{uuid4().hex[:8]}-{i}",
             )
 
-        sources_page1, total = await repository.list_by_collection(
-            collection.id, offset=0, limit=2
-        )
-        sources_page2, _ = await repository.list_by_collection(
-            collection.id, offset=2, limit=2
-        )
+        sources_page1, total = await repository.list_by_collection(collection.id, offset=0, limit=2)
+        sources_page2, _ = await repository.list_by_collection(collection.id, offset=2, limit=2)
 
         assert total == 5
         assert len(sources_page1) == 2
@@ -350,9 +344,7 @@ class TestCollectionSourceRepositoryIntegration:
         assert updated.size_bytes == 50000
         assert updated.last_indexed_at is not None
 
-    async def test_update_stats_raises_for_missing_source(
-        self, repository: CollectionSourceRepository
-    ) -> None:
+    async def test_update_stats_raises_for_missing_source(self, repository: CollectionSourceRepository) -> None:
         """update_stats should raise EntityNotFoundError for missing source."""
         with pytest.raises(EntityNotFoundError):
             await repository.update_stats(source_id=999999, document_count=5)
@@ -392,9 +384,7 @@ class TestCollectionSourceRepositoryIntegration:
         fetched = await repository.get_by_id(source.id)
         assert fetched is None
 
-    async def test_delete_raises_for_missing_source(
-        self, repository: CollectionSourceRepository
-    ) -> None:
+    async def test_delete_raises_for_missing_source(self, repository: CollectionSourceRepository) -> None:
         """delete should raise EntityNotFoundError for missing source."""
         with pytest.raises(EntityNotFoundError):
             await repository.delete(999999)

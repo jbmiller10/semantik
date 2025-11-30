@@ -52,11 +52,13 @@ def upgrade() -> None:
 
     # Backfill source_config for existing rows
     # Creates {"path": source_path} for all existing directory sources
-    op.execute("""
+    op.execute(
+        """
         UPDATE collection_sources
         SET source_config = jsonb_build_object('path', source_path)::json
         WHERE source_config IS NULL
-    """)
+    """
+    )
 
     # --- documents table ---
 
