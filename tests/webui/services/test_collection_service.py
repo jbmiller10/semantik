@@ -823,13 +823,16 @@ class TestRemoveSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test successful source removal."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_source_repo.get_by_collection_and_path.return_value = mock_collection_source
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
@@ -838,12 +841,18 @@ class TestRemoveSource:
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/remove"
             )
 
+        # Verify source lookup
+        mock_collection_source_repo.get_by_collection_and_path.assert_called_once_with(
+            collection_id=mock_collection.id, source_path="/path/to/remove"
+        )
+
         # Verify operation creation
         mock_operation_repo.create.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             operation_type=OperationType.REMOVE_SOURCE,
             config={
+                "source_id": mock_collection_source.id,
                 "source_path": "/path/to/remove",
             },
         )
@@ -878,13 +887,16 @@ class TestRemoveSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test removing source from degraded collection."""
         mock_collection.status = CollectionStatus.DEGRADED
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_source_repo.get_by_collection_and_path.return_value = mock_collection_source
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
@@ -913,6 +925,27 @@ class TestRemoveSource:
             )
 
         assert "Cannot remove source while another operation is in progress" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_remove_source_not_found(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test removing source that doesn't exist."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations_count.return_value = 0
+        mock_collection_source_repo.get_by_collection_and_path.return_value = None
+
+        with pytest.raises(EntityNotFoundError) as exc_info:
+            await collection_service.remove_source(
+                collection_id=str(mock_collection.uuid), user_id=1, source_path="/nonexistent/path"
+            )
+
+        assert "collection_source" in str(exc_info.value)
 
 
 class TestListForUser:

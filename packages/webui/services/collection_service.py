@@ -554,12 +554,20 @@ class CollectionService:
                 "Please wait for the current operation to complete."
             )
 
+        # Look up the collection source to get source_id
+        collection_source = await self.collection_source_repo.get_by_collection_and_path(
+            collection_id=collection.id, source_path=source_path
+        )
+        if not collection_source:
+            raise EntityNotFoundError("collection_source", source_path)
+
         # Create operation record
         operation = await self.operation_repo.create(
             collection_id=collection.id,
             user_id=user_id,
             operation_type=OperationType.REMOVE_SOURCE,
             config={
+                "source_id": collection_source.id,
                 "source_path": source_path,
             },
         )
