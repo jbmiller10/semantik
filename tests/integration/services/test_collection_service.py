@@ -284,6 +284,8 @@ class TestCollectionServiceIntegration:
         capture_celery,
     ) -> None:
         """Removing a source should schedule a REMOVE_SOURCE operation."""
+        from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+
         owner = await user_factory()
         collection_dict, operation_dict = await service.create_collection(
             user_id=owner.id,
@@ -297,6 +299,15 @@ class TestCollectionServiceIntegration:
             collection_dict["id"],
         )
 
+        # Create a collection source that we'll remove
+        source_repo = CollectionSourceRepository(db_session)
+        source = await source_repo.create(
+            collection_id=collection_dict["id"],
+            source_type="directory",
+            source_path="/mnt/data/old-docs",
+        )
+        await db_session.commit()
+
         capture_celery.clear()
 
         op_payload = await service.remove_source(
@@ -307,6 +318,7 @@ class TestCollectionServiceIntegration:
 
         assert op_payload["type"] == OperationType.REMOVE_SOURCE.value
         assert op_payload["config"]["source_path"] == "/mnt/data/old-docs"
+        assert op_payload["config"]["source_id"] == source.id
 
         assert len(capture_celery) == 1
         assert capture_celery[0]["args"] == [op_payload["uuid"]]

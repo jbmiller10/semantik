@@ -86,6 +86,7 @@ def mock_document_repo() -> AsyncMock:
     mock.count_for_collection = AsyncMock()
     mock.exists_by_hash = AsyncMock()
     mock.get_by_file_path = AsyncMock()
+    mock.list_by_source_id = AsyncMock()
 
     return mock
 

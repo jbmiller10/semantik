@@ -1239,12 +1239,13 @@ async def _process_remove_source_operation(
     from shared.metrics.collection_metrics import record_document_processed
 
     config = operation.get("config", {})
-    source_path = config.get("source_path")
+    source_id = config.get("source_id")
+    source_path = config.get("source_path", "unknown")  # For logging only
 
-    if not source_path:
-        raise ValueError("source_path is required for REMOVE_SOURCE operation")
+    if source_id is None:
+        raise ValueError("source_id is required for REMOVE_SOURCE operation")
 
-    documents = await document_repo.list_by_collection_and_source(collection["id"], source_path)
+    documents = await document_repo.list_by_source_id(collection["id"], source_id)
 
     if not documents:
         logger.info("No documents found for source %s", source_path)
@@ -1290,7 +1291,7 @@ async def _process_remove_source_operation(
 
     collections_to_clean = unique_collections
 
-    doc_ids = [doc["id"] for doc in documents]
+    doc_ids = [doc.id for doc in documents]
     removed_count = 0
     deletion_errors = []
 

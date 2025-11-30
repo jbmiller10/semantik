@@ -242,6 +242,39 @@ class DocumentRepository:
             logger.error(f"Failed to list documents for collection {collection_id}: {e}")
             raise DatabaseOperationError("list", "documents", str(e)) from e
 
+    async def list_by_source_id(
+        self,
+        collection_id: str,
+        source_id: int,
+        status: DocumentStatus | None = None,
+    ) -> list[Document]:
+        """List documents by collection and source ID.
+
+        Args:
+            collection_id: UUID of the collection
+            source_id: Integer ID of the collection source
+            status: Optional status filter
+
+        Returns:
+            List of Document instances
+        """
+        try:
+            query = select(Document).where(
+                and_(
+                    Document.collection_id == collection_id,
+                    Document.source_id == source_id,
+                )
+            )
+
+            if status:
+                query = query.where(Document.status == status)
+
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error(f"Failed to list documents by source_id {source_id}: {e}")
+            raise DatabaseOperationError("list", "documents", str(e)) from e
+
     async def list_duplicates(self, collection_id: str) -> list[tuple[str, int, list[Document]]]:
         """List duplicate documents in a collection.
 
