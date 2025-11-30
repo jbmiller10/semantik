@@ -12,6 +12,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.repositories.document_repository import DocumentRepository
+from shared.dtos.ingestion import IngestedDocument
+from webui.services.document_registry_service import DocumentRegistryService
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,11 @@ HASH_CHUNK_SIZE = 8192
 
 
 class DocumentScanningService:
-    """Service for scanning directories and registering documents with deduplication."""
+    """Service for scanning directories and registering documents with deduplication.
+
+    This service handles filesystem traversal and delegates document registration
+    to the DocumentRegistryService for consistent handling across all connectors.
+    """
 
     def __init__(self, db_session: AsyncSession, document_repo: DocumentRepository):
         """Initialize the document scanning service.
@@ -37,6 +43,8 @@ class DocumentScanningService:
         """
         self.db_session = db_session
         self.document_repo = document_repo
+        # Create registry service for document registration
+        self._registry: DocumentRegistryService = DocumentRegistryService(db_session, document_repo)
 
     async def scan_directory_and_register_documents(
         self,
@@ -219,6 +227,9 @@ class DocumentScanningService:
     ) -> dict[str, Any]:
         """Register a single file in the collection.
 
+        This method builds an IngestedDocument DTO from the file and delegates
+        registration to the DocumentRegistryService.
+
         Args:
             collection_id: UUID of the collection
             file_path: Path to the file
@@ -248,40 +259,32 @@ class DocumentScanningService:
         if file_size > MAX_FILE_SIZE:
             raise ValueError(f"Document too large: {file_size} bytes (max {MAX_FILE_SIZE} bytes)")
 
-        # Calculate content hash
+        # Calculate content hash (uses chunked reading for large files)
         content_hash = await self._calculate_file_hash(file_path)
 
         # Detect MIME type
         mime_type = self._get_mime_type(file_path)
 
-        # If document already exists with same hash, treat as duplicate
-        existing_doc = await self.document_repo.get_by_content_hash(collection_id, content_hash)
-        if existing_doc is not None:
-            return {
-                "is_new": False,
-                "document_id": existing_doc.id,
-                "file_size": existing_doc.file_size or file_size,
-            }
-
-        # Register document
-        document = await self.document_repo.create(
-            collection_id=collection_id,
-            file_path=str(file_path),
-            file_name=file_path.name,
-            file_size=file_size,
+        # Build IngestedDocument DTO
+        ingested = IngestedDocument(
+            content="",  # Content not needed for registration phase
+            unique_id=f"file://{file_path}",
+            source_type="directory",
+            metadata={
+                "file_size": file_size,
+                "mime_type": mime_type,
+            },
             content_hash=content_hash,
-            mime_type=mime_type,
-            source_id=source_id,
+            file_path=str(file_path),
         )
 
-        # Ensure server defaults (e.g., created_at) are populated
-        await self.document_repo.session.refresh(document)
-
-        return {
-            "is_new": True,
-            "document_id": document.id,
-            "file_size": file_size,
-        }
+        # Delegate to registry service for registration and deduplication
+        result: dict[str, Any] = await self._registry.register(
+            collection_id=collection_id,
+            ingested=ingested,
+            source_id=source_id,
+        )
+        return result
 
     async def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate SHA-256 hash of file contents.
