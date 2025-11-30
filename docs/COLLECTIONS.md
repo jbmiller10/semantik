@@ -269,6 +269,16 @@ The system automatically detects duplicate documents using content hashing:
 3. **Efficient Storage**: Duplicate documents reference same content
 4. **User Notification**: Duplicate count reported in operations
 
+### Ingestion DTO & Hashing Contract
+
+- **IngestedDocument DTO**: All connectors emit `shared.dtos.ingestion.IngestedDocument` instances with
+  `content`, `unique_id`, `source_type`, `metadata`, `content_hash`, and optional `file_path`.
+- **Hash helper**: Content hashes are computed via `shared.utils.hashing.compute_content_hash`, which returns a
+  deterministic, lowercase 64-character SHA-256 hex string. Repository logic and tests assume this format.
+- **Registry service**: `webui.services.document_registry_service.DocumentRegistryService` is the single entrypoint
+  for registering documents; it uses `(collection_id, content_hash)` and (optionally) `(collection_id, uri)` to enforce
+  deduplication for all source types (directory, web, Slack, etc.).
+
 ### Multi-Model Support
 
 Collections support various embedding models with different characteristics:
