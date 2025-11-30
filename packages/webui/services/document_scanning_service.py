@@ -1,6 +1,5 @@
 """Document scanning service for discovering and registering documents in collections."""
 
-import hashlib
 import logging
 import mimetypes
 import os
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.dtos.ingestion import IngestedDocument
+from shared.utils.hashing import compute_file_hash
 from webui.services.document_registry_service import DocumentRegistryService
 
 logger = logging.getLogger(__name__)
@@ -22,9 +22,6 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml
 
 # Maximum file size (500 MB)
 MAX_FILE_SIZE = 500 * 1024 * 1024
-
-# Chunk size for file reading (for hash calculation)
-HASH_CHUNK_SIZE = 8192
 
 
 class DocumentScanningService:
@@ -289,6 +286,10 @@ class DocumentScanningService:
     async def _calculate_file_hash(self, file_path: Path) -> str:
         """Calculate SHA-256 hash of file contents.
 
+        Delegates to shared.utils.hashing.compute_file_hash for consistent
+        hashing across the codebase. Streaming behavior is preserved for
+        memory-efficient handling of large files.
+
         Args:
             file_path: Path to the file
 
@@ -298,18 +299,8 @@ class DocumentScanningService:
         Raises:
             IOError: If file cannot be read
         """
-        sha256_hash = hashlib.sha256()
-
-        try:
-            with file_path.open("rb") as f:
-                # Read file in chunks to handle large files efficiently
-                for chunk in iter(lambda: f.read(HASH_CHUNK_SIZE), b""):
-                    sha256_hash.update(chunk)
-
-            return sha256_hash.hexdigest()
-
-        except Exception as e:
-            raise OSError(f"Failed to calculate hash for {file_path}: {e}") from e
+        result: str = compute_file_hash(file_path)
+        return result
 
     def _get_mime_type(self, file_path: Path) -> str | None:
         """Get MIME type for a file.
