@@ -806,10 +806,12 @@ async def _process_append_operation_impl(
 
             except Exception as e:
                 logger.error(f"Failed to register document {ingested_doc.unique_id}: {e}")
-                scan_stats["errors"].append({
-                    "document": ingested_doc.unique_id,
-                    "error": str(e),
-                })
+                scan_stats["errors"].append(
+                    {
+                        "document": ingested_doc.unique_id,
+                        "error": str(e),
+                    }
+                )
 
         # Commit after all registrations
         await session.commit()
