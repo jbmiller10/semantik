@@ -247,6 +247,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     result: dict[str, Any] = {}
                     operation_type = operation["type"].value.lower()
 
+                    # Commit setup changes before starting potentially long-running operations
+                    # This prevents idle-in-transaction timeouts and ensures a clean session state
+                    await db.commit()
+
                     with OperationTimer(operation_type):
                         memory_before = process.memory_info().rss
 
@@ -769,6 +773,16 @@ async def _process_append_operation_impl(
     try:
         scan_start = time.time()
 
+        # Commit any pending changes from setup phase and ensure session is in clean state
+        # This prevents idle-in-transaction timeouts during file scanning/parsing
+        if session.in_transaction():
+            try:
+                await session.commit()
+            except Exception as commit_exc:
+                logger.warning("Failed to commit before document scan: %s, rolling back", commit_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+
         # Create registry for document registration
         registry = DocumentRegistryService(db_session=session, document_repo=document_repo)
 
@@ -784,16 +798,20 @@ async def _process_append_operation_impl(
         # Store content for new documents (avoid re-parsing)
         new_doc_contents: dict[int, str] = {}
 
-        # Iterate through connector's documents
+        # Iterate through connector's documents using savepoints for isolation
+        # This allows failures on individual documents without losing previously registered ones
         async for ingested_doc in connector.load_documents():
             scan_stats["total_documents_found"] += 1
 
             try:
-                result = await registry.register(
-                    collection_id=collection["id"],
-                    ingested=ingested_doc,
-                    source_id=source_id,
-                )
+                # Use savepoint (nested transaction) for isolation - if this document's
+                # registration fails, only this document's changes are rolled back
+                async with session.begin_nested():
+                    result = await registry.register(
+                        collection_id=collection["id"],
+                        ingested=ingested_doc,
+                        source_id=source_id,
+                    )
 
                 if result["is_new"]:
                     scan_stats["new_documents_registered"] += 1
@@ -804,8 +822,18 @@ async def _process_append_operation_impl(
 
                 scan_stats["total_size_bytes"] += result["file_size"]
 
+                # Commit after each document to close the transaction completely
+                # This prevents idle-in-transaction timeouts when the next file
+                # takes a long time to parse (e.g., large PDFs)
+                await session.commit()
+
             except Exception as e:
                 logger.error(f"Failed to register document {ingested_doc.unique_id}: {e}")
+                # If session is in invalid state (e.g., connection lost), try to recover
+                if "invalid transaction" in str(e).lower() or "pending" in str(e).lower():
+                    logger.warning("Session in invalid state, attempting rollback recovery")
+                    with contextlib.suppress(Exception):
+                        await session.rollback()
                 scan_stats["errors"].append(
                     {
                         "document": ingested_doc.unique_id,
@@ -813,8 +841,14 @@ async def _process_append_operation_impl(
                     }
                 )
 
-        # Commit after all registrations
-        await session.commit()
+        # Commit after all registrations (if there's an active transaction)
+        if session.in_transaction():
+            try:
+                await session.commit()
+            except Exception as commit_exc:
+                logger.warning("Failed to commit document registrations: %s", commit_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
 
         scan_duration = time.time() - scan_start
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
