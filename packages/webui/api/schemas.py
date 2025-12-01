@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Enums
@@ -148,16 +148,59 @@ class CollectionUpdate(BaseModel):
 
 
 class AddSourceRequest(BaseModel):
-    """Schema for adding a source to a collection."""
+    """Schema for adding a source to a collection.
 
-    source_path: str = Field(..., description="Path to the source file or directory")
+    The API supports both the new flexible source format and the legacy format:
+
+    New format (preferred):
+        {
+            "source_type": "directory",
+            "source_config": {"path": "/data/docs", "recursive": true}
+        }
+
+    Legacy format (deprecated):
+        {
+            "source_path": "/data/docs"
+        }
+
+    When using the legacy format, source_type defaults to "directory" and
+    source_config is derived as {"path": source_path}.
+    """
+
+    # New fields
+    source_type: str = Field(
+        default="directory",
+        description="Type of source (e.g., 'directory', 'web', 'slack')",
+    )
+    source_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Connector-specific configuration",
+        json_schema_extra={"example": {"path": "/data/docs", "recursive": True}},
+    )
+
+    # Legacy field (deprecated)
+    source_path: str | None = Field(
+        default=None,
+        description="[DEPRECATED] Path to the source. Use source_config={'path': ...} instead.",
+    )
+
+    # Keep existing config field for backward compatibility (chunk settings, metadata)
     config: dict[str, Any] | None = Field(
-        None,
-        description="Optional configuration for the source",
+        default=None,
+        description="Optional configuration (chunk settings, metadata, etc.)",
         json_schema_extra={
             "example": {"chunk_size": 1000, "chunk_overlap": 200, "metadata": {"department": "engineering"}}
         },
     )
+
+    @model_validator(mode="after")
+    def normalize_legacy_source_path(self) -> "AddSourceRequest":
+        """Convert legacy source_path to source_type/source_config format."""
+        # If legacy source_path provided and source_config not set, derive it
+        if self.source_path is not None and self.source_config is None:
+            self.source_config = {"path": self.source_path}
+        # source_type defaults to "directory" already
+        return self
 
 
 class CollectionResponse(CollectionBase):

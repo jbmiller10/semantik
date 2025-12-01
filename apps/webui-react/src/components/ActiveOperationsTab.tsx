@@ -11,11 +11,30 @@ import { useCollections } from '../hooks/useCollections';
 import { useOperationsSocket } from '../hooks/useOperationsSocket';
 // Note: useOperationProgress removed - global useOperationsSocket handles all updates
 
-// Helper to safely get source_path from config
-function getSourcePath(config: Record<string, unknown> | undefined): string | null {
-  if (!config || !('source_path' in config)) return null;
-  const sourcePath = config.source_path;
-  return typeof sourcePath === 'string' ? sourcePath : null;
+/**
+ * Extract display source from operation config.
+ * Prefers source_config.path when present, falls back to source_path.
+ */
+function getSourceDisplay(config: Record<string, unknown> | undefined): string | null {
+  if (!config) return null;
+
+  // New format: source_config.path or source_config.url
+  if ('source_config' in config && typeof config.source_config === 'object' && config.source_config !== null) {
+    const sourceConfig = config.source_config as Record<string, unknown>;
+    if ('path' in sourceConfig && typeof sourceConfig.path === 'string') {
+      return sourceConfig.path;
+    }
+    if ('url' in sourceConfig && typeof sourceConfig.url === 'string') {
+      return sourceConfig.url;
+    }
+  }
+
+  // Legacy format: source_path
+  if ('source_path' in config && typeof config.source_path === 'string') {
+    return config.source_path;
+  }
+
+  return null;
 }
 
 function ActiveOperationsTab() {
@@ -220,10 +239,10 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
                   </span>
                 </span>
                 {(() => {
-                  const sourcePath = getSourcePath(operation.config);
-                  return sourcePath ? (
-                    <span className="truncate max-w-xs" title={sourcePath}>
-                      {sourcePath}
+                  const sourceDisplay = getSourceDisplay(operation.config);
+                  return sourceDisplay ? (
+                    <span className="truncate max-w-xs" title={sourceDisplay}>
+                      {sourceDisplay}
                     </span>
                   ) : null;
                 })()}

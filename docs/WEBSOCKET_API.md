@@ -404,7 +404,7 @@ async with CeleryTaskWithOperationUpdates(operation_id) as updater:
     # Scanning documents
     await updater.send_update(
         "scanning_documents", 
-        {"status": "scanning", "source_path": source_path}
+        {"status": "scanning", "source": source_path}
     )
     
     # Scan completed
@@ -671,17 +671,27 @@ async def test_operation_progress():
         )
         token = auth_response.json()["access_token"]
         
-        # Create a new operation (e.g., index a collection)
+        # Create a collection
         collection_response = await client.post(
             "http://localhost:8080/api/v2/collections",
             headers={"Authorization": f"Bearer {token}"},
             json={
                 "name": "Test Collection",
-                "description": "WebSocket test",
-                "source_path": "/test/documents"
+                "description": "WebSocket test"
             }
         )
-        operation_id = collection_response.json()["operation_id"]
+        collection = collection_response.json()
+
+        # Start an APPEND operation by adding a source
+        source_response = await client.post(
+            f"http://localhost:8080/api/v2/collections/{collection['id']}/sources",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "source_type": "directory",
+                "source_config": {"path": "/test/documents"}
+            }
+        )
+        operation_id = source_response.json()["id"]
     
     # Connect to WebSocket
     uri = f"ws://localhost:8080/ws/operations/{operation_id}?token={token}"

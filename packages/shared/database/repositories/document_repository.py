@@ -40,6 +40,8 @@ class DocumentRepository:
         mime_type: str | None = None,
         source_id: int | None = None,
         meta: dict[str, Any] | None = None,
+        uri: str | None = None,
+        source_metadata: dict[str, Any] | None = None,
     ) -> Document:
         """Create a new document with deduplication.
 
@@ -55,6 +57,8 @@ class DocumentRepository:
             mime_type: Optional MIME type
             source_id: Optional source ID
             meta: Optional metadata
+            uri: Optional logical identifier (URL, file path, message ID, etc.)
+            source_metadata: Optional connector-specific metadata
 
         Returns:
             Created or existing Document instance
@@ -104,6 +108,8 @@ class DocumentRepository:
                 content_hash=content_hash,
                 status=DocumentStatus.PENDING.value,  # Use .value for PostgreSQL compatibility
                 meta=meta or {},
+                uri=uri,
+                source_metadata=source_metadata,
             )
 
             self.session.add(document)
@@ -171,6 +177,30 @@ class DocumentRepository:
             logger.error(f"Failed to get document by content_hash {content_hash} in collection {collection_id}: {e}")
             raise DatabaseOperationError("get", "document", str(e)) from e
 
+    async def get_by_uri(self, collection_id: str, uri: str) -> Document | None:
+        """Get a document by URI within a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            uri: Logical identifier (URL, file path, message ID, etc.)
+
+        Returns:
+            Document instance or None if not found
+        """
+        try:
+            result = await self.session.execute(
+                select(Document).where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.uri == uri,
+                    )
+                )
+            )
+            return result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to get document by uri {uri} in collection {collection_id}: {e}")
+            raise DatabaseOperationError("get", "document", str(e)) from e
+
     async def list_by_collection(
         self,
         collection_id: str,
@@ -210,6 +240,39 @@ class DocumentRepository:
 
         except Exception as e:
             logger.error(f"Failed to list documents for collection {collection_id}: {e}")
+            raise DatabaseOperationError("list", "documents", str(e)) from e
+
+    async def list_by_source_id(
+        self,
+        collection_id: str,
+        source_id: int,
+        status: DocumentStatus | None = None,
+    ) -> list[Document]:
+        """List documents by collection and source ID.
+
+        Args:
+            collection_id: UUID of the collection
+            source_id: Integer ID of the collection source
+            status: Optional status filter
+
+        Returns:
+            List of Document instances
+        """
+        try:
+            query = select(Document).where(
+                and_(
+                    Document.collection_id == collection_id,
+                    Document.source_id == source_id,
+                )
+            )
+
+            if status:
+                query = query.where(Document.status == status)
+
+            result = await self.session.execute(query)
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error(f"Failed to list documents by source_id {source_id}: {e}")
             raise DatabaseOperationError("list", "documents", str(e)) from e
 
     async def list_duplicates(self, collection_id: str) -> list[tuple[str, int, list[Document]]]:

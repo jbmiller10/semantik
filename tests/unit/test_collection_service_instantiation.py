@@ -19,7 +19,7 @@ class TestCollectionServiceInstantiation:
         with pytest.raises(TypeError) as exc_info:
             CollectionService(db_session)  # type: ignore[call-arg]
 
-        assert "missing 4 required positional arguments" in str(exc_info.value)
+        assert "missing 5 required positional arguments" in str(exc_info.value)
 
     def test_collection_service_instantiation_with_all_args(self) -> None:
         """Test that CollectionService can be instantiated with all required arguments."""
@@ -28,6 +28,7 @@ class TestCollectionServiceInstantiation:
         collection_repo = MagicMock()
         operation_repo = MagicMock()
         document_repo = MagicMock()
+        collection_source_repo = MagicMock()
         qdrant_manager = MagicMock()
 
         # This should work
@@ -36,6 +37,7 @@ class TestCollectionServiceInstantiation:
             collection_repo=collection_repo,
             operation_repo=operation_repo,
             document_repo=document_repo,
+            collection_source_repo=collection_source_repo,
             qdrant_manager=qdrant_manager,
         )
 
@@ -43,6 +45,7 @@ class TestCollectionServiceInstantiation:
         assert service.collection_repo == collection_repo
         assert service.operation_repo == operation_repo
         assert service.document_repo == document_repo
+        assert service.collection_source_repo == collection_source_repo
         assert service.qdrant_manager == qdrant_manager
 
     def test_create_collection_service_factory(self) -> None:

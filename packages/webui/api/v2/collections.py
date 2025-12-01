@@ -358,8 +358,10 @@ async def add_source(
         operation = await service.add_source(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
-            source_path=add_source_request.source_path,
-            source_config=add_source_request.config or {},
+            source_type=add_source_request.source_type,
+            source_config=add_source_request.source_config or {},
+            legacy_source_path=add_source_request.source_path,
+            additional_config=add_source_request.config or {},
         )
 
         # Convert to response model

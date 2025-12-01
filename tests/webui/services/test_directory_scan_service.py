@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from shared.utils.hashing import HASH_CHUNK_SIZE
 from webui.api.schemas import DirectoryScanResponse
 from webui.services.directory_scan_service import (
-    HASH_CHUNK_SIZE,
     MAX_FILE_SIZE,
     PROGRESS_UPDATE_INTERVAL,
     DirectoryScanService,
