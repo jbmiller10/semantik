@@ -156,6 +156,10 @@ Returns comprehensive collection information including sources and recent operat
       "id": 1,
       "source_path": "/docs/technical",
       "source_type": "directory",
+      "source_config": {
+        "path": "/docs/technical",
+        "recursive": true
+      },
       "document_count": 156,
       "size_bytes": 45678900,
       "last_indexed_at": "2024-01-15T14:30:00Z"
@@ -201,18 +205,30 @@ Permanently removes the collection and all associated data including documents a
 POST /api/v2/collections/{collection_id}/sources
 Content-Type: application/json
 Authorization: Bearer {token}
+```
 
+**Request (preferred flexible format):**
+```json
 {
   "source_type": "directory",
-  "source_path": "/docs/api",
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
-  },
-  "config": {
+  "source_config": {
+    "path": "/docs/api",
     "recursive": true,
     "follow_symlinks": false
+  },
+  "config": {
+    "filters": {
+      "extensions": [".md", ".txt", ".pdf"],
+      "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
+    }
   }
+}
+```
+
+**Request (legacy, still supported):**
+```json
+{
+  "source_path": "/docs/api"
 }
 ```
 
@@ -252,6 +268,16 @@ The system automatically detects duplicate documents using content hashing:
 2. **Cross-Collection Detection**: Duplicates detected across all collections
 3. **Efficient Storage**: Duplicate documents reference same content
 4. **User Notification**: Duplicate count reported in operations
+
+### Ingestion DTO & Hashing Contract
+
+- **IngestedDocument DTO**: All connectors emit `shared.dtos.ingestion.IngestedDocument` instances with
+  `content`, `unique_id`, `source_type`, `metadata`, `content_hash`, and optional `file_path`.
+- **Hash helper**: Content hashes are computed via `shared.utils.hashing.compute_content_hash`, which returns a
+  deterministic, lowercase 64-character SHA-256 hex string. Repository logic and tests assume this format.
+- **Registry service**: `webui.services.document_registry_service.DocumentRegistryService` is the single entrypoint
+  for registering documents; it uses `(collection_id, content_hash)` and (optionally) `(collection_id, uri)` to enforce
+  deduplication for all source types (directory, web, Slack, etc.).
 
 ### Multi-Model Support
 

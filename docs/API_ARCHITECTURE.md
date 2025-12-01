@@ -605,14 +605,16 @@ Content-Type: application/json
 ```json
 {
   "source_type": "directory",
-  "source_path": "/docs/api",
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**"]
-  },
-  "config": {
+  "source_config": {
+    "path": "/docs/api",
     "recursive": true,
     "follow_symlinks": false
+  },
+  "config": {
+    "filters": {
+      "extensions": [".md", ".txt", ".pdf"],
+      "ignore_patterns": ["**/node_modules/**"]
+    }
   }
 }
 ```
@@ -625,8 +627,19 @@ Content-Type: application/json
   "type": "append",
   "status": "pending",
   "config": {
+    "source_id": 1,
+    "source_type": "directory",
+    "source_config": {
+      "path": "/docs/technical",
+      "recursive": true
+    },
     "source_path": "/docs/technical",
-    "recursive": true
+    "additional_config": {
+      "filters": {
+        "extensions": [".md", ".txt", ".pdf"],
+        "ignore_patterns": ["**/node_modules/**"]
+      }
+    }
   },
   "created_at": "2024-01-15T10:00:00Z",
   "started_at": null,
@@ -649,6 +662,7 @@ Authorization: Bearer {access_token}
   "type": "remove_source",
   "status": "pending",
   "config": {
+    "source_id": 1,
     "source_path": "/docs/api"
   },
   "created_at": "2024-01-15T11:00:00Z",

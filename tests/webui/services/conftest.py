@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.database.models import Collection, CollectionStatus, Operation, OperationType
+from shared.database.models import Collection, CollectionSource, CollectionStatus, Operation, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.database.repositories.projection_run_repository import ProjectionRunRepository
@@ -85,6 +86,24 @@ def mock_document_repo() -> AsyncMock:
     mock.count_for_collection = AsyncMock()
     mock.exists_by_hash = AsyncMock()
     mock.get_by_file_path = AsyncMock()
+    mock.list_by_source_id = AsyncMock()
+
+    return mock
+
+
+@pytest.fixture()
+def mock_collection_source_repo() -> AsyncMock:
+    """Mock collection source repository with all async methods properly configured."""
+    mock = AsyncMock(spec=CollectionSourceRepository)
+
+    # Configure all async methods with AsyncMock
+    mock.create = AsyncMock()
+    mock.get_by_id = AsyncMock()
+    mock.get_by_collection_and_path = AsyncMock()
+    mock.get_or_create = AsyncMock()
+    mock.list_by_collection = AsyncMock()
+    mock.update_stats = AsyncMock()
+    mock.delete = AsyncMock()
 
     return mock
 
@@ -154,6 +173,25 @@ def mock_collection() -> MagicMock:
     collection.to_dict = MagicMock(side_effect=collection_to_dict)
 
     return collection
+
+
+@pytest.fixture()
+def mock_collection_source() -> MagicMock:
+    """Mock a collection source object with all required attributes."""
+    source = MagicMock(spec=CollectionSource)
+    source.id = 1
+    source.collection_id = "123e4567-e89b-12d3-a456-426614174000"
+    source.source_type = "directory"
+    source.source_path = "/path/to/source"
+    source.source_config = {"path": "/path/to/source"}
+    source.document_count = 0
+    source.size_bytes = 0
+    source.last_indexed_at = None
+    source.created_at = MagicMock()
+    source.updated_at = MagicMock()
+    source.meta = {}
+
+    return source
 
 
 @pytest.fixture()

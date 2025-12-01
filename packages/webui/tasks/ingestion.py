@@ -31,6 +31,8 @@ from shared.metrics.collection_metrics import (
     collections_total,
 )
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
+from webui.services.connector_factory import ConnectorFactory
+from webui.services.document_registry_service import DocumentRegistryService
 
 from . import reindex as reindex_tasks
 from .utils import (
@@ -244,6 +246,10 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
 
                     result: dict[str, Any] = {}
                     operation_type = operation["type"].value.lower()
+
+                    # Commit setup changes before starting potentially long-running operations
+                    # This prevents idle-in-transaction timeouts and ensures a clean session state
+                    await db.commit()
 
                     with OperationTimer(operation_type):
                         memory_before = process.memory_info().rss
@@ -708,45 +714,149 @@ async def _process_index_operation(
 async def _process_append_operation_impl(
     operation: dict,
     collection: dict,
-    collection_repo: Any,  # noqa: ARG001
+    collection_repo: Any,
     document_repo: Any,
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
-    """Process APPEND operation - Add documents to existing collection with monitoring."""
+    """Process APPEND operation - Add documents to existing collection with monitoring.
+
+    Uses ConnectorFactory + DocumentRegistryService for flexible source support.
+    Supports both new format (source_type + source_config) and legacy (source_path).
+    """
     from shared.database.models import DocumentStatus
     from shared.metrics.collection_metrics import document_processing_duration, record_document_processed
-    from webui.services.document_scanning_service import DocumentScanningService
 
-    config = operation.get("config", {})
-    source_path = config.get("source_path")
+    op_config = operation.get("config", {})
 
-    if not source_path:
-        raise ValueError("source_path is required for APPEND operation")
+    # Extract source_id (required for document-source linking)
+    source_id = op_config.get("source_id")
+    if source_id is None:
+        raise ValueError("source_id is required in operation config for APPEND operation")
+
+    # New format: source_type + source_config
+    source_type = op_config.get("source_type", "directory")
+    source_config = op_config.get("source_config")
+
+    # Legacy fallback: derive from source_path if new format not present
+    legacy_source_path = op_config.get("source_path")
+    if source_config is None:
+        if legacy_source_path:
+            source_config = {"path": legacy_source_path}
+            source_type = "directory"
+        else:
+            raise ValueError("source_config or source_path is required for APPEND operation")
+
+    # Extract display path for logging/updates
+    display_path = source_config.get("path") or source_config.get("url") or str(source_config)
 
     tasks_ns = _tasks_namespace()
     extract_fn = getattr(tasks_ns, "extract_and_serialize_thread_safe", extract_and_serialize_thread_safe)
 
     session = document_repo.session
-    document_scanner = DocumentScanningService(db_session=session, document_repo=document_repo)
 
-    await updater.send_update("scanning_documents", {"status": "scanning", "source_path": source_path})
+    # Instantiate connector via factory (validates source_type)
+    try:
+        connector = ConnectorFactory.get_connector(source_type, source_config)
+    except ValueError as e:
+        raise ValueError(f"Invalid source configuration: {e}") from e
+
+    # Authenticate / validate access
+    try:
+        auth_ok = await connector.authenticate()
+        if not auth_ok:
+            raise ValueError(f"Authentication failed for {source_type} source")
+    except Exception as e:
+        raise ValueError(f"Failed to authenticate with {source_type} source: {e}") from e
+
+    await updater.send_update("scanning_documents", {"status": "scanning", "source": display_path})
 
     try:
         scan_start = time.time()
 
-        scan_stats = await document_scanner.scan_directory_and_register_documents(
-            collection_id=collection["id"],
-            source_path=source_path,
-            recursive=True,
-            batch_size=EMBEDDING_BATCH_SIZE,
-        )
+        # Commit any pending changes from setup phase and ensure session is in clean state
+        # This prevents idle-in-transaction timeouts during file scanning/parsing
+        if session.in_transaction():
+            try:
+                await session.commit()
+            except Exception as commit_exc:
+                logger.warning("Failed to commit before document scan: %s, rolling back", commit_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+
+        # Create registry for document registration
+        registry = DocumentRegistryService(db_session=session, document_repo=document_repo)
+
+        # Track statistics
+        scan_stats: dict[str, Any] = {
+            "total_documents_found": 0,
+            "new_documents_registered": 0,
+            "duplicate_documents_skipped": 0,
+            "errors": [],
+            "total_size_bytes": 0,
+        }
+
+        # Store content for new documents (avoid re-parsing)
+        new_doc_contents: dict[int, str] = {}
+
+        # Iterate through connector's documents using savepoints for isolation
+        # This allows failures on individual documents without losing previously registered ones
+        async for ingested_doc in connector.load_documents():
+            scan_stats["total_documents_found"] += 1
+
+            try:
+                # Use savepoint (nested transaction) for isolation - if this document's
+                # registration fails, only this document's changes are rolled back
+                async with session.begin_nested():
+                    result = await registry.register(
+                        collection_id=collection["id"],
+                        ingested=ingested_doc,
+                        source_id=source_id,
+                    )
+
+                if result["is_new"]:
+                    scan_stats["new_documents_registered"] += 1
+                    # Store content for later chunking
+                    new_doc_contents[result["document_id"]] = ingested_doc.content
+                else:
+                    scan_stats["duplicate_documents_skipped"] += 1
+
+                scan_stats["total_size_bytes"] += result["file_size"]
+
+                # Commit after each document to close the transaction completely
+                # This prevents idle-in-transaction timeouts when the next file
+                # takes a long time to parse (e.g., large PDFs)
+                await session.commit()
+
+            except Exception as e:
+                logger.error(f"Failed to register document {ingested_doc.unique_id}: {e}")
+                # If session is in invalid state (e.g., connection lost), try to recover
+                if "invalid transaction" in str(e).lower() or "pending" in str(e).lower():
+                    logger.warning("Session in invalid state, attempting rollback recovery")
+                    with contextlib.suppress(Exception):
+                        await session.rollback()
+                scan_stats["errors"].append(
+                    {
+                        "document": ingested_doc.unique_id,
+                        "error": str(e),
+                    }
+                )
+
+        # Commit after all registrations (if there's an active transaction)
+        if session.in_transaction():
+            try:
+                await session.commit()
+            except Exception as commit_exc:
+                logger.warning("Failed to commit document registrations: %s", commit_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
 
         scan_duration = time.time() - scan_start
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
 
         logger.info(
-            "Scan stats for %s: %s documents found, %s new, %s duplicates, %s errors",
-            source_path,
+            "Scan stats for %s (%s): %s documents found, %s new, %s duplicates, %s errors",
+            display_path,
+            source_type,
             scan_stats["total_documents_found"],
             scan_stats["new_documents_registered"],
             scan_stats["duplicate_documents_skipped"],
@@ -777,26 +887,28 @@ async def _process_append_operation_impl(
             operation.get("user_id"),
             "documents_appended",
             {
-                "source_path": source_path,
+                "source_type": source_type,
+                "source": display_path,
                 "documents_added": scan_stats["new_documents_registered"],
                 "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
             },
         )
 
-        all_docs, _ = await document_repo.list_by_collection(
-            collection["id"],
-            status=None,
-            limit=10000,
-        )
+        # Fetch newly registered documents for processing
+        new_doc_ids = list(new_doc_contents.keys())
+        unprocessed_documents = []
+        if new_doc_ids:
+            for doc_id in new_doc_ids:
+                doc = await document_repo.get_by_id(doc_id)
+                if doc and doc.chunk_count == 0:
+                    unprocessed_documents.append(doc)
 
-        documents = [doc for doc in all_docs if doc.file_path.startswith(source_path)]
         logger.info(
-            "Matched %s documents for prefix %s out of %s total in collection",
-            len(documents),
-            source_path,
-            len(all_docs),
+            "Found %s new documents to process for %s (%s)",
+            len(unprocessed_documents),
+            display_path,
+            source_type,
         )
-        unprocessed_documents = [doc for doc in documents if doc.chunk_count == 0]
 
         failed_count = 0
 
@@ -813,8 +925,8 @@ async def _process_append_operation_impl(
 
             embedding_model = collection.get("embedding_model", "Qwen/Qwen3-Embedding-0.6B")
             quantization = collection.get("quantization", "float16")
-            batch_size = config.get("batch_size", EMBEDDING_BATCH_SIZE)
-            instruction = config.get("instruction")
+            batch_size = op_config.get("batch_size", EMBEDDING_BATCH_SIZE)
+            instruction = op_config.get("instruction")
 
             qdrant_collection_name = collection.get("vector_store_name")
             if not qdrant_collection_name:
@@ -837,49 +949,68 @@ async def _process_append_operation_impl(
 
             for doc in documents:
                 try:
-                    logger.info("Processing document: %s", doc.file_path)
-                    try:
-                        text_blocks = await asyncio.wait_for(
-                            await_if_awaitable(
-                                loop.run_in_executor(
-                                    executor_pool,
-                                    extract_fn,
-                                    doc.file_path,
-                                )
-                            ),
-                            timeout=300,
-                        )
-                    except RuntimeError as exc:  # pragma: no cover - defensive
-                        if "cannot reuse already awaited coroutine" not in str(exc):
-                            raise
-                        logger.debug(
-                            "Executor returned a reusable coroutine for %s; falling back to direct call",
-                            doc.file_path,
-                        )
-                        text_blocks = await asyncio.wait_for(
-                            await_if_awaitable(extract_fn(doc.file_path)),
-                            timeout=300,
-                        )
+                    doc_identifier = doc.file_path or doc.uri or f"doc:{doc.id}"
+                    logger.info("Processing document: %s", doc_identifier)
 
-                    if not text_blocks:
-                        logger.warning("No text extracted from %s", doc.file_path)
-                        # Mark as completed but with 0 chunks so we don't fail the whole batch
+                    # Check if we have pre-parsed content from connector
+                    combined_metadata: dict[str, Any] = {}
+                    if doc.id in new_doc_contents:
+                        combined_text = new_doc_contents[doc.id]
+                        # Metadata already captured during registration
+                    else:
+                        # Fallback for documents without pre-parsed content (legacy path)
+                        try:
+                            text_blocks = await asyncio.wait_for(
+                                await_if_awaitable(
+                                    loop.run_in_executor(
+                                        executor_pool,
+                                        extract_fn,
+                                        doc.file_path,
+                                    )
+                                ),
+                                timeout=300,
+                            )
+                        except RuntimeError as exc:  # pragma: no cover - defensive
+                            if "cannot reuse already awaited coroutine" not in str(exc):
+                                raise
+                            logger.debug(
+                                "Executor returned a reusable coroutine for %s; falling back to direct call",
+                                doc.file_path,
+                            )
+                            text_blocks = await asyncio.wait_for(
+                                await_if_awaitable(extract_fn(doc.file_path)),
+                                timeout=300,
+                            )
+
+                        if not text_blocks:
+                            logger.warning("No text extracted from %s", doc_identifier)
+                            # Mark as completed but with 0 chunks so we don't fail the whole batch
+                            await document_repo.update_status(
+                                doc.id,
+                                DocumentStatus.COMPLETED,
+                                chunk_count=0,
+                            )
+                            # Count as skipped/processed rather than failed
+                            processed_count += 1
+                            continue
+
+                        combined_text = ""
+                        for text, metadata in text_blocks:
+                            if text.strip():
+                                combined_text += text + "\n\n"
+                                if metadata:
+                                    combined_metadata.update(metadata)
+
+                    # Skip if no content
+                    if not combined_text.strip():
+                        logger.warning("No content for document %s", doc_identifier)
                         await document_repo.update_status(
                             doc.id,
                             DocumentStatus.COMPLETED,
                             chunk_count=0,
                         )
-                        # Count as skipped/processed rather than failed
                         processed_count += 1
                         continue
-
-                    combined_text = ""
-                    combined_metadata = {}
-                    for text, metadata in text_blocks:
-                        if text.strip():
-                            combined_text += text + "\n\n"
-                            if metadata:
-                                combined_metadata.update(metadata)
 
                     # End any open transaction before long external calls to avoid
                     # idle_in_transaction_session_timeout disconnects from Postgres.
@@ -887,11 +1018,11 @@ async def _process_append_operation_impl(
                         await session.commit()
 
                     strategy = collection.get("chunking_strategy") or "recursive"
-                    config = collection.get("chunking_config") or {}
+                    chunking_config = collection.get("chunking_config") or {}
                     chunks = await chunking_service.execute_ingestion_chunking(
                         content=combined_text,
                         strategy=strategy,
-                        config=config,
+                        config=chunking_config,
                         metadata=(
                             {**combined_metadata, "document_id": doc.id}
                             if combined_metadata
@@ -919,14 +1050,14 @@ async def _process_append_operation_impl(
                     logger.info(
                         "Created %s chunks for %s using %s strategy (fallback: %s, duration: %sms)",
                         len(chunks),
-                        doc.file_path,
+                        doc_identifier,
                         chunking_stats["strategy_used"],
                         chunking_stats["fallback"],
                         chunking_stats["duration_ms"],
                     )
 
                     if not chunks:
-                        logger.warning("No chunks created for %s", doc.file_path)
+                        logger.warning("No chunks created for %s", doc_identifier)
                         await document_repo.update_status(
                             doc.id,
                             DocumentStatus.FAILED,
@@ -1011,7 +1142,7 @@ async def _process_append_operation_impl(
                                 "collection_id": collection["id"],
                                 "doc_id": doc.id,
                                 "chunk_id": chunk["chunk_id"],
-                                "path": doc.file_path,
+                                "path": doc_identifier,
                                 "content": chunk["text"],
                                 "metadata": chunk.get("metadata", {}),
                             },
@@ -1056,7 +1187,7 @@ async def _process_append_operation_impl(
                             "processed": processed_count,
                             "failed": failed_count,
                             "total": len(documents),
-                            "current_document": doc.file_path,
+                            "current_document": doc_identifier,
                         },
                     )
 
@@ -1064,7 +1195,7 @@ async def _process_append_operation_impl(
                     await session.commit()
 
                 except Exception as exc:
-                    logger.error("Failed to process document %s: %s", doc.file_path, exc)
+                    logger.error("Failed to process document %s: %s", doc_identifier, exc)
                     with contextlib.suppress(Exception):
                         # Clear any pending transaction state so status updates use a fresh connection
                         await session.rollback()
@@ -1101,7 +1232,8 @@ async def _process_append_operation_impl(
             await updater.send_update(
                 "append_completed",
                 {
-                    "source_path": source_path,
+                    "source": display_path,
+                    "source_type": source_type,
                     "documents_added": scan_stats["new_documents_registered"],
                     "total_files_scanned": scan_stats["total_documents_found"],
                     "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
@@ -1113,7 +1245,8 @@ async def _process_append_operation_impl(
 
         return {
             "success": success,
-            "source_path": source_path,
+            "source": display_path,
+            "source_type": source_type,
             "documents_added": scan_stats["new_documents_registered"],
             "total_files_scanned": scan_stats["total_documents_found"],
             "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
@@ -1124,7 +1257,7 @@ async def _process_append_operation_impl(
         }
 
     except Exception as exc:
-        logger.error("Failed to scan and register documents: %s", exc)
+        logger.error("Failed to process %s source %s: %s", source_type, display_path, exc)
         raise
 
 
@@ -1142,12 +1275,13 @@ async def _process_remove_source_operation(
     from shared.metrics.collection_metrics import record_document_processed
 
     config = operation.get("config", {})
-    source_path = config.get("source_path")
+    source_id = config.get("source_id")
+    source_path = config.get("source_path", "unknown")  # For logging only
 
-    if not source_path:
-        raise ValueError("source_path is required for REMOVE_SOURCE operation")
+    if source_id is None:
+        raise ValueError("source_id is required for REMOVE_SOURCE operation")
 
-    documents = await document_repo.list_by_collection_and_source(collection["id"], source_path)
+    documents = await document_repo.list_by_source_id(collection["id"], source_id)
 
     if not documents:
         logger.info("No documents found for source %s", source_path)
@@ -1193,7 +1327,7 @@ async def _process_remove_source_operation(
 
     collections_to_clean = unique_collections
 
-    doc_ids = [doc["id"] for doc in documents]
+    doc_ids = [doc.id for doc in documents]
     removed_count = 0
     deletion_errors = []
 

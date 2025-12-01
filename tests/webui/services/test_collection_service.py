@@ -35,6 +35,7 @@ def collection_service(
     mock_collection_repo: AsyncMock,
     mock_operation_repo: AsyncMock,
     mock_document_repo: AsyncMock,
+    mock_collection_source_repo: AsyncMock,
     mock_qdrant_manager: AsyncMock,
 ) -> CollectionService:
     """Create a CollectionService instance with mocked dependencies."""
@@ -43,6 +44,7 @@ def collection_service(
         collection_repo=mock_collection_repo,
         operation_repo=mock_operation_repo,
         document_repo=mock_document_repo,
+        collection_source_repo=mock_collection_source_repo,
         qdrant_manager=mock_qdrant_manager,
     )
 
@@ -59,6 +61,7 @@ class TestCollectionServiceInit:
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_document_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
     ) -> None:
         """Test service initialization."""
         service = CollectionService(
@@ -66,6 +69,7 @@ class TestCollectionServiceInit:
             collection_repo=mock_collection_repo,
             operation_repo=mock_operation_repo,
             document_repo=mock_document_repo,
+            collection_source_repo=mock_collection_source_repo,
             qdrant_manager=AsyncMock(),
         )
 
@@ -73,6 +77,7 @@ class TestCollectionServiceInit:
         assert service.collection_repo == mock_collection_repo
         assert service.operation_repo == mock_operation_repo
         assert service.document_repo == mock_document_repo
+        assert service.collection_source_repo == mock_collection_source_repo
 
 
 class TestCreateCollection:
@@ -279,21 +284,26 @@ class TestAddSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test successful source addition."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
+        # Mock get_or_create to return a new source
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         with patch("webui.celery_app.celery_app.send_task") as mock_send_task:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
-                source_config={"recursive": True},
+                source_type="directory",
+                source_config={"path": "/path/to/source", "recursive": True},
+                additional_config={"chunk_size": 500},
             )
 
         # Verify permission check
@@ -304,14 +314,25 @@ class TestAddSource:
         # Verify active operations check
         mock_operation_repo.get_active_operations.assert_called_once_with(mock_collection.id)
 
-        # Verify operation creation
+        # Verify CollectionSource get_or_create was called
+        mock_collection_source_repo.get_or_create.assert_called_once_with(
+            collection_id=mock_collection.id,
+            source_type="directory",
+            source_path="/path/to/source",
+            source_config={"path": "/path/to/source", "recursive": True},
+        )
+
+        # Verify operation creation with source_id included
         mock_operation_repo.create.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             operation_type=OperationType.APPEND,
             config={
-                "source_path": "/path/to/source",
-                "source_config": {"recursive": True},
+                "source_id": mock_collection_source.id,  # Now includes source_id
+                "source_type": "directory",
+                "source_config": {"path": "/path/to/source", "recursive": True},
+                "source_path": "/path/to/source",  # Extracted from source_config for audit
+                "additional_config": {"chunk_size": 500},
             },
         )
 
@@ -327,6 +348,40 @@ class TestAddSource:
         assert result["type"] == mock_operation.type.value
 
     @pytest.mark.asyncio()
+    async def test_add_source_reuses_existing_collection_source(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test that add_source reuses existing CollectionSource for same path."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.return_value = []
+        mock_operation_repo.create.return_value = mock_operation
+        # Mock get_or_create to return existing source (is_new=False)
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, False)
+
+        with patch("webui.celery_app.celery_app.send_task"):
+            await collection_service.add_source(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                source_type="directory",
+                source_config={"path": "/path/to/source"},
+            )
+
+        # Verify get_or_create was called (should reuse existing)
+        mock_collection_source_repo.get_or_create.assert_called_once()
+
+        # Verify operation still gets the source_id
+        call_args = mock_operation_repo.create.call_args[1]
+        assert call_args["config"]["source_id"] == mock_collection_source.id
+
+    @pytest.mark.asyncio()
     async def test_add_source_invalid_status(
         self, collection_service: CollectionService, mock_collection_repo: AsyncMock, mock_collection: MagicMock
     ) -> None:
@@ -336,7 +391,9 @@ class TestAddSource:
 
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert "Cannot add source to collection in" in str(exc_info.value)
@@ -356,7 +413,9 @@ class TestAddSource:
 
         with pytest.raises(InvalidStateError) as exc_info:
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert "Cannot add source while another operation is in progress" in str(exc_info.value)
@@ -367,7 +426,9 @@ class TestAddSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
         mock_db_session: AsyncMock,
     ) -> None:
@@ -381,6 +442,7 @@ class TestAddSource:
             [],
         ]
         mock_operation_repo.create.return_value = mock_operation
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         with (
             patch("webui.services.collection_service.asyncio.sleep", new=AsyncMock()) as mock_sleep,
@@ -389,7 +451,7 @@ class TestAddSource:
             result = await collection_service.add_source(
                 collection_id=str(mock_collection.uuid),
                 user_id=1,
-                source_path="/path/to/source",
+                legacy_source_path="/path/to/source",
             )
 
         # Should poll until operations clear
@@ -412,7 +474,9 @@ class TestAddSource:
 
         with pytest.raises(EntityNotFoundError):
             await collection_service.add_source(
-                collection_id="nonexistent-uuid", user_id=1, source_path="/path/to/source"
+                collection_id="nonexistent-uuid",
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
     @pytest.mark.asyncio()
@@ -425,7 +489,11 @@ class TestAddSource:
         )
 
         with pytest.raises(AccessDeniedError):
-            await collection_service.add_source(collection_id="some-uuid", user_id=2, source_path="/path/to/source")
+            await collection_service.add_source(
+                collection_id="some-uuid",
+                user_id=2,
+                legacy_source_path="/path/to/source",
+            )
 
     @pytest.mark.asyncio()
     async def test_add_source_with_pending_status(
@@ -433,7 +501,9 @@ class TestAddSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test adding source to pending collection."""
@@ -441,10 +511,13 @@ class TestAddSource:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert result["uuid"] == mock_operation.uuid
@@ -455,7 +528,9 @@ class TestAddSource:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test adding source to degraded collection."""
@@ -463,10 +538,13 @@ class TestAddSource:
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         with patch("webui.celery_app.celery_app.send_task"):
             result = await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
             )
 
         assert result["uuid"] == mock_operation.uuid
@@ -745,13 +823,16 @@ class TestRemoveSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test successful source removal."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_source_repo.get_by_collection_and_path.return_value = mock_collection_source
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
@@ -760,12 +841,18 @@ class TestRemoveSource:
                 collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/remove"
             )
 
+        # Verify source lookup
+        mock_collection_source_repo.get_by_collection_and_path.assert_called_once_with(
+            collection_id=mock_collection.id, source_path="/path/to/remove"
+        )
+
         # Verify operation creation
         mock_operation_repo.create.assert_called_once_with(
             collection_id=mock_collection.id,
             user_id=1,
             operation_type=OperationType.REMOVE_SOURCE,
             config={
+                "source_id": mock_collection_source.id,
                 "source_path": "/path/to/remove",
             },
         )
@@ -800,13 +887,16 @@ class TestRemoveSource:
         self,
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test removing source from degraded collection."""
         mock_collection.status = CollectionStatus.DEGRADED
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_source_repo.get_by_collection_and_path.return_value = mock_collection_source
         mock_operation_repo.get_active_operations_count.return_value = 0
         mock_operation_repo.create.return_value = mock_operation
 
@@ -835,6 +925,27 @@ class TestRemoveSource:
             )
 
         assert "Cannot remove source while another operation is in progress" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_remove_source_not_found(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test removing source that doesn't exist."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations_count.return_value = 0
+        mock_collection_source_repo.get_by_collection_and_path.return_value = None
+
+        with pytest.raises(EntityNotFoundError) as exc_info:
+            await collection_service.remove_source(
+                collection_id=str(mock_collection.uuid), user_id=1, source_path="/nonexistent/path"
+            )
+
+        assert "collection_source" in str(exc_info.value)
 
 
 class TestListForUser:
@@ -1260,23 +1371,31 @@ class TestCollectionServiceEdgeCases:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test adding source with None config."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
         mock_operation_repo.get_active_operations.return_value = []
         mock_operation_repo.create.return_value = mock_operation
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path/to/source", source_config=None
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path/to/source",
+                # source_config and additional_config default to None
             )
 
-        # Verify empty dict was used for source_config
+        # Verify empty dict was used for source_config and additional_config
         call_args = mock_operation_repo.create.call_args[1]
-        assert call_args["config"]["source_config"] == {}
+        assert call_args["config"]["source_config"] == {"path": "/path/to/source"}
+        assert call_args["config"]["additional_config"] == {}
+        assert call_args["config"]["source_id"] == mock_collection_source.id
 
     @pytest.mark.asyncio()
     async def test_multiple_operations_coordination(
@@ -1284,12 +1403,15 @@ class TestCollectionServiceEdgeCases:
         collection_service: CollectionService,
         mock_collection_repo: AsyncMock,
         mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
         mock_operation: MagicMock,
     ) -> None:
         """Test that operations properly check for active operations."""
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
 
         # First operation succeeds
         mock_operation_repo.get_active_operations.return_value = []
@@ -1298,7 +1420,9 @@ class TestCollectionServiceEdgeCases:
 
         with patch("webui.celery_app.celery_app.send_task"):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path1"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path1",
             )
 
         # Second operation should fail if active operation exists
@@ -1307,7 +1431,9 @@ class TestCollectionServiceEdgeCases:
 
         with pytest.raises(InvalidStateError):
             await collection_service.add_source(
-                collection_id=str(mock_collection.uuid), user_id=1, source_path="/path2"
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                legacy_source_path="/path2",
             )
 
         with pytest.raises(InvalidStateError):
