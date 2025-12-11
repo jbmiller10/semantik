@@ -113,6 +113,11 @@ dmypy.json
 .claude/
 .claude-trace/
 
+# AI context files
+CLAUDE.md
+GEMINI.md
+AGENTS.md
+
 # IDE
 .vscode/
 .idea/
