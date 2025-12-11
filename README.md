@@ -19,6 +19,8 @@ Semantik is a self‑hosted semantic search system for local and team documents.
 ### Why Semantik
 Private, self‑hosted semantic search that fits on your own hardware. Designed for clear ops and predictable performance.
 
+![Semantik Dashboard](/home/john/.gemini/antigravity/brain/623f4604-771a-4c8f-9449-2a11d16372e6/semantik_dashboard_1765434734402.png)
+
 ## Features
 - Semantic, keyword, and hybrid search with optional reranking
 - Collection management and document preview in the Web UI
