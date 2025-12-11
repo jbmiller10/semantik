@@ -30,7 +30,7 @@ I designed Semantik with a strict separation of concerns to mimic production-gra
 ```mermaid
 flowchart LR
   subgraph Client
-    UI[Web UI (React 19)]
+    UI["Web UI (React 19)"]
   end
   subgraph API
     WebUI[FastAPI Control Plane]
@@ -121,11 +121,11 @@ make run            # Starts FastAPI locally
 
 ## Roadmap & Limitations
 
-*   **Status**: Pre-release. Core search and ingestion work well, but UI for some advanced features (like model management) is still in progress.
+*   **Status**: Pre-release. Core search and ingestion work well, but UI for some advanced features (e.g. model management) is still in progress.
 *   **Hardware**: Embedding models are heavy. A GPU with at least 6GB VRAM is recommended for the default models (Qwen/BAAI).
 *   **Future**:
     *   Better support for non-text formats (OCR).
-    *   Public/Private collection sharing.
+    *   Support for additional ingestion connectors (e.g. Google Drive)
     *   MCP (Model Context Protocol) integration.
 
 ## License
