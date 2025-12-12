@@ -1,5 +1,5 @@
 {
-  "name": "document-embedding-project",
+  "name": "semantik",
   "version": "1.0.0",
   "description": "Semantik: High-performance semantic search engine monorepo",
   "private": true,
