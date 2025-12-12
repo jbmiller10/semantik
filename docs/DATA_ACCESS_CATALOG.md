@@ -1,10 +1,8 @@
 # Data Access Catalog for Projection Pipeline
 
-This document catalogs existing data access points for embeddings and operations that the projection pipeline should use or extend.
+Data access points for embeddings and operations.
 
-For an end‑to‑end view of how these data access points feed the projection
-visualization (artifacts, metadata, sampling, render modes, selection, and
-tooltips), see also `docs/EMBEDDING_VISUALIZATION.md`.
+See `docs/EMBEDDING_VISUALIZATION.md` for visualization details.
 
 ## Table of Contents
 1. [Vector/Embedding Access (Qdrant)](#vectorembedding-access-qdrant)
@@ -20,7 +18,7 @@ tooltips), see also `docs/EMBEDDING_VISUALIZATION.md`.
 
 ### QdrantManager (`packages/shared/managers/qdrant_manager.py`)
 
-The primary interface for Qdrant operations across services.
+Primary Qdrant interface.
 
 **Key Methods for Projection Pipeline:**
 
@@ -82,7 +80,7 @@ while True:
 
 ### ChunkRepository (`packages/shared/database/repositories/chunk_repository.py`)
 
-**CRITICAL:** Chunks table is partitioned by `collection_id` (100 partitions). **Always** include `collection_id` in queries for partition pruning.
+**CRITICAL:** Chunks table partitioned by `collection_id` (100 partitions). Always include `collection_id` for partition pruning.
 
 **Key Methods:**
 
@@ -131,10 +129,10 @@ async def get_chunks_batch(
     """
 ```
 
-**Important Notes:**
+**Important:**
 - All methods enforce partition key validation
 - Uses `ChunkPartitionHelper.create_chunk_query_with_partition()` internally
-- **Anti-pattern:** Never query chunks without `collection_id` filter
+- Never query chunks without `collection_id` filter
 
 **Chunk Model Fields (`packages/shared/database/models.py`):**
 ```python
@@ -154,7 +152,7 @@ class Chunk:
 
 ### ProjectionRunRepository (`packages/shared/database/repositories/projection_run_repository.py`)
 
-**Purpose:** Manages projection run metadata and lifecycle.
+Manages projection run metadata and lifecycle.
 
 **Key Methods:**
 
@@ -288,7 +286,7 @@ class Collection:
 
 ### OperationRepository (`packages/shared/database/repositories/operation_repository.py`)
 
-**Purpose:** Track background operations (INDEX, APPEND, REINDEX, PROJECTION_BUILD).
+Tracks background operations (INDEX, APPEND, REINDEX, PROJECTION_BUILD).
 
 **Key Methods:**
 
@@ -329,9 +327,7 @@ class OperationType(str, enum.Enum):
 
 ### ProjectionService (`packages/webui/services/projection_service.py`)
 
-**Current Status:** Scaffolding only. Methods return placeholders.
-
-**Methods to Implement:**
+Currently scaffolding. Methods return placeholders.
 
 ```python
 async def start_projection_build(
@@ -424,7 +420,7 @@ def create_projection_service(db: AsyncSession) -> ProjectionService:
 
 ### Permission Checking Pattern
 
-**ALWAYS use repository methods with permission checks for user-facing APIs:**
+Always use repository methods with permission checks for user-facing APIs:
 
 ```python
 # ✅ CORRECT - For API endpoints
@@ -436,11 +432,9 @@ collection = await collection_repo.get_by_uuid_with_permission_check(
 collection = await collection_repo.get_by_uuid(collection_uuid)
 ```
 
-**Location:** `packages/shared/database/repositories/collection_repository.py:157`
+Location: `packages/shared/database/repositories/collection_repository.py:157`
 
-**Raises:** `EntityNotFoundError` if collection not found or user doesn't own it.
-
-**Example Usage:**
+Raises `EntityNotFoundError` if not found or unauthorized.
 ```python
 # In projection_service.py:82
 collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -452,11 +446,9 @@ collection = await self.collection_repo.get_by_uuid_with_permission_check(
 
 ## Task Management
 
-### Celery Task Pattern (Critical for Operations)
+### Celery Task Pattern
 
-**RULE:** Always commit transaction BEFORE dispatching Celery task.
-
-**Correct Pattern:**
+Always commit transaction BEFORE dispatching Celery task:
 ```python
 # 1. Create database records
 operation = await operation_repo.create(...)
@@ -477,9 +469,9 @@ celery_app.send_task(
 )
 ```
 
-**Why:** Worker task queries operation by UUID immediately. If transaction not committed, worker sees empty database.
+Why: Worker queries operation by UUID immediately. If not committed, worker sees nothing.
 
-**Example:** `packages/webui/services/projection_service.py:112-119`
+Example: `packages/webui/services/projection_service.py:112-119`
 
 ---
 
@@ -522,7 +514,7 @@ async def _process_projection_operation(
     """
 ```
 
-**Progress Updates:**
+Progress updates:
 ```python
 async with CeleryTaskWithOperationUpdates(operation_id) as updater:
     await updater.send_update(
@@ -536,7 +528,7 @@ async with CeleryTaskWithOperationUpdates(operation_id) as updater:
     )
 ```
 
-**Location:** `packages/webui/tasks/utils.py` (CeleryTaskWithOperationUpdates)
+Location: `packages/webui/tasks/utils.py` (CeleryTaskWithOperationUpdates)
 
 ---
 
@@ -544,7 +536,7 @@ async with CeleryTaskWithOperationUpdates(operation_id) as updater:
 
 ### 1. Fetching Embeddings for Projection
 
-**Recommended Approach:** Use Qdrant scroll with QdrantManager
+Use Qdrant scroll with QdrantManager:
 
 ```python
 from webui.tasks.utils import resolve_qdrant_manager
@@ -600,7 +592,7 @@ async def fetch_embeddings_for_projection(
     return embeddings, metadata
 ```
 
-**Alternative:** Query chunks table + match with Qdrant
+Alternative - query chunks table + match with Qdrant:
 
 ```python
 async def fetch_embeddings_with_chunk_validation(
@@ -640,7 +632,7 @@ async def fetch_embeddings_with_chunk_validation(
 
 ### 2. Saving Projection Results
 
-**Recommended Format:** Parquet or NumPy binary
+Recommended: Parquet or NumPy binary
 
 ```python
 import pyarrow as pa
@@ -693,7 +685,7 @@ async def save_projection_results(
 
 ### 3. Progress Reporting Pattern
 
-**Use WebSocket updates during long-running projection:**
+WebSocket updates during long-running projection:
 
 ```python
 async def compute_projection_with_progress(
@@ -739,7 +731,7 @@ async def compute_projection_with_progress(
 
 ### 4. Authorization Enforcement
 
-**API Layer Pattern:**
+API layer pattern:
 
 ```python
 from fastapi import Depends, HTTPException
@@ -761,7 +753,7 @@ async def create_projection(
     return result
 ```
 
-**Service Layer (Already Implemented):**
+Service layer (already implemented):
 ```python
 # projection_service.py:82
 collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -813,9 +805,10 @@ collection = await self.collection_repo.get_by_uuid_with_permission_check(
 
 ---
 
-**Document Version:** 1.0
-**Last Updated:** 2025-10-21
-**Related Documents:**
-- `CLAUDE.md` - Project development guidelines
-- `docs/API_REFERENCE.md` - REST API documentation
-- `docs/ARCH.md` - System architecture overview
+Version: 1.0
+Last Updated: 2025-10-21
+
+See also:
+- `CLAUDE.md`
+- `docs/API_REFERENCE.md`
+- `docs/ARCH.md`

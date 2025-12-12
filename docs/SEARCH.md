@@ -1,10 +1,11 @@
 # Search API Contract
 
-This document summarizes the canonical search contract shared between the vecpipe service, the WebUI backend, and the React client.
+Canonical search contract for vecpipe, WebUI, and React client.
 
-- Canonical fields only: the API accepts `hybrid_mode` (`weighted` or `filter`) and `keyword_mode` (`any` or `all`). The legacy `hybrid_search_mode` field and legacy keyword values are rejected.
-- Requests with unknown fields are rejected (`extra="forbid"` on all search request models).
-- `search_type` supports `semantic`, `question`, `code`, and `hybrid`. The legacy alias `vector` maps to `semantic` only.
+- `hybrid_mode`: `weighted` or `filter` (legacy `hybrid_search_mode` rejected)
+- `keyword_mode`: `any` or `all` (legacy values rejected)
+- Unknown fields rejected (`extra="forbid"`)
+- `search_type`: `semantic`, `question`, `code`, `hybrid` (legacy `vector` → `semantic`)
 
 ## Semantic Search (POST /search)
 
@@ -98,6 +99,6 @@ Returns a list of `SearchResponse` objects under `responses`.
 
 ## Legacy Fields Removed
 
-- `hybrid_search_mode` is no longer accepted anywhere in the stack (client, WebUI, vecpipe).
-- Legacy keyword aliases (e.g., `bm25`) now raise validation errors; use `keyword_mode: "any" | "all"`.
-- React client and WebUI payload builders only emit canonical fields.
+- `hybrid_search_mode` rejected everywhere
+- Legacy keyword aliases (e.g., `bm25`) raise validation errors - use `keyword_mode: "any" | "all"`
+- Client and WebUI only emit canonical fields
