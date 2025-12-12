@@ -16,9 +16,15 @@ from webui.dependencies import get_collection_repository
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 
 
-def verify_internal_api_key(x_internal_api_key: Annotated[str | None, Header()] = None) -> None:
+def verify_internal_api_key(
+    x_internal_api_key: Annotated[str | None, Header(alias="X-Internal-Api-Key")] = None,
+) -> None:
     """Verify the internal API key."""
-    if x_internal_api_key != settings.INTERNAL_API_KEY:
+    expected_key = settings.INTERNAL_API_KEY
+    if not expected_key:
+        raise HTTPException(status_code=500, detail="Internal API key is not configured")
+
+    if x_internal_api_key != expected_key:
         raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
 
 

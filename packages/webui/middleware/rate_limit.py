@@ -5,6 +5,7 @@ This middleware sets the user in request.state for rate limiting purposes.
 """
 
 import logging
+import hashlib
 from collections.abc import Callable
 from typing import Any
 
@@ -18,6 +19,11 @@ from shared.config import settings
 from webui.rate_limiter import ensure_limiter_runtime_state
 
 logger = logging.getLogger(__name__)
+
+
+def _stable_fallback_user_id(username: str) -> int:
+    digest = hashlib.sha256(username.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -97,7 +103,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """
         try:
             # Decode the JWT token
-            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.ALGORITHM])
 
             username = payload.get("sub")
             user_id = payload.get("user_id")
@@ -105,9 +111,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if username:
                 # Return user info for rate limiting
                 # The actual user ID should come from the token payload
+                resolved_user_id: int | None = None
+                if user_id is not None:
+                    try:
+                        resolved_user_id = int(user_id)
+                    except (TypeError, ValueError):
+                        resolved_user_id = None
+                if resolved_user_id is None:
+                    resolved_user_id = _stable_fallback_user_id(str(username))
                 return {
-                    "id": user_id if user_id else hash(username) % 1000000,
-                    "username": username,
+                    "id": resolved_user_id,
+                    "username": str(username),
                 }
         except InvalidTokenError as e:
             logger.debug(f"Invalid token for rate limiting: {e}")

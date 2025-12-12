@@ -5,7 +5,6 @@ import CollectionsDashboard from '../CollectionsDashboard'
 import SearchInterface from '../SearchInterface'
 import ActiveOperationsTab from '../ActiveOperationsTab'
 // import HomePage from '../../pages/HomePage'
-import { useCollectionStore } from '../../stores/collectionStore'
 import { useSearchStore } from '../../stores/searchStore'
 import { useUIStore } from '../../stores/uiStore'
 import {
@@ -21,7 +20,6 @@ import { useCollections } from '../../hooks/useCollections'
 import { operationsV2Api } from '../../services/api/v2/collections'
 
 // Mock stores
-vi.mock('../../stores/collectionStore')
 vi.mock('../../stores/searchStore')
 vi.mock('../../stores/uiStore')
 vi.mock('../../hooks/useCollections')
@@ -80,19 +78,6 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
   ...overrides
 } as unknown as ReturnType<typeof useSearchStore>)
 
-// Helper to create a collection store mock  
-const createCollectionStoreMock = (overrides?: Record<string, unknown>) => ({
-  selectedCollectionId: null,
-  setSelectedCollection: vi.fn(),
-  clearStore: vi.fn(),
-  collections: [],
-  loading: false,
-  error: null,
-  fetchCollections: vi.fn(),
-  getCollectionOperations: vi.fn().mockReturnValue([]),
-  ...overrides
-} as unknown as ReturnType<typeof useCollectionStore>)
-
 describe('Error States - Integration Tests', () => {
   const mockAddToast = vi.fn()
 
@@ -150,12 +135,6 @@ describe('Error States - Integration Tests', () => {
         }
       }))
 
-      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
-        collections: [
-          { uuid: '1', name: 'Test Collection', status: 'ready', embedding_model: 'text-embedding-ada-002', documents_count: 0, chunks_count: 0, vectors_count: 0 } as unknown as Collection
-        ]
-      }))
-
       // Mock useCollections hook to return the collections
       vi.mocked(useCollections).mockReturnValue({
         data: [
@@ -175,10 +154,6 @@ describe('Error States - Integration Tests', () => {
     })
 
     it('should show loading state in ActiveOperationsTab', async () => {
-      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
-        getCollectionOperations: vi.fn().mockReturnValue(undefined) // Loading state
-      }))
-
       render(
         <TestWrapper>
           <ActiveOperationsTab />
@@ -319,7 +294,6 @@ describe('Error States - Integration Tests', () => {
       unmount()
 
       vi.mocked(useSearchStore).mockReturnValue(createSearchStoreMock())
-      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock())
 
       renderWithErrorHandlers(<SearchInterface />, [])
 
@@ -392,8 +366,6 @@ describe('Error States - Integration Tests', () => {
         error: new Error('Collections service unavailable'),
         refetch: vi.fn()
       } as unknown as ReturnType<typeof useCollections>)
-
-      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock())
 
       renderWithErrorHandlers(<CollectionsDashboard />, [])
 
@@ -484,10 +456,6 @@ describe('Error States - Integration Tests', () => {
           hybridMode: 'weighted',
           keywordMode: 'any'
         }
-      }))
-
-      vi.mocked(useCollectionStore).mockReturnValue(createCollectionStoreMock({
-        collections: [{ uuid: '1', name: 'Test', status: 'ready', embedding_model: 'text-embedding-ada-002', documents_count: 0, chunks_count: 0, vectors_count: 0 } as unknown as Collection]
       }))
 
       // Mock useCollections hook
