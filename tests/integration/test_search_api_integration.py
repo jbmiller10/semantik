@@ -35,6 +35,11 @@ class TestSearchAPIIntegration:
     @pytest.fixture(autouse=True)
     def _setup_env(self) -> Generator[Any, None, None]:
         """Set up environment variables for the test."""
+        # Clear collection info/metadata cache to avoid stale data between tests
+        from vecpipe.search.cache import clear_cache
+
+        clear_cache()
+
         # Save original values
         original_values = {}
         env_vars = {
@@ -60,14 +65,19 @@ class TestSearchAPIIntegration:
             else:
                 os.environ[key] = original
 
+        # Clear cache again after test
+        clear_cache()
+
     @patch("vecpipe.search_api.generate_mock_embedding")
     @patch("vecpipe.search_api.generate_embedding_async")
     @patch("vecpipe.search_utils.AsyncQdrantClient")
     @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
+    @patch("shared.database.collection_metadata.get_collection_metadata_async", new_callable=AsyncMock)
     def test_search_endpoint_uses_embedding_service(
         self,
+        mock_get_metadata,
         mock_post,
         mock_get,
         mock_embedding_service_class,
@@ -77,6 +87,9 @@ class TestSearchAPIIntegration:
     ) -> None:
         """Test that the /search endpoint correctly uses the embedding service."""
         # Import settings to check which mode we're in
+
+        # Return None for metadata so test uses default settings
+        mock_get_metadata.return_value = None
 
         # Set up mocks
         # Mock the embedding service instance
@@ -163,6 +176,7 @@ class TestSearchAPIIntegration:
         }
 
         mock_qdrant_instance.search = AsyncMock(return_value=[mock_result_1, mock_result_2])
+        mock_qdrant_instance.close = AsyncMock()
 
         # Import and create test client
 
@@ -207,7 +221,8 @@ class TestSearchAPIIntegration:
                 service_call_args = mock_embedding_instance.generate_single_embedding.call_args
                 assert service_call_args[0][0] == query_text  # First positional arg is the text
                 assert service_call_args[0][1] == "Qwen/Qwen3-Embedding-0.6B"  # Model name
-                assert service_call_args[0][2] == "float32"  # Quantization
+                # NOTE: Default quantization is float16 (settings loaded at import time)
+                assert service_call_args[0][2] == "float16"  # Quantization
                 assert (
                     service_call_args[0][3] == "Represent this sentence for searching relevant passages:"
                 )  # Instruction
@@ -268,6 +283,7 @@ class TestSearchAPIIntegration:
         # Mock Qdrant client for search_utils to return empty results
         mock_qdrant_instance = mock_qdrant_client_class.return_value
         mock_qdrant_instance.search = AsyncMock(return_value=[])
+        mock_qdrant_instance.close = AsyncMock()
 
         # Import and create test client
 
