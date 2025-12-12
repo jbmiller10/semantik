@@ -510,9 +510,7 @@ class ConnectorSecret(Base):
     # Relationships
     source = relationship("CollectionSource", back_populates="secrets")
 
-    __table_args__ = (
-        UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),
-    )
+    __table_args__ = (UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),)
 
 
 class Operation(Base):

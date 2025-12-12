@@ -28,14 +28,39 @@ logger = logging.getLogger(__name__)
 
 # Default supported file extensions for Git sources
 DEFAULT_INCLUDE_EXTENSIONS = {
-    ".md", ".txt", ".rst", ".adoc",  # Documentation
-    ".py", ".js", ".ts", ".tsx", ".jsx",  # Code
-    ".java", ".go", ".rs", ".rb", ".php",  # More code
-    ".c", ".cpp", ".h", ".hpp", ".cs",  # C-family
-    ".html", ".css", ".scss", ".yaml", ".yml", ".json",  # Web/config
-    ".sh", ".bash", ".zsh",  # Scripts
-    ".sql", ".graphql",  # Query languages
-    ".toml", ".ini", ".cfg",  # Config files
+    ".md",
+    ".txt",
+    ".rst",
+    ".adoc",  # Documentation
+    ".py",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",  # Code
+    ".java",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",  # More code
+    ".c",
+    ".cpp",
+    ".h",
+    ".hpp",
+    ".cs",  # C-family
+    ".html",
+    ".css",
+    ".scss",
+    ".yaml",
+    ".yml",
+    ".json",  # Web/config
+    ".sh",
+    ".bash",
+    ".zsh",  # Scripts
+    ".sql",
+    ".graphql",  # Query languages
+    ".toml",
+    ".ini",
+    ".cfg",  # Config files
 }
 
 # Maximum file size (10 MB default for Git files - smaller than local)
