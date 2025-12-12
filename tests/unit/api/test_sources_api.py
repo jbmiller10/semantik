@@ -74,7 +74,8 @@ class TestListSourcesEndpoint:
 
     def test_list_sources_success(self, test_client, mock_service, mock_source):
         """Test successful source listing."""
-        mock_service.list_sources.return_value = ([mock_source], 1)
+        # API expects list of (source, secret_types) tuples
+        mock_service.list_sources.return_value = ([(mock_source, [])], 1)
 
         response = test_client.get(f"/api/v2/collections/{mock_source.collection_id}/sources")
 
@@ -106,7 +107,8 @@ class TestCreateSourceEndpoint:
 
     def test_create_source_success(self, test_client, mock_service, mock_source):
         """Test successful source creation."""
-        mock_service.create_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.create_source.return_value = (mock_source, [])
 
         response = test_client.post(
             f"/api/v2/collections/{mock_source.collection_id}/sources",
@@ -127,7 +129,8 @@ class TestCreateSourceEndpoint:
         """Test creating continuous sync source."""
         mock_source.sync_mode = "continuous"
         mock_source.interval_minutes = 30
-        mock_service.create_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.create_source.return_value = (mock_source, [])
 
         response = test_client.post(
             f"/api/v2/collections/{mock_source.collection_id}/sources",
@@ -168,7 +171,8 @@ class TestGetSourceEndpoint:
 
     def test_get_source_success(self, test_client, mock_service, mock_source):
         """Test successful source retrieval."""
-        mock_service.get_source.return_value = mock_source
+        # API expects (source, secret_types) tuple when include_secret_types=True
+        mock_service.get_source.return_value = (mock_source, [])
 
         response = test_client.get(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
@@ -191,7 +195,8 @@ class TestUpdateSourceEndpoint:
     def test_update_source_success(self, test_client, mock_service, mock_source):
         """Test successful source update."""
         mock_source.source_config = {"path": "/data/updated"}
-        mock_service.update_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.update_source.return_value = (mock_source, [])
 
         response = test_client.patch(
             f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}",
