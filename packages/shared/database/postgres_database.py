@@ -163,6 +163,14 @@ async def get_postgres_db() -> AsyncGenerator[AsyncSession, None]:
     """
     testing_mode = os.getenv("TESTING", "false").lower() == "true"
 
+    # In testing mode, if sessionmaker is not initialized, return a stub
+    # without attempting to connect to the real database
+    if testing_mode and pg_connection_manager._sessionmaker is None:
+        logger.warning("PostgreSQL session unavailable in testing mode; using async stub")
+        stub_session = cast(AsyncSession, AsyncMock(name="TestAsyncSession"))
+        yield stub_session
+        return
+
     try:
         async with pg_connection_manager.get_session() as session:
             yield session

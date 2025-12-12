@@ -66,7 +66,11 @@ function HomePage() {
 
   return (
     <>
-      {activeTab === 'search' && <SearchInterface />}
+      {activeTab === 'search' && (
+        <ErrorBoundary>
+          <SearchInterface />
+        </ErrorBoundary>
+      )}
       {activeTab === 'collections' && (
         <ErrorBoundary>
           <CollectionsDashboard />
