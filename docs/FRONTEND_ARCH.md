@@ -1,8 +1,6 @@
-# Frontend Architecture Documentation
+# Frontend Architecture
 
-## Overview
-
-The frontend for Semantik is a modern React application built with TypeScript, located in `apps/webui-react/`. It provides a sophisticated user interface for managing document collections, orchestrating indexing operations, searching through embedded documents, and monitoring system performance.
+React app for managing document collections and semantic search. Built with TypeScript in `apps/webui-react/`.
 
 ### Technology Stack
 
@@ -234,9 +232,7 @@ App
 
 ## State Management
 
-### Zustand Stores
-
-The application uses Zustand for global UI state management combined with React Query for server state. The architecture follows a clear separation: Zustand handles client-side UI state while React Query manages all server data.
+Zustand handles UI state (modals, toasts, tabs). React Query handles server data (collections, operations, search). Clean separation - no duplicated state.
 
 #### authStore.ts
 ```typescript
@@ -326,23 +322,19 @@ interface UIState {
 - Stores preset selections and custom configurations
 - Handles chunking preview state
 
-### State Flow Diagram
+### State Flow
 
 ```
-User Action -> Component -> React Query Hook -> API Call -> Cache Update -> Re-render
-                    |                              |
-                Zustand Store              WebSocket Updates
-                (UI State Only)            (Real-time Progress)
+User Action → Component → React Query → API → Cache → Re-render
+                  ↓                      ↓
+             Zustand (UI)          WebSocket (progress)
 ```
 
-## State Management Patterns
-
-### Store Design Principles
-
-1. **Single Responsibility**: Each store manages one domain
-2. **Derived State**: Compute values in selectors, not in store
-3. **Immutability**: Always create new objects/arrays
-4. **Persistence**: Only persist necessary data (auth, preferences)
+Design rules:
+- Each store manages one domain
+- Compute in selectors, not stores
+- Immutable updates only
+- Persist auth/preferences only
 
 ### Advanced Zustand Patterns
 
@@ -435,9 +427,9 @@ const useAuthStore = create<AuthState>()(
 );
 ```
 
-### React Query Integration
+### React Query
 
-React Query (@tanstack/react-query) manages all server state, providing caching, synchronization, and background refetching. The integration follows a consistent pattern across all data types.
+Manages all server state with caching, auto-refetch, and optimistic updates.
 
 #### Query Key Factory Pattern
 ```typescript
@@ -1136,9 +1128,9 @@ function AddDataToCollectionModal({ collectionId }: Props) {
 }
 ```
 
-## Testing Strategy
+## Testing
 
-The codebase has comprehensive test coverage with a focus on critical user flows and component behavior:
+Tests cover critical user flows and component behavior:
 
 ### Testing Stack
 
@@ -2032,84 +2024,17 @@ test('CollectionCard is accessible', async () => {
 5. Disable CSS and verify content structure
 6. Test with reduced motion preferences
 
-## Future Considerations
+## Future Work
 
-### Scalability Enhancements
-- Implement virtual scrolling for collections with thousands of documents
-- Add server-side pagination for document lists
-- Consider React Server Components for initial page loads
-- Implement request batching for bulk operations
-- Add WebWorker support for heavy computations
+**Scalability**: Virtual scrolling, server-side pagination, request batching
+**Features**: Collection sharing, advanced search, bulk ops, i18n
+**Tech**: React 19 features, performance monitoring, offline support
+**DX**: Storybook, visual regression tests, API type generation
+**A11y**: WCAG 2.1 AA audit, keyboard nav, screen reader optimization
 
-### Feature Roadmap
-- Collection sharing and collaboration features
-- Advanced search with faceted filtering
-- Bulk document management operations
-- Collection templates and presets
-- Export/import collection configurations
-- Multi-language support (i18n)
-- Collection versioning and snapshots
+## Architecture Principles
 
-### Technical Improvements
-- Migrate remaining class components to functional components
-- Implement React 19 features (use, Suspense improvements)
-- Add performance monitoring (Web Vitals, custom metrics)
-- Enhance offline support with service workers
-- Implement request/response compression
-- Add GraphQL for more efficient data fetching
-
-### Developer Experience
-- Add Storybook for component documentation
-- Implement visual regression testing
-- Create CLI tools for common development tasks
-- Add code generation for API client types
-- Enhance error tracking with source maps
-
-### Accessibility Roadmap
-- Full WCAG 2.1 AA compliance audit
-- Keyboard navigation improvements
-- Screen reader optimization
-- High contrast mode support
-- Reduced motion preferences
-- Focus management enhancements
-
-## Architecture Best Practices
-
-### State Management Guidelines
-
-1. **Server State**: Always use React Query for server data
-   - Never duplicate server state in Zustand
-   - Use query invalidation for updates
-   - Implement proper error boundaries
-
-2. **UI State**: Use Zustand for client-only state
-   - Modal visibility
-   - Form drafts
-   - UI preferences
-   - Temporary selections
-
-3. **Form State**: Keep local unless persistence needed
-   - Use controlled components
-   - Validate on blur and submit
-   - Show inline errors
-
-### Component Guidelines
-
-1. **Composition over Inheritance**
-   - Use hooks for shared logic
-   - Compose smaller components
-   - Avoid prop drilling with context
-
-2. **Performance First**
-   - Memoize expensive computations
-   - Use React.memo for pure components
-   - Implement proper loading states
-
-3. **Type Safety**
-   - No `any` types
-   - Proper error types
-   - Strict null checks
-
-## Conclusion
-
-The Semantik frontend is a modern React 19 application that leverages the latest patterns in state management, real-time updates, and type safety. The architecture clearly separates concerns between server state (React Query) and UI state (Zustand), while providing a robust foundation for future growth. The collection-centric architecture creates a more intuitive and scalable system that better serves users' document management needs.
+**State**: React Query for server data, Zustand for UI-only state. Never duplicate.
+**Components**: Composition over inheritance. Use hooks for shared logic.
+**Performance**: Memoize expensive ops. React.memo for pure components.
+**Types**: No `any` types. Strict null checks. Proper error types.

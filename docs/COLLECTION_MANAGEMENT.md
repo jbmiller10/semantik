@@ -2,19 +2,15 @@
 
 ## Overview
 
-Semantik organizes your documents into **collections** - powerful, searchable knowledge bases that transform your files into AI-ready semantic search repositories. Each collection maintains its own vector store, embedding configuration, and search settings while providing unified management through an intuitive interface.
-
-This guide covers everything you need to know about creating, managing, and optimizing collections in Semantik.
+Collections are searchable knowledge bases. Each one maintains its own vector store, embedding config, and search settings.
 
 ## What Are Collections?
 
-A **collection** in Semantik is:
-- A logical grouping of related documents (PDFs, text files, markdown, etc.)
+A collection is:
+- Related documents grouped together (PDFs, text, markdown, etc.)
 - A dedicated vector store with consistent embedding settings
-- A searchable knowledge base with semantic understanding
-- A managed entity with access control and operational history
-
-Think of collections as intelligent folders that not only store your documents but understand their content, enabling powerful semantic search across all files.
+- A searchable knowledge base
+- Managed entity with access control and operation history
 
 ## Collection Lifecycle
 
@@ -115,50 +111,45 @@ The `initial_operation_id` field contains the UUID of the initial INDEX operatio
 
 ## Understanding Operations
 
-Operations are asynchronous tasks that modify your collections. They run in the background, allowing you to continue working while documents are processed.
+Operations are async tasks that modify collections. They run in the background.
 
 ### Operation Types
 
-#### INDEX - Initial Document Loading
-The first operation when adding documents to a collection.
-- Scans the specified directory or file
-- Extracts text from supported formats
-- Creates embeddings using the collection's model
-- Stores vectors in the dedicated vector store
+**INDEX** - Initial document loading
+- Scans directory or file
+- Extracts text
+- Creates embeddings
+- Stores vectors
 
-#### APPEND - Add More Documents
-Adds new documents to an existing collection.
-- Automatically detects and skips duplicates
-- Maintains consistent settings with the collection
-- Ideal for incremental updates
+**APPEND** - Add more documents
+- Auto-detects duplicates
+- Maintains collection settings
+- Incremental updates
 
-#### REINDEX - Refresh Embeddings
-Re-processes all or specific documents in a collection.
-- Use when embedding model updates are available
-- Helpful for fixing failed document processing
-- Can target only failed documents for efficiency
-- Uses **blue-green deployment** for zero downtime (see below)
+**REINDEX** - Refresh embeddings
+- Update to new model
+- Fix failed documents
+- Target only failures
+- Uses blue-green deployment (zero downtime)
 
-#### REMOVE_SOURCE - Clean Up Content
-Removes all documents from a specific source path.
-- Deletes documents and their vectors
-- Maintains collection integrity
-- Useful for removing outdated content
+**REMOVE_SOURCE** - Clean up content
+- Deletes documents and vectors
+- Removes outdated content
 
 ### Blue-Green Reindexing
 
-Semantik uses a **blue-green deployment strategy** for reindexing operations to ensure zero downtime:
+Zero-downtime reindexing:
 
-1. **Create New Index**: A new vector store is created alongside the existing one
-2. **Reindex in Background**: Documents are re-embedded into the new store while the old one continues serving searches
-3. **Atomic Swap**: Once complete, the collection atomically switches to the new index
-4. **Cleanup**: The old index is removed after successful verification
+1. Create new vector store alongside existing one
+2. Re-embed documents into new store (old one still serves searches)
+3. Atomic swap to new index
+4. Clean up old index
 
-This approach ensures:
-- **Zero downtime**: Searches continue working during reindexing
-- **Consistency**: Either the old or new index is active, never partial states
-- **Rollback capability**: If reindexing fails, the original index remains intact
-- **Safe configuration changes**: Embedding model or chunk settings can be updated without data loss
+Benefits:
+- Searches continue during reindexing
+- No partial states (old or new, never mixed)
+- Rollback if reindexing fails
+- Safe config changes
 
 ## Adding Documents to Collections
 
@@ -230,13 +221,12 @@ Semantik automatically detects and processes the following file types:
 
 ### Duplicate Detection
 
-Semantik automatically prevents duplicate documents:
-1. **Content Hashing**: Each file's content is hashed (SHA-256)
-2. **Collection-Wide Check**: Hashes compared across the entire collection
-3. **Smart Skipping**: Duplicates are logged but not reprocessed
-4. **Storage Efficiency**: Saves processing time and vector storage
+Automatic deduplication via SHA-256 content hashing:
+1. Hash each file's content
+2. Check against collection
+3. Skip duplicates (logged but not reprocessed)
 
-Example duplicate report:
+Example report:
 ```json
 {
   "operation_id": "op_123456",
@@ -250,7 +240,7 @@ Example duplicate report:
 
 ## Collection Sources
 
-Each collection tracks its data sources using the `CollectionSource` model. This provides:
+Each collection tracks its data sources via `CollectionSource` model:
 
 ### Source Model Fields
 
@@ -269,7 +259,7 @@ Each collection tracks its data sources using the `CollectionSource` model. This
 
 ### Unique Constraint
 
-Each source is uniquely identified by the combination of `collection_id` and `source_path`. This prevents duplicate sources and enables efficient source-level operations like removal.
+Sources uniquely identified by `(collection_id, source_path)`. Prevents duplicates and enables efficient removal.
 
 ## Monitoring Progress
 

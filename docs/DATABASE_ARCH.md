@@ -1,79 +1,59 @@
-# Database Architecture Documentation
+# Database Architecture
 
 ## Overview
 
-The Semantik system uses a hybrid database architecture combining:
-- **PostgreSQL** for relational data (collections, operations, documents, users, authentication)
+Semantik uses a hybrid database architecture:
+- **PostgreSQL** for relational data (collections, operations, documents, users, auth)
 - **Qdrant** for vector storage and similarity search
 
-This architecture separates transactional/metadata storage from high-performance vector operations, following the architectural principle of using the right tool for each job.
+**Key decisions**:
+- PostgreSQL is owned exclusively by the webui package
+- All database operations use the repository pattern (`packages/shared/database/`)
+- Vecpipe has no direct database access - it uses webui API endpoints
+- The system uses a collection-centric architecture (migrated from job-centric)
 
-**Key Architectural Decisions**:
-- The PostgreSQL database is owned and managed exclusively by the **webui package**
-- All database operations use the **repository pattern** implemented in `packages/shared/database/`
-- The **vecpipe package** has no direct database access - it must use webui API endpoints
-- The **shared package** provides the repository interfaces and implementations used by webui
-- The system has migrated from a **job-centric** to a **collection-centric** architecture for better organization and scalability
+## Job-Centric to Collection-Centric Migration
 
-## Migration from Job-Centric to Collection-Centric Architecture
+The system originally tracked each indexing task as a "job" with documents tied to specific job runs. This sucked because:
+- Documents couldn't outlive the job that created them
+- Managing document lifecycle across multiple runs was a nightmare
+- No logical organization of related documents
 
-### Background
+The new collection-centric model:
+- Documents belong to collections, not jobs
+- Collections persist across operations
+- Each collection can use different embedding models
+- Clear ownership and permissions
 
-The system originally used a **job-centric** approach where each indexing task was tracked as a "job" with documents associated with specific job runs. This created several limitations:
-- Documents were tied to specific job executions rather than logical collections
-- Difficult to manage document lifecycle across multiple indexing runs
-- No clear organization of related documents
-- Complex tracking of incremental updates
-
-### Collection-Centric Benefits
-
-The new **collection-centric** architecture provides:
-1. **Logical Organization**: Documents belong to collections, not job runs
-2. **Persistent Identity**: Collections maintain identity across operations
-3. **Multi-Model Support**: Each collection can use different embedding models
-4. **Better State Management**: Collection status independent of operation status
-5. **Cleaner Relationships**: Clear ownership and permission models
-
-### Migration Details
-
-The migration replaced the old "jobs" concept with two new concepts:
-- **Collections**: Persistent containers for related documents
-- **Operations**: Temporary tasks performed on collections (index, append, reindex, etc.)
-
-Key changes:
-- `jobs` table → `operations` table
-- Documents now reference `collection_id` instead of job IDs
+The migration:
+- `jobs` table became `operations` table
+- Documents reference `collection_id` instead of job IDs
 - New `collection_sources` table tracks data origins
-- Operation lifecycle is separate from collection lifecycle
+- Operations are ephemeral, collections are persistent
 
-## Database Distribution Strategy
+## Database Distribution
 
-### PostgreSQL (Relational Data)
-- **Purpose**: Stores structured metadata, operation tracking, user management, authentication, collections
-- **Connection**: Configured via `DATABASE_URL` or individual connection parameters
-- **Why PostgreSQL**: Production-ready, supports concurrent operations, advanced features, scalable
-- **Data Types**: User accounts, collection metadata, document processing status, authentication tokens, operation tracking
+### PostgreSQL
+Stores all relational data: users, collections, documents, operations, auth tokens.
+- Connection via `DATABASE_URL`
+- Owned exclusively by webui service
 
-### Qdrant (Vector Database)
-- **Purpose**: Stores document embeddings and enables similarity search
-- **Location**: Configured via `QDRANT_HOST:QDRANT_PORT` (default: localhost:6333)
-- **Why Qdrant**: High-performance vector search, supports various distance metrics, scalable
-- **Data Types**: Document chunks as vectors with metadata payloads
+### Qdrant
+Stores vector embeddings for similarity search.
+- Configured via `QDRANT_HOST:QDRANT_PORT` (default: localhost:6333)
+- Document chunks as vectors with metadata payloads
 
-## PostgreSQL Database Schema
+## PostgreSQL Schema
 
-### Configuration
-- **Connection**: Via `DATABASE_URL` environment variable or individual parameters
-- **Ownership**: Exclusively owned by webui service
-- **Access Pattern**: Repository pattern via `packages/shared/database/`
-- **Migration Tool**: Alembic for schema versioning and migrations
-- **Connection Pool**: SQLAlchemy connection pooling for performance
-- **Database Name**: Configurable, defaults to `semantik`
+**Configuration:**
+- Connection via `DATABASE_URL`
+- Alembic for migrations
+- SQLAlchemy connection pooling
 
 ### Core Table Structures
 
-#### 1. Collections Table
-Represents logical groupings of documents with shared configuration.
+#### Collections
+Logical groupings of documents with shared configuration.
 
 ```sql
 CREATE TABLE collections (
@@ -110,16 +90,14 @@ CREATE INDEX idx_collections_is_public ON collections(is_public);
 CREATE INDEX idx_collections_status ON collections(status);
 ```
 
-**Key Points**:
-- UUID primary keys for external reference
-- Each collection has its own Qdrant collection with unique name
-- Supports multiple embedding models and quantization strategies
-- Status tracking with detailed metrics for monitoring
+**Key points:**
+- UUID primary keys
+- Each collection has its own Qdrant collection
+- Supports multiple embedding models and quantization
 - Staging support for zero-downtime reindexing
-- Document and vector counts for quick statistics
 
-#### 2. Documents Table
-Tracks individual documents within collections.
+#### Documents
+Individual documents within collections.
 
 ```sql
 CREATE TABLE documents (
@@ -156,17 +134,15 @@ CREATE UNIQUE INDEX idx_documents_collection_uri_unique
     WHERE uri IS NOT NULL;
 ```
 
-**Key Points**:
-- Content hash enables duplicate detection across collections
-- Unique constraint on (collection_id, content_hash) prevents duplicates within a collection
-- `uri` provides a connector-agnostic logical identifier (URL, Slack message ID, file path, etc.)
-- Optional unique constraint on (collection_id, uri) (for non-NULL uri values) prevents duplicate logical documents
-- Supports soft delete via 'deleted' status for maintaining referential integrity
-- Tracks processing status and chunk creation
-- Cascade delete ensures cleanup when collection is removed
+**Key points:**
+- Content hash (SHA256) for deduplication
+- Unique constraint on (collection_id, content_hash)
+- `uri` for connector-agnostic logical identifiers
+- Soft delete via 'deleted' status
+- Cascade delete when collection is removed
 
-#### 3. Operations Table
-Manages asynchronous operations on collections (formerly the "jobs" table).
+#### Operations
+Asynchronous operations on collections (formerly "jobs").
 
 ```sql
 CREATE TABLE operations (
@@ -195,15 +171,14 @@ CREATE INDEX idx_operations_status ON operations(status);
 CREATE INDEX idx_operations_created_at ON operations(created_at);
 ```
 
-**Key Points**:
-- Replaces the old "jobs" table in the job-centric architecture
-- Tracks all async operations with full lifecycle (pending → processing → completed/failed)
-- Stores operation configuration for reproducibility and debugging
-- Links to Celery tasks for distributed processing
-- Operations are ephemeral - they track tasks, while collections persist
+**Key points:**
+- Tracks full lifecycle: pending → processing → completed/failed
+- Stores config for reproducibility
+- Links to Celery tasks
+- Operations are ephemeral; collections persist
 
-#### 4. Collection Sources Table
-Tracks data sources for collections.
+#### Collection Sources
+Data sources for collections.
 
 ```sql
 CREATE TABLE collection_sources (
@@ -228,8 +203,8 @@ ALTER TABLE collection_sources
     ADD CONSTRAINT uq_collection_source_path UNIQUE (collection_id, source_path);
 ```
 
-#### 5. Collection Permissions Table
-Fine-grained access control for collections.
+#### Collection Permissions
+Access control for collections.
 
 ```sql
 CREATE TABLE collection_permissions (
@@ -251,9 +226,9 @@ CREATE INDEX idx_collection_permissions_collection_id ON collection_permissions(
 CREATE INDEX idx_collection_permissions_user_id ON collection_permissions(user_id);
 ```
 
-#### 6. Supporting Tables
+#### Supporting Tables
 
-**Users Table** - User authentication and profiles:
+**Users** - Authentication and profiles:
 ```sql
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -269,7 +244,7 @@ CREATE TABLE users (
 );
 ```
 
-**Refresh Tokens Table** - JWT refresh token management:
+**Refresh Tokens** - JWT token management:
 ```sql
 CREATE TABLE refresh_tokens (
     id SERIAL PRIMARY KEY,                      -- Auto-increment ID
@@ -285,7 +260,7 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens(token_hash);
 ```
 
-**API Keys Table** - API key authentication:
+**API Keys** - Programmatic authentication:
 ```sql
 CREATE TABLE api_keys (
     id VARCHAR PRIMARY KEY,
@@ -300,7 +275,7 @@ CREATE TABLE api_keys (
 );
 ```
 
-**Collection Audit Log** - Tracks all collection actions:
+**Collection Audit Log** - Action tracking:
 ```sql
 CREATE TABLE collection_audit_log (
     id SERIAL PRIMARY KEY,
@@ -346,82 +321,44 @@ api_keys (1) ──────< (N) collection_permissions
 
 ### Naming Conventions
 
-The database follows consistent naming conventions for maintainability:
+- **Tables**: snake_case, plural for entities (`users`, `collections`)
+- **Columns**: snake_case
+  - Foreign keys: `{table}_id`
+  - Timestamps: `{action}_at`
+  - Booleans: `is_{state}`
+- **Indexes**: `idx_{table}_{column}` or `uq_{table}_{columns}`
+- **Enums**: PascalCase types, UPPER_CASE values
 
-1. **Tables**: Lowercase with underscores (snake_case)
-   - Plural for entities: `users`, `collections`, `documents`
-   - Singular for relationships: `collection_permission`
-
-2. **Columns**: Lowercase with underscores
-   - Foreign keys: `{table}_id` (e.g., `collection_id`, `user_id`)
-   - Timestamps: `{action}_at` (e.g., `created_at`, `updated_at`)
-   - Booleans: `is_{state}` (e.g., `is_public`, `is_active`)
-
-3. **Indexes**: Descriptive prefixes
-   - `idx_{table}_{column}` for single column indexes
-   - `idx_{table}_{col1}_{col2}` for composite indexes
-   - `uq_{table}_{columns}` for unique constraints
-
-4. **Constraints**: Descriptive names
-   - `fk_{table}_{column}_{ref_table}` for foreign keys
-   - `check_{table}_{description}` for check constraints
-
-5. **Enums**: PascalCase for types, UPPER_CASE for values
-   - Types: `DocumentStatus`, `OperationType`
-   - Values: `PENDING`, `COMPLETED`, `FAILED`
-
-### Operation Lifecycle States
-
-Operations follow a strict state machine for reliability:
+### Operation Lifecycle
 
 ```
-┌─────────┐      ┌────────────┐      ┌───────────┐
-│ PENDING │ ───► │ PROCESSING │ ───► │ COMPLETED │
-└─────────┘      └────────────┘      └───────────┘
-                        │                    
-                        ├──────────► ┌─────────┐
-                        │            │ FAILED  │
-                        │            └─────────┘
-                        │
-                        └──────────► ┌───────────┐
-                                    │ CANCELLED │
-                                    └───────────┘
+PENDING → PROCESSING → COMPLETED
+                    ↘ FAILED
+                    ↘ CANCELLED
 ```
 
-**State Transitions**:
-- `PENDING`: Initial state when operation is created
-- `PROCESSING`: Worker has started the operation
-- `COMPLETED`: Operation finished successfully
-- `FAILED`: Operation encountered an error
-- `CANCELLED`: Operation was cancelled by user
+**States:**
+- `PENDING`: Created, waiting for worker
+- `PROCESSING`: Worker executing
+- `COMPLETED`: Success
+- `FAILED`: Error occurred
+- `CANCELLED`: User cancelled
 
-**Operation Types**:
-- `INDEX`: Initial indexing of a collection
-- `APPEND`: Add new documents to existing collection
-- `REINDEX`: Complete re-indexing with new settings
-- `REMOVE_SOURCE`: Remove documents from a specific source
-- `DELETE`: Delete the entire collection
+**Types:**
+- `INDEX`: Initial indexing
+- `APPEND`: Add documents
+- `REINDEX`: Rebuild with new settings
+- `REMOVE_SOURCE`: Remove documents from a source
+- `DELETE`: Delete collection
 
-### Soft Delete Implementation
+### Soft Delete
 
-The system implements soft deletes at the document level for data safety:
+Documents use soft delete (status='deleted') for safety:
+- Preserves audit trail
+- Vectors removed from Qdrant but metadata retained
+- Enables recovery/undelete
 
-1. **Document Soft Delete**:
-   - Documents are marked with status='deleted' instead of being removed
-   - Preserves referential integrity and audit trail
-   - Deleted documents are excluded from searches
-   - Vectors are removed from Qdrant but metadata retained
-
-2. **Benefits**:
-   - Recovery possible if deletion was accidental
-   - Maintains historical record for compliance
-   - Prevents orphaned references in audit logs
-   - Enables "undelete" functionality
-
-3. **Hard Delete Scenarios**:
-   - Collections use hard delete (CASCADE) for clean removal
-   - User deletion cascades to owned resources
-   - Expired tokens are hard deleted
+Collections use hard delete (CASCADE) for clean removal.
 
 ### Collection Source Management
 
