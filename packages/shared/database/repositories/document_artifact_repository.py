@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError, ValidationError
 from shared.database.models import DocumentArtifact
+from shared.utils.hashing import compute_content_hash
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,8 @@ class DocumentArtifactRepository:
                 else:
                     content = content[: self._max_bytes]
                     size_bytes = self._max_bytes
+                # Recompute hash for truncated content
+                content_hash = compute_content_hash(content)
 
             # Validate artifact_kind
             valid_kinds = ("primary", "preview", "thumbnail")
