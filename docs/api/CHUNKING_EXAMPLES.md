@@ -1,38 +1,14 @@
 # Chunking API Examples
 
-This document provides practical examples for using the Semantik Chunking API with various tools and programming languages.
+Practical examples for curl, Python, JavaScript/TypeScript, WebSocket.
 
-## Table of Contents
-
-- [Authentication](#authentication)
-- [Quick Reference](#quick-reference)
-- [Common Use Cases](#common-use-cases)
-- [curl Examples](#curl-examples)
-- [HTTPie Examples](#httpie-examples)
-- [Python Examples](#python-examples)
-- [JavaScript/TypeScript Examples](#javascripttypescript-examples)
-- [WebSocket Examples](#websocket-examples)
-- [Error Handling Examples](#error-handling-examples)
-
-## Authentication
-
-All API requests require a JWT token. First, obtain a token:
+## Auth
 
 ```bash
-# Using curl
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "your_username", "password": "your_password"}'
-
-# Response
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh_token": "...",
-  "token_type": "bearer"
-}
+curl -X POST /api/auth/login -H "Content-Type: application/json" \
+  -d '{"username": "...", "password": "..."}'
+# Returns access_token
 ```
-
-Store the `access_token` for use in subsequent requests.
 
 ## Quick Reference
 
