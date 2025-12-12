@@ -137,12 +137,14 @@ def _email_to_markdown(
     if date:
         lines.append(f"**Date:** {date}")
 
-    lines.extend([
-        "",
-        "---",
-        "",
-        body,
-    ])
+    lines.extend(
+        [
+            "",
+            "---",
+            "",
+            body,
+        ]
+    )
 
     return "\n".join(lines)
 
@@ -396,14 +398,9 @@ class ImapConnector(BaseConnector):
         last_uid = mailbox_cursor.get("last_uid", 0)
 
         # Check if UIDVALIDITY changed (mailbox reset)
-        if (
-            uidvalidity is not None
-            and prev_uidvalidity is not None
-            and uidvalidity != prev_uidvalidity
-        ):
+        if uidvalidity is not None and prev_uidvalidity is not None and uidvalidity != prev_uidvalidity:
             logger.warning(
-                f"UIDVALIDITY changed for {mailbox}: {prev_uidvalidity} -> {uidvalidity}. "
-                "Resetting cursor."
+                f"UIDVALIDITY changed for {mailbox}: {prev_uidvalidity} -> {uidvalidity}. " "Resetting cursor."
             )
             last_uid = 0
 
@@ -414,9 +411,7 @@ class ImapConnector(BaseConnector):
             search_criteria = f"UID {last_uid + 1}:*"
         else:
             # Initial: get messages from since_days ago
-            since_date = datetime.now(UTC).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            since_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
             from datetime import timedelta
 
             since_date = since_date - timedelta(days=self.since_days)

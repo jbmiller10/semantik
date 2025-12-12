@@ -17,6 +17,14 @@ from webui.api.v2.documents import get_document_content
 
 
 @pytest.fixture()
+def mock_artifact_repo() -> AsyncMock:
+    """Mock artifact repository that returns None (no artifact, use file)."""
+    repo = AsyncMock()
+    repo.get_content.return_value = None
+    return repo
+
+
+@pytest.fixture()
 def mock_user() -> dict[str, Any]:
     """Mock authenticated user."""
 
@@ -81,6 +89,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         temp_file: Path,
     ) -> None:
         """Test successful document content retrieval."""
@@ -91,7 +100,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -166,6 +178,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         document_root: Path,
     ) -> None:
         """Test 404 when document file doesn't exist on disk."""
@@ -177,6 +190,7 @@ class TestGetDocumentContent:
 
         with (
             patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -196,6 +210,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         document_root: Path,
     ) -> None:
         """Test 400 when document path points to a directory."""
@@ -209,6 +224,7 @@ class TestGetDocumentContent:
 
         with (
             patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
             pytest.raises(HTTPException) as exc_info,
         ):
             await get_document_content(
@@ -228,6 +244,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         document_root: Path,
     ) -> None:
         """Ensure attempts to escape the document root are rejected."""
@@ -250,6 +267,7 @@ class TestGetDocumentContent:
 
             with (
                 patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+                patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
                 pytest.raises(HTTPException) as exc_info,
             ):
                 await get_document_content(
@@ -271,6 +289,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         tmp_path: Path,
         monkeypatch,
     ) -> None:
@@ -290,7 +309,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -308,6 +330,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         tmp_path: Path,
         monkeypatch,
     ) -> None:
@@ -329,7 +352,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -347,6 +373,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         tmp_path: Path,
         monkeypatch,
     ) -> None:
@@ -367,7 +394,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -385,6 +415,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         temp_file: Path,
     ) -> None:
         """Test that default mime type is used when document has no mime type."""
@@ -395,7 +426,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,
@@ -413,6 +447,7 @@ class TestGetDocumentContent:
         mock_user: dict[str, Any],
         mock_collection: MagicMock,
         mock_document: MagicMock,
+        mock_artifact_repo: AsyncMock,
         temp_file: Path,
     ) -> None:
         """Test that appropriate cache headers are set."""
@@ -422,7 +457,10 @@ class TestGetDocumentContent:
         mock_document_repo = AsyncMock()
         mock_document_repo.get_by_id.return_value = mock_document
 
-        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo):
+        with (
+            patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repo),
+            patch("webui.api.v2.documents.DocumentArtifactRepository", return_value=mock_artifact_repo),
+        ):
             result = await get_document_content(
                 collection_uuid=mock_collection.id,
                 document_uuid=mock_document.id,

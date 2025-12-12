@@ -185,6 +185,7 @@ async def preview_imap(
     import ssl
 
     try:
+
         def _connect_and_list() -> list[str]:
             """Connect to IMAP and list mailboxes."""
             # Connect

@@ -116,14 +116,10 @@ class SourceService:
                         await self.secret_repo.set_secret(source.id, secret_type, value)
                         secret_types.append(secret_type)
             except EncryptionNotConfiguredError:
-                logger.warning(
-                    f"Secrets provided for source {source.id} but encryption not configured"
-                )
+                logger.warning(f"Secrets provided for source {source.id} but encryption not configured")
                 raise
         elif secrets and not self.secret_repo:
-            logger.warning(
-                f"Secrets provided for source {source.id} but secret repository not available"
-            )
+            logger.warning(f"Secrets provided for source {source.id} but secret repository not available")
 
         logger.info(
             f"Created source {source.id} for collection {collection_id} "
@@ -186,14 +182,10 @@ class SourceService:
                     else:  # Empty string: delete
                         await self.secret_repo.delete_secret(source_id, secret_type)
             except EncryptionNotConfiguredError:
-                logger.warning(
-                    f"Secrets update requested for source {source_id} but encryption not configured"
-                )
+                logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
                 raise
         elif secrets and not self.secret_repo:
-            logger.warning(
-                f"Secrets update requested for source {source_id} but secret repository not available"
-            )
+            logger.warning(f"Secrets update requested for source {source_id} but secret repository not available")
 
         # Get current secret types
         secret_types: list[str] = []

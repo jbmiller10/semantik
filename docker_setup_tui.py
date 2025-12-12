@@ -1131,7 +1131,11 @@ class DockerSetupTUI:
         # Connector Secrets Key (Fernet)
         connector_key_choice = questionary.select(
             "Connector Secrets Key (for encrypting passwords/tokens):",
-            choices=["Generate secure key automatically (Recommended)", "Enter custom Fernet key", "Skip (disable encryption)"],
+            choices=[
+                "Generate secure key automatically (Recommended)",
+                "Enter custom Fernet key",
+                "Skip (disable encryption)",
+            ],
         ).ask()
 
         if connector_key_choice is None:
@@ -1140,11 +1144,14 @@ class DockerSetupTUI:
         if "Generate" in connector_key_choice:
             # Generate Fernet key (base64-encoded 32 bytes)
             import base64
+
             self.config["CONNECTOR_SECRETS_KEY"] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
             console.print("[green]Generated secure connector secrets key[/green]")
         elif "Skip" in connector_key_choice:
             self.config["CONNECTOR_SECRETS_KEY"] = ""
-            console.print("[yellow]Connector secrets encryption disabled - credentials will not be stored securely[/yellow]")
+            console.print(
+                "[yellow]Connector secrets encryption disabled - credentials will not be stored securely[/yellow]"
+            )
         else:
             custom_key = questionary.password("Enter Fernet key (44 chars, base64):").ask()
             if custom_key is None or len(custom_key) != 44:
