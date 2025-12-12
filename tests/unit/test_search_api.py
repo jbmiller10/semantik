@@ -1527,9 +1527,7 @@ class TestScoreThresholdFiltering:
 class TestUpsertWaitParameter:
     """Test upsert wait parameter is passed as query param."""
 
-    def test_upsert_wait_false_omits_query_parameter(
-        self, mock_qdrant_client, test_client_for_search_api
-    ) -> None:
+    def test_upsert_wait_false_omits_query_parameter(self, mock_qdrant_client, test_client_for_search_api) -> None:
         """wait=False should not add query parameter."""
         # Mock collection info
         mock_get_response = Mock()
