@@ -1,7 +1,7 @@
 """Domain-specific Celery task package.
 
 This module glues together the newly modularized task implementations while
-preserving the public surface previously exposed via ``packages.webui.tasks``.
+preserving the public surface previously exposed via ``webui.tasks``.
 Importing this package registers all task modules so existing task names remain
 available to Celery.
 """
@@ -14,8 +14,7 @@ from typing import Any
 
 import httpx
 
-from packages.webui.services.chunking.container import resolve_celery_chunking_service
-from packages.webui.services.factory import create_celery_chunking_service_with_repos
+from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 
 from .cleanup import (
     cleanup_old_collections,
@@ -35,6 +34,7 @@ from .ingestion import (
     process_collection_operation,
     test_task,
 )
+from .projection import _process_projection_operation, compute_projection
 from .reindex import (
     _cleanup_staging_resources,
     _process_reindex_operation,
@@ -61,7 +61,6 @@ from .utils import (
     REINDEX_VECTOR_COUNT_VARIANCE,
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
-    ChunkingService,
     _audit_log_operation,
     _build_internal_api_headers,
     _get_internal_api_key,
@@ -85,9 +84,11 @@ __all__ = [
     "_process_append_operation",
     "_process_append_operation_impl",
     "_process_remove_source_operation",
+    "_process_projection_operation",
     "_handle_task_failure",
     "_handle_task_failure_async",
     "test_task",
+    "compute_projection",
     # Reindex helpers
     "_process_reindex_operation",
     "_process_reindex_operation_impl",
@@ -104,9 +105,7 @@ __all__ = [
     "asyncio",
     "httpx",
     "CeleryTaskWithOperationUpdates",
-    "ChunkingService",
-    "resolve_celery_chunking_service",
-    "create_celery_chunking_service_with_repos",
+    "resolve_celery_chunking_orchestrator",
     "celery_app",
     "executor",
     "extract_and_serialize_thread_safe",
@@ -142,10 +141,10 @@ __all__ = [
 
 
 def _load_module(name: str) -> Any:
-    return import_module(f"packages.webui.tasks.{name}")
+    return import_module(f"webui.tasks.{name}")
 
 
-_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "reindex", "cleanup", "utils"))
+_PROXY_MODULES = tuple(_load_module(name) for name in ("ingestion", "projection", "reindex", "cleanup", "utils"))
 
 
 def __getattr__(name: str) -> Any:  # noqa: N807

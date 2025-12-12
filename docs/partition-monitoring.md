@@ -1,62 +1,30 @@
-# Partition Monitoring and Maintenance Guide
+# Partition Monitoring
 
-This guide describes the operational improvements implemented for monitoring and maintaining the partitioned chunk table system in Semantik.
+Monitoring and maintenance for the partitioned chunk table system (100 partitions by default).
 
-> **Access control**
->
-> Partition monitoring endpoints require an authenticated admin user or a request signed with a valid `X-Internal-Api-Key` header. Ensure the proper credentials are configured before calling these APIs in scripts or dashboards.
-
-## Overview
-
-The chunking system uses 16 partitions (configurable via `CHUNK_PARTITION_COUNT`) to distribute chunks across multiple tables for better performance. To ensure optimal performance and detect imbalances early, we've implemented comprehensive monitoring and alerting capabilities.
+**Auth required:** Admin user or `X-Internal-Api-Key` header.
 
 ## Components
 
-### 1. Automated Materialized View Refresh
+### Automated Stats Refresh
 
-The `collection_chunking_stats` materialized view is now automatically refreshed every hour via a Celery task:
+Celery task `refresh_collection_chunking_stats` runs hourly to keep the `collection_chunking_stats` materialized view current.
 
-- **Task**: `webui.tasks.refresh_collection_chunking_stats`
-- **Schedule**: Hourly
-- **Purpose**: Keeps collection statistics up-to-date without manual intervention
+### Monitoring Views
 
-### 2. Monitoring Views
+- `partition_size_distribution` - Physical size per partition
+- `partition_chunk_distribution` - Chunk counts, avg tokens, age
+- `partition_hot_spots` - Recent activity (hour/day/week)
+- `partition_stats` - Aggregated chunk + size data
+- `partition_health_summary` - Health status and skew factors
 
-Four new database views provide real-time insights into partition health:
+### Analysis Function
 
-#### `partition_size_distribution`
-- Shows physical size of each partition
-- Calculates percentage of total size
-- Provides row count estimates
+`analyze_partition_skew()` - Postgres function for skew calculation, variance, and hot partition detection.
 
-#### `partition_chunk_distribution`
-- Displays chunk count per partition
-- Shows document and collection distribution
-- Calculates average token counts
-- Tracks age of chunks in each partition
+### Maintenance Script
 
-#### `partition_hot_spots`
-- Identifies partitions with high recent activity
-- Tracks chunks created in last hour/day/week
-- Helps identify skewed write patterns
-
-#### `partition_health_summary`
-- Consolidated view of partition health
-- Calculates skew factors for chunks and size
-- Provides health status (HEALTHY/WARNING/UNBALANCED)
-- Includes actionable recommendations
-
-### 3. Analysis Function
-
-`analyze_partition_skew()` - A PostgreSQL function that provides:
-- Overall skew factor calculation
-- Distribution variance metrics
-- Hot partition detection
-- Detailed status reporting
-
-### 4. Partition Maintenance Script
-
-Located at `/scripts/partition_maintenance.py`, this script provides command-line access to all monitoring features:
+`/scripts/partition_maintenance.py`:
 
 ```bash
 # Check overall partition health
@@ -84,129 +52,59 @@ Located at `/scripts/partition_maintenance.py`, this script provides command-lin
 ./scripts/partition_maintenance.py full
 ```
 
-Options:
-- `--db-url`: Override database URL from environment
-- `--format`: Choose output format (table/json)
+Options: `--db-url`, `--format` (table/json)
 
-### 5. Automated Health Monitoring
+### Automated Health Monitoring
 
-A Celery task runs every 6 hours to check partition health:
+Celery task `monitor_partition_health` runs every 6 hours to check balance and log alerts.
 
-- **Task**: `webui.tasks.monitor_partition_health`
-- **Schedule**: Every 6 hours
-- **Actions**:
-  - Checks for unbalanced partitions
-  - Detects warning signs of imbalance
-  - Logs alerts at appropriate levels
-  - Returns structured monitoring data
+## Thresholds
 
-## Alert Thresholds
+Skew factor measures deviation from expected (1% per partition with 100 partitions).
 
-### Critical Alerts
-- Partition has >16.25% of total chunks (2.6x expected)
-- Overall skew factor >20%
-- Any partition marked as UNBALANCED
+- **WARNING:** skew >= 0.3 (30%)
+- **UNBALANCED/CRITICAL:** skew >= 0.5 (50%)
+- **Rebalancing recommended:** skew >= 0.4 (40%)
 
-### Warnings
-- Partition has >11.25% of chunks (1.8x expected)
-- Overall skew factor >10%
-- More than 2 partitions showing WARNING status
+## Usage
 
-## Usage Examples
+Daily check: `./scripts/partition_maintenance.py full`
+Performance issues: `./scripts/partition_maintenance.py health && skew`
+Export: `./scripts/partition_maintenance.py health --format json`
 
-### Daily Operations Check
-```bash
-# Run full health report
-./scripts/partition_maintenance.py full
+## Custom Monitoring
 
-# Check for hot partitions during peak hours
-./scripts/partition_maintenance.py hot
-```
-
-### Investigating Performance Issues
-```bash
-# Check if partitions are unbalanced
-./scripts/partition_maintenance.py health
-
-# Analyze skew metrics
-./scripts/partition_maintenance.py skew
-
-# View detailed distribution
-./scripts/partition_maintenance.py distribution
-```
-
-### Manual Maintenance
-```bash
-# Refresh statistics if needed
-./scripts/partition_maintenance.py refresh
-
-# Export data for analysis
-./scripts/partition_maintenance.py health --format json > partition_health.json
-```
-
-## Integration Points
-
-### Extending Alerts
-
-The `monitor_partition_health` task includes commented examples for integrating with external alerting systems:
-
-```python
-# In production, send alert here (email, Slack, etc.)
-# Example: send_alert_to_slack(alert)
-```
-
-To add Slack alerts:
-1. Install slack-sdk: `uv add slack-sdk`
-2. Add Slack webhook URL to environment
-3. Implement `send_alert_to_slack()` function
-4. Uncomment the alert sending code
-
-### Custom Monitoring
-
-The monitoring views can be queried directly for custom dashboards:
-
+Query views directly:
 ```sql
--- Get current partition health
 SELECT * FROM partition_health_summary;
-
--- Check for hot partitions
-SELECT * FROM partition_hot_spots 
-WHERE hour_percentage > 12.5;
-
--- Analyze skew
+SELECT * FROM partition_hot_spots WHERE hour_percentage > 12.5;
 SELECT * FROM analyze_partition_skew();
 ```
 
-## Best Practices
+For Slack alerts, implement `send_alert_to_slack()` in `monitor_partition_health` task.
 
-1. **Regular Monitoring**: Check partition health at least daily
-2. **Proactive Rebalancing**: Address WARNING status before it becomes UNBALANCED
-3. **Peak Hour Analysis**: Monitor hot partitions during high-traffic periods
-4. **Capacity Planning**: Use size distribution data for storage planning
-5. **Alert Response**: Have a runbook for responding to partition imbalance alerts
+## API Endpoints
+
+All under `/api/v2/partitions` (admin or internal key required):
+
+- `GET /health` - Health status + alerts
+- `GET /statistics?partition_num=42` - Partition stats (omit param for aggregate)
+- `GET /recommendations` - Rebalancing suggestions
+- `GET /health-summary` - Dashboard view
+
+## Service Layer
+
+`PartitionMonitoringService` methods:
+- `get_partition_health_summary()` - All partition health
+- `analyze_partition_skew()` - Skew metrics
+- `check_partition_health()` - Full health check with alerts
+- `get_partition_statistics(partition_num)` - Stats for one/all partitions
+- `get_rebalancing_recommendations()` - Rebalance suggestions
+
+Thresholds: WARNING=0.3, CRITICAL=0.5, REBALANCE=0.4
 
 ## Troubleshooting
 
-### High Skew Factor
-- Review document hashing algorithm
-- Check for patterns in document IDs causing clustering
-- Consider adjusting partition count (requires migration)
-
-### Hot Partitions
-- Analyze application write patterns
-- Check for time-based clustering
-- Review collection distribution
-
-### Growing Imbalance
-- Monitor trend over time
-- Plan maintenance window for rebalancing
-- Consider partition key changes
-
-## Future Enhancements
-
-Potential improvements to consider:
-- Automatic partition rebalancing
-- Predictive imbalance detection
-- Integration with Grafana/Prometheus
-- Dynamic partition count adjustment
-- Historical trend analysis
+**High skew:** Review hashing algorithm, check for ID clustering
+**Hot partitions:** Analyze write patterns, check time-based clustering
+**Growing imbalance:** Monitor trends, plan rebalancing

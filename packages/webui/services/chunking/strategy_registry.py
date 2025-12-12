@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 
-from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+from shared.chunking.types import ChunkingStrategy
 
 DefaultContext = Literal["manager", "builder", "factory"]
 
@@ -33,7 +33,7 @@ def _copy_mapping(mapping: Mapping[str, Any] | None) -> dict[str, Any]:
 class StrategyDefinition:
     """Canonical description of an individual chunking strategy."""
 
-    api_id: ChunkingStrategy
+    api_id: str  # canonical API identifier (enum value for built‑ins, plain string for plugins)
     internal_id: str
     display_name: str
     description: str
@@ -45,11 +45,14 @@ class StrategyDefinition:
     builder_defaults: Mapping[str, Any] | None
     supported_file_types: tuple[str, ...] = ()
     aliases: tuple[str, ...] = ()
+    is_plugin: bool = False
+    visual_example: Mapping[str, Any] | None = None
 
     def to_metadata_dict(self) -> dict[str, Any]:
         """Return strategy metadata in dictionary form."""
 
         return {
+            "id": self.api_id,
             "name": self.display_name,
             "description": self.description,
             "best_for": list(self.best_for),
@@ -57,6 +60,8 @@ class StrategyDefinition:
             "cons": list(self.cons),
             "performance_characteristics": _copy_mapping(self.performance_characteristics),
             "supported_file_types": list(self.supported_file_types),
+            "is_plugin": self.is_plugin,
+            "visual_example": _copy_mapping(self.visual_example),
         }
 
 
@@ -71,12 +76,63 @@ _FACTORY_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 
+def register_strategy_definition(
+    *,
+    api_id: str,
+    internal_id: str,
+    display_name: str,
+    description: str = "",
+    best_for: tuple[str, ...] | list[str] | None = None,
+    pros: tuple[str, ...] | list[str] | None = None,
+    cons: tuple[str, ...] | list[str] | None = None,
+    performance_characteristics: Mapping[str, Any] | None = None,
+    manager_defaults: Mapping[str, Any] | None = None,
+    builder_defaults: Mapping[str, Any] | None = None,
+    supported_file_types: tuple[str, ...] | list[str] | None = None,
+    aliases: tuple[str, ...] | list[str] | None = None,
+    factory_defaults: Mapping[str, Any] | None = None,
+    is_plugin: bool = False,
+    visual_example: Mapping[str, Any] | None = None,
+) -> StrategyDefinition:
+    """
+    Register a new strategy definition at runtime (used by plugins/extensions).
+
+    This mutates the in-memory registry and clears derived caches so the
+    new strategy is immediately discoverable across the service layer.
+    """
+
+    definition = StrategyDefinition(
+        api_id=str(api_id),
+        internal_id=str(internal_id),
+        display_name=display_name,
+        description=description,
+        best_for=tuple(best_for or ()),
+        pros=tuple(pros or ()),
+        cons=tuple(cons or ()),
+        performance_characteristics=_copy_mapping(performance_characteristics),
+        manager_defaults=_copy_mapping(manager_defaults) if manager_defaults is not None else {},
+        builder_defaults=_copy_mapping(builder_defaults) if builder_defaults is not None else None,
+        supported_file_types=tuple(supported_file_types or ()),
+        aliases=tuple(aliases or ()),
+        is_plugin=is_plugin,
+        visual_example=_copy_mapping(visual_example),
+    )
+
+    _STRATEGIES[definition.api_id] = definition
+
+    if factory_defaults is not None:
+        _FACTORY_DEFAULTS[definition.internal_id] = _copy_mapping(factory_defaults)
+
+    _clear_caches()
+    return definition
+
+
 def _strategy_definition_data() -> dict[str, StrategyDefinition]:
     """Construct the canonical definitions used throughout the service."""
 
     return {
         ChunkingStrategy.FIXED_SIZE.value: StrategyDefinition(
-            api_id=ChunkingStrategy.FIXED_SIZE,
+            api_id=ChunkingStrategy.FIXED_SIZE.value,
             internal_id="character",
             display_name="Fixed Size Chunking",
             description="Simple fixed-size chunking with consistent chunk sizes",
@@ -108,7 +164,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("fixed", "character", "char"),
         ),
         ChunkingStrategy.SEMANTIC.value: StrategyDefinition(
-            api_id=ChunkingStrategy.SEMANTIC,
+            api_id=ChunkingStrategy.SEMANTIC.value,
             internal_id="semantic",
             display_name="Semantic",
             description="Uses embeddings to find natural semantic boundaries",
@@ -144,7 +200,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("semantic_chunking", "semantic"),
         ),
         ChunkingStrategy.RECURSIVE.value: StrategyDefinition(
-            api_id=ChunkingStrategy.RECURSIVE,
+            api_id=ChunkingStrategy.RECURSIVE.value,
             internal_id="recursive",
             display_name="Recursive",
             description="Recursively splits text using multiple separators",
@@ -176,7 +232,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("recursive_text", "recursive"),
         ),
         ChunkingStrategy.SLIDING_WINDOW.value: StrategyDefinition(
-            api_id=ChunkingStrategy.SLIDING_WINDOW,
+            api_id=ChunkingStrategy.SLIDING_WINDOW.value,
             internal_id="character",
             display_name="Sliding Window",
             description="Overlapping chunks with configurable window size",
@@ -209,7 +265,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("sliding", "window", "sliding_window"),
         ),
         ChunkingStrategy.DOCUMENT_STRUCTURE.value: StrategyDefinition(
-            api_id=ChunkingStrategy.DOCUMENT_STRUCTURE,
+            api_id=ChunkingStrategy.DOCUMENT_STRUCTURE.value,
             internal_id="markdown",
             display_name="Document Structure",
             description="Splits documents based on structural elements",
@@ -244,7 +300,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("document", "document_structure"),
         ),
         ChunkingStrategy.MARKDOWN.value: StrategyDefinition(
-            api_id=ChunkingStrategy.MARKDOWN,
+            api_id=ChunkingStrategy.MARKDOWN.value,
             internal_id="markdown",
             display_name="Markdown",
             description="Respects markdown structure and headings",
@@ -264,7 +320,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("markdown", "md"),
         ),
         ChunkingStrategy.HIERARCHICAL.value: StrategyDefinition(
-            api_id=ChunkingStrategy.HIERARCHICAL,
+            api_id=ChunkingStrategy.HIERARCHICAL.value,
             internal_id="hierarchical",
             display_name="Hierarchical",
             description="Creates parent-child chunks across multiple levels",
@@ -283,7 +339,7 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
             aliases=("hierarchy", "hierarchical"),
         ),
         ChunkingStrategy.HYBRID.value: StrategyDefinition(
-            api_id=ChunkingStrategy.HYBRID,
+            api_id=ChunkingStrategy.HYBRID.value,
             internal_id="hybrid",
             display_name="Hybrid",
             description="Combines multiple strategies based on content analysis",
@@ -323,6 +379,20 @@ def _strategy_definition_data() -> dict[str, StrategyDefinition]:
 _STRATEGIES: dict[str, StrategyDefinition] = _strategy_definition_data()
 
 
+def _clear_caches() -> None:
+    """Clear lru-cached lookups after registry mutation."""
+
+    get_api_to_internal_map.cache_clear()
+    get_internal_to_primary_api_map.cache_clear()
+    get_alias_to_api_map.cache_clear()
+    list_strategy_definitions.cache_clear()
+    list_strategy_metadata.cache_clear()
+    get_internal_strategy_aliases.cache_clear()
+    list_api_strategy_ids.cache_clear()
+    get_factory_default_map.cache_clear()
+    build_metadata_by_enum.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def get_api_to_internal_map() -> dict[str, str]:
     """Return mapping from API strategy identifiers to internal strategy names."""
@@ -347,7 +417,7 @@ def get_alias_to_api_map() -> dict[str, str]:
     alias_map: dict[str, str] = {}
     for api_id, definition in _STRATEGIES.items():
         alias_map[api_id] = api_id
-        alias_map[definition.api_id.name.lower()] = api_id
+        alias_map[definition.api_id.lower()] = api_id
         for alias in definition.aliases:
             alias_map[alias.lower()] = api_id
         # Allow lookup by internal strategy name as a convenience
@@ -394,20 +464,22 @@ def get_strategy_definition(identifier: str | Enum | ChunkingStrategy) -> Strate
     return _resolve_strategy_definition(identifier)
 
 
+@lru_cache(maxsize=1)
 def list_strategy_definitions() -> Iterable[StrategyDefinition]:
     """Iterate over all canonical strategy definitions."""
 
-    return _STRATEGIES.values()
+    return tuple(_STRATEGIES.values())
 
 
+@lru_cache(maxsize=1)
 def list_strategy_metadata() -> list[dict[str, Any]]:
     """Return metadata for all strategies formatted for API consumers."""
 
     results: list[dict[str, Any]] = []
     for definition in list_strategy_definitions():
         metadata = definition.to_metadata_dict()
-        metadata["id"] = definition.api_id.value
         metadata["default_config"] = get_strategy_defaults(definition.api_id, context="manager")
+        metadata["is_plugin"] = definition.is_plugin
         results.append(metadata)
     return results
 
@@ -452,7 +524,7 @@ def resolve_api_identifier(identifier: str | Enum | ChunkingStrategy) -> str | N
 
     definition = _resolve_strategy_definition(identifier)
     if definition:
-        return definition.api_id.value
+        return definition.api_id
 
     normalized = _normalize_identifier(identifier)
     alias_map = get_alias_to_api_map()
@@ -471,6 +543,7 @@ def get_strategy_metadata(identifier: str | Enum | ChunkingStrategy) -> dict[str
     return definition.to_metadata_dict()
 
 
+@lru_cache(maxsize=1)
 def get_internal_strategy_aliases() -> dict[str, set[str]]:
     """Return aliases grouped by internal strategy name."""
 
@@ -488,7 +561,7 @@ def recommend_strategy(file_types: Sequence[str] | None) -> ChunkingStrategy:
     if not file_types:
         return ChunkingStrategy.RECURSIVE
 
-    scores: MutableMapping[str, int] = {definition.api_id.value: 0 for definition in list_strategy_definitions()}
+    scores: MutableMapping[str, int] = {definition.api_id: 0 for definition in list_strategy_definitions()}
 
     for raw_file_type in file_types:
         file_type = (raw_file_type or "").strip().lower().lstrip(".")
@@ -497,7 +570,7 @@ def recommend_strategy(file_types: Sequence[str] | None) -> ChunkingStrategy:
 
         for definition in list_strategy_definitions():
             if file_type in definition.best_for:
-                scores[definition.api_id.value] = scores.get(definition.api_id.value, 0) + 1
+                scores[definition.api_id] = scores.get(definition.api_id, 0) + 1
 
     if not scores:
         return ChunkingStrategy.RECURSIVE
@@ -506,22 +579,36 @@ def recommend_strategy(file_types: Sequence[str] | None) -> ChunkingStrategy:
     if scores[top_api_id] == 0:
         return ChunkingStrategy.RECURSIVE
 
-    return _STRATEGIES[top_api_id].api_id
+    try:
+        return ChunkingStrategy(top_api_id)
+    except Exception:
+        # Plugin strategies are not part of the enum; default to a safe core strategy.
+        return ChunkingStrategy.RECURSIVE
 
 
+@lru_cache(maxsize=1)
 def get_factory_default_map() -> dict[str, dict[str, Any]]:
     """Expose a defensive copy of factory defaults keyed by internal strategy name."""
 
     return {key: _copy_mapping(value) for key, value in _FACTORY_DEFAULTS.items()}
 
 
+@lru_cache(maxsize=1)
 def build_metadata_by_enum() -> dict[ChunkingStrategy, dict[str, Any]]:
     """Return metadata keyed by API enum for backwards compatibility helpers."""
 
-    return {definition.api_id: definition.to_metadata_dict() for definition in list_strategy_definitions()}
+    result: dict[ChunkingStrategy, dict[str, Any]] = {}
+    for definition in list_strategy_definitions():
+        try:
+            enum_key = ChunkingStrategy(definition.api_id)
+        except Exception:
+            continue
+        result[enum_key] = definition.to_metadata_dict()
+    return result
 
 
+@lru_cache(maxsize=1)
 def list_api_strategy_ids() -> list[str]:
     """Return the ordered list of API strategy identifiers."""
 
-    return [definition.api_id.value for definition in list_strategy_definitions()]
+    return [definition.api_id for definition in list_strategy_definitions()]

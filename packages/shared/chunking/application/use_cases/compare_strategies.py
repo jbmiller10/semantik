@@ -10,9 +10,9 @@ from statistics import mean, stdev
 from typing import Any
 from uuid import uuid4
 
-from packages.shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
-from packages.shared.chunking.application.dto.responses import ChunkDTO, CompareStrategiesResponse, StrategyMetrics
-from packages.shared.chunking.application.interfaces.services import (
+from shared.chunking.application.dto.requests import ChunkingStrategy, CompareStrategiesRequest
+from shared.chunking.application.dto.responses import ChunkDTO, CompareStrategiesResponse, StrategyMetrics
+from shared.chunking.application.interfaces.services import (
     ChunkingStrategyFactory,
     DocumentService,
     MetricsService,

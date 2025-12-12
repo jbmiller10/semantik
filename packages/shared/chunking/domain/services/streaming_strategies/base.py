@@ -9,9 +9,9 @@ ensuring consistent stream processing across different chunking approaches.
 from abc import ABC, abstractmethod
 from typing import Any
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 
 class StreamingChunkingStrategy(ABC):

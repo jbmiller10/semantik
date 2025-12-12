@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useSearchStore } from '../stores/searchStore';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchStore, type SearchResult } from '../stores/searchStore';
 import { useUIStore } from '../stores/uiStore';
 import { AlertTriangle, ChevronRight, FileText, Layers } from 'lucide-react';
 import { GPUMemoryError } from './GPUMemoryError';
@@ -9,10 +9,10 @@ interface SearchResultsProps {
 }
 
 function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
-  const { 
-    results, 
-    loading, 
-    error, 
+  const {
+    results,
+    loading,
+    error,
     rerankingMetrics,
     failedCollections,
     partialFailure
@@ -21,6 +21,76 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
   const setShowDocumentViewer = useUIStore((state) => state.setShowDocumentViewer);
   const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set());
   const [expandedCollections, setExpandedCollections] = useState<Set<string>>(new Set());
+
+  // Group results first by collection, then by document
+  // Note: Results without a collection_id are grouped under 'unknown' for consistency
+  // useMemo to prevent unnecessary recalculations and useEffect triggers
+  const groupedByCollection = useMemo(() => results.reduce((acc, result) => {
+    const collectionId = result.collection_id || 'unknown';
+    const collectionName = result.collection_name || 'Unknown Collection';
+
+    if (!acc[collectionId]) {
+      acc[collectionId] = {
+        name: collectionName,
+        documents: {},
+        totalResults: 0,
+      };
+    }
+
+    if (!acc[collectionId].documents[result.doc_id]) {
+      acc[collectionId].documents[result.doc_id] = {
+        file_path: result.file_path,
+        file_name: result.file_name,
+        chunks: [],
+      };
+    }
+
+    acc[collectionId].documents[result.doc_id].chunks.push(result);
+    acc[collectionId].totalResults++;
+
+    return acc;
+  }, {} as Record<string, {
+    name: string;
+    documents: Record<string, {
+      file_path: string;
+      file_name: string;
+      chunks: SearchResult[];
+    }>;
+    totalResults: number;
+  }>), [results]);
+
+  // Auto-expand all collections by default if there are results
+  useEffect(() => {
+    if (expandedCollections.size === 0 && Object.keys(groupedByCollection).length > 0) {
+      setExpandedCollections(new Set(Object.keys(groupedByCollection)));
+    }
+  }, [groupedByCollection, expandedCollections.size]);
+
+  const handleViewDocument = (collectionId: string | undefined, docId: string, chunkId?: string) => {
+    // Ensure we always have a valid collection ID, defaulting to 'unknown' if missing
+    const safeCollectionId = collectionId || 'unknown';
+    setShowDocumentViewer({ collectionId: safeCollectionId, docId, chunkId });
+  };
+
+  const toggleDocExpansion = (docId: string) => {
+    const newExpanded = new Set(expandedDocs);
+    if (newExpanded.has(docId)) {
+      newExpanded.delete(docId);
+    } else {
+      newExpanded.add(docId);
+    }
+    setExpandedDocs(newExpanded);
+  };
+
+  const toggleCollection = (collectionId: string) => {
+    const newExpanded = new Set(expandedCollections);
+    if (newExpanded.has(collectionId)) {
+      newExpanded.delete(collectionId);
+    } else {
+      newExpanded.add(collectionId);
+    }
+    setExpandedCollections(newExpanded);
+  };
 
   if (loading) {
     return (
@@ -46,7 +116,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
         </div>
       );
     }
-    
+
     // Regular error display
     return (
       <div className="bg-white rounded-lg shadow-md p-6">
@@ -59,73 +129,6 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
 
   if (results.length === 0 && failedCollections.length === 0) {
     return null;
-  }
-
-  // Group results first by collection, then by document
-  // Note: Results without a collection_id are grouped under 'unknown' for consistency
-  const groupedByCollection = results.reduce((acc, result) => {
-    const collectionId = result.collection_id || 'unknown';
-    const collectionName = result.collection_name || 'Unknown Collection';
-    
-    if (!acc[collectionId]) {
-      acc[collectionId] = {
-        name: collectionName,
-        documents: {},
-        totalResults: 0,
-      };
-    }
-    
-    if (!acc[collectionId].documents[result.doc_id]) {
-      acc[collectionId].documents[result.doc_id] = {
-        file_path: result.file_path,
-        file_name: result.file_name,
-        chunks: [],
-      };
-    }
-    
-    acc[collectionId].documents[result.doc_id].chunks.push(result);
-    acc[collectionId].totalResults++;
-    
-    return acc;
-  }, {} as Record<string, {
-    name: string;
-    documents: Record<string, { 
-      file_path: string; 
-      file_name: string; 
-      chunks: typeof results;
-    }>;
-    totalResults: number;
-  }>);
-
-  const handleViewDocument = (collectionId: string | undefined, docId: string, chunkId?: string) => {
-    // Ensure we always have a valid collection ID, defaulting to 'unknown' if missing
-    const safeCollectionId = collectionId || 'unknown';
-    setShowDocumentViewer({ collectionId: safeCollectionId, docId, chunkId });
-  };
-
-  const toggleDocExpansion = (docId: string) => {
-    const newExpanded = new Set(expandedDocs);
-    if (newExpanded.has(docId)) {
-      newExpanded.delete(docId);
-    } else {
-      newExpanded.add(docId);
-    }
-    setExpandedDocs(newExpanded);
-  };
-
-  const toggleCollectionExpansion = (collectionId: string) => {
-    const newExpanded = new Set(expandedCollections);
-    if (newExpanded.has(collectionId)) {
-      newExpanded.delete(collectionId);
-    } else {
-      newExpanded.add(collectionId);
-    }
-    setExpandedCollections(newExpanded);
-  };
-
-  // Auto-expand all collections by default if there are results
-  if (expandedCollections.size === 0 && Object.keys(groupedByCollection).length > 0) {
-    setExpandedCollections(new Set(Object.keys(groupedByCollection)));
   }
 
   return (
@@ -185,42 +188,41 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
         <div className="divide-y divide-gray-200">
           {Object.entries(groupedByCollection).map(([collectionId, collection]) => {
             const isCollectionExpanded = expandedCollections.has(collectionId);
-            
+
             return (
               <div key={collectionId} className="bg-white">
                 {/* Collection Header */}
-                <div
-                  className="px-6 py-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => toggleCollectionExpansion(collectionId)}
+                <button
+                  onClick={() => toggleCollection(collectionId)}
+                  className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <ChevronRight 
-                        className={`h-5 w-5 text-gray-400 transform transition-transform ${
-                          isCollectionExpanded ? 'rotate-90' : ''
+                  <div className="flex items-center">
+                    <ChevronRight
+                      className={`h-5 w-5 text-gray-400 transform transition-transform ${isCollectionExpanded ? 'rotate-90' : ''
                         }`}
-                      />
-                      <Layers className="ml-2 h-5 w-5 text-gray-500" />
-                      <h4 className="ml-3 text-sm font-semibold text-gray-900">
-                        {collection.name}
-                      </h4>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm text-gray-500">
-                        {collection.totalResults} result{collection.totalResults !== 1 ? 's' : ''} in{' '}
-                        {Object.keys(collection.documents).length} document{Object.keys(collection.documents).length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
+                    />
+                    <Layers className="ml-2 h-5 w-5 text-gray-500" />
+                    <h4 className="ml-3 text-sm font-semibold text-gray-900">
+                      {collection.name}
+                    </h4>
                   </div>
-                </div>
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm text-gray-500">
+                      {collection.totalResults} result{collection.totalResults !== 1 ? 's' : ''} in{' '}
+                      {Object.keys(collection.documents).length} document{Object.keys(collection.documents).length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </button>
 
                 {/* Documents in Collection */}
                 {isCollectionExpanded && (
                   <div className="divide-y divide-gray-200">
                     {Object.entries(collection.documents).map(([docId, doc]) => {
                       const isDocExpanded = expandedDocs.has(docId);
-                      const maxScore = Math.max(...doc.chunks.map(c => c.score));
-                      
+                      const maxScoreChunk = doc.chunks.reduce((prev, current) =>
+                        (prev.score > current.score) ? prev : current
+                      );
+
                       return (
                         <div key={docId} className="hover:bg-gray-50 transition-colors">
                           {/* Document Header */}
@@ -231,9 +233,8 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center flex-1">
                                 <ChevronRight
-                                  className={`h-4 w-4 text-gray-400 transform transition-transform ml-6 ${
-                                    isDocExpanded ? 'rotate-90' : ''
-                                  }`}
+                                  className={`h-4 w-4 text-gray-400 transform transition-transform ml-6 ${isDocExpanded ? 'rotate-90' : ''
+                                    }`}
                                 />
                                 <FileText className="ml-2 h-4 w-4 text-gray-400" />
                                 <div className="ml-3">
@@ -245,9 +246,30 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                   {doc.chunks.length} chunk{doc.chunks.length > 1 ? 's' : ''}
                                 </span>
-                                <span className="text-sm text-gray-500">
-                                  Max score: {maxScore.toFixed(3)}
-                                </span>
+                                {maxScoreChunk && (
+                                  <div className="flex items-center space-x-2 mt-2">
+                                    <span className={`
+                                      inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                      ${maxScoreChunk.score > 0.7 ? 'bg-green-100 text-green-800' :
+                                        maxScoreChunk.score > 0.5 ? 'bg-yellow-100 text-yellow-800' :
+                                          'bg-gray-100 text-gray-800'}
+                                    `}>
+                                      Score: {maxScoreChunk.score.toFixed(3)}
+                                    </span>
+
+                                    {maxScoreChunk.reranked_score !== undefined && maxScoreChunk.original_score !== undefined && (
+                                      <span className="text-xs text-gray-500" title="Original score before reranking">
+                                        (Original: {maxScoreChunk.original_score.toFixed(3)})
+                                      </span>
+                                    )}
+
+                                    {maxScoreChunk.embedding_model && (
+                                      <span className="text-xs text-gray-400 border border-gray-200 px-2 py-0.5 rounded">
+                                        {maxScoreChunk.embedding_model}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -257,11 +279,10 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                             <div className="bg-gray-50 border-t border-gray-200">
                               {doc.chunks.map((chunk, index) => (
                                 <div
-                                  key={chunk.chunk_id}
-                                  className={`px-6 py-4 hover:bg-gray-100 cursor-pointer transition-colors ${
-                                    index > 0 ? 'border-t border-gray-200' : ''
-                                  }`}
-                                  onClick={() => handleViewDocument(chunk.collection_id, docId, chunk.chunk_id)}
+                                  key={index}
+                                  className={`px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors ${index !== doc.chunks.length - 1 ? 'border-b border-gray-200' : ''
+                                    }`}
+                                  onClick={() => {/* TODO: Open chunk detail/context view */ }}
                                 >
                                   <p className="text-sm text-gray-700 line-clamp-3">{chunk.content}</p>
                                   <div className="mt-2 flex items-center justify-between">

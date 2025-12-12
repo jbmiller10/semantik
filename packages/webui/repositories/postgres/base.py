@@ -4,14 +4,14 @@ import logging
 from typing import Any, TypeVar
 
 from asyncpg.exceptions import ForeignKeyViolationError, UniqueViolationError
-from shared.database.exceptions import DatabaseOperationError, EntityAlreadyExistsError
-from sqlalchemy import func, insert, select
-from sqlalchemy import update as sql_update
+from sqlalchemy import func, insert, select, update as sql_update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.sql import Select
+
+from shared.database.exceptions import DatabaseOperationError, EntityAlreadyExistsError
 
 T = TypeVar("T", bound=DeclarativeBase)
 

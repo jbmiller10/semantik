@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import string
 
-from docker_setup_tui import (
-    FLOWER_PASSWORD_SYMBOLS,
-    MIN_FLOWER_PASSWORD_LENGTH,
-    generate_flower_credentials,
-)
+from docker_setup_tui import FLOWER_PASSWORD_SYMBOLS, MIN_FLOWER_PASSWORD_LENGTH, generate_flower_credentials
 
 
 def test_generate_flower_credentials_strength() -> None:

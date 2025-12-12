@@ -7,8 +7,8 @@ This module provides backward compatibility for tests that import CharacterChunk
 
 from typing import Any
 
-from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
-from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 
 class CharacterChunker(BaseChunker):
@@ -50,7 +50,8 @@ class CharacterChunker(BaseChunker):
             return False
 
         # Delegate to underlying chunker for other validation
-        return self._chunker.validate_config(config)
+        result: bool = self._chunker.validate_config(config)
+        return result
 
     def chunk_text(
         self,
@@ -59,7 +60,8 @@ class CharacterChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Synchronous chunking method."""
-        return self._chunker.chunk_text(text, doc_id, metadata)
+        result: list[ChunkResult] = self._chunker.chunk_text(text, doc_id, metadata)
+        return result
 
     async def chunk_text_async(
         self,
@@ -68,8 +70,10 @@ class CharacterChunker(BaseChunker):
         metadata: dict[str, Any] | None = None,
     ) -> list[ChunkResult]:
         """Asynchronous chunking method."""
-        return await self._chunker.chunk_text_async(text, doc_id, metadata)
+        result: list[ChunkResult] = await self._chunker.chunk_text_async(text, doc_id, metadata)
+        return result
 
     def estimate_chunks(self, text_length: int, config: dict[str, Any]) -> int:
         """Estimate number of chunks for capacity planning."""
-        return self._chunker.estimate_chunks(text_length, config)
+        result: int = self._chunker.estimate_chunks(text_length, config)
+        return result

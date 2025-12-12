@@ -19,17 +19,17 @@ from typing import TYPE_CHECKING, Any, cast
 
 import psutil
 
-from packages.shared.database.models import CollectionStatus
-from packages.webui.api.chunking_exceptions import ResourceType
-from packages.webui.middleware.correlation import get_correlation_id
+from shared.chunking.exceptions import ResourceType
+from shared.database.models import CollectionStatus
+from webui.middleware.correlation import get_correlation_id
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
-    from packages.shared.text_processing.base_chunker import ChunkResult
-    from packages.webui.utils.error_classifier import ErrorClassificationResult, ErrorClassifier
+    from shared.text_processing.base_chunker import ChunkResult
+    from webui.utils.error_classifier import ErrorClassificationResult, ErrorClassifier
 
 
 class ChunkingErrorType(Enum):
@@ -247,7 +247,7 @@ class ChunkingErrorHandler:
             error_classifier: Optional shared classifier instance. When not
                 provided the default chunking classifier will be used.
         """
-        from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+        from webui.utils.error_classifier import get_default_chunking_error_classifier
 
         self.retry_counts: dict[str, int] = {}
         self.redis_client = redis_client

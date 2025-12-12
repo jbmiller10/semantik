@@ -2,18 +2,39 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { operationsV2Api } from '../services/api/v2/collections';
-import { useOperationProgress } from '../hooks/useOperationProgress';
+
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
+import { useOperationsSocket } from '../hooks/useOperationsSocket';
+// Note: useOperationProgress removed - global useOperationsSocket handles all updates
 
-// Helper to safely get source_path from config
-function getSourcePath(config: Record<string, unknown> | undefined): string | null {
-  if (!config || !('source_path' in config)) return null;
-  const sourcePath = config.source_path;
-  return typeof sourcePath === 'string' ? sourcePath : null;
+/**
+ * Extract display source from operation config.
+ * Prefers source_config.path when present, falls back to source_path.
+ */
+function getSourceDisplay(config: Record<string, unknown> | undefined): string | null {
+  if (!config) return null;
+
+  // New format: source_config.path or source_config.url
+  if ('source_config' in config && typeof config.source_config === 'object' && config.source_config !== null) {
+    const sourceConfig = config.source_config as Record<string, unknown>;
+    if ('path' in sourceConfig && typeof sourceConfig.path === 'string') {
+      return sourceConfig.path;
+    }
+    if ('url' in sourceConfig && typeof sourceConfig.url === 'string') {
+      return sourceConfig.url;
+    }
+  }
+
+  // Legacy format: source_path
+  if ('source_path' in config && typeof config.source_path === 'string') {
+    return config.source_path;
+  }
+
+  return null;
 }
 
 function ActiveOperationsTab() {
@@ -37,12 +58,15 @@ function ActiveOperationsTab() {
 
   const shouldPollActiveOperations = pollingPreference ?? true;
 
+  // Use shared WebSocket for all operation updates
+  useOperationsSocket();
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['active-operations'],
     queryFn: async () => {
-      const response = await operationsV2Api.list({ 
+      const response = await operationsV2Api.list({
         status: 'processing,pending',
-        limit: 100 
+        limit: 100
       });
       return response.data;
     },
@@ -78,8 +102,8 @@ function ActiveOperationsTab() {
           <div className="ml-3">
             <p className="text-sm text-red-800">Failed to load active operations</p>
             <p className="text-xs text-red-600 mt-1">{errorMessage}</p>
-            <button 
-              onClick={() => refetch()} 
+            <button
+              onClick={() => refetch()}
               className="text-sm text-red-600 hover:text-red-500 mt-2 underline"
             >
               Try again
@@ -152,10 +176,8 @@ interface OperationListItemProps {
 }
 
 function OperationListItem({ operation, collectionName, onNavigateToCollection }: OperationListItemProps) {
-  // Connect to WebSocket for this operation's progress
-  // Only connect if the operation is active
-  const isActive = operation.status === 'processing' || operation.status === 'pending';
-  useOperationProgress(isActive ? operation.id : null, { showToasts: false });
+  // Progress updates handled by global useOperationsSocket in parent component
+  // Removed per-operation WebSocket to avoid exceeding connection limits
 
   const formatOperationType = (type: string) => {
     switch (type) {
@@ -217,17 +239,17 @@ function OperationListItem({ operation, collectionName, onNavigateToCollection }
                   </span>
                 </span>
                 {(() => {
-                  const sourcePath = getSourcePath(operation.config);
-                  return sourcePath ? (
-                    <span className="truncate max-w-xs" title={sourcePath}>
-                      {sourcePath}
+                  const sourceDisplay = getSourceDisplay(operation.config);
+                  return sourceDisplay ? (
+                    <span className="truncate max-w-xs" title={sourceDisplay}>
+                      {sourceDisplay}
                     </span>
                   ) : null;
                 })()}
               </div>
             </div>
           </div>
-          
+
           {/* Progress bar for processing operations */}
           {operation.status === 'processing' && operation.progress !== undefined && (
             <div className="mt-3">

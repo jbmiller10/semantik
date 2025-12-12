@@ -10,11 +10,11 @@ from enum import Enum
 from re import Pattern
 from typing import Any
 
-from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
-from packages.shared.text_processing.base_chunker import BaseChunker, ChunkResult
+from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+from shared.text_processing.base_chunker import BaseChunker, ChunkResult
 
 # Add ChunkingFactory for test compatibility
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from shared.text_processing.chunking_factory import ChunkingFactory
 
 
 # Mock functions for ReDoS protection tests
@@ -267,10 +267,10 @@ class HybridChunker(BaseChunker):
 
         # Fall back to UnifiedChunkingFactory only if ChunkingFactory failed normally
         try:
-            from packages.shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
+            from shared.chunking.unified.factory import TextProcessingStrategyAdapter, UnifiedChunkingFactory
 
             unified_strategy = UnifiedChunkingFactory.create_strategy(strategy, use_llama_index=True)
-            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))  # type: ignore[assignment]
+            chunker = TextProcessingStrategyAdapter(unified_strategy, **(params or {}))
             self._chunker_cache[cache_key] = chunker
             return chunker
         except Exception as e:
@@ -308,7 +308,8 @@ class HybridChunker(BaseChunker):
                     return False
 
             # Delegate to underlying chunker for other validations
-            return self._chunker.validate_config(config)
+            result: bool = self._chunker.validate_config(config)
+            return result
         except Exception:
             return False
 
@@ -379,7 +380,8 @@ class HybridChunker(BaseChunker):
                         )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
-            return chunks
+            result: list[ChunkResult] = chunks
+            return result
 
         except Exception as e:
             # Strategy failed, use fallback
@@ -411,7 +413,8 @@ class HybridChunker(BaseChunker):
                             original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
                         )
 
-                return chunks
+                result_fallback: list[ChunkResult] = chunks
+                return result_fallback
 
             except Exception as fallback_error:
                 # Emergency: create single chunk
@@ -466,7 +469,8 @@ class HybridChunker(BaseChunker):
                         )
                         chunk.metadata["hybrid_strategy_reasoning"] = reasoning
 
-            return chunks
+            result_async: list[ChunkResult] = chunks
+            return result_async
 
         except Exception as e:
             # Strategy failed, use fallback
@@ -498,7 +502,8 @@ class HybridChunker(BaseChunker):
                             original_strategy.value if hasattr(original_strategy, "value") else str(original_strategy)
                         )
 
-                return chunks
+                result_async_fallback: list[ChunkResult] = chunks
+                return result_async_fallback
 
             except Exception as fallback_error:
                 # Emergency: create single chunk
@@ -507,7 +512,7 @@ class HybridChunker(BaseChunker):
 
     def _emergency_single_chunk(self, text: str, doc_id: str, original_strategy: ChunkingStrategy) -> list[ChunkResult]:
         """Create a single emergency chunk when all strategies fail."""
-        from packages.shared.text_processing.base_chunker import ChunkResult
+        from shared.text_processing.base_chunker import ChunkResult
 
         emergency_chunk = ChunkResult(
             chunk_id=f"{doc_id}_0000",

@@ -6,8 +6,8 @@ This module defines the core chunk entity with its business logic and invariants
 """
 
 
-from packages.shared.chunking.domain.exceptions import ChunkSizeViolationError, InvalidChunkError
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.domain.exceptions import ChunkSizeViolationError, InvalidChunkError
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 
 class Chunk:
@@ -159,7 +159,8 @@ class Chunk:
         char_count = len(self._content)
         if char_count == 0:
             return 0.0
-        return self._metadata.token_count / char_count
+        result: float = self._metadata.token_count / char_count
+        return result
 
     def estimate_memory_usage(self) -> int:
         """
@@ -235,7 +236,8 @@ class Chunk:
         """Check equality based on chunk ID."""
         if not isinstance(other, Chunk):
             return False
-        return self._metadata.chunk_id == other._metadata.chunk_id
+        result: bool = self._metadata.chunk_id == other._metadata.chunk_id
+        return result
 
     def __hash__(self) -> int:
         """Hash based on chunk ID."""

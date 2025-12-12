@@ -41,7 +41,7 @@ describe('searchStore', () => {
         scoreThreshold: 0.0,
         searchType: 'vector',
         useReranker: false,
-        hybridMode: 'rerank',
+        hybridMode: 'weighted',
         keywordMode: 'any',
         rerankModel: undefined,
         rerankQuantization: undefined,
@@ -149,7 +149,7 @@ describe('searchStore', () => {
         scoreThreshold: 0.0,
         searchType: 'vector',
         useReranker: false,
-        hybridMode: 'rerank',
+        hybridMode: 'weighted',
         keywordMode: 'any',
       })
     })

@@ -2,7 +2,7 @@
 
 Historically the service layer accessed strategy metadata through this module.
 The canonical definitions now live in
-``packages.webui.services.chunking.strategy_registry``; this wrapper forwards
+``webui.services.chunking.strategy_registry``; this wrapper forwards
 calls to the centralized helpers while preserving the original interface and
 test surface.
 """
@@ -12,14 +12,14 @@ from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Any
 
-from packages.webui.services.chunking.strategy_registry import (
+from webui.services.chunking.strategy_registry import (
     build_metadata_by_enum,
     get_strategy_definition,
     recommend_strategy,
 )
 
 if TYPE_CHECKING:
-    from packages.webui.api.v2.chunking_schemas import ChunkingStrategy
+    from webui.api.v2.chunking_schemas import ChunkingStrategy
 
 
 class ChunkingStrategyRegistry:

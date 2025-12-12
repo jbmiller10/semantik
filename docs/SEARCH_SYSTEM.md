@@ -1,29 +1,33 @@
 # Semantik - Search Architecture Documentation
 
 ## Table of Contents
-1. [Search System Overview](#search-system-overview)
-2. [Unified Search Implementation](#unified-search-implementation)
-3. [Search API Implementation](#search-api-implementation)
-4. [Hybrid Search](#hybrid-search)
-5. [Embedding Search](#embedding-search)
-6. [Qwen3 Search Optimization](#qwen3-search-optimization)
-7. [Batch Search](#batch-search)
-8. [Search Types](#search-types)
-9. [Search Configuration](#search-configuration)
-10. [Search Validation](#search-validation)
-11. [Performance Analysis](#performance-analysis)
-12. [Usage Examples](#usage-examples)
+1. [Search System Overview](#1-search-system-overview)
+2. [Unified Search Implementation](#2-unified-search-implementation)
+3. [Search API Implementation](#3-search-api-implementation)
+   - [3.5 WebUI Search API v2 Endpoints](#35-webui-search-api-v2-endpoints)
+4. [Hybrid Search](#4-hybrid-search)
+5. [Embedding Search](#5-embedding-search)
+   - [Embedding Provider Plugin Architecture](#embedding-provider-plugin-architecture)
+6. [Qwen3 Search Optimization](#6-qwen3-search-optimization)
+7. [Batch Search](#7-batch-search)
+8. [Search Types](#8-search-types)
+9. [Search Configuration](#9-search-configuration)
+   - [9.5 Qdrant Configuration Recommendations](#95-qdrant-configuration-recommendations)
+10. [Search Validation](#10-search-validation)
+11. [Performance Analysis](#11-performance-analysis)
+12. [Usage Examples](#12-usage-examples)
+13. [Error Handling](#13-error-handling)
 
 ## 1. Search System Overview
 
-Semantik implements a sophisticated search architecture that combines vector similarity search with keyword-based search capabilities. The system is designed for high performance, scalability, and flexibility.
+Semantik combines vector similarity search with keyword-based search. Fast, scalable, and flexible.
 
 ### Architecture Design
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Frontend UI   │────▶│  WebUI Search   │────▶│  Search API v2  │
-│  (React 19)     │     │    Service      │     │  (FastAPI)      │
+│  (React 19.1)   │     │    Service      │     │  (FastAPI)      │
 └─────────────────┘     └─────────────────┘     └────────┬────────┘
                                                           │
                                                           ▼
@@ -70,13 +74,13 @@ Semantik implements a sophisticated search architecture that combines vector sim
 
 ### Key Features
 
-- **High Performance**: Optimized for low-latency search with lazy model loading and connection pooling
-- **Flexible Search Types**: Vector, hybrid, keyword-only, and cross-encoder reranked search
-- **Model Agnostic**: Support for multiple embedding models with automatic selection
-- **Quantization Support**: float32, float16, and int8 quantization for memory efficiency
-- **Collection-Centric**: Each collection maintains its own embedding model metadata
-- **Reranking**: Optional two-stage retrieval with cross-encoder reranking for 20%+ relevance improvement
-- **Monitoring**: Comprehensive Prometheus metrics for observability
+- Low-latency search with lazy model loading and connection pooling
+- Vector, hybrid, keyword-only, and cross-encoder reranked search
+- Multiple embedding models with automatic selection
+- float32, float16, and int8 quantization
+- Collection-centric design with embedded model metadata
+- Optional cross-encoder reranking (20%+ relevance improvement)
+- Prometheus metrics
 
 ### Performance Characteristics
 
@@ -132,7 +136,7 @@ def parse_search_results(qdrant_results: list[dict]) -> list[dict]:
 
 ## 3. Search API Implementation
 
-The search API (`vecpipe/search_api.py`) provides a RESTful interface for all search operations.
+The search API is implemented using FastAPI's router-based architecture in `packages/vecpipe/search/router.py`, with business logic in `packages/vecpipe/search/service.py`.
 
 ### API Endpoints
 
@@ -140,18 +144,27 @@ The search API (`vecpipe/search_api.py`) provides a RESTful interface for all se
 Primary search endpoint supporting multiple search types.
 
 ```python
-@app.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse)
 async def search_post(request: SearchRequest):
     """
     Parameters:
-    - query: Search query text
-    - k: Number of results (1-100)
-    - search_type: semantic, question, code, hybrid
+    - query: Search query text (required, 1-1000 chars)
+    - k: Number of results (1-100), alias: top_k
+    - search_type: semantic, question, code, hybrid, vector
+      Note: "vector" is mapped to "semantic" for backward compatibility
     - model_name: Override embedding model
-    - quantization: Override quantization
+    - quantization: Override quantization (float32, float16, int8)
     - collection: Target collection name
+    - operation_uuid: Operation UUID for collection inference
     - filters: Metadata filters
-    - include_content: Include chunk content
+    - include_content: Include chunk content in results
+    - use_reranker: Enable cross-encoder reranking
+    - rerank_model: Override reranker model
+    - rerank_quantization: Override reranker quantization
+    - score_threshold: Minimum score threshold (0.0-1.0)
+    - hybrid_alpha: Vector vs keyword weight (0.0-1.0, default 0.7)
+    - hybrid_mode: 'filter' or 'weighted'
+    - keyword_mode: 'any' or 'all'
     """
 ```
 
@@ -159,17 +172,37 @@ async def search_post(request: SearchRequest):
 Specialized endpoint for hybrid search combining vector and keyword matching.
 
 ```python
-@app.get("/hybrid_search", response_model=HybridSearchResponse)
+@router.get("/hybrid_search", response_model=HybridSearchResponse)
 async def hybrid_search(
     q: str,
-    k: int,
-    collection: str,
-    mode: str = "filter",  # filter or rerank
+    k: int = 10,
+    collection: str | None = None,
+    mode: str = "filter",  # filter or weighted
     keyword_mode: str = "any",  # any or all
-    score_threshold: float = None,
+    score_threshold: float | None = None,
+    model_name: str | None = None,
+    quantization: str | None = None,
 ):
     """
-    Hybrid search with keyword filtering or reranking
+    Hybrid search with keyword filtering or weighted blending.
+    Supports model_name and quantization overrides.
+    """
+```
+
+#### GET `/keyword_search`
+Keyword-only search without vector similarity.
+
+```python
+@router.get("/keyword_search", response_model=HybridSearchResponse)
+async def keyword_search(
+    q: str,
+    k: int = 10,
+    collection: str | None = None,
+    mode: str = "any",  # any or all keyword matching
+):
+    """
+    Pure keyword-based search without vector embeddings.
+    Returns results matching the extracted keywords.
     """
 ```
 
@@ -177,15 +210,43 @@ async def hybrid_search(
 Batch processing for multiple queries.
 
 ```python
-@app.post("/search/batch", response_model=BatchSearchResponse)
+@router.post("/search/batch", response_model=BatchSearchResponse)
 async def batch_search(request: BatchSearchRequest):
     """
     Process multiple search queries in parallel
     - Efficient batch embedding generation
     - Parallel Qdrant queries
     - Consolidated response
+    - Up to 100 queries per batch
     """
 ```
+
+### Additional Endpoints
+
+#### Health and Status Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Health check with collection info and embedding status |
+| `/health` | GET | Comprehensive health check with component status |
+| `/model/status` | GET | Current model manager status |
+| `/collection/info` | GET | Detailed collection information |
+
+#### Model Management Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/models` | GET | List available embedding models with provider info |
+| `/models/load` | POST | Explicitly load a specific model (eager loading) |
+| `/models/suggest` | GET | Suggest optimal model based on GPU memory |
+| `/embedding/info` | GET | Current embedding configuration and status |
+
+#### Embedding and Vector Operations
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/embed` | POST | Generate embeddings for a batch of texts |
+| `/upsert` | POST | Upsert vector points into Qdrant |
 
 ### Key Features
 
@@ -195,53 +256,47 @@ async def batch_search(request: BatchSearchRequest):
 - **Metrics**: Prometheus metrics for all operations
 - **Mock Mode**: Development mode with simulated embeddings
 
-## 3.5. Search API v2 Endpoints
+## 3.5. WebUI Search API v2 Endpoints
 
-The Search API v2 provides enhanced functionality for collection-based search operations.
+The WebUI v2 search API adds multi-collection search and proxies requests to the Vecpipe Search API.
 
 ### Core Endpoints
 
-#### POST `/api/v2/search/collections/{collection_id}`
-Enhanced search with reranking support:
+#### POST `/api/v2/search`
+Search across multiple collections (up to 10) with optional reranking and hybrid scoring:
+
 ```python
+# CollectionSearchRequest schema
 {
-    "query": "search query",
-    "top_k": 10,
-    "search_type": "semantic",  # semantic, question, code, hybrid
-    "filters": {
-        "metadata_field": "value"
-    },
-    "use_reranker": true,
-    "rerank_model": "auto",  # auto-selects based on embedding model
-    "include_content": true,
-    "score_threshold": 0.5
+    "collection_uuids": ["uuid-1", "uuid-2"],  # Required, 1-10 UUIDs
+    "query": "search query",                    # Required, 1-1000 chars
+    "k": 20,                                    # 1-100, default 10
+    "search_type": "semantic",                  # semantic, question, code, hybrid
+    "use_reranker": True,                       # default True
+    "rerank_model": None,                       # Optional reranker override
+    "score_threshold": 0.5,                     # 0.0-1.0, default 0.0
+    "metadata_filter": {"mime_type": "text/markdown"},
+    "include_content": True,                    # default True
+    "hybrid_alpha": 0.7,                        # Vector vs keyword weight (0-1)
+    "hybrid_mode": "weighted",                  # 'filter' or 'weighted'
+    "keyword_mode": "any"                       # 'any' or 'all'
 }
 ```
 
-#### POST `/api/v2/search/hybrid/{collection_id}`
-Hybrid search with keyword and vector matching:
-```python
-{
-    "query": "machine learning algorithms",
-    "top_k": 20,
-    "hybrid_mode": "filter",  # filter or rerank
-    "keyword_mode": "any",    # any or all
-    "hybrid_alpha": 0.7,      # weight for vector score (0-1)
-    "use_reranker": false
-}
-```
+#### POST `/api/v2/search/single`
+Single collection search (backward compatibility for older clients):
 
-#### POST `/api/v2/search/batch`
-Batch search across multiple queries:
 ```python
+# SingleCollectionSearchRequest schema
 {
-    "collection_id": "uuid-here",
-    "queries": [
-        {"query": "query1", "top_k": 5},
-        {"query": "query2", "top_k": 10}
-    ],
-    "search_type": "semantic",
-    "model_override": null  # uses collection's model
+    "collection_id": "uuid-here",  # Required UUID
+    "query": "search query",       # Required, 1-1000 chars
+    "k": 10,                       # 1-100, default 10
+    "search_type": "semantic",     # semantic, question, code, hybrid
+    "use_reranker": False,         # default False
+    "score_threshold": 0.0,        # 0.0-1.0
+    "metadata_filter": None,       # Optional metadata filters
+    "include_content": True        # default True
 }
 ```
 
@@ -334,34 +389,54 @@ class HybridSearchEngine:
 
 ## 5. Embedding Search
 
-The embedding search system is powered by the `EmbeddingService` and `ModelManager`.
+The embedding search system is powered by the plugin-aware `ModelManager` and the `EmbeddingProviderFactory`.
 
 ### Model Manager
 
+The `ModelManager` (`packages/vecpipe/model_manager.py`) manages embedding model lifecycle using the plugin-aware provider system:
+
 ```python
 class ModelManager:
-    """Manages embedding model lifecycle with lazy loading"""
-    
-    def ensure_model_loaded(self, model_name: str, quantization: str) -> bool:
-        """Load model if not already loaded"""
-    
+    """Manages embedding model lifecycle with lazy loading.
+
+    Uses EmbeddingProviderFactory for auto-detection of appropriate
+    providers, enabling support for built-in and third-party plugins.
+    """
+
+    def __init__(self, unload_after_seconds: int = 300):
+        """Initialize with configurable unload timeout (default 5 min)"""
+
     async def generate_embedding_async(
-        self, text: str, model_name: str, 
-        quantization: str, instruction: str = None
-    ) -> list:
-        """Generate embedding with automatic model management"""
-    
-    def unload_model(self):
-        """Unload model to free memory"""
+        self, text: str, model_name: str,
+        quantization: str, instruction: str = None,
+        mode: str = None  # 'query' or 'document'
+    ) -> list[float]:
+        """Generate embedding with automatic model management.
+
+        Args:
+            mode: Embedding mode - 'query' for search queries,
+                  'document' for indexing. Affects prefix handling.
+        """
+
+    async def generate_embeddings_batch_async(
+        self, texts: list[str], model_name: str,
+        quantization: str, instruction: str = None,
+        batch_size: int = 32, mode: str = None
+    ) -> list[list[float]]:
+        """Generate embeddings for multiple texts efficiently"""
+
+    async def unload_model_async(self):
+        """Unload model to free memory (async)"""
 ```
 
 ### Key Features
 
 - **Lazy Loading**: Models loaded only when needed
-- **Automatic Unloading**: After 5 minutes of inactivity
-- **Memory Management**: Aggressive garbage collection
+- **Automatic Unloading**: After 5 minutes of inactivity (configurable)
+- **Memory Management**: Aggressive garbage collection and GPU cache clearing
 - **GPU Support**: CUDA acceleration when available
-- **Quantization**: Dynamic quantization support
+- **Quantization**: Dynamic quantization support (float32, float16, int8)
+- **Plugin Support**: Auto-detection of appropriate provider via factory
 
 ### Embedding Generation Process
 
@@ -370,6 +445,102 @@ class ModelManager:
 3. **Tokenization**: Model-specific tokenization
 4. **Embedding**: Generate dense vectors
 5. **Normalization**: L2 normalization for cosine similarity
+
+### Embedding Provider Plugin Architecture
+
+Semantik uses a plugin-based architecture for embedding providers, allowing both built-in and third-party providers.
+
+#### Core Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `EmbeddingProviderFactory` | `packages/shared/embedding/factory.py` | Central dispatch for creating providers |
+| `BaseEmbeddingPlugin` | `packages/shared/embedding/plugin_base.py` | Abstract base class for all providers |
+| `EmbeddingProviderDefinition` | `packages/shared/embedding/plugin_base.py` | Provider metadata definition |
+| `plugin_loader.py` | `packages/shared/embedding/plugin_loader.py` | Entry point discovery |
+
+#### Factory Pattern
+
+```python
+from shared.embedding.factory import EmbeddingProviderFactory
+
+# Auto-detect provider for a model
+provider = EmbeddingProviderFactory.create_provider("Qwen/Qwen3-Embedding-0.6B")
+
+# Create provider by explicit name
+provider = EmbeddingProviderFactory.create_provider_by_name("dense_local")
+
+# Check if model is supported
+is_supported = EmbeddingProviderFactory.is_model_supported("my-model")
+
+# List available providers
+providers = EmbeddingProviderFactory.list_available_providers()
+```
+
+#### Built-in Providers
+
+| Provider | Internal Name | Description |
+|----------|---------------|-------------|
+| `DenseLocalEmbeddingProvider` | `dense_local` | Local models via sentence-transformers, supports Qwen |
+| `MockEmbeddingProvider` | `mock` | Deterministic embeddings for testing |
+
+#### Third-Party Plugin Registration
+
+Plugins are discovered via Python entry points in `pyproject.toml`:
+
+```toml
+[project.entry-points."semantik.embedding_providers"]
+my_provider = "my_package.embedding:MyEmbeddingProvider"
+```
+
+#### Asymmetric Embedding Modes
+
+Many retrieval models need different processing for queries vs documents:
+
+```python
+from shared.embedding.types import EmbeddingMode
+
+# For search queries - applies query-specific prefixes/instructions
+embeddings = await provider.embed_texts(texts, mode=EmbeddingMode.QUERY)
+
+# For document indexing - typically no prefix
+embeddings = await provider.embed_texts(texts, mode=EmbeddingMode.DOCUMENT)
+```
+
+**Mode behavior by model type:**
+- **E5 models**: `"query: {text}"` vs `"passage: {text}"`
+- **BGE models**: Instruction prefix for queries, none for documents
+- **Qwen models**: `"Instruct: {task}\nQuery:{text}"` vs raw text
+
+#### Creating a Custom Provider
+
+```python
+from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
+
+class MyEmbeddingProvider(BaseEmbeddingPlugin):
+    INTERNAL_NAME = "my_provider"
+    API_ID = "my-provider"
+    PROVIDER_TYPE = "local"  # or "remote", "hybrid"
+
+    @classmethod
+    def get_definition(cls) -> EmbeddingProviderDefinition:
+        return EmbeddingProviderDefinition(
+            api_id="my-provider",
+            internal_id="my_provider",
+            display_name="My Custom Embeddings",
+            description="Custom embedding provider",
+            provider_type="local",
+            supports_asymmetric=True,
+        )
+
+    @classmethod
+    def supports_model(cls, model_name: str) -> bool:
+        return model_name.startswith("my-org/")
+
+    async def embed_texts(self, texts, mode=None, **kwargs):
+        # Implementation
+        pass
+```
 
 ## 6. Qwen3 Search Optimization
 
@@ -505,13 +676,22 @@ USE_MOCK_EMBEDDINGS=false
 DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
 DEFAULT_QUANTIZATION=float16
 
-# Model Management
-MODEL_UNLOAD_AFTER_SECONDS=300
-
 # Search Settings
 DEFAULT_COLLECTION=work_docs
 SEARCH_API_PORT=8000
 ```
+
+### Model Unloading Configuration
+
+The model unload timeout is configured in `ModelManager` with a default of 300 seconds (5 minutes). This is currently a hardcoded value in the `ModelManager.__init__` method, not an environment variable:
+
+```python
+class ModelManager:
+    def __init__(self, unload_after_seconds: int = 300):  # 5 minutes default
+        self.unload_after_seconds = unload_after_seconds
+```
+
+To customize this value, you would need to pass it when instantiating `ModelManager`.
 
 ### Collection Metadata
 
@@ -552,12 +732,15 @@ Collections store metadata about their creation:
 - **rerank_model**: Override reranker model selection
 - **rerank_quantization**: Override reranker quantization
 
-## 9.5. Qdrant Configuration Best Practices
+## 9.5. Qdrant Configuration Recommendations
 
-### HNSW Index Configuration
+Recommended settings for different use cases. Not system defaults - tune based on your needs.
+
+### Recommended HNSW Index Configuration
 
 ```python
-# Optimal HNSW parameters for different collection sizes
+# Recommended HNSW parameters for different collection sizes
+# Apply these when creating collections based on expected size
 {
     "small_collection": {  # < 100K vectors
         "hnsw_config": {
@@ -586,10 +769,10 @@ Collections store metadata about their creation:
 }
 ```
 
-### Memory Configuration
+### Recommended Memory Configuration
 
 ```python
-# Optimizer configuration for performance
+# Recommended optimizer configuration for performance
 {
     "optimizers_config": {
         "indexing_threshold": 20000,  # Build index after this many vectors
@@ -600,10 +783,10 @@ Collections store metadata about their creation:
 }
 ```
 
-### Storage Configuration
+### Recommended Storage Configuration
 
 ```python
-# On-disk vs in-memory configuration
+# Recommended on-disk vs in-memory configuration
 {
     "on_disk": True,  # Store vectors on disk for large collections
     "wal_config": {
@@ -799,15 +982,111 @@ response = requests.get(
 )
 ```
 
+## 13. Error Handling
+
+The search API provides comprehensive error handling with meaningful HTTP status codes and detailed error responses.
+
+### HTTP Status Codes
+
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 400 | Bad Request | Invalid request parameters, dimension mismatch |
+| 404 | Not Found | Collection not found |
+| 500 | Internal Server Error | Unexpected server errors |
+| 502 | Bad Gateway | Qdrant/vector database errors |
+| 503 | Service Unavailable | Embedding service errors, model not initialized |
+| 507 | Insufficient Storage | GPU out of memory for model loading |
+
+### Error Response Format
+
+All error responses include detailed information for debugging:
+
+```python
+# Dimension Mismatch Error (400)
+{
+    "detail": {
+        "error": "dimension_mismatch",
+        "message": "Query dimension 384 does not match collection dimension 1024",
+        "expected_dimension": 1024,
+        "actual_dimension": 384,
+        "suggestion": "Use the same model that was used to create the collection, or ensure the model outputs 1024-dimensional vectors"
+    }
+}
+
+# Insufficient Memory Error (507)
+{
+    "detail": {
+        "error": "insufficient_memory",
+        "message": "Cannot load reranker due to insufficient GPU memory",
+        "suggestion": "Try using a smaller model or different quantization (float16/int8)"
+    }
+}
+
+# Qdrant Error (502)
+{
+    "detail": "Vector database error"
+}
+
+# Embedding Service Error (503)
+{
+    "detail": "Embedding service error: Model manager not initialized. Check logs for details."
+}
+```
+
+### Error Categories
+
+#### Validation Errors (400)
+- **Dimension Mismatch**: Query embedding dimension does not match collection
+- **Invalid Parameters**: Invalid search type, k value out of range, etc.
+- **Invalid Collection UUID**: Malformed UUID format
+
+#### Resource Errors (404, 507)
+- **Collection Not Found**: Specified collection does not exist
+- **Insufficient Memory**: Not enough GPU memory to load model
+
+#### Service Errors (502, 503)
+- **Qdrant Unavailable**: Cannot connect to vector database
+- **Model Manager Not Initialized**: Embedding service not ready
+- **Model Load Failure**: Failed to load embedding or reranker model
+
+### Error Handling Best Practices
+
+1. **Check Response Status**: Always verify HTTP status code before parsing response
+2. **Parse Error Details**: Error responses include `detail` field with specifics
+3. **Implement Retries**: For 502/503 errors, implement exponential backoff
+4. **Validate Dimensions**: Ensure embedding model matches collection configuration
+5. **Monitor Memory**: Use `/models/suggest` endpoint to check GPU memory before loading large models
+
+### Example Error Handling
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/search",
+    json={"query": "test", "k": 10}
+)
+
+if response.status_code == 200:
+    results = response.json()
+elif response.status_code == 400:
+    error = response.json()["detail"]
+    if error.get("error") == "dimension_mismatch":
+        print(f"Dimension mismatch: expected {error['expected_dimension']}")
+elif response.status_code == 507:
+    print("GPU out of memory - try a smaller model")
+elif response.status_code >= 500:
+    print(f"Server error: {response.status_code}")
+```
+
 ## Conclusion
 
-Semantik's search architecture provides a robust, scalable, and flexible solution for semantic search. With support for multiple search types, advanced hybrid search capabilities, and comprehensive optimization for modern embedding models like Qwen3, the system is well-suited for production deployments requiring high-performance search functionality.
+Key strengths:
+- Multiple search types (vector, hybrid, keyword, reranked)
+- Plugin-based embedding providers
+- Lazy loading and quantization for efficiency
+- Prometheus monitoring
+- Asymmetric embedding support (query vs document)
+- Production-ready error handling
 
-Key strengths include:
-- Flexible architecture supporting various search paradigms
-- Performance optimization through lazy loading and quantization
-- Comprehensive monitoring and observability
-- Easy integration with existing systems
-- Production-ready error handling and fallbacks
-
-The modular design allows for easy extension and customization while maintaining high performance and reliability.
+Modular design makes it easy to extend while keeping performance high.

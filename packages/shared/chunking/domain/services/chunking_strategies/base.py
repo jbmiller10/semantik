@@ -9,8 +9,8 @@ ensuring consistency across different chunking approaches.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
 class ChunkingStrategy(ABC):

@@ -1,17 +1,21 @@
 """
 Chunking configuration manager service.
 
-Handles strategy configuration, defaults, and recommendations.
+Handles strategy configuration, defaults, and recommendations while owning the
+persistent store for user-defined configurations.
 """
 
 import logging
 from typing import Any
 
-from packages.webui.services.chunking.strategy_registry import (
+from shared.database.models import ChunkingConfigProfile
+from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
+from webui.services.chunking.strategy_registry import (
     get_strategy_defaults,
     get_strategy_metadata,
     list_api_strategy_ids,
 )
+from webui.services.dtos.chunking_dtos import ServiceSavedConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +23,11 @@ logger = logging.getLogger(__name__)
 class ChunkingConfigManager:
     """Service responsible for chunking configuration management."""
 
-    def __init__(self) -> None:
+    def __init__(self, profile_repo: ChunkingConfigProfileRepository | None = None) -> None:
         """Initialize the configuration manager."""
+
         self.custom_configs: dict[str, dict[str, Any]] = {}
+        self.profile_repo = profile_repo
 
     def get_default_config(self, strategy: str) -> dict[str, Any]:
         """
@@ -33,7 +39,8 @@ class ChunkingConfigManager:
         Returns:
             Default configuration dictionary
         """
-        return get_strategy_defaults(strategy, context="manager")
+        result: dict[str, Any] = get_strategy_defaults(strategy, context="manager")
+        return result
 
     def get_strategy_info(self, strategy: str) -> dict[str, Any]:
         """
@@ -58,7 +65,12 @@ class ChunkingConfigManager:
         Returns:
             List of strategy information dictionaries
         """
-        return [self.get_strategy_info(strategy_id) for strategy_id in list_api_strategy_ids()]
+        strategies = []
+        for strategy_id in list_api_strategy_ids():
+            info = self.get_strategy_info(strategy_id)
+            # Include plugin strategies in listings; flag is_plugin already set in metadata
+            strategies.append(info)
+        return strategies
 
     def merge_configs(
         self,
@@ -183,6 +195,73 @@ class ChunkingConfigManager:
                 suggested_config["chunk_overlap"] = 100
 
         return recommendation
+
+    async def save_user_config(
+        self,
+        *,
+        user_id: int,
+        name: str,
+        strategy: str,
+        config: dict[str, Any],
+        description: str | None = None,
+        is_default: bool = False,
+        tags: list[str] | None = None,
+    ) -> ServiceSavedConfiguration:
+        """Persist a configuration profile for the user."""
+
+        if not self.profile_repo:
+            raise RuntimeError("ChunkingConfigManager missing profile_repo for persistence")
+
+        profile = await self.profile_repo.upsert_profile(
+            user_id=user_id,
+            name=name,
+            strategy=strategy,
+            config=config,
+            description=description,
+            is_default=is_default,
+            tags=tags,
+        )
+
+        if profile.is_default:
+            await self.profile_repo.increment_usage(profile.id)
+
+        return self._profile_to_dto(profile)
+
+    async def list_user_configs(
+        self,
+        *,
+        user_id: int,
+        strategy: str | None = None,
+        is_default: bool | None = None,
+    ) -> list[ServiceSavedConfiguration]:
+        """List saved configuration profiles for a user."""
+
+        if not self.profile_repo:
+            return []
+
+        profiles = await self.profile_repo.list_profiles(
+            user_id=user_id,
+            strategy=strategy,
+            is_default=is_default,
+        )
+        return [self._profile_to_dto(profile) for profile in profiles]
+
+    def _profile_to_dto(self, profile: ChunkingConfigProfile) -> ServiceSavedConfiguration:
+        """Convert ORM profile row to service DTO."""
+
+        return ServiceSavedConfiguration(
+            id=str(profile.id),
+            name=profile.name,
+            description=profile.description,
+            strategy=profile.strategy,
+            config=dict(profile.config or {}),
+            created_by=profile.created_by,
+            created_at=profile.created_at,
+            updated_at=profile.updated_at,
+            usage_count=profile.usage_count or 0,
+            is_default=bool(profile.is_default),
+            tags=list(profile.tags or []),
+        )
 
     def get_alternative_strategies(self, primary_strategy: str) -> list[dict[str, str]]:
         """

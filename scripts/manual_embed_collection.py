@@ -15,13 +15,14 @@ sys.path.insert(0, "/home/dockertest/semantik/packages")
 
 import httpx
 from qdrant_client.models import PointStruct
+from sqlalchemy import select
+
 from shared.chunking.token_chunker import TokenChunker
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
 from shared.database.models import Collection, Document, DocumentStatus
 from shared.database.qdrant_manager import qdrant_manager
 from shared.text_extraction.text_extractor import extract_text_and_serialize
-from sqlalchemy import select
 
 
 async def process_document(document: Document, collection: Collection, session: Any) -> bool:
@@ -85,6 +86,7 @@ async def process_document(document: Document, collection: Collection, session: 
             "quantization": collection.quantization or "float16",
             "instruction": None,
             "batch_size": 32,
+            "mode": "document",  # Document indexing uses document mode
         }
 
         print(f"  Generating embeddings for {len(texts)} chunks...")

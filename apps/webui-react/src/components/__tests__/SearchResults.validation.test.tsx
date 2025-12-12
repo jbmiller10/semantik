@@ -26,7 +26,7 @@ const createSearchStoreMock = (overrides?: Partial<ReturnType<typeof useSearchSt
     searchType: 'semantic' as const,
     useReranker: false,
     hybridAlpha: 0.7,
-    hybridMode: 'rerank' as const,
+    hybridMode: 'weighted' as const,
     keywordMode: 'any' as const,
   },
   collections: [],
@@ -123,7 +123,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -176,7 +176,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -237,7 +237,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -271,7 +271,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -295,7 +295,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -332,7 +332,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -363,7 +363,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -393,7 +393,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -446,7 +446,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -502,7 +502,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -546,7 +546,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: false,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })
@@ -615,7 +615,7 @@ describe('Search Results - Validation and Partial Failure Handling', () => {
           searchType: 'semantic',
           useReranker: true,
           hybridAlpha: 0.7,
-          hybridMode: 'rerank',
+          hybridMode: 'weighted',
           keywordMode: 'any'
         }
       })

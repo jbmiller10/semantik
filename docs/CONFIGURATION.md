@@ -1,37 +1,13 @@
 # Configuration Guide
 
-This guide covers all configuration options for Semantik, including environment variables, service configurations, and runtime settings.
+## Quick Start
 
-## Docker Configuration (Recommended)
-
-When using Docker Compose, configuration is simplified through the `.env` file and docker-compose.yml.
-
-### Quick Setup
-
-1. Copy the Docker environment template:
-   ```bash
-   cp .env.docker.example .env
-   ```
-
-2. Edit `.env` with your configuration (see sections below)
-
-3. Start services:
-   ```bash
-   make docker-up
-   ```
-
-### Interactive Setup Wizard
-
-For automated configuration:
 ```bash
-make wizard
+# Copy template and run wizard
+cp .env.docker.example .env
+make wizard  # Auto-detects GPU, generates secrets, creates dirs
+make docker-up
 ```
-
-The wizard will:
-- Detect GPU availability
-- Generate secure passwords
-- Configure optimal settings
-- Create necessary directories
 
 ## Environment Variables
 
@@ -90,7 +66,7 @@ CELERY_RESULT_BACKEND=redis://redis:6379/0  # Celery result backend
 #### Authentication & Security
 ```bash
 # JWT Configuration
-JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: openssl rand -hex 32
+JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: uv run python scripts/generate_jwt_secret.py --write
 JWT_ALGORITHM=HS256                                 # JWT signing algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES=1440                    # Access token expiration (24 hours)
 
@@ -258,21 +234,6 @@ POSTGRES_PASSWORD=${SECURE_DB_PASSWORD}
 
 ## Model Configuration Details
 
-### Task-Specific Instructions
-
-For Qwen3 models, use appropriate task instructions:
-
-```python
-# Document indexing
-instruction = "Represent this document for retrieval:"
-
-# Search queries
-instruction = "Represent this sentence for searching relevant passages:"
-
-# Question answering
-instruction = "Represent this question for retrieving supporting answers:"
-```
-
 ### Memory Requirements by Model
 
 | Model | float32 | float16 | int8 |
@@ -282,36 +243,16 @@ instruction = "Represent this question for retrieving supporting answers:"
 | BGE-large | ~1.4GB | ~0.7GB | ~0.35GB |
 | MiniLM | ~0.5GB | ~0.25GB | ~0.125GB |
 
-## Runtime Configuration
+## Runtime Examples
 
-### Collection Operations
-
-When creating collections or indexing documents:
-
+Collection creation:
 ```json
-{
-  "name": "my_collection",
-  "model_name": "Qwen/Qwen3-Embedding-0.6B",
-  "quantization": "float16",
-  "chunk_size": 512,
-  "chunk_overlap": 128
-}
+{"name": "docs", "model_name": "Qwen/Qwen3-Embedding-0.6B", "quantization": "float16"}
 ```
 
-### Search Configuration
-
-Configure search behavior per request:
-
+Search request:
 ```json
-{
-  "query": "search text",
-  "collection_id": "uuid",
-  "limit": 10,
-  "score_threshold": 0.7,
-  "search_type": "semantic",
-  "include_content": true,
-  "use_reranker": true
-}
+{"query": "...", "collection_id": "uuid", "limit": 10, "search_type": "hybrid"}
 ```
 
 ## Performance Tuning
@@ -358,7 +299,7 @@ DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 1. **Generate Secure Keys**
    ```bash
    # JWT Secret
-   export JWT_SECRET_KEY=$(openssl rand -hex 32)
+   export JWT_SECRET_KEY=$(uv run python scripts/generate_jwt_secret.py)
    
    # Database Password
    export POSTGRES_PASSWORD=$(openssl rand -hex 32)
@@ -461,7 +402,7 @@ docker compose run --rm webui alembic upgrade head
    ```bash
    # Error: JWT_SECRET_KEY not configured
    # Solution: Generate and set secret
-   export JWT_SECRET_KEY=$(openssl rand -hex 32)
+   export JWT_SECRET_KEY=$(uv run python scripts/generate_jwt_secret.py)
    ```
 
 2. **Database Connection Failed**
@@ -499,31 +440,14 @@ DEBUG=true
 SQLALCHEMY_ECHO=true
 ```
 
-## Configuration Best Practices
+## Best Practices
 
-1. **Use Environment Files**
-   - Keep `.env` files out of version control
-   - Use `.env.example` as templates
-   - Store secrets securely
+- Never commit `.env` files
+- Change all default passwords
+- Use strong JWT secrets (64+ chars)
+- Restrict CORS in production
+- Use GPU when available
+- Enable quantization to save memory
+- Use SSD for model cache
 
-2. **Resource Limits**
-   - Set appropriate batch sizes for your hardware
-   - Configure connection pools based on load
-   - Monitor memory usage
-
-3. **Security**
-   - Always change default passwords
-   - Use strong JWT secrets
-   - Enable HTTPS in production
-   - Restrict CORS origins
-
-4. **Performance**
-   - Use GPU when available
-   - Enable quantization for memory savings
-   - Configure appropriate worker counts
-   - Use SSD for model cache
-
-For more detailed information, see:
-- [DOCKER.md](./DOCKER.md) for Docker-specific configuration
-- [DEPLOYMENT.md](./DEPLOYMENT.md) for production settings
-- [INFRASTRUCTURE.md](./INFRASTRUCTURE.md) for architecture details
+See also: [DOCKER.md](./DOCKER.md), [DEPLOYMENT.md](./DEPLOYMENT.md)

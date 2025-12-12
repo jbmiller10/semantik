@@ -9,10 +9,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.services.collection_service import CollectionService
 from webui.services.directory_scan_service import DirectoryScanService
 from webui.services.document_scanning_service import DocumentScanningService

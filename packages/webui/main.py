@@ -1,54 +1,68 @@
-"""
-Main entry point for Document Embedding Web UI
-Creates and configures the FastAPI application
-"""
+"""Main entry point for Document Embedding Web UI."""
 
+from __future__ import annotations
+
+# ruff: noqa: E402
 import logging
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator  # noqa: TCH003
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+# Ensure repo-local packages are importable when running this file directly.
+WEBUI_DIR = Path(__file__).resolve().parent
+PACKAGES_DIR = WEBUI_DIR.parent
+REPO_ROOT = PACKAGES_DIR.parent
+for path in (PACKAGES_DIR, REPO_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+# When executed directly (not via -m), set __package__ so relative imports work.
+# Preserve interpreter-provided values like "packages.webui" when running
+# with ``python -m packages.webui.main`` to avoid breaking absolute imports.
+if __name__ == "__main__" and not __package__:
+    __package__ = "webui"
+
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
-from starlette.requests import Request
-from starlette.responses import Response
-
-# Add parent directory to path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+from starlette.requests import Request  # noqa: TCH002
+from starlette.responses import Response  # noqa: TCH002
 
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.config.runtime import ensure_webui_directories, require_jwt_secret
 from shared.database import pg_connection_manager
 from shared.embedding import configure_global_embedding_service
 
+from .api import auth, health, internal, metrics, models, root, settings
+from .api.chunking_exception_handlers import register_chunking_exception_handlers
+from .api.v2 import (
+    chunking as v2_chunking,
+    collections as v2_collections,
+    directory_scan as v2_directory_scan,
+    documents as v2_documents,
+    embedding as v2_embedding,
+    operations as v2_operations,
+    partition_monitoring as v2_partition_monitoring,
+    projections as v2_projections,
+    search as v2_search,
+    system as v2_system,
+)
+from .api.v2.directory_scan import directory_scan_websocket
+from .api.v2.operations import operation_websocket, operation_websocket_global
+from .background_tasks import start_background_tasks, stop_background_tasks
+from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation
+from .middleware.csp import CSPMiddleware
+from .middleware.exception_handlers import register_global_exception_handlers
+from .middleware.rate_limit import RateLimitMiddleware
+from .rate_limiter import limiter, rate_limit_exceeded_handler
+from .websocket.scalable_manager import scalable_ws_manager as ws_manager
+
 logger = logging.getLogger(__name__)
-
-from .api import auth, health, internal, metrics, models, root, settings  # noqa: E402
-from .api.chunking_exception_handlers import register_chunking_exception_handlers  # noqa: E402
-from .api.v2 import chunking as v2_chunking  # noqa: E402
-from .api.v2 import collections as v2_collections  # noqa: E402
-from .api.v2 import directory_scan as v2_directory_scan  # noqa: E402
-from .api.v2 import documents as v2_documents  # noqa: E402
-from .api.v2 import operations as v2_operations  # noqa: E402
-from .api.v2 import partition_monitoring as v2_partition_monitoring  # noqa: E402
-from .api.v2 import search as v2_search  # noqa: E402
-from .api.v2 import system as v2_system  # noqa: E402
-from .api.v2.directory_scan import directory_scan_websocket  # noqa: E402
-from .api.v2.operations import operation_websocket  # noqa: E402
-from .background_tasks import start_background_tasks, stop_background_tasks  # noqa: E402
-from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation  # noqa: E402
-from .middleware.csp import CSPMiddleware  # noqa: E402
-from .middleware.exception_handlers import register_global_exception_handlers  # noqa: E402
-from .middleware.rate_limit import RateLimitMiddleware  # noqa: E402
-from .rate_limiter import limiter, rate_limit_exceeded_handler  # noqa: E402
-
-# Use the scalable WebSocket manager for horizontal scaling
-from .websocket.scalable_manager import scalable_ws_manager as ws_manager  # noqa: E402
 
 
 def rate_limit_handler(request: Request, exc: Exception) -> Response:
@@ -138,6 +152,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Configure logging with correlation support
     configure_logging_with_correlation()
     logger.info("Logging configured with correlation ID support")
+
+    # Prepare filesystem and required secrets
+    ensure_webui_directories(shared_settings)
+    require_jwt_secret(shared_settings)
+    logger.info("Runtime directories prepared and JWT secret validated")
 
     # Initialize PostgreSQL connection
     logger.info("Initializing PostgreSQL connection...")
@@ -281,7 +300,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_collections.router)
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)
+    app.include_router(v2_embedding.router)
     app.include_router(v2_operations.router)
+    app.include_router(v2_projections.router)
     app.include_router(v2_partition_monitoring.router)
     app.include_router(v2_search.router)
     app.include_router(v2_system.router)
@@ -306,6 +327,10 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(root.router)  # No prefix for static + root
 
     # Mount WebSocket endpoints at the app level
+    @app.websocket("/ws/operations")
+    async def operation_ws_global(websocket: WebSocket) -> None:
+        await operation_websocket_global(websocket)
+
     @app.websocket("/ws/operations/{operation_id}")
     async def operation_ws(websocket: WebSocket, operation_id: str) -> None:
         await operation_websocket(websocket, operation_id)

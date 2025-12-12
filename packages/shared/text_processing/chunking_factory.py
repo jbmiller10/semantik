@@ -9,7 +9,7 @@ strategies based on configuration.
 import os
 from typing import Any
 
-from packages.shared.text_processing.base_chunker import BaseChunker
+from shared.text_processing.base_chunker import BaseChunker
 
 
 class ChunkingFactory:
@@ -69,7 +69,7 @@ class ChunkingFactory:
 
                 if use_local:
                     # Use the local embedding service via a custom adapter
-                    from packages.shared.text_processing.embedding_adapter import LocalEmbeddingAdapter
+                    from shared.text_processing.embedding_adapter import LocalEmbeddingAdapter
 
                     params["embed_model"] = LocalEmbeddingAdapter()
                 else:
@@ -84,19 +84,19 @@ class ChunkingFactory:
     def _initialize_strategies(cls) -> None:
         """Initialize the strategy registry with available strategies."""
         # Import actual strategy wrapper classes for backward compatibility
-        from packages.shared.text_processing.strategies.character_chunker import CharacterChunker
-        from packages.shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
-        from packages.shared.text_processing.strategies.hybrid_chunker import HybridChunker
-        from packages.shared.text_processing.strategies.markdown_chunker import MarkdownChunker
-        from packages.shared.text_processing.strategies.recursive_chunker import RecursiveChunker
-        from packages.shared.text_processing.strategies.semantic_chunker import SemanticChunker
+        from shared.text_processing.strategies.character_chunker import CharacterChunker
+        from shared.text_processing.strategies.hierarchical_chunker import HierarchicalChunker
+        from shared.text_processing.strategies.hybrid_chunker import HybridChunker
+        from shared.text_processing.strategies.markdown_chunker import MarkdownChunker
+        from shared.text_processing.strategies.recursive_chunker import RecursiveChunker
+        from shared.text_processing.strategies.semantic_chunker import SemanticChunker
 
         # Register the actual wrapper classes that use unified implementation internally
         cls.register_strategy("character", CharacterChunker)
         cls.register_strategy("recursive", RecursiveChunker)
         cls.register_strategy("semantic", SemanticChunker)
         cls.register_strategy("markdown", MarkdownChunker)
-        cls.register_strategy("hierarchical", HierarchicalChunker)  # type: ignore[arg-type]
+        cls.register_strategy("hierarchical", HierarchicalChunker)
         cls.register_strategy("hybrid", HybridChunker)
 
     @classmethod

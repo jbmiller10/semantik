@@ -11,11 +11,12 @@ from datetime import UTC, datetime
 # Add the packages directory to the Python path
 sys.path.insert(0, "/home/dockertest/semantik/packages")
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
+
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
 from shared.database.models import Collection, Document, DocumentStatus, Operation, OperationStatus
-from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
 
 async def check_collections() -> None:

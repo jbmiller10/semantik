@@ -6,8 +6,8 @@ import string
 
 import pytest
 
-from packages.shared.text_processing.base_chunker import ChunkResult
-from packages.shared.text_processing.chunking_factory import ChunkingFactory
+from shared.text_processing.base_chunker import ChunkResult
+from shared.text_processing.chunking_factory import ChunkingFactory
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from packages.shared.contracts.errors import (
+from shared.contracts.errors import (
     ErrorDetail,
     ErrorResponse,
     InsufficientResourcesErrorResponse,
@@ -15,7 +15,7 @@ from packages.shared.contracts.errors import (
     create_not_found_error,
     create_validation_error,
 )
-from packages.shared.contracts.search import (
+from shared.contracts.search import (
     BatchSearchRequest,
     HybridSearchRequest,
     HybridSearchResult,
@@ -175,7 +175,7 @@ class TestSearchContractsExtended:
     def test_hybrid_search_request(self) -> None:
         """Test HybridSearchRequest validation."""
 
-        req = HybridSearchRequest(query="test query", k=15, mode="rerank", keyword_mode="all", score_threshold=0.7)
+        req = HybridSearchRequest(query="test query", k=15, mode="weighted", keyword_mode="all", score_threshold=0.7)
         assert req.query == "test query"
         assert req.k == 15
         assert req.mode == "weighted"

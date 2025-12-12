@@ -11,10 +11,10 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.infrastructure.streaming.window import StreamingWindow
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.infrastructure.streaming.window import StreamingWindow
 
 from .base import StreamingChunkingStrategy
 

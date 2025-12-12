@@ -15,8 +15,6 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 from tqdm import tqdm
 
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 from shared.config import settings
 
 # Configure logging

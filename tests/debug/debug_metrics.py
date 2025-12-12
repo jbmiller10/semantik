@@ -3,7 +3,7 @@
 import psutil
 from prometheus_client import generate_latest
 
-from packages.shared.metrics.prometheus import cpu_utilization, memory_utilization, metrics_collector, registry
+from shared.metrics.prometheus import cpu_utilization, memory_utilization, metrics_collector, registry
 
 # First, let's check current system metrics
 print(f"Actual CPU: {psutil.cpu_percent(interval=0.1)}%")

@@ -30,40 +30,45 @@ from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database import pg_connection_manager
-from packages.shared.database.database import AsyncSessionLocal
-from packages.shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
-from packages.shared.database.repositories.chunk_repository import ChunkRepository
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.api.chunking_exceptions import (
+from shared.chunking.exceptions import (
     ChunkingDependencyError,
     ChunkingMemoryError,
     ChunkingPartialFailureError,
     ChunkingStrategyError,
     ChunkingTimeoutError,
 )
-from packages.webui.celery_app import celery_app
-from packages.webui.middleware.correlation import get_or_generate_correlation_id
-from packages.webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_service
-from packages.webui.services.chunking.operation_manager import ChunkingOperationManager
-from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.factory import get_redis_manager
-from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
-from packages.webui.services.type_guards import ensure_sync_redis
-from packages.webui.tasks import executor as chunk_executor
-from packages.webui.tasks import extract_and_serialize_thread_safe
-from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+from shared.chunking.plugin_loader import load_chunking_plugins
+from shared.database import pg_connection_manager
+from shared.database.database import AsyncSessionLocal
+from shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
+from shared.database.repositories.chunk_repository import ChunkRepository
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.celery_app import celery_app
+from webui.middleware.correlation import get_or_generate_correlation_id
+from webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_orchestrator
+from webui.services.chunking.operation_manager import ChunkingOperationManager
+from webui.services.chunking_error_handler import ChunkingErrorHandler
+from webui.services.factory import get_redis_manager
+from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
+from webui.services.type_guards import ensure_sync_redis
+from webui.tasks import executor as chunk_executor, extract_and_serialize_thread_safe
+from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)
+
+# Load any external chunking plugins when the worker imports this module
+_loaded_plugins = load_chunking_plugins()
+if _loaded_plugins:
+    logger.info("Chunking worker loaded plugins: %s", ", ".join(_loaded_plugins))
 
 
 def get_redis_client() -> Redis:
     """Get sync Redis client instance for Celery tasks."""
     redis_manager = get_redis_manager()
     client = redis_manager.sync_client
-    return ensure_sync_redis(client)
+    return cast(Redis, ensure_sync_redis(client))
 
 
 _progress_update_manager: ProgressUpdateManager | None = None
@@ -566,15 +571,17 @@ async def _process_document_chunking(
         raise ValueError(f"Extracted content empty for document {getattr(document, 'id', file_path)}")
 
     file_type = file_path.rsplit(".", 1)[-1] if "." in file_path else None
-    chunking_result = await chunking_service.execute_ingestion_chunking(
-        text=combined_text,
-        document_id=document.id,
-        collection=collection_payload,
-        metadata=metadata,
-        file_type=file_type,
+
+    strategy = collection_payload.get("chunking_strategy") or "recursive"
+    config = collection_payload.get("chunking_config") or {}
+
+    chunks = await chunking_service.execute_ingestion_chunking(
+        content=combined_text,
+        strategy=strategy,
+        config=config,
+        metadata={**metadata, "document_id": document.id, "file_type": file_type} if metadata else None,
     )
 
-    chunks = chunking_result.get("chunks") or []
     if not chunks:
         raise ValueError(f"No chunks produced for document {getattr(document, 'id', file_path)}")
 
@@ -589,6 +596,22 @@ async def _process_document_chunking(
         chunk_count=len(chunk_rows),
     )
 
+    fallback_used = any((chunk.get("metadata") or {}).get("fallback") for chunk in chunks)
+    fallback_reason = None
+    if fallback_used:
+        for chunk in chunks:
+            reason = (chunk.get("metadata") or {}).get("fallback_reason")
+            if reason:
+                fallback_reason = reason
+                break
+
+    stats = {
+        "strategy_used": strategy,
+        "chunk_count": len(chunk_rows),
+        "fallback": fallback_used,
+        "fallback_reason": fallback_reason,
+    }
+
     logger.info(
         "Chunked document %s with %s chunks",
         getattr(document, "id", "unknown"),
@@ -596,7 +619,7 @@ async def _process_document_chunking(
         extra={"correlation_id": correlation_id},
     )
 
-    return len(chunk_rows), chunking_result.get("stats")
+    return len(chunk_rows), stats
 
 
 async def _process_chunking_operation_async(
@@ -625,10 +648,12 @@ async def _process_chunking_operation_async(
     partial_failure = False
 
     try:
-        if not pg_connection_manager._sessionmaker:
+        if not pg_connection_manager.sessionmaker:
             await pg_connection_manager.initialize()
 
-        session_factory = cast(Callable[[], AsyncSession], AsyncSessionLocal)
+        session_factory = pg_connection_manager.sessionmaker or cast(Callable[[], AsyncSession], AsyncSessionLocal)
+        if session_factory is None:
+            raise RuntimeError("Database sessionmaker not initialized")
         async with session_factory() as db:
             operation_repo = OperationRepository(db)
             collection_repo = CollectionRepository(db)
@@ -697,7 +722,7 @@ async def _process_chunking_operation_async(
                         "duration_seconds": duration,
                     }
 
-                chunking_service = await resolve_celery_chunking_service(
+                chunking_service = await resolve_celery_chunking_orchestrator(
                     db,
                     collection_repo=collection_repo,
                     document_repo=document_repo,

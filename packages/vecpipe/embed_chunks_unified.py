@@ -7,7 +7,6 @@ Uses the shared.embedding.EmbeddingService for all embedding operations
 import argparse
 import asyncio
 import logging
-import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -15,9 +14,6 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm.asyncio import tqdm
-
-# Add parent directory to path to import shared modules
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from shared.config import settings
 from shared.embedding import EmbeddingService
@@ -114,6 +110,9 @@ async def process_document_async(
         record_chunks_created(len(texts))
 
         # Generate embeddings using the unified service with timing
+        # Use DOCUMENT mode since we're indexing documents, not searching
+        from shared.embedding.types import EmbeddingMode
+
         with TimingContext(embedding_batch_duration):
             embeddings = embedding_service.generate_embeddings(
                 texts=texts,
@@ -121,6 +120,7 @@ async def process_document_async(
                 quantization=args.quantization,
                 batch_size=args.batch_size,
                 show_progress=False,  # Disable per-file progress since we have overall progress
+                mode=EmbeddingMode.DOCUMENT,
             )
 
         if embeddings is None:

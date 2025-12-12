@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Collection
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.shared.database.repositories.operation_repository import OperationRepository
-from packages.webui.services.collection_service import CollectionService
+from shared.database.models import Collection
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from webui.services.collection_service import CollectionService
 
 
 @pytest.fixture()
@@ -86,7 +86,7 @@ class TestCreateCollectionValidation:
         mock_collection_repo.create.return_value = mock_collection
 
         # Test with a valid strategy
-        with patch("packages.webui.services.collection_service.celery_app"):
+        with patch("webui.services.collection_service.celery_app"):
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",
@@ -149,7 +149,7 @@ class TestCreateCollectionValidation:
         mock_collection_repo.create.return_value = mock_collection
 
         # Test with a strategy that needs normalization
-        with patch("packages.webui.services.collection_service.celery_app"):
+        with patch("webui.services.collection_service.celery_app"):
             await collection_service.create_collection(
                 user_id=1,
                 name="Test Collection",

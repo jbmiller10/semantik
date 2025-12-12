@@ -1,34 +1,31 @@
 """Factory functions for creating service instances with dependencies."""
 
 import logging
+from typing import cast
 
 import httpx
 from fastapi import Depends
-from shared.database.repositories.collection_repository import CollectionRepository
-from shared.database.repositories.document_repository import DocumentRepository
-from shared.database.repositories.operation_repository import OperationRepository
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database import get_db
-from packages.shared.managers import QdrantManager
-from packages.webui.utils.qdrant_manager import qdrant_manager as qdrant_connection_manager
+from shared.database import get_db
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from shared.database.repositories.operation_repository import OperationRepository
+from shared.database.repositories.projection_run_repository import ProjectionRunRepository
+from shared.managers import QdrantManager
+from webui.qdrant import qdrant_manager as qdrant_connection_manager
 
-from .chunking.adapter import ChunkingServiceAdapter
 from .chunking.container import (
     get_chunking_orchestrator as container_get_chunking_orchestrator,
-)
-from .chunking.container import (
     get_redis_manager as container_get_redis_manager,
 )
-from .chunking.container import (
-    resolve_api_chunking_dependency,
-)
 from .chunking.orchestrator import ChunkingOrchestrator
-from .chunking_service import ChunkingService
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
 from .operation_service import OperationService
+from .projection_service import ProjectionService
 from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
@@ -39,7 +36,7 @@ logger = logging.getLogger(__name__)
 def get_redis_manager() -> RedisManager:
     """Backward-compatible wrapper over chunking container Redis manager."""
 
-    manager = container_get_redis_manager()
+    manager = cast(RedisManager, container_get_redis_manager())
     logger.debug("Reusing Redis manager from chunking container")
     return manager
 
@@ -85,6 +82,7 @@ def create_collection_service(
     collection_repo = CollectionRepository(db)
     operation_repo = OperationRepository(db)
     document_repo = DocumentRepository(db)
+    collection_source_repo = CollectionSourceRepository(db)
 
     qdrant_manager_instance = qdrant_manager_override
     if qdrant_manager_instance is None:
@@ -100,6 +98,7 @@ def create_collection_service(
         collection_repo=collection_repo,
         operation_repo=operation_repo,
         document_repo=document_repo,
+        collection_source_repo=collection_source_repo,
         qdrant_manager=qdrant_manager_instance,
     )
 
@@ -234,6 +233,27 @@ async def get_operation_service(db: AsyncSession = Depends(get_db)) -> Operation
     return create_operation_service(db)
 
 
+def create_projection_service(db: AsyncSession) -> ProjectionService:
+    """Create a ProjectionService instance with required dependencies."""
+
+    projection_repo = ProjectionRunRepository(db)
+    operation_repo = OperationRepository(db)
+    collection_repo = CollectionRepository(db)
+
+    return ProjectionService(
+        db_session=db,
+        projection_repo=projection_repo,
+        operation_repo=operation_repo,
+        collection_repo=collection_repo,
+    )
+
+
+async def get_projection_service(db: AsyncSession = Depends(get_db)) -> ProjectionService:
+    """FastAPI dependency for ProjectionService injection."""
+
+    return create_projection_service(db)
+
+
 def create_search_service(
     db: AsyncSession,
     default_timeout: httpx.Timeout | None = None,
@@ -279,56 +299,23 @@ async def get_directory_scan_service() -> DirectoryScanService:
 async def create_chunking_orchestrator(db: AsyncSession) -> ChunkingOrchestrator:
     """Create orchestrator using composition root."""
 
-    return await container_get_chunking_orchestrator(db)
-
-
-async def create_chunking_service(db: AsyncSession) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
-    """Return chunking dependency that emulates legacy service."""
-
-    return await resolve_api_chunking_dependency(db, prefer_adapter=True)
-
-
-def create_celery_chunking_service(db_session: AsyncSession) -> ChunkingService:
-    """Create ChunkingService for Celery tasks without Redis."""
-
-    collection_repo = CollectionRepository(db_session)
-    document_repo = DocumentRepository(db_session)
-
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=None,
-    )
-
-
-def create_celery_chunking_service_with_repos(
-    db_session: AsyncSession,
-    collection_repo: CollectionRepository,
-    document_repo: DocumentRepository,
-) -> ChunkingService:
-    """Create ChunkingService using pre-built repositories."""
-
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=None,
-    )
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_orchestrator(db: AsyncSession = Depends(get_db)) -> ChunkingOrchestrator:
     """FastAPI dependency for orchestrator injection (new architecture)."""
 
-    return await container_get_chunking_orchestrator(db)
+    orchestrator = await container_get_chunking_orchestrator(db)
+    return cast(ChunkingOrchestrator, orchestrator)
 
 
 async def get_chunking_service(
     db: AsyncSession = Depends(get_db),
-) -> ChunkingService | ChunkingServiceAdapter | ChunkingOrchestrator:
-    """FastAPI dependency for legacy ChunkingService consumers."""
+) -> ChunkingOrchestrator:
+    """Backward-compatible dependency returning the orchestrator."""
 
-    return await create_chunking_service(db)
+    return await get_chunking_orchestrator(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

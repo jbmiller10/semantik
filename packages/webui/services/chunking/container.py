@@ -3,29 +3,28 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from packages.shared.config import settings
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
-from packages.webui.services.chunking.adapter import ChunkingServiceAdapter
-from packages.webui.services.chunking.cache import ChunkingCache
-from packages.webui.services.chunking.config_manager import ChunkingConfigManager
-from packages.webui.services.chunking.metrics import ChunkingMetrics
-from packages.webui.services.chunking.operation_manager import (
+from shared.config import settings
+from shared.database.repositories.chunking_config_profile_repository import ChunkingConfigProfileRepository
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from webui.services.chunking.cache import ChunkingCache
+from webui.services.chunking.config_manager import ChunkingConfigManager
+from webui.services.chunking.metrics import ChunkingMetrics
+from webui.services.chunking.operation_manager import (
     DEFAULT_CIRCUIT_BREAKER_FAILURE_THRESHOLD,
     DEFAULT_CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
     DEFAULT_DEAD_LETTER_TTL_SECONDS,
     ChunkingOperationManager,
 )
-from packages.webui.services.chunking.orchestrator import ChunkingOrchestrator
-from packages.webui.services.chunking.processor import ChunkingProcessor
-from packages.webui.services.chunking.validator import ChunkingValidator
-from packages.webui.services.chunking_error_handler import ChunkingErrorHandler
-from packages.webui.services.chunking_service import ChunkingService
-from packages.webui.services.redis_manager import RedisConfig, RedisManager
-from packages.webui.services.type_guards import ensure_async_redis, ensure_sync_redis
-from packages.webui.utils.error_classifier import get_default_chunking_error_classifier
+from webui.services.chunking.orchestrator import ChunkingOrchestrator
+from webui.services.chunking.processor import ChunkingProcessor
+from webui.services.chunking.validator import ChunkingValidator
+from webui.services.chunking_error_handler import ChunkingErrorHandler
+from webui.services.redis_manager import RedisConfig, RedisManager
+from webui.services.type_guards import ensure_async_redis, ensure_sync_redis
+from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 if TYPE_CHECKING:
     import redis.asyncio as aioredis
@@ -37,7 +36,6 @@ logger = logging.getLogger(__name__)
 _redis_manager: RedisManager | None = None
 _chunking_metrics: ChunkingMetrics | None = None
 _chunking_processor: ChunkingProcessor | None = None
-_chunking_config_manager: ChunkingConfigManager | None = None
 
 
 def get_redis_manager() -> RedisManager:
@@ -66,7 +64,7 @@ async def get_async_redis_client() -> aioredis.Redis | None:
     try:
         manager = get_redis_manager()
         client = await manager.async_client()
-        return ensure_async_redis(client)
+        return cast("aioredis.Redis | None", ensure_async_redis(client))
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Async Redis unavailable for chunking cache: %s", exc)
         return None
@@ -78,7 +76,7 @@ def get_sync_redis_client() -> Redis | None:
     try:
         manager = get_redis_manager()
         client = manager.sync_client
-        return ensure_sync_redis(client)
+        return cast("Redis | None", ensure_sync_redis(client))
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("Sync Redis unavailable for chunking tasks: %s", exc)
         return None
@@ -135,11 +133,12 @@ def build_chunking_metrics() -> ChunkingMetrics:
     return _chunking_metrics
 
 
-def build_chunking_config_manager() -> ChunkingConfigManager:
-    global _chunking_config_manager
-    if _chunking_config_manager is None:
-        _chunking_config_manager = ChunkingConfigManager()
-    return _chunking_config_manager
+def build_chunking_config_manager(
+    profile_repo: ChunkingConfigProfileRepository | None = None,
+) -> ChunkingConfigManager:
+    """Construct a config manager bound to the provided repository."""
+
+    return ChunkingConfigManager(profile_repo)
 
 
 def build_chunking_validator(
@@ -167,7 +166,8 @@ async def build_chunking_orchestrator(
     cache = build_chunking_cache(redis_client)
     metrics = build_chunking_metrics()
     validator = build_chunking_validator(db_session, collection_repo, document_repo)
-    config_manager = build_chunking_config_manager()
+    config_repo = ChunkingConfigProfileRepository(db_session)
+    config_manager = build_chunking_config_manager(config_repo)
 
     return ChunkingOrchestrator(
         processor=processor,
@@ -188,12 +188,6 @@ async def get_chunking_orchestrator(
     document_repo: DocumentRepository | None = None,
 ) -> ChunkingOrchestrator:
     """Return orchestrator honoring feature toggle."""
-
-    if not settings.USE_CHUNKING_ORCHESTRATOR:
-        raise RuntimeError(
-            "Chunking orchestrator disabled via USE_CHUNKING_ORCHESTRATOR. "
-            "Request adapter or legacy service instead."
-        )
     return await build_chunking_orchestrator(
         db_session,
         collection_repo=collection_repo,
@@ -201,91 +195,17 @@ async def get_chunking_orchestrator(
     )
 
 
-async def get_chunking_service_adapter(
+async def resolve_celery_chunking_orchestrator(
     db_session: AsyncSession,
     *,
     collection_repo: CollectionRepository | None = None,
     document_repo: DocumentRepository | None = None,
-) -> ChunkingServiceAdapter:
-    """Return adapter that emulates ChunkingService API."""
+) -> ChunkingOrchestrator:
+    """Provide orchestrator instance tailored for Celery workers (no cache)."""
 
-    orchestrator = await build_chunking_orchestrator(
+    return await build_chunking_orchestrator(
         db_session,
         collection_repo=collection_repo,
         document_repo=document_repo,
-    )
-    return ChunkingServiceAdapter(
-        orchestrator=orchestrator,
-        db_session=db_session,
-        collection_repo=orchestrator.collection_repo,
-        document_repo=orchestrator.document_repo,
-    )
-
-
-async def get_legacy_chunking_service(
-    db_session: AsyncSession,
-    *,
-    collection_repo: CollectionRepository | None = None,
-    document_repo: DocumentRepository | None = None,
-    with_cache: bool = True,
-) -> ChunkingService:
-    """Return legacy ChunkingService for fallback scenarios."""
-
-    collection_repo = collection_repo or CollectionRepository(db_session)
-    document_repo = document_repo or DocumentRepository(db_session)
-
-    redis_client = await get_async_redis_client() if with_cache else None
-    return ChunkingService(
-        db_session=db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        redis_client=redis_client,
-    )
-
-
-async def resolve_api_chunking_dependency(
-    db_session: AsyncSession,
-    *,
-    prefer_adapter: bool = False,
-) -> ChunkingOrchestrator | ChunkingServiceAdapter | ChunkingService:
-    """Select orchestrator or legacy service for API use."""
-
-    if settings.USE_CHUNKING_ORCHESTRATOR:
-        if prefer_adapter:
-            return await get_chunking_service_adapter(db_session)
-        return await get_chunking_orchestrator(db_session)
-    return await get_legacy_chunking_service(db_session)
-
-
-async def resolve_celery_chunking_service(
-    db_session: AsyncSession,
-    *,
-    collection_repo: CollectionRepository | None = None,
-    document_repo: DocumentRepository | None = None,
-) -> ChunkingService | ChunkingServiceAdapter:
-    """Provide Celery-friendly chunking dependency."""
-
-    if settings.USE_CHUNKING_ORCHESTRATOR:
-        try:
-            orchestrator = await build_chunking_orchestrator(
-                db_session,
-                collection_repo=collection_repo,
-                document_repo=document_repo,
-                enable_cache=False,
-            )
-        except Exception:
-            logger.exception("Falling back to legacy chunking service for Celery")
-        else:
-            return ChunkingServiceAdapter(
-                orchestrator=orchestrator,
-                db_session=db_session,
-                collection_repo=orchestrator.collection_repo,
-                document_repo=orchestrator.document_repo,
-            )
-
-    return await get_legacy_chunking_service(
-        db_session,
-        collection_repo=collection_repo,
-        document_repo=document_repo,
-        with_cache=False,
+        enable_cache=False,
     )

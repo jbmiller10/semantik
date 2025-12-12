@@ -1,4 +1,11 @@
-"""Dense embedding service using sentence-transformers and transformers."""
+"""Dense embedding service using sentence-transformers and transformers.
+
+This module provides backward compatibility wrappers for the embedding provider system.
+For new code, prefer using the provider factory directly:
+
+    from shared.embedding.factory import EmbeddingProviderFactory
+    provider = EmbeddingProviderFactory.create_provider("model-name")
+"""
 
 import asyncio
 import contextlib
@@ -14,16 +21,21 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
-from shared.config.vecpipe import VecpipeConfig
-from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
 from torch import Tensor
 from transformers import AutoModel, AutoTokenizer
 from transformers.modeling_utils import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 
+from shared.config.vecpipe import VecpipeConfig
+from shared.metrics.prometheus import record_batch_size_reduction, record_oom_error, update_current_batch_size
+
 from .base import BaseEmbeddingService
+from .types import EmbeddingMode
 
 logger = logging.getLogger(__name__)
+
+# Re-export provider for backward compatibility
+# Note: The actual implementation now lives in providers/dense_local.py
 
 # Type variable for async return types
 T = TypeVar("T")
@@ -51,6 +63,7 @@ class EmbeddingServiceProtocol(Protocol):
         batch_size: int = 32,
         show_progress: bool = True,
         instruction: str | None = None,
+        mode: "EmbeddingMode | None" = None,
         **kwargs: Any,
     ) -> NDArray[np.float32] | None:
         """Generate embeddings synchronously."""
@@ -62,6 +75,7 @@ class EmbeddingServiceProtocol(Protocol):
         model_name: str,
         quantization: str = "float32",
         instruction: str | None = None,
+        mode: "EmbeddingMode | None" = None,
         **kwargs: Any,
     ) -> list[float] | None:
         """Generate single embedding synchronously."""
@@ -241,11 +255,16 @@ class DenseEmbeddingService(BaseEmbeddingService):
             # If in mock mode, skip actual model loading
             if self.mock_mode:
                 logger.info(f"Mock mode: simulating initialization of {model_name}")
-                # Get dimension from config if available
-                from .models import get_model_config
+                # Get dimension from config - check providers (including plugins) first
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
-                self.dimension = config.dimension if config else 384
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
+                self.dimension = config.dimension
                 self._initialized = True
                 return
 
@@ -338,7 +357,42 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         return kwargs
 
-    async def _embed_texts_internal(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
+    def _apply_mode_transform(
+        self,
+        texts: list[str],
+        mode: EmbeddingMode,
+        instruction: str | None = None,
+    ) -> tuple[list[str], str | None]:
+        """Apply query/document transformation based on model type and mode.
+
+        For backward compatibility with DenseEmbeddingService.
+        """
+        from .factory import resolve_model_config
+
+        # Document mode: return texts unchanged, no instruction
+        if mode == EmbeddingMode.DOCUMENT:
+            return texts, None
+
+        # Query mode: apply model-specific transformations
+        config = resolve_model_config(self.model_name) if self.model_name else None
+
+        if self.is_qwen_model:
+            # Qwen uses instruction-based format
+            effective_instruction = instruction
+            if effective_instruction is None and config and config.default_query_instruction:
+                effective_instruction = config.default_query_instruction
+            return texts, effective_instruction
+
+        # Prefix-based models (BGE, E5, etc.)
+        if config and config.is_asymmetric and config.query_prefix:
+            transformed = [f"{config.query_prefix}{text}" for text in texts]
+            return transformed, instruction
+
+        return texts, instruction
+
+    async def _embed_texts_internal(
+        self, texts: list[str], batch_size: int = 32, *, mode: EmbeddingMode | None = None, **kwargs: Any
+    ) -> NDArray[np.float32]:
         """Internal method for embedding texts without validation checks.
 
         This is used during initialization and other internal operations.
@@ -349,6 +403,9 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         # Ensure no empty strings for tokenization
         texts = [text if text.strip() else " " for text in texts]
+
+        # Default to QUERY mode for backward compatibility
+        effective_mode = mode if mode is not None else EmbeddingMode.QUERY
 
         # Mock mode - return random embeddings
         if self.mock_mode:
@@ -364,9 +421,12 @@ class DenseEmbeddingService(BaseEmbeddingService):
         show_progress = kwargs.get("show_progress", False)
         instruction = kwargs.get("instruction", None)
 
+        # Apply mode-specific transformation
+        transformed_texts, effective_instruction = self._apply_mode_transform(texts, effective_mode, instruction)
+
         # Process in thread pool to avoid blocking
         return await asyncio.get_running_loop().run_in_executor(
-            None, self._embed_texts_sync, texts, batch_size, normalize, show_progress, instruction
+            None, self._embed_texts_sync, transformed_texts, batch_size, normalize, show_progress, effective_instruction
         )
 
     def _embed_texts_sync(
@@ -584,12 +644,21 @@ class DenseEmbeddingService(BaseEmbeddingService):
 
         return embeddings
 
-    async def embed_texts(self, texts: list[str], batch_size: int = 32, **kwargs: Any) -> NDArray[np.float32]:
+    async def embed_texts(
+        self,
+        texts: list[str],
+        batch_size: int = 32,
+        *,
+        mode: EmbeddingMode | None = None,
+        **kwargs: Any,
+    ) -> NDArray[np.float32]:
         """Generate embeddings for multiple texts.
 
         Args:
             texts: List of texts to embed
             batch_size: Batch size for processing
+            mode: Embedding mode - QUERY for search queries, DOCUMENT for indexing.
+                  Defaults to QUERY for backward compatibility.
             **kwargs: Additional options:
                 - normalize: bool (default: True)
                 - show_progress: bool (default: False)
@@ -626,15 +695,23 @@ class DenseEmbeddingService(BaseEmbeddingService):
             )
 
         # Delegate to internal method
-        return await self._embed_texts_internal(texts, batch_size, **kwargs)
+        return await self._embed_texts_internal(texts, batch_size, mode=mode, **kwargs)
 
-    async def _embed_single_internal(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
+    async def _embed_single_internal(
+        self, text: str, *, mode: EmbeddingMode | None = None, **kwargs: Any
+    ) -> NDArray[np.float32]:
         """Internal method for embedding a single text without validation."""
-        embeddings = await self._embed_texts_internal([text], batch_size=1, **kwargs)
+        embeddings = await self._embed_texts_internal([text], batch_size=1, mode=mode, **kwargs)
         result: NDArray[np.float32] = embeddings[0]
         return result
 
-    async def embed_single(self, text: str, **kwargs: Any) -> NDArray[np.float32]:
+    async def embed_single(
+        self,
+        text: str,
+        *,
+        mode: EmbeddingMode | None = None,
+        **kwargs: Any,
+    ) -> NDArray[np.float32]:
         """Generate embedding for a single text."""
         if not self._initialized:
             raise RuntimeError("Embedding service not initialized. Call initialize() first.")
@@ -642,7 +719,7 @@ class DenseEmbeddingService(BaseEmbeddingService):
         if not isinstance(text, str):
             raise ValueError("text must be a string")
 
-        embeddings = await self.embed_texts([text], batch_size=1, **kwargs)
+        embeddings = await self.embed_texts([text], batch_size=1, mode=mode, **kwargs)
         result: NDArray[np.float32] = embeddings[0]
         return result
 
@@ -810,12 +887,17 @@ class EmbeddingService:
         try:
             # In mock mode, return mock info without loading
             if self.mock_mode and not self._service.is_initialized:
-                from .models import get_model_config
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
                 return {
                     "model_name": model_name,
-                    "dimension": config.dimension if config else 384,
+                    "dimension": config.dimension,
                     "device": self._service.device,
                     "max_sequence_length": 512,
                     "quantization": quantization,
@@ -845,6 +927,7 @@ class EmbeddingService:
         batch_size: int = 32,
         show_progress: bool = True,
         instruction: str | None = None,
+        mode: EmbeddingMode | None = None,
         **kwargs: Any,
     ) -> NDArray[np.float32] | None:
         """Generate embeddings synchronously.
@@ -856,6 +939,8 @@ class EmbeddingService:
             batch_size: Batch size for processing
             show_progress: Whether to show progress bar
             instruction: Optional instruction for Qwen models
+            mode: Embedding mode - QUERY for search queries, DOCUMENT for indexing.
+                  Defaults to QUERY for backward compatibility.
             **kwargs: Additional options
 
         Returns:
@@ -888,11 +973,16 @@ class EmbeddingService:
             # Mock mode - return random embeddings
             if self.mock_mode:
                 logger.info(f"Mock mode: generating embeddings for {len(texts)} texts")
-                # Get dimension from model config if available
-                from .models import get_model_config
+                # Get dimension from config - check providers (including plugins) first
+                from .factory import resolve_model_config
 
-                config = get_model_config(model_name)
-                dim = config.dimension if config else 384
+                config = resolve_model_config(model_name)
+                if config is None:
+                    raise ValueError(
+                        f"No model configuration found for '{model_name}'. "
+                        "Model must be registered with a provider or defined in MODEL_CONFIGS."
+                    )
+                dim = config.dimension
                 return np.random.randn(len(texts), dim).astype(np.float32)
 
             # Ensure model is loaded
@@ -903,7 +993,12 @@ class EmbeddingService:
 
             return self._run_async(
                 self._service.embed_texts(
-                    texts, batch_size=batch_size, show_progress=show_progress, instruction=instruction, **kwargs
+                    texts,
+                    batch_size=batch_size,
+                    mode=mode,
+                    show_progress=show_progress,
+                    instruction=instruction,
+                    **kwargs,
                 )
             )
         except Exception as e:
@@ -911,7 +1006,13 @@ class EmbeddingService:
             return None
 
     def generate_single_embedding(
-        self, text: str, model_name: str, quantization: str = "float32", instruction: str | None = None, **kwargs: Any
+        self,
+        text: str,
+        model_name: str,
+        quantization: str = "float32",
+        instruction: str | None = None,
+        mode: EmbeddingMode | None = None,
+        **kwargs: Any,
     ) -> list[float] | None:
         """Generate single embedding synchronously.
 
@@ -920,6 +1021,7 @@ class EmbeddingService:
             model_name: HuggingFace model name
             quantization: Quantization type
             instruction: Optional instruction for Qwen models
+            mode: Embedding mode - QUERY for search queries, DOCUMENT for indexing.
             **kwargs: Additional options
 
         Returns:
@@ -927,7 +1029,14 @@ class EmbeddingService:
         """
         try:
             embeddings = self.generate_embeddings(
-                [text], model_name, quantization, batch_size=1, show_progress=False, instruction=instruction, **kwargs
+                [text],
+                model_name,
+                quantization,
+                batch_size=1,
+                show_progress=False,
+                instruction=instruction,
+                mode=mode,
+                **kwargs,
             )
             if embeddings is not None and len(embeddings) > 0:
                 result: list[float] = embeddings[0].tolist()

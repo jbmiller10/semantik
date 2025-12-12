@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.services.search_service import SearchService
+from shared.database.models import Collection, CollectionStatus
+from webui.services.search_service import SearchService
 
 # Database and repository fixtures are now imported from conftest.py
 

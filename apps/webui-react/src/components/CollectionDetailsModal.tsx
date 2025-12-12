@@ -8,6 +8,7 @@ import AddDataToCollectionModal from './AddDataToCollectionModal';
 import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
+import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
 import type { DocumentResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
@@ -27,7 +28,7 @@ function CollectionDetailsModal() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'visualize' | 'settings'>('overview');
   const [filesPage, setFilesPage] = useState(1);
   const [configChanges, setConfigChanges] = useState<{
     instruction?: string;
@@ -249,7 +250,7 @@ function CollectionDetailsModal() {
 
         {/* Tabs */}
         <div className="border-b">
-          <nav className="flex space-x-8 px-6" aria-label="Tabs">
+          <nav className="flex space-x-8 px-6 overflow-x-auto" aria-label="Tabs">
             <button
               onClick={() => setActiveTab('overview')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
@@ -279,6 +280,16 @@ function CollectionDetailsModal() {
               }`}
             >
               Files
+            </button>
+            <button
+              onClick={() => setActiveTab('visualize')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'visualize'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Visualize
             </button>
             <button
               onClick={() => setActiveTab('settings')}
@@ -743,6 +754,15 @@ function CollectionDetailsModal() {
                 </p>
               </div>
             </div>
+          )}
+
+          {collection && activeTab === 'visualize' && (
+            <EmbeddingVisualizationTab
+              collectionId={collection.id}
+              collectionEmbeddingModel={collection.embedding_model}
+              collectionVectorCount={collection.vector_count}
+              collectionUpdatedAt={collection.updated_at}
+            />
           )}
         </div>
       </div>

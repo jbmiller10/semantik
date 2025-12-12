@@ -250,6 +250,46 @@ describe('useCollectionOperations', () => {
       });
     });
 
+    it('should send request with source_type and source_config', async () => {
+      const sourcePath = '/new/data/path';
+
+      const newOperation: Operation = {
+        id: 'real-op-id',
+        collection_id: 'col-1',
+        type: 'append',
+        status: 'pending',
+        config: {
+          source_path: sourcePath,
+          source_type: 'directory',
+          source_config: { path: sourcePath }
+        },
+        created_at: '2024-01-03T00:00:00Z',
+      };
+
+      vi.mocked(collectionsV2Api.addSource).mockResolvedValue({
+        data: newOperation,
+      } as MockAxiosResponse<Operation>);
+
+      const { result } = renderHook(() => useAddSource(), {
+        wrapper: createWrapper(queryClient),
+      });
+
+      await act(async () => {
+        await result.current.mutateAsync({
+          collectionId: 'col-1',
+          sourcePath,
+        });
+      });
+
+      // Verify API was called with new format including source_type and source_config
+      expect(collectionsV2Api.addSource).toHaveBeenCalledWith('col-1', {
+        source_path: sourcePath,
+        source_type: 'directory',
+        source_config: { path: sourcePath },
+        config: undefined,
+      });
+    });
+
     it('should rollback on error', async () => {
       const error = new Error('Failed to add source');
       vi.mocked(collectionsV2Api.addSource).mockRejectedValue(error);
