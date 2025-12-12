@@ -25,24 +25,28 @@ class TestImapConnectorInit:
 
     def test_valid_config(self):
         """Test initialization with valid config."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.host == "imap.example.com"
         assert connector.username == "user@example.com"
 
     def test_valid_config_with_all_options(self):
         """Test initialization with all options."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "port": 143,
-            "use_ssl": False,
-            "username": "user@example.com",
-            "mailboxes": ["INBOX", "Sent"],
-            "since_days": 60,
-            "max_messages": 500,
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "port": 143,
+                "use_ssl": False,
+                "username": "user@example.com",
+                "mailboxes": ["INBOX", "Sent"],
+                "since_days": 60,
+                "max_messages": 500,
+            }
+        )
         assert connector.host == "imap.example.com"
         assert connector.port == 143
         assert connector.use_ssl is False
@@ -69,15 +73,17 @@ class TestImapConnectorProperties:
 
     @pytest.fixture()
     def connector(self):
-        return ImapConnector({
-            "host": "imap.gmail.com",
-            "port": 993,
-            "use_ssl": True,
-            "username": "user@gmail.com",
-            "mailboxes": ["INBOX", "Sent", "Drafts"],
-            "since_days": 14,
-            "max_messages": 200,
-        })
+        return ImapConnector(
+            {
+                "host": "imap.gmail.com",
+                "port": 993,
+                "use_ssl": True,
+                "username": "user@gmail.com",
+                "mailboxes": ["INBOX", "Sent", "Drafts"],
+                "since_days": 14,
+                "max_messages": 200,
+            }
+        )
 
     def test_host(self, connector):
         assert connector.host == "imap.gmail.com"
@@ -86,20 +92,24 @@ class TestImapConnectorProperties:
         assert connector.port == 993
 
     def test_port_default(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.port == 993
 
     def test_use_ssl(self, connector):
         assert connector.use_ssl is True
 
     def test_use_ssl_default(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.use_ssl is True
 
     def test_username(self, connector):
@@ -109,38 +119,46 @@ class TestImapConnectorProperties:
         assert connector.mailboxes == ["INBOX", "Sent", "Drafts"]
 
     def test_mailboxes_default(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.mailboxes == ["INBOX"]
 
     def test_mailboxes_empty_becomes_inbox(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": [],
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": [],
+            }
+        )
         assert connector.mailboxes == ["INBOX"]
 
     def test_since_days(self, connector):
         assert connector.since_days == 14
 
     def test_since_days_default(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.since_days == DEFAULT_SINCE_DAYS
 
     def test_max_messages(self, connector):
         assert connector.max_messages == 200
 
     def test_max_messages_default(self):
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         assert connector.max_messages == DEFAULT_MAX_MESSAGES
 
 
@@ -149,28 +167,34 @@ class TestImapConnectorCredentials:
 
     def test_set_credentials(self):
         """Test setting password credentials."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         connector.set_credentials(password="secret123")
         assert connector._password == "secret123"
 
     def test_set_credentials_none(self):
         """Test setting None credentials."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         connector.set_credentials(password=None)
         assert connector._password is None
 
     def test_set_cursor(self):
         """Test setting sync cursor."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         cursor = {
             "INBOX": {"uidvalidity": 12345, "last_uid": 500},
             "Sent": {"uidvalidity": 12346, "last_uid": 200},
@@ -180,19 +204,23 @@ class TestImapConnectorCredentials:
 
     def test_set_cursor_none(self):
         """Test setting None cursor initializes empty dict."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         connector.set_cursor(None)
         assert connector._cursor == {}
 
     def test_get_cursor_returns_shallow_copy(self):
         """Test get_cursor returns a shallow copy (top-level keys only)."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         original_cursor = {"INBOX": {"uidvalidity": 100, "last_uid": 50}}
         connector.set_cursor(original_cursor)
 
@@ -265,10 +293,7 @@ class TestGetEmailBody:
     def test_get_plain_text_body(self):
         """Test extracting plain text body from simple message."""
         msg = email.message_from_string(
-            "Subject: Test\n"
-            "Content-Type: text/plain; charset=utf-8\n"
-            "\n"
-            "Hello, this is the body."
+            "Subject: Test\n" "Content-Type: text/plain; charset=utf-8\n" "\n" "Hello, this is the body."
         )
         result = _get_email_body(msg)
         assert "Hello, this is the body." in result
@@ -309,10 +334,7 @@ class TestGetEmailBody:
         """Test that large bodies are truncated."""
         large_content = "x" * (MAX_EMAIL_BODY_SIZE + 1000)
         msg = email.message_from_string(
-            f"Subject: Test\n"
-            f"Content-Type: text/plain; charset=utf-8\n"
-            f"\n"
-            f"{large_content}"
+            f"Subject: Test\n" f"Content-Type: text/plain; charset=utf-8\n" f"\n" f"{large_content}"
         )
         result = _get_email_body(msg)
         assert len(result) <= MAX_EMAIL_BODY_SIZE + 100  # Some buffer for truncation message
@@ -358,12 +380,14 @@ class TestImapConnectorConnect:
 
     def test_connect_ssl(self):
         """Test SSL connection creation."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "port": 993,
-            "use_ssl": True,
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "port": 993,
+                "use_ssl": True,
+                "username": "user@example.com",
+            }
+        )
 
         with patch("shared.connectors.imap.imaplib.IMAP4_SSL") as mock_ssl:
             mock_ssl.return_value = MagicMock()
@@ -374,12 +398,14 @@ class TestImapConnectorConnect:
 
     def test_connect_no_ssl(self):
         """Test non-SSL connection creation."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "port": 143,
-            "use_ssl": False,
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "port": 143,
+                "use_ssl": False,
+                "username": "user@example.com",
+            }
+        )
 
         with patch("shared.connectors.imap.imaplib.IMAP4") as mock_imap:
             mock_imap.return_value = MagicMock()
@@ -394,10 +420,12 @@ class TestImapConnectorAuthenticate:
     @pytest.mark.asyncio()
     async def test_authenticate_success(self):
         """Test successful authentication."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         connector.set_credentials(password="secret")
 
         with patch.object(connector, "_connect") as mock_connect:
@@ -414,10 +442,12 @@ class TestImapConnectorAuthenticate:
     @pytest.mark.asyncio()
     async def test_authenticate_no_password(self):
         """Test authentication fails without password."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
 
         with pytest.raises(ValueError, match=r"Password not set") as exc_info:
             await connector.authenticate()
@@ -428,10 +458,12 @@ class TestImapConnectorAuthenticate:
         """Test authentication failure."""
         import imaplib
 
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
         connector.set_credentials(password="wrong")
 
         with patch.object(connector, "_connect") as mock_connect:
@@ -450,10 +482,12 @@ class TestImapConnectorLoadDocuments:
     @pytest.mark.asyncio()
     async def test_load_documents_no_password(self):
         """Test load_documents fails without password."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
 
         async def consume_documents():
             async for _ in connector.load_documents():
@@ -466,11 +500,13 @@ class TestImapConnectorLoadDocuments:
     @pytest.mark.asyncio()
     async def test_load_documents_empty_mailbox(self):
         """Test load_documents with empty mailbox."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": ["INBOX"],
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": ["INBOX"],
+            }
+        )
         connector.set_credentials(password="secret")
 
         mock_conn = MagicMock()
@@ -490,11 +526,13 @@ class TestImapConnectorLoadDocuments:
     @pytest.mark.asyncio()
     async def test_load_documents_with_messages(self):
         """Test load_documents with messages."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": ["INBOX"],
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": ["INBOX"],
+            }
+        )
         connector.set_credentials(password="secret")
 
         # Create a test email
@@ -536,12 +574,14 @@ class TestImapConnectorLoadDocuments:
     @pytest.mark.asyncio()
     async def test_load_documents_max_messages_limit(self):
         """Test load_documents respects max_messages limit."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": ["INBOX"],
-            "max_messages": 2,
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": ["INBOX"],
+                "max_messages": 2,
+            }
+        )
         connector.set_credentials(password="secret")
 
         # Create test emails
@@ -588,20 +628,18 @@ class TestImapConnectorCursor:
     @pytest.mark.asyncio()
     async def test_cursor_updated_after_sync(self):
         """Test cursor is updated after successful sync."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": ["INBOX"],
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": ["INBOX"],
+            }
+        )
         connector.set_credentials(password="secret")
         connector.set_cursor({})
 
         test_email = (
-            b"From: sender@example.com\r\n"
-            b"Subject: Test\r\n"
-            b"Message-ID: <test@example.com>\r\n"
-            b"\r\n"
-            b"Body"
+            b"From: sender@example.com\r\n" b"Subject: Test\r\n" b"Message-ID: <test@example.com>\r\n" b"\r\n" b"Body"
         )
 
         mock_conn = MagicMock()
@@ -630,16 +668,20 @@ class TestImapConnectorCursor:
     @pytest.mark.asyncio()
     async def test_uidvalidity_change_resets_cursor(self):
         """Test UIDVALIDITY change resets cursor."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-            "mailboxes": ["INBOX"],
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+                "mailboxes": ["INBOX"],
+            }
+        )
         connector.set_credentials(password="secret")
         # Set old cursor with different uidvalidity
-        connector.set_cursor({
-            "INBOX": {"uidvalidity": 11111, "last_uid": 1000},
-        })
+        connector.set_cursor(
+            {
+                "INBOX": {"uidvalidity": 11111, "last_uid": 1000},
+            }
+        )
 
         mock_conn = MagicMock()
         mock_conn.login.return_value = ("OK", [])
@@ -671,10 +713,12 @@ class TestImapConnectorCleanup:
 
     def test_cleanup_with_connection(self):
         """Test cleanup closes connection."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
 
         mock_conn = MagicMock()
         connector._connection = mock_conn
@@ -686,10 +730,12 @@ class TestImapConnectorCleanup:
 
     def test_cleanup_without_connection(self):
         """Test cleanup handles no connection gracefully."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
 
         # Should not raise
         connector.cleanup()
@@ -697,10 +743,12 @@ class TestImapConnectorCleanup:
 
     def test_cleanup_handles_exception(self):
         """Test cleanup handles logout exception."""
-        connector = ImapConnector({
-            "host": "imap.example.com",
-            "username": "user@example.com",
-        })
+        connector = ImapConnector(
+            {
+                "host": "imap.example.com",
+                "username": "user@example.com",
+            }
+        )
 
         mock_conn = MagicMock()
         mock_conn.logout.side_effect = Exception("Connection lost")

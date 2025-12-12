@@ -18,25 +18,31 @@ class TestGitConnectorInit:
 
     def test_valid_https_config(self):
         """Test initialization with valid HTTPS config."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "ref": "main",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "main",
+            }
+        )
         assert connector.repo_url == "https://github.com/user/repo.git"
         assert connector.ref == "main"
 
     def test_valid_ssh_config(self):
         """Test initialization with valid SSH config."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+            }
+        )
         assert connector.repo_url == "git@github.com:user/repo.git"
 
     def test_valid_ssh_protocol_config(self):
         """Test initialization with SSH protocol URL."""
-        connector = GitConnector({
-            "repo_url": "ssh://git@github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "ssh://git@github.com/user/repo.git",
+            }
+        )
         assert connector.repo_url == "ssh://git@github.com/user/repo.git"
 
     def test_missing_repo_url(self):
@@ -54,10 +60,12 @@ class TestGitConnectorInit:
     def test_invalid_auth_method(self):
         """Test initialization fails with invalid auth_method."""
         with pytest.raises(ValueError, match=r"Invalid auth_method") as exc_info:
-            GitConnector({
-                "repo_url": "https://github.com/user/repo.git",
-                "auth_method": "invalid",
-            })
+            GitConnector(
+                {
+                    "repo_url": "https://github.com/user/repo.git",
+                    "auth_method": "invalid",
+                }
+            )
         assert "Invalid auth_method" in str(exc_info.value)
 
 
@@ -66,15 +74,17 @@ class TestGitConnectorProperties:
 
     @pytest.fixture()
     def connector(self):
-        return GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "ref": "develop",
-            "auth_method": "https_token",
-            "include_globs": ["*.md", "docs/**"],
-            "exclude_globs": ["*.min.js"],
-            "max_file_size_mb": 5,
-            "shallow_depth": 10,
-        })
+        return GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "develop",
+                "auth_method": "https_token",
+                "include_globs": ["*.md", "docs/**"],
+                "exclude_globs": ["*.min.js"],
+                "max_file_size_mb": 5,
+                "shallow_depth": 10,
+            }
+        )
 
     def test_repo_url(self, connector):
         assert connector.repo_url == "https://github.com/user/repo.git"
@@ -127,10 +137,12 @@ class TestGitConnectorCredentials:
 
     def test_set_credentials_token(self):
         """Test setting token credentials."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "auth_method": "https_token",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "https_token",
+            }
+        )
         connector.set_credentials(token="ghp_xxx")
 
         assert connector._token == "ghp_xxx"
@@ -138,10 +150,12 @@ class TestGitConnectorCredentials:
 
     def test_set_credentials_ssh(self):
         """Test setting SSH credentials."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-            "auth_method": "ssh_key",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+                "auth_method": "ssh_key",
+            }
+        )
         connector.set_credentials(
             ssh_key="-----BEGIN OPENSSH PRIVATE KEY-----",
             ssh_passphrase="secret",
@@ -156,10 +170,12 @@ class TestGitConnectorAuthUrl:
 
     def test_build_auth_url_with_token(self):
         """Test building authenticated HTTPS URL."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "auth_method": "https_token",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "https_token",
+            }
+        )
         connector.set_credentials(token="ghp_xxx")
 
         url = connector._build_auth_url()
@@ -167,20 +183,24 @@ class TestGitConnectorAuthUrl:
 
     def test_build_auth_url_no_token(self):
         """Test URL unchanged when no token."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "auth_method": "none",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "none",
+            }
+        )
 
         url = connector._build_auth_url()
         assert url == "https://github.com/user/repo.git"
 
     def test_build_auth_url_ssh(self):
         """Test SSH URL unchanged."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-            "auth_method": "ssh_key",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+                "auth_method": "ssh_key",
+            }
+        )
         connector.set_credentials(token="ignored")
 
         url = connector._build_auth_url()
@@ -192,10 +212,12 @@ class TestGitConnectorSshEnv:
 
     def test_setup_ssh_env_no_key(self):
         """Test SSH env empty when no key."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "auth_method": "none",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "none",
+            }
+        )
 
         with tempfile.TemporaryDirectory() as temp_dir:
             env = connector._setup_ssh_env(Path(temp_dir))
@@ -203,10 +225,12 @@ class TestGitConnectorSshEnv:
 
     def test_setup_ssh_env_with_key(self):
         """Test SSH env setup with key."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-            "auth_method": "ssh_key",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+                "auth_method": "ssh_key",
+            }
+        )
         connector.set_credentials(ssh_key="-----BEGIN OPENSSH PRIVATE KEY-----")
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -221,10 +245,12 @@ class TestGitConnectorSshEnv:
 
     def test_setup_ssh_env_with_passphrase(self):
         """Test SSH env setup with passphrase."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-            "auth_method": "ssh_key",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+                "auth_method": "ssh_key",
+            }
+        )
         connector.set_credentials(
             ssh_key="-----BEGIN OPENSSH PRIVATE KEY-----",
             ssh_passphrase="secret",
@@ -246,27 +272,33 @@ class TestGitConnectorCacheDir:
 
     def test_get_cache_dir_https(self):
         """Test cache dir for HTTPS URL."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         cache_dir = connector._get_cache_dir()
         assert "user_repo" in str(cache_dir)
 
     def test_get_cache_dir_ssh(self):
         """Test cache dir for SSH URL."""
-        connector = GitConnector({
-            "repo_url": "git@github.com:user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "git@github.com:user/repo.git",
+            }
+        )
 
         cache_dir = connector._get_cache_dir()
         assert "user_repo" in str(cache_dir)
 
     def test_get_cache_dir_with_source_id(self):
         """Test cache dir includes source_id."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         cache_dir = connector._get_cache_dir(source_id=123)
         assert "123_" in str(cache_dir)
@@ -278,9 +310,11 @@ class TestGitConnectorAuthenticate:
     @pytest.mark.asyncio()
     async def test_authenticate_success(self):
         """Test successful authentication."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.return_value = (
@@ -299,9 +333,11 @@ class TestGitConnectorAuthenticate:
     @pytest.mark.asyncio()
     async def test_authenticate_failure(self):
         """Test authentication failure raises ValueError."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.return_value = (128, "", "Authentication failed")
@@ -314,9 +350,11 @@ class TestGitConnectorAuthenticate:
     @pytest.mark.asyncio()
     async def test_authenticate_exception(self):
         """Test authentication with exception propagates."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.side_effect = ValueError("Timeout")
@@ -332,9 +370,11 @@ class TestGitConnectorGetRefs:
 
     def test_get_refs_returns_copy(self):
         """Test get_refs returns a copy of refs list."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
         connector._refs = ["main", "develop"]
 
         refs = connector.get_refs()
@@ -351,9 +391,11 @@ class TestGitConnectorRunGitCommand:
     @pytest.mark.asyncio()
     async def test_run_git_command_success(self):
         """Test successful git command execution."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         with patch("shared.connectors.git.asyncio.create_subprocess_exec") as mock_exec:
             mock_process = AsyncMock()
@@ -370,9 +412,11 @@ class TestGitConnectorRunGitCommand:
     @pytest.mark.asyncio()
     async def test_run_git_command_timeout(self):
         """Test git command timeout."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         with patch("shared.connectors.git.asyncio.create_subprocess_exec") as mock_exec:
             mock_process = AsyncMock()
@@ -390,9 +434,11 @@ class TestGitConnectorFileMatching:
 
     def test_matches_patterns_no_globs(self):
         """Test pattern matching with no globs (allow all)."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         # Without include_globs, all paths match
         assert connector._matches_patterns("README.md")
@@ -403,9 +449,11 @@ class TestGitConnectorFileMatching:
         """Test file extension support with defaults."""
         from pathlib import Path
 
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
 
         assert connector._is_supported_extension(Path("README.md"))
         assert connector._is_supported_extension(Path("src/main.py"))
@@ -413,10 +461,12 @@ class TestGitConnectorFileMatching:
 
     def test_matches_patterns_with_include_globs(self):
         """Test pattern matching with custom include globs."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "include_globs": ["*.txt", "docs/**"],
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "include_globs": ["*.txt", "docs/**"],
+            }
+        )
 
         assert connector._matches_patterns("notes.txt")
         assert connector._matches_patterns("docs/guide.md")
@@ -424,10 +474,12 @@ class TestGitConnectorFileMatching:
 
     def test_matches_patterns_with_exclude_globs(self):
         """Test pattern matching with exclude globs."""
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "exclude_globs": ["*.min.js", "vendor/**"],
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "exclude_globs": ["*.min.js", "vendor/**"],
+            }
+        )
 
         assert not connector._matches_patterns("app.min.js")
         assert not connector._matches_patterns("vendor/lib.js")
@@ -437,10 +489,12 @@ class TestGitConnectorFileMatching:
         """Test extension support trusts include_globs."""
         from pathlib import Path
 
-        connector = GitConnector({
-            "repo_url": "https://github.com/user/repo.git",
-            "include_globs": ["*.png"],  # Custom globs
-        })
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "include_globs": ["*.png"],  # Custom globs
+            }
+        )
 
         # When include_globs are set, extension check returns True
         # (trusting the include patterns)

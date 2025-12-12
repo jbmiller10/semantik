@@ -64,9 +64,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secret_success(self, repo, session):
         """Test successful secret storage."""
-        with (
-            patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc,
-        ):
+        with (patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc,):
             mock_enc.encrypt.return_value = b"encrypted_data"
             mock_enc.get_key_id.return_value = "key123"
 
@@ -96,9 +94,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secret_encryption_not_configured(self, repo):
         """Test set_secret fails when encryption not configured."""
-        with patch(
-            "shared.database.repositories.connector_secret_repository.SecretEncryption"
-        ) as mock_enc:
+        with patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc:
             mock_enc.encrypt.side_effect = EncryptionNotConfiguredError("Not configured")
 
             with pytest.raises(EncryptionNotConfiguredError):
@@ -120,9 +116,7 @@ class TestConnectorSecretRepository:
         mock_result.scalar_one_or_none.return_value = mock_secret
         session.set_execute_result(mock_result)
 
-        with patch(
-            "shared.database.repositories.connector_secret_repository.SecretEncryption"
-        ) as mock_enc:
+        with patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc:
             mock_enc.decrypt.return_value = "decrypted_secret"
 
             result = await repo.get_secret(source_id=1, secret_type="password")
@@ -260,9 +254,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secrets_batch_success(self, repo, session):
         """Test storing multiple secrets in batch."""
-        with patch(
-            "shared.database.repositories.connector_secret_repository.SecretEncryption"
-        ) as mock_enc:
+        with patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc:
             mock_enc.encrypt.return_value = b"encrypted"
             mock_enc.get_key_id.return_value = "key123"
 
@@ -285,9 +277,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secrets_batch_skips_empty_values(self, repo, session):
         """Test set_secrets_batch skips empty string values."""
-        with patch(
-            "shared.database.repositories.connector_secret_repository.SecretEncryption"
-        ) as mock_enc:
+        with patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc:
             mock_enc.encrypt.return_value = b"encrypted"
             mock_enc.get_key_id.return_value = "key123"
 
@@ -313,9 +303,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secret_database_error(self, repo):
         """Test set_secret wraps database errors."""
-        with patch(
-            "shared.database.repositories.connector_secret_repository.SecretEncryption"
-        ) as mock_enc:
+        with patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc:
             mock_enc.encrypt.side_effect = Exception("DB error")
 
             with pytest.raises(DatabaseOperationError):
@@ -328,6 +316,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_get_secret_database_error(self, repo, session):
         """Test get_secret wraps database errors."""
+
         # Make execute raise an exception
         async def raise_error(_stmt):
             raise Exception("DB error")
@@ -340,6 +329,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_has_secret_database_error(self, repo, session):
         """Test has_secret wraps database errors."""
+
         async def raise_error(_stmt):
             raise Exception("DB error")
 
@@ -351,6 +341,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_delete_secret_database_error(self, repo, session):
         """Test delete_secret wraps database errors."""
+
         async def raise_error(_stmt):
             raise Exception("DB error")
 
@@ -362,6 +353,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_delete_for_source_database_error(self, repo, session):
         """Test delete_for_source wraps database errors."""
+
         async def raise_error(_stmt):
             raise Exception("DB error")
 
@@ -373,6 +365,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_get_secret_types_database_error(self, repo, session):
         """Test get_secret_types_for_source wraps database errors."""
+
         async def raise_error(_stmt):
             raise Exception("DB error")
 

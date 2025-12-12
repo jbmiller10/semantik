@@ -245,11 +245,14 @@ class TestImapPreviewEndpoint:
         with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
             mock_conn = MagicMock()
             mock_conn.login.return_value = ("OK", [])
-            mock_conn.list.return_value = ("OK", [
-                b'(\\HasNoChildren) "/" "INBOX"',
-                b'(\\HasNoChildren) "/" "Sent"',
-                b'(\\HasNoChildren) "/" "Drafts"',
-            ])
+            mock_conn.list.return_value = (
+                "OK",
+                [
+                    b'(\\HasNoChildren) "/" "INBOX"',
+                    b'(\\HasNoChildren) "/" "Sent"',
+                    b'(\\HasNoChildren) "/" "Drafts"',
+                ],
+            )
             mock_conn.logout.return_value = ("OK", [])
             mock_imap_cls.return_value = mock_conn
 
