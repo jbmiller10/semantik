@@ -94,8 +94,8 @@ Full list + tuning notes: `docs/CONFIGURATION.md`.
 Semantik is meant to be a sandbox for trying retrieval ideas:
 - **Embedding providers** load from Python entry points `semantik.embedding_providers`  
   (toggle with `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`).
-- **Chunking strategies** load from `semantik.chunking_strategies`  
-  (toggle with `SEMANTIK_ENABLE_PLUGINS`).
+- **Chunking strategies** load from `semantik.chunking_strategies`
+  (toggle with `SEMANTIK_ENABLE_CHUNKING_PLUGINS`).
 
 Both systems are idempotent and safe to run without plugins installed.
 

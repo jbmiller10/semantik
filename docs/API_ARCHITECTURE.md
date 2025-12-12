@@ -17,7 +17,7 @@
 Semantik follows a clean three-package architecture with two main services:
 
 1. **Vecpipe Service** (`vecpipe/search_api.py`) - Core search engine
-   - Port: 8001 (default)
+   - Port: 8000 (default; `SEARCH_API_PORT`)
    - Pure REST API for vector similarity and hybrid search
    - Stateless service with Qdrant backend
    - Uses shared package for embeddings and text processing
@@ -51,7 +51,7 @@ The Vecpipe service is the core search engine, providing high-performance vector
 
 ### Base URL
 ```
-http://localhost:8001
+http://localhost:8000
 ```
 
 ### Endpoints
@@ -61,7 +61,7 @@ http://localhost:8001
 GET /
 ```
 
-**Response:**
+**Response (example):**
 ```json
 {
   "status": "healthy",
@@ -73,9 +73,9 @@ GET /
   "embedding_mode": "real",
   "embedding_service": {
     "current_model": "Qwen/Qwen3-Embedding-0.6B",
-    "quantization": "float32",
-    "device": "cuda",
-    "model_info": {...}
+    "provider": "local",
+    "model_info": { ... },
+    "is_mock_mode": false
   }
 }
 ```
@@ -95,7 +95,7 @@ GET /search?q={query}&k={num_results}&collection={collection_name}
 
 **Example:**
 ```bash
-curl "http://localhost:8001/search?q=machine%20learning&k=5&search_type=semantic"
+curl "http://localhost:8000/search?q=machine%20learning&k=5&search_type=semantic"
 ```
 
 **Response:**
@@ -163,7 +163,7 @@ GET /hybrid_search?q={query}&k={num_results}&mode={mode}
 - `q` (required): Search query
 - `k` (optional): Number of results (default: 10)
 - `collection` (optional): Collection name
-- `mode` (optional): Hybrid mode - "filter" or "rerank" (default: "filter")
+- `mode` (optional): Hybrid mode - `"filter"` or `"weighted"` (default: `"filter"`)
 - `keyword_mode` (optional): Keyword matching - "any" or "all" (default: "any")
 - `score_threshold` (optional): Minimum similarity score
 - `model_name` (optional): Override embedding model
@@ -171,7 +171,7 @@ GET /hybrid_search?q={query}&k={num_results}&mode={mode}
 
 **Example:**
 ```bash
-curl "http://localhost:8001/hybrid_search?q=python%20async%20programming&k=10&mode=rerank&keyword_mode=all"
+curl "http://localhost:8000/hybrid_search?q=python%20async%20programming&k=10&mode=weighted&keyword_mode=all"
 ```
 
 **Response:**
@@ -192,7 +192,7 @@ curl "http://localhost:8001/hybrid_search?q=python%20async%20programming&k=10&mo
   ],
   "num_results": 10,
   "keywords_extracted": ["python", "async", "programming"],
-  "search_mode": "rerank"
+  "search_mode": "weighted"
 }
 ```
 
@@ -1342,107 +1342,15 @@ async def test_multi_collection_search():
 
 ## WebSocket Endpoints
 
-### Operation Progress WebSocket
+WebSockets are mounted at the app level and authenticate via `?token=<jwt_token>` (see `packages/webui/main.py`).
 
-```
-ws://localhost:8080/api/v2/operations/{operation_uuid}/ws?token={jwt_token}
-```
+- **Global operations stream**: `ws://localhost:8080/ws/operations?token={jwt_token}`
+- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}`
+- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}?token={jwt_token}`
 
-**Connection Flow**:
-1. Create operation via REST API
-2. Connect WebSocket with operation UUID and JWT token as query parameter
-3. Receive real-time progress updates
-4. Connection closes on completion
+Operations are started via REST and emit task‑specific update events. Directory scans are started with `POST /api/v2/directory-scan/preview`.
 
-**Authentication**: JWT token must be provided as a query parameter `?token={jwt_token}` in the WebSocket URL.
-
-**Message Types**:
-```json
-// Progress update
-{
-  "type": "progress",
-  "percentage": 45.5,
-  "processed_files": 68,
-  "total_files": 150,
-  "current_file": "api/authentication.md"
-}
-
-// File processed
-{
-  "type": "file_processed",
-  "file_path": "/docs/api/authentication.md",
-  "chunks_created": 15,
-  "status": "completed"
-}
-
-// Error
-{
-  "type": "error",
-  "message": "Failed to process file",
-  "file_path": "/docs/corrupted.pdf",
-  "error_code": "PARSE_ERROR"
-}
-
-// Completed
-{
-  "type": "completed",
-  "total_files": 150,
-  "processed_files": 148,
-  "failed_files": 2,
-  "total_chunks": 3420,
-  "duration_seconds": 125.5
-}
-```
-
-**Note:** Directory scan WebSocket endpoint is not currently implemented in the v2 API. Use the REST endpoint for directory scanning.
-
-**Client Messages**:
-```json
-// Start scan
-{
-  "action": "scan",
-  "path": "/path/to/directory",
-  "recursive": true,
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"]
-  }
-}
-
-// Cancel scan
-{
-  "action": "cancel"
-}
-```
-
-**Server Messages**:
-```json
-// Scan started
-{
-  "type": "started",
-  "path": "/path/to/directory"
-}
-
-// Progress update
-{
-  "type": "progress",
-  "scanned": 100,
-  "total": 500,
-  "current_path": "/path/to/current/file"
-}
-
-// Scan completed
-{
-  "type": "completed",
-  "files": [...],
-  "count": 42
-}
-
-// Error
-{
-  "type": "error",
-  "error": "Permission denied"
-}
-```
+Full message schemas and event types are documented in `docs/WEBSOCKET_API.md`.
 
 ## Error Handling
 
@@ -1545,7 +1453,7 @@ Future versions will maintain backward compatibility or provide migration guides
 ## OpenAPI/Swagger Documentation
 
 Both services provide OpenAPI documentation:
-- Search API: `http://localhost:8001/docs`
+- Search API: `http://localhost:8000/docs`
 - WebUI: `http://localhost:8080/docs`
 
 The interactive documentation allows testing endpoints directly in the browser.
