@@ -112,6 +112,8 @@ dmypy.json
 # Claude
 .claude/
 .claude-trace/
+CLAUDE.md
+GEMINI.md
 
 # IDE
 .vscode/
@@ -204,6 +206,8 @@ images/*
 *.backup
 test_*.png
 *.tmp
+embedding-atlas-*.tgz
+embedding-atlas-codebase.txt
 page_content.html
 screenshot*.png
 login*.png
