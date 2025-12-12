@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios';
 import apiClient from './client';
 import type {
   Collection,
@@ -76,8 +77,8 @@ export const operationsV2Api = {
  * Minimal implementation for existing usage
  */
 export const searchV2Api = {
-  search: (data: SearchRequest) => 
-    apiClient.post<SearchResponse>('/api/v2/search', data),
+  search: (data: SearchRequest, config?: AxiosRequestConfig) =>
+    apiClient.post<SearchResponse>('/api/v2/search', data, config),
 };
 
 // Helper function to handle API errors
