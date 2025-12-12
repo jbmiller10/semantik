@@ -762,6 +762,55 @@ async def _process_append_operation_impl(
     except ValueError as e:
         raise ValueError(f"Invalid source configuration: {e}") from e
 
+    # Apply stored connector secrets (if any) before authentication.
+    #
+    # Secrets are stored encrypted in the DB (via SourceService). Celery workers do not
+    # run the FastAPI startup hooks, so we need to ensure encryption is initialised
+    # and then load/decrypt secrets here for connectors that support credentials.
+    if callable(getattr(connector, "set_credentials", None)):
+        import inspect
+
+        from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
+        from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption
+
+        if not SecretEncryption.is_initialized() and settings.CONNECTOR_SECRETS_KEY:
+            try:
+                SecretEncryption.initialize(settings.CONNECTOR_SECRETS_KEY)
+                logger.debug(
+                    "Connector secrets encryption initialised in worker (key_id=%s)",
+                    SecretEncryption.get_key_id(),
+                )
+            except ValueError as exc:
+                raise ValueError(f"Invalid CONNECTOR_SECRETS_KEY: {exc}") from exc
+
+        secret_repo = ConnectorSecretRepository(session)
+        secret_types = await secret_repo.get_secret_types_for_source(source_id)
+        if secret_types:
+            credentials: dict[str, str] = {}
+            for secret_type in secret_types:
+                try:
+                    secret_value = await secret_repo.get_secret(source_id, secret_type)
+                except (EncryptionNotConfiguredError, DecryptionError) as exc:
+                    raise ValueError(
+                        f"Failed to decrypt stored secrets for source_id={source_id}; "
+                        "ensure CONNECTOR_SECRETS_KEY matches the key used to encrypt them."
+                    ) from exc
+                if secret_value is not None:
+                    credentials[secret_type] = secret_value
+
+            if credentials:
+                set_credentials = getattr(connector, "set_credentials")
+                allowed_params = set(inspect.signature(set_credentials).parameters.keys())
+                allowed_params.discard("self")
+                filtered_credentials = {k: v for k, v in credentials.items() if k in allowed_params}
+                if filtered_credentials:
+                    set_credentials(**filtered_credentials)
+                    logger.debug(
+                        "Applied connector secrets for source_id=%s: %s",
+                        source_id,
+                        sorted(filtered_credentials.keys()),
+                    )
+
     # Authenticate / validate access
     try:
         auth_ok = await connector.authenticate()
