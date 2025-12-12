@@ -100,7 +100,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_success(self, test_client):
         """Test successful git repository preview."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector = AsyncMock()
             mock_connector.authenticate.return_value = True
             mock_connector.get_refs.return_value = ["main", "develop", "v1.0.0"]
@@ -124,7 +124,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_with_token(self, test_client):
         """Test git preview with HTTPS token authentication."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector = AsyncMock()
             mock_connector.authenticate.return_value = True
             mock_connector.get_refs.return_value = ["main"]
@@ -147,7 +147,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_with_ssh_key(self, test_client):
         """Test git preview with SSH key authentication."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector = AsyncMock()
             mock_connector.authenticate.return_value = True
             mock_connector.get_refs.return_value = ["main"]
@@ -174,7 +174,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_auth_failed(self, test_client):
         """Test git preview when authentication fails."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector = AsyncMock()
             mock_connector.authenticate.return_value = False
             mock_connector_cls.return_value = mock_connector
@@ -196,7 +196,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_config_error(self, test_client):
         """Test git preview with invalid configuration."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector_cls.side_effect = ValueError("Invalid repository URL")
 
             response = test_client.post(
@@ -215,7 +215,7 @@ class TestGitPreviewEndpoint:
 
     def test_git_preview_connection_error(self, test_client):
         """Test git preview when connection fails."""
-        with patch("webui.api.v2.connectors.GitConnector") as mock_connector_cls:
+        with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
             mock_connector = AsyncMock()
             mock_connector.authenticate.side_effect = Exception("Connection timeout")
             mock_connector_cls.return_value = mock_connector

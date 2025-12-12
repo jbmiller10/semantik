@@ -166,7 +166,7 @@ class DocumentArtifactRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to create/replace artifact for document {document_id}: {e}")
-            raise DatabaseOperationError(f"Failed to create artifact: {e}") from e
+            raise DatabaseOperationError("create", "DocumentArtifact", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def get_primary(self, document_id: str) -> DocumentArtifact | None:
@@ -188,7 +188,7 @@ class DocumentArtifactRepository:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Failed to get primary artifact for document {document_id}: {e}")
-            raise DatabaseOperationError(f"Failed to get artifact: {e}") from e
+            raise DatabaseOperationError("get", "DocumentArtifact", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def get_by_kind(self, document_id: str, artifact_kind: str) -> DocumentArtifact | None:
@@ -211,7 +211,7 @@ class DocumentArtifactRepository:
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Failed to get artifact for document {document_id}: {e}")
-            raise DatabaseOperationError(f"Failed to get artifact: {e}") from e
+            raise DatabaseOperationError("get", "DocumentArtifact", str(e)) from e
 
     async def get_content(
         self,
@@ -263,7 +263,7 @@ class DocumentArtifactRepository:
             return result.scalar_one_or_none() is not None
         except Exception as e:
             logger.error(f"Failed to check artifact existence for document {document_id}: {e}")
-            raise DatabaseOperationError(f"Failed to check artifact: {e}") from e
+            raise DatabaseOperationError("check", "DocumentArtifact", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def delete_for_document(self, document_id: str) -> int:
@@ -284,7 +284,7 @@ class DocumentArtifactRepository:
             return count
         except Exception as e:
             logger.error(f"Failed to delete artifacts for document {document_id}: {e}")
-            raise DatabaseOperationError(f"Failed to delete artifacts: {e}") from e
+            raise DatabaseOperationError("delete", "DocumentArtifact", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def delete_for_collection(self, collection_id: str) -> int:
@@ -305,7 +305,7 @@ class DocumentArtifactRepository:
             return count
         except Exception as e:
             logger.error(f"Failed to delete artifacts for collection {collection_id}: {e}")
-            raise DatabaseOperationError(f"Failed to delete artifacts: {e}") from e
+            raise DatabaseOperationError("delete", "DocumentArtifact", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def get_stats_for_collection(self, collection_id: str) -> dict[str, Any]:
@@ -336,4 +336,4 @@ class DocumentArtifactRepository:
             }
         except Exception as e:
             logger.error(f"Failed to get artifact stats for collection {collection_id}: {e}")
-            raise DatabaseOperationError(f"Failed to get artifact stats: {e}") from e
+            raise DatabaseOperationError("get_stats", "DocumentArtifact", str(e)) from e
