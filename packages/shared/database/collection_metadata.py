@@ -6,8 +6,15 @@ import logging
 import uuid
 from typing import Any
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, PointStruct, VectorParams
+from qdrant_client import AsyncQdrantClient, QdrantClient
+from qdrant_client.models import (
+    Distance,
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +89,57 @@ def store_collection_metadata(
 
 
 def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict[str, Any] | None:
-    """Get metadata for a collection"""
+    """Get metadata for a collection by querying payload field.
+
+    Uses scroll with a filter on the collection_name payload field rather than
+    point ID lookup, since metadata points are stored with random UUID IDs.
+    """
     try:
-        result = qdrant.retrieve(collection_name=METADATA_COLLECTION, ids=[collection_name])
-        if result:
-            payload = result[0].payload
-            return dict(payload) if payload else {}
+        points, _ = qdrant.scroll(
+            collection_name=METADATA_COLLECTION,
+            limit=1,
+            with_payload=True,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="collection_name",
+                        match=MatchValue(value=collection_name),
+                    )
+                ]
+            ),
+        )
+        if points:
+            return dict(points[0].payload) if points[0].payload else {}
+    except Exception as e:
+        logger.warning(f"Failed to get metadata for collection {collection_name}: {e}")
+    return None
+
+
+async def get_collection_metadata_async(
+    qdrant: AsyncQdrantClient,
+    collection_name: str,
+) -> dict[str, Any] | None:
+    """Async version: Get metadata for a collection by querying payload field.
+
+    Uses scroll with a filter on the collection_name payload field rather than
+    point ID lookup, since metadata points are stored with random UUID IDs.
+    """
+    try:
+        points, _ = await qdrant.scroll(
+            collection_name=METADATA_COLLECTION,
+            limit=1,
+            with_payload=True,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="collection_name",
+                        match=MatchValue(value=collection_name),
+                    )
+                ]
+            ),
+        )
+        if points:
+            return dict(points[0].payload) if points[0].payload else {}
     except Exception as e:
         logger.warning(f"Failed to get metadata for collection {collection_name}: {e}")
     return None
