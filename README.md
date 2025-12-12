@@ -24,6 +24,17 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
 - **Observability**: health endpoints + Prometheus metrics in both services.
 
+## Screenshots
+
+### Collections dashboard
+![Collections dashboard](docs/screenshots/collections.png)
+
+### Semantic search with results
+![Semantic search results](docs/screenshots/search-results.png)
+
+### Collection overview & chunking config
+![Collection overview](docs/screenshots/collection-overview.png)
+
 ## Architecture
 Three Python packages, one frontend:
 - `packages/webui/` – FastAPI app serving REST + WebSocket APIs and the React UI; owns Postgres state.
