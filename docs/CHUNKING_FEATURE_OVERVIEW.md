@@ -1,67 +1,8 @@
-# Semantik Chunking Feature - Overview & Context
+# Chunking System
 
-## Executive Summary
+Semantik's document chunking system splits documents into meaningful chunks for semantic search. 6 strategies, 40+ file types, configurable per collection.
 
-This document provides context for all developers working on Semantik's chunking system implementation. We're building a modern, intelligent document chunking system that will form the foundation of Semantik's semantic search capabilities.
-
-**Timeline**: 4 weeks (includes buffer for unexpected issues)  
-**Approach**: Clean implementation with enhanced architecture based on review feedback  
-**Goal**: World-class document chunking supporting 6 strategies across 40+ file types  
-**Code Support**: Deferred to follow-up release (~2 weeks post-launch)
-
----
-
-## Why Chunking Matters
-
-### The Problem
-When storing documents in a vector database for semantic search, we need to split them into smaller, meaningful pieces called "chunks". Poor chunking leads to:
-- 🔍 **Bad search results**: Relevant content is missed or buried
-- 💭 **Lost context**: Important information is split across chunks
-- 💰 **Wasted resources**: Inefficient chunks increase costs and reduce performance
-- 😤 **User frustration**: Users can't find what they're looking for
-
-### Our Solution
-We're implementing a comprehensive chunking system based on the "5 Levels of Text Splitting" that adapts to different content types and use cases. This will give Semantik users:
-- **Better search quality**: Find exactly what they're looking for
-- **Preserved context**: Chunks maintain semantic meaning
-- **Optimal performance**: Right-sized chunks for speed and accuracy
-- **Flexibility**: Choose the best strategy for their content
-
----
-
-## The Vision
-
-### Current State (What We're Replacing)
-- Basic token-based chunking only
-- Supports only 8 file types
-- No user control over chunking
-- One-size-fits-all approach
-
-### Future State (What We're Building)
-- **6 intelligent strategies** from simple to AI-powered embeddings
-- **40+ supported file types** with smart detection
-- **User-configurable** per collection
-- **Automatic optimization** based on content type
-- **Real-time analytics** to measure and improve
-- **Code support roadmap** clearly communicated
-
----
-
-## Implementation Approach
-
-Based on architectural review feedback, we're taking an **enhanced clean-slate approach**:
-- ✅ **No backwards compatibility** constraints
-- ✅ **Service-oriented architecture** with ChunkingOrchestrator layer
-- ✅ **Normalized database schema** for performance at scale
-- ✅ **Security-first design** with comprehensive validation
-- ✅ **Best-in-class libraries** (LlamaIndex, sentence-transformers)
-- ✅ **Performance benchmarks** defined upfront
-- ✅ **Comprehensive error handling** and recovery
-- ✅ **Phased feature delivery** (code support in follow-up)
-
----
-
-## The 6 Chunking Strategies
+## Chunking Strategies
 
 ### Level 1: Basic
 1. **Character** (TokenTextSplitter) - Simple fixed-size splitting for basic needs

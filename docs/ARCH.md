@@ -1,13 +1,9 @@
-# Semantik Document Embedding System - Comprehensive Architecture Documentation
+# Semantik Architecture
 
-## Executive Summary
+Self-hosted semantic search with three packages: vecpipe (search engine), webui (control plane), and shared (common utilities). Collection-centric design for multi-model support.
 
-Semantik is a production-ready, high-performance document embedding and vector search system designed for technical users who prioritize performance and control. The system features a clean three-package architecture with clear separation between its core search engine (vecpipe), control plane (webui), and shared components. This modular design enables both standalone usage and user-friendly management through a modern React interface.
-
-The system has undergone a major architectural refactoring, transitioning from a job-centric model to a collection-centric architecture. This new design provides better organization, scalability, and multi-model support through collections that group related documents with shared embedding configurations.
-
-### Key Features
-- High-performance vector search powered by Qdrant
+## Key Features
+- Vector search powered by Qdrant
 - Collection-based document organization with multi-model support
 - Support for multiple embedding models with quantization (float32, float16, int8)
 - Hybrid search combining vector similarity and keyword matching
