@@ -204,6 +204,98 @@ def _extract_qdrant_error(e: httpx.HTTPStatusError) -> str:
     return default_detail
 
 
+async def _lookup_collection_from_operation(operation_uuid: str) -> str | None:
+    """Look up collection's vector_store_name from operation_uuid.
+
+    Uses database session to query OperationRepository.
+    Returns None if operation not found or on any error.
+    """
+    from shared.database.database import ensure_async_sessionmaker
+    from shared.database.repositories.operation_repository import OperationRepository
+
+    try:
+        session_factory = await ensure_async_sessionmaker()
+        async with session_factory() as session:
+            repo = OperationRepository(session)
+            operation = await repo.get_by_uuid(operation_uuid)
+            if operation and operation.collection:
+                # Return the vector_store_name which is the Qdrant collection name
+                return operation.collection.vector_store_name
+    except Exception as e:
+        logger.warning(f"Failed to lookup operation {operation_uuid}: {e}")
+
+    return None
+
+
+async def resolve_collection_name(
+    request_collection: str | None,
+    operation_uuid: str | None,
+    default_collection: str,
+) -> str:
+    """Resolve collection name using priority: explicit > operation_uuid lookup > default.
+
+    Args:
+        request_collection: Explicitly provided collection name
+        operation_uuid: Operation UUID to look up collection from
+        default_collection: Fallback default collection name
+
+    Returns:
+        Resolved collection name
+
+    Raises:
+        HTTPException: If operation_uuid is provided but not found in database
+    """
+    # Priority 1: Explicit collection name
+    if request_collection:
+        return request_collection
+
+    # Priority 2: Infer from operation_uuid
+    if operation_uuid:
+        collection_name = await _lookup_collection_from_operation(operation_uuid)
+        if collection_name:
+            return collection_name
+        # operation_uuid provided but not found - this is an error
+        raise HTTPException(
+            status_code=404,
+            detail=f"Operation '{operation_uuid}' not found or has no associated collection",
+        )
+
+    # Priority 3: Default
+    return default_collection
+
+
+def _map_hybrid_to_search_response(hybrid_response: HybridSearchResponse) -> SearchResponse:
+    """Map HybridSearchResponse to SearchResponse for unified API."""
+    results = []
+    for hr in hybrid_response.results:
+        results.append(
+            SearchResult(
+                path=hr.path,
+                chunk_id=hr.chunk_id,
+                score=hr.combined_score if hr.combined_score is not None else hr.score,
+                doc_id=hr.doc_id,
+                content=hr.content,
+                metadata=hr.metadata,
+                file_path=None,
+                file_name=None,
+                operation_uuid=None,
+            )
+        )
+
+    return SearchResponse(
+        query=hybrid_response.query,
+        results=results,
+        num_results=hybrid_response.num_results,
+        search_type="hybrid",
+        model_used=None,
+        embedding_time_ms=None,
+        search_time_ms=None,
+        reranking_used=False,
+        reranker_model=None,
+        reranking_time_ms=None,
+    )
+
+
 def generate_mock_embedding(text: str, vector_dim: int | None = None) -> list[float]:
     """Generate mock embedding for testing (fallback when real embeddings unavailable)."""
     if vector_dim is None:
@@ -387,7 +479,23 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         search_state.model_manager = dummy_mgr
 
     try:
-        collection_name = request.collection or cfg.DEFAULT_COLLECTION
+        collection_name = await resolve_collection_name(
+            request.collection, request.operation_uuid, cfg.DEFAULT_COLLECTION
+        )
+
+        # Route hybrid search_type to dedicated hybrid search
+        if request.search_type == "hybrid":
+            hybrid_response = await perform_hybrid_search(
+                query=request.query,
+                k=request.k,
+                collection=collection_name,
+                mode=request.hybrid_mode,
+                keyword_mode=request.keyword_mode,
+                score_threshold=request.score_threshold if request.score_threshold > 0 else None,
+                model_name=request.model_name,
+                quantization=request.quantization,
+            )
+            return _map_hybrid_to_search_response(hybrid_response)
 
         vector_dim, collection_info = await _get_collection_info(collection_name)
 
@@ -579,6 +687,18 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                         )
                     )
                 break
+
+        # Apply score_threshold filtering BEFORE reranking
+        if request.score_threshold > 0 and results:
+            pre_filter_count = len(results)
+            results = [r for r in results if r.score >= request.score_threshold]
+            if pre_filter_count != len(results):
+                logger.info(
+                    "score_threshold=%.2f filtered %d/%d results",
+                    request.score_threshold,
+                    pre_filter_count - len(results),
+                    pre_filter_count,
+                )
 
         reranking_time_ms = None
         reranker_model_used = None
@@ -1167,11 +1287,14 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
         upsert_request: dict[str, Any] = {
             "points": [{"id": p.id, "vector": p.vector, "payload": p.payload} for p in qdrant_points]
         }
+
+        # Build URL with optional wait query parameter (per Qdrant REST API spec)
+        url = f"/collections/{request.collection_name}/points"
         if request.wait:
-            upsert_request["wait"] = True
+            url = f"{url}?wait=true"
 
         try:
-            response = await client.put(f"/collections/{request.collection_name}/points", json=upsert_request)
+            response = await client.put(url, json=upsert_request)
             maybe_coro = response.raise_for_status()
             if inspect.isawaitable(maybe_coro):
                 await maybe_coro
