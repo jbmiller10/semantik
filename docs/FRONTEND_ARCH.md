@@ -20,15 +20,22 @@ The frontend for Semantik is a modern React application built with TypeScript, l
 ### Vite Configuration (`vite.config.ts`)
 
 ```typescript
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   base: '/',
+  esbuild: {
+    drop: mode === 'production' ? ['console', 'debugger'] : [],
+  },
   build: {
     outDir: '../../packages/webui/static',  // Builds to backend static directory
     assetsDir: 'assets',
-    sourcemap: false,
-    minify: 'esbuild',
+    sourcemap: true,
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
   server: {
     proxy: {
@@ -43,7 +50,7 @@ export default defineConfig({
       },
     },
   },
-})
+}))
 ```
 
 ### TypeScript Configuration
@@ -67,10 +74,21 @@ Key compiler options:
 ```
 src/
 ├── components/          # Reusable UI components
+│   ├── chunking/       # Chunking-related components
+│   ├── common/         # Shared utility components
+│   ├── search/         # Search form components
+│   └── __tests__/      # Component tests
 ├── hooks/              # Custom React hooks
+│   └── __tests__/      # Hook tests
 ├── pages/              # Route-level components
 ├── services/           # API client and external services
+│   └── api/v2/         # Versioned API clients
+│       └── __tests__/  # API client tests
 ├── stores/             # Zustand state stores
+│   └── __tests__/      # Store tests
+├── tests/              # Test utilities and mocks
+│   └── mocks/          # MSW handlers
+├── types/              # TypeScript type definitions
 ├── utils/              # Utility functions
 ├── App.tsx             # Root component with routing
 ├── main.tsx            # Application entry point
@@ -89,15 +107,12 @@ App
     └── Layout (protected)
         ├── HomePage
         │   ├── CollectionsDashboard (collections tab)
-        │   │   ├── CollectionList
-        │   │   │   └── CollectionCard
-        │   │   │       └── CollectionOperations
-        │   │   │           └── OperationProgress
-        │   │   ├── CreateCollectionModal
-        │   │   ├── AddDataToCollectionModal
-        │   │   └── ReindexCollectionModal
+        │   │   ├── CollectionCard
+        │   │   │   └── CollectionOperations
+        │   │   │       └── OperationProgress
+        │   │   └── CreateCollectionModal
         │   ├── ActiveOperationsTab (operations tab)
-        │   │   └── OperationsList
+        │   │   └── OperationListItem
         │   └── SearchInterface (search tab)
         │       └── SearchResults
         ├── SettingsPage
@@ -112,8 +127,8 @@ App
 
 **Layout.tsx**
 - Main application shell with header navigation
-- Tab-based navigation between Create Job, Jobs, and Search
-- Integrates global modals (Toast, DocumentViewer, JobMetrics)
+- Tab-based navigation between Collections, Active Operations, and Search
+- Integrates global modals (Toast, DocumentViewer, CollectionDetailsModal)
 - Handles authentication state and logout
 
 **ErrorBoundary.tsx**
@@ -126,9 +141,9 @@ App
 **CollectionsDashboard.tsx**
 - Main dashboard for managing collections
 - Features:
-  - Grid/list view of all collections
-  - Create, edit, delete collection actions
-  - Filter and sort capabilities
+  - Grid view of all collections
+  - Create collection action
+  - Search and filter capabilities
   - Real-time status updates via React Query
 
 **CollectionCard.tsx**
@@ -170,7 +185,7 @@ App
   - Collection selection (only shows ready collections)
   - Hybrid search toggle with mode options
   - Result count configuration
-- Auto-refreshes collection statuses for processing jobs
+- Auto-refreshes collection statuses for processing operations
 
 **SearchResults.tsx**
 - Displays search results with score indicators
@@ -258,43 +273,64 @@ interface SearchState {
   loading: boolean;
   error: string | null;
   searchParams: SearchParams;
-  collections: Collection[];
-  hybridModeOptions: HybridModeOption[];
-  performSearch: (params: SearchParams) => Promise<void>;
-  setSearchParams: (params: Partial<SearchParams>) => void;
-  // ... methods
+  collections: string[];  // Collection IDs for filtering
+  failedCollections: FailedCollection[];
+  partialFailure: boolean;
+  rerankingMetrics: RerankingMetrics | null;
+  gpuMemoryError: GPUMemoryError | null;
+  validationErrors: ValidationError[];
+  touched: Record<string, boolean>;
+  abortController: AbortController | null;
+  rerankingAvailable: boolean;
+  rerankingModelsLoading: boolean;
+  setResults: (results: SearchResult[]) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  updateSearchParams: (params: Partial<SearchParams>) => void;
+  setCollections: (collections: string[]) => void;
+  validateAndUpdateSearchParams: (params: Partial<SearchParams>) => void;
+  setFieldTouched: (field: string, isTouched?: boolean) => void;
+  clearValidationErrors: () => void;
+  hasValidationErrors: () => boolean;
+  getValidationError: (field: string) => string | undefined;
+  // ... additional methods
 }
 ```
 - Manages search state and results
 - Stores search parameters and configurations
 - Handles hybrid search modes and reranking
-- Integrates with collection status for filtering
+- Includes validation state for form fields
+- Supports request cancellation via AbortController
 
 #### uiStore.ts
 ```typescript
 interface UIState {
   toasts: Toast[];
-  activeTab: 'collections' | 'operations' | 'search';
-  showDocumentViewer: DocumentViewerState | null;
-  showCollectionDetails: string | null;
-  activeModals: {
-    createCollection: boolean;
-    addDataToCollection: string | null;
-    reindexCollection: string | null;
-  };
-  // ... methods
+  activeTab: 'search' | 'collections' | 'operations';
+  showDocumentViewer: { collectionId: string; docId: string; chunkId?: string } | null;
+  showCollectionDetailsModal: string | null;
+  addToast: (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+  setActiveTab: (tab: 'search' | 'collections' | 'operations') => void;
+  setShowDocumentViewer: (viewer: { collectionId: string; docId: string; chunkId?: string } | null) => void;
+  setShowCollectionDetailsModal: (collectionId: string | null) => void;
 }
 ```
 - UI-specific state (modals, toasts, tabs)
 - Auto-dismiss logic for toasts with configurable duration
 - Modal visibility management
-- Tab navigation state
+- Tab navigation state (Collections, Active Operations, Search)
+
+#### chunkingStore.ts
+- Manages chunking configuration state
+- Stores preset selections and custom configurations
+- Handles chunking preview state
 
 ### State Flow Diagram
 
 ```
-User Action → Component → React Query Hook → API Call → Cache Update → Re-render
-                    ↓                              ↓
+User Action -> Component -> React Query Hook -> API Call -> Cache Update -> Re-render
+                    |                              |
                 Zustand Store              WebSocket Updates
                 (UI State Only)            (Real-time Progress)
 ```
@@ -313,10 +349,8 @@ User Action → Component → React Query Hook → API Call → Cache Update →
 #### Selector Optimization
 ```typescript
 // Avoid re-renders with specific selectors
-const jobCount = useJobsStore((state) => state.jobs.length);
-const activeJobIds = useJobsStore((state) => 
-  state.jobs.filter(j => j.status === 'running').map(j => j.id)
-);
+const collectionCount = useCollections().data?.length ?? 0;
+const activeOperations = useQuery(['active-operations']).data ?? [];
 
 // Shallow equality check for arrays/objects
 const searchParams = useSearchStore(
@@ -330,12 +364,12 @@ const searchParams = useSearchStore(
 // Combine multiple stores
 const useAppState = () => {
   const auth = useAuthStore();
-  const jobs = useJobsStore();
   const ui = useUIStore();
-  
+  const { data: collections } = useCollections();
+
   return {
     isAuthenticated: !!auth.token,
-    hasActiveJobs: jobs.activeJobs.size > 0,
+    hasActiveOperations: collections?.some(c => c.status === 'processing') ?? false,
     currentView: ui.activeTab,
   };
 };
@@ -343,45 +377,27 @@ const useAppState = () => {
 
 #### Async Actions Pattern
 ```typescript
-interface JobsState {
-  jobs: Job[];
+// Search store example with async actions
+interface SearchState {
+  results: SearchResult[];
   loading: boolean;
   error: string | null;
-  
-  fetchJobs: () => Promise<void>;
-  createJob: (data: JobData) => Promise<Job>;
+
+  setResults: (results: SearchResult[]) => void;
+  setLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+  clearResults: () => void;
 }
 
-const useJobsStore = create<JobsState>((set, get) => ({
-  jobs: [],
+const useSearchStore = create<SearchState>((set) => ({
+  results: [],
   loading: false,
   error: null,
-  
-  fetchJobs: async () => {
-    set({ loading: true, error: null });
-    try {
-      const response = await jobsApi.list();
-      set({ jobs: response.data.jobs, loading: false });
-    } catch (error) {
-      set({ error: error.message, loading: false });
-    }
-  },
-  
-  createJob: async (data) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await jobsApi.create(data);
-      const newJob = response.data.job;
-      set((state) => ({
-        jobs: [...state.jobs, newJob],
-        loading: false,
-      }));
-      return newJob;
-    } catch (error) {
-      set({ error: error.message, loading: false });
-      throw error;
-    }
-  },
+
+  setResults: (results) => set({ results }),
+  setLoading: (loading) => set({ loading }),
+  setError: (error) => set({ error }),
+  clearResults: () => set({ results: [], error: null }),
 }));
 ```
 
@@ -390,12 +406,12 @@ const useJobsStore = create<JobsState>((set, get) => ({
 // DevTools integration
 import { devtools } from 'zustand/middleware';
 
-const useJobsStore = create<JobsState>()(
+const useSearchStore = create<SearchState>()(
   devtools(
     (set) => ({
       // ... store implementation
     }),
-    { name: 'jobs-store' }
+    { name: 'search-store' }
   )
 );
 
@@ -410,7 +426,7 @@ const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         token: state.token,
         refreshToken: state.refreshToken,
       }),
@@ -474,12 +490,12 @@ export function useCreateCollection() {
     onMutate: async (newCollection) => {
       // Cancel in-flight queries
       await queryClient.cancelQueries({ queryKey: collectionKeys.lists() });
-      
+
       // Snapshot for rollback
       const previousCollections = queryClient.getQueryData<Collection[]>(
         collectionKeys.lists()
       );
-      
+
       // Optimistic update with temporary data
       const tempCollection: Collection = {
         id: `temp-${Date.now()}`,
@@ -487,12 +503,12 @@ export function useCreateCollection() {
         status: 'pending',
         created_at: new Date().toISOString(),
       };
-      
+
       queryClient.setQueryData<Collection[]>(
         collectionKeys.lists(),
         old => [...(old || []), tempCollection]
       );
-      
+
       return { previousCollections, tempId: tempCollection.id };
     },
     onError: (error, _, context) => {
@@ -527,11 +543,11 @@ export function useDeleteCollection() {
     onSuccess: (_, collectionId) => {
       // Remove collection from cache
       queryClient.removeQueries({ queryKey: collectionKeys.detail(collectionId) });
-      
+
       // Remove related data
       queryClient.removeQueries({ queryKey: operationKeys.byCollection(collectionId) });
       queryClient.removeQueries({ queryKey: ['collection-documents', collectionId] });
-      
+
       // Refresh lists
       queryClient.invalidateQueries({ queryKey: collectionKeys.lists() });
     },
@@ -569,28 +585,28 @@ export function useOperationProgress(
 ) {
   const updateOperationInCache = useUpdateOperationInCache();
   const { addToast } = useUIStore();
-  
+
   const wsUrl = operationId ? operationsV2Api.getWebSocketUrl(operationId) : null;
-  
+
   const { sendMessage, readyState } = useWebSocket(wsUrl, {
     onMessage: (event) => {
       const rawMessage = JSON.parse(event.data);
-      
+
       // Handle different message types
       switch (rawMessage.type) {
         case 'operation_completed':
           updateOperationInCache(operationId, { status: 'completed' });
           options.onComplete?.();
           break;
-          
+
         case 'operation_failed':
-          updateOperationInCache(operationId, { 
+          updateOperationInCache(operationId, {
             status: 'failed',
-            error_message: rawMessage.data?.error_message 
+            error_message: rawMessage.data?.error_message
           });
           options.onError?.(rawMessage.data?.error_message);
           break;
-          
+
         case 'progress_update':
           updateOperationInCache(operationId, {
             progress: rawMessage.data?.progress,
@@ -600,7 +616,7 @@ export function useOperationProgress(
       }
     },
   });
-  
+
   return { sendMessage, readyState };
 }
 ```
@@ -610,16 +626,16 @@ export function useOperationProgress(
 // Broadcast state changes across tabs
 const useBroadcastChannel = (channel: string) => {
   const bc = new BroadcastChannel(channel);
-  
+
   const broadcast = (data: any) => {
     bc.postMessage(data);
   };
-  
+
   const subscribe = (handler: (data: any) => void) => {
     bc.onmessage = (event) => handler(event.data);
     return () => bc.close();
   };
-  
+
   return { broadcast, subscribe };
 };
 
@@ -635,7 +651,7 @@ const logout = async () => {
 
 ## API Integration
 
-### API Client (`services/api.ts`)
+### API Client (`services/api/v2/client.ts`)
 
 The API client uses Axios with interceptors for:
 - Automatic token injection
@@ -667,10 +683,10 @@ The application uses a versioned API structure under `/api/v2/` with TypeScript-
 
 **operationsV2Api** (`operations.ts`)
 - `list(filters)` - Get operations with optional filtering
-- `getByCollection(collectionId)` - Get operations for a collection
 - `get(id)` - Get operation details
 - `cancel(id)` - Cancel running operation
 - `getWebSocketUrl(id)` - Get WebSocket URL for real-time updates
+- `getGlobalWebSocketUrl()` - Get global operations WebSocket URL
 
 **documentsV2Api** (`documents.ts`)
 - `list(collectionId, params)` - Paginated document listing
@@ -690,6 +706,33 @@ The application uses a versioned API structure under `/api/v2/` with TypeScript-
 - `getStats()` - System metrics and health
 - `checkRerankingSupport()` - Check if reranking is available
 
+**modelsApi** (`models.ts`)
+- `getModels()` - Fetch all available embedding models including plugin models
+
+**projectionsV2Api** (`projections.ts`)
+- `list(collectionId)` - Get projections for a collection
+- `getMetadata(collectionId, projectionId)` - Get projection metadata
+- `getArtifact(collectionId, projectionId, artifactName)` - Get projection artifact data
+- `start(collectionId, payload)` - Start a new projection computation
+- `delete(collectionId, projectionId)` - Delete a projection
+- `select(collectionId, projectionId, ids)` - Select points in a projection
+
+**chunkingApi** (`chunking.ts`)
+- `preview(request, options)` - Preview chunking for a document with progress tracking
+- `compare(request, options)` - Compare multiple chunking strategies
+- `getAnalytics(params, options)` - Get chunking analytics
+- `getPresets(options)` - Get all presets (system and custom)
+- `savePreset(preset, options)` - Save a custom preset
+- `deletePreset(presetId, options)` - Delete a custom preset
+- `process(request, options)` - Process a document with specific chunking strategy
+- `getRecommendation(fileType, options)` - Get recommended strategy for a file type
+- `cancelRequest(requestId, reason)` - Cancel a specific request
+- `cancelAllRequests(reason)` - Cancel all active requests
+
+**settingsApi** (`settings.ts`)
+- `getStats()` - Get system statistics
+- `resetDatabase()` - Reset the database
+
 **directoryScanApi** (`directoryScan.ts`)
 - `scan(path, options)` - Scan directory for files
 - `getWebSocketUrl(sessionId)` - WebSocket for scan progress
@@ -704,21 +747,43 @@ The application uses a versioned API structure under `/api/v2/` with TypeScript-
 - Connection state tracking
 - Message sending utilities
 
-**useJobProgress.ts**
-- Job-specific WebSocket for progress updates
-- Automatically connects/disconnects based on job status
-- Updates job store with progress data
+**useOperationProgress.ts**
+- Operation-specific WebSocket for progress updates
+- Automatically connects/disconnects based on operation status
+- Updates React Query cache with progress data
+
+**useOperationsSocket.ts**
+- Global operations WebSocket for all operation updates
+- Shared connection to avoid exceeding WebSocket limits
+- Broadcasts updates to all listening components
 
 **useDirectoryScanWebSocket.ts**
 - Directory scanning via WebSocket
 - Real-time scan progress updates
 - Error handling and state management
 
+**useChunkingWebSocket.ts**
+- Chunking preview WebSocket connection
+- Real-time chunking progress updates
+
 ### Other Hooks
 
 **useDirectoryScan.ts**
 - HTTP-based directory scanning (fallback)
 - Returns scan results and loading state
+
+**useProjections.ts**
+- Projection data fetching and management
+- Handles projection visualization state
+
+**useProjectionTooltip.ts**
+- Tooltip state for projection visualizations
+
+**useRerankingAvailability.ts**
+- Check if reranking is available on the backend
+
+**useModels.ts**
+- Fetch available embedding models
 
 ## Routing
 
@@ -730,6 +795,7 @@ The application uses a versioned API structure under `/api/v2/` with TypeScript-
   <Route path="/verification" element={<VerificationPage />} />
   <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
     <Route index element={<HomePage />} />
+    <Route path="collections/:collectionId" element={<HomePage />} />
     <Route path="settings" element={<SettingsPage />} />
   </Route>
 </Routes>
@@ -756,6 +822,7 @@ WebSocket connections are established for:
 1. **Operation Progress** - Real-time updates for indexing operations
 2. **Directory Scanning** - Live file discovery during data addition
 3. **Collection Status** - Real-time collection state changes
+4. **Global Operations** - Broadcast updates for all active operations
 
 ### WebSocket Architecture
 
@@ -777,6 +844,11 @@ interface WebSocketOptions {
 - Handles message parsing and cache updates
 - Integrates with React Query for state synchronization
 
+**useOperationsSocket.ts** - Global operations WebSocket
+- Single shared connection for all operation updates
+- Prevents exceeding browser WebSocket limits
+- Updates React Query cache for all active operations
+
 **useDirectoryScanWebSocket.ts** - Directory scanning
 - Real-time file discovery progress
 - Filters and exclusion pattern support
@@ -787,7 +859,7 @@ interface WebSocketOptions {
 ```typescript
 // Operation progress messages
 interface OperationMessage {
-  type: 'operation_started' | 'operation_completed' | 'operation_failed' | 
+  type: 'operation_started' | 'operation_completed' | 'operation_failed' |
         'progress_update' | 'current_state';
   data: {
     operation_id: string;
@@ -827,7 +899,7 @@ interface ScanMessage {
 - Default Tailwind setup with no custom theme extensions
 - Utility classes used throughout components
 - Custom CSS minimal, mainly for:
-  - Animations (breathing job cards, progress shimmer)
+  - Animations (breathing collection cards, progress shimmer)
   - PDF.js integration
   - Email viewer styles
 
@@ -904,8 +976,8 @@ const DocumentViewer = lazy(() => import('./components/DocumentViewer'));
 // Centralized error handler
 export function handleApiError(error: unknown): string {
   if (axios.isAxiosError(error)) {
-    return error.response?.data?.detail || 
-           error.response?.data?.message || 
+    return error.response?.data?.detail ||
+           error.response?.data?.message ||
            error.message;
   }
   return 'An unexpected error occurred';
@@ -973,19 +1045,19 @@ function CreateCollectionModal() {
     quantization: 'float16',
     is_public: false,
   });
-  
+
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
     }
     if (formData.name.length > 100) {
       newErrors.name = 'Collection name must be less than 100 characters';
     }
-    
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -998,17 +1070,17 @@ function CreateCollectionModal() {
 ```typescript
 const handleNameChange = (value: string) => {
   setFormData(prev => ({ ...prev, name: value }));
-  
+
   // Clear error when user starts typing
   if (errors.name) {
     setErrors(prev => ({ ...prev, name: '' }));
   }
-  
+
   // Validate on blur or after delay
   if (value && !isValidCollectionName(value)) {
-    setErrors(prev => ({ 
-      ...prev, 
-      name: 'Only letters, numbers, and hyphens allowed' 
+    setErrors(prev => ({
+      ...prev,
+      name: 'Only letters, numbers, and hyphens allowed'
     }));
   }
 };
@@ -1021,9 +1093,9 @@ const { mutate: createCollection, isLoading } = useCreateCollection();
 
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  
+
   if (!validateForm()) return;
-  
+
   createCollection(formData, {
     onSuccess: (data) => {
       onClose(); // Close modal
@@ -1049,9 +1121,9 @@ function AddDataToCollectionModal({ collectionId }: Props) {
     include_patterns: ['*'],
     exclude_patterns: ['.git', '__pycache__', 'node_modules'],
   });
-  
+
   const { startScan, scanResults, isScanning, error } = useDirectoryScanWebSocket();
-  
+
   const handleScan = () => {
     startScan({
       path: scanOptions.directory_path,
@@ -1086,68 +1158,80 @@ The codebase has comprehensive test coverage with a focus on critical user flows
 
 ### Test Coverage Areas
 
-**Component Tests**
+**Component Tests** (in `src/components/__tests__/`)
 - `CollectionOperations.test.tsx` - Operation display and progress updates
+- `CollectionOperations.websocket.test.tsx` - WebSocket integration
+- `CollectionOperations.network.test.tsx` - Network error handling
 - `CreateCollectionModal.test.tsx` - Form validation and submission
+- `CreateCollectionModal.network.test.tsx` - API integration
+- `CreateCollectionModal.models.test.tsx` - Model selection
 - `AddDataToCollectionModal.test.tsx` - Directory scanning integration
+- `CollectionsDashboard.test.tsx` - Dashboard rendering and filtering
+- `CollectionsDashboard.network.test.tsx` - Network scenarios
+- `Collections.permission.test.tsx` - Access control
+- `ActiveOperationsTab.websocket.test.tsx` - Real-time updates
+- `ActiveOperationsTab.navigation.test.tsx` - Navigation behavior
+- `SearchInterface.test.tsx` - Search functionality
+- `SearchInterface.reranking.test.tsx` - Reranking features
 
-**Hook Tests**
+**Hook Tests** (in `src/hooks/__tests__/`)
 - `useCollections.test.tsx` - React Query integration and optimistic updates
 - `useCollectionOperations.test.tsx` - Operation management
 - `useOperationProgress.test.tsx` - WebSocket message handling
+- `useWebSocket.error.test.tsx` - WebSocket error scenarios
+- `useCollectionDocuments.test.tsx` - Document fetching
 
-**Integration Tests**
-- `CollectionOperations.websocket.test.tsx` - Real-time updates
-- `CollectionOperations.network.test.tsx` - Network error handling
-- `Collections.permission.test.tsx` - Access control
-
-**Store Tests**
+**Store Tests** (in `src/stores/__tests__/`)
 - `authStore.test.ts` - Authentication state management
-- `searchStore.test.ts` - Search functionality and reranking
+- `searchStore.test.ts` - Search functionality
+- `searchStore.reranking.test.ts` - Reranking state
 - `uiStore.test.ts` - UI state and toast notifications
+- `chunkingStore.test.ts` - Chunking configuration
+
+**API Tests** (in `src/services/api/v2/__tests__/`)
+- `chunking.test.ts` - Chunking API client
 
 ### Unit Tests
 
 #### Component Testing Example
 ```typescript
-// JobCard.test.tsx
+// CollectionCard.test.tsx
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { JobCard } from './JobCard';
+import { CollectionCard } from './CollectionCard';
 import { vi } from 'vitest';
 
-describe('JobCard', () => {
-  const mockJob = {
+describe('CollectionCard', () => {
+  const mockCollection = {
     id: '123',
-    name: 'Test Job',
-    status: 'running',
-    progress: 50,
-    total_files: 100,
-    processed_files: 50,
+    name: 'Test Collection',
+    status: 'ready',
+    document_count: 100,
+    vector_count: 500,
   };
 
-  it('displays job progress correctly', () => {
-    render(<JobCard job={mockJob} />);
-    
-    expect(screen.getByText('Test Job')).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
-    expect(screen.getByText('50 / 100 files')).toBeInTheDocument();
+  it('displays collection information correctly', () => {
+    render(<CollectionCard collection={mockCollection} />);
+
+    expect(screen.getByText('Test Collection')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
   });
 
-  it('shows breathing animation for running jobs', () => {
-    const { container } = render(<JobCard job={mockJob} />);
+  it('shows processing animation for active collections', () => {
+    const processingCollection = { ...mockCollection, status: 'processing' };
+    const { container } = render(<CollectionCard collection={processingCollection} />);
     const card = container.querySelector('.animate-breathing');
     expect(card).toBeInTheDocument();
   });
 
-  it('handles cancel action', async () => {
-    const onCancel = vi.fn();
-    render(<JobCard job={mockJob} onCancel={onCancel} />);
-    
-    const cancelButton = screen.getByRole('button', { name: /cancel/i });
-    await userEvent.click(cancelButton);
-    
-    expect(onCancel).toHaveBeenCalledWith('123');
+  it('handles view details action', async () => {
+    const onViewDetails = vi.fn();
+    render(<CollectionCard collection={mockCollection} onViewDetails={onViewDetails} />);
+
+    const detailsButton = screen.getByRole('button', { name: /details/i });
+    await userEvent.click(detailsButton);
+
+    expect(onViewDetails).toHaveBeenCalledWith('123');
   });
 });
 ```
@@ -1166,7 +1250,7 @@ describe('authStore', () => {
 
   it('sets auth data correctly', () => {
     const { result } = renderHook(() => useAuthStore());
-    
+
     act(() => {
       result.current.setAuth('token123', {
         id: 1,
@@ -1174,22 +1258,22 @@ describe('authStore', () => {
         email: 'test@example.com',
       });
     });
-    
+
     expect(result.current.token).toBe('token123');
     expect(result.current.user?.username).toBe('testuser');
   });
 
   it('clears auth data on logout', async () => {
     const { result } = renderHook(() => useAuthStore());
-    
+
     act(() => {
       result.current.setAuth('token123', { id: 1, username: 'test' });
     });
-    
+
     await act(async () => {
       await result.current.logout();
     });
-    
+
     expect(result.current.token).toBeNull();
     expect(result.current.user).toBeNull();
   });
@@ -1198,16 +1282,16 @@ describe('authStore', () => {
 
 #### Hook Testing Example
 ```typescript
-// useJobProgress.test.ts
+// useOperationProgress.test.ts
 import { renderHook, waitFor } from '@testing-library/react';
-import { useJobProgress } from './useJobProgress';
+import { useOperationProgress } from './useOperationProgress';
 import WS from 'jest-websocket-mock';
 
-describe('useJobProgress', () => {
+describe('useOperationProgress', () => {
   let server: WS;
 
   beforeEach(() => {
-    server = new WS('ws://localhost:8080/ws/job123');
+    server = new WS('ws://localhost:8080/ws/operations/op123');
   });
 
   afterEach(() => {
@@ -1215,16 +1299,18 @@ describe('useJobProgress', () => {
   });
 
   it('connects to WebSocket and receives updates', async () => {
-    const { result } = renderHook(() => useJobProgress('job123'));
-    
+    const { result } = renderHook(() => useOperationProgress('op123'));
+
     await server.connected;
-    
+
     server.send(JSON.stringify({
-      type: 'file_processing',
-      processed_files: 10,
-      total_files: 20,
+      type: 'progress_update',
+      data: {
+        progress: 50,
+        message: 'Processing files...',
+      },
     }));
-    
+
     await waitFor(() => {
       expect(result.current.progress).toBe(50);
     });
@@ -1240,28 +1326,26 @@ describe('useJobProgress', () => {
 import { http, HttpResponse } from 'msw';
 
 export const handlers = [
-  http.get('/api/jobs', () => {
+  http.get('/api/v2/collections', () => {
     return HttpResponse.json({
-      jobs: [
-        { id: '1', name: 'Job 1', status: 'completed' },
-        { id: '2', name: 'Job 2', status: 'running' },
+      collections: [
+        { id: '1', name: 'Collection 1', status: 'ready' },
+        { id: '2', name: 'Collection 2', status: 'processing' },
       ],
     });
   }),
 
-  http.post('/api/jobs', async ({ request }) => {
+  http.post('/api/v2/collections', async ({ request }) => {
     const body = await request.json();
     return HttpResponse.json({
-      job: {
-        id: '3',
-        name: body.name,
-        status: 'created',
-      },
+      id: '3',
+      name: body.name,
+      status: 'pending',
     });
   }),
 ];
 
-// setup.ts
+// server.ts (in src/tests/mocks/)
 import { setupServer } from 'msw/node';
 import { handlers } from './handlers';
 
@@ -1270,36 +1354,35 @@ export const server = setupServer(...handlers);
 
 #### User Flow Testing
 ```typescript
-// CreateJobFlow.test.tsx
+// CreateCollectionFlow.test.tsx
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './App';
 
-describe('Create Job User Flow', () => {
-  it('completes job creation flow', async () => {
+describe('Create Collection User Flow', () => {
+  it('completes collection creation flow', async () => {
     render(<App />);
     const user = userEvent.setup();
-    
-    // Navigate to create job
-    await user.click(screen.getByText('Create Job'));
-    
+
+    // Navigate to collections
+    await user.click(screen.getByText('Collections'));
+
+    // Open create modal
+    await user.click(screen.getByText('Create Collection'));
+
     // Fill form
-    await user.type(screen.getByLabelText('Job Name'), 'Test Documents');
-    await user.type(screen.getByLabelText('Directory Path'), '/documents');
-    await user.click(screen.getByText('Scan Directory'));
-    
-    // Wait for scan
-    await waitFor(() => {
-      expect(screen.getByText('42 files found')).toBeInTheDocument();
-    });
-    
-    // Select model and create
+    await user.type(screen.getByLabelText('Name'), 'My Documents');
+    await user.type(screen.getByLabelText('Description'), 'Test collection');
+
+    // Select model
     await user.selectOptions(screen.getByLabelText('Model'), 'Qwen/Qwen3-Embedding-0.6B');
-    await user.click(screen.getByText('Create Job'));
-    
+
+    // Submit
+    await user.click(screen.getByText('Create'));
+
     // Verify success
     await waitFor(() => {
-      expect(screen.getByText('Job created successfully')).toBeInTheDocument();
+      expect(screen.getByText('Collection created successfully')).toBeInTheDocument();
     });
   });
 });
@@ -1322,19 +1405,19 @@ test.describe('Search Functionality', () => {
   test('performs semantic search', async ({ page }) => {
     // Navigate to search
     await page.click('text=Search');
-    
+
     // Enter query
     await page.fill('input[placeholder*="search query"]', 'machine learning');
-    
+
     // Select collection
     await page.selectOption('select[name="collection"]', 'technical-docs');
-    
+
     // Enable hybrid search
     await page.check('input[name="hybrid"]');
-    
+
     // Search
     await page.click('button:has-text("Search")');
-    
+
     // Verify results
     await expect(page.locator('.search-result')).toHaveCount(10);
     await expect(page.locator('.search-result').first()).toContainText('Score:');
@@ -1349,19 +1432,29 @@ test.describe('Search Functionality', () => {
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    coverage: {
-      reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'src/test/',
-      ],
+    setupFiles: './vitest.setup.ts',
+    css: true,
+    testTimeout: 10000,
+    hookTimeout: 10000,
+    include: [
+      'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
+      '**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'
+    ],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
+    root: './',
+    allowOnly: true,
+    passWithNoTests: false,
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
     },
   },
 });
@@ -1369,27 +1462,38 @@ export default defineConfig({
 
 #### Test Setup File
 ```typescript
-// src/test/setup.ts
+// vitest.setup.ts
 import '@testing-library/jest-dom';
-import { cleanup } from '@testing-library/react';
-import { afterEach, beforeAll, afterAll } from 'vitest';
-import { server } from './mocks/server';
+import { vi, beforeAll, afterEach, afterAll } from 'vitest';
+import { server } from './src/tests/mocks/server';
 
 // MSW setup
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterAll(() => server.close());
 afterEach(() => {
   server.resetHandlers();
-  cleanup();
 });
 
 // Mock WebSocket
-global.WebSocket = vi.fn().mockImplementation(() => ({
-  send: vi.fn(),
-  close: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-}));
+class MockWebSocket extends EventTarget {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readyState = MockWebSocket.CONNECTING;
+  url: string;
+
+  constructor(url: string) {
+    super();
+    this.url = url;
+  }
+
+  send = vi.fn();
+  close = vi.fn();
+}
+
+global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 ```
 
 ### Testing Best Practices
@@ -1398,31 +1502,38 @@ global.WebSocket = vi.fn().mockImplementation(() => ({
    ```
    src/
    ├── components/
-   │   ├── JobCard.tsx
-   │   └── JobCard.test.tsx
+   │   ├── CollectionCard.tsx
+   │   └── __tests__/
+   │       └── CollectionCard.test.tsx
    ├── hooks/
-   │   ├── useJobProgress.ts
-   │   └── useJobProgress.test.ts
-   └── test/
-       ├── setup.ts
-       ├── utils.tsx
-       └── mocks/
+   │   ├── useOperationProgress.ts
+   │   └── __tests__/
+   │       └── useOperationProgress.test.tsx
+   ├── stores/
+   │   ├── authStore.ts
+   │   └── __tests__/
+   │       └── authStore.test.ts
+   └── tests/
+       ├── mocks/
+       │   ├── handlers.ts
+       │   └── server.ts
+       └── utils.tsx
    ```
 
 2. **Test Utilities**
    ```typescript
-   // test/utils.tsx
+   // tests/utils.tsx
    export function renderWithProviders(
      ui: React.ReactElement,
      options?: RenderOptions
    ) {
      function Wrapper({ children }: { children: React.ReactNode }) {
        return (
-         <QueryClient value={queryClient}>
+         <QueryClientProvider client={queryClient}>
            <BrowserRouter>
              {children}
            </BrowserRouter>
-         </QueryClient>
+         </QueryClientProvider>
        );
      }
      return render(ui, { wrapper: Wrapper, ...options });
@@ -1436,17 +1547,17 @@ global.WebSocket = vi.fn().mockImplementation(() => ({
 
 4. **Performance Testing**
    ```typescript
-   test('renders large job list efficiently', async () => {
-     const jobs = Array.from({ length: 1000 }, (_, i) => ({
-       id: `job-${i}`,
-       name: `Job ${i}`,
-       status: 'completed',
+   test('renders large collection list efficiently', async () => {
+     const collections = Array.from({ length: 1000 }, (_, i) => ({
+       id: `collection-${i}`,
+       name: `Collection ${i}`,
+       status: 'ready',
      }));
-     
+
      const start = performance.now();
-     render(<JobList jobs={jobs} />);
+     render(<CollectionList collections={collections} />);
      const end = performance.now();
-     
+
      expect(end - start).toBeLessThan(100); // Should render in < 100ms
    });
    ```
@@ -1468,7 +1579,7 @@ npm run build
 - TypeScript compilation
 - Vite production build
 - Output to `packages/webui/static`
-- Minified with esbuild
+- Source maps enabled for debugging
 
 ### Deployment Flow
 
@@ -1483,40 +1594,43 @@ npm run build
 
 #### File Organization
 ```typescript
-// JobCard/
-// ├── index.ts           // Re-export
-// ├── JobCard.tsx        // Main component
-// ├── JobCard.types.ts   // TypeScript interfaces
-// ├── JobCard.styles.ts  // Styled components or CSS modules
-// ├── JobCard.test.tsx   // Tests
-// └── JobCard.stories.tsx // Storybook stories
+// components/
+// ├── CollectionCard.tsx        # Main component
+// └── __tests__/
+//     └── CollectionCard.test.tsx   # Tests
 
-// JobCard.tsx
+// CollectionCard.tsx
 import React, { memo } from 'react';
-import { JobCardProps } from './JobCard.types';
-import { useJobProgress } from '@/hooks/useJobProgress';
+import type { Collection } from '../types/collection';
+import { useCollectionOperations } from '../hooks/useCollectionOperations';
 
-export const JobCard = memo<JobCardProps>(({ job, onCancel, onDelete }) => {
+interface CollectionCardProps {
+  collection: Collection;
+  onViewDetails?: (id: string) => void;
+  onDelete?: (id: string) => void;
+}
+
+export const CollectionCard = memo<CollectionCardProps>(({ collection, onViewDetails, onDelete }) => {
   // Hooks at the top
-  const progress = useJobProgress(job.id);
-  
+  const { data: operations } = useCollectionOperations(collection.id);
+
   // Derived state
-  const isActive = job.status === 'running' || job.status === 'processing';
-  
+  const isActive = collection.status === 'processing';
+
   // Event handlers
-  const handleCancel = () => {
-    onCancel?.(job.id);
+  const handleViewDetails = () => {
+    onViewDetails?.(collection.id);
   };
-  
+
   // Render
   return (
-    <article className="job-card" aria-label={`Job: ${job.name}`}>
+    <article className="collection-card" aria-label={`Collection: ${collection.name}`}>
       {/* Component JSX */}
     </article>
   );
 });
 
-JobCard.displayName = 'JobCard';
+CollectionCard.displayName = 'CollectionCard';
 ```
 
 ### Component Patterns
@@ -1547,14 +1661,14 @@ interface DataFetcherProps<T> {
 }
 
 function DataFetcher<T>({ url, children }: DataFetcherProps<T>) {
-  const { data, loading, error } = useQuery<T>(url);
-  return <>{children(data, loading, error)}</>;
+  const { data, isLoading, error } = useQuery<T>({ queryKey: [url], queryFn: () => fetch(url) });
+  return <>{children(data ?? null, isLoading, error)}</>;
 }
 
 // Usage
-<DataFetcher url="/api/jobs">
-  {(jobs, loading, error) => (
-    loading ? <Spinner /> : <JobList jobs={jobs} />
+<DataFetcher url="/api/v2/collections">
+  {(collections, loading, error) => (
+    loading ? <Spinner /> : <CollectionList collections={collections} />
   )}
 </DataFetcher>
 ```
@@ -1562,21 +1676,21 @@ function DataFetcher<T>({ url, children }: DataFetcherProps<T>) {
 #### Custom Hooks Pattern
 ```typescript
 // Encapsulate complex logic in custom hooks
-function useJobManagement(jobId: string) {
+function useCollectionManagement(collectionId: string) {
   const queryClient = useQueryClient();
-  const { showToast } = useUIStore();
-  
+  const { addToast } = useUIStore();
+
   const cancelMutation = useMutation({
-    mutationFn: () => jobsApi.cancel(jobId),
+    mutationFn: () => collectionsV2Api.delete(collectionId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['jobs']);
-      showToast('Job cancelled successfully', 'success');
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      addToast({ message: 'Collection deleted successfully', type: 'success' });
     },
   });
-  
+
   return {
-    cancel: cancelMutation.mutate,
-    isLoading: cancelMutation.isLoading,
+    deleteCollection: cancelMutation.mutate,
+    isLoading: cancelMutation.isPending,
   };
 }
 ```
@@ -1586,19 +1700,19 @@ function useJobManagement(jobId: string) {
 #### Strict Type Definitions
 ```typescript
 // Prefer interfaces for public APIs
-export interface JobCardProps {
-  job: Job;
-  onCancel?: (jobId: string) => void;
-  onDelete?: (jobId: string) => void;
+export interface CollectionCardProps {
+  collection: Collection;
+  onViewDetails?: (collectionId: string) => void;
+  onDelete?: (collectionId: string) => void;
   className?: string;
 }
 
 // Use type for unions and intersections
-export type JobStatus = 'created' | 'running' | 'completed' | 'failed';
+export type CollectionStatus = 'pending' | 'processing' | 'ready' | 'error' | 'degraded';
 
 // Const assertions for literals
-export const JOB_STATUSES = ['created', 'running', 'completed', 'failed'] as const;
-export type JobStatus = typeof JOB_STATUSES[number];
+export const COLLECTION_STATUSES = ['pending', 'processing', 'ready', 'error', 'degraded'] as const;
+export type CollectionStatus = typeof COLLECTION_STATUSES[number];
 
 // Generic components
 interface ListProps<T> {
@@ -1633,10 +1747,10 @@ const handleClick = useCallback((id: string) => {
 }, [doSomething]);
 
 // Memoize components with complex props
-export const JobCard = memo(JobCardComponent, (prevProps, nextProps) => {
+export const CollectionCard = memo(CollectionCardComponent, (prevProps, nextProps) => {
   // Custom comparison
-  return prevProps.job.id === nextProps.job.id &&
-         prevProps.job.status === nextProps.job.status;
+  return prevProps.collection.id === nextProps.collection.id &&
+         prevProps.collection.status === nextProps.collection.status;
 });
 ```
 
@@ -1645,17 +1759,17 @@ export const JobCard = memo(JobCardComponent, (prevProps, nextProps) => {
 // For large lists, use react-window
 import { FixedSizeList } from 'react-window';
 
-function VirtualJobList({ jobs }: { jobs: Job[] }) {
+function VirtualCollectionList({ collections }: { collections: Collection[] }) {
   const Row = ({ index, style }) => (
     <div style={style}>
-      <JobCard job={jobs[index]} />
+      <CollectionCard collection={collections[index]} />
     </div>
   );
-  
+
   return (
     <FixedSizeList
       height={600}
-      itemCount={jobs.length}
+      itemCount={collections.length}
       itemSize={120}
       width="100%"
     >
@@ -1686,7 +1800,7 @@ function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
 
 // Usage with react-error-boundary
 <ErrorBoundary FallbackComponent={ErrorFallback}>
-  <JobList />
+  <CollectionList />
 </ErrorBoundary>
 ```
 
@@ -1700,7 +1814,7 @@ function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
 <nav aria-label="Main navigation">
   <ul>
     <li><a href="/">Home</a></li>
-    <li><a href="/jobs">Jobs</a></li>
+    <li><a href="/collections">Collections</a></li>
   </ul>
 </nav>
 
@@ -1721,12 +1835,12 @@ function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
 </div>
 
 // Progress indicators
-<div 
-  role="progressbar" 
-  aria-valuenow={progress} 
-  aria-valuemin={0} 
+<div
+  role="progressbar"
+  aria-valuenow={progress}
+  aria-valuemin={0}
   aria-valuemax={100}
-  aria-label="Job progress"
+  aria-label="Operation progress"
 >
   <div style={{ width: `${progress}%` }} />
 </div>
@@ -1739,7 +1853,7 @@ function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
   aria-describedby="dialog-description"
 >
   <h2 id="dialog-title">Confirm Delete</h2>
-  <p id="dialog-description">Are you sure you want to delete this job?</p>
+  <p id="dialog-description">Are you sure you want to delete this collection?</p>
 </div>
 ```
 
@@ -1748,7 +1862,7 @@ function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
 // Ensure all interactive elements are keyboard accessible
 function SearchResults({ results }: { results: SearchResult[] }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -1765,7 +1879,7 @@ function SearchResults({ results }: { results: SearchResult[] }) {
         break;
     }
   };
-  
+
   return (
     <ul role="listbox" onKeyDown={handleKeyDown}>
       {results.map((result, index) => (
@@ -1788,7 +1902,7 @@ function SearchResults({ results }: { results: SearchResult[] }) {
 // Trap focus in modals
 function Modal({ isOpen, onClose, children }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     if (isOpen && modalRef.current) {
       const focusableElements = modalRef.current.querySelectorAll(
@@ -1796,9 +1910,9 @@ function Modal({ isOpen, onClose, children }: ModalProps) {
       );
       const firstElement = focusableElements[0] as HTMLElement;
       const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-      
+
       firstElement?.focus();
-      
+
       const handleTab = (e: KeyboardEvent) => {
         if (e.key === 'Tab') {
           if (e.shiftKey && document.activeElement === firstElement) {
@@ -1810,12 +1924,12 @@ function Modal({ isOpen, onClose, children }: ModalProps) {
           }
         }
       };
-      
+
       document.addEventListener('keydown', handleTab);
       return () => document.removeEventListener('keydown', handleTab);
     }
   }, [isOpen]);
-  
+
   return isOpen ? (
     <div ref={modalRef} role="dialog" aria-modal="true">
       {children}
@@ -1829,13 +1943,13 @@ function Modal({ isOpen, onClose, children }: ModalProps) {
 #### Live Regions
 ```tsx
 // Announce dynamic updates
-function JobProgress({ job }: { job: Job }) {
+function OperationProgress({ operation }: { operation: Operation }) {
   return (
     <>
       <div aria-live="polite" aria-atomic="true" className="sr-only">
-        Job {job.name} is {job.progress}% complete
+        Operation {operation.type} is {operation.progress}% complete
       </div>
-      <ProgressBar value={job.progress} />
+      <ProgressBar value={operation.progress} />
     </>
   );
 }
@@ -1845,7 +1959,7 @@ function JobProgress({ job }: { job: Job }) {
 ```tsx
 function SearchForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
+
   return (
     <form aria-label="Document search">
       <div>
@@ -1879,7 +1993,7 @@ function SearchForm() {
   .button {
     border: 2px solid;
   }
-  
+
   .status-indicator {
     outline: 2px solid;
   }
@@ -1903,8 +2017,8 @@ import { axe, toHaveNoViolations } from 'jest-axe';
 
 expect.extend(toHaveNoViolations);
 
-test('JobCard is accessible', async () => {
-  const { container } = render(<JobCard job={mockJob} />);
+test('CollectionCard is accessible', async () => {
+  const { container } = render(<CollectionCard collection={mockCollection} />);
   const results = await axe(container);
   expect(results).toHaveNoViolations();
 });
@@ -1998,4 +2112,4 @@ test('JobCard is accessible', async () => {
 
 ## Conclusion
 
-The Semantik frontend is a modern React 19 application that leverages the latest patterns in state management, real-time updates, and type safety. The architecture clearly separates concerns between server state (React Query) and UI state (Zustand), while providing a robust foundation for future growth. The collection-centric refactoring has created a more intuitive and scalable system that better serves users' document management needs.
+The Semantik frontend is a modern React 19 application that leverages the latest patterns in state management, real-time updates, and type safety. The architecture clearly separates concerns between server state (React Query) and UI state (Zustand), while providing a robust foundation for future growth. The collection-centric architecture creates a more intuitive and scalable system that better serves users' document management needs.
