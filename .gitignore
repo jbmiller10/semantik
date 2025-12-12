@@ -190,6 +190,7 @@ dev-debug.log
 tasks.json
 tasks/ 
 !packages/webui/tasks/
+tickets/
 TICKET*
 ticket_*
 CODEBASE_*
