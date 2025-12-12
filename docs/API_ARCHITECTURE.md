@@ -1,58 +1,35 @@
-# Semantik API Architecture Documentation
+# API Architecture
 
-## Table of Contents
-1. [API Architecture Overview](#api-architecture-overview)
-2. [Search API (vecpipe/search_api.py)](#search-api-vecpipesearch_apipy)
-3. [WebUI API v2 Endpoints](#webui-api-v2-endpoints)
-4. [Request/Response Patterns](#requestresponse-patterns)
-5. [Authentication & Authorization](#authentication--authorization)
-6. [API Integration Patterns](#api-integration-patterns)
-7. [Batch Operations](#batch-operations)
-8. [API Testing](#api-testing)
-9. [WebSocket Endpoints](#websocket-endpoints)
-10. [Error Handling](#error-handling)
+Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plane, port 8080).
 
-## API Architecture Overview
+## Services
 
-Semantik follows a clean three-package architecture with two main services:
+**Vecpipe** - Pure search engine
+- Vector similarity and hybrid search
+- Stateless, uses Qdrant for storage
+- No database access
+- Prometheus metrics on 9091
 
-1. **Vecpipe Service** (`vecpipe/search_api.py`) - Core search engine
-   - Port: 8000 (default; `SEARCH_API_PORT`)
-   - Pure REST API for vector similarity and hybrid search
-   - Stateless service with Qdrant backend
-   - Uses shared package for embeddings and text processing
-   - No direct database access (uses webui API when needed)
-   - Prometheus metrics on port 9091
+**WebUI** - Control plane
+- REST API v2 + WebSockets
+- Auth, collection management, search proxy
+- Owns PostgreSQL database
+- Metrics on 9092
 
-2. **WebUI Service** (`webui/main.py`) - Control plane and user interface
-   - Port: 8080 (default)
-   - REST API v2 + WebSocket support
-   - User authentication and collection management
-   - Owns and manages the PostgreSQL database
-   - Proxies search requests to Vecpipe API
-   - Uses shared package for embeddings and database operations
+## Design Principles
 
-### Key Design Principles
+- Three-package architecture: vecpipe, webui, shared
+- No circular dependencies
+- RESTful with standard HTTP codes
+- JWT auth for WebUI
+- Collection-centric (not job-based)
+- Async operations with WebSocket progress
 
-- **Clean Architecture**: Three packages - vecpipe (search), webui (control plane), shared (utilities)
-- **No Circular Dependencies**: Both services depend on shared, but not on each other
-- **Database Ownership**: WebUI exclusively owns the PostgreSQL database
-- **RESTful Design**: Standard HTTP methods and status codes
-- **Stateless Search**: All search state stored in Qdrant
-- **JWT Authentication**: Secure token-based auth for WebUI
-- **Real-time Updates**: WebSocket support for operation progress
-- **Metrics Integration**: Prometheus metrics for monitoring
-- **Collection-Centric**: All operations are organized around collections, not jobs
-- **Async Operations**: Long-running tasks are handled through operations that can be tracked
+## Vecpipe Search API
 
-## Vecpipe Search API (vecpipe/search_api.py)
+Core search engine. No auth, no user management.
 
-The Vecpipe service is the core search engine, providing high-performance vector similarity and hybrid search capabilities. It operates independently and has no knowledge of users, authentication, or collection management.
-
-### Base URL
-```
-http://localhost:8000
-```
+**Base URL**: `http://localhost:8000`
 
 ### Endpoints
 
@@ -362,14 +339,11 @@ GET /embedding/info
 }
 ```
 
-## WebUI API v2 Endpoints
+## WebUI API v2
 
-The WebUI service provides user-facing APIs for authentication, collection management, and search proxying. The v2 API introduces a collection-centric architecture replacing the legacy job-based system.
+User-facing API for auth, collections, and search. Collection-centric architecture.
 
-### Base URL
-```
-http://localhost:8080
-```
+**Base URL**: `http://localhost:8080`
 
 ### Authentication Endpoints
 
@@ -1073,34 +1047,9 @@ DELETE /internal/api/collections/{collection_id}/vector-store
 
 ## Request/Response Patterns
 
-### Standard Response Format
+**Success**: `data` for single items, `results` for lists, optional `metadata` for pagination.
 
-All successful responses follow this pattern:
-```json
-{
-  "data": {...},     // For single items
-  "results": [...],  // For lists
-  "message": "...",  // Optional success message
-  "metadata": {      // Optional metadata
-    "total": 100,
-    "page": 1,
-    "per_page": 20
-  }
-}
-```
-
-### Error Response Format
-
-All error responses follow RFC 7807 Problem Details:
-```json
-{
-  "detail": "Detailed error message",
-  "status": 400,
-  "title": "Bad Request",
-  "type": "about:blank",
-  "instance": "/api/v2/collections/invalid-id"
-}
-```
+**Errors**: RFC 7807 Problem Details with `detail`, `status`, `title`, `type`, `instance`.
 
 ### Common HTTP Status Codes
 
@@ -1165,49 +1114,15 @@ Search endpoints support Qdrant filter syntax:
 }
 ```
 
-## Authentication & Authorization
+## Authentication
 
-### JWT Token Flow
+JWT tokens: access (30min, HS256) + refresh (30 days, hashed in DB).
 
-1. **Registration**: Create user account
-2. **Login**: Exchange credentials for tokens
-3. **Access**: Include access token in Authorization header
-4. **Refresh**: Use refresh token to get new access token
-5. **Logout**: Revoke refresh token
+Flow: Register → Login → Access (with token) → Refresh → Logout
 
-### Token Structure
+**Protected**: Everything except `/`, `/login`, `/api/auth/register`, `/api/auth/login`, `/internal/api/*`
 
-**Access Token (JWT)**:
-- Algorithm: HS256
-- Expiration: 30 minutes
-- Claims:
-  ```json
-  {
-    "sub": "username",
-    "exp": 1705318800,
-    "iat": 1705317000
-  }
-  ```
-
-**Refresh Token**:
-- Random secure token
-- Expiration: 30 days
-- Stored hashed in database
-
-### Protected Endpoints
-
-All endpoints except the following require authentication:
-- `GET /` (root)
-- `GET /login`
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /internal/api/*` (internal endpoints)
-
-### Authorization Header
-
-```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
+**Header**: `Authorization: Bearer <token>`
 
 ## API Integration Patterns
 

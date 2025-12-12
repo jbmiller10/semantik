@@ -20,7 +20,7 @@
 
 ## 1. Search System Overview
 
-Semantik implements a sophisticated search architecture that combines vector similarity search with keyword-based search capabilities. The system is designed for high performance, scalability, and flexibility.
+Semantik combines vector similarity search with keyword-based search. Fast, scalable, and flexible.
 
 ### Architecture Design
 
@@ -74,13 +74,13 @@ Semantik implements a sophisticated search architecture that combines vector sim
 
 ### Key Features
 
-- **High Performance**: Optimized for low-latency search with lazy model loading and connection pooling
-- **Flexible Search Types**: Vector, hybrid, keyword-only, and cross-encoder reranked search
-- **Model Agnostic**: Support for multiple embedding models with automatic selection
-- **Quantization Support**: float32, float16, and int8 quantization for memory efficiency
-- **Collection-Centric**: Each collection maintains its own embedding model metadata
-- **Reranking**: Optional two-stage retrieval with cross-encoder reranking for 20%+ relevance improvement
-- **Monitoring**: Comprehensive Prometheus metrics for observability
+- Low-latency search with lazy model loading and connection pooling
+- Vector, hybrid, keyword-only, and cross-encoder reranked search
+- Multiple embedding models with automatic selection
+- float32, float16, and int8 quantization
+- Collection-centric design with embedded model metadata
+- Optional cross-encoder reranking (20%+ relevance improvement)
+- Prometheus metrics
 
 ### Performance Characteristics
 
@@ -734,7 +734,7 @@ Collections store metadata about their creation:
 
 ## 9.5. Qdrant Configuration Recommendations
 
-> **Note**: The following configurations are **recommended settings** for optimizing Qdrant performance. These are not the actual system defaults but represent best practices for different use cases. Adjust based on your specific requirements.
+Recommended settings for different use cases. Not system defaults - tune based on your needs.
 
 ### Recommended HNSW Index Configuration
 
@@ -1081,15 +1081,12 @@ elif response.status_code >= 500:
 
 ## Conclusion
 
-Semantik's search architecture provides a robust, scalable, and flexible solution for semantic search. With support for multiple search types, advanced hybrid search capabilities, and comprehensive optimization for modern embedding models like Qwen3, the system is well-suited for production deployments requiring high-performance search functionality.
+Key strengths:
+- Multiple search types (vector, hybrid, keyword, reranked)
+- Plugin-based embedding providers
+- Lazy loading and quantization for efficiency
+- Prometheus monitoring
+- Asymmetric embedding support (query vs document)
+- Production-ready error handling
 
-Key strengths include:
-- Flexible architecture supporting various search paradigms
-- Plugin-based embedding provider system for extensibility
-- Performance optimization through lazy loading and quantization
-- Comprehensive monitoring and observability
-- Easy integration with existing systems
-- Production-ready error handling with detailed error responses
-- Asymmetric embedding support for query vs document processing
-
-The modular design allows for easy extension and customization while maintaining high performance and reliability.
+Modular design makes it easy to extend while keeping performance high.
