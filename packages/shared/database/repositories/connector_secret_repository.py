@@ -131,7 +131,7 @@ class ConnectorSecretRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to store secret for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to store secret: {e}") from e
+            raise DatabaseOperationError("store", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def get_secret(
@@ -179,7 +179,7 @@ class ConnectorSecretRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to retrieve secret for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to retrieve secret: {e}") from e
+            raise DatabaseOperationError("retrieve", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def has_secret(
@@ -218,7 +218,7 @@ class ConnectorSecretRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to check secret existence for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to check secret: {e}") from e
+            raise DatabaseOperationError("check", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def delete_secret(
@@ -259,7 +259,7 @@ class ConnectorSecretRepository:
             raise
         except Exception as e:
             logger.error(f"Failed to delete secret for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to delete secret: {e}") from e
+            raise DatabaseOperationError("delete", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def delete_for_source(self, source_id: int) -> int:
@@ -289,7 +289,7 @@ class ConnectorSecretRepository:
 
         except Exception as e:
             logger.error(f"Failed to delete secrets for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to delete secrets: {e}") from e
+            raise DatabaseOperationError("delete_all", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def get_secret_types_for_source(self, source_id: int) -> list[str]:
@@ -312,7 +312,7 @@ class ConnectorSecretRepository:
 
         except Exception as e:
             logger.error(f"Failed to get secret types for source {source_id}: {e}")
-            raise DatabaseOperationError(f"Failed to get secret types: {e}") from e
+            raise DatabaseOperationError("get_types", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
     async def set_secrets_batch(

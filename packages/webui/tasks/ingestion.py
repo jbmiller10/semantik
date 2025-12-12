@@ -767,7 +767,8 @@ async def _process_append_operation_impl(
     # Secrets are stored encrypted in the DB (via SourceService). Celery workers do not
     # run the FastAPI startup hooks, so we need to ensure encryption is initialised
     # and then load/decrypt secrets here for connectors that support credentials.
-    if callable(getattr(connector, "set_credentials", None)):
+    set_credentials = getattr(connector, "set_credentials", None)
+    if callable(set_credentials):
         import inspect
 
         from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
@@ -799,7 +800,6 @@ async def _process_append_operation_impl(
                     credentials[secret_type] = secret_value
 
             if credentials:
-                set_credentials = getattr(connector, "set_credentials")
                 allowed_params = set(inspect.signature(set_credentials).parameters.keys())
                 allowed_params.discard("self")
                 filtered_credentials = {k: v for k, v in credentials.items() if k in allowed_params}
