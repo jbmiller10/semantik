@@ -109,11 +109,12 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
-# Claude
+# Claude / AI assistants
 .claude/
 .claude-trace/
 CLAUDE.md
 GEMINI.md
+AGENTS.md
 
 # IDE
 .vscode/
