@@ -75,7 +75,12 @@ class CollectionSourceRepository:
             if sync_mode not in ("one_time", "continuous"):
                 raise ValidationError("sync_mode must be 'one_time' or 'continuous'", "sync_mode")
 
-            if sync_mode == "continuous":
+            # Keep repository validation aligned with the DB constraint:
+            # interval_minutes IS NULL OR interval_minutes >= MIN_SYNC_INTERVAL_MINUTES.
+            # For one_time sources, interval_minutes is ignored and normalized to NULL.
+            if sync_mode == "one_time":
+                interval_minutes = None
+            else:
                 if interval_minutes is None:
                     raise ValidationError("interval_minutes is required for continuous sync", "interval_minutes")
                 if interval_minutes < MIN_SYNC_INTERVAL_MINUTES:
@@ -377,6 +382,9 @@ class CollectionSourceRepository:
             effective_interval = interval_minutes if interval_minutes is not None else source.interval_minutes
             effective_sync_mode = sync_mode if sync_mode is not None else source.sync_mode
 
+            # Keep repository validation aligned with the DB constraint:
+            # interval_minutes IS NULL OR interval_minutes >= MIN_SYNC_INTERVAL_MINUTES.
+            # For one_time sources, interval_minutes is ignored and normalized to NULL.
             if effective_sync_mode == "continuous":
                 if effective_interval is None:
                     raise ValidationError("interval_minutes is required for continuous sync", "interval_minutes")
@@ -391,7 +399,12 @@ class CollectionSourceRepository:
                 source.source_config = source_config
             if sync_mode is not None:
                 source.sync_mode = sync_mode
-            if interval_minutes is not None:
+            if effective_sync_mode == "one_time":
+                # If caller is setting one_time, always clear interval_minutes.
+                # If caller only provides interval_minutes while staying one_time, ignore it.
+                if sync_mode == "one_time" or interval_minutes is not None:
+                    source.interval_minutes = None
+            elif interval_minutes is not None:
                 source.interval_minutes = interval_minutes
             if meta is not None:
                 source.meta = meta
