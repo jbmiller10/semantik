@@ -172,6 +172,12 @@ class SourceService:
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
+        if secrets and not self.secret_repo:
+            logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+            raise EncryptionNotConfiguredError(
+                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+            )
+
         # Update the source
         updated_source = await self.source_repo.update(
             source_id=source_id,
@@ -191,11 +197,6 @@ class SourceService:
             except EncryptionNotConfiguredError:
                 logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
                 raise
-        elif secrets and not self.secret_repo:
-            logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
-            raise EncryptionNotConfiguredError(
-                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
-            )
 
         # Get current secret types
         secret_types: list[str] = []
