@@ -132,7 +132,7 @@ There’s a lot of detail in `docs/`:
 - `docs/WEBSOCKET_API.md`, `docs/API_REFERENCE.md` – API contracts.
 
 ## Roadmap / Ideas
-- Bring up Celery beat by default for periodic maintenance.
+- Integrated benchmarking tools
 - More connectors (web/Slack/etc.) and richer OCR pipelines.
 - Additional embedding/reranker options and hybrid tuning.
 
