@@ -446,7 +446,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_create_or_replace_database_error(self, repo, session):
         """Test create_or_replace wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -463,7 +463,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_get_primary_database_error(self, repo, session):
         """Test get_primary wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -474,7 +474,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_get_by_kind_database_error(self, repo, session):
         """Test get_by_kind wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -485,7 +485,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_has_artifact_database_error(self, repo, session):
         """Test has_artifact wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -496,7 +496,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_delete_for_document_database_error(self, repo, session):
         """Test delete_for_document wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -507,7 +507,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_delete_for_collection_database_error(self, repo, session):
         """Test delete_for_collection wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -518,7 +518,7 @@ class TestDocumentArtifactRepository:
     @pytest.mark.asyncio()
     async def test_get_stats_database_error(self, repo, session):
         """Test get_stats_for_collection wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error

@@ -1,6 +1,6 @@
 """Unit tests for ConnectorSecretRepository."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,7 +22,7 @@ class MockSession:
         self.executed.append(stmt)
         if self._execute_results:
             return self._execute_results.pop(0)
-        return MagicMock(scalar_one_or_none=lambda: None, rowcount=0, all=lambda: [])
+        return MagicMock(scalar_one_or_none=lambda: None, rowcount=0, all=list)
 
     async def flush(self):
         self.flushed = True
@@ -54,7 +54,7 @@ class TestConnectorSecretRepository:
 
     def test_validate_secret_type_invalid(self, repo):
         """Test validation fails for invalid secret types."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"Invalid secret_type") as exc_info:
             repo._validate_secret_type("invalid_type")
         assert "Invalid secret_type" in str(exc_info.value)
         assert "password" in str(exc_info.value)
@@ -86,7 +86,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secret_invalid_type(self, repo):
         """Test set_secret fails with invalid secret type."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid secret_type"):
             await repo.set_secret(
                 source_id=1,
                 secret_type="invalid",
@@ -144,7 +144,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_get_secret_invalid_type(self, repo):
         """Test get_secret fails with invalid secret type."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid secret_type"):
             await repo.get_secret(source_id=1, secret_type="invalid")
 
     # --- has_secret tests ---
@@ -174,7 +174,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_has_secret_invalid_type(self, repo):
         """Test has_secret fails with invalid secret type."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid secret_type"):
             await repo.has_secret(source_id=1, secret_type="invalid")
 
     # --- delete_secret tests ---
@@ -204,7 +204,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_delete_secret_invalid_type(self, repo):
         """Test delete_secret fails with invalid secret type."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid secret_type"):
             await repo.delete_secret(source_id=1, secret_type="invalid")
 
     # --- delete_for_source tests ---
@@ -305,7 +305,7 @@ class TestConnectorSecretRepository:
         """Test set_secrets_batch fails with invalid secret type."""
         secrets = {"invalid_type": "secret"}
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"Invalid secret_type"):
             await repo.set_secrets_batch(source_id=1, secrets=secrets)
 
     # --- Error handling tests ---
@@ -329,7 +329,7 @@ class TestConnectorSecretRepository:
     async def test_get_secret_database_error(self, repo, session):
         """Test get_secret wraps database errors."""
         # Make execute raise an exception
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -340,7 +340,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_has_secret_database_error(self, repo, session):
         """Test has_secret wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -351,7 +351,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_delete_secret_database_error(self, repo, session):
         """Test delete_secret wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -362,7 +362,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_delete_for_source_database_error(self, repo, session):
         """Test delete_for_source wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
@@ -373,7 +373,7 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_get_secret_types_database_error(self, repo, session):
         """Test get_secret_types_for_source wraps database errors."""
-        async def raise_error(stmt):
+        async def raise_error(_stmt):
             raise Exception("DB error")
 
         session.execute = raise_error
