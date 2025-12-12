@@ -1,44 +1,17 @@
-# Chunking API Documentation
+# Chunking API
 
-## Overview
+Endpoints for managing chunking strategies, previews, collection processing, and analytics.
 
-The Chunking API provides a comprehensive set of endpoints for managing document chunking strategies within the Semantik platform. This API enables intelligent document splitting, strategy comparison, and real-time processing of large document collections with WebSocket support for progress tracking.
+**Auth**: JWT bearer token required
+**Base URL**: `http://localhost:8080/api/v2/chunking`
 
-## Architecture and Design Decisions
+## Design
 
-### Core Design Principles
-
-1. **Strategy-Based Architecture**: The API implements multiple chunking strategies (Fixed Size, Semantic, Recursive, Sliding Window, Document Structure, and Hybrid), each optimized for different content types and use cases.
-
-2. **Asynchronous Processing**: Long-running chunking operations are handled asynchronously with real-time progress updates via WebSockets, ensuring responsive user experience.
-
-3. **Caching and Performance**: Preview operations are cached for 15 minutes to improve performance during strategy comparison and testing.
-
-4. **Rate Limiting**: Implemented per-endpoint rate limiting to prevent abuse and ensure fair resource usage across users.
-
-5. **Quality Metrics**: Built-in quality analysis and scoring system to help users select optimal chunking strategies for their content.
-
-### Key Components
-
-- **Strategy Management**: Endpoints for listing, recommending, and configuring chunking strategies
-- **Preview Operations**: Real-time preview generation with caching and comparison capabilities
-- **Collection Processing**: Bulk processing of document collections with progress tracking
-- **Analytics**: Comprehensive metrics and quality analysis for chunking operations
-- **Configuration Management**: Save and reuse custom chunking configurations
-
-## Authentication
-
-All chunking API endpoints require JWT authentication. Include the bearer token in the Authorization header:
-
-```http
-Authorization: Bearer {jwt_token}
-```
-
-## Base URL
-
-```
-http://localhost:8080/api/v2/chunking
-```
+- Strategy-based (6 strategies)
+- Async processing with WebSocket progress
+- Preview caching (15min)
+- Rate limiting
+- Quality metrics built-in
 
 ## Endpoint Reference
 
