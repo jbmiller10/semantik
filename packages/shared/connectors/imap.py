@@ -400,7 +400,7 @@ class ImapConnector(BaseConnector):
         # Check if UIDVALIDITY changed (mailbox reset)
         if uidvalidity is not None and prev_uidvalidity is not None and uidvalidity != prev_uidvalidity:
             logger.warning(
-                f"UIDVALIDITY changed for {mailbox}: {prev_uidvalidity} -> {uidvalidity}. " "Resetting cursor."
+                f"UIDVALIDITY changed for {mailbox}: {prev_uidvalidity} -> {uidvalidity}. Resetting cursor."
             )
             last_uid = 0
 
