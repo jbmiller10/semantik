@@ -9,8 +9,11 @@ as part of CORE-003. This test now verifies the flow with the updated architectu
 """
 
 import inspect
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from vecpipe import model_manager, search_api
@@ -24,6 +27,15 @@ class TestSearchAPIEmbeddingFlow:
         may run with USE_MOCK_EMBEDDINGS=True depending on the environment.
         This is a known limitation that will be addressed in the CORE-003 refactor.
     """
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self) -> Generator[Any, None, None]:
+        """Clear collection info/metadata cache to avoid stale data between tests."""
+        from vecpipe.search.cache import clear_cache
+
+        clear_cache()
+        yield
+        clear_cache()
 
     def test_search_endpoint_embedding_flow(self) -> None:
         """Test that /search endpoint follows the expected embedding generation flow.
@@ -64,6 +76,7 @@ class TestSearchAPIEmbeddingFlow:
                 "doc_id": "doc-1",
             }
             mock_qdrant_instance.search = AsyncMock(return_value=[mock_result])
+            mock_qdrant_instance.close = AsyncMock()
 
             # Import and test
 
@@ -130,13 +143,13 @@ class TestSearchAPIEmbeddingFlow:
             patch("vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
             patch("httpx.AsyncClient.get") as mock_get,
         ):
-            # Mock responses
+            # Mock responses - use 384 to match all-MiniLM-L6-v2 dimensions
             mock_get.return_value = AsyncMock(
                 status_code=200,
                 json=lambda: {
                     "result": {
                         "points_count": 50,
-                        "config": {"params": {"vectors": {"size": 768}}},
+                        "config": {"params": {"vectors": {"size": 384}}},
                     }
                 },
             )
@@ -144,6 +157,7 @@ class TestSearchAPIEmbeddingFlow:
 
             mock_qdrant_instance = mock_qdrant_client_class.return_value
             mock_qdrant_instance.search = AsyncMock(return_value=[])
+            mock_qdrant_instance.close = AsyncMock()
 
             # Need to patch metrics server to avoid port conflicts
             with patch("vecpipe.search_api.start_metrics_server"), TestClient(app) as client:

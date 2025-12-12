@@ -377,13 +377,21 @@ class TestSearchAPIEdgeCases:
         self, mock_settings, mock_qdrant_client, mock_model_manager
     ) -> None:
         """Test search when collection metadata fetch fails."""
+        from vecpipe.search.cache import clear_cache
+
         mock_settings.USE_MOCK_EMBEDDINGS = False
+
+        # Clear cache to ensure metadata fetch is attempted
+        clear_cache()
 
         with (
             patch("vecpipe.search_api.qdrant_client", mock_qdrant_client),
             patch("vecpipe.search_api.model_manager", mock_model_manager),
             patch("qdrant_client.QdrantClient"),
-            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch(
+                "shared.database.collection_metadata.get_collection_metadata_async",
+                new_callable=AsyncMock,
+            ) as mock_get_metadata,
             patch("vecpipe.search_api.search_qdrant") as mock_search_qdrant,
         ):
             # Make metadata fetch fail

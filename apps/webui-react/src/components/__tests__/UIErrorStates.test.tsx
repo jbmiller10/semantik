@@ -5,14 +5,12 @@ import Toast from '../Toast'
 import { CreateCollectionModal } from '../CreateCollectionModal'
 import { AddDataToCollectionModal } from '../AddDataToCollectionModal'
 import { useUIStore } from '../../stores/uiStore'
-import { useCollectionStore } from '../../stores/collectionStore'
 import { renderWithErrorHandlers } from '../../tests/utils/errorTestUtils'
 import { TestWrapper } from '../../tests/utils/TestWrapper'
 import { render } from '@testing-library/react'
 
 // Mock stores
 vi.mock('../../stores/uiStore')
-vi.mock('../../stores/collectionStore')
 
 // Mock hooks
 vi.mock('../../hooks/useCollectionOperations', () => ({
@@ -172,13 +170,6 @@ describe('UI Error States', () => {
 
   describe('Form Validation Error Display', () => {
     it('should show inline validation errors in CreateCollectionModal', async () => {
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        createCollection: vi.fn()
-      } as unknown as ReturnType<typeof useCollectionStore>)
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
@@ -209,13 +200,6 @@ describe('UI Error States', () => {
     })
 
     it('should validate numeric inputs stay within bounds', async () => {
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        createCollection: vi.fn()
-      } as unknown as ReturnType<typeof useCollectionStore>)
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
@@ -247,15 +231,7 @@ describe('UI Error States', () => {
     })
 
     it.skip('should show path validation feedback (AddDataToCollectionModal import issue)', async () => {
-      const mockAddSource = vi.fn()
       const mockAddToast = vi.fn()
-      
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        addSource: mockAddSource
-      } as unknown as ReturnType<typeof useCollectionStore>)
       
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
@@ -306,13 +282,6 @@ describe('UI Error States', () => {
         new Promise(resolve => setTimeout(resolve, 1000))
       )
       
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        createCollection: mockCreateCollection
-      } as unknown as ReturnType<typeof useCollectionStore>)
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
@@ -343,17 +312,6 @@ describe('UI Error States', () => {
     })
 
     it.skip('should show loading overlay during operations (AddDataToCollectionModal import issue)', async () => {
-      const mockAddSource = vi.fn(() => 
-        new Promise(resolve => setTimeout(resolve, 1000))
-      )
-      
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        addSource: mockAddSource
-      } as unknown as ReturnType<typeof useCollectionStore>)
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
@@ -528,15 +486,6 @@ describe('UI Error States', () => {
     })
 
     it('should provide clear error context in forms', async () => {
-      vi.mocked(useCollectionStore).mockReturnValue({
-        selectedCollectionId: null,
-        setSelectedCollection: vi.fn(),
-        clearStore: vi.fn(),
-        createCollection: vi.fn().mockRejectedValue({
-          response: { data: { detail: 'Name already exists' } }
-        })
-      } as unknown as ReturnType<typeof useCollectionStore>)
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),
