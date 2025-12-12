@@ -69,7 +69,7 @@ class ConnectorSecretRepository:
         """
         if secret_type not in self.VALID_SECRET_TYPES:
             raise ValueError(
-                f"Invalid secret_type '{secret_type}'. " f"Must be one of: {', '.join(sorted(self.VALID_SECRET_TYPES))}"
+                f"Invalid secret_type '{secret_type}'. Must be one of: {', '.join(sorted(self.VALID_SECRET_TYPES))}"
             )
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -123,7 +123,7 @@ class ConnectorSecretRepository:
             self.session.add(secret)
             await self.session.flush()
 
-            logger.debug(f"Stored encrypted secret type={secret_type} for source_id={source_id} " f"(key_id={key_id})")
+            logger.debug(f"Stored encrypted secret type={secret_type} for source_id={source_id} (key_id={key_id})")
 
             return secret
 

@@ -14,7 +14,7 @@ class _Session:
 
     async def execute(self, stmt):
         self.executed.append(stmt)
-        return None
+        return
 
     async def flush(self):  # pragma: no cover - trivial
         self.flushed = True
