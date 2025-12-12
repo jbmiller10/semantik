@@ -1099,10 +1099,13 @@ class TestSearchAPI:
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
         with (
-            patch("qdrant_client.QdrantClient") as mock_sync_client,
-            patch("shared.database.collection_metadata.get_collection_metadata") as mock_get_metadata,
+            patch("qdrant_client.AsyncQdrantClient") as mock_async_client,
+            patch(
+                "shared.database.collection_metadata.get_collection_metadata_async",
+                new_callable=AsyncMock,
+            ) as mock_get_metadata,
         ):
-            # Mock collection metadata
+            # Mock collection metadata (AsyncMock provides awaitable return)
             mock_get_metadata.return_value = {
                 "model_name": "collection-model",
                 "quantization": "float16",
@@ -1134,8 +1137,8 @@ class TestSearchAPI:
                 assert response.status_code == 200
 
                 # The import happens dynamically inside the function
-                # So our patch may not catch it. But we can verify QdrantClient was created
-                assert mock_sync_client.called
+                # So our patch may not catch it. But we can verify AsyncQdrantClient was created
+                assert mock_async_client.called
                 # And that the response was successful
                 assert response.status_code == 200
 
