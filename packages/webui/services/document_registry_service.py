@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.dtos.ingestion import IngestedDocument
 
@@ -44,15 +45,22 @@ class DocumentRegistryService:
         ```
     """
 
-    def __init__(self, db_session: AsyncSession, document_repo: DocumentRepository):
+    def __init__(
+        self,
+        db_session: AsyncSession,
+        document_repo: DocumentRepository,
+        chunk_repo: ChunkRepository | None = None,
+    ):
         """Initialize the registry service.
 
         Args:
             db_session: Database session for transactions
             document_repo: Document repository for DB operations
+            chunk_repo: Optional chunk repository for sync operations
         """
         self.db_session = db_session
         self.document_repo = document_repo
+        self.chunk_repo = chunk_repo
 
     async def register(
         self,
@@ -130,6 +138,113 @@ class DocumentRegistryService:
             "is_new": True,
             "document_id": document.id,
             "file_size": file_size,
+        }
+
+    async def register_or_update(
+        self,
+        collection_id: str,
+        ingested: IngestedDocument,
+        source_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Register or update a document using URI-based identity.
+
+        This method implements sync-aware document management:
+        1. Look up document by URI (stable identity across syncs)
+        2. If found and content unchanged: update last_seen_at, skip processing
+        3. If found and content changed: update content, delete old chunks
+        4. If not found: create new document
+
+        This enables:
+        - Efficient incremental syncs (skip unchanged documents)
+        - In-place updates (same document ID, re-chunked)
+        - Stale detection (documents not seen can be marked stale)
+
+        Args:
+            collection_id: UUID of the collection
+            ingested: IngestedDocument DTO from connector
+            source_id: Optional source ID to associate
+
+        Returns:
+            Dictionary with:
+                - is_new: bool - Whether this is a new document
+                - is_updated: bool - Whether content was updated
+                - document_id: str - ID of the document
+                - file_size: int - Size in bytes
+
+        Raises:
+            ValueError: If ingested document has invalid data
+            EntityNotFoundError: If collection doesn't exist
+            DatabaseOperationError: For database errors
+        """
+        # Look up document by URI (stable identity)
+        existing = await self.document_repo.get_by_uri(collection_id, ingested.unique_id)
+
+        if existing is not None:
+            # Document exists - update last_seen_at
+            await self.document_repo.update_last_seen(existing.id)
+
+            if existing.content_hash == ingested.content_hash:
+                # Content unchanged - skip processing
+                logger.debug(f"Document {existing.id} unchanged (hash {ingested.content_hash[:16]}...), skipping")
+                return {
+                    "is_new": False,
+                    "is_updated": False,
+                    "document_id": existing.id,
+                    "file_size": existing.file_size or 0,
+                }
+
+            # Content changed - update in place
+            logger.info(
+                f"Document {existing.id} content changed "
+                f"({existing.content_hash[:16]}... -> {ingested.content_hash[:16]}...), updating"
+            )
+
+            # Get new values
+            file_size = self._get_file_size(ingested)
+            file_path = ingested.file_path or ingested.unique_id
+            mime_type = self._get_mime_type(ingested)
+
+            # Update document content
+            await self.document_repo.update_content(
+                document_id=existing.id,
+                content_hash=ingested.content_hash,
+                file_size=file_size,
+                file_path=file_path,
+                mime_type=mime_type,
+                source_metadata=ingested.metadata,
+            )
+
+            # Delete old chunks for re-chunking
+            if self.chunk_repo is not None:
+                deleted_count = await self.chunk_repo.delete_chunks_by_document(
+                    document_id=existing.id,
+                    collection_id=collection_id,
+                )
+                logger.debug(f"Deleted {deleted_count} old chunks for document {existing.id}")
+
+            return {
+                "is_new": False,
+                "is_updated": True,
+                "document_id": existing.id,
+                "file_size": file_size,
+            }
+
+        # New document - create via standard register flow
+        # But also update last_seen_at for the new document
+        result = await self.register(
+            collection_id=collection_id,
+            ingested=ingested,
+            source_id=source_id,
+        )
+
+        # Update last_seen_at for the newly created document
+        await self.document_repo.update_last_seen(result["document_id"])
+
+        return {
+            "is_new": result["is_new"],
+            "is_updated": False,
+            "document_id": result["document_id"],
+            "file_size": result["file_size"],
         }
 
     def _derive_file_name(self, ingested: IngestedDocument) -> str:
