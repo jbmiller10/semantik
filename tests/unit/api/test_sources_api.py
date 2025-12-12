@@ -147,9 +147,7 @@ class TestCreateSourceEndpoint:
 
     def test_create_source_validation_error(self, test_client, mock_service):
         """Test source creation with validation error from service layer."""
-        mock_service.create_source.side_effect = ValidationError(
-            "Invalid source configuration", "source_config"
-        )
+        mock_service.create_source.side_effect = ValidationError("Invalid source configuration", "source_config")
 
         # Valid Pydantic request but service raises ValidationError
         response = test_client.post(
@@ -172,9 +170,7 @@ class TestGetSourceEndpoint:
         """Test successful source retrieval."""
         mock_service.get_source.return_value = mock_source
 
-        response = test_client.get(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}"
-        )
+        response = test_client.get(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -230,9 +226,7 @@ class TestDeleteSourceEndpoint:
             "status": "pending",
         }
 
-        response = test_client.delete(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}"
-        )
+        response = test_client.delete(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -240,13 +234,9 @@ class TestDeleteSourceEndpoint:
 
     def test_delete_source_active_operation(self, test_client, mock_service, mock_source):
         """Test deleting source blocked by active operation."""
-        mock_service.delete_source.side_effect = InvalidStateError(
-            "Collection has active operation(s)"
-        )
+        mock_service.delete_source.side_effect = InvalidStateError("Collection has active operation(s)")
 
-        response = test_client.delete(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}"
-        )
+        response = test_client.delete(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
         assert response.status_code == 409
 
@@ -263,9 +253,7 @@ class TestRunSourceEndpoint:
             "status": "pending",
         }
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run")
 
         assert response.status_code == 200
         data = response.json()
@@ -273,13 +261,9 @@ class TestRunSourceEndpoint:
 
     def test_run_source_active_operation(self, test_client, mock_service, mock_source):
         """Test running source blocked by active operation."""
-        mock_service.run_now.side_effect = InvalidStateError(
-            "Collection has active operation(s)"
-        )
+        mock_service.run_now.side_effect = InvalidStateError("Collection has active operation(s)")
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run")
 
         assert response.status_code == 409
 
@@ -293,9 +277,7 @@ class TestPauseSourceEndpoint:
         mock_source.paused_at = datetime.now(UTC)
         mock_service.pause.return_value = mock_source
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause")
 
         assert response.status_code == 200
         data = response.json()
@@ -303,13 +285,9 @@ class TestPauseSourceEndpoint:
 
     def test_pause_one_time_source(self, test_client, mock_service, mock_source):
         """Test pausing one-time source raises error."""
-        mock_service.pause.side_effect = ValidationError(
-            "Can only pause continuous sync sources", "sync_mode"
-        )
+        mock_service.pause.side_effect = ValidationError("Can only pause continuous sync sources", "sync_mode")
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause")
 
         assert response.status_code == 400
 
@@ -324,9 +302,7 @@ class TestResumeSourceEndpoint:
         mock_source.next_run_at = datetime.now(UTC)
         mock_service.resume.return_value = mock_source
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume")
 
         assert response.status_code == 200
         data = response.json()
@@ -335,12 +311,8 @@ class TestResumeSourceEndpoint:
 
     def test_resume_one_time_source(self, test_client, mock_service, mock_source):
         """Test resuming one-time source raises error."""
-        mock_service.resume.side_effect = ValidationError(
-            "Can only resume continuous sync sources", "sync_mode"
-        )
+        mock_service.resume.side_effect = ValidationError("Can only resume continuous sync sources", "sync_mode")
 
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume"
-        )
+        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume")
 
         assert response.status_code == 400

@@ -573,9 +573,7 @@ class TestCollectionSourceRepositoryIntegration:
         assert updated.sync_mode == "one_time"
         assert updated.interval_minutes is None
 
-    async def test_update_source_raises_for_missing(
-        self, repository: CollectionSourceRepository
-    ) -> None:
+    async def test_update_source_raises_for_missing(self, repository: CollectionSourceRepository) -> None:
         """Update should raise EntityNotFoundError for missing source."""
         with pytest.raises(EntityNotFoundError):
             await repository.update(source_id=999999, source_config={"test": True})
@@ -708,9 +706,7 @@ class TestCollectionSourceRepositoryIntegration:
             )
         assert "status" in str(exc_info.value).lower()
 
-    async def test_set_next_run(
-        self, repository: CollectionSourceRepository, collection_factory, test_user_db
-    ) -> None:
+    async def test_set_next_run(self, repository: CollectionSourceRepository, collection_factory, test_user_db) -> None:
         """set_next_run should update next_run_at."""
         collection = await collection_factory(owner_id=test_user_db.id)
         source = await repository.create(
@@ -743,9 +739,7 @@ class TestCollectionSourceRepositoryIntegration:
 
         assert updated.next_run_at is None
 
-    async def test_pause_source(
-        self, repository: CollectionSourceRepository, collection_factory, test_user_db
-    ) -> None:
+    async def test_pause_source(self, repository: CollectionSourceRepository, collection_factory, test_user_db) -> None:
         """pause should set paused_at timestamp."""
         collection = await collection_factory(owner_id=test_user_db.id)
         source = await repository.create(
