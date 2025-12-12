@@ -22,6 +22,7 @@ import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 
+from shared.config import settings
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -788,12 +789,15 @@ async def _process_append_operation_impl(
 
         # Create registry for document registration (with chunk_repo for sync updates)
         from shared.database.repositories.chunk_repository import ChunkRepository
+        from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 
         chunk_repo = ChunkRepository(session)
+        artifact_repo = DocumentArtifactRepository(session, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
         registry = DocumentRegistryService(
             db_session=session,
             document_repo=document_repo,
             chunk_repo=chunk_repo,
+            artifact_repo=artifact_repo,
         )
 
         # Track statistics

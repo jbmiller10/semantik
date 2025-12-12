@@ -4,6 +4,8 @@ import logging
 from typing import Any
 
 from shared.connectors.base import BaseConnector
+from shared.connectors.git import GitConnector
+from shared.connectors.imap import ImapConnector
 from shared.connectors.local import LocalFileConnector
 
 logger = logging.getLogger(__name__)
@@ -95,3 +97,5 @@ def register_connector(
 
 # Register built-in connectors
 register_connector("directory", LocalFileConnector)
+register_connector("git", GitConnector)
+register_connector("imap", ImapConnector)

@@ -640,6 +640,11 @@ class SourceCreate(BaseModel):
         ge=15,
         description="Sync interval in minutes for continuous mode (min 15)",
     )
+    secrets: dict[str, str] | None = Field(
+        default=None,
+        description="Connector secrets (write-only, never returned in responses). "
+        "Valid keys: password, token, ssh_key, ssh_passphrase",
+    )
 
     @model_validator(mode="after")
     def validate_continuous_requires_interval(self) -> "SourceCreate":
@@ -664,6 +669,12 @@ class SourceUpdate(BaseModel):
         default=None,
         ge=15,
         description="New sync interval in minutes (min 15)",
+    )
+    secrets: dict[str, str] | None = Field(
+        default=None,
+        description="Connector secrets to update (write-only, never returned in responses). "
+        "Valid keys: password, token, ssh_key, ssh_passphrase. "
+        "Set a key to empty string to delete that secret.",
     )
 
 
@@ -697,6 +708,12 @@ class SourceResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Secret indicators (never expose actual secrets, just presence)
+    has_password: bool = False
+    has_token: bool = False
+    has_ssh_key: bool = False
+    has_ssh_passphrase: bool = False
+
     model_config = ConfigDict(
         from_attributes=True,
         json_schema_extra={
@@ -719,6 +736,10 @@ class SourceResponse(BaseModel):
                 "last_indexed_at": "2025-07-15T10:05:00Z",
                 "created_at": "2025-07-15T09:00:00Z",
                 "updated_at": "2025-07-15T10:05:00Z",
+                "has_password": False,
+                "has_token": False,
+                "has_ssh_key": False,
+                "has_ssh_passphrase": False,
             }
         },
     )
@@ -739,6 +760,169 @@ class SourceListResponse(BaseModel):
                 "total": 0,
                 "offset": 0,
                 "limit": 50,
+            }
+        }
+    )
+
+
+class GitPreviewRequest(BaseModel):
+    """Request schema for Git repository preview/validation."""
+
+    repo_url: str = Field(
+        ...,
+        description="Git repository URL (HTTPS or SSH)",
+    )
+    ref: str = Field(
+        default="main",
+        description="Branch, tag, or commit to checkout",
+    )
+    auth_method: str = Field(
+        default="none",
+        description="Authentication method: none, https_token, or ssh_key",
+    )
+    token: str | None = Field(
+        default=None,
+        description="HTTPS personal access token (for auth_method=https_token)",
+    )
+    ssh_key: str | None = Field(
+        default=None,
+        description="SSH private key content (for auth_method=ssh_key)",
+    )
+    ssh_passphrase: str | None = Field(
+        default=None,
+        description="SSH key passphrase (optional)",
+    )
+    include_globs: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns to include (e.g., ['*.md', 'docs/**'])",
+    )
+    exclude_globs: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns to exclude (e.g., ['*.min.js'])",
+    )
+
+    @field_validator("auth_method")
+    @classmethod
+    def validate_auth_method(cls, v: str) -> str:
+        if v not in ("none", "https_token", "ssh_key"):
+            raise ValueError(f"Invalid auth_method: {v}")
+        return v
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, v: str) -> str:
+        if not v.startswith(("https://", "git@", "ssh://")):
+            raise ValueError("repo_url must be an HTTPS or SSH URL")
+        return v
+
+
+class GitPreviewResponse(BaseModel):
+    """Response from Git repository preview/validation."""
+
+    valid: bool = Field(
+        description="Whether the repository is accessible",
+    )
+    repo_url: str = Field(
+        description="The repository URL that was validated",
+    )
+    ref: str = Field(
+        description="The ref that will be checked out",
+    )
+    refs_found: list[str] = Field(
+        default_factory=list,
+        description="Available refs (branches/tags) found in the repository",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if validation failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "valid": True,
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "main",
+                "refs_found": ["main", "develop", "v1.0.0"],
+                "error": None,
+            }
+        }
+    )
+
+
+# =============================================================================
+# IMAP Connector Schemas
+# =============================================================================
+
+
+class ImapPreviewRequest(BaseModel):
+    """Request schema for IMAP connection preview/validation."""
+
+    host: str = Field(
+        description="IMAP server hostname",
+    )
+    port: int = Field(
+        default=993,
+        description="IMAP port (default: 993 for SSL)",
+    )
+    use_ssl: bool = Field(
+        default=True,
+        description="Use SSL connection",
+    )
+    username: str = Field(
+        description="IMAP username/email",
+    )
+    password: str = Field(
+        description="IMAP password",
+    )
+    mailboxes: list[str] = Field(
+        default_factory=lambda: ["INBOX"],
+        description="Mailboxes to sync",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "host": "imap.gmail.com",
+                "port": 993,
+                "use_ssl": True,
+                "username": "user@example.com",
+                "password": "app_password",
+                "mailboxes": ["INBOX", "Sent"],
+            }
+        }
+    )
+
+
+class ImapPreviewResponse(BaseModel):
+    """Response from IMAP connection preview/validation."""
+
+    valid: bool = Field(
+        description="Whether the connection succeeded",
+    )
+    host: str = Field(
+        description="The IMAP host that was validated",
+    )
+    username: str = Field(
+        description="The username used for authentication",
+    )
+    mailboxes_found: list[str] = Field(
+        default_factory=list,
+        description="Available mailboxes found on the server",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if validation failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "valid": True,
+                "host": "imap.gmail.com",
+                "username": "user@example.com",
+                "mailboxes_found": ["INBOX", "Sent", "Drafts", "Trash"],
+                "error": None,
             }
         }
     )
