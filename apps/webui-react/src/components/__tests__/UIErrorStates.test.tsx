@@ -231,7 +231,6 @@ describe('UI Error States', () => {
     })
 
     it.skip('should show path validation feedback (AddDataToCollectionModal import issue)', async () => {
-      const mockAddSource = vi.fn()
       const mockAddToast = vi.fn()
       
       vi.mocked(useUIStore).mockReturnValue({
@@ -313,10 +312,6 @@ describe('UI Error States', () => {
     })
 
     it.skip('should show loading overlay during operations (AddDataToCollectionModal import issue)', async () => {
-      const mockAddSource = vi.fn(() => 
-        new Promise(resolve => setTimeout(resolve, 1000))
-      )
-      
       vi.mocked(useUIStore).mockReturnValue({
         toasts: [],
         removeToast: vi.fn(),

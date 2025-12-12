@@ -11,7 +11,7 @@ from vecpipe.search import cache
 
 
 @pytest.fixture(autouse=True)
-def clear_caches():
+def _clear_caches():
     """Clear all caches before and after each test."""
     cache.clear_cache()
     yield
@@ -42,17 +42,10 @@ class TestCollectionInfoCache:
         # Verify it's cached
         assert cache.get_collection_info("test_collection") is not None
 
-        # Simulate time passing beyond TTL
-        with patch.object(cache, "CACHE_TTL_SECONDS", 0):
-            # Force expiry check by manipulating time
-            original_is_expired = cache._is_expired
-
-            def always_expired(timestamp: float) -> bool:
-                return True
-
-            with patch.object(cache, "_is_expired", always_expired):
-                result = cache.get_collection_info("test_collection")
-                assert result is None
+        # Simulate time passing beyond TTL by patching _is_expired to always return True
+        with patch.object(cache, "_is_expired", return_value=True):
+            result = cache.get_collection_info("test_collection")
+            assert result is None
 
     def test_clear_cache(self):
         """clear_cache should remove all entries."""
@@ -139,7 +132,7 @@ class TestCacheEviction:
 class TestSearchUtilsConnectionCleanup:
     """Tests for search_utils connection cleanup."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_fallback_client_is_closed(self):
         """Fallback AsyncQdrantClient should be properly closed."""
         from vecpipe import search_utils
@@ -163,11 +156,11 @@ class TestSearchUtilsConnectionCleanup:
             # Verify the client was closed
             mock_client.close.assert_awaited_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_shared_sdk_client_not_closed(self):
         """Shared SDK client from state should NOT be closed after use."""
-        from vecpipe.search import state as search_state
         from vecpipe import search_utils
+        from vecpipe.search import state as search_state
 
         mock_sdk_client = AsyncMock()
         mock_sdk_client.search = AsyncMock(return_value=[])
@@ -194,7 +187,7 @@ class TestSearchUtilsConnectionCleanup:
 class TestCachedCollectionMetadataHelper:
     """Tests for _get_cached_collection_metadata helper."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cache_hit_skips_qdrant_call(self):
         """When cache has data, Qdrant should not be called."""
         from vecpipe.search.service import _get_cached_collection_metadata
@@ -214,7 +207,7 @@ class TestCachedCollectionMetadataHelper:
             # Should NOT call Qdrant
             mock_fetch.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_cache_miss_calls_qdrant_and_caches(self):
         """When cache misses, should fetch from Qdrant and cache result."""
         from vecpipe.search import state as search_state
