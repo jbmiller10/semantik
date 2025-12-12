@@ -37,9 +37,12 @@ async def ensure_default_data() -> None:
     if registered_plugins:
         logger.info("Loaded chunking plugins: %s", ", ".join(registered_plugins))
 
-    async for session in get_db():
+    session_gen = get_db()
+    try:
+        session = await anext(session_gen)
         await ensure_default_chunking_strategies(session)
-        break  # We only need one session
+    finally:
+        await session_gen.aclose()
 
     logger.info("Startup tasks completed")
 

@@ -4,12 +4,10 @@ import userEvent from '@testing-library/user-event'
 import SearchInterface from '../SearchInterface'
 import { useSearchStore } from '@/stores/searchStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useCollectionStore } from '@/stores/collectionStore'
 
 // Mock the stores
 vi.mock('@/stores/searchStore')
 vi.mock('@/stores/uiStore')
-vi.mock('@/stores/collectionStore')
 
 // Mock hooks
 vi.mock('@/hooks/useCollections', () => ({
@@ -146,32 +144,6 @@ describe('SearchInterface', () => {
       abortController: null,
       setAbortController: vi.fn(),
       setGpuMemoryError: vi.fn(),
-    })
-
-    vi.mocked(useCollectionStore).mockReturnValue({
-      collections: new Map([
-        ['test-collection', {
-          id: 'test-collection',
-          name: 'Test Collection',
-          status: 'active',
-          total_files: 100,
-          total_vectors: 500,
-          model_name: 'Qwen/Qwen3-Embedding-0.6B',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }]
-      ]),
-      fetchCollections: vi.fn().mockResolvedValue(undefined),
-      getCollectionsArray: vi.fn().mockReturnValue([{
-        id: 'test-collection',
-        name: 'Test Collection',
-        status: 'active',
-        total_files: 100,
-        total_vectors: 500,
-        model_name: 'Qwen/Qwen3-Embedding-0.6B',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }]),
     })
 
     vi.mocked(useUIStore).mockReturnValue({

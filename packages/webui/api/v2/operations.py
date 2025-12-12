@@ -237,15 +237,17 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
 
     # Verify user has permission to access this operation
     try:
-        # Get a database session and create service
-        async for db in get_db():
+        db_gen = get_db()
+        try:
+            db = await anext(db_gen)
             operation_repo = OperationRepository(db)
             service = OperationService(db, operation_repo)
             await service.verify_websocket_access(
                 operation_uuid=operation_id,
                 user_id=int(user["id"]),
             )
-            break  # Exit after first iteration
+        finally:
+            await db_gen.aclose()
     except EntityNotFoundError:
         await websocket.close(code=1008, reason=f"Operation '{operation_id}' not found")
         return

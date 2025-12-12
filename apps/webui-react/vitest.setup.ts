@@ -1,7 +1,6 @@
 import '@testing-library/jest-dom';
 import { vi, beforeAll, afterEach, afterAll } from 'vitest';
 import { server } from './src/tests/mocks/server';
-import { disconnectChunkingWebSocket } from './src/services/websocket';
 import { useAuthStore } from './src/stores/authStore';
 
 // Suppress console errors in tests by default
@@ -71,7 +70,6 @@ afterEach(() => {
 
   useAuthStore.setState({ token: null, refreshToken: null, user: null });
   localStorage.removeItem('auth-storage');
-  disconnectChunkingWebSocket();
 });
 
 // Clean up after all tests

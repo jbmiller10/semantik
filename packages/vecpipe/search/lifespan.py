@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from qdrant_client import AsyncQdrantClient
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     qdrant = httpx.AsyncClient(
         base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
     )
+    qdrant_sdk = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
     logger.info("Connected to Qdrant at %s:%s", settings.QDRANT_HOST, settings.QDRANT_PORT)
 
     unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS
@@ -83,7 +85,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     pool = ThreadPoolExecutor(max_workers=4)
 
     # embed_service is None - ModelManager now manages providers internally
-    set_resources(qdrant=qdrant, model_mgr=model_mgr, embed_service=None, pool=pool)
+    set_resources(qdrant=qdrant, model_mgr=model_mgr, embed_service=None, pool=pool, qdrant_sdk=qdrant_sdk)
 
     # Touch metrics to ensure registered
     search_requests.labels(endpoint="startup", search_type="health").inc()
@@ -92,6 +94,7 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
         yield
     finally:
         await qdrant.aclose()
+        await qdrant_sdk.close()
         model_mgr.shutdown()
         pool.shutdown(wait=True)
         clear_resources()

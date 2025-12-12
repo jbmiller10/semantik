@@ -1096,15 +1096,17 @@ class TestSearchAPI:
         self, mock_settings, mock_qdrant_client, mock_model_manager, test_client_for_search_api
     ) -> None:
         """Test search with collection metadata for model selection."""
+        from vecpipe.search.cache import clear_cache
+
         mock_settings.USE_MOCK_EMBEDDINGS = False
 
-        with (
-            patch("qdrant_client.AsyncQdrantClient") as mock_async_client,
-            patch(
-                "shared.database.collection_metadata.get_collection_metadata_async",
-                new_callable=AsyncMock,
-            ) as mock_get_metadata,
-        ):
+        # Clear cache to ensure metadata fetch happens
+        clear_cache()
+
+        with patch(
+            "shared.database.collection_metadata.get_collection_metadata_async",
+            new_callable=AsyncMock,
+        ) as mock_get_metadata:
             # Mock collection metadata (AsyncMock provides awaitable return)
             mock_get_metadata.return_value = {
                 "model_name": "collection-model",
@@ -1136,9 +1138,8 @@ class TestSearchAPI:
 
                 assert response.status_code == 200
 
-                # The import happens dynamically inside the function
-                # So our patch may not catch it. But we can verify AsyncQdrantClient was created
-                assert mock_async_client.called
+                # Verify collection metadata was fetched (now uses cache + shared client)
+                mock_get_metadata.assert_called()
                 # And that the response was successful
                 assert response.status_code == 200
 

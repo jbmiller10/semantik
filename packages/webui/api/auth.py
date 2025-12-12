@@ -6,7 +6,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 
 from shared.database.base import AuthRepository, UserRepository
 from webui.auth import (
@@ -25,6 +26,14 @@ from webui.dependencies import get_auth_repository, get_user_repository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
 
 
 @router.post("/register", response_model=User)
@@ -83,7 +92,7 @@ async def login(
     await auth_repo.update_user_last_login(str(user["id"]))
 
     # Create tokens
-    access_token = create_access_token(data={"sub": user["username"]})
+    access_token = create_access_token(data={"sub": user["username"], "user_id": user.get("id")})
     refresh_token = create_refresh_token(data={"sub": user["username"]})
 
     # Save refresh token
@@ -97,12 +106,17 @@ async def login(
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
-    refresh_token: str,
+    payload: RefreshTokenRequest | None = Body(None),
+    refresh_token: str | None = None,
     user_repo: UserRepository = Depends(get_user_repository),
     auth_repo: AuthRepository = Depends(get_auth_repository),
 ) -> Token:
     """Refresh access token using refresh token"""
-    user_id = await auth_repo.verify_refresh_token(refresh_token)
+    resolved_refresh_token = refresh_token or (payload.refresh_token if payload else None)
+    if not resolved_refresh_token:
+        raise HTTPException(status_code=400, detail="Missing refresh token")
+
+    user_id = await auth_repo.verify_refresh_token(resolved_refresh_token)
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
@@ -113,11 +127,11 @@ async def refresh_token(
         raise HTTPException(status_code=401, detail="User not found")
 
     # Create new tokens
-    access_token = create_access_token(data={"sub": user["username"]})
+    access_token = create_access_token(data={"sub": user["username"], "user_id": user.get("id")})
     new_refresh_token = create_refresh_token(data={"sub": user["username"]})
 
     # Revoke old refresh token and save new one
-    await auth_repo.revoke_refresh_token(refresh_token)
+    await auth_repo.revoke_refresh_token(resolved_refresh_token)
     expires_at = datetime.now(UTC) + timedelta(days=30)
     # Hash the new token for storage
     token_hash = pwd_context.hash(new_refresh_token)
@@ -128,13 +142,15 @@ async def refresh_token(
 
 @router.post("/logout")
 async def logout(
+    payload: LogoutRequest | None = Body(None),
     refresh_token: str | None = None,
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     auth_repo: AuthRepository = Depends(get_auth_repository),
 ) -> dict[str, str]:
     """Logout and revoke refresh token"""
-    if refresh_token:
-        await auth_repo.revoke_refresh_token(refresh_token)
+    resolved_refresh_token = refresh_token or (payload.refresh_token if payload else None)
+    if resolved_refresh_token:
+        await auth_repo.revoke_refresh_token(resolved_refresh_token)
     return {"message": "Logged out successfully"}
 
 

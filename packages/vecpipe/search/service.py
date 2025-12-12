@@ -292,9 +292,16 @@ def _calculate_candidate_k(requested_k: int) -> int:
 async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any] | None]:
     """Fetch collection vector dimension and optional metadata.
 
+    Uses TTL-based cache to reduce redundant Qdrant calls.
     Falls back to a one-off httpx client when the global qdrant client has not
     been initialized yet (e.g., when FastAPI lifespan isn't started in tests).
     """
+    from vecpipe.search.cache import get_collection_info, set_collection_info
+
+    # Check cache first
+    cached = get_collection_info(collection_name)
+    if cached is not None:
+        return cached
 
     cfg = _get_settings()
     vector_dim = 1024
@@ -314,6 +321,8 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
         info = (await _json(response))["result"]
         if "config" in info and "params" in info["config"]:
             vector_dim = info["config"]["params"]["vectors"]["size"]
+        # Cache the result
+        set_collection_info(collection_name, vector_dim, info)
         return vector_dim, info
     except Exception as e:  # pragma: no cover - warning path
         logger.warning(f"Could not get collection info for {collection_name}, using default dimension: {e}")
@@ -321,6 +330,45 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     finally:
         if created_client:
             await client.aclose()
+
+
+async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dict[str, Any] | None:
+    """Fetch collection metadata with caching and shared SDK client.
+
+    Uses TTL-based cache to reduce redundant Qdrant calls.
+    Prefers shared SDK client from state to avoid connection churn.
+    """
+    from vecpipe.search.cache import get_collection_metadata, is_cache_miss, set_collection_metadata
+
+    # Check cache first
+    cached = get_collection_metadata(collection_name)
+    if not is_cache_miss(cached):
+        return cached
+
+    # Cache miss - fetch from Qdrant
+    try:
+        from shared.database.collection_metadata import get_collection_metadata_async
+
+        # Prefer shared SDK client from state
+        sdk_client = search_state.sdk_client
+        if sdk_client is not None:
+            metadata = await get_collection_metadata_async(sdk_client, collection_name)
+            set_collection_metadata(collection_name, metadata)
+            return metadata
+
+        # Fallback: create ad-hoc client (rare - only when state not initialized)
+        from qdrant_client import AsyncQdrantClient
+
+        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        try:
+            metadata = await get_collection_metadata_async(async_client, collection_name)
+            set_collection_metadata(collection_name, metadata)
+            return metadata
+        finally:
+            await async_client.close()
+    except Exception as e:  # pragma: no cover - best effort path
+        logger.warning(f"Could not get collection metadata: {e}")
+        return None
 
 
 async def perform_search(request: SearchRequest) -> SearchResponse:
@@ -359,28 +407,17 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             and "size" in collection_info["config"]["params"]["vectors"]
         )
 
-        try:
-            from qdrant_client import AsyncQdrantClient
-
-            from shared.database.collection_metadata import get_collection_metadata_async
-
-            async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
-            try:
-                metadata = await get_collection_metadata_async(async_client, collection_name)
-                if metadata:
-                    collection_model = metadata.get("model_name")
-                    collection_quantization = metadata.get("quantization")
-                    collection_instruction = metadata.get("instruction")
-                    logger.info(
-                        "Found metadata for collection %s: model=%s quantization=%s",
-                        collection_name,
-                        collection_model,
-                        collection_quantization,
-                    )
-            finally:
-                await async_client.close()
-        except Exception as e:  # pragma: no cover - best effort path
-            logger.warning(f"Could not get collection metadata: {e}")
+        metadata = await _get_cached_collection_metadata(collection_name, cfg)
+        if metadata:
+            collection_model = metadata.get("model_name")
+            collection_quantization = metadata.get("quantization")
+            collection_instruction = metadata.get("instruction")
+            logger.info(
+                "Found metadata for collection %s: model=%s quantization=%s",
+                collection_name,
+                collection_model,
+                collection_quantization,
+            )
         model_name = request.model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
         quantization = request.quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION
         if test_mode:
@@ -713,27 +750,16 @@ async def perform_hybrid_search(
         collection_model = None
         collection_quantization = None
 
-        try:
-            from qdrant_client import AsyncQdrantClient
-
-            from shared.database.collection_metadata import get_collection_metadata_async
-
-            async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
-            try:
-                metadata = await get_collection_metadata_async(async_client, collection_name)
-                if metadata:
-                    collection_model = metadata.get("model_name")
-                    collection_quantization = metadata.get("quantization")
-                    logger.info(
-                        "Found metadata for collection %s: model=%s quantization=%s",
-                        collection_name,
-                        collection_model,
-                        collection_quantization,
-                    )
-            finally:
-                await async_client.close()
-        except Exception as e:  # pragma: no cover - best effort
-            logger.warning(f"Could not get collection metadata: {e}")
+        metadata = await _get_cached_collection_metadata(collection_name, cfg)
+        if metadata:
+            collection_model = metadata.get("model_name")
+            collection_quantization = metadata.get("quantization")
+            logger.info(
+                "Found metadata for collection %s: model=%s quantization=%s",
+                collection_name,
+                collection_model,
+                collection_quantization,
+            )
 
         model_name = model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
         quantization = quantization or collection_quantization or cfg.DEFAULT_QUANTIZATION

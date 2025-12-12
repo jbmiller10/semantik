@@ -31,13 +31,13 @@ async def search_qdrant(
     Returns:
         List of search results from Qdrant
     """
-    # Prefer the globally injected client when available (tests patch this)
+    # Prefer the globally injected SDK client when available (tests patch this)
     try:
         from vecpipe.search import state as search_state
 
-        state_client = getattr(search_state, "qdrant_client", None)
-        if state_client is not None and hasattr(state_client, "search"):
-            results = await state_client.search(
+        sdk_client = getattr(search_state, "sdk_client", None)
+        if sdk_client is not None:
+            results = await sdk_client.search(
                 collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
             )
             return [
@@ -52,13 +52,18 @@ async def search_qdrant(
         # Fall through to default client
         pass
 
+    # Fallback: create ad-hoc client and ensure proper cleanup
     client = AsyncQdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
-    results = await client.search(
-        collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
-    )
-    return [
-        {"id": point.id, "score": point.score, "payload": point.payload if with_payload else None} for point in results
-    ]
+    try:
+        results = await client.search(
+            collection_name=collection_name, query_vector=query_vector, limit=k, with_payload=with_payload
+        )
+        return [
+            {"id": point.id, "score": point.score, "payload": point.payload if with_payload else None}
+            for point in results
+        ]
+    finally:
+        await client.close()
 
 
 def parse_search_results(qdrant_results: list[dict]) -> list[dict]:
