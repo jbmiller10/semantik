@@ -1,8 +1,8 @@
 [project]
-name = "document-embedding-system"
+name = "semantik"
 version = "2.0.0"
-description = "Production-ready document embedding system with Qdrant"
-authors = [{ name = "Your Name", email = "you@example.com" }]
+description = "Private, self-hosted semantic search for your documents."
+authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"
 readme = "README.md"
 dependencies = [

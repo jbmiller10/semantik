@@ -708,7 +708,7 @@ wheels = [
 ]
 
 [[package]]
-name = "document-embedding-system"
+name = "semantik"
 version = "2.0.0"
 source = { editable = "." }
 dependencies = [
