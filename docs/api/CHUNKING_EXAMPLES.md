@@ -5,6 +5,7 @@ This document provides practical examples for using the Semantik Chunking API wi
 ## Table of Contents
 
 - [Authentication](#authentication)
+- [Quick Reference](#quick-reference)
 - [Common Use Cases](#common-use-cases)
 - [curl Examples](#curl-examples)
 - [HTTPie Examples](#httpie-examples)
@@ -32,6 +33,86 @@ curl -X POST http://localhost:8080/api/auth/login \
 ```
 
 Store the `access_token` for use in subsequent requests.
+
+## Quick Reference
+
+### Available Chunking Strategies
+
+| Strategy | Value | Description |
+|----------|-------|-------------|
+| Fixed Size | `fixed_size` | Splits content into fixed-size chunks |
+| Semantic | `semantic` | Uses semantic similarity to group related content |
+| Recursive | `recursive` | Recursively splits using hierarchical separators |
+| Markdown | `markdown` | Optimized for markdown document structure |
+| Hierarchical | `hierarchical` | Preserves document hierarchy (headings, sections) |
+| Hybrid | `hybrid` | Combines multiple strategies |
+| Sliding Window | `sliding_window` | Legacy - uses overlapping windows |
+| Document Structure | `document_structure` | Legacy - structure-aware chunking |
+
+### Operation Status Values
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Operation queued, not yet started |
+| `in_progress` | Operation is currently running |
+| `completed` | Operation finished successfully |
+| `failed` | Operation encountered an error |
+| `cancelled` | Operation was cancelled by user |
+| `partial` | Operation completed with some errors |
+
+### ChunkingOperationResponse Schema
+
+When starting a chunking operation, the API returns:
+
+```json
+{
+  "operation_id": "uuid-string",
+  "collection_id": "collection-uuid",
+  "status": "pending",
+  "strategy": "semantic",
+  "estimated_time_seconds": 120,
+  "queued_position": 1,
+  "websocket_channel": "chunking:collection-uuid:operation-uuid"
+}
+```
+
+**Important:** When connecting to WebSocket for progress updates, use the `operation_id` field directly in the URL path, NOT the `websocket_channel` field:
+
+```
+ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}
+```
+
+### WebSocket Message Structure
+
+Messages received from the WebSocket have this structure:
+
+```json
+{
+  "type": "operation_progress",
+  "data": {
+    "status": "in_progress",
+    "progress": 45.5,
+    "message": "Processing document 5 of 10",
+    "documents_processed": 5,
+    "total_documents": 10,
+    "chunks_created": 150
+  }
+}
+```
+
+**Message Types:**
+- `operation_progress` - Progress update
+- `operation_completed` - Operation finished successfully
+- `operation_failed` - Operation encountered an error
+
+**Data Fields:**
+- `status` - Current operation status (see status values above)
+- `progress` - Percentage complete (0-100)
+- `message` - Human-readable status message
+- `error_message` - Error details (when status is `failed`)
+- `documents_processed` - Number of documents processed
+- `total_documents` - Total documents to process
+- `chunks_created` - Number of chunks created so far
 
 ## Common Use Cases
 
@@ -251,6 +332,96 @@ curl -X POST "http://localhost:8080/api/v2/chunking/configs" \
   }'
 ```
 
+### List Saved Configurations
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/configs" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Filter by strategy
+curl -X GET "http://localhost:8080/api/v2/chunking/configs?strategy=semantic" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Filter for default configs only
+curl -X GET "http://localhost:8080/api/v2/chunking/configs?is_default=true" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Get Strategy Details
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/strategies/semantic" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Get Cached Preview
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/preview/${PREVIEW_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Clear Preview Cache
+
+```bash
+curl -X DELETE "http://localhost:8080/api/v2/chunking/preview/${PREVIEW_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Update Collection Chunking Strategy
+
+```bash
+curl -X PATCH "http://localhost:8080/api/v2/chunking/collections/${COLLECTION_ID}/chunking-strategy" \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "strategy": "hierarchical",
+    "config": {
+      "chunk_size": 512,
+      "chunk_overlap": 50,
+      "preserve_sentences": true
+    },
+    "reprocess_existing": true
+  }'
+```
+
+### Get Collection Chunks (Paginated)
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/collections/${COLLECTION_ID}/chunks?page=1&page_size=20" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Filter by document
+curl -X GET "http://localhost:8080/api/v2/chunking/collections/${COLLECTION_ID}/chunks?document_id=${DOC_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Get Global Metrics
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/metrics?period_days=30" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Get Metrics by Strategy
+
+```bash
+curl -X GET "http://localhost:8080/api/v2/chunking/metrics/by-strategy?period_days=30" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
+### Get Quality Scores
+
+```bash
+# Global quality scores
+curl -X GET "http://localhost:8080/api/v2/chunking/quality-scores" \
+  -H "Authorization: Bearer ${TOKEN}"
+
+# Quality scores for specific collection
+curl -X GET "http://localhost:8080/api/v2/chunking/quality-scores?collection_id=${COLLECTION_ID}" \
+  -H "Authorization: Bearer ${TOKEN}"
+```
+
 ## HTTPie Examples
 
 HTTPie provides a more user-friendly command-line interface:
@@ -301,9 +472,12 @@ class ChunkingStrategy(Enum):
     FIXED_SIZE = "fixed_size"
     SEMANTIC = "semantic"
     RECURSIVE = "recursive"
+    MARKDOWN = "markdown"
+    HIERARCHICAL = "hierarchical"
+    HYBRID = "hybrid"
+    # Legacy/aliases (backward compatibility)
     SLIDING_WINDOW = "sliding_window"
     DOCUMENT_STRUCTURE = "document_structure"
-    HYBRID = "hybrid"
 
 @dataclass
 class ChunkingConfig:
@@ -510,9 +684,12 @@ export enum ChunkingStrategy {
   FIXED_SIZE = 'fixed_size',
   SEMANTIC = 'semantic',
   RECURSIVE = 'recursive',
+  MARKDOWN = 'markdown',
+  HIERARCHICAL = 'hierarchical',
+  HYBRID = 'hybrid',
+  // Legacy/aliases (backward compatibility)
   SLIDING_WINDOW = 'sliding_window',
-  DOCUMENT_STRUCTURE = 'document_structure',
-  HYBRID = 'hybrid'
+  DOCUMENT_STRUCTURE = 'document_structure'
 }
 
 export interface ChunkingConfig {
@@ -714,23 +891,28 @@ async function demonstrateChunkingAPI() {
     
     console.log('Operation started:', operation.operation_id);
     
-    // Connect to WebSocket for progress
+    // Connect to WebSocket for progress using operation_id (NOT websocket_channel)
+    // The WebSocket URL path uses operation_id directly: /ws/operations/{operation_id}
     const ws = client.connectToProgress(
-      operation.websocket_channel,
+      operation.operation_id,
       'your_token',
       (data) => {
-        switch(data.type) {
-          case 'chunking_progress':
-            console.log(`Progress: ${data.data.progress_percentage}%`);
-            break;
-          case 'chunking_completed':
-            console.log('Chunking completed!');
-            ws.close();
-            break;
-          case 'chunking_failed':
-            console.error('Chunking failed:', data.data.error);
-            ws.close();
-            break;
+        // Message structure: { type: string, data: { status, progress, message, ... } }
+        const status = data.data?.status;
+        const progress = data.data?.progress;
+
+        if (progress != null) {
+          console.log(`Progress: ${progress.toFixed(1)}%`);
+        }
+
+        if (data.type === 'operation_completed' || status === 'completed') {
+          console.log('Chunking completed!');
+          ws.close();
+        }
+
+        if (data.type === 'operation_failed' || status === 'failed') {
+          console.error('Chunking failed:', data.data?.error_message);
+          ws.close();
         }
       }
     );
@@ -750,22 +932,27 @@ demonstrateChunkingAPI();
 import { useState, useEffect } from 'react';
 
 interface UseChunkingProgressOptions {
-  operationId: string;
+  operationId: string;  // Use operation_id from the response, NOT websocket_channel
   token: string;
   onComplete?: () => void;
   onError?: (error: string) => void;
 }
 
+// Status values from ChunkingStatus enum
+type OperationStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'partial';
+
 export function useChunkingProgress({ operationId, token, onComplete, onError }: UseChunkingProgressOptions) {
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState<'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'>('pending');
+  const [status, setStatus] = useState<OperationStatus>('pending');
 
   useEffect(() => {
+    // WebSocket URL uses operation_id directly in the path
     const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
+      // Message structure: { type: string, data: { status, progress, message, error_message, ... } }
       const msgStatus = msg.data?.status;
       const msgProgress = msg.data?.progress;
 
@@ -823,12 +1010,15 @@ const WebSocket = require('ws');
 
 class ChunkingProgressMonitor {
   constructor(operationId, token) {
+    // IMPORTANT: Use operation_id from the API response, not websocket_channel
+    // The WebSocket URL uses operation_id directly in the path
     this.operationId = operationId;
     this.token = token;
     this.ws = null;
   }
 
   connect() {
+    // WebSocket URL format: /ws/operations/{operation_id}?token={jwt_token}
     const wsUrl = `ws://localhost:8080/ws/operations/${this.operationId}?token=${this.token}`;
     this.ws = new WebSocket(wsUrl);
 
@@ -851,6 +1041,8 @@ class ChunkingProgressMonitor {
   }
 
   handleMessage(message) {
+    // Message structure: { type: string, data: { status, progress, message, error_message, ... } }
+    // Status values: 'pending', 'in_progress', 'completed', 'failed', 'cancelled', 'partial'
     const status = message.data?.status;
     const progress = message.data?.progress;
     const text = message.data?.message;
@@ -877,7 +1069,7 @@ class ChunkingProgressMonitor {
   }
 }
 
-// Usage
+// Usage - pass the operation_id from the chunking operation response
 const monitor = new ChunkingProgressMonitor('op_456', 'your_token');
 monitor.connect();
 ```

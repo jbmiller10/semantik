@@ -75,11 +75,11 @@ Qwen/Qwen3-Embedding-8B  → Qwen/Qwen3-Reranker-8B
 
 ### Model Characteristics
 
-| Model | Parameters | Memory (float16) | Memory (int8) | Batch Size | Speed | Use Case |
-|-------|------------|------------------|---------------|------------|-------|----------|
-| Qwen3-Reranker-0.6B | 0.6B | ~1.2GB | ~600MB | 64-256 | Fast | General search, real-time applications |
-| Qwen3-Reranker-4B | 4B | ~8GB | ~4GB | 16-64 | Medium | Complex queries, knowledge work |
-| Qwen3-Reranker-8B | 8B | ~16GB | ~8GB | 8-32 | Slow | Research, legal, medical domains |
+| Model | Parameters | Memory (float16) | Memory (bfloat16) | Memory (int8) | Batch Size | Speed | Use Case |
+|-------|------------|------------------|-------------------|---------------|------------|-------|----------|
+| Qwen3-Reranker-0.6B | 0.6B | ~1.2GB | ~1.2GB | ~600MB | 64-256 | Fast | General search, real-time applications |
+| Qwen3-Reranker-4B | 4B | ~8GB | ~8GB | ~4GB | 16-64 | Medium | Complex queries, knowledge work |
+| Qwen3-Reranker-8B | 8B | ~16GB | ~16GB | ~8GB | 8-32 | Slow | Research, legal, medical domains |
 
 ### Selection Logic
 
@@ -92,27 +92,33 @@ Qwen/Qwen3-Embedding-8B  → Qwen/Qwen3-Reranker-8B
 ### Enabling Reranking
 
 #### Via API Request
+
+**Important**: Reranking requires using the POST `/search` endpoint with a JSON body. GET requests do not support reranking parameters.
+
 ```python
-# Python example
-response = requests.get("http://localhost:8000/search", params={
-    "q": "machine learning algorithms",
+# Python example - POST request with JSON body
+import requests
+
+response = requests.post("http://localhost:8000/search", json={
+    "query": "machine learning algorithms",
     "k": 10,
     "use_reranker": True,  # Enable reranking
     "rerank_model": "Qwen/Qwen3-Reranker-4B",  # Optional: override model
-    "rerank_quantization": "int8"  # Optional: override quantization
+    "rerank_quantization": "int8"  # Optional: override quantization (float32, float16, bfloat16, int8)
 })
 ```
 
 #### Via Configuration
 ```python
-# config/rerank_config.py
+# packages/vecpipe/qwen3_search_config.py
 RERANK_CONFIG = {
-    "enabled": True,
     "candidate_multiplier": 5,    # Retrieve k * 5 candidates
     "min_candidates": 20,         # Minimum candidates to retrieve
     "max_candidates": 200,        # Maximum candidates cap
     "default_model": "Qwen/Qwen3-Reranker-0.6B",
-    "default_quantization": "float16"
+    "use_hybrid_scoring": True,   # Combine vector similarity with reranking scores
+    "hybrid_weight": 0.3,         # Weight for original vector score (0.3 vector + 0.7 rerank)
+    "batch_sizes": { ... }        # Model-specific batch sizes (see below)
 }
 ```
 
@@ -120,12 +126,30 @@ RERANK_CONFIG = {
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enabled` | `True` | Global reranking enable/disable |
 | `candidate_multiplier` | `5` | How many candidates to retrieve (k * multiplier) |
 | `min_candidates` | `20` | Minimum candidates regardless of k |
 | `max_candidates` | `200` | Maximum candidates to prevent memory issues |
 | `default_model` | `Qwen3-0.6B` | Fallback reranker model |
-| `default_quantization` | `float16` | Default quantization level |
+| `use_hybrid_scoring` | `True` | Combine vector similarity with reranking scores |
+| `hybrid_weight` | `0.3` | Weight for original vector score (0.3 vector + 0.7 rerank) |
+
+### Hybrid Scoring
+
+When `use_hybrid_scoring` is enabled (default), the final relevance score combines both the original vector similarity score and the cross-encoder reranking score:
+
+```
+final_score = (hybrid_weight * vector_score) + ((1 - hybrid_weight) * rerank_score)
+```
+
+With the default `hybrid_weight` of 0.3:
+- **30%** of the final score comes from the original vector similarity
+- **70%** of the final score comes from the cross-encoder reranking
+
+**Why use hybrid scoring?**
+- Preserves some signal from the efficient vector search
+- Cross-encoder may occasionally miss domain-specific relevance that embeddings capture
+- Provides more stable rankings when reranker confidence is low
+- Can be disabled by setting `use_hybrid_scoring: False` for pure cross-encoder ranking
 
 ### Batch Size Configuration
 
@@ -162,7 +186,7 @@ Batch sizes are automatically configured based on model and quantization:
 
 #### Memory Management
 - **Lazy Loading**: Models loaded only when needed
-- **Auto-Unloading**: Models freed after 5 minutes inactivity
+- **Auto-Unloading**: Models freed after configurable inactivity period (default: 5 minutes)
 - **Memory Checks**: Pre-flight checks prevent OOM errors
 
 ### Latency Impact
@@ -220,11 +244,12 @@ The reranker uses a specific format for optimal performance:
 Different templates for different search types:
 
 ```python
-INSTRUCTION_TEMPLATES = {
+RERANKING_INSTRUCTIONS = {
     "general": "Given the query and document, determine if the document is relevant to the query.",
     "technical": "Assess if this technical document provides useful information for the technical query.",
     "code": "Determine if this code snippet is relevant to the programming query.",
-    "qa": "Check if this document contains information that answers the question."
+    "qa": "Check if this document contains information that answers the question.",
+    "semantic": "Evaluate the semantic relevance between the query and document."
 }
 ```
 
@@ -286,20 +311,26 @@ results = search_api.search(
 )
 ```
 
-### Batch Search with Reranking
+### Sequential Search with Reranking
 ```python
-# Rerank multiple queries efficiently
+# Process multiple queries with reranking sequentially
+# Note: BatchSearchRequest does NOT support reranking - use individual searches instead
+
 queries = [
     "machine learning algorithms",
     "deep learning frameworks",
     "neural network architectures"
 ]
 
-results = search_api.batch_search(
-    queries=queries,
-    k=10,
-    use_reranker=True
-)
+# Each query must be sent as a separate POST request with use_reranker=True
+results = []
+for query in queries:
+    response = requests.post("http://localhost:8000/search", json={
+        "query": query,
+        "k": 10,
+        "use_reranker": True
+    })
+    results.append(response.json())
 ```
 
 ## Best Practices
@@ -499,7 +530,7 @@ Key takeaways:
    - Handles automatic unloading after inactivity
    - Provides unified interface for all models
 
-3. **Search API Integration** (`packages/vecpipe/search_api.py`):
+3. **Search API Integration** (`packages/vecpipe/search/service.py`):
    - Seamless reranking in search endpoints
    - Automatic candidate retrieval adjustment
    - Performance metrics collection
@@ -530,6 +561,6 @@ with self._lock:
 
 For detailed implementation, see the source code in:
 - `packages/vecpipe/reranker.py` - Core reranking logic
-- `packages/vecpipe/search_api.py` - API integration
+- `packages/vecpipe/search/service.py` - API integration
 - `packages/vecpipe/qwen3_search_config.py` - Model configuration
 - `packages/vecpipe/memory_utils.py` - Memory management

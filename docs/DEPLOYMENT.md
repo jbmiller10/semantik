@@ -110,10 +110,6 @@ MODEL_MAX_MEMORY_GB=8             # GPU memory limit
 # Volume Paths
 DOCUMENT_PATH=./documents         # Source documents directory
 HF_CACHE_DIR=./models            # Model cache directory
-
-# Operation Paths (inside containers)
-EXTRACT_DIR=/app/operations/extract
-INGEST_DIR=/app/operations/ingest
 ```
 
 ### Database Configuration
@@ -159,7 +155,7 @@ graph LR
 Core services for basic functionality:
 ```bash
 docker compose up -d
-# Starts: PostgreSQL, Redis, Qdrant, Vecpipe, WebUI
+# Starts: PostgreSQL, Redis, Qdrant, Vecpipe, WebUI, and Worker (6 services)
 ```
 
 #### Backend Profile
@@ -171,52 +167,21 @@ docker compose --profile backend up -d
 
 ### Production Docker Compose
 
-Create `docker-compose.prod.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  # Apply production settings to all services
-  qdrant:
-    restart: always
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "100m"
-        max-file: "5"
-
-  postgres:
-    restart: always
-    environment:
-      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
-    secrets:
-      - postgres_password
-
-  webui:
-    restart: always
-    environment:
-      - ENVIRONMENT=production
-      - JWT_SECRET_KEY_FILE=/run/secrets/jwt_secret
-    secrets:
-      - jwt_secret
-
-  vecpipe:
-    restart: always
-    deploy:
-      replicas: 2  # Scale for performance
-
-secrets:
-  postgres_password:
-    external: true
-  jwt_secret:
-    external: true
-```
+The repository includes a `docker-compose.prod.yml` file with production-ready settings including:
+- Pinned image versions for stability
+- JSON file logging with rotation
+- Enhanced health checks with tighter timings
+- Production environment variables
+- Optional nginx reverse proxy service
 
 Deploy with:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+> **Note on Docker Secrets**: For enhanced security, you can optionally configure Docker secrets for sensitive values like `POSTGRES_PASSWORD` and `JWT_SECRET_KEY`. This requires creating external secrets and modifying the compose files to use `*_FILE` environment variables. See Docker's [secrets documentation](https://docs.docker.com/compose/how-tos/use-secrets/) for implementation details.
+
+> **Note on Scaling**: To scale vecpipe for performance, add a `deploy.replicas` setting in your production override file. For example, `replicas: 2` will run two vecpipe instances.
 
 ### Health Checks
 

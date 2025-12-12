@@ -51,7 +51,7 @@
 - **Operating System**: Linux (Ubuntu 20.04+ recommended), macOS, Windows (WSL2)
 - **Docker**: 20.10+ with Docker Compose 2.0+
 - **Python**: 3.12+ (for local development)
-- **Node.js**: 18.0+ (for frontend development)
+- **Node.js**: 20.0+ (for frontend development)
 - **GPU**: NVIDIA GPU with CUDA support (optional but recommended)
 - **RAM**: Minimum 16GB, 32GB+ recommended
 - **Storage**: SSD with at least 100GB free space
@@ -113,28 +113,35 @@
 - **Version**: 7-alpine
 - **Usage**: Celery task queue, WebSocket pub/sub
 
+#### 4. **PostgreSQL Test** (Port 55432)
+- **Purpose**: Dedicated test database instance
+- **Version**: 16-alpine
+- **Profile**: testing
+- **Usage**: Integration and API tests
+- **Note**: Uses separate volume (`postgres_test_data`) for isolation
+
 ### Service Dependencies
 
 ```mermaid
 graph TB
     subgraph "Frontend"
-        A[React App<br/>Port 5173]
+        A[React App<br/>Built into WebUI]
     end
-    
+
     subgraph "Backend Services"
         B[WebUI<br/>Port 8080]
         C[Vecpipe<br/>Port 8000]
         D[Worker<br/>Celery]
         E[Flower<br/>Port 5555]
     end
-    
+
     subgraph "Data Layer"
         F[PostgreSQL<br/>Port 5432]
         G[Qdrant<br/>Port 6333]
         H[Redis<br/>Port 6379]
     end
-    
-    A -->|API Calls| B
+
+    A -->|Served by| B
     B -->|Search Proxy| C
     B -->|Task Queue| H
     B -->|User Data| F
@@ -144,6 +151,8 @@ graph TB
     D -->|Metadata| F
     E -->|Monitor| H
 ```
+
+> **Note**: The React frontend is built statically during the Docker build process and served by the WebUI service. There is no standalone frontend container or development server exposed on port 5173 in the Docker environment.
 
 ---
 
@@ -256,12 +265,11 @@ services:
     ports: ["8080:8080"]
     depends_on: [postgres, vecpipe, redis]
     
-  # Background Worker
+  # Background Worker (runs by default - no profile)
   worker:
     build: .
-    profiles: ["backend"]
     depends_on: [postgres, redis, qdrant]
-    
+
   # Task Monitor
   flower:
     build: .
@@ -275,6 +283,7 @@ services:
 #### Named Volumes
 - `qdrant_storage`: Vector database persistence
 - `postgres_data`: PostgreSQL database files
+- `postgres_test_data`: PostgreSQL test database files (testing profile)
 - `redis_data`: Redis persistence (AOF enabled)
 
 #### Bind Mounts
@@ -285,15 +294,34 @@ services:
 
 ### Docker Profiles
 
-1. **Default Profile**: Core services only
+1. **Default Profile**: Core services (qdrant, postgres, redis, vecpipe, webui, worker)
    ```bash
    docker compose up -d
    ```
 
-2. **Backend Profile**: Includes Worker and Flower
+2. **Backend Profile**: Adds Flower monitoring dashboard
    ```bash
    docker compose --profile backend up -d
    ```
+
+3. **Testing Profile**: Adds dedicated test PostgreSQL instance
+   ```bash
+   docker compose --profile testing up -d
+   ```
+
+### Development Override File
+
+For local development with live code reloading, use the `docker-compose.dev.yml` override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+This enables:
+- Source code mounting (read-only) for live updates
+- `WEBUI_RELOAD=true` for automatic restart on code changes
+- `DB_ECHO=true` for SQL query logging
+- `ENVIRONMENT=development` for debug settings
 
 ---
 
@@ -303,19 +331,25 @@ services:
 
 ```
 tests/
-├── unit/                    # Unit tests
-│   ├── test_models.py
-│   ├── test_services.py
-│   └── test_repositories.py
-├── integration/             # Integration tests
-│   ├── test_search_api.py
-│   ├── test_websockets.py
-│   └── test_celery_tasks.py
+├── api/                     # API endpoint tests
+├── application/             # Application layer tests
+├── chunking/                # Chunking strategy tests
+├── database/                # Database migration and query tests
+├── domain/                  # Domain model tests
 ├── e2e/                     # End-to-end tests
-│   ├── test_collection_flow.py
-│   └── test_search_flow.py
-├── conftest.py              # Shared fixtures
-└── docker-compose.test.yml  # Test infrastructure
+├── fixtures/                # Shared test fixtures
+├── integration/             # Integration tests
+├── performance/             # Performance benchmarks
+├── security/                # Security tests
+├── services/                # Service layer tests
+├── shared/                  # Shared utility tests
+├── streaming/               # Streaming pipeline tests
+├── unit/                    # Unit tests
+├── webui/                   # WebUI-specific tests
+│   ├── api/v2/              # V2 API tests
+│   └── services/            # WebUI service tests
+├── websocket/               # WebSocket tests
+└── conftest.py              # Shared fixtures and configuration
 ```
 
 ### Key Test Fixtures
@@ -421,6 +455,47 @@ make frontend-dev      # Start dev server
 make frontend-test     # Run frontend tests
 ```
 
+### Setup Wizard
+
+Semantik includes an interactive setup wizard for initial configuration:
+
+```bash
+# Run the setup wizard
+make wizard
+
+# Or directly via Python
+python wizard_launcher.py
+```
+
+The wizard (`wizard_launcher.py`) provides:
+- Python version verification (requires 3.11+)
+- Automatic `uv` installation if not present
+- Dependency installation via `uv sync`
+- Interactive configuration via `docker_setup_tui.py`
+
+### Docker Entrypoint Behavior
+
+The `docker-entrypoint.sh` script handles service startup with the following behaviors:
+
+#### Environment Validation
+All services run strict environment validation via `scripts/validate_env.py --strict` before starting. This ensures required configuration is present.
+
+#### Service-Specific Startup
+
+| Service | Pre-startup Actions |
+|---------|---------------------|
+| **webui** | Waits for Search API, runs Alembic migrations |
+| **vecpipe** | Waits for Qdrant, validates HF cache, cleans lock files |
+| **worker** | Auto-calculates Celery concurrency based on CPU cores |
+| **flower** | Requires `FLOWER_USERNAME` and `FLOWER_PASSWORD` |
+
+#### Celery Worker Concurrency
+
+The worker automatically determines concurrency:
+1. Uses `CELERY_CONCURRENCY` if explicitly set
+2. Otherwise: `(CPU cores - 1)`, minimum 1
+3. Capped by `CELERY_MAX_CONCURRENCY` if set
+
 ---
 
 ## Service Management
@@ -521,13 +596,18 @@ WebUI supports WebSocket connections for real-time updates:
 
 ### Prometheus Metrics
 
-Services expose metrics on internal ports:
+Services expose metrics on internal port 9091. Note that this port is **not exposed externally** in the default docker-compose configuration - it is only accessible within the container network for internal monitoring or by attaching to the container.
 
 ```python
-# Metrics endpoints
-- WebUI: http://localhost:9091/metrics
-- Vecpipe: http://localhost:9091/metrics
+# Metrics endpoints (internal only)
+- WebUI: http://webui:9091/metrics
+- Vecpipe: http://vecpipe:9091/metrics
 ```
+
+To access metrics externally, you can:
+1. Add port mapping in docker-compose (e.g., `- "9091:9091"`)
+2. Use `docker exec` to query from within the container
+3. Configure a Prometheus instance within the Docker network
 
 Key metrics:
 - Request latency
@@ -596,12 +676,78 @@ cap_add:
 
 ### User Permissions
 
-Containers run as non-root (UID 1000):
+Containers run as non-root user. The UID/GID can be configured via environment variables:
 
-```dockerfile
-RUN useradd -m -u 1000 semantik
-USER semantik
+```yaml
+# In docker-compose.yml
+user: "${UID:-1000}:${GID:-1000}"
 ```
+
+To match your host user (recommended for volume permissions):
+```bash
+# Add to .env file
+UID=1000
+GID=1000
+
+# Or use your actual UID/GID
+UID=$(id -u)
+GID=$(id -g)
+```
+
+This ensures files created in mounted volumes have the correct ownership.
+
+### Environment Variables Reference
+
+#### Core Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENVIRONMENT` | `development` | Environment mode (`development`, `production`) |
+| `JWT_SECRET_KEY` | (required) | Secret key for JWT token signing |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` | JWT token expiration time |
+
+#### Worker Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMBEDDING_CONCURRENCY_PER_WORKER` | `1` | Max concurrent /embed calls per worker (protects VRAM) |
+| `CELERY_MAX_CONCURRENCY` | `4` | Cap for auto-scaled Celery worker pool |
+| `CELERY_CONCURRENCY` | (auto) | Explicit worker concurrency (overrides auto-calculation) |
+
+#### Database Connection Pool
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_POOL_SIZE` | `20` (webui), `10` (worker) | Connection pool size |
+| `DB_MAX_OVERFLOW` | `40` (webui), `20` (worker) | Max overflow connections |
+| `DB_POOL_TIMEOUT` | `30` | Pool checkout timeout (seconds) |
+| `DB_POOL_RECYCLE` | `3600` | Connection recycle time (seconds) |
+| `DB_POOL_PRE_PING` | `true` | Enable connection health checks |
+
+#### Model Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEFAULT_EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Default embedding model |
+| `DEFAULT_QUANTIZATION` | `float16` | Model quantization setting |
+| `USE_MOCK_EMBEDDINGS` | `false` | Use mock embeddings (for testing) |
+| `HF_HOME` | `/app/.cache/huggingface` | HuggingFace cache directory |
+| `HF_HUB_OFFLINE` | `false` | Run HuggingFace in offline mode |
+
+#### Service URLs
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SEARCH_API_URL` | `http://vecpipe:8000` | Internal Search API URL |
+| `REDIS_URL` | `redis://redis:6379/0` | Redis connection URL |
+| `DATABASE_URL` | (composed) | PostgreSQL connection URL |
+
+### Production Notes
+
+#### Nginx Configuration
+
+For production deployments with a reverse proxy, you must create your own `nginx.conf` file. Semantik does not include a pre-configured nginx setup - users are expected to configure this based on their deployment requirements.
+
+Example considerations for nginx:
+- SSL/TLS termination
+- WebSocket proxying for `/ws/` endpoints
+- Static file serving optimization
+- Rate limiting at the proxy level
 
 ### Secret Management
 
@@ -643,45 +789,52 @@ docker run --rm \
 
 ### GitHub Actions Workflow
 
+The CI pipeline runs on push to `main`/`develop` branches and on pull requests. It uses a matrix strategy for parallel test execution.
+
+#### Pipeline Jobs
+
+1. **Python Format** (`python-format`): Black formatting check
+2. **Python Lint** (`python-lint`): Ruff linting and Mypy type checking
+3. **Frontend Lint** (`frontend-lint`): ESLint for React code
+4. **Security Scan** (`security-scan`): Trivy vulnerability scanner and Safety for Python dependencies
+5. **Backend Tests** (`backend-tests`): Matrix-based test execution with 4 groups
+6. **Frontend Tests** (`frontend-tests`): Vitest with coverage reporting
+7. **Build Validation** (`build-validation`): Frontend production build verification
+
+#### Backend Test Matrix
+
+Tests are split into 4 parallel groups for faster CI:
+
 ```yaml
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-      qdrant:
-        image: qdrant/qdrant
-      redis:
-        image: redis:7
-    
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@v1
-      - run: uv sync --frozen
-      - run: make check
-      - run: make test-coverage
+strategy:
+  matrix:
+    group: [unit, webui, integration, other]
 ```
 
-### Build Pipeline
+- **unit**: `tests/unit/` - Core unit tests
+- **webui**: `tests/webui/` - WebUI-specific tests
+- **integration**: `tests/integration/` - Integration tests
+- **other**: `tests/domain/`, `tests/application/`, `tests/streaming/`, `tests/websocket/`, `tests/database/`, `tests/security/`, `tests/api/`, `tests/shared/`
+
+#### Security Scanning
+
+- **Trivy**: Filesystem vulnerability scanning for CRITICAL and HIGH severity issues
+- **Safety**: Python dependency vulnerability checking (via pyupio/safety-action)
+
+#### Coverage Reporting
+
+Both backend and frontend tests generate coverage reports uploaded to Codecov with separate flags:
+- `backend-unit`, `backend-webui`, `backend-integration`, `backend-other`
+- `frontend`
+
+### Build Pipeline Summary
 
 1. **Lint & Format**: Black, Ruff, ESLint
-2. **Type Check**: Mypy, TypeScript
-3. **Unit Tests**: Jest, Pytest
-4. **Integration Tests**: API and service tests
-5. **Build Images**: Docker multi-stage build
-6. **Security Scan**: Trivy, Snyk
+2. **Type Check**: Mypy (packages/), TypeScript
+3. **Security Scan**: Trivy (filesystem), Safety (Python deps)
+4. **Backend Tests**: Pytest with matrix parallelization
+5. **Frontend Tests**: Vitest with coverage
+6. **Build Validation**: Production frontend build
 
 ---
 
@@ -817,7 +970,7 @@ docker compose up -d
 
 For infrastructure issues:
 1. Check logs: `docker compose logs -f [service]`
-2. Review metrics: http://localhost:9091/metrics
-3. Monitor tasks: http://localhost:5555
+2. Review metrics: `docker exec semantik-webui curl http://localhost:9091/metrics` (internal port)
+3. Monitor tasks: http://localhost:5555 (requires `--profile backend`)
 4. Check documentation
 5. Submit GitHub issue

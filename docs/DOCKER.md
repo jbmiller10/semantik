@@ -158,33 +158,53 @@ graph TB
 
 #### 6. Worker (Celery Background Tasks)
 - **Build**: From Dockerfile
-- **Profile**: backend
+- **Profile**: None (runs by default)
 - **Depends On**: PostgreSQL (healthy), Redis, Qdrant
 - **Resource Limits**: 2 CPUs, 4GB memory
 - **Health Check**: Celery inspect ping
+- **Key Environment Variables**:
+  - `EMBEDDING_CONCURRENCY_PER_WORKER`: Limits concurrent /embed calls per worker process to protect VRAM (default: 1)
+  - `CELERY_MAX_CONCURRENCY`: Caps auto-scaled Celery worker pool to avoid OOM (default: 4)
 
 #### 7. Flower (Task Monitoring)
 - **Build**: From Dockerfile
 - **Profile**: backend
-- **Port**: 5555
+- **Port**: 5555 (configurable via `FLOWER_PORT` environment variable)
 - **Depends On**: Redis
 - **Resource Limits**: 0.5 CPUs, 512MB memory
 - **Health Check**: HTTP endpoint on port 5555
+- **Environment Variables**: `FLOWER_PORT`, `FLOWER_USERNAME`, `FLOWER_PASSWORD`
+
+#### 8. PostgreSQL Test (Testing Database)
+- **Image**: `postgres:16-alpine`
+- **Profile**: testing
+- **Port**: 55432 (configurable via `POSTGRES_TEST_PORT`)
+- **Volume**: `postgres_test_data:/var/lib/postgresql/data`
+- **Health Check**: `pg_isready` command
+- **Configuration**: UTF-8 encoding, en_US.utf8 locale
+- **Purpose**: Dedicated PostgreSQL instance for integration and API tests
 
 ## Docker Profiles
 
 ### Default Profile
-Runs core services: Qdrant, PostgreSQL, Redis, Vecpipe, and WebUI
+Runs core services: Qdrant, PostgreSQL, Redis, Vecpipe, WebUI, and Worker
 
 ```bash
 docker compose up -d
 ```
 
 ### Backend Profile
-Includes Worker and Flower services for full background task processing
+Adds Flower monitoring service to the default services
 
 ```bash
 docker compose --profile backend up -d
+```
+
+### Testing Profile
+Includes PostgreSQL test database for integration tests
+
+```bash
+docker compose --profile testing up -d
 ```
 
 ## Volume Management
@@ -202,6 +222,11 @@ docker compose --profile backend up -d
 3. **redis_data**: Redis persistence files
    - Contains task queue data
    - Can be recreated if lost
+
+4. **postgres_test_data**: PostgreSQL test database files
+   - Contains test data for integration tests
+   - Used only with the `testing` profile
+   - Can be safely deleted between test runs
 
 ### Bind Mounts
 
@@ -382,10 +407,16 @@ cap_add:
 
 ### User Permissions
 
-Containers run as non-root user (UID 1000):
+Containers run as non-root user. The UID and GID are configurable via environment variables and default to 1000:1000:
 
-```dockerfile
-USER 1000:1000
+```yaml
+user: "${UID:-1000}:${GID:-1000}"
+```
+
+Set these in your `.env` file to match your host user:
+```bash
+UID=1000
+GID=1000
 ```
 
 ### Secret Management
@@ -506,6 +537,10 @@ Use docker-compose.prod.yml for production settings:
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
+
+**Note**: The production configuration includes an nginx reverse proxy service. Before starting, you must create an `nginx.conf` file in the project root directory. See the nginx documentation for configuration examples. The production compose file expects:
+- `./nginx.conf` - Your nginx configuration file (required)
+- `./ssl/` - Directory containing SSL certificates (for HTTPS)
 
 ### Backup Procedures
 
