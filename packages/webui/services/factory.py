@@ -328,10 +328,20 @@ def create_source_service(db: AsyncSession) -> SourceService:
     Returns:
         Configured SourceService instance
     """
+    from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
+    from shared.utils.encryption import SecretEncryption
+
     # Create repository instances
     collection_repo = CollectionRepository(db)
     source_repo = CollectionSourceRepository(db)
     operation_repo = OperationRepository(db)
+
+    # Create secret repository only if encryption is configured
+    secret_repo: ConnectorSecretRepository | None = None
+    if SecretEncryption.is_configured():
+        secret_repo = ConnectorSecretRepository(db)
+    else:
+        logger.debug("Connector secrets encryption not configured - secrets storage disabled")
 
     # Create and return service
     return SourceService(
@@ -339,6 +349,7 @@ def create_source_service(db: AsyncSession) -> SourceService:
         collection_repo=collection_repo,
         source_repo=source_repo,
         operation_repo=operation_repo,
+        secret_repo=secret_repo,
     )
 
 

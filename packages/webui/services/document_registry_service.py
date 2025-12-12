@@ -8,10 +8,14 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.repositories.chunk_repository import ChunkRepository
+from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.dtos.ingestion import IngestedDocument
 
 logger = logging.getLogger(__name__)
+
+# Source types that require artifact storage (no local file exists)
+NON_FILE_SOURCE_TYPES = {"git", "imap", "web", "slack", "email"}
 
 
 class DocumentRegistryService:
@@ -50,6 +54,7 @@ class DocumentRegistryService:
         db_session: AsyncSession,
         document_repo: DocumentRepository,
         chunk_repo: ChunkRepository | None = None,
+        artifact_repo: DocumentArtifactRepository | None = None,
     ):
         """Initialize the registry service.
 
@@ -57,10 +62,12 @@ class DocumentRegistryService:
             db_session: Database session for transactions
             document_repo: Document repository for DB operations
             chunk_repo: Optional chunk repository for sync operations
+            artifact_repo: Optional artifact repository for non-file sources
         """
         self.db_session = db_session
         self.document_repo = document_repo
         self.chunk_repo = chunk_repo
+        self.artifact_repo = artifact_repo
 
     async def register(
         self,
@@ -222,6 +229,9 @@ class DocumentRegistryService:
                 )
                 logger.debug(f"Deleted {deleted_count} old chunks for document {existing.id}")
 
+            # Store/update artifact for non-file sources
+            await self._store_artifact(existing.id, collection_id, ingested)
+
             return {
                 "is_new": False,
                 "is_updated": True,
@@ -239,6 +249,10 @@ class DocumentRegistryService:
 
         # Update last_seen_at for the newly created document
         await self.document_repo.update_last_seen(result["document_id"])
+
+        # Store artifact for non-file sources (new documents)
+        if result["is_new"]:
+            await self._store_artifact(result["document_id"], collection_id, ingested)
 
         return {
             "is_new": result["is_new"],
@@ -310,3 +324,88 @@ class DocumentRegistryService:
             return mime_type
 
         return None
+
+    def _should_store_artifact(self, ingested: IngestedDocument) -> bool:
+        """Determine if document content should be stored as an artifact.
+
+        Artifacts are stored for non-file sources where content cannot be
+        served from the filesystem (Git, IMAP, web, etc.).
+
+        Args:
+            ingested: The IngestedDocument to check
+
+        Returns:
+            True if artifact should be stored, False otherwise
+        """
+        # Check if source type requires artifact storage
+        if ingested.source_type in NON_FILE_SOURCE_TYPES:
+            return True
+
+        # Check if file_path is missing or is a URI (not a real file)
+        if not ingested.file_path:
+            return True
+
+        # Check if file_path looks like a URI scheme (git://, imap://, etc.)
+        if "://" in ingested.file_path:
+            return True
+
+        # Check if the file_path exists on disk
+        # If it doesn't exist, we need to store the content as artifact
+        try:
+            if not Path(ingested.file_path).exists():
+                return True
+        except (OSError, ValueError):
+            # Path is invalid or inaccessible
+            return True
+
+        return False
+
+    async def _store_artifact(
+        self,
+        document_id: str,
+        collection_id: str,
+        ingested: IngestedDocument,
+    ) -> bool:
+        """Store document content as an artifact in the database.
+
+        Args:
+            document_id: UUID of the document
+            collection_id: UUID of the collection
+            ingested: The IngestedDocument with content
+
+        Returns:
+            True if artifact was stored, False if skipped or failed
+        """
+        if self.artifact_repo is None:
+            logger.debug(f"Artifact repo not configured, skipping artifact storage for {document_id}")
+            return False
+
+        if not self._should_store_artifact(ingested):
+            logger.debug(f"Document {document_id} has file source, skipping artifact storage")
+            return False
+
+        if not ingested.content:
+            logger.warning(f"Document {document_id} has no content, skipping artifact storage")
+            return False
+
+        try:
+            mime_type = self._get_mime_type(ingested) or "text/plain"
+
+            await self.artifact_repo.create_or_replace(
+                document_id=document_id,
+                collection_id=collection_id,
+                content=ingested.content,
+                mime_type=mime_type,
+                content_hash=ingested.content_hash,
+            )
+
+            logger.debug(
+                f"Stored artifact for document {document_id} "
+                f"(source_type={ingested.source_type}, size={len(ingested.content)})"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to store artifact for document {document_id}: {e}")
+            # Don't fail the registration - artifact is optional
+            return False

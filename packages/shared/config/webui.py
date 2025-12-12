@@ -46,6 +46,14 @@ class WebuiConfig(BaseConfig):
     DOCUMENT_ROOT: str | None = None
     DOCUMENT_ALLOWED_ROOTS: str | None = None
 
+    # Artifact storage configuration (for non-file sources like Git, IMAP)
+    MAX_ARTIFACT_BYTES: int = 50 * 1024 * 1024  # 50 MB default max artifact size
+
+    # Connector secrets encryption key (Fernet format: 44 chars, base64-encoded)
+    # If not set, connector secrets cannot be stored (passwords, tokens, SSH keys)
+    # Generate with: python scripts/generate_secrets_key.py
+    CONNECTOR_SECRETS_KEY: str | None = None
+
     # Runtime override hooks (used in tests)
     _document_root: Path | None = None
     _document_allowed_roots: tuple[Path, ...] | None = None
@@ -59,6 +67,41 @@ class WebuiConfig(BaseConfig):
     def _validate_jwt_secret(cls, value: str) -> str:
         if not value or not value.strip():
             raise ValueError("JWT_SECRET_KEY must be set via environment (use scripts/generate_jwt_secret.py)")
+        return value
+
+    @field_validator("CONNECTOR_SECRETS_KEY")
+    @classmethod
+    def _validate_connector_secrets_key(cls, value: str | None) -> str | None:
+        if not value or not value.strip():
+            return None  # Encryption disabled
+
+        value = value.strip()
+
+        # Fernet keys are 32 bytes, base64-encoded = 44 characters
+        if len(value) != 44:
+            raise ValueError(
+                f"CONNECTOR_SECRETS_KEY must be 44 characters (Fernet format), got {len(value)}. "
+                "Generate with: python scripts/generate_secrets_key.py"
+            )
+
+        # Validate it's valid base64 and can be decoded
+        try:
+            import base64
+
+            decoded = base64.urlsafe_b64decode(value)
+            if len(decoded) != 32:
+                raise ValueError(
+                    "CONNECTOR_SECRETS_KEY must decode to 32 bytes. "
+                    "Generate with: python scripts/generate_secrets_key.py"
+                )
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise
+            raise ValueError(
+                f"CONNECTOR_SECRETS_KEY is not valid base64: {e}. "
+                "Generate with: python scripts/generate_secrets_key.py"
+            ) from e
+
         return value
 
     @property

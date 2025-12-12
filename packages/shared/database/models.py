@@ -43,6 +43,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -279,6 +280,7 @@ class Document(Base):
     source = relationship("CollectionSource", back_populates="documents")
     chunking_config = relationship("ChunkingConfig", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+    artifacts = relationship("DocumentArtifact", back_populates="document", cascade="all, delete-orphan")
 
     # Indexes
     __table_args__ = (
@@ -290,6 +292,70 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+    )
+
+
+class ArtifactKind(str, enum.Enum):
+    """Types of document artifacts."""
+
+    PRIMARY = "primary"
+    PREVIEW = "preview"
+    THUMBNAIL = "thumbnail"
+
+
+class DocumentArtifact(Base):
+    """Artifact model for storing document content in database.
+
+    Used for non-file sources (Git, IMAP, web) where content cannot be
+    served from the filesystem. The content endpoint checks for artifacts
+    first, then falls back to file serving.
+
+    Artifacts can be:
+    - primary: The canonical document content
+    - preview: A preview/summary version
+    - thumbnail: A thumbnail image (for visual documents)
+    """
+
+    __tablename__ = "document_artifacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(
+        String,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    artifact_kind = Column(String(20), nullable=False, default="primary")
+    mime_type = Column(String(255), nullable=False)
+    charset = Column(String(50), nullable=True)
+    content_text = Column(Text, nullable=True)  # For text-based content
+    content_bytes = Column(LargeBinary, nullable=True)  # For binary content
+    content_hash = Column(String(64), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    is_truncated = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    document = relationship("Document", back_populates="artifacts")
+    collection = relationship("Collection")
+
+    __table_args__ = (
+        UniqueConstraint("document_id", "artifact_kind", name="uq_document_artifact_kind"),
+        CheckConstraint(
+            "content_text IS NOT NULL OR content_bytes IS NOT NULL",
+            name="ck_content_present",
+        ),
+        CheckConstraint(
+            "artifact_kind IN ('primary', 'preview', 'thumbnail')",
+            name="ck_artifact_kind_values",
         ),
     )
 
@@ -406,9 +472,47 @@ class CollectionSource(Base):
     # Relationships
     collection = relationship("Collection", back_populates="sources")
     documents = relationship("Document", back_populates="source")
+    secrets = relationship("ConnectorSecret", back_populates="source", cascade="all, delete-orphan")
 
     # Constraints
     __table_args__ = (UniqueConstraint("collection_id", "source_path", name="uq_collection_source_path"),)
+
+
+class ConnectorSecret(Base):
+    """Encrypted secrets for connector authentication.
+
+    Stores encrypted credentials (passwords, tokens, SSH keys) for
+    connector sources. Secrets are encrypted using Fernet symmetric
+    encryption and are never returned via API responses.
+
+    Secret types:
+    - password: IMAP password, generic password
+    - token: HTTPS access token, API key
+    - ssh_key: SSH private key content
+    - ssh_passphrase: Passphrase for encrypted SSH key
+    """
+
+    __tablename__ = "connector_secrets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_source_id = Column(
+        Integer,
+        ForeignKey("collection_sources.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    secret_type = Column(String(50), nullable=False)  # 'password', 'token', 'ssh_key', etc.
+    ciphertext = Column(LargeBinary, nullable=False)  # Fernet-encrypted data
+    key_id = Column(String(64), nullable=False)  # Identifies which key encrypted this
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    source = relationship("CollectionSource", back_populates="secrets")
+
+    __table_args__ = (
+        UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),
+    )
 
 
 class Operation(Base):
