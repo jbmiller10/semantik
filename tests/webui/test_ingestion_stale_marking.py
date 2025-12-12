@@ -53,6 +53,18 @@ class _FakeConnector:
             yield doc
 
 
+class _FakeCredentialedConnector(_FakeConnector):
+    def __init__(self, docs: list[_IngestedDoc]) -> None:
+        super().__init__(docs)
+        self.token: str | None = None
+
+    def set_credentials(self, token: str | None = None) -> None:
+        self.token = token
+
+    async def authenticate(self) -> bool:
+        return self.token == "secret-token"
+
+
 class _FakeRegistry:
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401, ANN401
         return None
@@ -147,6 +159,57 @@ async def test_append_marks_stale_when_scan_clean(monkeypatch) -> None:
     assert _call["collection_id"] == "col-1"
     assert _call["source_id"] == 123
     assert isinstance(_call["since"], datetime)
+
+
+@pytest.mark.asyncio()
+async def test_append_applies_stored_secrets_before_authenticate(monkeypatch) -> None:
+    class _FakeSecretRepo:
+        def __init__(self, session: Any) -> None:  # noqa: ANN401
+            self.session = session
+
+        async def get_secret_types_for_source(self, source_id: int) -> list[str]:  # noqa: ARG002
+            # Include an extra secret type that the connector does NOT accept to
+            # verify ingestion filters kwargs against set_credentials signature.
+            return ["token", "ssh_key"]
+
+        async def get_secret(self, source_id: int, secret_type: str) -> str | None:  # noqa: ARG002
+            return {"token": "secret-token", "ssh_key": "ssh-private-key"}.get(secret_type)
+
+    docs: list[_IngestedDoc] = []
+    connector = _FakeCredentialedConnector(docs)
+
+    monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
+    monkeypatch.setattr("webui.tasks.ingestion.DocumentRegistryService", _FakeRegistry)
+    monkeypatch.setattr("shared.database.repositories.chunk_repository.ChunkRepository", _FakeChunkRepository)
+    monkeypatch.setattr("webui.tasks.ingestion._audit_log_operation", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        "shared.database.repositories.connector_secret_repository.ConnectorSecretRepository",
+        _FakeSecretRepo,
+    )
+
+    document_repo = Mock()
+    document_repo.session = _FakeSession()
+    document_repo.mark_unseen_as_stale = AsyncMock(return_value=0)
+
+    collection_repo = Mock()
+    updater = Mock()
+    updater.send_update = AsyncMock(return_value=None)
+
+    operation = {
+        "id": "op-secrets",
+        "user_id": 1,
+        "config": {
+            "source_id": 123,
+            "source_type": "git",
+            "source_config": {"url": "https://example.com/repo.git"},
+        },
+    }
+    collection = {"id": "col-1"}
+
+    result = await _process_append_operation_impl(operation, collection, collection_repo, document_repo, updater)
+
+    assert result["success"] is True
+    assert connector.token == "secret-token"
 
 
 @pytest.mark.asyncio()

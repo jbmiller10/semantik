@@ -297,7 +297,7 @@ class TestGitConnectorAuthenticate:
 
     @pytest.mark.asyncio()
     async def test_authenticate_failure(self):
-        """Test authentication failure."""
+        """Test authentication failure raises ValueError."""
         connector = GitConnector({
             "repo_url": "https://github.com/user/repo.git",
         })
@@ -305,13 +305,14 @@ class TestGitConnectorAuthenticate:
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.return_value = (128, "", "Authentication failed")
 
-            result = await connector.authenticate()
+            with pytest.raises(ValueError) as exc_info:
+                await connector.authenticate()
 
-            assert result is False
+            assert "Cannot access repository" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_authenticate_exception(self):
-        """Test authentication with exception."""
+        """Test authentication with exception propagates."""
         connector = GitConnector({
             "repo_url": "https://github.com/user/repo.git",
         })
@@ -319,9 +320,10 @@ class TestGitConnectorAuthenticate:
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.side_effect = ValueError("Timeout")
 
-            result = await connector.authenticate()
+            with pytest.raises(ValueError) as exc_info:
+                await connector.authenticate()
 
-            assert result is False
+            assert "Timeout" in str(exc_info.value)
 
 
 class TestGitConnectorGetRefs:
@@ -385,34 +387,60 @@ class TestGitConnectorRunGitCommand:
 class TestGitConnectorFileMatching:
     """Test file matching logic."""
 
-    def test_should_include_file_default_extension(self):
-        """Test file inclusion by default extension."""
+    def test_matches_patterns_no_globs(self):
+        """Test pattern matching with no globs (allow all)."""
         connector = GitConnector({
             "repo_url": "https://github.com/user/repo.git",
         })
 
-        assert connector._should_include_file("README.md")
-        assert connector._should_include_file("src/main.py")
-        assert not connector._should_include_file("image.png")
+        # Without include_globs, all paths match
+        assert connector._matches_patterns("README.md")
+        assert connector._matches_patterns("src/main.py")
+        assert connector._matches_patterns("image.png")
 
-    def test_should_include_file_custom_globs(self):
-        """Test file inclusion with custom globs."""
+    def test_is_supported_extension_default(self):
+        """Test file extension support with defaults."""
+        from pathlib import Path
+
+        connector = GitConnector({
+            "repo_url": "https://github.com/user/repo.git",
+        })
+
+        assert connector._is_supported_extension(Path("README.md"))
+        assert connector._is_supported_extension(Path("src/main.py"))
+        assert not connector._is_supported_extension(Path("image.png"))
+
+    def test_matches_patterns_with_include_globs(self):
+        """Test pattern matching with custom include globs."""
         connector = GitConnector({
             "repo_url": "https://github.com/user/repo.git",
             "include_globs": ["*.txt", "docs/**"],
         })
 
-        assert connector._should_include_file("notes.txt")
-        assert connector._should_include_file("docs/guide.md")
-        assert not connector._should_include_file("src/main.py")
+        assert connector._matches_patterns("notes.txt")
+        assert connector._matches_patterns("docs/guide.md")
+        assert not connector._matches_patterns("src/main.py")
 
-    def test_should_include_file_exclude_globs(self):
-        """Test file exclusion with globs."""
+    def test_matches_patterns_with_exclude_globs(self):
+        """Test pattern matching with exclude globs."""
         connector = GitConnector({
             "repo_url": "https://github.com/user/repo.git",
             "exclude_globs": ["*.min.js", "vendor/**"],
         })
 
-        assert not connector._should_include_file("app.min.js")
-        assert not connector._should_include_file("vendor/lib.js")
-        assert connector._should_include_file("src/app.js")
+        assert not connector._matches_patterns("app.min.js")
+        assert not connector._matches_patterns("vendor/lib.js")
+        assert connector._matches_patterns("src/app.js")
+
+    def test_is_supported_extension_with_include_globs(self):
+        """Test extension support trusts include_globs."""
+        from pathlib import Path
+
+        connector = GitConnector({
+            "repo_url": "https://github.com/user/repo.git",
+            "include_globs": ["*.png"],  # Custom globs
+        })
+
+        # When include_globs are set, extension check returns True
+        # (trusting the include patterns)
+        assert connector._is_supported_extension(Path("image.png"))
