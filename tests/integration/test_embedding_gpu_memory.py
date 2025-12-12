@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import torch
 
 # Mock metrics module before importing
-sys.modules["packages.shared.metrics.prometheus"] = unittest.mock.MagicMock()
+sys.modules["shared.metrics.prometheus"] = unittest.mock.MagicMock()
 
 # Skip all tests if CUDA is not available
 GPU_AVAILABLE = torch.cuda.is_available()
@@ -35,10 +35,10 @@ SKIP_GPU_TESTS = not GPU_AVAILABLE or os.environ.get("SKIP_GPU_TESTS", "").lower
 if GPU_AVAILABLE:
     # Import actual modules only if GPU is available
     try:
-        from packages.shared.embedding import EmbeddingService
-        from packages.shared.embedding.dense import DenseEmbeddingService
-        from packages.vecpipe.memory_utils import get_gpu_memory_info, get_model_memory_requirement
-        from packages.vecpipe.model_manager import ModelManager
+        from shared.embedding import EmbeddingService
+        from shared.embedding.dense import DenseEmbeddingService
+        from vecpipe.memory_utils import get_gpu_memory_info, get_model_memory_requirement
+        from vecpipe.model_manager import ModelManager
     except ImportError as e:
         print(f"Warning: Could not import required modules: {e}")
         SKIP_GPU_TESTS = True

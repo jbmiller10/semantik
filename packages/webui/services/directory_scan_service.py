@@ -1,6 +1,5 @@
 """Directory scan service for previewing directory contents without creating collections."""
 
-import hashlib
 import logging
 import mimetypes
 import os
@@ -9,8 +8,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from packages.webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
-from packages.webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
+from shared.utils.hashing import compute_file_hash
+from webui.api.schemas import DirectoryScanFile, DirectoryScanProgress, DirectoryScanResponse
+from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,6 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml
 
 # Maximum file size (500 MB)
 MAX_FILE_SIZE = 500 * 1024 * 1024
-
-# Chunk size for file reading (for hash calculation)
-HASH_CHUNK_SIZE = 8192
 
 # Progress update interval (every N files)
 PROGRESS_UPDATE_INTERVAL = 50
@@ -319,16 +316,13 @@ class DirectoryScanService:
         return True  # Include by default if no patterns specified
 
     async def _calculate_file_hash(self, file_path: Path) -> str:
-        """Calculate SHA-256 hash of file contents."""
-        sha256_hash = hashlib.sha256()
+        """Calculate SHA-256 hash of file contents.
 
-        try:
-            with file_path.open("rb") as f:
-                for chunk in iter(lambda: f.read(HASH_CHUNK_SIZE), b""):
-                    sha256_hash.update(chunk)
-            return sha256_hash.hexdigest()
-        except Exception as e:
-            raise OSError(f"Failed to calculate hash for {file_path}: {e}") from e
+        Delegates to shared.utils.hashing.compute_file_hash for consistent
+        hashing across the codebase.
+        """
+        result: str = compute_file_hash(file_path)
+        return result
 
     def _get_mime_type(self, file_path: Path) -> str | None:
         """Get MIME type for a file."""

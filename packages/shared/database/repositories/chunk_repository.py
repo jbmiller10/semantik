@@ -8,13 +8,13 @@ ensuring efficient use of PostgreSQL partitioning by collection_id.
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import Chunk
-from packages.shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
+from shared.database.models import Chunk
+from shared.database.partition_utils import ChunkPartitionHelper, PartitionAwareMixin, PartitionValidation
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +331,8 @@ class ChunkRepository(PartitionAwareMixin):
         Returns:
             Dictionary with statistics
         """
-        return await ChunkPartitionHelper.get_partition_statistics(self.session, collection_id)
+        stats = await ChunkPartitionHelper.get_partition_statistics(self.session, collection_id)
+        return cast(dict[str, Any], stats)
 
     async def count_chunks_by_document(self, document_id: str, collection_id: str) -> int:
         """Count chunks for a document with partition pruning.
@@ -368,6 +369,34 @@ class ChunkRepository(PartitionAwareMixin):
 
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def get_chunk_by_embedding_vector_id(self, embedding_vector_id: str, collection_id: str) -> Chunk | None:
+        """Get a chunk by its embedding_vector_id with partition pruning.
+
+        This maps back from a vector-store point identifier (for example,
+        a Qdrant point ID) to the associated chunk row.
+
+        Args:
+            embedding_vector_id: Vector-store point identifier (UUID v4).
+            collection_id: Collection ID (partition key).
+
+        Returns:
+            Chunk instance or None if not found.
+
+        Raises:
+            ValueError: If identifiers are invalid.
+            TypeError: If identifiers have wrong types.
+        """
+        # Validate identifiers
+        embedding_vector_id = PartitionValidation.validate_uuid(embedding_vector_id, "embedding_vector_id")
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        query = select(Chunk).where(
+            and_(Chunk.collection_id == collection_id, Chunk.embedding_vector_id == embedding_vector_id)
+        )
+
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
 
     async def chunk_exists(self, document_id: str, collection_id: str, chunk_index: int) -> bool:
         """Check if a specific chunk exists.

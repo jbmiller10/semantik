@@ -8,11 +8,11 @@ import pytest_asyncio
 from fastapi import Depends
 from httpx import ASGITransport, AsyncClient
 
-from packages.shared.database import get_db
-from packages.webui.auth import create_access_token, get_current_user
-from packages.webui.dependencies import get_collection_for_user as original_get_collection_for_user
-from packages.webui.main import app
-from packages.webui.services import factory as services_factory
+from shared.database import get_db
+from webui.auth import create_access_token, get_current_user
+from webui.dependencies import get_collection_for_user as original_get_collection_for_user
+from webui.main import app
+from webui.services import factory as services_factory
 
 
 @pytest.fixture(name="reset_redis_manager")
@@ -68,6 +68,30 @@ async def api_client(
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
     app.dependency_overrides[original_get_collection_for_user] = override_get_collection_for_user
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture()
+async def api_client_unauthenticated(
+    db_session,
+    use_fakeredis,
+    reset_redis_manager,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an AsyncClient WITHOUT auth override for testing auth requirements."""
+
+    _ = use_fakeredis
+    _ = reset_redis_manager
+
+    async def override_get_db() -> AsyncGenerator[Any, None]:
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    # Note: get_current_user is NOT overridden - authentication is enforced
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

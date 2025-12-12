@@ -9,14 +9,14 @@ the chunking process and maintains operation-level invariants.
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.entities.chunk_collection import ChunkCollection
-from packages.shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.operation_status import OperationStatus
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.entities.chunk_collection import ChunkCollection
+from shared.chunking.domain.exceptions import DocumentTooLargeError, InvalidStateError
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.operation_status import OperationStatus
 
 if TYPE_CHECKING:
-    from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+    from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 
 
 class ChunkingOperation:
@@ -359,7 +359,8 @@ class ChunkingOperation:
         # Estimate tokens in document (rough approximation)
         estimated_tokens = len(self._document_content) // 4  # ~4 chars per token
 
-        return self._config.estimate_chunks(estimated_tokens)
+        result: int = self._config.estimate_chunks(estimated_tokens)
+        return result
 
     def _calculate_duration(self) -> float:
         """

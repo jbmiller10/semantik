@@ -97,7 +97,7 @@ pytest tests/webui/test_tasks_websocket_integration.py -v
 
 ### Run with coverage:
 ```bash
-pytest tests/webui/test_*tasks*.py --cov=packages.webui.tasks --cov-report=html
+pytest tests/webui/test_*tasks*.py --cov=webui.tasks --cov-report=html
 ```
 
 ## Test Categories

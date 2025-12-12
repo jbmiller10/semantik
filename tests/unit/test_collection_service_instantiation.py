@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from packages.webui.services.collection_service import CollectionService
-from packages.webui.services.factory import create_collection_service
+from webui.services.collection_service import CollectionService
+from webui.services.factory import create_collection_service
 
 
 class TestCollectionServiceInstantiation:
@@ -19,7 +19,7 @@ class TestCollectionServiceInstantiation:
         with pytest.raises(TypeError) as exc_info:
             CollectionService(db_session)  # type: ignore[call-arg]
 
-        assert "missing 4 required positional arguments" in str(exc_info.value)
+        assert "missing 5 required positional arguments" in str(exc_info.value)
 
     def test_collection_service_instantiation_with_all_args(self) -> None:
         """Test that CollectionService can be instantiated with all required arguments."""
@@ -28,6 +28,7 @@ class TestCollectionServiceInstantiation:
         collection_repo = MagicMock()
         operation_repo = MagicMock()
         document_repo = MagicMock()
+        collection_source_repo = MagicMock()
         qdrant_manager = MagicMock()
 
         # This should work
@@ -36,6 +37,7 @@ class TestCollectionServiceInstantiation:
             collection_repo=collection_repo,
             operation_repo=operation_repo,
             document_repo=document_repo,
+            collection_source_repo=collection_source_repo,
             qdrant_manager=qdrant_manager,
         )
 
@@ -43,6 +45,7 @@ class TestCollectionServiceInstantiation:
         assert service.collection_repo == collection_repo
         assert service.operation_repo == operation_repo
         assert service.document_repo == document_repo
+        assert service.collection_source_repo == collection_source_repo
         assert service.qdrant_manager == qdrant_manager
 
     def test_create_collection_service_factory(self) -> None:
@@ -50,7 +53,7 @@ class TestCollectionServiceInstantiation:
         # Mock database session
         db_session = AsyncMock()
 
-        with patch("packages.webui.services.factory.qdrant_connection_manager.get_client", return_value=MagicMock()):
+        with patch("webui.services.factory.qdrant_connection_manager.get_client", return_value=MagicMock()):
             service = create_collection_service(db_session)
 
         # Verify service was created
@@ -72,7 +75,7 @@ class TestCollectionServiceInstantiation:
         mock_qdrant.get_collections.return_value = mock_collections_response
         mock_qdrant.delete_collection = MagicMock()
 
-        with patch("packages.webui.services.factory.qdrant_connection_manager.get_client", return_value=mock_qdrant):
+        with patch("webui.services.factory.qdrant_connection_manager.get_client", return_value=mock_qdrant):
             service = create_collection_service(db_session)
 
             # Mock repository methods

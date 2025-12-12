@@ -13,7 +13,7 @@ import logging
 
 import pytest
 
-from packages.shared.text_processing.strategies.hierarchical_chunker import (
+from shared.text_processing.strategies.hierarchical_chunker import (
     MAX_CHUNK_SIZE,
     MAX_HIERARCHY_DEPTH,
     MAX_TEXT_LENGTH,

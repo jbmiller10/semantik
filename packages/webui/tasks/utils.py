@@ -22,12 +22,15 @@ from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import redis.asyncio as redis
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from shared.config import settings
 from shared.config.internal_api_key import ensure_internal_api_key
+from shared.database.database import AsyncSessionLocal, ensure_async_sessionmaker
 from shared.managers.qdrant_manager import QdrantManager
 from shared.metrics.collection_metrics import update_collection_stats
 from webui.celery_app import celery_app
-from webui.utils.qdrant_manager import qdrant_manager
+from webui.qdrant import qdrant_manager
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +41,11 @@ except RuntimeError as exc:
     raise
 
 
-# Re-export ChunkingService for tests that patch packages.webui.tasks.ChunkingService
+# Re-export orchestrator for tests that patch webui.tasks.ChunkingOrchestrator
 try:  # Prefer packages.* import path to match test patch targets
-    from packages.webui.services.chunking_service import ChunkingService
-except Exception:  # Fallback for runtime usage paths
-    try:
-        from webui.services.chunking_service import ChunkingService  # type: ignore
-    except Exception:  # As a last resort, define a placeholder
-        ChunkingService = None  # type: ignore
+    from webui.services.chunking.orchestrator import ChunkingOrchestrator
+except Exception:  # As a last resort, define a placeholder
+    ChunkingOrchestrator = None
 
 
 # Task timeout constants
@@ -81,6 +81,14 @@ CLEANUP_DELAY_PER_10K_VECTORS = 60  # Additional 1 minute per 10k vectors
 executor = ThreadPoolExecutor(max_workers=8)
 
 
+async def _get_session_factory() -> async_sessionmaker[AsyncSession]:
+    factory = AsyncSessionLocal
+    if factory is None:
+        factory = await ensure_async_sessionmaker()
+    assert factory is not None
+    return cast(async_sessionmaker[AsyncSession], factory)
+
+
 class CeleryTaskWithOperationUpdates:
     """Helper class to send operation updates to Redis Stream from Celery tasks.
 
@@ -99,6 +107,11 @@ class CeleryTaskWithOperationUpdates:
             or getattr(settings, "INSTANCE_ID", None)
             or f"celery-worker:{socket.gethostname()}"
         )
+        self.user_id: int | None = None
+
+    def set_user_id(self, user_id: int | None) -> None:
+        """Set the user ID for publishing updates to the user channel."""
+        self.user_id = user_id
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
@@ -111,7 +124,11 @@ class CeleryTaskWithOperationUpdates:
         """Send update to Redis Stream and Pub/Sub."""
         try:
             redis_client = await self._get_redis()
-            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": data}
+
+            # Avoid mutating the caller's payload; keep data exactly as supplied
+            payload = dict(data) if isinstance(data, dict) else data
+
+            message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": payload}
             message_json = json.dumps(message)
 
             # Add to stream with automatic ID
@@ -127,11 +144,21 @@ class CeleryTaskWithOperationUpdates:
                 "from_instance": self._publisher_id,
                 "timestamp": time.time(),
             }
+
+            # Publish to operation channel
             publish_result = redis_client.publish(
                 f"operation:{self.operation_id}",
                 json.dumps(publish_payload),
             )
             await await_if_awaitable(publish_result)
+
+            # Publish to user channel if user_id is set
+            if self.user_id:
+                user_publish_result = redis_client.publish(
+                    f"user:{self.user_id}",
+                    json.dumps(publish_payload),
+                )
+                await await_if_awaitable(user_publish_result)
 
             # Set TTL for stream
             await redis_client.expire(self.stream_key, REDIS_STREAM_TTL)
@@ -287,12 +314,12 @@ async def _audit_log_operation(
 ) -> None:
     """Create an audit log entry for a collection operation."""
     try:
-        from shared.database.database import AsyncSessionLocal
         from shared.database.models import CollectionAuditLog
 
         sanitized_details = _sanitize_audit_details(details)
 
-        async with AsyncSessionLocal() as session:
+        session_factory = await _get_session_factory()
+        async with session_factory() as session:
             audit_log = CollectionAuditLog(
                 collection_id=collection_id,
                 operation_id=operation_id,
@@ -300,8 +327,7 @@ async def _audit_log_operation(
                 action=action,
                 details=sanitized_details,
             )
-            add_result = session.add(audit_log)
-            await await_if_awaitable(add_result)
+            session.add(audit_log)
             await session.commit()
     except Exception as exc:
         logger.warning("Failed to create audit log: %s", exc)
@@ -313,10 +339,10 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
         # Get operation ID (database ID, not UUID)
         operation = await operation_repo.get_by_uuid(operation_id)
         if operation:
-            from shared.database.database import AsyncSessionLocal
             from shared.database.models import OperationMetrics
 
-            async with AsyncSessionLocal() as session:
+            session_factory = await _get_session_factory()
+            async with session_factory() as session:
                 for metric_name, metric_value in metrics.items():
                     if isinstance(metric_value, int | float):
                         metric = OperationMetrics(
@@ -324,8 +350,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
                             metric_name=metric_name,
                             metric_value=float(metric_value),
                         )
-                        add_result = session.add(metric)
-                        await await_if_awaitable(add_result)
+                        session.add(metric)
                 await session.commit()
     except Exception as exc:
         logger.warning("Failed to record operation metrics: %s", exc)
@@ -334,7 +359,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
 async def _update_collection_metrics(collection_id: str, documents: int, vectors: int, size_bytes: int) -> None:
     """Update collection metrics in Prometheus."""
     try:
-        tasks_module = import_module("packages.webui.tasks")
+        tasks_module = import_module("webui.tasks")
         update_stats = getattr(tasks_module, "update_collection_stats", update_collection_stats)
         update_stats(collection_id, documents, vectors, size_bytes)
     except Exception as exc:
@@ -366,15 +391,15 @@ def _select_patchable(tasks_module: Any, attr: str, fallback_module: Any) -> Any
 
 def resolve_qdrant_manager() -> Any:
     """Return the current qdrant_manager, honoring patches on tasks or utils."""
-    tasks_module = import_module("packages.webui.tasks")
-    utils_module = import_module("webui.utils.qdrant_manager")
+    tasks_module = import_module("webui.tasks")
+    qdrant_module = import_module("webui.qdrant")
 
-    return _select_patchable(tasks_module, "qdrant_manager", utils_module)
+    return _select_patchable(tasks_module, "qdrant_manager", qdrant_module)
 
 
 def resolve_qdrant_manager_class() -> Any:
     """Return the QdrantManager class, honoring patches on tasks or shared libs."""
-    tasks_module = import_module("packages.webui.tasks")
+    tasks_module = import_module("webui.tasks")
     managers_module = import_module("shared.managers.qdrant_manager")
 
     return _select_patchable(tasks_module, "QdrantManager", managers_module)
@@ -387,15 +412,42 @@ async def await_if_awaitable(value: Any) -> Any:
     return value
 
 
+_WORKER_EVENT_LOOP_ATTR = "_celery_worker_event_loop"
+
+
 def resolve_awaitable_sync(value: Any) -> Any:
-    """Resolve coroutine-like values from synchronous contexts using patched asyncio."""
+    """Resolve coroutine-like values from synchronous contexts without recreating loops."""
     if inspect.isawaitable(value):
-        tasks_module = import_module("packages.webui.tasks")
+        tasks_module = import_module("webui.tasks")
         asyncio_module = tasks_module.asyncio
-        run = asyncio_module.run
+
+        # Allow tests to keep patching asyncio.run while letting production code
+        # use the dedicated worker event loop. The patched object will usually be
+        # a mock supplied by unittest.mock.patch.
+        patched_run = getattr(asyncio_module, "run", None)
+        if patched_run is not None and _is_mock_like(patched_run):
+            return patched_run(value)
+
+        loop = getattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, None)
+        if loop is None or loop.is_closed():
+            loop = asyncio_module.new_event_loop()
+            setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)
+            with contextlib.suppress(RuntimeError):
+                # set_event_loop may fail if policy forbids setting outside main thread.
+                # In that case the loop will still be passed explicitly to ensure_future/run_until_complete.
+                asyncio_module.set_event_loop(loop)
+        else:
+            with contextlib.suppress(RuntimeError):
+                asyncio_module.set_event_loop(loop)
+
+        task = asyncio_module.ensure_future(value, loop=loop)
         try:
-            return run(value)
+            return loop.run_until_complete(task)
         finally:
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(Exception):
+                    loop.run_until_complete(task)
             close = getattr(value, "close", None)
             if callable(close):
                 with contextlib.suppress(Exception):
@@ -407,7 +459,7 @@ __all__ = [
     "celery_app",
     "qdrant_manager",
     "QdrantManager",
-    "ChunkingService",
+    "ChunkingOrchestrator",
     "CeleryTaskWithOperationUpdates",
     "DEFAULT_DAYS_TO_KEEP",
     "DEFAULT_MAX_RETRIES",

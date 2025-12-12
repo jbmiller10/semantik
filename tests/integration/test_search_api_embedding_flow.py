@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from packages.vecpipe import model_manager, search_api
-from packages.vecpipe.search_api import app
+from vecpipe import model_manager, search_api
+from vecpipe.search_api import app
 
 
 class TestSearchAPIEmbeddingFlow:
@@ -38,7 +38,7 @@ class TestSearchAPIEmbeddingFlow:
         - The specific embedding model used (depends on settings)
         """
         with (
-            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
             patch("httpx.AsyncClient.get") as mock_get,
         ):
             # Mock Qdrant collection info
@@ -94,35 +94,31 @@ class TestSearchAPIEmbeddingFlow:
                 assert isinstance(search_call.kwargs["query_vector"], list)
                 assert len(search_call.kwargs["query_vector"]) > 0
 
-    @patch("packages.vecpipe.search_api.model_manager")
+    @patch("vecpipe.search_api.model_manager")
     def test_embedding_service_dependency_structure(self, mock_model_manager) -> None:
         """Document and verify the current dependency structure.
 
-                This test documents the current problematic dependency where:
-        - vecpipe/search_api imports from shared.embedding
-        - vecpipe/model_manager imports from shared.embedding
+        This test documents the CORE-003 refactored architecture where:
+        - vecpipe/search_api imports get_embedding_service from shared.embedding.service
+        - vecpipe/model_manager uses the plugin-aware provider system via EmbeddingProviderFactory
 
-        After CORE-003, these imports should come from a shared package.
+        Both now use the shared.embedding package with proper dependency injection.
         """
-        # Document current imports (these would fail if structure changes)
-
         # Verify the imports exist (will help catch when refactoring happens)
-        # After CORE-003, search_api uses get_embedding_service instead of EmbeddingService
+        # search_api uses get_embedding_service for dependency injection
         assert hasattr(search_api, "get_embedding_service")
-        assert hasattr(model_manager, "EmbeddingService")
+        # model_manager uses the provider factory system
+        assert hasattr(model_manager, "EmbeddingProviderFactory")
 
-        # Document that both import from webui
+        # Document that both import from shared.embedding
 
         search_api_source = inspect.getsource(search_api)
         model_manager_source = inspect.getsource(model_manager)
 
-        # After CORE-003 refactoring, search_api imports from shared.embedding.service
+        # search_api imports from shared.embedding.service
         assert "from shared.embedding.service import get_embedding_service" in search_api_source
-        # model_manager still imports from shared.embedding for now
-        assert "from shared.embedding import EmbeddingService" in model_manager_source
-
-        # This assertion will need to be updated after CORE-003
-        # to verify imports come from shared.embedding_service instead
+        # model_manager imports from shared.embedding.factory (provider-based architecture)
+        assert "from shared.embedding.factory import EmbeddingProviderFactory" in model_manager_source
 
     def test_search_with_custom_parameters_flow(self) -> None:
         """Test that custom model parameters are handled in the flow.
@@ -131,7 +127,7 @@ class TestSearchAPIEmbeddingFlow:
         though the actual model used depends on settings and availability.
         """
         with (
-            patch("packages.vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
+            patch("vecpipe.search_utils.AsyncQdrantClient") as mock_qdrant_client_class,
             patch("httpx.AsyncClient.get") as mock_get,
         ):
             # Mock responses
@@ -150,7 +146,7 @@ class TestSearchAPIEmbeddingFlow:
             mock_qdrant_instance.search = AsyncMock(return_value=[])
 
             # Need to patch metrics server to avoid port conflicts
-            with patch("packages.vecpipe.search_api.start_metrics_server"), TestClient(app) as client:
+            with patch("vecpipe.search_api.start_metrics_server"), TestClient(app) as client:
                 response = client.post(
                     "/search",
                     json={

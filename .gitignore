@@ -109,9 +109,12 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
-# Claude
+# Claude / AI assistants
 .claude/
 .claude-trace/
+CLAUDE.md
+GEMINI.md
+AGENTS.md
 
 # IDE
 .vscode/
@@ -204,6 +207,8 @@ images/*
 *.backup
 test_*.png
 *.tmp
+embedding-atlas-*.tgz
+embedding-atlas-codebase.txt
 page_content.html
 screenshot*.png
 login*.png

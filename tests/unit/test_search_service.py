@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 import pytest
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.services.search_service import SearchService
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import Collection, CollectionStatus
+from webui.services.search_service import SearchService
 
 
 class TestSearchService:
@@ -86,7 +86,7 @@ class TestSearchService:
             await search_service.validate_collection_access(["uuid-1"], user_id=123)
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_search_single_collection_success(self, mock_httpx_client, search_service) -> None:
         """Test successful single collection search"""
         # Mock collection
@@ -154,7 +154,7 @@ class TestSearchService:
         assert "not ready for search" in error
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_search_single_collection_timeout_retry(self, mock_httpx_client, search_service) -> None:
         """Test search with timeout and successful retry"""
         # Mock collection
@@ -194,7 +194,7 @@ class TestSearchService:
         assert mock_client.post.call_count == 2
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_search_single_collection_http_errors(self, mock_httpx_client, search_service) -> None:
         """Test handling of various HTTP errors"""
         # Mock collection
@@ -236,7 +236,7 @@ class TestSearchService:
             assert expected_error in error
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_search_single_collection_connection_error(self, mock_httpx_client, search_service) -> None:
         """Test handling of connection errors"""
         # Mock collection
@@ -262,7 +262,7 @@ class TestSearchService:
         assert "Cannot connect to search service" in error
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_multi_collection_search_success(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
@@ -323,7 +323,7 @@ class TestSearchService:
         assert all("collection_name" in r for r in result["results"])
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_multi_collection_search_with_errors(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
@@ -374,7 +374,7 @@ class TestSearchService:
         assert sum(1 for c in collection_details if "error" in c) == 2
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_multi_collection_search_hybrid_params(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
@@ -419,7 +419,7 @@ class TestSearchService:
         assert "hybrid_search_mode" not in request_data
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_single_collection_search_method(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
@@ -479,7 +479,7 @@ class TestSearchService:
         assert request_data["include_content"] is True
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_single_collection_search_http_errors(
         self, mock_httpx_client, search_service, mock_collection_repo
     ) -> None:
@@ -529,8 +529,8 @@ class TestSearchService:
         assert service.retry_timeout_multiplier == 2.0
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.time")
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.time")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_search_timing(self, mock_httpx_client, mock_time, search_service, mock_collection_repo) -> None:
         """Test that search timing is measured correctly"""
         # Mock time
@@ -569,9 +569,8 @@ class TestSearchService:
         assert SearchService._result_sort_key(high_reranked) > SearchService._result_sort_key(high_score)
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_normalizes_legacy_modes(self, mock_httpx_client, search_service) -> None:
-        """Legacy hybrid/keyword modes are mapped to supported values."""
+    async def test_search_single_collection_rejects_legacy_modes(self, search_service) -> None:
+        """Legacy hybrid_search_mode should raise a validation error."""
 
         mock_collection = Mock(spec=Collection)
         mock_collection.status = CollectionStatus.READY
@@ -580,71 +579,21 @@ class TestSearchService:
         mock_collection.quantization = "float16"
         mock_collection.name = "Legacy Collection"
 
-        mock_response = Mock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = Mock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_httpx_client.return_value.__aenter__.return_value = mock_client
-
-        await search_service.search_single_collection(
-            collection=mock_collection,
-            query="legacy modes",
-            k=5,
-            search_params={
-                "search_type": "hybrid",
-                "hybrid_search_mode": "weighted",
-                "keyword_mode": "bm25",
-                "hybrid_alpha": 0.7,
-            },
-        )
-
-        request_data = mock_client.post.call_args.kwargs["json"]
-        assert request_data["hybrid_mode"] == "weighted"
-        assert request_data["keyword_mode"] == "any"
-        assert "hybrid_search_mode" not in request_data
+        with pytest.raises(ValueError, match="hybrid_search_mode"):
+            await search_service.search_single_collection(
+                collection=mock_collection,
+                query="legacy modes",
+                k=5,
+                search_params={
+                    "search_type": "hybrid",
+                    "hybrid_search_mode": "weighted",
+                    "hybrid_alpha": 0.7,
+                },
+            )
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
-    async def test_search_single_collection_handles_missing_search_type_for_legacy_mode(
-        self, mock_httpx_client, search_service
-    ) -> None:
-        """Legacy hybrid mode is normalized even when search_type is absent."""
-
-        mock_collection = Mock(spec=Collection)
-        mock_collection.status = CollectionStatus.READY
-        mock_collection.vector_store_name = "collection_legacy"
-        mock_collection.embedding_model = "test-model"
-        mock_collection.quantization = "float16"
-        mock_collection.name = "Legacy Collection"
-
-        mock_response = Mock()
-        mock_response.json.return_value = {"results": []}
-        mock_response.raise_for_status = Mock()
-
-        mock_client = AsyncMock()
-        mock_client.post.return_value = mock_response
-        mock_httpx_client.return_value.__aenter__.return_value = mock_client
-
-        await search_service.search_single_collection(
-            collection=mock_collection,
-            query="legacy modes",
-            k=5,
-            search_params={
-                "hybrid_search_mode": "filter",
-                "keyword_mode": "all",
-            },
-        )
-
-        request_data = mock_client.post.call_args.kwargs["json"]
-        assert request_data["hybrid_mode"] == "filter"
-        assert request_data["keyword_mode"] == "all"
-        assert "hybrid_search_mode" not in request_data
-
-    @pytest.mark.asyncio()
-    async def test_multi_collection_search_normalizes_modes_and_sorts(self, search_service) -> None:
-        """Legacy modes normalize and results sort by reranked_score."""
+    async def test_multi_collection_search_validates_modes_and_sorts(self, search_service) -> None:
+        """Canonical modes are preserved and results sort by reranked_score."""
 
         collection1 = Mock(spec=Collection)
         collection1.id = "col-1"
@@ -702,7 +651,7 @@ class TestSearchService:
             k=10,
             search_type="hybrid",
             hybrid_mode="weighted",
-            keyword_mode="bm25",
+            keyword_mode="any",
         )
 
         call_args = search_service.search_single_collection.call_args_list[0][0]
@@ -727,7 +676,7 @@ class TestSearchServiceErrorHandling:
         )
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_unexpected_search_error(self, mock_httpx_client, search_service) -> None:
         """Test handling of unexpected errors during search"""
         # Mock collection
@@ -753,7 +702,7 @@ class TestSearchServiceErrorHandling:
         assert "Unexpected error" in error
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_retry_with_extended_timeout(self, mock_httpx_client, search_service) -> None:
         """Test timeout extension calculation during retry"""
         # Mock collection
@@ -800,7 +749,7 @@ class TestSearchServiceIntegration:
     """Test search service integration scenarios"""
 
     @pytest.mark.asyncio()
-    @patch("packages.webui.services.search_service.httpx.AsyncClient")
+    @patch("webui.services.search_service.httpx.AsyncClient")
     async def test_concurrent_collection_searches(self, mock_httpx_client) -> None:
         """Test concurrent searches across multiple collections"""
         # Setup service

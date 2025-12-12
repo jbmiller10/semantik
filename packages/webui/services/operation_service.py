@@ -2,9 +2,10 @@
 
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from shared.database.models import Operation, OperationStatus, OperationType
 from shared.database.repositories.operation_repository import OperationRepository
-from sqlalchemy.ext.asyncio import AsyncSession
 from webui.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

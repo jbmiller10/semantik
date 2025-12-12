@@ -8,10 +8,10 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from packages.shared.database.factory import create_collection_repository
-from packages.vecpipe.maintenance import QdrantMaintenanceService
-from packages.webui.api.internal import router, verify_internal_api_key
-from packages.webui.dependencies import get_collection_repository, get_db
+from shared.database.factory import create_collection_repository
+from vecpipe.maintenance import QdrantMaintenanceService
+from webui.api.internal import router, verify_internal_api_key
+from webui.dependencies import get_collection_repository, get_db
 
 
 class TestInternalAPIAuth:
@@ -19,7 +19,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_valid(self) -> None:
         """Test successful API key verification."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should not raise exception
@@ -27,7 +27,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_invalid(self) -> None:
         """Test API key verification with invalid key."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -39,7 +39,7 @@ class TestInternalAPIAuth:
 
     def test_verify_internal_api_key_missing(self) -> None:
         """Test API key verification with missing key."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "valid-key"
 
             # Should raise HTTPException
@@ -89,7 +89,7 @@ class TestInternalAPIEndpoints:
         )
 
         # Mock settings for API key
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client_with_mocked_repos.get(
@@ -104,7 +104,7 @@ class TestInternalAPIEndpoints:
         self, client_with_mocked_repos, mock_collection_repository
     ) -> None:
         """Test unauthorized access to vector store names endpoint."""
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             # Test without API key
@@ -127,7 +127,7 @@ class TestInternalAPIEndpoints:
 
         mock_collection_repository.list_all = AsyncMock(return_value=[])
 
-        with patch("packages.webui.api.internal.settings") as mock_settings:
+        with patch("webui.api.internal.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
 
             response = client_with_mocked_repos.get(
@@ -146,10 +146,10 @@ class TestInternalAPIIntegration:
         """Test that maintenance service can successfully call internal API."""
 
         # Create maintenance service
-        with patch("packages.vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
+        with patch("vecpipe.maintenance.QdrantClient", return_value=MagicMock()):
             service = QdrantMaintenanceService(webui_host="test-server", webui_port=80)
 
-        with patch("packages.vecpipe.maintenance.settings") as mock_settings:
+        with patch("vecpipe.maintenance.settings") as mock_settings:
             mock_settings.INTERNAL_API_KEY = "test-key"
             mock_settings.DEFAULT_COLLECTION = "work_docs"
             result = service.get_operation_collections()
@@ -163,7 +163,7 @@ class TestInternalApiKeyConfiguration:
 
     def test_configure_internal_api_key_success(self, monkeypatch) -> None:
         """Ensure helper invocation succeeds and logs fingerprint."""
-        import packages.webui.main as main_module
+        import webui.main as main_module
 
         monkeypatch.setattr(main_module, "ensure_internal_api_key", lambda _settings: "test-key", raising=False)
 
@@ -174,7 +174,7 @@ class TestInternalApiKeyConfiguration:
 
     def test_configure_internal_api_key_failure(self, monkeypatch) -> None:
         """Ensure failures propagate when helper raises RuntimeError."""
-        import packages.webui.main as main_module
+        import webui.main as main_module
 
         def fail(_settings: Any) -> str:
             raise RuntimeError("missing key")

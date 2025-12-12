@@ -10,8 +10,9 @@ from typing import cast
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import UnexpectedResponse
+
 from shared.database.exceptions import DimensionMismatchError
-from shared.embedding.models import get_model_config
+from shared.embedding.factory import resolve_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,16 @@ def get_model_dimension(model_name: str) -> int | None:
     """
     Get the expected dimension for an embedding model.
 
+    Checks registered providers (including plugins) first, then falls back
+    to built-in model configurations.
+
     Args:
         model_name: Name of the embedding model
 
     Returns:
         The model's output dimension, or None if unknown
     """
-    model_config = get_model_config(model_name)
+    model_config = resolve_model_config(model_name)
     if model_config:
         dimension: int = model_config.dimension
         return dimension

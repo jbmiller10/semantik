@@ -5,12 +5,13 @@ This module extends the base schemas with v2-specific features like
 multi-collection search and enhanced result metadata.
 """
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from packages.shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
-from packages.webui.api.schemas import SearchResult as BaseSearchResult
+from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
+from webui.api.schemas import SearchResult as BaseSearchResult
 
 
 class CollectionSearchRequest(BaseModel):
@@ -35,12 +36,12 @@ class CollectionSearchRequest(BaseModel):
     @field_validator("keyword_mode", mode="before")
     @classmethod
     def normalize_keyword_mode(cls, value: str) -> str:
-        return normalize_keyword_mode(value)
+        return str(normalize_keyword_mode(value))
 
     @field_validator("hybrid_mode", mode="before")
     @classmethod
     def normalize_hybrid_mode(cls, value: str) -> str:
-        return normalize_hybrid_mode(value)
+        return str(normalize_hybrid_mode(value))
 
     @field_validator("collection_uuids")
     @classmethod
@@ -56,6 +57,7 @@ class CollectionSearchRequest(BaseModel):
         return v
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "collection_uuids": [
@@ -68,7 +70,7 @@ class CollectionSearchRequest(BaseModel):
                 "use_reranker": True,
                 "score_threshold": 0.5,
             }
-        }
+        },
     )
 
 
@@ -178,6 +180,7 @@ class SingleCollectionSearchRequest(BaseModel):
     include_content: bool = Field(default=True, description="Include chunk content in results")
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "collection_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -187,5 +190,155 @@ class SingleCollectionSearchRequest(BaseModel):
                 "use_reranker": False,
                 "score_threshold": 0.7,
             }
+        },
+    )
+
+
+class ProjectionBuildRequest(BaseModel):
+    """Request payload to start a projection build."""
+
+    reducer: str = Field(default="umap", description="Dimensionality reduction algorithm to use")
+    dimensionality: int = Field(
+        default=2,
+        ge=2,
+        le=3,
+        description="Target dimensionality for visualization output",
+    )
+    config: dict[str, Any] | None = Field(default=None, description="Reducer-specific configuration overrides")
+    color_by: str = Field(
+        default="document_id",
+        description="Attribute used to colour points in the projection",
+    )
+    sample_size: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional cap on the number of vectors sampled when building the projection",
+    )
+    sample_n: int | None = Field(
+        default=None,
+        ge=1,
+        description="Alias for sample_size; kept for compatibility with earlier clients",
+    )
+    metadata_hash: str | None = Field(
+        default=None,
+        description=(
+            "Optional deterministic hash of reducer/config/color_by/sampling inputs and collection vector state. "
+            "If omitted, the backend will compute a stable hash for idempotent recompute."
+        ),
+    )
+
+    @field_validator("color_by")
+    @classmethod
+    def _validate_color_by(cls, value: str) -> str:
+        allowed = {"source_dir", "document_id", "filetype", "age_bucket"}
+        colour = value.lower() if isinstance(value, str) else value
+        if colour not in allowed:
+            raise ValueError("color_by must be one of: source_dir, document_id, filetype, age_bucket")
+        return colour
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "reducer": "umap",
+                "dimensionality": 2,
+                "config": {"n_neighbors": 15, "min_dist": 0.1},
+                "color_by": "document_id",
+                "sample_size": 5000,
+            }
         }
+    )
+
+
+class ProjectionMetadataResponse(BaseModel):
+    """Minimal metadata payload describing a projection run.
+
+    Progress Tracking Fields:
+        operation_id: UUID of the associated background operation tracking this projection build
+        operation_status: Real-time status from the operations table (pending/processing/completed/failed/cancelled)
+        status: ProjectionRun status (pending/running/completed/failed/cancelled)
+
+    For accurate progress tracking, prefer operation_status over status when available, as operation_status
+    reflects the latest state from the background task while status may lag during processing.
+    """
+
+    id: str = Field(description="Projection run UUID")
+    collection_id: str = Field(description="Collection UUID")
+    status: str = Field(
+        description="ProjectionRun lifecycle status (pending/running/completed/failed/cancelled). "
+        "May lag behind operation_status during processing. Prefer operation_status when available."
+    )
+    reducer: str = Field(description="Algorithm used for the projection")
+    dimensionality: int = Field(description="Target dimensionality of the projection output")
+    created_at: datetime | None = Field(default=None, description="Creation timestamp")
+    operation_id: str | None = Field(
+        default=None,
+        description="UUID of the associated Operation tracking this projection build. "
+        "Use with WebSocket channel 'operation-progress:{operation_id}' for real-time updates.",
+    )
+    operation_status: str | None = Field(
+        default=None,
+        description="Current status from the operations table (pending/processing/completed/failed/cancelled). "
+        "This reflects the most recent state from the background task and should be preferred over 'status' "
+        "for accurate progress indication. Null if no operation is associated.",
+    )
+    message: str | None = Field(
+        default=None,
+        description="Optional status or error message. Automatically populated with error details for failed operations.",
+    )
+    config: dict[str, Any] | None = Field(default=None, description="Reducer configuration parameters")
+    meta: dict[str, Any] | None = Field(default=None, description="Latest metadata captured for the run")
+    idempotent_reuse: bool | None = Field(
+        default=None,
+        description=(
+            "True when the projection build request was satisfied by reusing an existing completed run with an "
+            "identical metadata_hash instead of creating a new run."
+        ),
+    )
+
+
+class ProjectionListResponse(BaseModel):
+    """Wrapper for listing projection runs belonging to a collection."""
+
+    projections: list[ProjectionMetadataResponse]
+
+
+class ProjectionSelectionRequest(BaseModel):
+    """Selection request expressed as a set of projection point identifiers."""
+
+    ids: list[int] = Field(min_length=1, description="Int32 identifiers from ids.i32.bin")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "ids": [12, 45, 78],
+            }
+        }
+    )
+
+
+class ProjectionSelectionItem(BaseModel):
+    """Metadata for a selected projection point."""
+
+    selected_id: int = Field(description="Int32 identifier from ids.i32.bin")
+    index: int = Field(description="Zero-based index within the projection arrays")
+    original_id: str | None = Field(default=None, description="Original vector identifier from Qdrant")
+    chunk_id: int | None = Field(default=None, description="Chunk primary key if available")
+    document_id: str | None = Field(default=None, description="Document UUID if resolved")
+    chunk_index: int | None = Field(default=None, description="Chunk index within the document")
+    content_preview: str | None = Field(default=None, description="Snippet of the chunk content")
+    document: dict[str, Any] | None = Field(default=None, description="Resolved document metadata")
+
+
+class ProjectionSelectionResponse(BaseModel):
+    """Response detailing resolved metadata for selected projection points."""
+
+    projection_id: str
+    items: list[ProjectionSelectionItem]
+    missing_ids: list[int] = Field(default_factory=list, description="IDs not found in the projection artifact")
+    degraded: bool = Field(
+        default=False,
+        description=(
+            "True when the underlying projection run is degraded (e.g. "
+            "artifacts are stale, incomplete or produced via a fallback reducer)."
+        ),
     )

@@ -10,16 +10,16 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, TypedDict
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
-from packages.shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
-from packages.shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.markdown import MarkdownChunkingStrategy
+from shared.chunking.domain.services.chunking_strategies.semantic import SemanticChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.unified.factory import DomainStrategyAdapter, UnifiedChunkingFactory
 
 if TYPE_CHECKING:
-    from packages.shared.chunking.unified.base import UnifiedChunkingStrategy
+    from shared.chunking.unified.base import UnifiedChunkingStrategy
 
 
 class ContentAnalysis(TypedDict):
@@ -337,7 +337,8 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         if not sections:
             # Fall back to recursive if no sections identified
-            return self._recursive_strategy.chunk(content, config, progress_callback)
+            result: list[Chunk] = self._recursive_strategy.chunk(content, config, progress_callback)
+            return result
 
         total_sections = len(sections)
         chunk_index = 0
@@ -604,7 +605,8 @@ class HybridChunkingStrategy(ChunkingStrategy):
 
         # Hybrid typically produces similar to recursive
         estimated_tokens = content_length // 4
-        return config.estimate_chunks(estimated_tokens)
+        result: int = config.estimate_chunks(estimated_tokens)
+        return result
 
     def _build_consensus(self, strategy_results: dict[str, list[Chunk]]) -> list[Chunk]:
         """

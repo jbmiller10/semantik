@@ -16,7 +16,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.repositories.partition_manager import (
+from shared.chunking.infrastructure.repositories.partition_manager import (
     DistributionStats,
     PartitionHealth,
     PartitionManager,

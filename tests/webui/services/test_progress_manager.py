@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from packages.webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
+from webui.services.progress_manager import ProgressPayload, ProgressSendResult, ProgressUpdateManager
 
 
 def _payload(**overrides: object) -> ProgressPayload:

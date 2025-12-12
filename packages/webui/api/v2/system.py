@@ -11,7 +11,7 @@ from typing import Any
 import torch
 from fastapi import APIRouter, Depends
 
-from packages.webui.auth import get_current_user
+from webui.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 

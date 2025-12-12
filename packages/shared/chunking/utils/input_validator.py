@@ -3,7 +3,7 @@
 
 import logging
 
-from packages.shared.utils.regex_safety import RegexTimeout, safe_regex_findall
+from shared.utils.regex_safety import RegexTimeout, safe_regex_findall
 
 logger = logging.getLogger(__name__)
 

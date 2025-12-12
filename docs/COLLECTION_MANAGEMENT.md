@@ -2,19 +2,15 @@
 
 ## Overview
 
-Semantik organizes your documents into **collections** - powerful, searchable knowledge bases that transform your files into AI-ready semantic search repositories. Each collection maintains its own vector store, embedding configuration, and search settings while providing unified management through an intuitive interface.
-
-This guide covers everything you need to know about creating, managing, and optimizing collections in Semantik.
+Collections are searchable knowledge bases. Each one maintains its own vector store, embedding config, and search settings.
 
 ## What Are Collections?
 
-A **collection** in Semantik is:
-- A logical grouping of related documents (PDFs, text files, markdown, etc.)
+A collection is:
+- Related documents grouped together (PDFs, text, markdown, etc.)
 - A dedicated vector store with consistent embedding settings
-- A searchable knowledge base with semantic understanding
-- A managed entity with access control and operational history
-
-Think of collections as intelligent folders that not only store your documents but understand their content, enabling powerful semantic search across all files.
+- A searchable knowledge base
+- Managed entity with access control and operation history
 
 ## Collection Lifecycle
 
@@ -69,12 +65,13 @@ graph LR
 3. **Select Embedding Model**
    - **Qwen/Qwen3-Embedding-0.6B**: Fast, lightweight (recommended for most uses)
    - **Qwen/Qwen3-Embedding-4B**: Higher quality for complex content
-   - **BAAI/bge-large-en-v1.5**: General purpose alternative
+   - **Qwen/Qwen3-Embedding-8B**: Highest quality, largest model
 
 4. **Configure Processing Settings**
    - **Chunk Size**: How many tokens per text chunk (default: 1000)
    - **Chunk Overlap**: Token overlap between chunks (default: 200)
    - **Quantization**: Memory optimization (float16 recommended)
+   - **Chunking Strategy**: Select from 6 available strategies (see below)
 
 5. **Create Collection**
    - Click "Create" to initialize the collection
@@ -93,6 +90,7 @@ curl -X POST http://localhost:8080/api/v2/collections \
     "quantization": "float16",
     "chunk_size": 1000,
     "chunk_overlap": 200,
+    "chunking_strategy": "recursive",
     "is_public": false
   }'
 ```
@@ -102,42 +100,56 @@ curl -X POST http://localhost:8080/api/v2/collections \
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "name": "Technical Documentation",
-  "status": "ready",
+  "status": "pending",
   "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-  "created_at": "2024-01-15T10:00:00Z"
+  "created_at": "2024-01-15T10:00:00Z",
+  "initial_operation_id": "op_abc123-def456-789xyz"
 }
 ```
 
+The `initial_operation_id` field contains the UUID of the initial INDEX operation that was automatically triggered. You can use this to track the progress of the initial setup via WebSocket or polling.
+
 ## Understanding Operations
 
-Operations are asynchronous tasks that modify your collections. They run in the background, allowing you to continue working while documents are processed.
+Operations are async tasks that modify collections. They run in the background.
 
 ### Operation Types
 
-#### INDEX - Initial Document Loading
-The first operation when adding documents to a collection.
-- Scans the specified directory or file
-- Extracts text from supported formats
-- Creates embeddings using the collection's model
-- Stores vectors in the dedicated vector store
+**INDEX** - Initial document loading
+- Scans directory or file
+- Extracts text
+- Creates embeddings
+- Stores vectors
 
-#### APPEND - Add More Documents
-Adds new documents to an existing collection.
-- Automatically detects and skips duplicates
-- Maintains consistent settings with the collection
-- Ideal for incremental updates
+**APPEND** - Add more documents
+- Auto-detects duplicates
+- Maintains collection settings
+- Incremental updates
 
-#### REINDEX - Refresh Embeddings
-Re-processes all or specific documents in a collection.
-- Use when embedding model updates are available
-- Helpful for fixing failed document processing
-- Can target only failed documents for efficiency
+**REINDEX** - Refresh embeddings
+- Update to new model
+- Fix failed documents
+- Target only failures
+- Uses blue-green deployment (zero downtime)
 
-#### REMOVE_SOURCE - Clean Up Content
-Removes all documents from a specific source path.
-- Deletes documents and their vectors
-- Maintains collection integrity
-- Useful for removing outdated content
+**REMOVE_SOURCE** - Clean up content
+- Deletes documents and vectors
+- Removes outdated content
+
+### Blue-Green Reindexing
+
+Zero-downtime reindexing:
+
+1. Create new vector store alongside existing one
+2. Re-embed documents into new store (old one still serves searches)
+3. Atomic swap to new index
+4. Clean up old index
+
+Benefits:
+- Searches continue during reindexing
+- No partial states (old or new, never mixed)
+- Rollback if reindexing fails
+- Safe config changes
 
 ## Adding Documents to Collections
 
@@ -162,42 +174,59 @@ Removes all documents from a specific source path.
 
 #### Via API
 
+**New format (preferred):**
 ```bash
 curl -X POST http://localhost:8080/api/v2/collections/YOUR_COLLECTION_ID/sources \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "source_type": "directory",
-    "source_path": "/documents/technical",
-    "filters": {
-      "extensions": [".pdf", ".md", ".txt", ".docx"],
-      "ignore_patterns": ["**/drafts/**", "**/.git/**"]
+    "source_config": {
+      "path": "/documents/technical",
+      "recursive": true
     },
     "config": {
-      "recursive": true,
-      "follow_symlinks": false
+      "chunk_size": 1000,
+      "chunk_overlap": 200,
+      "metadata": {"department": "engineering"}
+    }
+  }'
+```
+
+**Legacy format (deprecated):**
+```bash
+curl -X POST http://localhost:8080/api/v2/collections/YOUR_COLLECTION_ID/sources \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_path": "/documents/technical",
+    "config": {
+      "recursive": true
     }
   }'
 ```
 
 ### Supported File Formats
 
-Semantik automatically detects and processes:
-- **Documents**: PDF, DOCX, ODT, RTF
-- **Text**: TXT, MD, RST
-- **Code**: Various programming languages
-- **Data**: CSV, JSON (structured text)
-- **Web**: HTML, XML
+Semantik automatically detects and processes the following file types:
+
+| Category | Extensions |
+|----------|------------|
+| **Documents** | `.pdf`, `.docx`, `.doc`, `.pptx` (PowerPoint) |
+| **Text** | `.txt`, `.text`, `.md` (Markdown) |
+| **Email** | `.eml` |
+| **Web** | `.html` |
+
+**Note**: CSV, JSON, and XML files are not currently supported for direct ingestion. These structured data formats should be converted to a supported format before indexing.
 
 ### Duplicate Detection
 
-Semantik automatically prevents duplicate documents:
-1. **Content Hashing**: Each file's content is hashed (SHA-256)
-2. **Collection-Wide Check**: Hashes compared across the entire collection
-3. **Smart Skipping**: Duplicates are logged but not reprocessed
-4. **Storage Efficiency**: Saves processing time and vector storage
+Automatic deduplication via SHA-256 content hashing:
+1. Hash each file's content
+2. Check against collection
+3. Skip duplicates (logged but not reprocessed)
 
-Example duplicate report:
+Example report:
 ```json
 {
   "operation_id": "op_123456",
@@ -209,11 +238,34 @@ Example duplicate report:
 }
 ```
 
+## Collection Sources
+
+Each collection tracks its data sources via `CollectionSource` model:
+
+### Source Model Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | Integer | Auto-incremented primary key |
+| `collection_id` | String | UUID of the parent collection |
+| `source_path` | String | Path or identifier for the source |
+| `source_type` | String | Type of source: `directory`, `web`, `slack`, etc. |
+| `source_config` | JSON | Connector-specific configuration |
+| `document_count` | Integer | Number of documents from this source |
+| `size_bytes` | Integer | Total size of documents in bytes |
+| `last_indexed_at` | DateTime | When this source was last indexed |
+| `created_at` | DateTime | When the source was added |
+| `meta` | JSON | Additional metadata |
+
+### Unique Constraint
+
+Sources uniquely identified by `(collection_id, source_path)`. Prevents duplicates and enables efficient removal.
+
 ## Monitoring Progress
 
 ### Real-Time Updates
 
-Semantik provides WebSocket connections for live progress monitoring:
+WebSocket connections for live progress:
 
 ```javascript
 // Connect to operation progress
@@ -223,17 +275,17 @@ const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token
 
 ws.onmessage = (event) => {
     const update = JSON.parse(event.data);
-    
+
     switch(update.type) {
         case 'file_processing':
             console.log(`Processing: ${update.current_file}`);
             console.log(`Progress: ${update.processed_files}/${update.total_files}`);
             break;
-            
+
         case 'operation_completed':
             console.log('Indexing complete!');
             break;
-            
+
         case 'error':
             console.error(`Error: ${update.message}`);
             break;
@@ -268,7 +320,7 @@ Returns:
 
 ### Updating Collection Information
 
-You can update metadata while preserving content:
+Update metadata while preserving content:
 
 ```bash
 PUT /api/v2/collections/YOUR_COLLECTION_ID
@@ -279,7 +331,7 @@ PUT /api/v2/collections/YOUR_COLLECTION_ID
 }
 ```
 
-**Note**: Embedding model and chunk settings cannot be changed after creation to maintain consistency.
+Embedding model and chunk settings are immutable.
 
 ### Collection Statistics
 
@@ -290,6 +342,37 @@ Monitor collection health and usage:
 - **Storage Size**: Disk space used
 - **Last Updated**: Most recent modification
 
+## Chunking Strategies
+
+Semantik supports 6 chunking strategies for different document types and use cases:
+
+### Available Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `character` | Simple character-based splitting | Plain text, logs |
+| `recursive` | Intelligent recursive splitting (default) | General documents |
+| `markdown` | Respects Markdown structure | Documentation, READMEs |
+| `semantic` | Uses embeddings to find semantic boundaries | Technical content |
+| `hierarchical` | Creates parent-child chunk relationships | Long documents |
+| `hybrid` | Combines semantic and structural approaches | Mixed content |
+
+### Strategy Selection
+
+```bash
+curl -X POST http://localhost:8080/api/v2/collections \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Documentation",
+    "chunking_strategy": "markdown",
+    "chunking_config": {
+      "preserve_headers": true,
+      "min_chunk_size": 100
+    }
+  }'
+```
+
 ## Multi-Model Support
 
 ### Choosing the Right Model
@@ -298,20 +381,34 @@ Different embedding models suit different use cases:
 
 #### Qwen/Qwen3-Embedding-0.6B
 - **Best for**: General documentation, fast processing
-- **Dimensions**: 896
+- **Vector Dimensions**: 896
 - **Speed**: Very fast
 - **Quality**: Good for most content
+- **Memory (float16)**: ~1,200 MB
 
 #### Qwen/Qwen3-Embedding-4B
 - **Best for**: Technical content, higher accuracy needs
-- **Dimensions**: 2560
+- **Vector Dimensions**: 2,560
 - **Speed**: Slower but more accurate
 - **Quality**: Excellent semantic understanding
+- **Memory (float16)**: ~8,000 MB
 
-#### Custom Models
-- Support for any HuggingFace-compatible model
-- Configure dimensions and processing requirements
-- Test thoroughly before production use
+#### Qwen/Qwen3-Embedding-8B
+- **Best for**: Maximum quality, complex technical content
+- **Vector Dimensions**: TBD
+- **Speed**: Slowest, highest accuracy
+- **Quality**: Best-in-class semantic understanding
+- **Memory (float16)**: ~16,000 MB
+
+### Memory Requirements by Quantization
+
+| Model | float32 | float16 | int8 |
+|-------|---------|---------|------|
+| 0.6B | 2,400 MB | 1,200 MB | 600 MB |
+| 4B | 16,000 MB | 8,000 MB | 4,000 MB |
+| 8B | 32,000 MB | 16,000 MB | 8,000 MB |
+
+*Note: Actual memory usage includes ~20% overhead for activations and temporary buffers.*
 
 ### Quantization Options
 
@@ -328,14 +425,76 @@ Optimize memory usage vs. quality:
 Collections integrate seamlessly with Semantik's search:
 
 ```bash
-# Search specific collection
-GET /api/v2/search?q=docker+configuration&collection_ids=YOUR_COLLECTION_ID
+# Search a specific collection
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_uuids": ["YOUR_COLLECTION_ID"],
+    "query": "docker configuration",
+    "k": 10
+  }'
 
 # Search multiple collections
-GET /api/v2/search?q=api+endpoints&collection_ids=ID1,ID2,ID3
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_uuids": ["ID1", "ID2", "ID3"],
+    "query": "api endpoints",
+    "k": 10
+  }'
+```
 
-# Search all accessible collections
-GET /api/v2/search?q=user+authentication
+To search "all accessible collections", first list collections (`GET /api/v2/collections`) and pass their UUIDs to `POST /api/v2/search`.
+
+### Advanced Search Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `collection_uuids` | list[str] | *required* | Collection UUIDs to search (max 10) |
+| `query` | string | *required* | Search query text (max 1000 chars) |
+| `k` | int | 10 | Number of results (1-100) |
+| `search_type` | string | "semantic" | Search mode: `semantic`, `hybrid`, `question`, `code` |
+| `score_threshold` | float | 0.0 | Minimum score filter (0.0-1.0) |
+| `metadata_filter` | object | null | Filter by document metadata |
+| `use_reranker` | bool | true | Enable cross-encoder reranking |
+| `rerank_model` | string | null | Override default reranker model |
+| `hybrid_alpha` | float | 0.7 | Vector vs keyword weight (0.0=keyword, 1.0=vector) |
+| `hybrid_mode` | string | "weighted" | Hybrid fusion mode: `weighted` or `rrf` (Reciprocal Rank Fusion) |
+| `keyword_mode` | string | "any" | Keyword matching: `any` (OR) or `all` (AND) |
+| `include_content` | bool | true | Include chunk text in results |
+
+### Search Examples
+
+**Hybrid search with keyword emphasis:**
+```bash
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_uuids": ["YOUR_COLLECTION_ID"],
+    "query": "kubernetes deployment yaml",
+    "search_type": "hybrid",
+    "hybrid_alpha": 0.3,
+    "hybrid_mode": "rrf",
+    "k": 20
+  }'
+```
+
+**Filtered search with reranking:**
+```bash
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "collection_uuids": ["YOUR_COLLECTION_ID"],
+    "query": "authentication best practices",
+    "score_threshold": 0.5,
+    "metadata_filter": {"department": "security"},
+    "use_reranker": true,
+    "rerank_model": "Qwen/Qwen3-Reranker-4B"
+  }'
 ```
 
 ### Search Features
@@ -343,6 +502,17 @@ GET /api/v2/search?q=user+authentication
 - **Multi-Collection**: Search across multiple collections
 - **Filtering**: By collection, date, file type
 - **Reranking**: Optional ML-based result optimization
+
+## Rate Limiting
+
+| Endpoint | Rate Limit |
+|----------|------------|
+| `DELETE /collections/{id}` | 5/hour |
+| `POST /collections/{id}/sources` | 10/hour |
+| `DELETE /collections/{id}/sources` | 10/hour |
+| `POST /collections/{id}/reindex` | 1/5 minutes |
+
+Rate limit responses: HTTP 429 with `Retry-After` header.
 
 ## Best Practices
 
@@ -390,19 +560,19 @@ Create collections based on:
 # Check collection health
 def check_collection_health(collection_id):
     details = get_collection_details(collection_id)
-    
+
     issues = []
     if details['status'] != 'ready':
         issues.append(f"Collection status: {details['status']}")
-    
+
     if details['document_count'] == 0:
         issues.append("No documents in collection")
-    
-    failed_ops = [op for op in details['recent_operations'] 
+
+    failed_ops = [op for op in details['recent_operations']
                   if op['status'] == 'failed']
     if failed_ops:
         issues.append(f"{len(failed_ops)} failed operations")
-    
+
     return issues
 ```
 
@@ -464,10 +634,10 @@ class CollectionManager:
         self.base_url = base_url
         self.headers = {"Authorization": f"Bearer {token}"}
         self.client = httpx.AsyncClient()
-    
+
     async def create_collection(
-        self, 
-        name: str, 
+        self,
+        name: str,
         description: str,
         model: str = "Qwen/Qwen3-Embedding-0.6B"
     ) -> Dict:
@@ -485,10 +655,10 @@ class CollectionManager:
             headers=self.headers
         )
         return response.json()
-    
+
     async def add_directory(
-        self, 
-        collection_id: str, 
+        self,
+        collection_id: str,
         directory: str,
         extensions: List[str] = None
     ) -> Dict:
@@ -497,18 +667,20 @@ class CollectionManager:
             f"{self.base_url}/api/v2/collections/{collection_id}/sources",
             json={
                 "source_type": "directory",
-                "source_path": directory,
-                "filters": {
-                    "extensions": extensions or [".pdf", ".md", ".txt"]
+                "source_config": {
+                    "path": directory,
+                    "recursive": True
                 },
-                "config": {"recursive": True}
+                "config": {
+                    "metadata": {"source_dir": directory}
+                }
             },
             headers=self.headers
         )
         return response.json()
-    
+
     async def monitor_operation(
-        self, 
+        self,
         operation_id: str,
         callback: Optional[callable] = None
     ):
@@ -519,42 +691,41 @@ class CollectionManager:
                 headers=self.headers
             )
             data = response.json()
-            
+
             if callback:
                 callback(data)
-            
+
             if data["status"] in ["completed", "failed", "cancelled"]:
                 return data
-            
+
             await asyncio.sleep(2)
 
 # Usage example
 async def main():
     manager = CollectionManager("http://localhost:8080", "your-token")
-    
+
     # Create collection
     collection = await manager.create_collection(
         "Research Papers",
         "Academic papers and research documents"
     )
-    
+
     # Add documents
     operation = await manager.add_directory(
         collection["id"],
-        "/documents/research",
-        [".pdf", ".tex"]
+        "/documents/research"
     )
-    
+
     # Monitor progress
     def progress_callback(data):
         if "progress" in data:
             print(f"Progress: {data['progress']['percentage']:.1f}%")
-    
+
     result = await manager.monitor_operation(
-        operation["id"], 
+        operation["id"],
         progress_callback
     )
-    
+
     print(f"Operation completed: {result['status']}")
 
 asyncio.run(main())
@@ -565,12 +736,12 @@ asyncio.run(main())
 ```typescript
 class OperationMonitor {
     private ws: WebSocket | null = null;
-    
+
     constructor(
         private baseUrl: string,
         private token: string
     ) {}
-    
+
     monitorOperation(
         operationId: string,
         onProgress: (data: any) => void,
@@ -579,34 +750,34 @@ class OperationMonitor {
     ) {
         const wsUrl = `${this.baseUrl.replace('http', 'ws')}/ws/operations/${operationId}?token=${this.token}`;
         this.ws = new WebSocket(wsUrl);
-        
+
         this.ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
-            
+
             switch(data.type) {
                 case 'file_processing':
                 case 'progress_update':
                     onProgress(data);
                     break;
-                    
+
                 case 'operation_completed':
                     onComplete(data);
                     this.disconnect();
                     break;
-                    
+
                 case 'error':
                     onError(data);
                     this.disconnect();
                     break;
             }
         };
-        
+
         this.ws.onerror = (error) => {
             onError({ type: 'connection_error', error });
             this.disconnect();
         };
     }
-    
+
     disconnect() {
         if (this.ws) {
             this.ws.close();
@@ -692,15 +863,13 @@ monitor.monitorOperation(
 
 ## Conclusion
 
-Semantik's collection management system provides a powerful, flexible way to organize and search your documents. By understanding collections, operations, and best practices, you can build efficient knowledge bases that scale with your needs.
+Key points:
+- Collections are the foundation of search
+- Operations handle async processing
+- Real-time monitoring via WebSocket
+- Proper organization ensures performance
 
-Key takeaways:
-- Collections are the foundation of Semantik's search capabilities
-- Operations handle all asynchronous document processing
-- Real-time monitoring keeps you informed of progress
-- Proper organization and maintenance ensure optimal performance
-
-For more information, see:
-- [API Reference](./API_REFERENCE.md) - Complete API documentation
-- [WebSocket API](./WEBSOCKET_API.md) - Real-time updates
-- [Search System](./SEARCH_SYSTEM.md) - Advanced search features
+See also:
+- [API Reference](./API_REFERENCE.md)
+- [WebSocket API](./WEBSOCKET_API.md)
+- [Search System](./SEARCH_SYSTEM.md)

@@ -6,44 +6,14 @@ including strategy management, preview operations, and analytics.
 """
 
 from datetime import datetime
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+# Import enums from shared location and re-export for backward compatibility
+from shared.chunking.types import ChunkingStatus, ChunkingStrategy, QualityLevel
 
-class ChunkingStrategy(str, Enum):
-    """Available chunking strategies."""
-
-    FIXED_SIZE = "fixed_size"
-    SEMANTIC = "semantic"
-    RECURSIVE = "recursive"
-    MARKDOWN = "markdown"
-    HIERARCHICAL = "hierarchical"
-    HYBRID = "hybrid"
-    # Legacy/aliases retained for backward compatibility (not used in tests)
-    SLIDING_WINDOW = "sliding_window"
-    DOCUMENT_STRUCTURE = "document_structure"
-
-
-class ChunkingStatus(str, Enum):
-    """Status of chunking operations."""
-
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    PARTIAL = "partial"
-
-
-class QualityLevel(str, Enum):
-    """Quality assessment levels."""
-
-    EXCELLENT = "excellent"
-    GOOD = "good"
-    FAIR = "fair"
-    POOR = "poor"
+__all__ = ["ChunkingStrategy", "ChunkingStatus", "QualityLevel"]
 
 
 # Base configuration schemas

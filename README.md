@@ -1,224 +1,142 @@
-🚨🚨🚨
+# Semantik
 
-Semantik is currently in a **pre-release state**, please be aware that you will likely encounter rough-edges and bugs, and we do not yet recommend its usage in a production environment. 
-
-🚨🚨🚨
-
----
-
-
-# Semantik - Easy, Private, and Powerful Document Search
+Private, self‑hosted semantic search for your documents.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg?logo=docker)](https://www.docker.com)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-Semantik is a self‑hosted semantic search system for local and team documents. It runs a FastAPI backend, a dedicated embedding/search service, and a Celery worker pipeline over Postgres, Redis, and Qdrant. A GPU is recommended; CPU works for small datasets.
+Semantik is a self‑hosted semantic search stack for local documents. I built it to make searching my own unstructured corpus less painful and to keep a clean playground for experimenting with various retrieval, chunking, and reranking strategies. It runs fully on your hardware: FastAPI control plane + Celery workers + a dedicated embedding/search service over Postgres, Redis, and Qdrant. GPU is recommended for indexing speed, but CPU works for modest collections.
 
-### Why Semantik
-Private, self‑hosted semantic search that fits on your own hardware. Designed for clear ops and predictable performance.
+By default, models run locally and no document content leaves your machine.
 
-## Features
-- Semantic, keyword, and hybrid search with optional reranking
-- Collection management and document preview in the Web UI
-- Real‑time operation updates over WebSocket
-- Blue/green reindexing with staging/swap and cleanup
-- Health/metrics endpoints and rate limiting
+This is a personal project and still pre‑release — expect rough edges and API churn.
 
-## Tech Stack
-- Backend: Python 3.11, FastAPI, SQLAlchemy, Alembic, Celery (Redis broker), Pydantic, SlowAPI
-- Vector/ML: PyTorch, Transformers/Sentence‑Transformers, Qdrant
-- Frontend: React (Vite), React Query, React Router, Zustand, Tailwind
-- Infra: Docker Compose, Postgres, Redis, Qdrant; optional Flower
-- Tooling: uv (deps), Ruff, Black, Mypy, Pytest, Vitest, Playwright
+## What It Does
+- **Collections**: group documents with their own embedding + chunking config.
+- **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
+- **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
+- **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
+- **Live progress** is streamed to the UI over Redis + WebSockets.
+- **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
+- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system.
+- **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
+- **Observability**: health endpoints + Prometheus metrics in both services.
+
 
 ## Architecture
-- WebUI API (`packages/webui`): REST + WebSocket, collection/operation APIs, Alembic migrations on start
-- Vecpipe (`packages/vecpipe`): embedding + search HTTP API, talks to Qdrant
-- Worker (`packages/webui` Celery): ingestion/chunking/reindex orchestration
-- Infra: Postgres (state), Redis (broker/results + progress streams), Qdrant (vectors)
+Three Python packages, one frontend:
+- `packages/webui/` – FastAPI app serving REST + WebSocket APIs and the React UI; owns Postgres state.
+- `packages/vecpipe/` – embedding + search HTTP service that talks to Qdrant.
+- `packages/shared/` – shared configs, DB models/repos, chunking + embedding utilities.
+- `apps/webui-react/` – React/Vite UI, built into `packages/webui/static/`.
 
-Data flow :
-1) API request → 2) DB operation row → 3) Celery task → 4) extract + chunk → 5) embed via vecpipe → 6) upsert to Qdrant → 7) progress via Redis/WebSocket → 8) status persisted.
+Data flow:
+1. Client creates/updates a collection.
+2. WebUI writes an **operation** row to Postgres and dispatches a Celery task.
+3. Worker extracts text, chunks, requests embeddings from vecpipe, and upserts to Qdrant.
+4. Progress goes to Redis → WebSockets → UI; final status is persisted in Postgres.
 
 ```mermaid
 flowchart LR
-  subgraph Client
-    UI[Web UI]
-  end
-  subgraph API
-    WebUI[FastAPI WebUI]
-  end
-  subgraph Infra
-    PG[(Postgres)]
-    R[Redis]
-    Q[Qdrant]
-  end
-  subgraph Worker
-    C[Celery Tasks]
-  end
-  subgraph Vector
-    V[Vecpipe: Embeddings and Search]
-  end
-
-  UI -->|HTTP/WebSocket| WebUI
-  WebUI <--> PG
-  WebUI <--> R
-  WebUI -->|dispatch ops| C
-  C <--> PG
-  C <--> R
-  C -->|embed/search| V
-  V <--> Q
+  UI[React Web UI] -->|HTTP/WebSocket| WebUI[FastAPI WebUI]
+  WebUI <--> PG[(Postgres)]
+  WebUI <--> R[Redis]
+  WebUI -->|Celery task| W[Worker]
+  W -->|/embed /search| V[Vecpipe]
+  V <--> Q[(Qdrant)]
 ```
 
-
-### Design Notes
-- Commit‑before‑dispatch task pattern eliminates operation/task race conditions
-- Partition‑aware Postgres schema with helper‑computed partition keys
-- Scalable WebSocket manager suited for horizontal scaling
-- Chunking tasks include circuit breaker, DLQ, and resource limits
-- Metrics and health checks across services
-
-### Security Snapshot
-- JWT auth with rate limiting (SlowAPI) and validated CORS
-- CSP headers enabled at the API layer
-- Internal API key for service‑to‑service calls
-- Data stays local by default (no external model calls)
-
 ## Quickstart (Docker)
-Prereqs: Docker + Compose; NVIDIA runtime for GPU.
+Prereqs: Docker + Compose. NVIDIA runtime if you want GPU acceleration.
 
 ```bash
 git clone https://github.com/jbmiller10/semantik.git
 cd semantik
 
-# Guided setup (generates env, checks GPU/paths, starts services)
+# Guided setup: generates .env, checks GPU/paths, starts stack
 make wizard
 
-# Or manual
+# Manual setup:
 cp .env.docker.example .env
 make docker-up
 ```
 
-Default endpoints:
-- Web UI: http://localhost:8080
-- Vecpipe API: http://localhost:8000
-- Qdrant: http://localhost:6333
+Endpoints after boot:
+- Web UI + API: `http://localhost:8080`
+- Vecpipe API: `http://localhost:8000`
+- Qdrant: `http://localhost:6333`
 
-Stop services: `make docker-down` (keeps volumes) or `make docker-down-clean` (removes volumes).
+First run note: open the UI and create an account. The very first user is made admin/superuser automatically.
 
-## Dev Setup
-- Backend deps: `make dev-install`
-- Run API (hot reload): `make run`
-- Frontend: `make frontend-install && make frontend-dev`
-- Integrated dev stack: `make dev`
-- Backend‑only infra (for local API): `make docker-dev-up`
+Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volumes).
 
-## Configuration (env)
-Common variables (see `.env.docker.example` and docs for full list):
-- Auth: `JWT_SECRET_KEY`
-- Database: `DATABASE_URL` or `POSTGRES_HOST|PORT|DB|USER|PASSWORD`
-- Redis: `REDIS_URL` (Celery + progress streams)
-- Qdrant: `QDRANT_HOST`, `QDRANT_PORT`
-- Models: `DEFAULT_EMBEDDING_MODEL` (e.g. `Qwen/Qwen3-Embedding-0.6B`), `DEFAULT_QUANTIZATION` (`float16`), `USE_MOCK_EMBEDDINGS`
-- Paths: `DOCUMENT_PATH` (mounted docs), `HF_CACHE_DIR` (models cache)
-- Ports: `WEBUI_PORT` (8080), `SEARCH_API_PORT` (8000)
+## Usage
+1. Open the UI at `http://localhost:8080` and create a collection.
+2. Add one or more sources (directories). Semantik will index in the background.
+3. Search across one or more collections.
 
-## Services
-- WebUI (FastAPI): container `webui` (port 8080); serves API/UI, runs migrations at start
-- Vecpipe (embeddings/search): container `vecpipe` (port 8000); embeds and queries Qdrant
-- Worker (Celery): container `worker`; consumes tasks for ingestion, chunking, reindex
-- Infra: Postgres 16, Redis 7, Qdrant latest; optional Flower at `:5555`
+If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
 
-## Ingestion / Chunking Flow
-- Create or update a collection via API → operation row is written and committed
-- API dispatches `webui.tasks.process_collection_operation(operation_id)` to Celery
-- Worker extracts text, applies the configured chunking strategy, requests embeddings from vecpipe, and upserts vectors to Qdrant
-- Progress updates stream to Redis; WebUI broadcasts over WebSocket
-- Reindex uses a staging collection (blue/green) and schedules old‑collection cleanup on success
+## Configuration
+`make wizard` or `.env.docker.example` covers the common knobs. A few highlights:
+- `JWT_SECRET_KEY` – auth secret (wizard generates one).
+- `DATABASE_URL`, `REDIS_URL`, `QDRANT_HOST|PORT` – infra wiring.
+- `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
+- `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).
+- `HF_CACHE_DIR` – persistent HuggingFace model cache (avoids re‑downloads).
+- `CELERY_CONCURRENCY`, `CELERY_MAX_CONCURRENCY` – worker parallelism.
+- `EMBEDDING_CONCURRENCY_PER_WORKER` – throttle embed calls per worker (VRAM‑friendly).
 
-## Running Scheduled Tasks (beat)
-A Celery beat schedule is defined for cleanup and monitoring, but beat is not started by default. Add a minimal beat service:
+Full list + tuning notes: `docs/CONFIGURATION.md`.
 
-```yaml
-# docker-compose.override.yml (example)
-services:
-  beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runtime
-    container_name: semantik-beat
-    # Override the image entrypoint to run beat directly
-    entrypoint: ["celery", "-A", "webui.celery_app", "beat", "-l", "info"]
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      - redis
+## Extensibility
+Semantik is meant to be a sandbox for trying retrieval ideas:
+- **Embedding providers** load from Python entry points `semantik.embedding_providers`  
+  (toggle with `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`).
+- **Chunking strategies** load from `semantik.chunking_strategies`
+  (toggle with `SEMANTIK_ENABLE_CHUNKING_PLUGINS`).
+
+Both systems are idempotent and safe to run without plugins installed.
+
+## Dev Notes
+Backend:
+```bash
+make dev-install
+make run        # FastAPI hot reload on :8080
 ```
 
-Ensure the worker consumes the default queue (current configuration uses defaults).
-
-## Quick API Examples
-
-Create a collection
+Frontend:
 ```bash
-curl -X POST http://localhost:8080/api/v2/collections \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-        "name": "work_docs",
-        "description": "Team documents",
-        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-        "quantization": "float16",
-        "chunk_size": 1000,
-        "chunk_overlap": 200
-      }'
+make frontend-install
+make frontend-dev   # Vite on :5173, proxies /api and /ws to backend
 ```
 
-Add a source (file or directory)
+Integrated dev stack (API + worker + vecpipe):
 ```bash
-curl -X POST http://localhost:8080/api/v2/collections/<collection_uuid>/sources \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-        "source_path": "/mnt/docs/handbook",
-        "config": {}
-      }'
-```
-
-Search across collections
-```bash
-curl -X POST http://localhost:8080/api/v2/search \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{
-        "collection_uuids": ["<uuid1>", "<uuid2>"],
-        "query": "onboarding policy",
-        "k": 10,
-        "use_reranker": true
-      }'
+make dev
 ```
 
 ## Testing
-- Backend: `make test` (Pytest); coverage: `make test-coverage`
-- E2E (requires stack): `make test-e2e`
-- Frontend: `npm test --prefix apps/webui-react`
-- Dedicated test DB: `docker compose --profile testing up -d postgres_test` (default port 55432)
+- Backend: `make test` (Pytest) or `make test-coverage`.
+- E2E (requires running stack): `make test-e2e`.
+- Frontend: `npm test --prefix apps/webui-react`.
+- Test Postgres profile: `docker compose --profile testing up -d postgres_test` (port 55432).
 
-## Roadmap / Limitations
-- Scheduled tasks: run Celery beat in Docker for periodic maintenance
-- CPU‑only mode is suitable for small corpora; GPU recommended for indexing speed and reranking
-- Conservative worker defaults (`CELERY_CONCURRENCY=1`)—tune to hardware and workload
-- Planned: hybrid search improvements, broader formats/OCR, additional embedding/reranker options, MCP integration
+## Docs
+There’s a lot of detail in `docs/`:
+- `docs/DOCUMENTATION_INDEX.md` – map of all docs.
+- `docs/ARCH.md` – full system architecture.
+- `docs/SEARCH_SYSTEM.md`, `docs/RERANKING.md`, `docs/CHUNKING_FEATURE_OVERVIEW.md` – retrieval/chunking deep dives.
+- `docs/WEBSOCKET_API.md`, `docs/API_REFERENCE.md` – API contracts.
 
-### Performance
-Performance varies by hardware, collection size, and model choice. See tuning guidance in [docs/CONFIGURATION.md#performance-tuning](docs/CONFIGURATION.md#performance-tuning).
+## Roadmap / Ideas
+- Integrated benchmarking tools
+- More connectors (web/Slack/etc.) and richer OCR pipelines.
+- Additional embedding/reranker options and hybrid tuning.
 
 ## License
-Semantik is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+AGPL‑3.0. See `LICENSE`.
 
-_This project is in active development; APIs and defaults may evolve._
+_Active development; breaking changes are possible._

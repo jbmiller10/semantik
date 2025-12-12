@@ -2,9 +2,9 @@
 
 ## Overview
 
-This document provides the technical architecture and implementation details of Semantik's collection system. For user-focused documentation on managing collections, see the [Collection Management Guide](./COLLECTION_MANAGEMENT.md).
+Technical architecture and implementation of Semantik's collection system. For user docs, see [Collection Management Guide](./COLLECTION_MANAGEMENT.md).
 
-Collections in Semantik represent self-contained document repositories with dedicated vector stores, consistent embedding configurations, and unified search capabilities. This document covers the technical implementation, database schema, and advanced features.
+Collections are self-contained document repositories with dedicated vector stores and consistent embedding configs.
 
 ## Architecture
 
@@ -96,7 +96,7 @@ Authorization: Bearer {token}
 }
 ```
 
-Creates a new collection with specified configuration. The collection starts in 'pending' status and transitions to 'ready' once the vector store is initialized.
+Creates a collection with the given config. Status starts as 'pending', transitions to 'ready' when the vector store is initialized.
 
 ### List Collections
 ```http
@@ -156,6 +156,10 @@ Returns comprehensive collection information including sources and recent operat
       "id": 1,
       "source_path": "/docs/technical",
       "source_type": "directory",
+      "source_config": {
+        "path": "/docs/technical",
+        "recursive": true
+      },
       "document_count": 156,
       "size_bytes": 45678900,
       "last_indexed_at": "2024-01-15T14:30:00Z"
@@ -186,7 +190,7 @@ Authorization: Bearer {token}
 }
 ```
 
-Updates collection metadata. Note that embedding model and chunk settings cannot be changed after creation.
+Updates metadata only. Embedding model and chunk settings are immutable after creation.
 
 ### Delete Collection
 ```http
@@ -201,18 +205,30 @@ Permanently removes the collection and all associated data including documents a
 POST /api/v2/collections/{collection_id}/sources
 Content-Type: application/json
 Authorization: Bearer {token}
+```
 
+**Request (preferred flexible format):**
+```json
 {
   "source_type": "directory",
-  "source_path": "/docs/api",
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
-  },
-  "config": {
+  "source_config": {
+    "path": "/docs/api",
     "recursive": true,
     "follow_symlinks": false
+  },
+  "config": {
+    "filters": {
+      "extensions": [".md", ".txt", ".pdf"],
+      "ignore_patterns": ["**/node_modules/**", "**/.git/**"]
+    }
   }
+}
+```
+
+**Request (legacy, still supported):**
+```json
+{
+  "source_path": "/docs/api"
 }
 ```
 
@@ -253,6 +269,12 @@ The system automatically detects duplicate documents using content hashing:
 3. **Efficient Storage**: Duplicate documents reference same content
 4. **User Notification**: Duplicate count reported in operations
 
+### Ingestion DTO & Hashing Contract
+
+- All connectors emit `shared.dtos.ingestion.IngestedDocument` with `content`, `unique_id`, `source_type`, `metadata`, `content_hash`, and optional `file_path`
+- Content hashes via `shared.utils.hashing.compute_content_hash` (SHA-256, 64-char hex)
+- `DocumentRegistryService` deduplicates on `(collection_id, content_hash)` and optionally `(collection_id, uri)`
+
 ### Multi-Model Support
 
 Collections support various embedding models with different characteristics:
@@ -272,11 +294,9 @@ Optimize memory usage and performance with quantization:
 
 ### Access Control
 
-Fine-grained permissions system:
-
-- **Owner**: Full control over collection
-- **Public**: Read-only access for all users
-- **Shared**: Specific user permissions (coming soon)
+- **Owner**: Full control
+- **Public**: Read-only for all users
+- **Shared**: Coming soon
 
 ## Operations
 
@@ -301,11 +321,14 @@ pending → processing → completed
 Operations support WebSocket connections for real-time progress:
 
 ```javascript
-const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws`);
+const token = localStorage.getItem('authToken');
+const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
 
 ws.onmessage = (event) => {
-  const progress = JSON.parse(event.data);
-  console.log(`Progress: ${progress.percentage}%`);
+  const msg = JSON.parse(event.data);
+  if (msg.data?.progress != null) {
+    console.log(`Progress: ${msg.data.progress}%`);
+  }
 };
 ```
 
@@ -410,14 +433,14 @@ Collection status reflects overall health:
 
 ## Future Enhancements
 
-1. **Collection Sharing**: Fine-grained access control
-2. **Collection Templates**: Pre-configured settings
-3. **Auto-Scaling**: Dynamic resource allocation
-4. **Collection Cloning**: Duplicate with new settings
-5. **Incremental Indexing**: Only process changed files
-6. **Collection Versioning**: Track changes over time
-7. **Export/Import**: Backup and migration tools
-8. **Collection Analytics**: Usage statistics and insights
+- Fine-grained access control
+- Collection templates
+- Auto-scaling
+- Collection cloning
+- Incremental indexing
+- Collection versioning
+- Export/import tools
+- Usage analytics
 
 ## Practical Examples
 

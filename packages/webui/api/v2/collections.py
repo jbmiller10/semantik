@@ -10,15 +10,15 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from packages.shared.database.exceptions import (
+from shared.database.exceptions import (
     AccessDeniedError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
     ValidationError,
 )
-from packages.shared.database.models import Collection
-from packages.webui.api.schemas import (
+from shared.database.models import Collection
+from webui.api.schemas import (
     AddSourceRequest,
     CollectionCreate,
     CollectionListResponse,
@@ -28,11 +28,11 @@ from packages.webui.api.schemas import (
     ErrorResponse,
     OperationResponse,
 )
-from packages.webui.auth import get_current_user
-from packages.webui.dependencies import get_collection_for_user
-from packages.webui.rate_limiter import limiter
-from packages.webui.services.collection_service import CollectionService
-from packages.webui.services.factory import get_collection_service
+from webui.auth import get_current_user
+from webui.dependencies import get_collection_for_user
+from webui.rate_limiter import limiter
+from webui.services.collection_service import CollectionService
+from webui.services.factory import get_collection_service
 
 SharedAccessDeniedError: type[BaseException] | None = None
 try:  # pragma: no cover - shared module may not be installed in all environments
@@ -358,8 +358,10 @@ async def add_source(
         operation = await service.add_source(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
-            source_path=add_source_request.source_path,
-            source_config=add_source_request.config or {},
+            source_type=add_source_request.source_type,
+            source_config=add_source_request.source_config or {},
+            legacy_source_path=add_source_request.source_path,
+            additional_config=add_source_request.config or {},
         )
 
         # Convert to response model
@@ -641,7 +643,7 @@ async def list_collection_documents(
         )
 
         # Convert ORM objects to response models
-        from packages.webui.api.schemas import DocumentResponse
+        from webui.api.schemas import DocumentResponse
 
         document_responses = [
             DocumentResponse(

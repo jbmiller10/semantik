@@ -8,12 +8,8 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from packages.shared.embedding.base import BaseEmbeddingService
-from packages.shared.embedding.context import (
-    ManagedEmbeddingService,
-    embedding_service_context,
-    temporary_embedding_service,
-)
+from shared.embedding.base import BaseEmbeddingService
+from shared.embedding.context import ManagedEmbeddingService, embedding_service_context, temporary_embedding_service
 
 
 class MockEmbeddingService(BaseEmbeddingService):
@@ -59,7 +55,7 @@ class TestEmbeddingServiceContext:
         """Test basic context manager usage."""
         mock_service = MockEmbeddingService()
 
-        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
             async with embedding_service_context() as service:
                 assert service is mock_service
                 embeddings = await service.embed_texts(["test"])
@@ -74,7 +70,7 @@ class TestEmbeddingServiceContext:
         mock_service = MockEmbeddingService()
 
         with (
-            patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service),
+            patch("shared.embedding.context.get_embedding_service", return_value=mock_service),
             pytest.raises(ValueError, match="Test error"),
         ):
             async with embedding_service_context():
@@ -89,7 +85,7 @@ class TestEmbeddingServiceContext:
         mock_service = MockEmbeddingService()
         mock_service.cleanup = AsyncMock(side_effect=Exception("Cleanup failed"))  # type: ignore[method-assign]
 
-        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
             # Should not raise even if cleanup fails
             async with embedding_service_context() as service:
                 assert service is mock_service
@@ -140,7 +136,7 @@ class TestManagedEmbeddingService:
         """Test using ManagedEmbeddingService as async context manager."""
         mock_service = MockEmbeddingService()
 
-        with patch("packages.shared.embedding.context.get_embedding_service", return_value=mock_service):
+        with patch("shared.embedding.context.get_embedding_service", return_value=mock_service):
             managed = ManagedEmbeddingService(mock_mode=True)
 
             async with managed as service:
@@ -225,7 +221,7 @@ class TestConcurrentContextManagers:
         """Test nested context manager usage."""
         outer_service = MockEmbeddingService()
 
-        with patch("packages.shared.embedding.context.get_embedding_service", return_value=outer_service):
+        with patch("shared.embedding.context.get_embedding_service", return_value=outer_service):
             async with embedding_service_context() as outer:
                 assert outer is outer_service
 

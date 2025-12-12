@@ -19,10 +19,10 @@ from uuid import uuid4
 import aiofiles  # type: ignore[import-untyped]
 import redis.asyncio as redis
 
-from packages.shared.chunking.domain.entities.chunk import Chunk
-from packages.shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
-from packages.shared.chunking.domain.value_objects.chunk_config import ChunkConfig
-from packages.shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.chunking.domain.value_objects.chunk_metadata import ChunkMetadata
 
 from .checkpoint import CheckpointManager
 from .memory_pool import MemoryPool
@@ -497,7 +497,7 @@ class StreamingDocumentProcessor:
         """
         # Rough estimate: assume average 4 bytes per token
         estimated_tokens = file_size // 4
-        return config.estimate_chunks(estimated_tokens)
+        return int(config.estimate_chunks(estimated_tokens))
 
     def get_memory_usage(self) -> dict[str, Any]:
         """

@@ -23,11 +23,12 @@ scalability. When working with partitioned tables:
 3. Be aware that cross-partition queries are expensive
 4. The partition key must be part of any unique constraint or primary key
 
-See the Chunk model and packages.shared.database.partition_utils for detailed
+See the Chunk model and shared.database.partition_utils for detailed
 examples and utilities for working with partitioned tables.
 """
 
 import enum
+import sys
 from typing import Any, cast
 
 from sqlalchemy import (
@@ -46,8 +47,17 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+# Ensure both ``shared.database.models`` and ``packages.shared.database.models``
+# resolve to the same module instance. This prevents SQLAlchemy from creating
+# duplicate model classes for the same tables when mixed import prefixes are
+# used across the codebase or in downstream scripts.
+if __name__ in {"shared.database.models", "packages.shared.database.models"}:
+    sys.modules.setdefault("shared.database.models", sys.modules[__name__])
+    sys.modules.setdefault("packages.shared.database.models", sys.modules[__name__])
 
 
 # Create the declarative base
@@ -115,6 +125,32 @@ class OperationType(str, enum.Enum):
     REINDEX = "reindex"
     REMOVE_SOURCE = "remove_source"
     DELETE = "delete"
+    PROJECTION_BUILD = "projection_build"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> "OperationType | None":
+        """Provide case-insensitive lookup for enum values."""
+
+        if isinstance(value, str):
+            normalized = value.lower()
+            resolved = cls._value2member_map_.get(normalized) or cls.__members__.get(value.upper())
+            return cast("OperationType | None", resolved)
+        return None
+
+    def __str__(self) -> str:  # pragma: no cover - simple helper for driver bindings
+        """Return the canonical string value for the enum member."""
+
+        return self.value
+
+
+class ProjectionRunStatus(str, enum.Enum):
+    """Lifecycle states for embedding projection runs."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class User(Base):
@@ -188,6 +224,7 @@ class Collection(Base):
     permissions = relationship("CollectionPermission", back_populates="collection", cascade="all, delete-orphan")
     sources = relationship("CollectionSource", back_populates="collection", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="collection", cascade="all, delete-orphan")
+    projection_runs = relationship("ProjectionRun", back_populates="collection", cascade="all, delete-orphan")
     audit_logs = relationship("CollectionAuditLog", back_populates="collection", cascade="all, delete-orphan")
     resource_limits = relationship(
         "CollectionResourceLimits", back_populates="collection", uselist=False, cascade="all, delete-orphan"
@@ -223,6 +260,10 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
+    # Flexible source fields (for non-file-based sources like web, Slack, etc.)
+    uri = Column(String, nullable=True)  # Logical identifier (URL, file path, message ID, etc.)
+    source_metadata = Column(JSON)  # Connector-specific metadata (headers, timestamps, etc.)
+
     # New chunking-related fields
     chunking_config_id = Column(Integer, ForeignKey("chunking_configs.id"), nullable=True, index=True)
     chunks_count = Column(Integer, nullable=False, default=0)
@@ -239,6 +280,13 @@ class Document(Base):
     __table_args__ = (
         Index("ix_documents_collection_content_hash", "collection_id", "content_hash", unique=True),
         Index("ix_documents_collection_id_chunking_completed_at", "collection_id", "chunking_completed_at"),
+        Index(
+            "ix_documents_collection_uri_unique",
+            "collection_id",
+            "uri",
+            unique=True,
+            postgresql_where=text("uri IS NOT NULL"),
+        ),
     )
 
 
@@ -328,7 +376,8 @@ class CollectionSource(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     source_path = Column(String, nullable=False)
-    source_type = Column(String, nullable=False, default="directory")  # directory, file, url, etc.
+    source_type = Column(String, nullable=False)  # directory, web, slack, etc.
+    source_config = Column(JSON)  # Connector-specific configuration (e.g. {"path": "..."})
     document_count = Column(Integer, nullable=False, default=0)
     size_bytes = Column(Integer, nullable=False, default=0)
     last_indexed_at = Column(DateTime(timezone=True))
@@ -354,7 +403,14 @@ class Operation(Base):
     collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(
-        Enum(OperationType, name="operation_type", native_enum=True, create_constraint=False),
+        Enum(
+            OperationType,
+            name="operation_type",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            validate_strings=True,
+        ),
         nullable=False,
         index=True,
     )  # type: ignore[var-annotated]
@@ -383,6 +439,55 @@ class Operation(Base):
     user = relationship("User")
     audit_logs = relationship("CollectionAuditLog", back_populates="operation")
     metrics = relationship("OperationMetrics", back_populates="operation", cascade="all, delete-orphan")
+    projection_run = relationship("ProjectionRun", back_populates="operation", uselist=False)
+
+
+class ProjectionRun(Base):
+    """Dimensionality reduction run persisted for visualization."""
+
+    __tablename__ = "projection_runs"
+    __table_args__ = (
+        CheckConstraint("dimensionality > 0", name="ck_projection_runs_dimensionality_positive"),
+        CheckConstraint("point_count IS NULL OR point_count >= 0", name="ck_projection_runs_point_count_non_negative"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String, unique=True, nullable=False, index=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
+    operation_uuid = Column(
+        String,
+        ForeignKey("operations.uuid", ondelete="SET NULL"),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
+    status = Column(
+        Enum(
+            ProjectionRunStatus,
+            name="projection_run_status",
+            native_enum=True,
+            create_constraint=False,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=ProjectionRunStatus.PENDING,
+        index=True,
+    )  # type: ignore[var-annotated]
+    dimensionality = Column(Integer, nullable=False)
+    reducer = Column(String, nullable=False)
+    storage_path = Column(String, nullable=True)
+    point_count = Column(Integer, nullable=True)
+    config = Column(JSON, nullable=True)
+    meta = Column(JSON, nullable=True)
+    metadata_hash = Column(String, nullable=True, index=True)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+
+    collection = relationship("Collection", back_populates="projection_runs")
+    operation = relationship("Operation", back_populates="projection_run")
 
 
 class CollectionAuditLog(Base):
@@ -476,6 +581,35 @@ class ChunkingConfig(Base):
         "Collection", foreign_keys="Collection.default_chunking_config_id", back_populates="default_chunking_config"
     )
     documents = relationship("Document", back_populates="chunking_config")
+
+
+class ChunkingConfigProfile(Base):
+    """User-scoped saved chunking configuration.
+
+    Replaces the legacy JSON file store so configurations persist across
+    replicas and can be audited. Records are scoped to a user and may be
+    marked as default. Tags are stored as JSON list to avoid extension
+    dependencies while keeping flexibility.
+    """
+
+    __tablename__ = "chunking_config_profiles"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    strategy = Column(String, nullable=False, index=True)
+    config = Column(JSON, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_default = Column(Boolean, nullable=False, default=False, index=True)
+    usage_count = Column(Integer, nullable=False, default=0)
+    tags = Column(JSON)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("created_by", "name", name="uq_chunking_config_profiles_user_name"),)
+
+    # Relationships
+    user = relationship("User", backref="chunking_config_profiles")
 
 
 class Chunk(Base):

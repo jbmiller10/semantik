@@ -12,7 +12,7 @@ from typing import Any
 
 import redis.asyncio as redis
 
-from packages.shared.config import settings
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
 

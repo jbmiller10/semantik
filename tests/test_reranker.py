@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 import torch
 from torch import Tensor
+
 from vecpipe.reranker import CrossEncoderReranker
 
 # Import the class to test

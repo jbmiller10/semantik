@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from packages.shared.chunking.application.dto.requests import ProcessDocumentRequest
-from packages.shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
-from packages.shared.chunking.application.interfaces.services import (
+from shared.chunking.application.dto.requests import ProcessDocumentRequest
+from shared.chunking.application.dto.responses import OperationStatus, ProcessDocumentResponse
+from shared.chunking.application.interfaces.services import (
     ChunkingStrategyFactory,
     DocumentService,
     MetricsService,

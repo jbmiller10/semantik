@@ -1,28 +1,12 @@
-# Testing Guide for Semantik
+# Testing Guide
 
-## Overview
+Test the collection-centric architecture with unit, integration, and E2E tests.
 
-This guide covers the testing philosophy, practices, and procedures for the Semantik codebase. We maintain a comprehensive test suite to ensure reliability, performance, and maintainability across our collection-centric architecture.
+## Philosophy
 
-## Testing Philosophy
+Write tests alongside features. Prioritize meaningful tests over coverage numbers. Keep tests fast, isolated, and clear.
 
-### Core Principles
-1. **Test-Driven Development**: Write tests before or alongside feature implementation
-2. **Comprehensive Coverage**: Aim for high code coverage but prioritize meaningful tests
-3. **Fast Feedback**: Tests should run quickly to encourage frequent execution
-4. **Isolation**: Tests should be independent and not rely on external services when possible
-5. **Clarity**: Test names should clearly describe what they test
-
-### Testing Pyramid
-```
-         /\
-        /  \  E2E Tests (Few)
-       /────\
-      /      \  Integration Tests (Some)
-     /────────\
-    /          \  Unit Tests (Many)
-   /────────────\
-```
+Testing pyramid: Many unit tests, some integration tests, few E2E tests.
 
 ## Test Environment Setup
 
@@ -65,30 +49,11 @@ REDIS_URL=redis://localhost:6379/0
 JWT_SECRET_KEY=test-secret-key-for-testing-only
 ```
 
-### PostgreSQL Test Database Setup
+### Test Database
 
-We now ship a dedicated Docker service for the test database. Bring it up with the
-new `testing` profile before running suites that hit FastAPI endpoints:
+Use Docker: `docker compose --profile testing up -d postgres_test`
 
-```bash
-# Start the disposable test database (uses credentials from .env.test)
-docker compose --profile testing up -d postgres_test
-```
-
-If you prefer a local Postgres instance, you can still create the database by hand:
-
-```bash
-# Create test database
-createdb semantik_test
-
-# Run migrations on test database
-DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test uv run alembic upgrade head
-
-# Clean the database before running the test suite (destroys all data!)
-TEST_DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
-CONFIRM_TEST_DB_RESET=true \
-uv run python scripts/reset_test_db.py
-```
+Or local: `createdb semantik_test && DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test uv run alembic upgrade head`
 
 ## Running Tests
 
@@ -224,7 +189,7 @@ from datetime import datetime, UTC
 
 from packages.shared.database.models import Collection, CollectionStatus, OperationType
 from packages.shared.database.exceptions import EntityAlreadyExistsError, InvalidStateError
-from packages.webui.services.collection_service import CollectionService
+from webui.services.collection_service import CollectionService
 
 class TestCollectionService:
     """Test CollectionService implementation"""
@@ -274,7 +239,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.shared.database.models import Operation, OperationType, OperationStatus
-from packages.webui.repositories.operation_repository import OperationRepository
+from webui.repositories.operation_repository import OperationRepository
 
 class TestOperationRepository:
     """Test OperationRepository implementation"""
@@ -340,7 +305,7 @@ class TestCollectionsAPIV2:
 import pytest
 import asyncio
 from fastapi.testclient import TestClient
-from packages.webui.main import app
+from webui.main import app
 
 class TestWebSocketIntegration:
     """Test WebSocket integration with operations"""
@@ -379,7 +344,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from fastapi.testclient import TestClient
 
 from packages.shared.database import Base, User, Collection
-from packages.webui.main import app
+from webui.main import app
 
 @pytest_asyncio.fixture
 async def async_session():
@@ -429,7 +394,7 @@ def mock_celery_task(monkeypatch):
     mock_task.delay.return_value.id = "mock-task-id"
     
     monkeypatch.setattr(
-        "packages.webui.tasks.index_collection",
+        "webui.tasks.index_collection",
         mock_task
     )
     return mock_task
@@ -533,31 +498,11 @@ def test_external_api_call(mock_get):
 
 ## Test Categories
 
-### Unit Tests
-Focus on individual functions and classes:
-- Document parsing
-- Text chunking
-- Embedding generation (mocked)
-- Database operations
-- Authentication logic
+**Unit**: Individual functions - parsing, chunking, mocked embeddings, DB ops, auth
 
-### Integration Tests
-Test component interactions:
-- API endpoint functionality with collections
-- Database transactions and rollbacks
-- Qdrant vector operations
-- Authentication and authorization flows
-- Operation processing pipeline
-- WebSocket message flow
-- Redis pub/sub for real-time updates
+**Integration**: Component interactions - API endpoints, DB transactions, Qdrant ops, auth flows, WebSocket/Redis
 
-### End-to-End Tests
-Test complete workflows:
-- Create collection → Add documents → Index → Search
-- User registration → Login → Create collection → Manage operations
-- Collection lifecycle: Create → Index → Search → Reindex → Delete
-- Real-time operation tracking via WebSocket
-- Multi-user collection sharing and permissions
+**E2E**: Full workflows - collection lifecycle, user flows, real-time tracking
 
 #### Collection-Centric E2E Tests
 
@@ -594,48 +539,11 @@ async def test_collection_indexing_with_websocket():
                         completed = True
 ```
 
-##### Collection Deletion E2E Test
-**Location**: `tests/e2e/test_collection_deletion_e2e.py`
+##### Running E2E Tests
 
-**Purpose**: Validates complete collection deletion including:
-1. Removing collection from PostgreSQL
-2. Deleting vectors from Qdrant
-3. Canceling any running operations
-4. Cleaning up orphaned documents
+`make docker-up` then `make test-e2e` or `uv run pytest tests/e2e/ -v`
 
-**Running E2E tests**:
-```bash
-# Start all services
-make docker-up
-
-# Run all E2E tests
-make test-e2e
-
-# Run specific E2E test
-uv run pytest tests/e2e/test_collection_deletion_e2e.py -v
-
-# With custom endpoint
-API_BASE_URL=http://localhost:8000 uv run pytest tests/e2e/ -v
-```
-
-**CI/CD Integration**:
-The E2E test is marked with `@pytest.mark.e2e` and automatically skips if the service is not available. To exclude E2E tests in CI:
-```bash
-# Run all tests except E2E
-make test-ci
-# or
-pytest tests -v -m "not e2e"
-```
-
-To run only E2E tests when services are available:
-```bash
-# Start services first
-docker compose up -d
-# Run E2E tests
-make test-e2e
-# or
-pytest tests -v -m e2e
-```
+E2E tests auto-skip if services unavailable. Exclude with `make test-ci` or `pytest -m "not e2e"`.
 
 ## Continuous Integration
 
@@ -959,7 +867,7 @@ uv run pytest --cov=packages --cov-report=html --cov-report=term-missing
 open htmlcov/index.html
 
 # Coverage by package
-uv run pytest --cov=packages.webui --cov=packages.vecpipe --cov=packages.shared
+uv run pytest --cov=webui --cov=vecpipe --cov=shared
 ```
 
 ### Frontend Coverage
@@ -1016,79 +924,17 @@ export default defineConfig({
 
 ## Troubleshooting
 
-### Common Backend Test Issues
+**Async failures**: Use `@pytest.mark.asyncio` and async fixtures
 
-1. **Async Test Failures**
-   ```python
-   # Ensure proper async test setup
-   @pytest.mark.asyncio
-   async def test_async_operation():
-       # Use async fixtures
-       async with AsyncSession() as session:
-           result = await operation
-           assert result is not None
-   ```
+**DB migration errors**: `dropdb semantik_test && createdb semantik_test && uv run alembic upgrade head`
 
-2. **Database Migration Errors**
-   ```bash
-   # Reset test database
-   dropdb semantik_test
-   createdb semantik_test
-   DATABASE_URL=postgresql://test_user:test_pass@localhost:5432/semantik_test \
-     uv run alembic upgrade head
-   ```
+**WebSocket timeouts**: Add `@pytest.mark.timeout(30)` decorator
 
-3. **WebSocket Test Timeouts**
-   ```python
-   # Increase timeout for WebSocket tests
-   @pytest.mark.timeout(30)  # 30 second timeout
-   async def test_websocket_operation():
-       # Test code
-   ```
+**Frontend act() warnings**: Wrap state updates in `act()`
 
-4. **Mock Service Issues**
-   ```python
-   # Ensure mocks are properly reset
-   @pytest.fixture(autouse=True)
-   def reset_mocks():
-       yield
-       mock.reset_mock()
-   ```
+**Timer issues**: Use `vi.useFakeTimers()` and `vi.useRealTimers()`
 
-### Common Frontend Test Issues
-
-1. **Act() Warnings**
-   ```typescript
-   // Wrap state updates in act()
-   await act(async () => {
-     await user.click(button)
-   })
-   ```
-
-2. **Timer Issues**
-   ```typescript
-   // Use fake timers for time-dependent tests
-   beforeEach(() => {
-     vi.useFakeTimers()
-   })
-   
-   afterEach(() => {
-     vi.runOnlyPendingTimers()
-     vi.useRealTimers()
-   })
-   ```
-
-3. **Unhandled Promise Rejections**
-   ```typescript
-   // Always handle async errors in tests
-   it('handles errors gracefully', async () => {
-     const error = new Error('Test error')
-     mockApi.create.mockRejectedValueOnce(error)
-     
-     render(<Component />)
-     // Test error handling
-   })
-   ```
+**Promise rejections**: Always handle async errors in tests
 
 ## Frontend Testing
 
@@ -1257,71 +1103,20 @@ A convenience script is provided for running frontend tests:
 
 ## Best Practices
 
-### Testing Collections and Operations
+**State transitions**: Test empty→indexing→ready, ready→reindexing→ready, any→deleting
 
-1. **Always Test State Transitions**
-   ```python
-   async def test_collection_state_transitions():
-       # Test: empty -> indexing -> ready
-       # Test: ready -> reindexing -> ready
-       # Test: any -> deleting -> (deleted)
-   ```
+**Concurrency**: Ensure only one operation per collection at a time
 
-2. **Test Concurrent Operations**
-   ```python
-   async def test_concurrent_operations_prevented():
-       # Ensure only one operation per collection at a time
-       operation1 = await start_indexing(collection_id)
-       operation2 = await start_reindexing(collection_id)
-       assert operation2 is None  # Should be rejected
-   ```
+**WebSocket**: Test client updates, reconnection, message ordering
 
-3. **Test WebSocket Updates**
-   ```python
-   async def test_operation_progress_broadcast():
-       # Verify all connected clients receive updates
-       # Test reconnection handling
-       # Test message ordering
-   ```
+**Mocking**: Mock Qdrant, Redis, and Celery for isolated tests
 
-### Mocking External Services
+## Priorities
 
-1. **Qdrant Mocking**
-   ```python
-   @pytest.fixture
-   def mock_qdrant_client():
-       client = AsyncMock()
-       client.create_collection.return_value = True
-       client.search.return_value = SearchResult(...)
-       return client
-   ```
+1. WebSocket coverage (drops, reconnection, ordering)
+2. Performance benchmarks
+3. Contract testing between services
+4. Load testing
+5. Security testing (auth, rate limits, validation)
 
-2. **Redis Mocking**
-   ```python
-   @pytest.fixture
-   def mock_redis():
-       redis = AsyncMock()
-       redis.publish.return_value = 1  # Number of subscribers
-       return redis
-   ```
-
-3. **Celery Task Mocking**
-   ```python
-   @pytest.fixture
-   def mock_celery_app(monkeypatch):
-       mock_task = MagicMock()
-       mock_task.delay.return_value.id = "task-123"
-       monkeypatch.setattr("celery.current_app.send_task", mock_task)
-       return mock_task
-   ```
-
-## Next Steps
-
-1. **Improve WebSocket Test Coverage**: Add tests for connection drops, reconnection, and message ordering
-2. **Add Performance Benchmarks**: Track operation processing times and search latencies
-3. **Implement Contract Testing**: Ensure API compatibility between services
-4. **Add Load Testing**: Test system behavior under concurrent operations
-5. **Create Integration Test Suites**: For complete user workflows
-6. **Add Security Testing**: Test authorization, rate limiting, and input validation
-
-Remember: Tests are living documentation. Keep them clean, focused, and meaningful. A well-tested codebase is a maintainable codebase!
+Tests are living documentation. Keep them clean and focused.

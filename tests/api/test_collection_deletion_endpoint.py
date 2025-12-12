@@ -8,11 +8,10 @@ from fastapi import status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.webui.main import app
-from packages.webui.main import app as main_app
-from packages.webui.services.factory import get_collection_service
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
+from shared.database.models import Collection, CollectionStatus
+from webui.main import app, app as main_app
+from webui.services.factory import get_collection_service
 
 
 @pytest.mark.asyncio()

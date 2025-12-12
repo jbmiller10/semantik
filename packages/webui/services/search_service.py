@@ -8,11 +8,11 @@ from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.config import settings
-from packages.shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
-from packages.shared.database.exceptions import AccessDeniedError, EntityNotFoundError
-from packages.shared.database.models import Collection, CollectionStatus
-from packages.shared.database.repositories.collection_repository import CollectionRepository
+from shared.config import settings
+from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+from shared.database.models import Collection, CollectionStatus
+from shared.database.repositories.collection_repository import CollectionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -115,13 +115,13 @@ class SearchService:
 
         # Build search request for this collection
         base_params = dict(search_params)
-        legacy_hybrid_mode = base_params.pop("hybrid_search_mode", None)
-        canonical_hybrid_mode = base_params.get("hybrid_mode") or legacy_hybrid_mode
+        if "hybrid_search_mode" in base_params:
+            raise ValueError("legacy field 'hybrid_search_mode' is no longer supported")
 
-        if canonical_hybrid_mode is not None:
-            base_params["hybrid_mode"] = normalize_hybrid_mode(canonical_hybrid_mode)
+        if "hybrid_mode" in base_params and base_params["hybrid_mode"] is not None:
+            base_params["hybrid_mode"] = normalize_hybrid_mode(base_params["hybrid_mode"])
 
-        if "keyword_mode" in base_params or canonical_hybrid_mode is not None:
+        if "keyword_mode" in base_params:
             base_params["keyword_mode"] = normalize_keyword_mode(base_params.get("keyword_mode"))
 
         collection_search_params = {
@@ -149,15 +149,17 @@ class SearchService:
             logger.warning(f"Search timeout for collection {collection.name}, retrying...")
             # Calculate extended timeout by multiplying current timeout values
             # Calculate a general timeout based on the maximum of individual timeouts
-            max_timeout = (
+            # Cap the retry timeout to a reasonable limit (e.g., 60s) to prevent excessive hangs
+            max_timeout = min(
                 max(timeout.connect or 0, timeout.read or 0, timeout.write or 0, timeout.pool or 0)
-                * self.retry_timeout_multiplier
+                * self.retry_timeout_multiplier,
+                60.0,
             )
             extended_timeout = httpx.Timeout(
-                timeout=max_timeout if max_timeout > 0 else 120.0,
-                connect=timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0,
-                read=timeout.read * self.retry_timeout_multiplier if timeout.read else 120.0,
-                write=timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0,
+                timeout=max_timeout if max_timeout > 0 else 60.0,
+                connect=min(timeout.connect * self.retry_timeout_multiplier if timeout.connect else 20.0, 30.0),
+                read=min(timeout.read * self.retry_timeout_multiplier if timeout.read else 60.0, 60.0),
+                write=min(timeout.write * self.retry_timeout_multiplier if timeout.write else 20.0, 30.0),
             )
 
             try:
@@ -261,7 +263,7 @@ class SearchService:
         # Validate collection access
         collections = await self.validate_collection_access(collection_uuids, user_id)
 
-        # Normalize legacy hybrid/keyword modes for backward compatibility
+        # Validate requested hybrid/keyword modes
         hybrid_mode = normalize_hybrid_mode(hybrid_mode)
         keyword_mode = normalize_keyword_mode(keyword_mode)
 

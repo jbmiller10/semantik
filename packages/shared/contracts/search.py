@@ -6,31 +6,29 @@ from pydantic import BaseModel, Field, field_validator
 
 
 def normalize_hybrid_mode(value: str | None) -> str:
-    """Map legacy hybrid modes to supported values."""
+    """Normalize hybrid mode to canonical values."""
 
     if value is None:
         return "weighted"
 
     value_normalized = value.strip().lower()
-    legacy_map = {
-        "rerank": "weighted",
-        "reciprocal_rank": "weighted",
-        "relative_score": "weighted",
-    }
-    return legacy_map.get(value_normalized, value_normalized)
+    valid_modes = {"weighted", "filter"}
+    if value_normalized not in valid_modes:
+        raise ValueError(f"Invalid hybrid_mode: {value}. Must be one of {valid_modes}")
+    return value_normalized
 
 
 def normalize_keyword_mode(value: str | None) -> str:
-    """Map legacy keyword modes to supported values."""
+    """Normalize keyword mode to canonical values."""
 
     if value is None:
         return "any"
 
     value_normalized = value.strip().lower()
-    legacy_map = {
-        "bm25": "any",
-    }
-    return legacy_map.get(value_normalized, value_normalized)
+    valid_modes = {"any", "all"}
+    if value_normalized not in valid_modes:
+        raise ValueError(f"Invalid keyword_mode: {value}. Must be one of {valid_modes}")
+    return value_normalized
 
 
 class SearchRequest(BaseModel):

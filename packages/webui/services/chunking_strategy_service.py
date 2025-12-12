@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.models import ChunkingStrategy
+from shared.database.models import ChunkingStrategy
 
 logger = logging.getLogger(__name__)
 

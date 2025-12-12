@@ -1,17 +1,32 @@
 #!/usr/bin/env python
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/app")
+if Path("/app").exists():
+    sys.path.insert(0, "/app")
+else:
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root))
+    sys.path.insert(0, str(root / "packages"))
 
+import os
+
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import packages.webui.auth.utils as auth_utils
-from packages.shared.database.models.user import User
-from packages.shared.database.session import get_db_engine
+from shared.config.postgres import postgres_config
+from shared.database.models import User
+from webui.auth import get_password_hash
 
-engine = get_db_engine()
-Session = sessionmaker(bind=engine)
-db = Session()
+if "JWT_SECRET_KEY" not in os.environ:
+    raise RuntimeError(
+        "JWT_SECRET_KEY must be set before running this script. "
+        "Generate one with `uv run python scripts/generate_jwt_secret.py --write` or export it manually."
+    )
+
+engine = create_engine(postgres_config.sync_database_url)
+SessionLocal = sessionmaker(bind=engine)
+db = SessionLocal()
 
 # Check existing users
 users = db.query(User).all()
@@ -22,7 +37,7 @@ for user in users:
 # Create a test user if needed
 test_user = db.query(User).filter_by(username="testuser").first()
 if not test_user:
-    hashed_password = auth_utils.get_password_hash("testuser123")
+    hashed_password = get_password_hash("testuser123")
     test_user = User(username="testuser", email="test@test.com", hashed_password=hashed_password)
     db.add(test_user)
     db.commit()

@@ -12,10 +12,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from packages.shared.database import get_db
-from packages.webui.auth import get_current_user
-from packages.webui.dependencies import get_collection_for_user
-from packages.webui.main import app
+from shared.database import get_db
+from webui.auth import get_current_user
+from webui.dependencies import get_collection_for_user
+from webui.main import app
 
 
 @pytest.fixture()
@@ -114,7 +114,7 @@ class TestDocumentAPI:
         mock_document_repository.get_by_id = AsyncMock(return_value=mock_document)
 
         # Patch create_document_repository to return our mock
-        with patch("packages.webui.api.v2.documents.create_document_repository", return_value=mock_document_repository):
+        with patch("webui.api.v2.documents.create_document_repository", return_value=mock_document_repository):
             # Test
             response = test_client_with_document_mocks.get(
                 "/api/v2/collections/test-operation/documents/test-doc/content"

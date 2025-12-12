@@ -1,58 +1,35 @@
-# Semantik API Architecture Documentation
+# API Architecture
 
-## Table of Contents
-1. [API Architecture Overview](#api-architecture-overview)
-2. [Search API (vecpipe/search_api.py)](#search-api-vecpipesearch_apipy)
-3. [WebUI API v2 Endpoints](#webui-api-v2-endpoints)
-4. [Request/Response Patterns](#requestresponse-patterns)
-5. [Authentication & Authorization](#authentication--authorization)
-6. [API Integration Patterns](#api-integration-patterns)
-7. [Batch Operations](#batch-operations)
-8. [API Testing](#api-testing)
-9. [WebSocket Endpoints](#websocket-endpoints)
-10. [Error Handling](#error-handling)
+Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plane, port 8080).
 
-## API Architecture Overview
+## Services
 
-Semantik follows a clean three-package architecture with two main services:
+**Vecpipe** - Pure search engine
+- Vector similarity and hybrid search
+- Stateless, uses Qdrant for storage
+- No database access
+- Prometheus metrics on 9091
 
-1. **Vecpipe Service** (`vecpipe/search_api.py`) - Core search engine
-   - Port: 8001 (default)
-   - Pure REST API for vector similarity and hybrid search
-   - Stateless service with Qdrant backend
-   - Uses shared package for embeddings and text processing
-   - No direct database access (uses webui API when needed)
-   - Prometheus metrics on port 9091
+**WebUI** - Control plane
+- REST API v2 + WebSockets
+- Auth, collection management, search proxy
+- Owns PostgreSQL database
+- Metrics on 9092
 
-2. **WebUI Service** (`webui/main.py`) - Control plane and user interface
-   - Port: 8080 (default)
-   - REST API v2 + WebSocket support
-   - User authentication and collection management
-   - Owns and manages the PostgreSQL database
-   - Proxies search requests to Vecpipe API
-   - Uses shared package for embeddings and database operations
+## Design Principles
 
-### Key Design Principles
+- Three-package architecture: vecpipe, webui, shared
+- No circular dependencies
+- RESTful with standard HTTP codes
+- JWT auth for WebUI
+- Collection-centric (not job-based)
+- Async operations with WebSocket progress
 
-- **Clean Architecture**: Three packages - vecpipe (search), webui (control plane), shared (utilities)
-- **No Circular Dependencies**: Both services depend on shared, but not on each other
-- **Database Ownership**: WebUI exclusively owns the PostgreSQL database
-- **RESTful Design**: Standard HTTP methods and status codes
-- **Stateless Search**: All search state stored in Qdrant
-- **JWT Authentication**: Secure token-based auth for WebUI
-- **Real-time Updates**: WebSocket support for operation progress
-- **Metrics Integration**: Prometheus metrics for monitoring
-- **Collection-Centric**: All operations are organized around collections, not jobs
-- **Async Operations**: Long-running tasks are handled through operations that can be tracked
+## Vecpipe Search API
 
-## Vecpipe Search API (vecpipe/search_api.py)
+Core search engine. No auth, no user management.
 
-The Vecpipe service is the core search engine, providing high-performance vector similarity and hybrid search capabilities. It operates independently and has no knowledge of users, authentication, or collection management.
-
-### Base URL
-```
-http://localhost:8001
-```
+**Base URL**: `http://localhost:8000`
 
 ### Endpoints
 
@@ -61,7 +38,7 @@ http://localhost:8001
 GET /
 ```
 
-**Response:**
+**Response (example):**
 ```json
 {
   "status": "healthy",
@@ -73,9 +50,9 @@ GET /
   "embedding_mode": "real",
   "embedding_service": {
     "current_model": "Qwen/Qwen3-Embedding-0.6B",
-    "quantization": "float32",
-    "device": "cuda",
-    "model_info": {...}
+    "provider": "local",
+    "model_info": { ... },
+    "is_mock_mode": false
   }
 }
 ```
@@ -95,7 +72,7 @@ GET /search?q={query}&k={num_results}&collection={collection_name}
 
 **Example:**
 ```bash
-curl "http://localhost:8001/search?q=machine%20learning&k=5&search_type=semantic"
+curl "http://localhost:8000/search?q=machine%20learning&k=5&search_type=semantic"
 ```
 
 **Response:**
@@ -163,7 +140,7 @@ GET /hybrid_search?q={query}&k={num_results}&mode={mode}
 - `q` (required): Search query
 - `k` (optional): Number of results (default: 10)
 - `collection` (optional): Collection name
-- `mode` (optional): Hybrid mode - "filter" or "rerank" (default: "filter")
+- `mode` (optional): Hybrid mode - `"filter"` or `"weighted"` (default: `"filter"`)
 - `keyword_mode` (optional): Keyword matching - "any" or "all" (default: "any")
 - `score_threshold` (optional): Minimum similarity score
 - `model_name` (optional): Override embedding model
@@ -171,7 +148,7 @@ GET /hybrid_search?q={query}&k={num_results}&mode={mode}
 
 **Example:**
 ```bash
-curl "http://localhost:8001/hybrid_search?q=python%20async%20programming&k=10&mode=rerank&keyword_mode=all"
+curl "http://localhost:8000/hybrid_search?q=python%20async%20programming&k=10&mode=weighted&keyword_mode=all"
 ```
 
 **Response:**
@@ -192,7 +169,7 @@ curl "http://localhost:8001/hybrid_search?q=python%20async%20programming&k=10&mo
   ],
   "num_results": 10,
   "keywords_extracted": ["python", "async", "programming"],
-  "search_mode": "rerank"
+  "search_mode": "weighted"
 }
 ```
 
@@ -362,14 +339,11 @@ GET /embedding/info
 }
 ```
 
-## WebUI API v2 Endpoints
+## WebUI API v2
 
-The WebUI service provides user-facing APIs for authentication, collection management, and search proxying. The v2 API introduces a collection-centric architecture replacing the legacy job-based system.
+User-facing API for auth, collections, and search. Collection-centric architecture.
 
-### Base URL
-```
-http://localhost:8080
-```
+**Base URL**: `http://localhost:8080`
 
 ### Authentication Endpoints
 
@@ -605,14 +579,16 @@ Content-Type: application/json
 ```json
 {
   "source_type": "directory",
-  "source_path": "/docs/api",
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**"]
-  },
-  "config": {
+  "source_config": {
+    "path": "/docs/api",
     "recursive": true,
     "follow_symlinks": false
+  },
+  "config": {
+    "filters": {
+      "extensions": [".md", ".txt", ".pdf"],
+      "ignore_patterns": ["**/node_modules/**"]
+    }
   }
 }
 ```
@@ -625,8 +601,19 @@ Content-Type: application/json
   "type": "append",
   "status": "pending",
   "config": {
+    "source_id": 1,
+    "source_type": "directory",
+    "source_config": {
+      "path": "/docs/technical",
+      "recursive": true
+    },
     "source_path": "/docs/technical",
-    "recursive": true
+    "additional_config": {
+      "filters": {
+        "extensions": [".md", ".txt", ".pdf"],
+        "ignore_patterns": ["**/node_modules/**"]
+      }
+    }
   },
   "created_at": "2024-01-15T10:00:00Z",
   "started_at": null,
@@ -649,6 +636,7 @@ Authorization: Bearer {access_token}
   "type": "remove_source",
   "status": "pending",
   "config": {
+    "source_id": 1,
     "source_path": "/docs/api"
   },
   "created_at": "2024-01-15T11:00:00Z",
@@ -856,7 +844,7 @@ Content-Type: application/json
   },
   "include_content": true,
   "hybrid_alpha": 0.7,
-  "hybrid_mode": "rerank",
+  "hybrid_mode": "weighted",
   "keyword_mode": "any"
 }
 ```
@@ -1059,34 +1047,9 @@ DELETE /internal/api/collections/{collection_id}/vector-store
 
 ## Request/Response Patterns
 
-### Standard Response Format
+**Success**: `data` for single items, `results` for lists, optional `metadata` for pagination.
 
-All successful responses follow this pattern:
-```json
-{
-  "data": {...},     // For single items
-  "results": [...],  // For lists
-  "message": "...",  // Optional success message
-  "metadata": {      // Optional metadata
-    "total": 100,
-    "page": 1,
-    "per_page": 20
-  }
-}
-```
-
-### Error Response Format
-
-All error responses follow RFC 7807 Problem Details:
-```json
-{
-  "detail": "Detailed error message",
-  "status": 400,
-  "title": "Bad Request",
-  "type": "about:blank",
-  "instance": "/api/v2/collections/invalid-id"
-}
-```
+**Errors**: RFC 7807 Problem Details with `detail`, `status`, `title`, `type`, `instance`.
 
 ### Common HTTP Status Codes
 
@@ -1151,387 +1114,73 @@ Search endpoints support Qdrant filter syntax:
 }
 ```
 
-## Authentication & Authorization
+## Authentication
 
-### JWT Token Flow
+JWT tokens: access (30min, HS256) + refresh (30 days, hashed in DB).
 
-1. **Registration**: Create user account
-2. **Login**: Exchange credentials for tokens
-3. **Access**: Include access token in Authorization header
-4. **Refresh**: Use refresh token to get new access token
-5. **Logout**: Revoke refresh token
+Flow: Register → Login → Access (with token) → Refresh → Logout
 
-### Token Structure
+**Protected**: Everything except `/`, `/login`, `/api/auth/register`, `/api/auth/login`, `/internal/api/*`
 
-**Access Token (JWT)**:
-- Algorithm: HS256
-- Expiration: 30 minutes
-- Claims:
-  ```json
-  {
-    "sub": "username",
-    "exp": 1705318800,
-    "iat": 1705317000
-  }
-  ```
+**Header**: `Authorization: Bearer <token>`
 
-**Refresh Token**:
-- Random secure token
-- Expiration: 30 days
-- Stored hashed in database
+## Service Integration
 
-### Protected Endpoints
+Client → WebUI (auth) → Vecpipe (search) → Qdrant
 
-All endpoints except the following require authentication:
-- `GET /` (root)
-- `GET /login`
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /internal/api/*` (internal endpoints)
+WebUI owns PostgreSQL. Both services use shared package.
 
-### Authorization Header
-
-```http
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-```
-
-## API Integration Patterns
-
-### WebUI to Vecpipe API Proxy
-
-The WebUI service acts as a control plane and proxy for search requests:
-
-1. **Client** → WebUI: Authenticated request with collection context
-2. **WebUI** → Vecpipe API: Transform and forward request
-3. **Vecpipe** → Qdrant: Execute vector search using shared embedding service
-4. **Response flows back** with transformed format
-
-**Key Points**:
-- WebUI handles all authentication and authorization
-- Vecpipe focuses purely on search functionality
-- Both services use the shared package for common operations
-
-### Service Communication
-
-```mermaid
-graph TD
-    Client[Client] --> WebUI[WebUI Service<br/>Control Plane]
-    WebUI --> Vecpipe[Vecpipe Service<br/>Search Engine]
-    WebUI --> PostgreSQL[(PostgreSQL DB<br/>Owned by WebUI)]
-    Vecpipe --> Qdrant[(Qdrant<br/>Vector DB)]
-    
-    WebUI -.->|uses| Shared[Shared Package]
-    Vecpipe -.->|uses| Shared
-    
-    style WebUI fill:#f9f,stroke:#333,stroke-width:2px
-    style Vecpipe fill:#9ff,stroke:#333,stroke-width:2px
-    style Shared fill:#ff9,stroke:#333,stroke-width:2px
-```
-
-### Retry Strategy
-
-For inter-service communication:
-- Max retries: 3
-- Backoff: Exponential (1s, 2s, 4s)
-- Timeout: 30 seconds per request
-
-### Collection Metadata Synchronization
-
-When creating a collection:
-1. WebUI creates collection in PostgreSQL via CollectionRepository
-2. WebUI initializes Qdrant collection with unique name
-3. Collection status updated to 'ready'
-4. Vecpipe reads collection by vector_store_name for search
+**Retry**: 3 attempts, exponential backoff (1s, 2s, 4s), 30s timeout
 
 ## Batch Operations
 
-### Batch Search
+**Batch search**: Parallel embeddings + parallel Qdrant queries = fast multi-query searches.
 
-The Search API supports efficient batch searching:
+**Document processing**: Process chunks in batches, upload to Qdrant 100 at a time, GC between files.
 
-**Advantages**:
-- Parallel embedding generation
-- Reduced overhead for multiple queries
-- Single HTTP request for multiple searches
+## Testing
 
-**Implementation**:
-```python
-# Parallel embedding generation
-embedding_tasks = [
-    generate_embedding_async(query, model, quant, instruction) 
-    for query in queries
-]
-embeddings = await asyncio.gather(*embedding_tasks)
+Test suite: `apps/webui-react/tests/api_test_suite.py`
 
-# Parallel search execution
-search_tasks = [
-    search_qdrant(host, port, collection, vector, k)
-    for vector in embeddings
-]
-results = await asyncio.gather(*search_tasks)
-```
+Categories: Health, auth, collections, operations, search, WebSocket, errors
 
-### Batch Document Processing
-
-Operation processing handles documents in batches:
-- Chunk batching: Process multiple chunks together
-- Upload batching: Upload to Qdrant in batches of 100
-- Memory management: Force garbage collection between files
-
-## API Testing
-
-### Test Suite Location
-
-```
-apps/webui-react/tests/api_test_suite.py
-```
-
-### Test Categories
-
-1. **Health Checks**: API availability
-2. **Authentication**: Login, registration, token refresh
-3. **Collection Management**: Create, update, delete, list
-4. **Operation Management**: Create, monitor, cancel
-5. **Search**: Vector, hybrid, batch search
-6. **WebSocket**: Real-time updates
-7. **Error Handling**: Invalid requests, edge cases
-
-### Running Tests
-
-```bash
-python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>
-```
-
-### Example Test Request
-
-```python
-async def test_multi_collection_search():
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "collection_uuids": [
-                "550e8400-e29b-41d4-a716-446655440000"
-            ],
-            "query": "machine learning",
-            "k": 10,
-            "use_reranker": True
-        }
-        
-        async with session.post(
-            f"{base_url}/api/v2/search",
-            json=payload,
-            headers={"Authorization": f"Bearer {token}"}
-        ) as response:
-            assert response.status == 200
-            data = await response.json()
-            assert len(data["results"]) <= 10
-```
+Run: `python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>`
 
 ## WebSocket Endpoints
 
-### Operation Progress WebSocket
+WebSockets are mounted at the app level and authenticate via `?token=<jwt_token>` (see `packages/webui/main.py`).
 
-```
-ws://localhost:8080/api/v2/operations/{operation_uuid}/ws?token={jwt_token}
-```
+- **Global operations stream**: `ws://localhost:8080/ws/operations?token={jwt_token}`
+- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}`
+- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}?token={jwt_token}`
 
-**Connection Flow**:
-1. Create operation via REST API
-2. Connect WebSocket with operation UUID and JWT token as query parameter
-3. Receive real-time progress updates
-4. Connection closes on completion
+Operations are started via REST and emit task‑specific update events. Directory scans are started with `POST /api/v2/directory-scan/preview`.
 
-**Authentication**: JWT token must be provided as a query parameter `?token={jwt_token}` in the WebSocket URL.
-
-**Message Types**:
-```json
-// Progress update
-{
-  "type": "progress",
-  "percentage": 45.5,
-  "processed_files": 68,
-  "total_files": 150,
-  "current_file": "api/authentication.md"
-}
-
-// File processed
-{
-  "type": "file_processed",
-  "file_path": "/docs/api/authentication.md",
-  "chunks_created": 15,
-  "status": "completed"
-}
-
-// Error
-{
-  "type": "error",
-  "message": "Failed to process file",
-  "file_path": "/docs/corrupted.pdf",
-  "error_code": "PARSE_ERROR"
-}
-
-// Completed
-{
-  "type": "completed",
-  "total_files": 150,
-  "processed_files": 148,
-  "failed_files": 2,
-  "total_chunks": 3420,
-  "duration_seconds": 125.5
-}
-```
-
-**Note:** Directory scan WebSocket endpoint is not currently implemented in the v2 API. Use the REST endpoint for directory scanning.
-
-**Client Messages**:
-```json
-// Start scan
-{
-  "action": "scan",
-  "path": "/path/to/directory",
-  "recursive": true,
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"]
-  }
-}
-
-// Cancel scan
-{
-  "action": "cancel"
-}
-```
-
-**Server Messages**:
-```json
-// Scan started
-{
-  "type": "started",
-  "path": "/path/to/directory"
-}
-
-// Progress update
-{
-  "type": "progress",
-  "scanned": 100,
-  "total": 500,
-  "current_path": "/path/to/current/file"
-}
-
-// Scan completed
-{
-  "type": "completed",
-  "files": [...],
-  "count": 42
-}
-
-// Error
-{
-  "type": "error",
-  "error": "Permission denied"
-}
-```
+Full message schemas and event types are documented in `docs/WEBSOCKET_API.md`.
 
 ## Error Handling
 
-### Rate Limiting
+**Rate limits** (slowapi): Login 5/min, Search 30/min, Docs 10/min, General 100/min
 
-Using slowapi for rate limiting:
-- Login: 5 requests/minute
-- Search: 30 requests/minute  
-- Document access: 10 requests/minute
-- General API: 100 requests/minute
+**Validation**: Pydantic errors with field locations and messages (422)
 
-**Rate Limit Response**:
-```json
-{
-  "detail": "Rate limit exceeded: 30 per 1 minute",
-  "status": 429
-}
-```
+**Service errors**: 503 when downstream fails, 401 for auth failures
 
-### Validation Errors
+## Performance
 
-Using Pydantic for request validation:
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "chunk_size"],
-      "msg": "ensure this value is greater than or equal to 100",
-      "type": "value_error.number.not_ge"
-    }
-  ],
-  "status": 422
-}
-```
+**Caching**: Models (5min), documents (1hr), search results (client-side)
 
-### Service Errors
+**Timeouts**: Search 30s, embeddings 5min, WebSocket no timeout, extraction 5min/file
 
-When downstream services fail:
-```json
-{
-  "detail": "Search service unavailable",
-  "status": 503
-}
-```
+**Limits**: 100 results/query, 500MB file size, 50k token chunks, 100 point batches
 
-### Security Errors
+**Metrics** (Prometheus): Search API on 9091, WebUI on 9092
 
-For authentication/authorization failures:
-```json
-{
-  "detail": "Could not validate credentials",
-  "status": 401
-}
-```
+## Versioning
 
-## Performance Considerations
+WebUI: `/api/v2/` prefix. Search API: No versioning (stable).
 
-### Caching
+## Docs
 
-- **Model caching**: Models kept in memory for 5 minutes
-- **Document caching**: 1-hour cache headers for documents
-- **Search results**: Client-side caching recommended
-
-### Timeouts
-
-- **Search requests**: 30 seconds
-- **Embedding generation**: 5 minutes per operation
-- **WebSocket idle**: No timeout (kept alive)
-- **Document extraction**: 5 minutes per file
-
-### Resource Limits
-
-- **Max search results**: 100 per query
-- **Max batch queries**: Unlimited (memory permitting)
-- **Max file size**: 500 MB for processing
-- **Max chunk size**: 50,000 tokens
-- **Upload batch size**: 100 points per batch
-
-### Metrics
-
-Both services expose Prometheus metrics:
-- **Search API**: Port 9091
-- **WebUI**: Port 9092
-
-Key metrics:
-- `search_api_latency_seconds`: Search request latency
-- `search_api_requests_total`: Total requests by endpoint
-- `embedding_generation_duration_seconds`: Embedding time
-- `operation_processing_duration_seconds`: Operation completion time
-- `active_websocket_connections`: Current WebSocket connections
-
-## API Versioning
-
-Currently, the API uses URL-based versioning:
-- WebUI API: `/api/v2/` prefix for new endpoints
-- Search API: No versioning (stable interface)
-
-Future versions will maintain backward compatibility or provide migration guides.
-
-## OpenAPI/Swagger Documentation
-
-Both services provide OpenAPI documentation:
-- Search API: `http://localhost:8001/docs`
+- Search API: `http://localhost:8000/docs`
 - WebUI: `http://localhost:8080/docs`
-
-The interactive documentation allows testing endpoints directly in the browser.

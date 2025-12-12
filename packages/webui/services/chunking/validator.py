@@ -9,9 +9,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
-from packages.shared.database.repositories.collection_repository import CollectionRepository
-from packages.shared.database.repositories.document_repository import DocumentRepository
+from shared.chunking.infrastructure.exceptions import PermissionDeniedError, ValidationError
+from shared.database.repositories.collection_repository import CollectionRepository
+from shared.database.repositories.document_repository import DocumentRepository
+from webui.services.chunking.strategy_registry import list_api_strategy_ids
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +21,12 @@ class ChunkingValidator:
     """Service responsible for validation of chunking operations."""
 
     # Configuration constraints
-    MIN_CHUNK_SIZE = 50
+    MIN_CHUNK_SIZE = 10
     MAX_CHUNK_SIZE = 10000
     MIN_OVERLAP = 0
     MAX_OVERLAP_RATIO = 0.5  # 50% max overlap
     MAX_CONTENT_SIZE = 10 * 1024 * 1024  # 10MB
     MAX_DOCUMENT_SIZE = 10 * 1024 * 1024  # 10MB
-
-    # Valid strategies
-    VALID_STRATEGIES = [
-        "fixed_size",
-        "sliding_window",
-        "semantic",
-        "recursive",
-        "document_structure",
-        "markdown",
-        "hierarchical",
-        "hybrid",
-    ]
 
     def __init__(
         self,
@@ -136,11 +125,16 @@ class ChunkingValidator:
         if not strategy:
             raise ValidationError(field="strategy", value=None, reason="Strategy is required")
 
-        if strategy not in self.VALID_STRATEGIES:
+        from webui.services.chunking.strategy_registry import resolve_api_identifier
+
+        resolved = resolve_api_identifier(strategy)
+        valid_strategies = list_api_strategy_ids()
+
+        if not resolved or resolved not in valid_strategies:
             raise ValidationError(
                 field="strategy",
                 value=strategy,
-                reason=f"Invalid strategy. Valid strategies: {', '.join(self.VALID_STRATEGIES)}",
+                reason=f"Invalid strategy. Valid strategies: {', '.join(valid_strategies)}",
             )
 
     def validate_config(self, strategy: str, config: dict[str, Any]) -> None:

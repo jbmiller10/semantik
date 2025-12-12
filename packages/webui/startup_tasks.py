@@ -8,8 +8,10 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from packages.shared.database.database import get_db
-from packages.webui.services.chunking_strategy_service import ChunkingStrategyService
+from shared.chunking.plugin_loader import load_chunking_plugins
+from shared.database.database import get_db
+from shared.embedding.plugin_loader import ensure_providers_registered, load_embedding_plugins
+from webui.services.chunking_strategy_service import ChunkingStrategyService
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,20 @@ async def ensure_default_data() -> None:
     This function is idempotent and can be called multiple times safely.
     """
     logger.info("Running startup tasks to ensure default data...")
+
+    # Ensure built-in embedding providers are registered
+    ensure_providers_registered()
+    logger.info("Built-in embedding providers registered")
+
+    # Load any external embedding provider plugins
+    registered_embedding_plugins = load_embedding_plugins()
+    if registered_embedding_plugins:
+        logger.info("Loaded embedding plugins: %s", ", ".join(registered_embedding_plugins))
+
+    # Load any external chunking strategy plugins before interacting with metadata or DB.
+    registered_plugins = load_chunking_plugins()
+    if registered_plugins:
+        logger.info("Loaded chunking plugins: %s", ", ".join(registered_plugins))
 
     async for session in get_db():
         await ensure_default_chunking_strategies(session)

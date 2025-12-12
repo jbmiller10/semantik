@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from packages.shared.config import settings
-from packages.vecpipe.search_api import app
+from shared.config import settings
+from vecpipe.search_api import app
 
 # NOTE: This test verifies that generate_embedding_async is called correctly,
 # but due to settings being loaded at module import time, it may use mock embeddings
@@ -60,10 +60,10 @@ class TestSearchAPIIntegration:
             else:
                 os.environ[key] = original
 
-    @patch("packages.vecpipe.search_api.generate_mock_embedding")
-    @patch("packages.vecpipe.search_api.generate_embedding_async")
-    @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.shared.embedding.EmbeddingService")
+    @patch("vecpipe.search_api.generate_mock_embedding")
+    @patch("vecpipe.search_api.generate_embedding_async")
+    @patch("vecpipe.search_utils.AsyncQdrantClient")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_endpoint_uses_embedding_service(
@@ -212,10 +212,10 @@ class TestSearchAPIIntegration:
                     service_call_args[0][3] == "Represent this sentence for searching relevant passages:"
                 )  # Instruction
 
-    @patch("packages.vecpipe.search_api.generate_mock_embedding")
-    @patch("packages.vecpipe.search_api.generate_embedding_async")
-    @patch("packages.vecpipe.search_utils.AsyncQdrantClient")
-    @patch("packages.shared.embedding.EmbeddingService")
+    @patch("vecpipe.search_api.generate_mock_embedding")
+    @patch("vecpipe.search_api.generate_embedding_async")
+    @patch("vecpipe.search_utils.AsyncQdrantClient")
+    @patch("shared.embedding.EmbeddingService")
     @patch("httpx.AsyncClient.get")
     @patch("httpx.AsyncClient.post")
     def test_search_with_custom_model_params(

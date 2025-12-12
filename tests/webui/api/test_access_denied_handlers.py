@@ -5,14 +5,14 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from packages.shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
+from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 
 try:
     from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError  # type: ignore[import]
 except Exception:  # pragma: no cover - shared may be unavailable in some environments
     SharedAccessDeniedError = None  # type: ignore[assignment]
 
-from packages.webui.middleware.exception_handlers import register_global_exception_handlers
+from webui.middleware.exception_handlers import register_global_exception_handlers
 
 
 def _app_with_handlers() -> TestClient:

@@ -7,22 +7,17 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from shared.database.exceptions import AccessDeniedError as SharedAccessDeniedError
-from shared.database.exceptions import InvalidStateError as SharedInvalidStateError
 from sqlalchemy import select
 
-from packages.shared.database.exceptions import AccessDeniedError as PackageAccessDeniedError
-from packages.shared.database.exceptions import InvalidStateError as PackageInvalidStateError
-from packages.shared.database.models import (
-    Collection,
-    CollectionStatus,
-    Operation,
-    OperationStatus,
-    OperationType,
-    User,
+from shared.database.exceptions import (
+    AccessDeniedError as PackageAccessDeniedError,
+    AccessDeniedError as SharedAccessDeniedError,
+    InvalidStateError as PackageInvalidStateError,
+    InvalidStateError as SharedInvalidStateError,
 )
-from packages.webui.services import collection_service as collection_service_module
-from packages.webui.services.factory import create_collection_service
+from shared.database.models import Collection, CollectionStatus, Operation, OperationStatus, OperationType, User
+from webui.services import collection_service as collection_service_module
+from webui.services.factory import create_collection_service
 
 
 @pytest.mark.asyncio()
@@ -262,13 +257,15 @@ class TestCollectionServiceIntegration:
         op_payload = await service.add_source(
             collection_id=collection_dict["id"],
             user_id=owner.id,
-            source_path="/mnt/data/new-docs",
-            source_config={"recursive": True},
+            source_type="directory",
+            source_config={"path": "/mnt/data/new-docs", "recursive": True},
         )
 
         assert op_payload["type"] == OperationType.APPEND.value
         assert op_payload["config"]["source_path"] == "/mnt/data/new-docs"
+        assert op_payload["config"]["source_config"]["path"] == "/mnt/data/new-docs"
         assert op_payload["config"]["source_config"]["recursive"] is True
+        assert op_payload["config"]["source_id"] is not None  # source_id now included
 
         # Celery task dispatched for the new operation
         assert len(capture_celery) == 1
@@ -287,6 +284,8 @@ class TestCollectionServiceIntegration:
         capture_celery,
     ) -> None:
         """Removing a source should schedule a REMOVE_SOURCE operation."""
+        from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+
         owner = await user_factory()
         collection_dict, operation_dict = await service.create_collection(
             user_id=owner.id,
@@ -300,6 +299,15 @@ class TestCollectionServiceIntegration:
             collection_dict["id"],
         )
 
+        # Create a collection source that we'll remove
+        source_repo = CollectionSourceRepository(db_session)
+        source = await source_repo.create(
+            collection_id=collection_dict["id"],
+            source_type="directory",
+            source_path="/mnt/data/old-docs",
+        )
+        await db_session.commit()
+
         capture_celery.clear()
 
         op_payload = await service.remove_source(
@@ -310,6 +318,7 @@ class TestCollectionServiceIntegration:
 
         assert op_payload["type"] == OperationType.REMOVE_SOURCE.value
         assert op_payload["config"]["source_path"] == "/mnt/data/old-docs"
+        assert op_payload["config"]["source_id"] == source.id
 
         assert len(capture_celery) == 1
         assert capture_celery[0]["args"] == [op_payload["uuid"]]

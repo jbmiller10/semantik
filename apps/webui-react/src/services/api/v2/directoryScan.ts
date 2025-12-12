@@ -1,5 +1,6 @@
 import apiClient from './client';
 import type { DirectoryScanRequest, DirectoryScanResponse } from './types';
+import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
 
 /**
  * Directory scan API endpoints for v2 API
@@ -22,26 +23,28 @@ export const directoryScanV2Api = {
    * @param scanId - The scan ID to track
    * @returns WebSocket URL with authentication token
    */
-  getWebSocketUrl: (scanId: string): string => {
-    // Get auth state from Zustand store persisted in localStorage
-    const authStorage = localStorage.getItem('auth-storage');
-    let token = '';
-    
-    if (authStorage) {
-      try {
-        const authState = JSON.parse(authStorage);
-        token = authState.state?.token || '';
-      } catch (error) {
-        console.error('Failed to parse auth storage:', error);
-      }
-    }
-    
-    const baseUrl = window.location.origin.replace(/^http/, 'ws');
-    return `${baseUrl}/ws/directory-scan/${scanId}?token=${encodeURIComponent(token)}`;
+  getWebSocketUrl: (scanId: string): string | null => {
+    return buildWebSocketUrl(`/ws/directory-scan/${scanId}`, getAuthToken());
   },
 };
 
 // Helper function to generate a scan ID
 export const generateScanId = (): string => {
-  return crypto.randomUUID();
+  const globalCrypto = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+
+  if (globalCrypto?.randomUUID) {
+    return globalCrypto.randomUUID();
+  }
+
+  if (globalCrypto?.getRandomValues) {
+    const bytes = globalCrypto.getRandomValues(new Uint8Array(16));
+    // RFC 4122 variant 1 UUID layout
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+
+  // Last-resort fallback for very old browsers: timestamp + random suffix
+  return `scan-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
 };

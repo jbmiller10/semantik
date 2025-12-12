@@ -11,13 +11,15 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .base import ApiKeyRepository, AuthRepository, UserRepository
-from .database import AsyncSessionLocal
+from .database import AsyncSessionLocal, ensure_async_sessionmaker
 
 if TYPE_CHECKING:
     from .repositories.chunk_repository import ChunkRepository
     from .repositories.collection_repository import CollectionRepository
+    from .repositories.collection_source_repository import CollectionSourceRepository
     from .repositories.document_repository import DocumentRepository
     from .repositories.operation_repository import OperationRepository
+    from .repositories.projection_run_repository import ProjectionRunRepository
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +33,10 @@ def create_user_repository(session: AsyncSession) -> UserRepository:
     Returns:
         PostgreSQL UserRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLUserRepository
+    from webui.repositories.postgres import PostgreSQLUserRepository
 
-    return PostgreSQLUserRepository(session)
+    result: UserRepository = PostgreSQLUserRepository(session)
+    return result
 
 
 def create_auth_repository(session: AsyncSession) -> AuthRepository:
@@ -45,9 +48,10 @@ def create_auth_repository(session: AsyncSession) -> AuthRepository:
     Returns:
         PostgreSQL AuthRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLAuthRepository
+    from webui.repositories.postgres import PostgreSQLAuthRepository
 
-    return PostgreSQLAuthRepository(session)
+    result: AuthRepository = PostgreSQLAuthRepository(session)
+    return result
 
 
 def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
@@ -59,9 +63,10 @@ def create_api_key_repository(session: AsyncSession) -> ApiKeyRepository:
     Returns:
         PostgreSQL ApiKeyRepository instance
     """
-    from packages.webui.repositories.postgres import PostgreSQLApiKeyRepository
+    from webui.repositories.postgres import PostgreSQLApiKeyRepository
 
-    return PostgreSQLApiKeyRepository(session)
+    result: ApiKeyRepository = PostgreSQLApiKeyRepository(session)
+    return result
 
 
 def create_operation_repository(session: AsyncSession) -> "OperationRepository":
@@ -92,6 +97,14 @@ def create_document_repository(session: AsyncSession) -> "DocumentRepository":
     return DocumentRepository(session)
 
 
+def create_projection_run_repository(session: AsyncSession) -> "ProjectionRunRepository":
+    """Create a projection run repository instance."""
+
+    from .repositories.projection_run_repository import ProjectionRunRepository
+
+    return ProjectionRunRepository(session)
+
+
 def create_collection_repository(session: AsyncSession) -> "CollectionRepository":
     """Create a collection repository instance.
 
@@ -104,6 +117,20 @@ def create_collection_repository(session: AsyncSession) -> "CollectionRepository
     from .repositories.collection_repository import CollectionRepository
 
     return CollectionRepository(session)
+
+
+def create_collection_source_repository(session: AsyncSession) -> "CollectionSourceRepository":
+    """Create a collection source repository instance.
+
+    Args:
+        session: AsyncSession for database operations
+
+    Returns:
+        CollectionSourceRepository instance
+    """
+    from .repositories.collection_source_repository import CollectionSourceRepository
+
+    return CollectionSourceRepository(session)
 
 
 def create_chunk_repository(session: AsyncSession) -> "ChunkRepository":
@@ -136,7 +163,9 @@ def create_all_repositories(session: AsyncSession) -> dict[str, object]:
         "operation": create_operation_repository(session),
         "document": create_document_repository(session),
         "collection": create_collection_repository(session),
+        "collection_source": create_collection_source_repository(session),
         "chunk": create_chunk_repository(session),
+        "projection_run": create_projection_run_repository(session),
     }
 
 
@@ -147,9 +176,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         AsyncSession instance
     """
-    if AsyncSessionLocal is None:
-        raise RuntimeError("Database not initialized")
-    async with AsyncSessionLocal() as session:
+    sessionmaker = AsyncSessionLocal
+    if sessionmaker is None:
+        sessionmaker = await ensure_async_sessionmaker()
+    async with sessionmaker() as session:
         try:
             yield session
             await session.commit()
