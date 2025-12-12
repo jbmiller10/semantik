@@ -103,133 +103,23 @@ Use nginx upstream for load balancing or switch to Docker Swarm/Kubernetes.
 
 ## Maintenance
 
-### Regular Tasks
+Daily: Monitor logs, check disk
+Weekly: Review metrics, clean operation files
+Monthly: Security updates, performance review
 
-#### Daily
-- Monitor service logs for errors
-- Check disk usage
-- Verify backup completion
-
-#### Weekly
-- Review performance metrics
-- Clean old operation files
-- Update container images
-
-#### Monthly
-- Security updates
-- Performance optimization
-- Capacity planning
-
-### Update Procedure
-
+**Updates:**
 ```bash
-# 1. Backup current state
 ./backup.sh
-
-# 2. Pull latest changes
-git pull origin main
-
-# 3. Update images
-docker compose pull
-
-# 4. Rebuild custom images
+git pull
 docker compose build
-
-# 5. Apply database migrations
 docker compose run --rm webui alembic upgrade head
-
-# 6. Restart services
-docker compose down
-docker compose up -d
-
-# 7. Verify health
-./health-check.sh
+docker compose down && docker compose up -d
 ```
 
-## Disaster Recovery
-
-### Backup Restoration
-
+**Restore:**
 ```bash
-# 1. Stop services
 docker compose down
-
-# 2. Restore PostgreSQL
 docker compose up -d postgres
-docker compose exec -T postgres psql -U semantik -d postgres < backup/postgres.sql
-
-# 3. Restore Qdrant
-docker compose up -d qdrant
-# Upload snapshot through Qdrant API
-
-# 4. Start remaining services
+docker compose exec -T postgres psql -U semantik -d postgres < backup.sql
 docker compose up -d
 ```
-
-### Rollback Procedure
-
-```bash
-# Tag current version
-docker tag semantik:latest semantik:rollback
-
-# Deploy previous version
-docker compose down
-docker tag semantik:v1.0.0 semantik:latest
-docker compose up -d
-```
-
-## Security Checklist
-
-- [ ] Change all default passwords
-- [ ] Generate new JWT secret key
-- [ ] Enable HTTPS with valid certificates
-- [ ] Configure firewall rules
-- [ ] Implement rate limiting
-- [ ] Enable audit logging
-- [ ] Regular security updates
-- [ ] Encrypt sensitive data at rest
-- [ ] Use Docker secrets for credentials
-- [ ] Implement network segmentation
-
-## Performance Tuning
-
-### Database Optimization
-
-```sql
--- PostgreSQL tuning
-ALTER SYSTEM SET shared_buffers = '256MB';
-ALTER SYSTEM SET work_mem = '16MB';
-ALTER SYSTEM SET maintenance_work_mem = '64MB';
-ALTER SYSTEM SET effective_cache_size = '1GB';
-```
-
-### Redis Optimization
-
-```bash
-# Redis configuration
-maxmemory 2gb
-maxmemory-policy allkeys-lru
-save ""  # Disable RDB saves for performance
-```
-
-### GPU Optimization
-
-```bash
-# Memory optimization
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
-
-# Use TensorCores
-TORCH_CUDNN_V8_API_ENABLED=1
-
-# Enable mixed precision
-USE_AMP=true
-```
-
-## Support
-
-For deployment issues:
-1. Check service logs first
-2. Verify environment configuration
-3. Review this deployment guide
-4. Check GitHub issues
-5. Contact support team
