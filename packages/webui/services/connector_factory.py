@@ -1,18 +1,19 @@
 """Factory for creating document source connectors."""
 
-import logging
-from typing import Any
+from __future__ import annotations
 
-from shared.connectors.base import BaseConnector
-from shared.connectors.git import GitConnector
-from shared.connectors.imap import ImapConnector
-from shared.connectors.local import LocalFileConnector
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from shared.connectors.base import BaseConnector
 
 logger = logging.getLogger(__name__)
 
-# Static registry mapping source_type to connector class
-# LocalFileConnector will be added in Ticket 6
-_CONNECTOR_REGISTRY: dict[str, type[BaseConnector]] = {}
+# Registry maps source_type to either:
+# - A connector class (type[BaseConnector])
+# - A tuple of (module_path, class_name) for lazy loading
+_CONNECTOR_REGISTRY: dict[str, type[BaseConnector] | tuple[str, str]] = {}
 
 
 class ConnectorFactory:
@@ -26,6 +27,20 @@ class ConnectorFactory:
         )
         ```
     """
+
+    @classmethod
+    def _resolve_connector_class(cls, entry: type[BaseConnector] | tuple[str, str]) -> type[BaseConnector]:
+        """Resolve a registry entry to a connector class.
+
+        Handles both direct class references and lazy (module, class_name) tuples.
+        """
+        if isinstance(entry, tuple):
+            import importlib
+
+            module_path, class_name = entry
+            module = importlib.import_module(module_path)
+            return getattr(module, class_name)  # type: ignore[no-any-return]
+        return entry
 
     @classmethod
     def get_connector(
@@ -52,7 +67,8 @@ class ConnectorFactory:
             available = list(_CONNECTOR_REGISTRY.keys()) or ["none registered"]
             raise ValueError(f"Unknown source type: {source_type!r}. Available types: {', '.join(available)}")
 
-        connector_cls = _CONNECTOR_REGISTRY[normalized_type]
+        entry = _CONNECTOR_REGISTRY[normalized_type]
+        connector_cls = cls._resolve_connector_class(entry)
         logger.debug(f"Creating connector for source_type={normalized_type}")
         return connector_cls(config)
 
@@ -71,6 +87,26 @@ class ConnectorFactory:
         normalized_type = source_type.lower().strip()
         _CONNECTOR_REGISTRY[normalized_type] = connector_cls
         logger.debug(f"Registered connector: {normalized_type} -> {connector_cls.__name__}")
+
+    @classmethod
+    def register_connector_lazy(
+        cls,
+        source_type: str,
+        module_path: str,
+        class_name: str,
+    ) -> None:
+        """Register a connector class lazily by module path.
+
+        The connector class will only be imported when first used.
+
+        Args:
+            source_type: Type identifier (will be lowercased).
+            module_path: Full module path (e.g., "shared.connectors.git").
+            class_name: Class name within the module (e.g., "GitConnector").
+        """
+        normalized_type = source_type.lower().strip()
+        _CONNECTOR_REGISTRY[normalized_type] = (module_path, class_name)
+        logger.debug(f"Registered connector (lazy): {normalized_type} -> {module_path}.{class_name}")
 
     @classmethod
     def list_available_types(cls) -> list[str]:
@@ -95,7 +131,22 @@ def register_connector(
     ConnectorFactory.register_connector(source_type, connector_cls)
 
 
-# Register built-in connectors
-register_connector("directory", LocalFileConnector)
-register_connector("git", GitConnector)
-register_connector("imap", ImapConnector)
+def register_connector_lazy(
+    source_type: str,
+    module_path: str,
+    class_name: str,
+) -> None:
+    """Module-level convenience function for lazy connector registration.
+
+    Args:
+        source_type: Type identifier.
+        module_path: Full module path.
+        class_name: Class name within the module.
+    """
+    ConnectorFactory.register_connector_lazy(source_type, module_path, class_name)
+
+
+# Register built-in connectors lazily to avoid import-time dependencies
+register_connector_lazy("directory", "shared.connectors.local", "LocalFileConnector")
+register_connector_lazy("git", "shared.connectors.git", "GitConnector")
+register_connector_lazy("imap", "shared.connectors.imap", "ImapConnector")

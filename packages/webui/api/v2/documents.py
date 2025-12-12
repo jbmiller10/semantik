@@ -34,6 +34,7 @@ router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
 
 @router.get(
     "/collections/{collection_uuid}/documents/{document_uuid}/content",
+    response_model=None,
     responses={
         200: {"description": "Document content", "content": {"application/octet-stream": {}}},
         401: {"description": "Unauthorized"},
