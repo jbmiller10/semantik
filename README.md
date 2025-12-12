@@ -24,7 +24,7 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
 - **Observability**: health endpoints + Prometheus metrics in both services.
 
-## Architecture (Quick Tour)
+## Architecture
 Three Python packages, one frontend:
 - `packages/webui/` – FastAPI app serving REST + WebSocket APIs and the React UI; owns Postgres state.
 - `packages/vecpipe/` – embedding + search HTTP service that talks to Qdrant.
