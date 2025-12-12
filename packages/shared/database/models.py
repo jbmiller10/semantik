@@ -270,6 +270,10 @@ class Document(Base):
     chunking_started_at = Column(DateTime(timezone=True), nullable=True)
     chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Sync tracking fields (for continuous sync "keep last-known" behavior)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
+    is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
@@ -384,6 +388,20 @@ class CollectionSource(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
+
+    # Sync configuration fields
+    sync_mode = Column(String(20), nullable=False, default="one_time")  # 'one_time' or 'continuous'
+    interval_minutes = Column(Integer, nullable=True)  # Sync interval for continuous mode (min 15)
+    paused_at = Column(DateTime(timezone=True), nullable=True)  # NULL = not paused
+
+    # Sync scheduling fields
+    next_run_at = Column(DateTime(timezone=True), nullable=True)  # When the next sync should run
+
+    # Sync status fields
+    last_run_started_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_completed_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(String(20), nullable=True)  # 'success', 'failed', 'partial'
+    last_error = Column(Text, nullable=True)  # Error message from last failed sync
 
     # Relationships
     collection = relationship("Collection", back_populates="sources")

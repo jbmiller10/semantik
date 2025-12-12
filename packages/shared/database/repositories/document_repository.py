@@ -526,3 +526,234 @@ class DocumentRepository:
         except Exception as e:
             logger.error(f"Failed to get document stats: {e}")
             raise DatabaseOperationError("get stats", "documents", str(e)) from e
+
+    # -------------------------------------------------------------------------
+    # Sync tracking methods (for continuous sync support)
+    # -------------------------------------------------------------------------
+
+    async def update_last_seen(self, document_id: str) -> Document:
+        """Update the last_seen_at timestamp for a document.
+
+        Called when a document is seen during a sync run.
+
+        Args:
+            document_id: UUID of the document
+
+        Returns:
+            Updated Document instance
+
+        Raises:
+            EntityNotFoundError: If document not found
+        """
+        try:
+            document = await self.get_by_id(document_id)
+            if not document:
+                raise EntityNotFoundError("document", document_id)
+
+            document.last_seen_at = datetime.now(UTC)
+            document.is_stale = False  # Reset stale flag when seen
+            document.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.debug(f"Updated last_seen_at for document {document_id}")
+            return document
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update last_seen_at: {e}")
+            raise DatabaseOperationError("update_last_seen", "document", str(e)) from e
+
+    async def update_content(
+        self,
+        document_id: str,
+        content_hash: str,
+        file_size: int | None = None,
+        file_path: str | None = None,
+        mime_type: str | None = None,
+        source_metadata: dict[str, Any] | None = None,
+    ) -> Document:
+        """Update a document's content fields (for in-place update during sync).
+
+        Called when a document's content has changed and needs to be re-indexed.
+
+        Args:
+            document_id: UUID of the document
+            content_hash: New content hash
+            file_size: New file size (optional)
+            file_path: New file path (optional)
+            mime_type: New MIME type (optional)
+            source_metadata: New source metadata (optional)
+
+        Returns:
+            Updated Document instance
+
+        Raises:
+            EntityNotFoundError: If document not found
+        """
+        try:
+            document = await self.get_by_id(document_id)
+            if not document:
+                raise EntityNotFoundError("document", document_id)
+
+            document.content_hash = content_hash
+            if file_size is not None:
+                document.file_size = file_size
+            if file_path is not None:
+                document.file_path = file_path
+            if mime_type is not None:
+                document.mime_type = mime_type
+            if source_metadata is not None:
+                document.source_metadata = source_metadata
+
+            # Reset document status to PENDING for re-processing
+            document.status = DocumentStatus.PENDING.value
+            document.error_message = None
+            document.chunk_count = 0
+            document.chunks_count = 0
+            document.chunking_started_at = None
+            document.chunking_completed_at = None
+
+            # Update sync tracking
+            document.last_seen_at = datetime.now(UTC)
+            document.is_stale = False
+            document.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Updated content for document {document_id}, new hash: {content_hash}")
+            return document
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update document content: {e}")
+            raise DatabaseOperationError("update_content", "document", str(e)) from e
+
+    async def mark_unseen_as_stale(
+        self,
+        collection_id: str,
+        source_id: int,
+        since: datetime,
+    ) -> int:
+        """Mark documents not seen since a timestamp as stale.
+
+        Called after a sync run to mark documents that were not encountered
+        as potentially deleted from the source.
+
+        Args:
+            collection_id: UUID of the collection
+            source_id: ID of the source
+            since: Timestamp threshold (documents with last_seen_at before this are stale)
+
+        Returns:
+            Number of documents marked as stale
+        """
+        try:
+            stmt = (
+                update(Document)
+                .where(
+                    and_(
+                        Document.collection_id == collection_id,
+                        Document.source_id == source_id,
+                        Document.is_stale == False,  # Only update non-stale docs  # noqa: E712
+                        (Document.last_seen_at < since) | (Document.last_seen_at.is_(None)),
+                    )
+                )
+                .values(
+                    is_stale=True,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+
+            result = await self.session.execute(stmt)
+            count = result.rowcount or 0
+
+            if count > 0:
+                logger.info(f"Marked {count} documents as stale for source {source_id} in collection {collection_id}")
+
+            return count
+
+        except Exception as e:
+            logger.error(f"Failed to mark documents as stale: {e}")
+            raise DatabaseOperationError("mark_unseen_as_stale", "documents", str(e)) from e
+
+    async def get_stale_documents(
+        self,
+        collection_id: str,
+        source_id: int | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[Document], int]:
+        """Get stale documents for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            source_id: Optional source ID filter
+            offset: Pagination offset
+            limit: Maximum results
+
+        Returns:
+            Tuple of (documents list, total count)
+        """
+        try:
+            # Build base query
+            query = select(Document).where(
+                and_(
+                    Document.collection_id == collection_id,
+                    Document.is_stale == True,  # noqa: E712
+                )
+            )
+
+            if source_id is not None:
+                query = query.where(Document.source_id == source_id)
+
+            # Get total count
+            count_query = select(func.count()).select_from(query.subquery())
+            total = await self.session.scalar(count_query)
+
+            # Get paginated results
+            query = query.order_by(desc(Document.updated_at)).offset(offset).limit(limit)
+            result = await self.session.execute(query)
+            documents = result.scalars().all()
+
+            return list(documents), total or 0
+
+        except Exception as e:
+            logger.error(f"Failed to get stale documents: {e}")
+            raise DatabaseOperationError("get_stale_documents", "documents", str(e)) from e
+
+    async def clear_stale_flag(
+        self,
+        document_id: str,
+    ) -> Document:
+        """Clear the stale flag for a document.
+
+        Args:
+            document_id: UUID of the document
+
+        Returns:
+            Updated Document instance
+
+        Raises:
+            EntityNotFoundError: If document not found
+        """
+        try:
+            document = await self.get_by_id(document_id)
+            if not document:
+                raise EntityNotFoundError("document", document_id)
+
+            document.is_stale = False
+            document.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.debug(f"Cleared stale flag for document {document_id}")
+            return document
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to clear stale flag: {e}")
+            raise DatabaseOperationError("clear_stale_flag", "document", str(e)) from e

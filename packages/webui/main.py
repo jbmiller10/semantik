@@ -50,6 +50,7 @@ from .api.v2 import (
     partition_monitoring as v2_partition_monitoring,
     projections as v2_projections,
     search as v2_search,
+    sources as v2_sources,
     system as v2_system,
 )
 from .api.v2.directory_scan import directory_scan_websocket
@@ -305,6 +306,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_projections.router)
     app.include_router(v2_partition_monitoring.router)
     app.include_router(v2_search.router)
+    app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
 
     # Mount static files BEFORE catch-all route

@@ -605,3 +605,140 @@ class OperationResponse(BaseModel):
             }
         },
     )
+
+
+# Source schemas
+class SyncModeEnum(str, Enum):
+    """Sync mode for sources."""
+
+    ONE_TIME = "one_time"
+    CONTINUOUS = "continuous"
+
+
+class SourceCreate(BaseModel):
+    """Schema for creating a source."""
+
+    source_type: str = Field(
+        default="directory",
+        description="Type of source connector (directory, git, imap)",
+    )
+    source_path: str = Field(
+        ...,
+        min_length=1,
+        description="Display path or identifier for the source",
+    )
+    source_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Connector-specific configuration",
+    )
+    sync_mode: SyncModeEnum = Field(
+        default=SyncModeEnum.ONE_TIME,
+        description="Sync mode: one_time or continuous",
+    )
+    interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    @model_validator(mode="after")
+    def validate_continuous_requires_interval(self) -> "SourceCreate":
+        """Validate that continuous sync has an interval."""
+        if self.sync_mode == SyncModeEnum.CONTINUOUS and self.interval_minutes is None:
+            raise ValueError("interval_minutes is required for continuous sync mode")
+        return self
+
+
+class SourceUpdate(BaseModel):
+    """Schema for updating a source."""
+
+    source_config: dict[str, Any] | None = Field(
+        default=None,
+        description="New connector-specific configuration",
+    )
+    sync_mode: SyncModeEnum | None = Field(
+        default=None,
+        description="New sync mode: one_time or continuous",
+    )
+    interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="New sync interval in minutes (min 15)",
+    )
+
+
+class SourceResponse(BaseModel):
+    """Source response schema."""
+
+    id: int
+    collection_id: str
+    source_type: str
+    source_path: str
+    source_config: dict[str, Any]
+    document_count: int
+    size_bytes: int
+
+    # Sync configuration
+    sync_mode: str
+    interval_minutes: int | None = None
+    paused_at: datetime | None = None
+
+    # Sync scheduling
+    next_run_at: datetime | None = None
+
+    # Sync status
+    last_run_started_at: datetime | None = None
+    last_run_completed_at: datetime | None = None
+    last_run_status: str | None = None
+    last_error: str | None = None
+    last_indexed_at: datetime | None = None
+
+    # Timestamps
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "source_type": "directory",
+                "source_path": "/data/documents",
+                "source_config": {"path": "/data/documents", "recursive": True},
+                "document_count": 100,
+                "size_bytes": 1048576,
+                "sync_mode": "continuous",
+                "interval_minutes": 60,
+                "paused_at": None,
+                "next_run_at": "2025-07-15T11:00:00Z",
+                "last_run_started_at": "2025-07-15T10:00:00Z",
+                "last_run_completed_at": "2025-07-15T10:05:00Z",
+                "last_run_status": "success",
+                "last_error": None,
+                "last_indexed_at": "2025-07-15T10:05:00Z",
+                "created_at": "2025-07-15T09:00:00Z",
+                "updated_at": "2025-07-15T10:05:00Z",
+            }
+        },
+    )
+
+
+class SourceListResponse(BaseModel):
+    """Response for listing sources."""
+
+    items: list[SourceResponse]
+    total: int
+    offset: int
+    limit: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [],
+                "total": 0,
+                "offset": 0,
+                "limit": 50,
+            }
+        }
+    )
