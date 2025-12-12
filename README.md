@@ -72,7 +72,7 @@ First run note: open the UI and create an account. The very first user is made a
 
 Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volumes).
 
-## Usage (High Level)
+## Usage
 1. Open the UI at `http://localhost:8080` and create a collection.
 2. Add one or more sources (directories). Semantik will index in the background.
 3. Search across one or more collections.
