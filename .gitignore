@@ -114,7 +114,6 @@ dmypy.json
 .claude-trace/
 CLAUDE.md
 GEMINI.md
-AGENTS.md
 
 # IDE
 .vscode/
