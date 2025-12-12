@@ -879,3 +879,16 @@ def mock_celery_for_deletion() -> Generator[Any, None, None]:
 
     # Restore original
     celery_module.celery_app = original_app
+
+
+@pytest.fixture()
+def test_documents_fixture() -> Path:
+    """Provide path to test documents directory."""
+    test_data_path = Path(__file__).parent / "test_data"
+    if not test_data_path.exists():
+        # Docker fallback
+        docker_path = Path("/mnt/docs")
+        if docker_path.exists():
+            return docker_path
+        pytest.skip(f"Test data directory not found at {test_data_path}")
+    return test_data_path

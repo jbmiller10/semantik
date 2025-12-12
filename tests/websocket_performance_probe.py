@@ -419,18 +419,6 @@ class TestWebSocketPerformanceAndValidation:
 
 
 @pytest.fixture()
-def test_documents_fixture() -> Path:
-    """Provide path to test documents directory."""
-    test_data_path = Path(__file__).parent.parent.parent / "test_data"
-    if not test_data_path.exists():
-        docker_path = Path("/mnt/docs")
-        if docker_path.exists():
-            return docker_path
-        pytest.skip(f"Test data directory not found at {test_data_path}")
-    return test_data_path
-
-
-@pytest.fixture()
 def cleanup_collection() -> Iterator[list[str]]:
     """Fixture to clean up collections after test completion."""
     collection_ids: list[str] = []
