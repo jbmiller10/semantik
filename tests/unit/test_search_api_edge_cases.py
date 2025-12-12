@@ -750,6 +750,7 @@ class TestSearchAPIEdgeCases:
 
             result = await search_post(request)
 
-            # The search_api currently doesn't filter by score_threshold
-            # This documents expected behavior if implemented
-            assert len(result.results) == 3  # Currently returns all results
+            # score_threshold filtering is now implemented - results below 0.7 are excluded
+            assert len(result.results) == 2  # Only results with score >= 0.7 are returned
+            assert result.results[0].score == 0.95  # /high.txt
+            assert result.results[1].score == 0.75  # /medium.txt
