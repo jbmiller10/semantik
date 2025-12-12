@@ -1100,9 +1100,12 @@ class TestSearchAPI:
 
         with (
             patch("qdrant_client.AsyncQdrantClient") as mock_async_client,
-            patch("shared.database.collection_metadata.get_collection_metadata_async") as mock_get_metadata,
+            patch(
+                "shared.database.collection_metadata.get_collection_metadata_async",
+                new_callable=AsyncMock,
+            ) as mock_get_metadata,
         ):
-            # Mock collection metadata (async function needs awaitable return)
+            # Mock collection metadata (AsyncMock provides awaitable return)
             mock_get_metadata.return_value = {
                 "model_name": "collection-model",
                 "quantization": "float16",
