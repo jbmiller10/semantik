@@ -147,3 +147,86 @@ async def test_append_marks_stale_when_scan_clean(monkeypatch) -> None:
     assert _call["collection_id"] == "col-1"
     assert _call["source_id"] == 123
     assert isinstance(_call["since"], datetime)
+
+
+@pytest.mark.asyncio()
+async def test_append_skips_stale_marking_when_processing_has_failures(monkeypatch) -> None:
+    class _FakeRegistryNewDoc(_FakeRegistry):
+        async def register_or_update(
+            self,
+            collection_id: str,
+            ingested: _IngestedDoc,
+            source_id: int,
+        ) -> dict[str, Any]:
+            return {
+                "is_new": True,
+                "is_updated": False,
+                "document_id": 101,
+                "file_size": 1,
+            }
+
+    class _FakeQdrantClient:
+        def get_collection(self, _name: str) -> None:
+            return None
+
+    class _FakeQdrantManager:
+        def get_client(self) -> _FakeQdrantClient:
+            return _FakeQdrantClient()
+
+    class _FailingChunkingService:
+        async def execute_ingestion_chunking(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:  # noqa: ANN401
+            raise RuntimeError("chunking failed")
+
+    async def _fake_resolve_chunker(*_args: Any, **_kwargs: Any) -> _FailingChunkingService:  # noqa: ANN401
+        return _FailingChunkingService()
+
+    docs = [_IngestedDoc("good-1", content="hello")]
+    connector = _FakeConnector(docs)
+
+    monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
+    monkeypatch.setattr("webui.tasks.ingestion.DocumentRegistryService", _FakeRegistryNewDoc)
+    monkeypatch.setattr("shared.database.repositories.chunk_repository.ChunkRepository", _FakeChunkRepository)
+    monkeypatch.setattr("webui.tasks.ingestion._audit_log_operation", AsyncMock(return_value=None))
+    monkeypatch.setattr("webui.tasks.ingestion.resolve_qdrant_manager", lambda: _FakeQdrantManager())
+    monkeypatch.setattr("webui.tasks.ingestion.resolve_celery_chunking_orchestrator", _fake_resolve_chunker)
+
+    document_repo = Mock()
+    document_repo.session = _FakeSession()
+    document_repo.mark_unseen_as_stale = AsyncMock(return_value=999)
+
+    fake_doc = Mock()
+    fake_doc.id = 101
+    fake_doc.file_path = "/tmp/x.txt"
+    fake_doc.uri = None
+    fake_doc.chunk_count = 0
+
+    document_repo.get_by_id = AsyncMock(return_value=fake_doc)
+    document_repo.update_status = AsyncMock(return_value=None)
+    document_repo.get_stats_by_collection = AsyncMock(return_value={"total_documents": 1})
+
+    collection_repo = Mock()
+    collection_repo.update_stats = AsyncMock(return_value=None)
+
+    updater = Mock()
+    updater.send_update = AsyncMock(return_value=None)
+
+    operation = {
+        "id": "op-3",
+        "user_id": 1,
+        "config": {
+            "source_id": 123,
+            "source_type": "directory",
+            "source_config": {"path": "/tmp"},
+            "batch_size": 1,
+        },
+    }
+    collection = {
+        "id": "col-1",
+        "vector_store_name": "qdrant-col-1",
+    }
+
+    result = await _process_append_operation_impl(operation, collection, collection_repo, document_repo, updater)
+
+    assert result["success"] is False
+    assert result["documents_marked_stale"] == 0
+    assert document_repo.mark_unseen_as_stale.await_count == 0

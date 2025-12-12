@@ -1267,11 +1267,14 @@ async def _process_append_operation_impl(
         # Mark documents not seen during this sync as stale (keep last-known behavior)
         # Only mark stale for this specific source
         #
-        # IMPORTANT: Only mark stale when the scan/registration phase completed cleanly.
-        # If registration errors occurred, some existing documents may have been present in
+        # IMPORTANT: Only mark stale when the entire sync completed cleanly.
+        # If scan/registration errors occurred, some existing documents may have been present in
         # the source but failed to register/update last_seen_at; marking unseen docs stale in
         # that scenario can incorrectly flag healthy documents as stale.
-        if source_id is not None and not scan_errors:
+        #
+        # Similarly, if downstream processing (chunking/embedding) fails, the run is incomplete and
+        # marking unseen docs stale can mislabel valid documents as stale after a partial sync.
+        if source_id is not None and success:
             try:
                 stale_count = await document_repo.mark_unseen_as_stale(
                     collection_id=collection["id"],
@@ -1294,10 +1297,15 @@ async def _process_append_operation_impl(
                     await session.rollback()
         elif source_id is not None:
             scan_stats["documents_marked_stale"] = 0
+            reasons: list[str] = []
+            if scan_errors:
+                reasons.append(f"{len(scan_errors)} scan/registration error(s)")
+            if failed_count > 0:
+                reasons.append(f"{failed_count} embedding/chunking failure(s)")
             logger.info(
-                "Skipping stale marking for source %s due to %s scan/registration error(s)",
+                "Skipping stale marking for source %s due to %s",
                 source_id,
-                len(scan_errors),
+                ", ".join(reasons),
             )
 
         # Update source sync status
