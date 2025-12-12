@@ -327,11 +327,14 @@ pending → processing → completed
 Operations support WebSocket connections for real-time progress:
 
 ```javascript
-const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws`);
+const token = localStorage.getItem('authToken');
+const ws = new WebSocket(`ws://localhost:8080/ws/operations/${operationId}?token=${token}`);
 
 ws.onmessage = (event) => {
-  const progress = JSON.parse(event.data);
-  console.log(`Progress: ${progress.percentage}%`);
+  const msg = JSON.parse(event.data);
+  if (msg.data?.progress != null) {
+    console.log(`Progress: ${msg.data.progress}%`);
+  }
 };
 ```
 

@@ -58,7 +58,7 @@ The system has undergone a major architectural refactoring, transitioning from a
 └──────────────────┘                   │
                                       │
 ┌──────────────────────────────────────┴─────────────────────────────────┐
-│                         VecPipe Package (Port 8001)                    │
+│                         VecPipe Package (Port 8000)                    │
 │                          Search & Processing API                        │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────┐  │
 │  │  Extract    │  │  Maintenance │  │   Ingest    │  │   Search   │  │
@@ -78,13 +78,12 @@ The system has undergone a major architectural refactoring, transitioning from a
 
 ### 1. VecPipe Package (`packages/vecpipe/`)
 
-The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package. Operates on port 8001 in the refactored architecture.
+The headless data processing and search API that forms the heart of the system. This package is completely independent and has no dependencies on the webui package. Operates on port 8000 in the current architecture.
 
-**Key Services:**
-- **Extract Service** (`extract_service.py`): Document parsing and intelligent chunking
-- **Maintenance Service** (`maintenance_service.py`): Vector database operations and health monitoring
-- **Ingest Service** (`ingest_service.py`): Efficient vector database population
-- **Search API** (`search_api.py`): FastAPI service exposing search functionality
+**Key Services / Modules:**
+- **Search API** (`search/` + `search_api.py`): FastAPI service exposing search, embed, and upsert endpoints.
+- **Embedding pipeline** (`embed_chunks_unified.py`, `ingest_qdrant.py`): Chunk embedding and Qdrant upserts.
+- **Maintenance** (`maintenance.py`): Collection cleanup and housekeeping helpers.
 
 **Core Components:**
 - **model_manager.py**: GPU memory management with lazy loading and automatic unloading
@@ -103,11 +102,11 @@ The headless data processing and search API that forms the heart of the system. 
 User-facing application providing authentication, collection management, and search interface. Owns and manages the PostgreSQL database containing user data, collections, operations, and documents.
 
 **Backend Components:**
-- **main.py**: FastAPI application with modular router architecture
-- **api/v2/**: Modern RESTful API routers for collections, operations, documents, search
-- **api/auth/**: JWT-based authentication with refresh tokens
-- **services/**: Service layer with business logic (collection_service, operation_service)
-- **worker/**: Celery worker for asynchronous operation processing
+- **main.py**: FastAPI application with modular router architecture.
+- **api/v2/**: REST routers for collections, operations, documents, search, chunking, embedding.
+- **api/auth.py**: JWT‑based authentication with refresh tokens.
+- **services/**: Service layer with business logic (collection_service, operation_service, search_service, etc.).
+- **celery_app.py**, **tasks/**, **chunking_tasks.py**: Celery worker entrypoint and task implementations.
 
 **Frontend (React):**
 - Modern React 19 with TypeScript
@@ -353,10 +352,10 @@ pipeline does not change.
 
 ## API Architecture
 
-### Search API (Port 8001)
+### Search API (Port 8000)
 - Pure REST API for vector/hybrid search
 - No authentication required
-- Supports batch operations and multi-collection search
+- Supports batch search and per-request collection selection
 - Model lazy-loading for efficiency
 - Collection-aware with Qdrant naming convention
 

@@ -509,9 +509,11 @@ Internal service communication:
 ### WebSocket Configuration
 
 WebUI supports WebSocket connections for real-time updates:
-- Endpoint: `ws://localhost:8080/api/v2/ws`
+- Global operations: `ws://localhost:8080/ws/operations?token=<jwt_token>`
+- Operation progress: `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt_token>`
+- Directory scan progress: `ws://localhost:8080/ws/directory-scan/{scan_id}?token=<jwt_token>`
 - Protocol: JSON messages
-- Authentication: JWT token required
+- Authentication: JWT token in query string (or disabled in dev)
 
 ---
 
