@@ -22,8 +22,7 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
 - **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system.
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
-- **Observability**: health endpoints + Prometheus metrics in both services.
-
+- **Visualize:** project embeddings into 2D space & visualize relationships
 
 ## Architecture
 Three Python packages, one frontend:
