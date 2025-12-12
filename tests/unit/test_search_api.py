@@ -933,7 +933,11 @@ class TestSearchAPI:
         # Verify the request format
         call_args = mock_qdrant_client.put.call_args
         assert "points" in call_args[1]["json"]
-        assert call_args[1]["json"]["wait"] is True
+        # wait should be a query parameter, not in the JSON body
+        assert "wait" not in call_args[1]["json"]
+        # Verify URL contains wait query parameter
+        url_called = call_args[0][0]
+        assert "?wait=true" in url_called
 
     @pytest.mark.asyncio()
     async def test_upsert_error_handling(self, mock_qdrant_client) -> None:
@@ -1300,3 +1304,268 @@ class TestSearchAPI:
                     detail = response.json()["detail"]
                     assert isinstance(detail, dict)
                     assert detail["error"] == "insufficient_memory"
+
+
+class TestCollectionResolution:
+    """Test collection name resolution with operation_uuid."""
+
+    @pytest.mark.asyncio()
+    async def test_explicit_collection_takes_priority(self) -> None:
+        """Explicit collection should override operation_uuid."""
+        from vecpipe.search.service import resolve_collection_name
+
+        with patch("vecpipe.search.service._lookup_collection_from_operation") as mock_lookup:
+            result = await resolve_collection_name(
+                request_collection="explicit_collection",
+                operation_uuid="some-uuid",
+                default_collection="default_collection",
+            )
+            assert result == "explicit_collection"
+            mock_lookup.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_operation_uuid_lookup_success(self) -> None:
+        """operation_uuid should resolve to collection when found."""
+        from vecpipe.search.service import resolve_collection_name
+
+        with patch("vecpipe.search.service._lookup_collection_from_operation") as mock_lookup:
+            mock_lookup.return_value = "operation_collection"
+            result = await resolve_collection_name(
+                request_collection=None,
+                operation_uuid="valid-uuid",
+                default_collection="default",
+            )
+            assert result == "operation_collection"
+            mock_lookup.assert_called_once_with("valid-uuid")
+
+    @pytest.mark.asyncio()
+    async def test_operation_uuid_not_found_raises_404(self) -> None:
+        """Missing operation should raise 404 when operation_uuid provided."""
+        from vecpipe.search.service import resolve_collection_name
+
+        with patch("vecpipe.search.service._lookup_collection_from_operation") as mock_lookup:
+            mock_lookup.return_value = None
+            with pytest.raises(HTTPException) as exc:
+                await resolve_collection_name(
+                    request_collection=None,
+                    operation_uuid="nonexistent-uuid",
+                    default_collection="default",
+                )
+            assert exc.value.status_code == 404
+            assert "nonexistent-uuid" in str(exc.value.detail)
+
+    @pytest.mark.asyncio()
+    async def test_default_fallback_when_no_operation_uuid(self) -> None:
+        """Default should be used when no collection or operation_uuid."""
+        from vecpipe.search.service import resolve_collection_name
+
+        result = await resolve_collection_name(
+            request_collection=None,
+            operation_uuid=None,
+            default_collection="default_collection",
+        )
+        assert result == "default_collection"
+
+    @pytest.mark.asyncio()
+    async def test_lookup_collection_from_operation_returns_none_when_not_found(self) -> None:
+        """Should return None when operation has no collection."""
+        from vecpipe.search.service import _lookup_collection_from_operation
+
+        # The function returns None on any exception, which includes when DB is not available
+        # This tests the graceful fallback behavior
+        result = await _lookup_collection_from_operation("nonexistent-uuid")
+        # Should return None (not raise) due to error handling
+        assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_lookup_collection_returns_none_on_error(self) -> None:
+        """Should return None and log warning on database error."""
+        from vecpipe.search.service import _lookup_collection_from_operation
+
+        with patch(
+            "shared.database.database.ensure_async_sessionmaker",
+            side_effect=Exception("Database connection failed"),
+        ):
+            result = await _lookup_collection_from_operation("test-uuid")
+            assert result is None
+
+
+class TestHybridSearchRouting:
+    """Test hybrid search_type routing through /search endpoint."""
+
+    def test_search_type_hybrid_routes_to_hybrid_search(
+        self, mock_qdrant_client, mock_model_manager, mock_hybrid_engine, test_client_for_search_api
+    ) -> None:
+        """search_type='hybrid' should route to perform_hybrid_search."""
+        # Mock collection info - must match 1024 dimensions from mock_model_manager
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_get_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_get_response
+
+        # Mock collection metadata
+        with patch("vecpipe.search.service._get_cached_collection_metadata") as mock_meta:
+            mock_meta.return_value = {"model_name": "test-model", "quantization": "float32"}
+
+            # Mock dimension validation to always pass
+            with patch("vecpipe.search.service.validate_dimension_compatibility"):
+                response = test_client_for_search_api.post(
+                    "/search",
+                    json={
+                        "query": "test query",
+                        "k": 10,
+                        "search_type": "hybrid",
+                        "hybrid_mode": "filter",
+                        "keyword_mode": "any",
+                    },
+                )
+
+                assert response.status_code == 200
+                result = response.json()
+                assert result["search_type"] == "hybrid"
+
+    def test_hybrid_results_mapped_correctly(self) -> None:
+        """Hybrid results should be properly mapped to SearchResponse format."""
+        from shared.contracts.search import HybridSearchResponse, HybridSearchResult
+        from vecpipe.search.service import _map_hybrid_to_search_response
+
+        hybrid_response = HybridSearchResponse(
+            query="test query",
+            results=[
+                HybridSearchResult(
+                    path="/test/file.txt",
+                    chunk_id="chunk-1",
+                    score=0.8,
+                    doc_id="doc-1",
+                    content="Test content",
+                    metadata={"type": "document"},
+                    matched_keywords=["test"],
+                    keyword_score=0.7,
+                    combined_score=0.85,
+                )
+            ],
+            num_results=1,
+            keywords_extracted=["test", "query"],
+            search_mode="filter",
+        )
+        result = _map_hybrid_to_search_response(hybrid_response)
+
+        assert result.query == "test query"
+        assert result.search_type == "hybrid"
+        assert result.num_results == 1
+        assert len(result.results) == 1
+        assert result.results[0].path == "/test/file.txt"
+        assert result.results[0].score == 0.85  # combined_score used
+        assert result.results[0].doc_id == "doc-1"
+
+
+class TestScoreThresholdFiltering:
+    """Test score_threshold filtering in perform_search."""
+
+    def test_score_threshold_filters_low_scores(
+        self, mock_qdrant_client, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """Results below score_threshold should be excluded."""
+        # Mock collection info
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_get_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_get_response
+
+        with (
+            patch("vecpipe.search.service._get_cached_collection_metadata") as mock_meta,
+            patch("vecpipe.search.service.search_qdrant") as mock_search,
+        ):
+            mock_meta.return_value = {"model_name": "test-model", "quantization": "float32"}
+            mock_search.return_value = [
+                {"score": 0.9, "payload": {"path": "/a", "chunk_id": "1", "doc_id": "d1"}},
+                {"score": 0.5, "payload": {"path": "/b", "chunk_id": "2", "doc_id": "d2"}},
+                {"score": 0.3, "payload": {"path": "/c", "chunk_id": "3", "doc_id": "d3"}},
+            ]
+
+            response = test_client_for_search_api.post(
+                "/search",
+                json={"query": "test", "k": 10, "score_threshold": 0.6},
+            )
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["num_results"] == 1
+            assert len(result["results"]) == 1
+            assert result["results"][0]["score"] == 0.9
+
+    def test_score_threshold_zero_includes_all(
+        self, mock_qdrant_client, mock_model_manager, test_client_for_search_api
+    ) -> None:
+        """score_threshold=0.0 (default) should include all results."""
+        # Mock collection info
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 1024}}}}}
+        mock_get_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_get_response
+
+        with (
+            patch("vecpipe.search.service._get_cached_collection_metadata") as mock_meta,
+            patch("vecpipe.search.service.search_qdrant") as mock_search,
+        ):
+            mock_meta.return_value = {"model_name": "test-model", "quantization": "float32"}
+            mock_search.return_value = [
+                {"score": 0.9, "payload": {"path": "/a", "chunk_id": "1", "doc_id": "d1"}},
+                {"score": 0.1, "payload": {"path": "/b", "chunk_id": "2", "doc_id": "d2"}},
+            ]
+
+            response = test_client_for_search_api.post(
+                "/search",
+                json={"query": "test", "k": 10, "score_threshold": 0.0},
+            )
+
+            assert response.status_code == 200
+            result = response.json()
+            assert result["num_results"] == 2
+
+
+class TestUpsertWaitParameter:
+    """Test upsert wait parameter is passed as query param."""
+
+    def test_upsert_wait_false_omits_query_parameter(
+        self, mock_qdrant_client, test_client_for_search_api
+    ) -> None:
+        """wait=False should not add query parameter."""
+        # Mock collection info
+        mock_get_response = Mock()
+        mock_get_response.json.return_value = {"result": {"config": {"params": {"vectors": {"size": 768}}}}}
+        mock_get_response.raise_for_status = Mock()
+        mock_qdrant_client.get.return_value = mock_get_response
+
+        # Mock upsert response
+        mock_put_response = Mock()
+        mock_put_response.raise_for_status = Mock()
+        mock_qdrant_client.put.return_value = mock_put_response
+
+        response = test_client_for_search_api.post(
+            "/upsert",
+            json={
+                "collection_name": "test_collection",
+                "points": [
+                    {
+                        "id": "point-1",
+                        "vector": [0.1] * 768,
+                        "payload": {
+                            "doc_id": "doc-1",
+                            "chunk_id": "chunk-1",
+                            "path": "/test/file.txt",
+                        },
+                    }
+                ],
+                "wait": False,
+            },
+        )
+
+        assert response.status_code == 200
+
+        # Verify URL does NOT contain wait query parameter
+        call_args = mock_qdrant_client.put.call_args
+        url_called = call_args[0][0]
+        assert "?wait=" not in url_called
+        # Also verify wait is not in body
+        assert "wait" not in call_args[1]["json"]
