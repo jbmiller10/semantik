@@ -1124,136 +1124,27 @@ Flow: Register → Login → Access (with token) → Refresh → Logout
 
 **Header**: `Authorization: Bearer <token>`
 
-## API Integration Patterns
+## Service Integration
 
-### WebUI to Vecpipe API Proxy
+Client → WebUI (auth) → Vecpipe (search) → Qdrant
 
-The WebUI service acts as a control plane and proxy for search requests:
+WebUI owns PostgreSQL. Both services use shared package.
 
-1. **Client** → WebUI: Authenticated request with collection context
-2. **WebUI** → Vecpipe API: Transform and forward request
-3. **Vecpipe** → Qdrant: Execute vector search using shared embedding service
-4. **Response flows back** with transformed format
-
-**Key Points**:
-- WebUI handles all authentication and authorization
-- Vecpipe focuses purely on search functionality
-- Both services use the shared package for common operations
-
-### Service Communication
-
-```mermaid
-graph TD
-    Client[Client] --> WebUI[WebUI Service<br/>Control Plane]
-    WebUI --> Vecpipe[Vecpipe Service<br/>Search Engine]
-    WebUI --> PostgreSQL[(PostgreSQL DB<br/>Owned by WebUI)]
-    Vecpipe --> Qdrant[(Qdrant<br/>Vector DB)]
-    
-    WebUI -.->|uses| Shared[Shared Package]
-    Vecpipe -.->|uses| Shared
-    
-    style WebUI fill:#f9f,stroke:#333,stroke-width:2px
-    style Vecpipe fill:#9ff,stroke:#333,stroke-width:2px
-    style Shared fill:#ff9,stroke:#333,stroke-width:2px
-```
-
-### Retry Strategy
-
-For inter-service communication:
-- Max retries: 3
-- Backoff: Exponential (1s, 2s, 4s)
-- Timeout: 30 seconds per request
-
-### Collection Metadata Synchronization
-
-When creating a collection:
-1. WebUI creates collection in PostgreSQL via CollectionRepository
-2. WebUI initializes Qdrant collection with unique name
-3. Collection status updated to 'ready'
-4. Vecpipe reads collection by vector_store_name for search
+**Retry**: 3 attempts, exponential backoff (1s, 2s, 4s), 30s timeout
 
 ## Batch Operations
 
-### Batch Search
+**Batch search**: Parallel embeddings + parallel Qdrant queries = fast multi-query searches.
 
-The Search API supports efficient batch searching:
+**Document processing**: Process chunks in batches, upload to Qdrant 100 at a time, GC between files.
 
-**Advantages**:
-- Parallel embedding generation
-- Reduced overhead for multiple queries
-- Single HTTP request for multiple searches
+## Testing
 
-**Implementation**:
-```python
-# Parallel embedding generation
-embedding_tasks = [
-    generate_embedding_async(query, model, quant, instruction) 
-    for query in queries
-]
-embeddings = await asyncio.gather(*embedding_tasks)
+Test suite: `apps/webui-react/tests/api_test_suite.py`
 
-# Parallel search execution
-search_tasks = [
-    search_qdrant(host, port, collection, vector, k)
-    for vector in embeddings
-]
-results = await asyncio.gather(*search_tasks)
-```
+Categories: Health, auth, collections, operations, search, WebSocket, errors
 
-### Batch Document Processing
-
-Operation processing handles documents in batches:
-- Chunk batching: Process multiple chunks together
-- Upload batching: Upload to Qdrant in batches of 100
-- Memory management: Force garbage collection between files
-
-## API Testing
-
-### Test Suite Location
-
-```
-apps/webui-react/tests/api_test_suite.py
-```
-
-### Test Categories
-
-1. **Health Checks**: API availability
-2. **Authentication**: Login, registration, token refresh
-3. **Collection Management**: Create, update, delete, list
-4. **Operation Management**: Create, monitor, cancel
-5. **Search**: Vector, hybrid, batch search
-6. **WebSocket**: Real-time updates
-7. **Error Handling**: Invalid requests, edge cases
-
-### Running Tests
-
-```bash
-python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>
-```
-
-### Example Test Request
-
-```python
-async def test_multi_collection_search():
-    async with aiohttp.ClientSession() as session:
-        payload = {
-            "collection_uuids": [
-                "550e8400-e29b-41d4-a716-446655440000"
-            ],
-            "query": "machine learning",
-            "k": 10,
-            "use_reranker": True
-        }
-        
-        async with session.post(
-            f"{base_url}/api/v2/search",
-            json=payload,
-            headers={"Authorization": f"Bearer {token}"}
-        ) as response:
-            assert response.status == 200
-            data = await response.json()
-            assert len(data["results"]) <= 10
-```
+Run: `python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>`
 
 ## WebSocket Endpoints
 
@@ -1269,106 +1160,27 @@ Full message schemas and event types are documented in `docs/WEBSOCKET_API.md`.
 
 ## Error Handling
 
-### Rate Limiting
+**Rate limits** (slowapi): Login 5/min, Search 30/min, Docs 10/min, General 100/min
 
-Using slowapi for rate limiting:
-- Login: 5 requests/minute
-- Search: 30 requests/minute  
-- Document access: 10 requests/minute
-- General API: 100 requests/minute
+**Validation**: Pydantic errors with field locations and messages (422)
 
-**Rate Limit Response**:
-```json
-{
-  "detail": "Rate limit exceeded: 30 per 1 minute",
-  "status": 429
-}
-```
+**Service errors**: 503 when downstream fails, 401 for auth failures
 
-### Validation Errors
+## Performance
 
-Using Pydantic for request validation:
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "chunk_size"],
-      "msg": "ensure this value is greater than or equal to 100",
-      "type": "value_error.number.not_ge"
-    }
-  ],
-  "status": 422
-}
-```
+**Caching**: Models (5min), documents (1hr), search results (client-side)
 
-### Service Errors
+**Timeouts**: Search 30s, embeddings 5min, WebSocket no timeout, extraction 5min/file
 
-When downstream services fail:
-```json
-{
-  "detail": "Search service unavailable",
-  "status": 503
-}
-```
+**Limits**: 100 results/query, 500MB file size, 50k token chunks, 100 point batches
 
-### Security Errors
+**Metrics** (Prometheus): Search API on 9091, WebUI on 9092
 
-For authentication/authorization failures:
-```json
-{
-  "detail": "Could not validate credentials",
-  "status": 401
-}
-```
+## Versioning
 
-## Performance Considerations
+WebUI: `/api/v2/` prefix. Search API: No versioning (stable).
 
-### Caching
+## Docs
 
-- **Model caching**: Models kept in memory for 5 minutes
-- **Document caching**: 1-hour cache headers for documents
-- **Search results**: Client-side caching recommended
-
-### Timeouts
-
-- **Search requests**: 30 seconds
-- **Embedding generation**: 5 minutes per operation
-- **WebSocket idle**: No timeout (kept alive)
-- **Document extraction**: 5 minutes per file
-
-### Resource Limits
-
-- **Max search results**: 100 per query
-- **Max batch queries**: Unlimited (memory permitting)
-- **Max file size**: 500 MB for processing
-- **Max chunk size**: 50,000 tokens
-- **Upload batch size**: 100 points per batch
-
-### Metrics
-
-Both services expose Prometheus metrics:
-- **Search API**: Port 9091
-- **WebUI**: Port 9092
-
-Key metrics:
-- `search_api_latency_seconds`: Search request latency
-- `search_api_requests_total`: Total requests by endpoint
-- `embedding_generation_duration_seconds`: Embedding time
-- `operation_processing_duration_seconds`: Operation completion time
-- `active_websocket_connections`: Current WebSocket connections
-
-## API Versioning
-
-Currently, the API uses URL-based versioning:
-- WebUI API: `/api/v2/` prefix for new endpoints
-- Search API: No versioning (stable interface)
-
-Future versions will maintain backward compatibility or provide migration guides.
-
-## OpenAPI/Swagger Documentation
-
-Both services provide OpenAPI documentation:
 - Search API: `http://localhost:8000/docs`
 - WebUI: `http://localhost:8080/docs`
-
-The interactive documentation allows testing endpoints directly in the browser.

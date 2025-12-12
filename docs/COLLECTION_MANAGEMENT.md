@@ -265,7 +265,7 @@ Sources uniquely identified by `(collection_id, source_path)`. Prevents duplicat
 
 ### Real-Time Updates
 
-Semantik provides WebSocket connections for live progress monitoring:
+WebSocket connections for live progress:
 
 ```javascript
 // Connect to operation progress
@@ -320,7 +320,7 @@ Returns:
 
 ### Updating Collection Information
 
-You can update metadata while preserving content:
+Update metadata while preserving content:
 
 ```bash
 PUT /api/v2/collections/YOUR_COLLECTION_ID
@@ -331,7 +331,7 @@ PUT /api/v2/collections/YOUR_COLLECTION_ID
 }
 ```
 
-**Note**: Embedding model and chunk settings cannot be changed after creation to maintain consistency.
+Embedding model and chunk settings are immutable.
 
 ### Collection Statistics
 
@@ -505,16 +505,14 @@ curl -X POST http://localhost:8080/api/v2/search \
 
 ## Rate Limiting
 
-The collection API endpoints are rate-limited to prevent abuse and ensure fair usage:
+| Endpoint | Rate Limit |
+|----------|------------|
+| `DELETE /collections/{id}` | 5/hour |
+| `POST /collections/{id}/sources` | 10/hour |
+| `DELETE /collections/{id}/sources` | 10/hour |
+| `POST /collections/{id}/reindex` | 1/5 minutes |
 
-| Endpoint | Rate Limit | Description |
-|----------|------------|-------------|
-| `DELETE /collections/{id}` | 5/hour | Delete a collection |
-| `POST /collections/{id}/sources` | 10/hour | Add a source to collection |
-| `DELETE /collections/{id}/sources` | 10/hour | Remove a source from collection |
-| `POST /collections/{id}/reindex` | 1/5 minutes | Trigger full reindex |
-
-Rate limit responses return HTTP 429 with a `Retry-After` header indicating when to retry.
+Rate limit responses: HTTP 429 with `Retry-After` header.
 
 ## Best Practices
 
@@ -865,15 +863,13 @@ monitor.monitorOperation(
 
 ## Conclusion
 
-Semantik's collection management system provides a powerful, flexible way to organize and search your documents. By understanding collections, operations, and best practices, you can build efficient knowledge bases that scale with your needs.
+Key points:
+- Collections are the foundation of search
+- Operations handle async processing
+- Real-time monitoring via WebSocket
+- Proper organization ensures performance
 
-Key takeaways:
-- Collections are the foundation of Semantik's search capabilities
-- Operations handle all asynchronous document processing
-- Real-time monitoring keeps you informed of progress
-- Proper organization and maintenance ensure optimal performance
-
-For more information, see:
-- [API Reference](./API_REFERENCE.md) - Complete API documentation
-- [WebSocket API](./WEBSOCKET_API.md) - Real-time updates
-- [Search System](./SEARCH_SYSTEM.md) - Advanced search features
+See also:
+- [API Reference](./API_REFERENCE.md)
+- [WebSocket API](./WEBSOCKET_API.md)
+- [Search System](./SEARCH_SYSTEM.md)

@@ -1,8 +1,8 @@
-# Chunking Plugins (Preview)
+# Chunking Plugins
 
-This project can load external chunking strategies at runtime so 3rd parties can extend Semantik without forking the core.
+Load external chunking strategies at runtime without forking core.
 
-## Quick contract
+## Quick Start
 
 1) Publish a Python package that exposes an entry point:
 
@@ -41,14 +41,11 @@ class MyFancyChunker(ChunkingStrategy):
         ...
 ```
 
-3) Install the plugin package in the same environment as Semantik. On startup, the loader will:
-   - register the class in the chunking factory/registry,
-   - add metadata/defaults so it appears in listing helpers,
-   - keep core strategies unchanged.
+3) Install the plugin package in the same environment as Semantik. On startup, the loader registers your class in the factory and adds metadata.
 
-## Required visual example
+## Visual Example (Required)
 
-To keep the chunking strategy guide consistent, plugins **must** provide a visual preview:
+Plugins **must** provide a visual preview:
 
 ```python
 METADATA = {
@@ -60,26 +57,23 @@ METADATA = {
 }
 ```
 
-Plugins without a valid `visual_example.url` are skipped at load time. Keep images lightweight and hosted over HTTPS.
+Plugins without valid `visual_example.url` are skipped. Keep images lightweight, HTTPS only.
 
-## Runtime behavior
+## Runtime
 
-- Loader: `packages/shared/chunking/plugin_loader.py`
-- Entry point group: `semantik.chunking_strategies`
-- Enable/disable via env: `SEMANTIK_ENABLE_CHUNKING_PLUGINS` (`true` by default; set to `false`/`0` to skip loading).
-- Loaded in both web startup (`packages/webui/startup_tasks.py`) and Celery worker import path (`packages/webui/chunking_tasks.py`).
+**Loader**: `packages/shared/chunking/plugin_loader.py`
+**Entry point**: `semantik.chunking_strategies`
+**Toggle**: `SEMANTIK_ENABLE_CHUNKING_PLUGINS` (default `true`)
+**Loaded in**: webui startup + Celery workers
 
-## API/UI visibility
+## API Visibility
 
-- Core v2 API schemas are enum-backed; plugin strategies are discoverable via internal helpers (e.g., `strategy_registry.list_strategy_metadata()`) but are not yet exposed through typed v2 endpoints.
-- For now, call server-side services with the string `strategy` ID (`"my_fancy"`) in contexts that accept free-form identifiers.
-  A future API revision can add an untyped endpoint that lists and accepts plugin strategies.
+Plugins aren't in v2 typed enums yet. Use string strategy ID (`"my_fancy"`) in server-side calls. Future API revision will expose plugins properly.
 
-## Config parameters
+## Config
 
-- Plugin-specific options should live under `config.metadata` (or `custom_attributes`) to avoid schema changes.
-- `METADATA["factory_defaults"]` seeds the internal factory defaults; `manager_defaults` feeds UI defaults.
+Put plugin-specific options under `config.metadata` to avoid schema changes.
 
 ## Safety
 
-- Plugins run in-process and are trusted code. Do not install untrusted plugins without review.
+Plugins run in-process. Review before installing untrusted code.

@@ -360,106 +360,33 @@ Documents use soft delete (status='deleted') for safety:
 
 Collections use hard delete (CASCADE) for clean removal.
 
-### Collection Source Management
+### Collection Sources
 
-Collection sources track the origin of documents:
+Track document origins for incremental indexing and data lineage.
 
-1. **Source Types**:
-   - `directory`: Local filesystem directory
-   - `file`: Single file upload
-   - `url`: Web URL or API endpoint
-   - `github`: GitHub repository
+**Source types:** `directory`, `file`, `url`, `github`
 
-2. **Source Tracking**:
-   - Each source maintains document count and size
-   - Last indexed timestamp for incremental updates
-   - Source metadata (credentials, options)
-
-3. **Benefits**:
-   - Enables incremental indexing
-   - Tracks data lineage
-   - Supports source-specific removal
-   - Facilitates re-indexing from source
+Each source tracks document count, size, and last indexed timestamp.
 
 ### Transaction Patterns
 
-The system uses specific transaction patterns for data integrity:
+All operations use transactions for ACID compliance. Key patterns:
 
-1. **Collection Creation Pattern**:
-   ```python
-   async with db.begin():
-       # 1. Create collection record
-       collection = await create_collection(...)
-       
-       # 2. Create resource limits
-       await create_resource_limits(collection.id)
-       
-       # 3. Initialize Qdrant collection
-       await init_vector_store(collection)
-       
-       # 4. Update collection status
-       await update_status(collection.id, "ready")
-   ```
+- **Collection creation**: Create record → Initialize Qdrant → Update status
+- **Document processing**: Update status → Process → Update counts
+- **Operation completion**: Update status → Record metrics → Audit log
 
-2. **Document Processing Pattern**:
-   ```python
-   async with db.begin():
-       # 1. Update document status
-       await update_document_status(doc_id, "processing")
-       
-       # 2. Process and create chunks
-       chunks = await process_document(doc)
-       
-       # 3. Update chunk count
-       await update_chunk_count(doc_id, len(chunks))
-       
-       # 4. Update collection metrics
-       await increment_collection_vectors(collection_id, len(chunks))
-   ```
+### Migrations
 
-3. **Operation Completion Pattern**:
-   ```python
-   async with db.begin():
-       # 1. Update operation status
-       await update_operation_status(op_id, "completed")
-       
-       # 2. Record metrics
-       await record_operation_metrics(op_id, metrics)
-       
-       # 3. Update collection statistics
-       await refresh_collection_stats(collection_id)
-       
-       # 4. Create audit log entry
-       await create_audit_log(collection_id, op_id, "completed")
-   ```
+Alembic for schema versioning with auto-generation and rollback.
 
-### Migration Strategy
-
-The system uses Alembic for database migrations:
-1. Version control for schema changes
-2. Automatic migration generation from model changes
-3. Rollback capability for failed migrations
-4. Migration history tracking
-5. Support for enum alterations (with PostgreSQL limitations)
-
-Example migration workflow:
 ```bash
-# Generate new migration
-alembic revision --autogenerate -m "Add collection status field"
-
-# Apply migrations
+alembic revision --autogenerate -m "Description"
 alembic upgrade head
-
-# Rollback if needed
-alembic downgrade -1
+alembic downgrade -1  # if needed
 ```
 
-**Migration Best Practices**:
-- Always review auto-generated migrations
-- Test migrations on a copy of production data
-- Include both upgrade and downgrade paths
-- Use batch operations for large data migrations
-- Consider zero-downtime deployment strategies
+Always review auto-generated migrations before applying.
 
 ## Qdrant Vector Database
 
@@ -501,471 +428,107 @@ PointStruct(
 )
 ```
 
-### Indexing Strategy
+### Configuration
 
-Qdrant configuration for optimal performance:
-- **indexing_threshold**: 20000 (switches from flat to HNSW index)
-- **memmap_threshold**: 50000 (switches to disk-based storage)
-- **ef_construction**: 512 (HNSW parameter for index quality)
-- **m**: 16 (HNSW parameter for connectivity)
+- **indexing_threshold**: 20000 (flat → HNSW)
+- **memmap_threshold**: 50000 (memory → disk)
+- **ef_construction**: 512, **m**: 16 (HNSW params)
+- Batch uploads (100 vectors), async operations
 
-### Performance Optimization
+## Design Rationale
 
-1. **Batch Operations**: Upload vectors in batches (default: 100)
-2. **Parallel Processing**: Multiple workers for document processing
-3. **Connection Pooling**: Reusable connections to Qdrant
-4. **Async Operations**: Non-blocking search and updates
+**Why collection-centric?**
+- Users think "my docs", not "job #123"
+- Each collection can use different models
+- Incremental updates (append/remove) without rebuilding
+- Clear permission boundaries
 
-## Design Decisions and Rationale
+**Why soft delete for documents?**
+- Recovery from mistakes
+- Audit trail for compliance
+- Vectors removed immediately, metadata retained
 
-### Why Collection-Centric Architecture?
+## Data Models
 
-1. **Logical Organization**:
-   - Documents naturally belong to collections, not job runs
-   - Users think in terms of "my technical docs" not "indexing job #123"
-   - Enables better permission management at the collection level
-
-2. **Multi-Model Support**:
-   - Each collection can use different embedding models
-   - Allows experimentation without affecting other data
-   - Future-proof for model upgrades
-
-3. **Incremental Updates**:
-   - Append operations add to existing collections
-   - Remove operations can target specific sources
-   - Reindex operations maintain service availability
-
-4. **Better State Management**:
-   - Collection status reflects overall health
-   - Operation status tracks individual tasks
-   - Clear separation of concerns
-
-### Document-Collection Relationships
-
-1. **One-to-Many with CASCADE**:
-   - Documents belong to exactly one collection
-   - Deleting a collection removes all documents
-   - Ensures no orphaned documents
-
-2. **Content Hash Strategy**:
-   - SHA256 hash prevents duplicates within collection
-   - Allows same file in different collections
-   - Enables deduplication at query time
-
-3. **Source Tracking**:
-   - Optional source_id links to collection_sources
-   - Enables source-based operations
-   - Maintains data lineage
-
-### Why Soft Deletes for Documents?
-
-1. **Data Safety**:
-   - Accidental deletions are recoverable
-   - Audit trail maintained
-   - Compliance requirements
-
-2. **Performance**:
-   - Avoids expensive CASCADE operations
-   - Vectors removed from Qdrant immediately
-   - Metadata retained for history
-
-3. **Flexibility**:
-   - Enables "trash bin" functionality
-   - Supports undo operations
-   - Allows for data retention policies
-
-## Data Models (SQLAlchemy/Pydantic)
-
-### Collection Model
-```python
-class Collection(Base):
-    __tablename__ = "collections"
-    
-    id: str  # UUID
-    name: str
-    description: Optional[str]
-    owner_id: int
-    vector_store_name: str
-    embedding_model: str
-    quantization: str = "float16"
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
-    is_public: bool = False
-    status: CollectionStatus
-    status_message: Optional[str]
-    qdrant_collections: Optional[List[str]]
-    qdrant_staging: Optional[List[str]]
-    document_count: int = 0
-    vector_count: int = 0
-    total_size_bytes: int = 0
-    created_at: datetime
-    updated_at: datetime
-    meta: Optional[dict]
-    
-    # Relationships
-    owner: User
-    documents: List[Document]
-    operations: List[Operation]
-    permissions: List[CollectionPermission]
-    sources: List[CollectionSource]
-    resource_limits: Optional[CollectionResourceLimits]
-```
-
-### Operation Model
-```python
-class Operation(Base):
-    __tablename__ = "operations"
-    
-    id: int
-    uuid: str
-    collection_id: str
-    user_id: int
-    type: OperationType
-    status: OperationStatus
-    task_id: Optional[str]
-    config: dict
-    error_message: Optional[str]
-    created_at: datetime
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    meta: Optional[dict]
-    
-    # Relationships
-    collection: Collection
-    user: User
-    audit_logs: List[CollectionAuditLog]
-    metrics: List[OperationMetrics]
-```
+See SQLAlchemy models in `packages/shared/database/models.py` for implementation details.
 
 ## Database Operations
 
-### Repository Pattern Implementation
+### Repository Pattern
 
-The system uses a clean repository pattern for all database operations:
+All database access uses repositories in `packages/shared/database/`:
+- `CollectionRepository`
+- `DocumentRepository`
+- `OperationRepository`
+- `UserRepository`
+- `AuthTokenRepository`
 
-**Repository Structure** (in `packages/shared/database/`):
-
-**Repository Interfaces**:
-- `CollectionRepository`: Abstract interface for collection operations
-- `DocumentRepository`: Abstract interface for document operations
-- `OperationRepository`: Abstract interface for operation management
-- `UserRepository`: Abstract interface for user management
-- `AuthTokenRepository`: Abstract interface for authentication tokens
-
-**Usage Example**:
-```python
-from shared.database import create_collection_repository
-
-# Repository handles connection lifecycle
-async with create_collection_repository() as repo:
-    # Create collection
-    collection = await repo.create_collection({
-        "name": "Technical Docs",
-        "description": "Company technical documentation",
-        "owner_id": user_id,
-        "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
-        "quantization": "float16"
-    })
-    
-    # Update status
-    await repo.update_collection_status(
-        collection.id, 
-        CollectionStatus.READY
-    )
-    
-    # Query collections
-    user_collections = await repo.list_collections(
-        owner_id=user_id,
-        is_public=False
-    )
-```
+Repositories handle connection lifecycle and provide clean interfaces for data access.
 
 ### Connection Management
 
-**PostgreSQL**:
-- Async connection pooling via SQLAlchemy
-- Configurable pool size and overflow settings
-- Connection string: `postgresql+asyncpg://user:password@host:port/database`
-- Automatic retry on connection failures
+- **PostgreSQL**: Async pooling via SQLAlchemy, automatic retry
+- **Qdrant**: Singleton async client with health checks
 
-**Qdrant**:
-- Singleton async client with connection pooling
-- Health check before operations
-- Automatic reconnection on failure
-
-### Transaction Patterns
-
-**Collection Creation Flow**:
-1. Create collection record with status='pending'
-2. Initialize Qdrant collection
-3. Update collection status to 'ready'
-4. Log creation in audit table
-
-**Document Processing Flow**:
-1. Create operation record
-2. Add documents with status='pending'
-3. Process documents in batches
-4. Update document status and chunk counts
-5. Complete operation with metrics
-
-**Atomic Operations**:
-- PostgreSQL transactions ensure ACID compliance
-- Document status updates are atomic
-- Operation metrics computed from document aggregations
-- Proper rollback on errors
-
-### Error Handling
-
-**PostgreSQL Errors**:
-- Unique constraint violations (duplicate collections)
-- Foreign key violations (invalid references)
-- Connection pool exhaustion handling
-- Deadlock detection and retry
-
-**Qdrant Errors**:
-- Collection already exists
-- Invalid vector dimensions
-- Connection failures
-- Insufficient memory
+All operations use transactions for ACID guarantees.
 
 ## Data Flow
 
-### Document Indexing Pipeline
+**Indexing:**
+1. User creates collection (WebUI → CollectionRepository)
+2. User starts operation (WebUI → OperationRepository → Celery)
+3. Worker scans files via connector
+4. Documents registered with deduplication (DocumentRepository)
+5. Text extraction and chunking
+6. Embedding generation and batch upload to Qdrant
+7. Operation completed
 
-```
-1. User creates collection
-   └─> WebUI creates collection via CollectionRepository
-   
-2. User initiates index operation
-   └─> WebUI creates operation via OperationRepository
-   └─> Celery worker picks up task
-   
-3. Worker resolves connector and scans for documents
-   └─> ConnectorFactory selects appropriate BaseConnector (e.g. LocalFileConnector for directory sources)
-   └─> Connectors yield IngestedDocument DTOs with content, metadata, and content_hash
-   └─> DocumentRegistryService registers documents via DocumentRepository with hash-based deduplication
-   
-4. Extract and chunk text (using shared.text_processing)
-   └─> Update document status via DocumentRepository
-   
-5. Generate embeddings (using shared.embedding)
-   └─> Batch upload to Qdrant
-   └─> Update chunk counts via DocumentRepository
-   
-6. Complete operation
-   └─> Update operation status via OperationRepository
-   └─> Vectors available for search
-```
+**Search:**
+1. User queries WebUI (permission check)
+2. WebUI proxies to Vecpipe
+3. Vecpipe generates embedding and searches Qdrant
+4. Results enriched with PostgreSQL metadata
 
-### Search Flow
+## Performance
 
-```
-1. User queries via WebUI
-   └─> WebUI validates permissions
-   
-2. WebUI proxies to Vecpipe Search API
-   └─> Includes collection UUIDs
-   
-3. Vecpipe generates query embedding
-   └─> Searches relevant Qdrant collections
-   
-4. Results enriched with metadata
-   └─> Document info from PostgreSQL
-   └─> Formatted for UI display
-```
+**PostgreSQL:**
+- B-tree indexes on common queries
+- Partial indexes for filtered queries
+- Cursor-based pagination
+- Connection pooling
+- Regular VACUUM and ANALYZE
 
-## Performance Considerations
+**Qdrant:**
+- Batch vector uploads (100 per batch)
+- Payload indexes for filtering
+- HNSW params tuned for speed/accuracy tradeoff
+- Mmap for large collections
 
-### Query Optimization
-
-**PostgreSQL Optimization Strategies**:
-
-1. **Index Strategy**:
-   ```sql
-   -- B-tree indexes for equality and range queries
-   CREATE INDEX idx_operations_created_at ON operations(created_at);
-   
-   -- Partial indexes for filtered queries
-   CREATE INDEX idx_operations_pending ON operations(status) 
-   WHERE status = 'pending';
-   
-   -- Composite indexes for multi-column queries
-   CREATE INDEX idx_documents_collection_status ON documents(collection_id, status);
-   
-   -- GIN indexes for JSON queries
-   CREATE INDEX idx_collections_meta ON collections USING GIN(meta);
-   ```
-
-2. **Query Patterns**:
-   ```sql
-   -- Efficient pagination with cursor
-   SELECT * FROM documents 
-   WHERE collection_id = ? AND id > ? 
-   ORDER BY id 
-   LIMIT 100;
-   
-   -- Use EXISTS for existence checks
-   SELECT EXISTS(
-       SELECT 1 FROM documents 
-       WHERE collection_id = ? AND status = 'completed'
-   );
-   
-   -- Aggregate with window functions
-   SELECT collection_id, 
-          COUNT(*) OVER (PARTITION BY collection_id) as total_docs
-   FROM documents;
-   ```
-
-3. **Common Optimizations**:
-   - Use prepared statements to avoid query parsing overhead
-   - Batch INSERT operations for bulk document creation
-   - Use COPY for large data imports
-   - Implement connection pooling with appropriate limits
-   - Regular VACUUM and ANALYZE for statistics
-
-**Qdrant Optimization Strategies**:
-
-1. **Vector Search Optimization**:
-   - Pre-filter by metadata to reduce search space
-   - Use appropriate HNSW parameters (ef, m)
-   - Enable mmap for large collections
-   - Optimize vector dimensions and quantization
-
-2. **Batch Operations**:
-   ```python
-   # Batch vector upload
-   points = [
-       PointStruct(id=str(i), vector=vec, payload=meta)
-       for i, (vec, meta) in enumerate(vectors)
-   ]
-   await client.upsert(collection_name, points, batch_size=100)
-   ```
-
-3. **Payload Indexing**:
-   ```python
-   # Create payload index for fast filtering
-   await client.create_payload_index(
-       collection_name,
-       field_name="document_id",
-       field_type="keyword"
-   )
-   ```
-
-### Query Performance Monitoring
-
-1. **PostgreSQL Monitoring**:
-   ```sql
-   -- Slow query analysis
-   SELECT query, mean_time, calls 
-   FROM pg_stat_statements 
-   ORDER BY mean_time DESC 
-   LIMIT 10;
-   
-   -- Index usage statistics
-   SELECT schemaname, tablename, indexname, idx_scan
-   FROM pg_stat_user_indexes
-   ORDER BY idx_scan;
-   
-   -- Table bloat analysis
-   SELECT schemaname, tablename, 
-          pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size
-   FROM pg_stat_user_tables
-   ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-   ```
-
-2. **Connection Pool Monitoring**:
-   - Track active vs idle connections
-   - Monitor connection wait times
-   - Adjust pool size based on load
-
-3. **Query Plan Analysis**:
-   ```sql
-   EXPLAIN (ANALYZE, BUFFERS) 
-   SELECT * FROM documents 
-   WHERE collection_id = ? AND status = 'completed';
-   ```
-
-### Scaling Strategies
-
-**Horizontal Scaling**:
-- Read replicas for PostgreSQL with streaming replication
-- Qdrant cluster mode for distributed search
-- Multiple Celery workers for parallel processing
-- Load balancing across service instances
-
-**Vertical Scaling**:
-- Increased connection pool sizes (carefully tuned)
-- Larger Qdrant cache settings for frequently accessed vectors
-- More worker processes for CPU-bound operations
-- SSD storage for improved I/O performance
-
-**Caching Strategy**:
-- Redis for frequently accessed metadata
-- Application-level caching for user permissions
-- Query result caching with TTL
-- Qdrant's built-in caching mechanisms
+**Scaling:**
+- PostgreSQL read replicas
+- Qdrant cluster mode
+- Multiple Celery workers
+- Redis caching for metadata
 
 ## Backup and Recovery
 
-### PostgreSQL Backup
-
-**Automated Backup**:
+**PostgreSQL:**
 ```bash
-# Daily backup with rotation
 pg_dump $DATABASE_URL | gzip > backup/semantik_$(date +%Y%m%d).sql.gz
-
-# Keep last 30 days
-find backup/ -name "semantik_*.sql.gz" -mtime +30 -delete
 ```
 
-**Point-in-Time Recovery**:
-- WAL archiving enabled
-- Continuous archiving to object storage
-- Recovery to any point in time
-
-### Qdrant Backup
-
-**Collection Snapshots**:
+**Qdrant:**
 ```python
-# Create snapshot
-await client.create_snapshot(collection_name=collection.vector_store_name)
-
-# Download snapshot
-snapshot_info = await client.list_snapshots(collection_name)
-await client.download_snapshot(collection_name, snapshot_name)
+await client.create_snapshot(collection_name)
 ```
 
-### Disaster Recovery
+Qdrant collections can be rebuilt from source documents if snapshots are unavailable.
 
-1. **PostgreSQL Recovery**:
-   - Restore from latest backup
-   - Apply WAL logs to target time
-   - Verify data integrity
+## Security
 
-2. **Qdrant Recovery**:
-   - Restore collection snapshots
-   - Or rebuild from documents if needed
-   - Verify vector counts match documents
-
-## Security Considerations
-
-### Authentication & Authorization
-- Password hashing with Argon2
-- JWT tokens with short expiration
-- API keys for programmatic access
-- Row-level security via permissions
-
-### Data Protection
-- Input validation at all layers
-- SQL injection prevention via ORM
-- Path traversal protection
-- Rate limiting on all endpoints
-
-### Audit Trail
-- All collection modifications logged
-- User actions tracked with IP
-- Sensitive operations require confirmation
-- Audit logs retained for compliance
+- **Auth**: Argon2 password hashing, JWT tokens, API keys
+- **Data**: Input validation, ORM prevents SQL injection
+- **Audit**: All collection modifications logged with user/IP tracking
 
 ## Future Enhancements
 

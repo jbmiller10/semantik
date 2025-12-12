@@ -1,12 +1,8 @@
 # API Reference
 
-## Overview
+Two services: **WebUI** (8080) for auth/collections/search, **Search API** (8000) for vector search.
 
-Semantik provides two main API services:
-- **WebUI API** (Port 8080) - User-facing API with authentication, collection management, and search
-- **Search API** (Port 8000) - Core search engine API for vector similarity search
-
-All APIs follow RESTful principles with JSON request/response bodies.
+RESTful with JSON.
 
 ## WebUI API
 
