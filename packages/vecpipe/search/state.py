@@ -39,4 +39,12 @@ def clear_resources() -> None:
     executor = None
 
 
-__all__ = ["qdrant_client", "sdk_client", "model_manager", "embedding_service", "executor", "set_resources", "clear_resources"]
+__all__ = [
+    "qdrant_client",
+    "sdk_client",
+    "model_manager",
+    "embedding_service",
+    "executor",
+    "set_resources",
+    "clear_resources",
+]
