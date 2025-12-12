@@ -58,11 +58,42 @@
 </memory-management>
 
 <search-flow>
-  1. Embed query using same model as indexing
-  2. Search Qdrant for top-k similar vectors
-  3. Optional: Rerank with cross-encoder
-  4. Return results with scores
+  1. Resolve collection: explicit > operation_uuid lookup > default
+  2. If search_type="hybrid", route to perform_hybrid_search()
+  3. Embed query using same model as indexing
+  4. Search Qdrant for top-k similar vectors
+  5. Filter results by score_threshold (BEFORE reranking)
+  6. Optional: Rerank filtered results with cross-encoder
+  7. Return results with scores
 </search-flow>
+
+<collection-resolution>
+  <priority-order>
+    1. Explicit collection parameter in request
+    2. operation_uuid database lookup (returns collection.vector_store_name)
+    3. DEFAULT_COLLECTION from settings
+  </priority-order>
+  <error-behavior>
+    If operation_uuid is provided but not found, returns HTTP 404 error.
+  </error-behavior>
+</collection-resolution>
+
+<api-contracts>
+  <score_threshold>
+    Applies BEFORE reranking. Results with scores below threshold are
+    excluded before being sent to reranker. Default is 0.0 (no filtering).
+  </score_threshold>
+
+  <search_type_hybrid>
+    When search_type="hybrid", the /search endpoint internally routes
+    to perform_hybrid_search() and maps results to SearchResponse format.
+  </search_type_hybrid>
+
+  <upsert_wait>
+    The wait parameter is passed as a URL query parameter (?wait=true),
+    not in the JSON request body, per Qdrant REST API specification.
+  </upsert_wait>
+</api-contracts>
 
 <error-handling>
   <dimension-mismatch>HTTP 400 with clear error message</dimension-mismatch>
