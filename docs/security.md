@@ -12,7 +12,7 @@ Semantik validates essential secrets for every service at startup. If a placehol
 
 ## Development Flow
 
-1. Copy `.env.example` (root or `packages/webui/.env.example`).
+1. Copy `.env.docker.example` (root or `packages/webui/.env.docker.example`).
 2. Run `make wizard` to replace values with strong random secrets (including Flower credentials).
 3. Start services via `make dev` or Docker targets.
 
@@ -25,6 +25,340 @@ Fix the configuration issues reported above and try again.
 
 Correct the variables listed in the error, regenerate as needed, and rerun the command.
 
+---
+
+## JWT Authentication
+
+Semantik uses JSON Web Tokens (JWT) for user authentication. The implementation is located in `/packages/webui/auth.py`.
+
+### Token Configuration
+
+| Parameter | Value | Configuration |
+| --- | --- | --- |
+| Access Token Expiry | 24 hours | `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 1440) |
+| Refresh Token Expiry | 30 days | `REFRESH_TOKEN_EXPIRE_DAYS` constant |
+| Algorithm | HS256 | `ALGORITHM` setting |
+
+### Authentication Flow
+
+1. **Login**: User provides credentials via `POST /api/auth/login`
+2. **Token Generation**: Server returns both access and refresh tokens
+3. **Request Authentication**: Client includes access token in the `Authorization` header as `Bearer <token>`
+4. **Token Refresh**: When access token expires, use `POST /api/auth/refresh` with the refresh token
+
+### Security Implementation
+
+- **HTTPBearer**: Tokens are passed via the standard `Authorization: Bearer <token>` header
+- **Token Type Claim**: Each token includes a `type` claim (`access` or `refresh`) to prevent token misuse
+- **Expiration Claim**: Tokens include an `exp` claim that is validated on every request
+
+### Reference
+
+See `/packages/webui/auth.py` for the complete implementation including:
+- `create_access_token()` - Access token generation
+- `create_refresh_token()` - Refresh token generation
+- `verify_token()` - Token validation
+- `get_current_user()` - FastAPI dependency for authenticated endpoints
+
+---
+
+## Password Security
+
+User passwords are securely hashed and validated before storage.
+
+### Hashing
+
+- **Algorithm**: bcrypt via the `passlib` library
+- **Configuration**: `CryptContext(schemes=["bcrypt"], deprecated="auto")`
+- **Location**: `/packages/shared/database/__init__.py`
+
+### Password Requirements
+
+| Requirement | Value |
+| --- | --- |
+| Minimum Length | 8 characters |
+
+### Username Requirements
+
+| Requirement | Value |
+| --- | --- |
+| Minimum Length | 3 characters |
+| Allowed Characters | Alphanumeric and underscores only |
+
+### Validation
+
+Password and username validation is enforced at the API layer using Pydantic validators in `/packages/webui/auth.py`:
+
+```python
+@field_validator("username")
+def validate_username(cls, v: str) -> str:
+    if len(v) < 3:
+        raise ValueError("Username must be at least 3 characters long")
+    if not all(c.isalnum() or c == "_" for c in v):
+        raise ValueError("Username must contain only alphanumeric characters and underscores")
+    return v
+
+@field_validator("password")
+def validate_password(cls, v: str) -> str:
+    if len(v) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    return v
+```
+
+---
+
+## DISABLE_AUTH Mode
+
+> **CRITICAL SECURITY WARNING**
+
+The `DISABLE_AUTH` configuration option **completely bypasses all authentication checks**.
+
+### Behavior When Enabled
+
+When `DISABLE_AUTH=True`:
+
+1. **No credentials required**: All endpoints accept requests without authentication
+2. **Superuser access granted**: A synthetic `dev_user` is returned with `is_superuser=True`
+3. **Full system access**: The dev user has unrestricted access to all collections and operations
+
+### Synthetic User Details
+
+```python
+{
+    "id": 0,
+    "username": "dev_user",
+    "email": "dev@example.com",
+    "full_name": "Development User",
+    "is_active": True,
+    "is_superuser": True,  # GRANTS FULL ADMIN ACCESS
+}
+```
+
+### Usage Guidelines
+
+| Environment | DISABLE_AUTH | Acceptable |
+| --- | --- | --- |
+| Local Development | `True` | Yes |
+| Testing | `True` | Yes |
+| Staging | `False` | Required |
+| Production | `False` | **MANDATORY** |
+
+**NEVER set `DISABLE_AUTH=True` in production.** This would expose all data and administrative functions to unauthenticated users.
+
+### Reference
+
+- Configuration: `/packages/shared/config/webui.py` line 20
+- Implementation: `/packages/webui/auth.py` `get_current_user()` function
+
+---
+
+## Authorization Model
+
+Semantik implements owner-based access control for collections.
+
+### Collection Ownership
+
+Each collection is owned by the user who created it. Access to collection resources is verified via the `get_collection_for_user` FastAPI dependency.
+
+### Access Control Flow
+
+1. **Request received**: User requests access to a collection resource
+2. **Authentication**: JWT token is validated and user identity extracted
+3. **Authorization check**: `get_collection_for_user` dependency verifies ownership
+4. **Response**:
+   - **Success**: Collection object returned, request proceeds
+   - **Not found**: HTTP 404 if collection does not exist
+   - **Forbidden**: HTTP 403 if user does not own the collection
+
+### Implementation
+
+Located in `/packages/webui/dependencies.py`:
+
+```python
+async def get_collection_for_user(
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Collection:
+    """
+    Raises:
+        HTTPException(404): If collection is not found
+        HTTPException(403): If user does not have access to the collection
+    """
+```
+
+### Superuser Bypass
+
+Users with `is_superuser=True` may have elevated access for administrative operations. See the `require_admin_or_internal_key` dependency for admin-only endpoints.
+
+---
+
+## Internal API Key
+
+The internal API key enables secure service-to-service communication within the Semantik stack.
+
+### Key Management
+
+| Environment | Behavior |
+| --- | --- |
+| Non-production | Auto-generated if not explicitly configured |
+| Production | **Required** - raises `RuntimeError` if missing |
+
+### Storage
+
+- **Location**: `{data_dir}/internal_api_key`
+- **Permissions**: `0600` (owner read/write only)
+- **Format**: URL-safe base64 string (48 bytes of entropy via `secrets.token_urlsafe`)
+
+### Resolution Order
+
+1. Check `INTERNAL_API_KEY` environment variable
+2. Read from persisted file at `{data_dir}/internal_api_key`
+3. Generate new key (non-production only) or fail (production)
+
+### Usage
+
+Service-to-service requests include the key in the `X-Internal-Api-Key` header:
+
+```http
+X-Internal-Api-Key: <key_value>
+```
+
+### Reference
+
+Implementation: `/packages/shared/config/internal_api_key.py`
+
+---
+
+## Security Middleware
+
+Semantik applies multiple security middleware layers to all HTTP requests.
+
+### Middleware Stack Order
+
+1. **CorrelationMiddleware** - Request tracing
+2. **CSPMiddleware** - Content Security Policy
+3. **CORSMiddleware** - Cross-Origin Resource Sharing
+4. **RateLimitMiddleware** - Request throttling
+
+### CORS (Cross-Origin Resource Sharing)
+
+**Configuration**: `CORS_ORIGINS` environment variable (comma-separated URLs)
+
+**Validation Rules**:
+- Origins must have valid URL format with scheme and netloc
+- **Production**: Wildcards (`*`) and `null` origins are **rejected**
+- **Development**: Wildcards allowed with warning logged
+
+**Reference**: `/packages/webui/main.py` `_validate_cors_origins()` function
+
+### CSP (Content Security Policy)
+
+Prevents XSS attacks by restricting browser resource loading.
+
+**Default Policy** (most endpoints):
+```
+default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval';
+style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;
+frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+```
+
+**Strict Policy** (chunking endpoints):
+```
+default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none';
+font-src 'none'; connect-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'
+```
+
+**Additional Headers**:
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `X-XSS-Protection: 1; mode=block`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+**Reference**: `/packages/webui/middleware/csp.py`
+
+### Rate Limiting
+
+Protects against abuse and denial-of-service attacks.
+
+**Key Selection**:
+1. **Authenticated users**: Rate limited by user ID extracted from JWT
+2. **Anonymous requests**: Rate limited by client IP address
+
+**Implementation**: Uses `slowapi` library with Redis backend for distributed rate limiting.
+
+**Reference**: `/packages/webui/middleware/rate_limit.py`
+
+---
+
+## WebSocket Authentication
+
+WebSocket connections use JWT authentication with a modified flow since WebSocket headers cannot be set by browsers.
+
+### Authentication Method
+
+The JWT token is passed as a query parameter when establishing the WebSocket connection:
+
+```
+wss://example.com/ws/operations?token=<jwt_access_token>
+```
+
+### Implementation
+
+The `get_current_user_websocket()` function in `/packages/webui/auth.py` handles WebSocket authentication:
+
+1. Extract token from query parameter
+2. Validate JWT signature and expiration
+3. Load user from database
+4. Verify user is active
+
+### DISABLE_AUTH Support
+
+When `DISABLE_AUTH=True`, WebSocket connections without a token are authenticated as the synthetic `dev_user` with superuser privileges.
+
+### Error Handling
+
+Invalid or missing tokens raise `ValueError` exceptions which should be caught by WebSocket handlers to close the connection gracefully.
+
+---
+
+## First User Auto-Superuser
+
+The first user registered in the system is automatically granted superuser privileges.
+
+### Behavior
+
+When a user registers via `POST /api/auth/register`:
+
+1. System counts existing users
+2. If count is 0, the new user receives `is_superuser=True`
+3. Subsequent users receive `is_superuser=False`
+
+### Purpose
+
+This enables initial system setup without requiring manual database manipulation to create an admin account.
+
+### Implementation
+
+Located in `/packages/webui/api/auth.py`:
+
+```python
+# Check if this is the first user in the system
+user_count = await user_repo.count_users()
+is_first_user = user_count == 0
+
+user_dict = await user_repo.create_user({
+    ...
+    "is_superuser": is_first_user,  # First user becomes superuser
+})
+```
+
+### Security Consideration
+
+Ensure you register your admin account immediately after deployment before any untrusted user can register.
+
+---
+
 ## Document Storage Roots
 
-By default the WebUI serves files that reside under the service’s `loaded_dir` mount (the path exported inside the container) and the standard Docker documents mount (`/mnt/docs`) when it is present. If neither of those mounts exists and no explicit root has been configured, the API falls back to the absolute paths recorded by ingestion so local developer workflows keep functioning. To enforce a boundary, set `DOCUMENT_ROOT` to the canonical location; requests for files outside that tree are rejected. You can allow additional locations by setting `DOCUMENT_ALLOWED_ROOTS` to a colon-separated list of absolute paths (for example, `/data/docs:/mnt/archive`). Any configured roots automatically include the `loaded_dir` mount so files copied there remain accessible.
+By default the WebUI serves files that reside under the service's `loaded_dir` mount (the path exported inside the container) and the standard Docker documents mount (`/mnt/docs`) when it is present. If neither of those mounts exists and no explicit root has been configured, the API falls back to the absolute paths recorded by ingestion so local developer workflows keep functioning. To enforce a boundary, set `DOCUMENT_ROOT` to the canonical location; requests for files outside that tree are rejected. You can allow additional locations by setting `DOCUMENT_ALLOWED_ROOTS` to a colon-separated list of absolute paths (for example, `/data/docs:/mnt/archive`). Any configured roots automatically include the `loaded_dir` mount so files copied there remain accessible.
