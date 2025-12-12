@@ -97,7 +97,10 @@ class TestSourceService:
             source_config={"path": "/data/new"},
         )
 
-        assert result == expected_source
+        # create_source returns (source, secret_types) tuple
+        source, secret_types = result
+        assert source == expected_source
+        assert secret_types == []
         mock_collection_repo.get_by_id.assert_called_once_with(sample_collection.id)
         mock_source_repo.create.assert_called_once()
 
@@ -159,7 +162,10 @@ class TestSourceService:
             interval_minutes=30,
         )
 
-        assert result == updated_source
+        # update_source returns (source, secret_types) tuple
+        source, secret_types = result
+        assert source == updated_source
+        assert secret_types == []
         mock_source_repo.update.assert_called_once()
 
     @pytest.mark.asyncio()
