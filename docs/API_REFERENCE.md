@@ -6,20 +6,13 @@ RESTful with JSON.
 
 ## WebUI API
 
-### Base URL
-```
-http://localhost:8080
-```
+**Base**: `http://localhost:8080`
 
-### Authentication
-All API endpoints except authentication endpoints require JWT authentication. Include the token in the Authorization header:
-```
-Authorization: Bearer {token}
-```
+**Auth**: JWT required except for auth endpoints. Header: `Authorization: Bearer {token}`
 
-### V2 API Endpoints
+### V2 API
 
-The v2 API provides a modern collection-based architecture for document management and search.
+Collection-based architecture for docs and search.
 
 #### Authentication Endpoints
 
@@ -659,43 +652,13 @@ Content-Type: application/json
 
 **Note:** This endpoint is optimized for single collection searches and has higher rate limits than the multi-collection endpoint.
 
-#### Chunking API Endpoints
+#### Chunking API
 
-The chunking API provides comprehensive document chunking capabilities with multiple strategies, real-time processing, and quality analysis. For detailed documentation, see [Chunking API Documentation](/docs/api/CHUNKING_API.md).
+Multiple strategies, real-time processing, quality analysis. See [CHUNKING_API.md](/docs/api/CHUNKING_API.md) for full docs.
 
-##### Key Endpoints Overview
+**Key endpoints**: strategies, preview (10/min), compare (5/min), collection processing, metrics, quality scores, configs
 
-###### Strategy Management
-- `GET /api/v2/chunking/strategies` - List available chunking strategies
-- `GET /api/v2/chunking/strategies/{strategy_id}` - Get strategy details
-- `POST /api/v2/chunking/strategies/recommend` - Get AI-powered strategy recommendation
-
-###### Preview and Testing
-- `POST /api/v2/chunking/preview` - Generate chunk preview (rate limited: 10/min)
-- `POST /api/v2/chunking/compare` - Compare multiple strategies (rate limited: 5/min)
-- `GET /api/v2/chunking/preview/{preview_id}` - Retrieve cached preview
-
-###### Collection Processing
-- `POST /api/v2/chunking/collections/{collection_id}/chunk` - Start async chunking operation
-- `PATCH /api/v2/chunking/collections/{collection_id}/chunking-strategy` - Update collection strategy
-- `GET /api/v2/chunking/collections/{collection_id}/chunks` - List collection chunks
-- `GET /api/v2/chunking/collections/{collection_id}/chunking-stats` - Get chunking statistics
-
-###### Analytics and Quality
-- `GET /api/v2/chunking/metrics` - Global chunking metrics
-- `GET /api/v2/chunking/metrics/by-strategy` - Metrics by strategy
-- `POST /api/v2/chunking/analyze` - Analyze document for strategy recommendation
-- `GET /api/v2/chunking/quality-scores` - Chunk quality analysis
-
-###### Configuration Management
-- `POST /api/v2/chunking/configs` - Save custom configuration
-- `GET /api/v2/chunking/configs` - List saved configurations
-
-###### Progress Tracking
-- `GET /api/v2/chunking/operations/{operation_id}/progress` - Get operation progress
-- WebSocket: operation progress streams via `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt_token>` (see `docs/WEBSOCKET_API.md`).
-
-For complete endpoint documentation, request/response schemas, and examples, see the [full Chunking API documentation](/docs/api/CHUNKING_API.md) or [practical examples](/docs/api/CHUNKING_EXAMPLES.md).
+**Progress**: WebSocket at `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt_token>`
 
 #### Document Access Endpoints
 
@@ -804,15 +767,9 @@ GET /metrics
 
 ## Search API
 
-The Search API provides the core vector search functionality.
+Core vector search. No auth required (WebUI handles it).
 
-### Base URL
-```
-http://localhost:8000
-```
-
-### Authentication
-The Search API does not require authentication. Authentication is handled by the WebUI layer.
+**Base**: `http://localhost:8000`
 
 ### Endpoints
 
@@ -1052,42 +1009,11 @@ GET /model/status
 }
 ```
 
-## Error Responses
+## Errors
 
-All endpoints return standard HTTP status codes:
+Standard HTTP codes: 200 (OK), 201 (created), 202 (async started), 204 (no content), 400 (bad request), 401 (unauthorized), 403 (forbidden), 404 (not found), 409 (conflict), 422 (validation), 429 (rate limit), 500/502/503 (server errors), 507 (GPU memory)
 
-- `200 OK` - Success
-- `201 Created` - Resource created successfully
-- `202 Accepted` - Async operation started
-- `204 No Content` - Success with no response body
-- `206 Partial Content` - Partial file content (range requests)
-- `400 Bad Request` - Invalid parameters
-- `401 Unauthorized` - Missing or invalid authentication
-- `403 Forbidden` - Insufficient permissions
-- `404 Not Found` - Resource not found
-- `409 Conflict` - Resource already exists
-- `413 Payload Too Large` - Request body too large
-- `415 Unsupported Media Type` - Unsupported file type
-- `422 Unprocessable Entity` - Validation error
-- `429 Too Many Requests` - Rate limit exceeded
-- `500 Internal Server Error` - Server error
-- `502 Bad Gateway` - Upstream service error
-- `503 Service Unavailable` - Service temporarily unavailable
-- `507 Insufficient Storage` - Insufficient GPU memory
-
-### Error Response Format
-
-All error responses follow a consistent format:
-```json
-{
-  "detail": "Detailed error message",
-  "error_code": "UNIQUE_ERROR_CODE",
-  "status_code": 400,
-  "context": {
-    "field": "additional context"
-  }
-}
-```
+Format: `{"detail": "message", "error_code": "CODE", "status_code": 400, "context": {...}}`
 
 ### Common Error Examples
 
@@ -1139,78 +1065,30 @@ All error responses follow a consistent format:
 }
 ```
 
-## Rate Limiting
+## Rate Limits
 
-The WebUI API implements rate limiting to ensure fair usage:
+Auth 5/min, Search 30/min, Collections 20/min, Docs 10/min, General 100/min
 
-| Endpoint Category | Rate Limit | Window |
-|------------------|------------|---------|
-| Authentication | 5 requests | 1 minute |
-| Search | 30 requests | 1 minute |
-| Collection Management | 20 requests | 1 minute |
-| Document Access | 10 requests | 1 minute |
-| General API | 100 requests | 1 minute |
+Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Reset-After`
 
-### Rate Limit Headers
+## Auth Flow
 
-All API responses include rate limit information:
+Register → Login (get tokens) → Access (with header) → Refresh (when expired) → Logout (revoke)
 
-```http
-X-RateLimit-Limit: 30
-X-RateLimit-Remaining: 27
-X-RateLimit-Reset: 1705318860
-X-RateLimit-Reset-After: 45
-```
-
-## Authentication Flow
-
-### JWT Token Flow
-
-1. **Register**: Create a new user account
-2. **Login**: Exchange credentials for access and refresh tokens
-3. **Access**: Include access token in Authorization header
-4. **Refresh**: Use refresh token to get new access token when expired
-5. **Logout**: Revoke refresh token
-
-### Token Details
-
-**Access Token**:
-- Algorithm: HS256
-- Expiration: 30 minutes
-- Claims: `sub` (username), `exp`, `iat`
-
-**Refresh Token**:
-- Random secure token
-- Expiration: 30 days
-- Stored hashed in database
+**Access token**: HS256, 30min, claims: `sub`, `exp`, `iat`
+**Refresh token**: Random, 30 days, hashed in DB
 
 ## Best Practices
 
-### API Usage
+**Usage**: Batch ops, paginate, retry with backoff, monitor rate limits, use WebSocket for progress
 
-1. **Batch Operations**: Use batch endpoints when processing multiple items
-2. **Pagination**: Always paginate large result sets
-3. **Error Handling**: Implement retry logic with exponential backoff
-4. **Rate Limiting**: Monitor rate limit headers and implement client-side limiting
-5. **WebSocket**: Use WebSocket for real-time progress updates on long operations
+**Security**: Secure token storage (not localStorage), HTTPS in prod, validate inputs, don't leak info in errors
 
-### Security
+**Performance**: Cache results, gzip, connection pooling, WebSocket for long ops
 
-1. **Token Storage**: Store tokens securely (not in localStorage for web apps)
-2. **HTTPS**: Always use HTTPS in production
-3. **Input Validation**: Validate all inputs client-side before sending
-4. **Error Messages**: Don't expose sensitive information in error responses
+## SDK
 
-### Performance
-
-1. **Caching**: Cache search results when appropriate
-2. **Compression**: Enable gzip compression for API responses
-3. **Connection Pooling**: Reuse HTTP connections
-4. **Async Operations**: Use WebSocket for long-running operations
-
-## SDK Support
-
-While no official SDK is provided, the API is designed to work with any HTTP client library:
+No official SDK. Use any HTTP client:
 
 ### Python Example
 ```python
@@ -1269,12 +1147,12 @@ class SemantikClient {
 }
 ```
 
-## OpenAPI Documentation
+## OpenAPI Docs
 
-Both services provide interactive OpenAPI documentation:
-- WebUI API: `http://localhost:8080/docs`
-- Search API: `http://localhost:8000/docs`
+Interactive docs:
+- WebUI: `http://localhost:8080/docs`
+- Search: `http://localhost:8000/docs`
 
-The OpenAPI spec can be accessed at:
-- WebUI API: `http://localhost:8080/openapi.json`
-- Search API: `http://localhost:8000/openapi.json`
+Specs:
+- WebUI: `http://localhost:8080/openapi.json`
+- Search: `http://localhost:8000/openapi.json`

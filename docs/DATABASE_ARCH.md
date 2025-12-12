@@ -530,92 +530,12 @@ Qdrant collections can be rebuilt from source documents if snapshots are unavail
 - **Data**: Input validation, ORM prevents SQL injection
 - **Audit**: All collection modifications logged with user/IP tracking
 
-## Future Enhancements
+## Future Ideas
 
-### Planned Improvements
-
-1. **Multi-tenancy**: 
-   - Database-level isolation using PostgreSQL schemas
-   - Tenant-specific connection pools
-   - Cross-tenant query prevention
-
-2. **Sharding**: 
-   - Partition large collections by date or hash
-   - Distributed query coordination
-   - Automatic shard rebalancing
-
-3. **Full-text Search**: 
-   - PostgreSQL FTS integration for metadata
-   - Hybrid search combining vectors and keywords
-   - Language-specific stemming and tokenization
-
-4. **Vector Versioning**: 
-   - Track embedding model changes
-   - Support multiple vector representations
-   - Gradual migration between models
-
-5. **Incremental Indexing**: 
-   - File modification detection
-   - Delta processing for large documents
-   - Change data capture (CDC) integration
-
-6. **Collection Templates**: 
-   - Predefined configurations for common use cases
-   - Template marketplace
-   - Custom template creation
-
-7. **Advanced Features**:
-   - Time-based document expiration
-   - Geographic distribution of collections
-   - Real-time collaborative indexing
-   - Webhook notifications for operations
-
-### Technical Debt and Improvements
-
-1. **Schema Refinements**:
-   - Convert string timestamps to proper DateTime types
-   - Standardize UUID handling across tables
-   - Add missing foreign key constraints
-
-2. **Performance Enhancements**:
-   - Implement query result caching
-   - Add database connection pooling metrics
-   - Optimize large JSON column storage
-
-3. **Monitoring and Observability**:
-   - Built-in query performance tracking
-   - Automated index recommendations
-   - Resource usage dashboards
-
-### Migration Path
-
-1. **Data Migration Tools**: 
-   - Automated scripts for bulk operations
-   - Progress tracking for large migrations
-   - Rollback capabilities
-
-2. **Version Management**: 
-   - Semantic versioning for schema changes
-   - Compatibility matrix maintenance
-   - Automated migration testing
-
-3. **Zero-downtime Updates**: 
-   - Blue-green deployment support
-   - Online schema changes
-   - Gradual rollout strategies
-
-4. **Backward Compatibility**:
-   - API versioning for schema changes
-   - Deprecation warnings
-   - Migration guides and tooling
-
-## Conclusion
-
-The Semantik database architecture provides a robust foundation for semantic search with:
-- Clear separation between metadata (PostgreSQL) and vectors (Qdrant)
-- Collection-centric design for better organization
-- Comprehensive audit and permission systems
-- Scalable architecture supporting growth
-- Safe migration paths and data integrity guarantees
-
-The transition from job-centric to collection-centric architecture has created a more intuitive and maintainable system that better aligns with user mental models and supports future enhancements.
+- Multi-tenancy with schema-level isolation
+- Sharding for large collections
+- Hybrid search (vectors + PostgreSQL FTS)
+- Vector versioning for model migrations
+- Incremental indexing with change detection
+- Collection templates
+- Webhook notifications

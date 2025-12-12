@@ -27,15 +27,14 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### System Requirements
+### Requirements
 
-- **Operating System**: Linux (Ubuntu 20.04+ recommended), macOS, Windows (WSL2)
-- **Docker**: 20.10+ with Docker Compose 2.0+
-- **Python**: 3.12+ (for local development)
-- **Node.js**: 20.0+ (for frontend development)
-- **GPU**: NVIDIA GPU with CUDA support (optional but recommended)
-- **RAM**: Minimum 16GB, 32GB+ recommended
-- **Storage**: SSD with at least 100GB free space
+- Docker 20.10+ with Compose 2.0+
+- Python 3.12+ (local dev)
+- Node.js 20.0+ (frontend dev)
+- 16GB+ RAM (32GB recommended)
+- SSD with 100GB+ free
+- GPU optional but recommended
 
 ---
 
@@ -43,63 +42,17 @@
 
 ### Core Services
 
-#### 1. **WebUI** (Port 8080)
-- **Purpose**: Web interface and REST API
-- **Technology**: FastAPI, React
-- **Responsibilities**:
-  - User authentication and authorization
-  - Collection management
-  - Operation orchestration
-  - WebSocket connections for real-time updates
-  - Search API proxy
+**WebUI** (Port 8080) - Web interface, auth, collection management
+**Vecpipe** (Port 8000) - Embedding generation and semantic search
+**Worker** - Celery background tasks (indexing, reindexing)
+**Flower** (Port 5555) - Task monitoring (profile: backend)
 
-#### 2. **Vecpipe** (Port 8000)
-- **Purpose**: Search and embedding service
-- **Technology**: FastAPI, PyTorch
-- **Responsibilities**:
-  - Document embedding generation
-  - Semantic search operations
-  - Model management
-  - Vector operations with Qdrant
+### Data Layer
 
-#### 3. **Worker** (No exposed port)
-- **Purpose**: Background task processing
-- **Technology**: Celery
-- **Responsibilities**:
-  - Document indexing
-  - Collection reindexing
-  - Asynchronous operations
-  - File processing
-
-#### 4. **Flower** (Port 5555)
-- **Purpose**: Task monitoring dashboard
-- **Technology**: Flower (Celery monitoring)
-- **Profile**: backend
-- **Access**: http://localhost:5555 (authenticate with `FLOWER_USERNAME`/`FLOWER_PASSWORD` from `.env`; rotate via `make wizard`)
-
-### Data Layer Services
-
-#### 1. **PostgreSQL** (Port 5432)
-- **Purpose**: Relational database
-- **Version**: 16-alpine
-- **Data**: Users, collections, operations, metadata
-
-#### 2. **Qdrant** (Port 6333, 6334)
-- **Purpose**: Vector database
-- **Ports**: 6333 (HTTP), 6334 (gRPC)
-- **Data**: Document embeddings, vector indices
-
-#### 3. **Redis** (Port 6379)
-- **Purpose**: Message broker and cache
-- **Version**: 7-alpine
-- **Usage**: Celery task queue, WebSocket pub/sub
-
-#### 4. **PostgreSQL Test** (Port 55432)
-- **Purpose**: Dedicated test database instance
-- **Version**: 16-alpine
-- **Profile**: testing
-- **Usage**: Integration and API tests
-- **Note**: Uses separate volume (`postgres_test_data`) for isolation
+**PostgreSQL** (5432) - Users, collections, operations, metadata
+**Qdrant** (6333, 6334) - Vector embeddings
+**Redis** (6379) - Celery queue, WebSocket pub/sub
+**PostgreSQL Test** (55432) - Test database (profile: testing)
 
 ### Service Dependencies
 
@@ -133,9 +86,7 @@ graph TB
     E -->|Monitor| H
 ```
 
-> **Note**: The React frontend is built statically during the Docker build process and served by the WebUI service. There is no standalone frontend container or development server exposed on port 5173 in the Docker environment.
-
----
+React frontend is built statically and served by WebUI.
 
 ## Development Environment
 
@@ -172,43 +123,7 @@ semantik/
 └── Makefile                # Development commands
 ```
 
-### Python Configuration
-
-```toml
-[project]
-name = "semantik"
-version = "2.0.0"
-requires-python = ">=3.11,<3.13"
-dependencies = [
-    "fastapi>=0.116.0,<0.117",
-    "uvicorn>=0.27.1,<0.28",
-    "sqlalchemy>=2.0.23,<3",
-    "asyncpg>=0.30.0,<0.31",
-    "qdrant-client>=1.9.0,<2",
-    "celery[redis]>=5.3.0,<6",
-    "redis>=5.0.0,<6",
-    "transformers>=4.51.0,<5",
-    "torch",
-    # ..."
-]
-
-[dependency-groups]
-dev = ["pytest>=8.0.0,<9", "ruff>=0.2.0,<0.3", "mypy>=1.8.0,<2"]
-e2e = ["pytest-playwright>=0.6.2,<0.7"]
-
-[tool.uv]
-default-groups = ["dev", "e2e"]
-```
-
-### Development Dependencies
-
-- **Black**: Code formatting
-- **Ruff**: Fast Python linter
-- **Mypy**: Static type checking
-- **Pytest**: Testing framework
-- **Coverage**: Test coverage reporting
-
----
+Python dependencies managed via `pyproject.toml` with uv. Dev tools: Ruff, Mypy, Pytest.
 
 ## Docker Infrastructure
 
@@ -259,119 +174,28 @@ services:
     depends_on: [redis]
 ```
 
-### Volume Management
+### Volumes
 
-#### Named Volumes
-- `qdrant_storage`: Vector database persistence
-- `postgres_data`: PostgreSQL database files
-- `postgres_test_data`: PostgreSQL test database files (testing profile)
-- `redis_data`: Redis persistence (AOF enabled)
+Named: `qdrant_storage`, `postgres_data`, `redis_data`, `postgres_test_data`
+Bind mounts: `./data`, `./models`, `./logs`, `${DOCUMENT_PATH}` (read-only)
 
-#### Bind Mounts
-- `./data`: Application data and operations
-- `./models`: HuggingFace model cache
-- `./logs`: Service logs
-- `${DOCUMENT_PATH}`: User documents (read-only)
+### Profiles
 
-### Docker Profiles
+- **Default**: Core services
+- **backend**: Adds Flower
+- **testing**: Adds test PostgreSQL
+- **dev**: Live reload, debug logging (`docker-compose.dev.yml`)
 
-1. **Default Profile**: Core services (qdrant, postgres, redis, vecpipe, webui, worker)
-   ```bash
-   docker compose up -d
-   ```
+## Testing
 
-2. **Backend Profile**: Adds Flower monitoring dashboard
-   ```bash
-   docker compose --profile backend up -d
-   ```
-
-3. **Testing Profile**: Adds dedicated test PostgreSQL instance
-   ```bash
-   docker compose --profile testing up -d
-   ```
-
-### Development Override File
-
-For local development with live code reloading, use the `docker-compose.dev.yml` override:
+Tests in `tests/` organized by category (unit, integration, e2e, api, services, etc).
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-```
-
-This enables:
-- Source code mounting (read-only) for live updates
-- `WEBUI_RELOAD=true` for automatic restart on code changes
-- `DB_ECHO=true` for SQL query logging
-- `ENVIRONMENT=development` for debug settings
-
----
-
-## Testing Framework
-
-### Test Structure
-
-```
-tests/
-├── api/                     # API endpoint tests
-├── application/             # Application layer tests
-├── chunking/                # Chunking strategy tests
-├── database/                # Database migration and query tests
-├── domain/                  # Domain model tests
-├── e2e/                     # End-to-end tests
-├── fixtures/                # Shared test fixtures
-├── integration/             # Integration tests
-├── performance/             # Performance benchmarks
-├── security/                # Security tests
-├── services/                # Service layer tests
-├── shared/                  # Shared utility tests
-├── streaming/               # Streaming pipeline tests
-├── unit/                    # Unit tests
-├── webui/                   # WebUI-specific tests
-│   ├── api/v2/              # V2 API tests
-│   └── services/            # WebUI service tests
-├── websocket/               # WebSocket tests
-└── conftest.py              # Shared fixtures and configuration
-```
-
-### Key Test Fixtures
-
-```python
-@pytest.fixture
-async def test_db():
-    """Test database session"""
-    
-@pytest.fixture
-def test_client():
-    """FastAPI test client with auth"""
-    
-@pytest.fixture
-def mock_qdrant():
-    """Mock Qdrant client"""
-    
-@pytest.fixture
-def celery_worker():
-    """Test Celery worker"""
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-make test
-
-# Run with coverage
-make test-coverage
-
-# Run specific test category
+make test              # All tests
+make test-coverage     # With coverage
 uv run pytest tests/unit -v
-uv run pytest tests/integration -v
-uv run pytest tests/e2e -v
-
-# Run frontend tests
 make frontend-test
 ```
-
----
 
 ## Build System
 
