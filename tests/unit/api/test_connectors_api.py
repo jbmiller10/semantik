@@ -1,7 +1,7 @@
 """Unit tests for Connectors API v2 endpoints."""
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -101,8 +101,8 @@ class TestGitPreviewEndpoint:
     def test_git_preview_success(self, test_client):
         """Test successful git repository preview."""
         with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
-            mock_connector = AsyncMock()
-            mock_connector.authenticate.return_value = True
+            mock_connector = MagicMock()
+            mock_connector.authenticate = AsyncMock(return_value=True)
             mock_connector.get_refs.return_value = ["main", "develop", "v1.0.0"]
             mock_connector_cls.return_value = mock_connector
 
@@ -125,8 +125,8 @@ class TestGitPreviewEndpoint:
     def test_git_preview_with_token(self, test_client):
         """Test git preview with HTTPS token authentication."""
         with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
-            mock_connector = AsyncMock()
-            mock_connector.authenticate.return_value = True
+            mock_connector = MagicMock()
+            mock_connector.authenticate = AsyncMock(return_value=True)
             mock_connector.get_refs.return_value = ["main"]
             mock_connector_cls.return_value = mock_connector
 
@@ -148,8 +148,8 @@ class TestGitPreviewEndpoint:
     def test_git_preview_with_ssh_key(self, test_client):
         """Test git preview with SSH key authentication."""
         with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
-            mock_connector = AsyncMock()
-            mock_connector.authenticate.return_value = True
+            mock_connector = MagicMock()
+            mock_connector.authenticate = AsyncMock(return_value=True)
             mock_connector.get_refs.return_value = ["main"]
             mock_connector_cls.return_value = mock_connector
 
@@ -175,8 +175,8 @@ class TestGitPreviewEndpoint:
     def test_git_preview_auth_failed(self, test_client):
         """Test git preview when authentication fails."""
         with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
-            mock_connector = AsyncMock()
-            mock_connector.authenticate.return_value = False
+            mock_connector = MagicMock()
+            mock_connector.authenticate = AsyncMock(return_value=False)
             mock_connector_cls.return_value = mock_connector
 
             response = test_client.post(
@@ -202,7 +202,7 @@ class TestGitPreviewEndpoint:
             response = test_client.post(
                 "/api/v2/connectors/preview/git",
                 json={
-                    "repo_url": "not-a-valid-url",
+                    "repo_url": "https://github.com/user/repo.git",
                     "ref": "main",
                     "auth_method": "none",
                 },
@@ -216,8 +216,8 @@ class TestGitPreviewEndpoint:
     def test_git_preview_connection_error(self, test_client):
         """Test git preview when connection fails."""
         with patch("shared.connectors.git.GitConnector") as mock_connector_cls:
-            mock_connector = AsyncMock()
-            mock_connector.authenticate.side_effect = Exception("Connection timeout")
+            mock_connector = MagicMock()
+            mock_connector.authenticate = AsyncMock(side_effect=Exception("Connection timeout"))
             mock_connector_cls.return_value = mock_connector
 
             response = test_client.post(
@@ -240,15 +240,18 @@ class TestImapPreviewEndpoint:
 
     def test_imap_preview_success(self, test_client):
         """Test successful IMAP connection preview."""
-        with patch("webui.api.v2.connectors.asyncio") as mock_asyncio:
-            mock_loop = AsyncMock()
-            mock_asyncio.get_event_loop.return_value = mock_loop
+        import imaplib
 
-            async def mock_executor(executor, func):
-                # Simulate successful connection returning mailboxes
-                return ["INBOX", "Sent", "Drafts"]
-
-            mock_loop.run_in_executor = mock_executor
+        with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.list.return_value = ("OK", [
+                b'(\\HasNoChildren) "/" "INBOX"',
+                b'(\\HasNoChildren) "/" "Sent"',
+                b'(\\HasNoChildren) "/" "Drafts"',
+            ])
+            mock_conn.logout.return_value = ("OK", [])
+            mock_imap_cls.return_value = mock_conn
 
             response = test_client.post(
                 "/api/v2/connectors/preview/imap",
@@ -272,14 +275,10 @@ class TestImapPreviewEndpoint:
         """Test IMAP preview when authentication fails."""
         import imaplib
 
-        with patch("webui.api.v2.connectors.asyncio") as mock_asyncio:
-            mock_loop = AsyncMock()
-            mock_asyncio.get_event_loop.return_value = mock_loop
-
-            async def mock_executor(executor, func):
-                raise imaplib.IMAP4.error("LOGIN failed")
-
-            mock_loop.run_in_executor = mock_executor
+        with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
+            mock_conn = MagicMock()
+            mock_conn.login.side_effect = imaplib.IMAP4.error("LOGIN failed")
+            mock_imap_cls.return_value = mock_conn
 
             response = test_client.post(
                 "/api/v2/connectors/preview/imap",
@@ -299,14 +298,10 @@ class TestImapPreviewEndpoint:
 
     def test_imap_preview_connection_failed(self, test_client):
         """Test IMAP preview when connection fails."""
-        with patch("webui.api.v2.connectors.asyncio") as mock_asyncio:
-            mock_loop = AsyncMock()
-            mock_asyncio.get_event_loop.return_value = mock_loop
+        import imaplib
 
-            async def mock_executor(executor, func):
-                raise OSError("Connection refused")
-
-            mock_loop.run_in_executor = mock_executor
+        with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
+            mock_imap_cls.side_effect = OSError("Connection refused")
 
             response = test_client.post(
                 "/api/v2/connectors/preview/imap",
@@ -326,14 +321,10 @@ class TestImapPreviewEndpoint:
 
     def test_imap_preview_timeout(self, test_client):
         """Test IMAP preview when connection times out."""
-        with patch("webui.api.v2.connectors.asyncio") as mock_asyncio:
-            mock_loop = AsyncMock()
-            mock_asyncio.get_event_loop.return_value = mock_loop
+        import imaplib
 
-            async def mock_executor(executor, func):
-                raise TimeoutError("Connection timed out")
-
-            mock_loop.run_in_executor = mock_executor
+        with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
+            mock_imap_cls.side_effect = TimeoutError("Connection timed out")
 
             response = test_client.post(
                 "/api/v2/connectors/preview/imap",
@@ -353,14 +344,13 @@ class TestImapPreviewEndpoint:
 
     def test_imap_preview_unexpected_error(self, test_client):
         """Test IMAP preview handles unexpected errors."""
-        with patch("webui.api.v2.connectors.asyncio") as mock_asyncio:
-            mock_loop = AsyncMock()
-            mock_asyncio.get_event_loop.return_value = mock_loop
+        import imaplib
 
-            async def mock_executor(executor, func):
-                raise RuntimeError("Unexpected error")
-
-            mock_loop.run_in_executor = mock_executor
+        with patch.object(imaplib, "IMAP4_SSL") as mock_imap_cls:
+            mock_conn = MagicMock()
+            mock_conn.login.return_value = ("OK", [])
+            mock_conn.list.side_effect = RuntimeError("Unexpected error")
+            mock_imap_cls.return_value = mock_conn
 
             response = test_client.post(
                 "/api/v2/connectors/preview/imap",
