@@ -1,12 +1,10 @@
-import { vi } from 'vitest';
-import type { 
-  ChunkingStrategyType, 
+import type {
+  ChunkingStrategyType,
   ChunkingConfiguration,
   ChunkingPreviewResponse,
   ChunkingComparisonResult,
   ChunkingAnalytics,
-  ChunkingPreset,
-  ChunkPreview
+  ChunkingPreset
 } from '../../types/chunking';
 
 /**

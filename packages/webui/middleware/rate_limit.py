@@ -4,8 +4,8 @@ Rate limiting middleware for the webui API.
 This middleware sets the user in request.state for rate limiting purposes.
 """
 
-import logging
 import hashlib
+import logging
 from collections.abc import Callable
 from typing import Any
 
