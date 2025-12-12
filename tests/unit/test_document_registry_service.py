@@ -547,9 +547,7 @@ class TestRegisterOrUpdate:
         assert result["document_id"] == "new-doc-uuid"
 
         # Verify URI lookup was called
-        mock_document_repo.get_by_uri.assert_called_once_with(
-            "collection-uuid", sample_ingested_document.unique_id
-        )
+        mock_document_repo.get_by_uri.assert_called_once_with("collection-uuid", sample_ingested_document.unique_id)
         # Verify create was called (via register)
         mock_document_repo.create.assert_called_once()
         # Verify last_seen was updated for new document

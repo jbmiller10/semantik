@@ -37,9 +37,7 @@ class TestSourceService:
         return AsyncMock()
 
     @pytest.fixture()
-    def service(
-        self, mock_db_session, mock_collection_repo, mock_source_repo, mock_operation_repo
-    ) -> SourceService:
+    def service(self, mock_db_session, mock_collection_repo, mock_source_repo, mock_operation_repo) -> SourceService:
         """Create a SourceService instance with mocked dependencies."""
         return SourceService(
             db_session=mock_db_session,
@@ -104,9 +102,7 @@ class TestSourceService:
         mock_source_repo.create.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_create_source_collection_not_found(
-        self, service, mock_collection_repo
-    ) -> None:
+    async def test_create_source_collection_not_found(self, service, mock_collection_repo) -> None:
         """Test source creation with non-existent collection."""
         mock_collection_repo.get_by_id.return_value = None
 
@@ -121,9 +117,7 @@ class TestSourceService:
         assert "collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_source_access_denied(
-        self, service, mock_collection_repo, sample_collection
-    ) -> None:
+    async def test_create_source_access_denied(self, service, mock_collection_repo, sample_collection) -> None:
         """Test source creation with wrong user."""
         mock_collection_repo.get_by_id.return_value = sample_collection
 
@@ -296,9 +290,7 @@ class TestSourceService:
         mock_source_repo.list_by_collection.assert_called_once()
 
     @pytest.mark.asyncio()
-    async def test_list_sources_collection_not_found(
-        self, service, mock_collection_repo
-    ) -> None:
+    async def test_list_sources_collection_not_found(self, service, mock_collection_repo) -> None:
         """Test listing sources for non-existent collection."""
         mock_collection_repo.get_by_id.return_value = None
 
@@ -416,9 +408,7 @@ class TestSourceService:
     # --- pause tests ---
 
     @pytest.mark.asyncio()
-    async def test_pause_success(
-        self, service, mock_collection_repo, mock_source_repo, sample_collection
-    ) -> None:
+    async def test_pause_success(self, service, mock_collection_repo, mock_source_repo, sample_collection) -> None:
         """Test successful source pause."""
         continuous_source = CollectionSource(
             id=1,
@@ -463,9 +453,7 @@ class TestSourceService:
     # --- resume tests ---
 
     @pytest.mark.asyncio()
-    async def test_resume_success(
-        self, service, mock_collection_repo, mock_source_repo, sample_collection
-    ) -> None:
+    async def test_resume_success(self, service, mock_collection_repo, mock_source_repo, sample_collection) -> None:
         """Test successful source resume."""
         paused_source = CollectionSource(
             id=1,

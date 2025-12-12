@@ -1,7 +1,7 @@
-from dataclasses import dataclass
-from dataclasses import field
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
