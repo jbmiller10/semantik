@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import { useSearchStore } from '../stores/searchStore';
 import { useCollections } from '../hooks/useCollections';
 import SearchResults from './SearchResults';
@@ -11,47 +10,11 @@ function SearchInterface() {
   } = useSearchStore();
 
   // Use React Query hook to fetch collections
-  const { data: collections = [], refetch: refetchCollections } = useCollections();
+  // Note: Polling for processing collections is handled by React Query's refetchInterval in useCollections
+  const { data: collections = [] } = useCollections();
 
   // Check reranking availability
   useRerankingAvailability();
-
-  const statusUpdateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isTestEnv = import.meta.env.MODE === 'test';
-
-  // Check if any collections are processing and set up auto-refresh
-  useEffect(() => {
-    if (isTestEnv) {
-      return () => {
-        if (statusUpdateIntervalRef.current) {
-          clearInterval(statusUpdateIntervalRef.current);
-          statusUpdateIntervalRef.current = null;
-        }
-      };
-    }
-
-    const hasProcessing = collections.some(
-      (col) => col.status === 'processing' || col.status === 'pending'
-    );
-
-    if (hasProcessing && !statusUpdateIntervalRef.current) {
-      statusUpdateIntervalRef.current = setInterval(() => {
-        refetchCollections();
-      }, 5000);
-    } else if (!hasProcessing && statusUpdateIntervalRef.current) {
-      if (statusUpdateIntervalRef.current) {
-        clearInterval(statusUpdateIntervalRef.current);
-        statusUpdateIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (statusUpdateIntervalRef.current) {
-        clearInterval(statusUpdateIntervalRef.current);
-        statusUpdateIntervalRef.current = null;
-      }
-    };
-  }, [collections, isTestEnv, refetchCollections]);
 
   const handleSelectSmallerModel = (model: string) => {
     validateAndUpdateSearchParams({ rerankModel: model });

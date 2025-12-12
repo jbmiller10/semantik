@@ -103,19 +103,21 @@ export default function SearchForm({ collections }: SearchFormProps) {
         setRerankingMetrics(null);
 
         try {
-            const response = await searchV2Api.search({
-                query: sanitizeQuery(searchParams.query),
-                collection_uuids: searchParams.selectedCollections,
-                k: searchParams.topK,
-                score_threshold: searchParams.scoreThreshold,
-                search_type: searchParams.searchType,
-                use_reranker: searchParams.useReranker,
-                rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
-                hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
-                hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
-                keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
-            }); // Note: We can't pass signal to axios here easily without modifying the API client generator or manually handling it, 
-            // but for now we manage the state. Ideally, the API client should accept a signal.
+            const response = await searchV2Api.search(
+                {
+                    query: sanitizeQuery(searchParams.query),
+                    collection_uuids: searchParams.selectedCollections,
+                    k: searchParams.topK,
+                    score_threshold: searchParams.scoreThreshold,
+                    search_type: searchParams.searchType,
+                    use_reranker: searchParams.useReranker,
+                    rerank_model: searchParams.useReranker ? searchParams.rerankModel : null,
+                    hybrid_alpha: searchParams.searchType === 'hybrid' ? searchParams.hybridAlpha : undefined,
+                    hybrid_mode: searchParams.searchType === 'hybrid' ? searchParams.hybridMode : undefined,
+                    keyword_mode: searchParams.searchType === 'hybrid' ? searchParams.keywordMode : undefined,
+                },
+                { signal: newController.signal }
+            );
 
             if (response.data) {
                 // Map results preserving all fields
@@ -158,7 +160,7 @@ export default function SearchForm({ collections }: SearchFormProps) {
             }
         } catch (error: unknown) {
             const err = error as SearchError;
-            if (err.name === 'CanceledError' || err.message === 'canceled') {
+            if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED' || err.message === 'canceled') {
                 return; // Ignore cancellations
             }
 
