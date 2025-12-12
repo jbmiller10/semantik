@@ -2,7 +2,7 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -41,19 +41,19 @@ class TestGitConnectorInit:
 
     def test_missing_repo_url(self):
         """Test initialization fails without repo_url."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"repo_url") as exc_info:
             GitConnector({})
         assert "repo_url" in str(exc_info.value)
 
     def test_invalid_repo_url(self):
         """Test initialization fails with invalid repo_url."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"Invalid repo_url") as exc_info:
             GitConnector({"repo_url": "ftp://example.com/repo"})
         assert "Invalid repo_url" in str(exc_info.value)
 
     def test_invalid_auth_method(self):
         """Test initialization fails with invalid auth_method."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"Invalid auth_method") as exc_info:
             GitConnector({
                 "repo_url": "https://github.com/user/repo.git",
                 "auth_method": "invalid",
@@ -232,6 +232,7 @@ class TestGitConnectorSshEnv:
 
         with tempfile.TemporaryDirectory() as temp_dir:
             env = connector._setup_ssh_env(Path(temp_dir))
+            assert "GIT_SSH_COMMAND" in env
 
             # Check SSH wrapper script contains sshpass
             ssh_script = Path(temp_dir) / "ssh_wrapper.sh"
@@ -305,7 +306,7 @@ class TestGitConnectorAuthenticate:
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.return_value = (128, "", "Authentication failed")
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ValueError, match=r"Cannot access repository") as exc_info:
                 await connector.authenticate()
 
             assert "Cannot access repository" in str(exc_info.value)
@@ -320,7 +321,7 @@ class TestGitConnectorAuthenticate:
         with patch.object(connector, "_run_git_command") as mock_run:
             mock_run.side_effect = ValueError("Timeout")
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ValueError, match=r"Timeout") as exc_info:
                 await connector.authenticate()
 
             assert "Timeout" in str(exc_info.value)
@@ -378,7 +379,7 @@ class TestGitConnectorRunGitCommand:
             mock_process.communicate.side_effect = TimeoutError()
             mock_exec.return_value = mock_process
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ValueError, match=r"timed out") as exc_info:
                 await connector._run_git_command(["clone"], timeout=1)
 
             assert "timed out" in str(exc_info.value)

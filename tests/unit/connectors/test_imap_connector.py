@@ -1,10 +1,10 @@
 """Unit tests for ImapConnector."""
 
 import email
-from email.header import make_header, Header
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -53,13 +53,13 @@ class TestImapConnectorInit:
 
     def test_missing_host(self):
         """Test initialization fails without host."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"host") as exc_info:
             ImapConnector({"username": "user@example.com"})
         assert "host" in str(exc_info.value)
 
     def test_missing_username(self):
         """Test initialization fails without username."""
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"username") as exc_info:
             ImapConnector({"host": "imap.example.com"})
         assert "username" in str(exc_info.value)
 
@@ -367,7 +367,7 @@ class TestImapConnectorConnect:
 
         with patch("shared.connectors.imap.imaplib.IMAP4_SSL") as mock_ssl:
             mock_ssl.return_value = MagicMock()
-            conn = connector._connect()
+            connector._connect()
 
             mock_ssl.assert_called_once()
             assert "imap.example.com" in str(mock_ssl.call_args)
@@ -383,7 +383,7 @@ class TestImapConnectorConnect:
 
         with patch("shared.connectors.imap.imaplib.IMAP4") as mock_imap:
             mock_imap.return_value = MagicMock()
-            conn = connector._connect()
+            connector._connect()
 
             mock_imap.assert_called_once_with("imap.example.com", 143)
 
@@ -419,7 +419,7 @@ class TestImapConnectorAuthenticate:
             "username": "user@example.com",
         })
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match=r"Password not set") as exc_info:
             await connector.authenticate()
         assert "Password not set" in str(exc_info.value)
 
@@ -439,7 +439,7 @@ class TestImapConnectorAuthenticate:
             mock_conn.login.side_effect = imaplib.IMAP4.error("LOGIN failed")
             mock_connect.return_value = mock_conn
 
-            with pytest.raises(ValueError) as exc_info:
+            with pytest.raises(ValueError, match=r"IMAP authentication failed") as exc_info:
                 await connector.authenticate()
             assert "IMAP authentication failed" in str(exc_info.value)
 
@@ -455,9 +455,12 @@ class TestImapConnectorLoadDocuments:
             "username": "user@example.com",
         })
 
-        with pytest.raises(ValueError) as exc_info:
+        async def consume_documents():
             async for _ in connector.load_documents():
                 pass
+
+        with pytest.raises(ValueError, match=r"Password not set") as exc_info:
+            await consume_documents()
         assert "Password not set" in str(exc_info.value)
 
     @pytest.mark.asyncio()
@@ -511,7 +514,7 @@ class TestImapConnectorLoadDocuments:
         mock_conn.response.return_value = ("OK", [b"12345"])
 
         # Search returns one UID
-        def mock_uid(cmd, *args):
+        def mock_uid(cmd, *_args):
             if cmd == "SEARCH":
                 return ("OK", [b"100"])
             if cmd == "FETCH":
@@ -594,19 +597,19 @@ class TestImapConnectorCursor:
         connector.set_cursor({})
 
         test_email = (
-            "From: sender@example.com\r\n"
-            "Subject: Test\r\n"
-            "Message-ID: <test@example.com>\r\n"
-            "\r\n"
-            "Body"
-        ).encode()
+            b"From: sender@example.com\r\n"
+            b"Subject: Test\r\n"
+            b"Message-ID: <test@example.com>\r\n"
+            b"\r\n"
+            b"Body"
+        )
 
         mock_conn = MagicMock()
         mock_conn.login.return_value = ("OK", [])
         mock_conn.select.return_value = ("OK", [b"1"])
         mock_conn.response.return_value = ("OK", [b"99999"])
 
-        def mock_uid(cmd, *args):
+        def mock_uid(cmd, *_args):
             if cmd == "SEARCH":
                 return ("OK", [b"500"])
             if cmd == "FETCH":

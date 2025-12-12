@@ -17,6 +17,7 @@ from shared.database.exceptions import (
     InvalidStateError,
     ValidationError,
 )
+from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.schemas import (
     ErrorResponse,
     SourceCreate,
@@ -163,6 +164,8 @@ async def create_source(
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except EncryptionNotConfiguredError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
@@ -249,6 +252,8 @@ async def update_source(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail="Access denied") from e
     except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except EncryptionNotConfiguredError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

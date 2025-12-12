@@ -97,6 +97,16 @@ class SourceService:
         if collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection", collection_id)
 
+        secrets_to_store = {secret_type: value for secret_type, value in (secrets or {}).items() if value}
+        if secrets_to_store and not self.secret_repo:
+            logger.warning(
+                "Secrets provided for source but encryption not configured "
+                f"(collection_id={collection_id}, source_type={source_type}, source_path={source_path})"
+            )
+            raise EncryptionNotConfiguredError(
+                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+            )
+
         # Create the source
         source = await self.source_repo.create(
             collection_id=collection_id,
@@ -109,17 +119,14 @@ class SourceService:
 
         # Store secrets if provided
         secret_types: list[str] = []
-        if secrets and self.secret_repo:
+        if secrets_to_store and self.secret_repo:
             try:
-                for secret_type, value in secrets.items():
-                    if value:  # Only store non-empty values
-                        await self.secret_repo.set_secret(source.id, secret_type, value)
-                        secret_types.append(secret_type)
+                for secret_type, value in secrets_to_store.items():
+                    await self.secret_repo.set_secret(source.id, secret_type, value)
+                    secret_types.append(secret_type)
             except EncryptionNotConfiguredError:
                 logger.warning(f"Secrets provided for source {source.id} but encryption not configured")
                 raise
-        elif secrets and not self.secret_repo:
-            logger.warning(f"Secrets provided for source {source.id} but secret repository not available")
 
         logger.info(
             f"Created source {source.id} for collection {collection_id} "
@@ -185,7 +192,10 @@ class SourceService:
                 logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
                 raise
         elif secrets and not self.secret_repo:
-            logger.warning(f"Secrets update requested for source {source_id} but secret repository not available")
+            logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+            raise EncryptionNotConfiguredError(
+                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+            )
 
         # Get current secret types
         secret_types: list[str] = []
