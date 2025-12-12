@@ -365,17 +365,20 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             from shared.database.collection_metadata import get_collection_metadata_async
 
             async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
-            metadata = await get_collection_metadata_async(async_client, collection_name)
-            if metadata:
-                collection_model = metadata.get("model_name")
-                collection_quantization = metadata.get("quantization")
-                collection_instruction = metadata.get("instruction")
-                logger.info(
-                    "Found metadata for collection %s: model=%s quantization=%s",
-                    collection_name,
-                    collection_model,
-                    collection_quantization,
-                )
+            try:
+                metadata = await get_collection_metadata_async(async_client, collection_name)
+                if metadata:
+                    collection_model = metadata.get("model_name")
+                    collection_quantization = metadata.get("quantization")
+                    collection_instruction = metadata.get("instruction")
+                    logger.info(
+                        "Found metadata for collection %s: model=%s quantization=%s",
+                        collection_name,
+                        collection_model,
+                        collection_quantization,
+                    )
+            finally:
+                await async_client.close()
         except Exception as e:  # pragma: no cover - best effort path
             logger.warning(f"Could not get collection metadata: {e}")
         model_name = request.model_name or collection_model or cfg.DEFAULT_EMBEDDING_MODEL
@@ -716,16 +719,19 @@ async def perform_hybrid_search(
             from shared.database.collection_metadata import get_collection_metadata_async
 
             async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
-            metadata = await get_collection_metadata_async(async_client, collection_name)
-            if metadata:
-                collection_model = metadata.get("model_name")
-                collection_quantization = metadata.get("quantization")
-                logger.info(
-                    "Found metadata for collection %s: model=%s quantization=%s",
-                    collection_name,
-                    collection_model,
-                    collection_quantization,
-                )
+            try:
+                metadata = await get_collection_metadata_async(async_client, collection_name)
+                if metadata:
+                    collection_model = metadata.get("model_name")
+                    collection_quantization = metadata.get("quantization")
+                    logger.info(
+                        "Found metadata for collection %s: model=%s quantization=%s",
+                        collection_name,
+                        collection_model,
+                        collection_quantization,
+                    )
+            finally:
+                await async_client.close()
         except Exception as e:  # pragma: no cover - best effort
             logger.warning(f"Could not get collection metadata: {e}")
 
