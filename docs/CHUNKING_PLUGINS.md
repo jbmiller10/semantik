@@ -66,7 +66,7 @@ Plugins without a valid `visual_example.url` are skipped at load time. Keep imag
 
 - Loader: `packages/shared/chunking/plugin_loader.py`
 - Entry point group: `semantik.chunking_strategies`
-- Enable/disable via env: `SEMANTIK_ENABLE_PLUGINS` (`true` by default; set to `false`/`0` to skip loading).
+- Enable/disable via env: `SEMANTIK_ENABLE_CHUNKING_PLUGINS` (`true` by default; set to `false`/`0` to skip loading).
 - Loaded in both web startup (`packages/webui/startup_tasks.py`) and Celery worker import path (`packages/webui/chunking_tasks.py`).
 
 ## API/UI visibility

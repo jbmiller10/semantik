@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 ENTRYPOINT_GROUP = "semantik.chunking_strategies"
-ENV_FLAG = "SEMANTIK_ENABLE_PLUGINS"
+ENV_FLAG = "SEMANTIK_ENABLE_CHUNKING_PLUGINS"
 
 
 def _should_enable_plugins() -> bool:
