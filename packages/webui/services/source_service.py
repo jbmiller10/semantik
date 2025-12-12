@@ -86,8 +86,8 @@ class SourceService:
         if not collection:
             raise EntityNotFoundError("collection", collection_id)
 
-        if collection.user_id != user_id:
-            raise AccessDeniedError("collection", collection_id)
+        if collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection", collection_id)
 
         # Create the source
         source = await self.source_repo.create(
@@ -136,8 +136,8 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         # Update the source
         updated_source = await self.source_repo.update(
@@ -178,8 +178,8 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         # Check for active operations
         active_ops = await self.operation_repo.get_active_operations(source.collection_id)
@@ -238,8 +238,8 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         return source
 
@@ -270,8 +270,8 @@ class SourceService:
         if not collection:
             raise EntityNotFoundError("collection", collection_id)
 
-        if collection.user_id != user_id:
-            raise AccessDeniedError("collection", collection_id)
+        if collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection", collection_id)
 
         return await self.source_repo.list_by_collection(
             collection_id=collection_id,
@@ -307,8 +307,8 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         # Check for active operations
         active_ops = await self.operation_repo.get_active_operations(source.collection_id)
@@ -385,8 +385,8 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         return await self.source_repo.pause(source_id)
 
@@ -415,7 +415,7 @@ class SourceService:
             raise EntityNotFoundError("collection_source", str(source_id))
 
         collection = await self.collection_repo.get_by_id(source.collection_id)
-        if not collection or collection.user_id != user_id:
-            raise AccessDeniedError("collection_source", str(source_id))
+        if not collection or collection.owner_id != user_id:
+            raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         return await self.source_repo.resume(source_id)

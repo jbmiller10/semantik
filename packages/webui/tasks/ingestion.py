@@ -1266,7 +1266,12 @@ async def _process_append_operation_impl(
 
         # Mark documents not seen during this sync as stale (keep last-known behavior)
         # Only mark stale for this specific source
-        if source_id is not None:
+        #
+        # IMPORTANT: Only mark stale when the scan/registration phase completed cleanly.
+        # If registration errors occurred, some existing documents may have been present in
+        # the source but failed to register/update last_seen_at; marking unseen docs stale in
+        # that scenario can incorrectly flag healthy documents as stale.
+        if source_id is not None and not scan_errors:
             try:
                 stale_count = await document_repo.mark_unseen_as_stale(
                     collection_id=collection["id"],
@@ -1287,6 +1292,13 @@ async def _process_append_operation_impl(
                 scan_stats["documents_marked_stale"] = 0
                 with contextlib.suppress(Exception):
                     await session.rollback()
+        elif source_id is not None:
+            scan_stats["documents_marked_stale"] = 0
+            logger.info(
+                "Skipping stale marking for source %s due to %s scan/registration error(s)",
+                source_id,
+                len(scan_errors),
+            )
 
         # Update source sync status
         if source_id is not None:

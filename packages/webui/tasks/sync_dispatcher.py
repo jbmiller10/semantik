@@ -9,7 +9,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from shared.database.enums import CollectionStatus, OperationType
+from shared.database.models import CollectionStatus, OperationType
 from shared.database.postgres_database import pg_connection_manager
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.collection_source_repository import CollectionSourceRepository
@@ -118,9 +118,9 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
                 await session.commit()
 
                 # Dispatch the ingestion task
-                from webui.tasks.ingestion import process_append_operation
+                from webui.tasks.ingestion import process_collection_operation
 
-                process_append_operation.delay(str(operation.id))
+                process_collection_operation.delay(str(operation.id))
 
                 logger.info(
                     f"Dispatched sync for source {source.id} (collection {source.collection_id}), "
