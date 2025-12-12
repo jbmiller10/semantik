@@ -328,15 +328,20 @@ Optimize memory usage vs. quality:
 Collections integrate seamlessly with Semantik's search:
 
 ```bash
-# Search specific collection
-GET /api/v2/search?q=docker+configuration&collection_ids=YOUR_COLLECTION_ID
+# Search a specific collection
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"collection_uuids":["YOUR_COLLECTION_ID"],"query":"docker configuration","k":10}'
 
 # Search multiple collections
-GET /api/v2/search?q=api+endpoints&collection_ids=ID1,ID2,ID3
-
-# Search all accessible collections
-GET /api/v2/search?q=user+authentication
+curl -X POST http://localhost:8080/api/v2/search \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"collection_uuids":["ID1","ID2","ID3"],"query":"api endpoints","k":10}'
 ```
+
+To search “all accessible collections”, first list collections (`GET /api/v2/collections`) and pass their UUIDs to `POST /api/v2/search`.
 
 ### Search Features
 - **Semantic Understanding**: Finds conceptually related content

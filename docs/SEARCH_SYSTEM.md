@@ -164,12 +164,12 @@ async def hybrid_search(
     q: str,
     k: int,
     collection: str,
-    mode: str = "filter",  # filter or rerank
+    mode: str = "filter",  # filter or weighted
     keyword_mode: str = "any",  # any or all
     score_threshold: float = None,
 ):
     """
-    Hybrid search with keyword filtering or reranking
+    Hybrid search with keyword filtering or weighted blending
     """
 ```
 
@@ -195,53 +195,45 @@ async def batch_search(request: BatchSearchRequest):
 - **Metrics**: Prometheus metrics for all operations
 - **Mock Mode**: Development mode with simulated embeddings
 
-## 3.5. Search API v2 Endpoints
+## 3.5. WebUI Search API v2 Endpoints
 
-The Search API v2 provides enhanced functionality for collection-based search operations.
+The WebUI v2 search API adds multi‑collection search and proxies requests to the Vecpipe Search API.
 
 ### Core Endpoints
 
-#### POST `/api/v2/search/collections/{collection_id}`
-Enhanced search with reranking support:
+#### POST `/api/v2/search`
+Search across multiple collections (up to 10) with optional reranking and hybrid scoring:
+
 ```python
 {
+    "collection_uuids": ["uuid-1", "uuid-2"],
     "query": "search query",
-    "top_k": 10,
+    "k": 20,
     "search_type": "semantic",  # semantic, question, code, hybrid
-    "filters": {
-        "metadata_field": "value"
-    },
     "use_reranker": true,
-    "rerank_model": "auto",  # auto-selects based on embedding model
+    "rerank_model": None,
+    "score_threshold": 0.5,
+    "metadata_filter": {"mime_type": "text/markdown"},
     "include_content": true,
-    "score_threshold": 0.5
+    "hybrid_alpha": 0.7,        # vector vs keyword weight (0–1)
+    "hybrid_mode": "weighted",  # filter or weighted
+    "keyword_mode": "any"       # any or all
 }
 ```
 
-#### POST `/api/v2/search/hybrid/{collection_id}`
-Hybrid search with keyword and vector matching:
-```python
-{
-    "query": "machine learning algorithms",
-    "top_k": 20,
-    "hybrid_mode": "filter",  # filter or rerank
-    "keyword_mode": "any",    # any or all
-    "hybrid_alpha": 0.7,      # weight for vector score (0-1)
-    "use_reranker": false
-}
-```
+#### POST `/api/v2/search/single`
+Single collection search (backward compatibility for older clients):
 
-#### POST `/api/v2/search/batch`
-Batch search across multiple queries:
 ```python
 {
     "collection_id": "uuid-here",
-    "queries": [
-        {"query": "query1", "top_k": 5},
-        {"query": "query2", "top_k": 10}
-    ],
+    "query": "search query",
+    "k": 10,
     "search_type": "semantic",
-    "model_override": null  # uses collection's model
+    "use_reranker": false,
+    "score_threshold": 0.0,
+    "metadata_filter": None,
+    "include_content": true
 }
 ```
 

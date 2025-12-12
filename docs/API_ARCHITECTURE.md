@@ -870,7 +870,7 @@ Content-Type: application/json
   },
   "include_content": true,
   "hybrid_alpha": 0.7,
-  "hybrid_mode": "rerank",
+  "hybrid_mode": "weighted",
   "keyword_mode": "any"
 }
 ```

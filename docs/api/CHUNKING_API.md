@@ -686,119 +686,25 @@ Get current progress of a chunking operation.
 
 ## WebSocket Usage
 
-### Connecting to Chunking Progress Channel
-
-The chunking API provides real-time progress updates via WebSocket connections. When starting a chunking operation, the response includes a `websocket_channel` that clients can connect to for live updates.
-
-#### Connection Example
+Chunking operations are tracked as standard operations. The chunking endpoints return an `operation_id`; connect to the operation progress WebSocket to stream updates:
 
 ```javascript
-// Connect to the WebSocket channel returned from chunking operation
-const wsUrl = `ws://localhost:8080/ws/channel/${websocketChannel}?token=${jwtToken}`;
+const token = localStorage.getItem("authToken");
+const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${token}`;
 const ws = new WebSocket(wsUrl);
 
-ws.onopen = () => {
-  console.log('Connected to chunking progress channel');
-};
-
 ws.onmessage = (event) => {
-  const message = JSON.parse(event.data);
-  handleChunkingUpdate(message);
-};
-
-ws.onerror = (error) => {
-  console.error('WebSocket error:', error);
-};
-
-ws.onclose = () => {
-  console.log('WebSocket connection closed');
+  const msg = JSON.parse(event.data);
+  // msg.type is an event string; msg.data may include progress/message/status.
+  console.log(msg.type, msg.data);
 };
 ```
 
-#### Message Types
+`websocket_channel` in `ChunkingOperationResponse` is currently legacy/informational and should not be used for client connections.
 
-##### Chunking Started
-```json
-{
-  "type": "chunking_started",
-  "operation_id": "op_abc123",
-  "collection_id": "coll_xyz789",
-  "strategy": "semantic",
-  "timestamp": "2024-01-15T10:00:00Z"
-}
-```
+For polling, use `GET /api/v2/chunking/operations/{operation_id}/progress`.
 
-##### Progress Update
-```json
-{
-  "type": "chunking_progress",
-  "data": {
-    "progress_percentage": 45.5,
-    "documents_processed": 23,
-    "total_documents": 50,
-    "chunks_created": 690,
-    "current_document": "document_24.pdf"
-  }
-}
-```
-
-##### Document Processing
-```json
-{
-  "type": "chunking_document_start",
-  "data": {
-    "document_id": "doc_123",
-    "document_name": "technical_guide.pdf",
-    "document_size": 1024000
-  }
-}
-```
-
-```json
-{
-  "type": "chunking_document_complete",
-  "data": {
-    "document_id": "doc_123",
-    "chunks_created": 25,
-    "processing_time_ms": 1250
-  }
-}
-```
-
-##### Operation Complete
-```json
-{
-  "type": "chunking_completed",
-  "data": {
-    "operation_id": "op_abc123",
-    "total_documents": 50,
-    "total_chunks": 1500,
-    "processing_time_seconds": 125.5,
-    "success_rate": 0.98
-  }
-}
-```
-
-##### Error Notification
-```json
-{
-  "type": "chunking_failed",
-  "data": {
-    "operation_id": "op_abc123",
-    "error": "Processing failed",
-    "error_code": "CHUNK_PROCESSING_ERROR",
-    "document_id": "doc_456",
-    "timestamp": "2024-01-15T10:05:00Z"
-  }
-}
-```
-
-### WebSocket Throttling
-
-Progress updates are throttled to prevent overwhelming clients:
-- Minimum 500ms between progress updates per operation
-- Document-level events are not throttled
-- Error and completion events are always sent immediately
+Message schema and event type catalog: `docs/WEBSOCKET_API.md`.
 
 ## Error Handling
 

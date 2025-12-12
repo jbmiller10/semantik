@@ -136,31 +136,27 @@ async def process_collection_with_progress(collection_id, strategy, config):
     )
     
     operation = response.json()
-    print(f"Operation started: {operation['operation_id']}")
-    print(f"WebSocket channel: {operation['websocket_channel']}")
+    operation_id = operation["operation_id"]
+    print(f"Operation started: {operation_id}")
     
-    # Connect to WebSocket for progress updates
-    ws_url = f"ws://localhost:8080/ws/channel/{operation['websocket_channel']}?token={token}"
+    # Connect to operation WebSocket for progress updates
+    ws_url = f"ws://localhost:8080/ws/operations/{operation_id}?token={token}"
     
     async with websockets.connect(ws_url) as websocket:
         while True:
             message = await websocket.recv()
             data = json.loads(message)
             
-            if data["type"] == "chunking_progress":
-                progress = data["data"]
-                print(f"Progress: {progress['progress_percentage']:.1f}%")
-                print(f"  Documents: {progress['documents_processed']}/{progress['total_documents']}")
-                print(f"  Chunks created: {progress['chunks_created']}")
-                
-            elif data["type"] == "chunking_completed":
+            progress = data.get("data", {}).get("progress")
+            if progress is not None:
+                print(f"Progress: {progress:.1f}%")
+
+            status = data.get("data", {}).get("status")
+            if data.get("type") == "operation_completed" or status == "completed":
                 print("Chunking completed!")
-                print(f"  Total chunks: {data['data']['total_chunks']}")
-                print(f"  Processing time: {data['data']['processing_time_seconds']}s")
                 break
-                
-            elif data["type"] == "chunking_failed":
-                print(f"Chunking failed: {data['data']['error']}")
+            if data.get("type") == "operation_failed" or status == "failed":
+                print(f"Chunking failed: {data.get('data', {}).get('error_message')}")
                 break
 
 # Run the async function
@@ -449,29 +445,27 @@ class ChunkingAPIClient:
         response.raise_for_status()
         return response.json()
     
-    async def monitor_operation(self, operation_id: str, websocket_channel: str):
+    async def monitor_operation(self, operation_id: str):
         """Monitor chunking operation progress via WebSocket."""
         token = self.headers["Authorization"].replace("Bearer ", "")
-        ws_url = f"ws://localhost:8080/ws/channel/{websocket_channel}?token={token}"
+        ws_url = f"ws://localhost:8080/ws/operations/{operation_id}?token={token}"
         
         async with websockets.connect(ws_url) as websocket:
             while True:
                 message = await websocket.recv()
                 data = json.loads(message)
                 
-                print(f"[{data['type']}] ", end="")
-                
-                if data["type"] == "chunking_progress":
-                    progress = data["data"]
-                    print(f"{progress['progress_percentage']:.1f}% - "
-                          f"{progress['documents_processed']}/{progress['total_documents']} docs")
-                
-                elif data["type"] == "chunking_completed":
-                    print(f"Completed! {data['data']['total_chunks']} chunks created")
-                    break
-                
-                elif data["type"] == "chunking_failed":
-                    print(f"Failed: {data['data']['error']}")
+                print(f"[{data.get('type')}] ", end="")
+
+                progress = data.get("data", {}).get("progress")
+                message = data.get("data", {}).get("message", "")
+                status = data.get("data", {}).get("status")
+
+                if progress is not None:
+                    print(f"{progress:.1f}% - {message}")
+
+                if data.get("type") in ("operation_completed", "operation_failed") or status in ("completed", "failed"):
+                    print(status or data.get("type"))
                     break
 
 # Example usage
@@ -646,11 +640,11 @@ export class ChunkingAPIClient {
   }
 
   connectToProgress(
-    websocketChannel: string,
+    operationId: string,
     token: string,
     onMessage: (data: any) => void
   ): WebSocket {
-    const wsUrl = `ws://localhost:8080/ws/channel/${websocketChannel}?token=${token}`;
+    const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
     
     ws.onopen = () => {
@@ -753,61 +747,40 @@ demonstrateChunkingAPI();
 ### React Hook Example
 
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 interface UseChunkingProgressOptions {
   operationId: string;
-  websocketChannel: string;
   token: string;
   onComplete?: () => void;
   onError?: (error: string) => void;
 }
 
-export function useChunkingProgress({
-  operationId,
-  websocketChannel,
-  token,
-  onComplete,
-  onError
-}: UseChunkingProgressOptions) {
+export function useChunkingProgress({ operationId, token, onComplete, onError }: UseChunkingProgressOptions) {
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState<'pending' | 'in_progress' | 'completed' | 'failed'>('pending');
-  const [documentsProcessed, setDocumentsProcessed] = useState(0);
-  const [totalDocuments, setTotalDocuments] = useState(0);
-  const [chunksCreated, setChunksCreated] = useState(0);
-  const [currentDocument, setCurrentDocument] = useState<string | null>(null);
+  const [status, setStatus] = useState<'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'>('pending');
 
   useEffect(() => {
-    const wsUrl = `ws://localhost:8080/ws/channel/${websocketChannel}?token=${token}`;
+    const wsUrl = `ws://localhost:8080/ws/operations/${operationId}?token=${token}`;
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      switch(data.type) {
-        case 'chunking_started':
-          setStatus('in_progress');
-          break;
-          
-        case 'chunking_progress':
-          const progressData = data.data;
-          setProgress(progressData.progress_percentage);
-          setDocumentsProcessed(progressData.documents_processed);
-          setTotalDocuments(progressData.total_documents);
-          setChunksCreated(progressData.chunks_created);
-          setCurrentDocument(progressData.current_document);
-          break;
-          
-        case 'chunking_completed':
-          setStatus('completed');
-          setProgress(100);
-          onComplete?.();
-          break;
-          
-        case 'chunking_failed':
-          setStatus('failed');
-          onError?.(data.data.error);
-          break;
+      const msg = JSON.parse(event.data);
+      const msgStatus = msg.data?.status;
+      const msgProgress = msg.data?.progress;
+
+      if (msgProgress != null) setProgress(msgProgress);
+      if (msgStatus) setStatus(msgStatus);
+
+      if (msg.type === 'operation_completed' || msgStatus === 'completed') {
+        setStatus('completed');
+        setProgress(100);
+        onComplete?.();
+      }
+
+      if (msg.type === 'operation_failed' || msgStatus === 'failed') {
+        setStatus('failed');
+        onError?.(msg.data?.error_message || 'Operation failed');
       }
     };
 
@@ -816,36 +789,18 @@ export function useChunkingProgress({
       onError?.('WebSocket connection error');
     };
 
-    return () => {
-      ws.close();
-    };
-  }, [operationId, websocketChannel, token, onComplete, onError]);
+    return () => ws.close();
+  }, [operationId, token, onComplete, onError]);
 
-  return {
-    progress,
-    status,
-    documentsProcessed,
-    totalDocuments,
-    chunksCreated,
-    currentDocument
-  };
+  return { progress, status };
 }
 
-// Component usage
-function ChunkingProgressDisplay({ operationId, websocketChannel, token }: any) {
-  const {
-    progress,
-    status,
-    documentsProcessed,
-    totalDocuments,
-    chunksCreated,
-    currentDocument
-  } = useChunkingProgress({
+function ChunkingProgressDisplay({ operationId, token }: any) {
+  const { progress, status } = useChunkingProgress({
     operationId,
-    websocketChannel,
     token,
     onComplete: () => console.log('Chunking completed!'),
-    onError: (error) => console.error('Chunking error:', error)
+    onError: (error) => console.error('Chunking error:', error),
   });
 
   return (
@@ -853,9 +808,6 @@ function ChunkingProgressDisplay({ operationId, websocketChannel, token }: any) 
       <h3>Chunking Progress</h3>
       <div>Status: {status}</div>
       <div>Progress: {progress.toFixed(1)}%</div>
-      <div>Documents: {documentsProcessed}/{totalDocuments}</div>
-      <div>Chunks Created: {chunksCreated}</div>
-      {currentDocument && <div>Processing: {currentDocument}</div>}
       <progress value={progress} max={100} />
     </div>
   );
@@ -870,18 +822,18 @@ function ChunkingProgressDisplay({ operationId, websocketChannel, token }: any) 
 const WebSocket = require('ws');
 
 class ChunkingProgressMonitor {
-  constructor(websocketChannel, token) {
-    this.websocketChannel = websocketChannel;
+  constructor(operationId, token) {
+    this.operationId = operationId;
     this.token = token;
     this.ws = null;
   }
 
   connect() {
-    const wsUrl = `ws://localhost:8080/ws/channel/${this.websocketChannel}?token=${this.token}`;
+    const wsUrl = `ws://localhost:8080/ws/operations/${this.operationId}?token=${this.token}`;
     this.ws = new WebSocket(wsUrl);
 
     this.ws.on('open', () => {
-      console.log('Connected to chunking progress channel');
+      console.log('Connected to operation progress channel');
     });
 
     this.ws.on('message', (data) => {
@@ -899,46 +851,22 @@ class ChunkingProgressMonitor {
   }
 
   handleMessage(message) {
-    switch(message.type) {
-      case 'chunking_started':
-        console.log(`Chunking started for collection ${message.collection_id}`);
-        break;
+    const status = message.data?.status;
+    const progress = message.data?.progress;
+    const text = message.data?.message;
 
-      case 'chunking_progress':
-        const progress = message.data;
-        console.log(`Progress: ${progress.progress_percentage.toFixed(1)}%`);
-        console.log(`  Documents: ${progress.documents_processed}/${progress.total_documents}`);
-        console.log(`  Chunks: ${progress.chunks_created}`);
-        if (progress.current_document) {
-          console.log(`  Current: ${progress.current_document}`);
-        }
-        break;
+    if (progress != null) {
+      console.log(`Progress: ${progress.toFixed(1)}% ${text || ''}`);
+    }
 
-      case 'chunking_document_start':
-        console.log(`Starting document: ${message.data.document_name}`);
-        break;
+    if (message.type === 'operation_completed' || status === 'completed') {
+      console.log('Chunking completed!');
+      this.close();
+    }
 
-      case 'chunking_document_complete':
-        console.log(`Completed document: ${message.data.document_id}`);
-        console.log(`  Chunks created: ${message.data.chunks_created}`);
-        break;
-
-      case 'chunking_completed':
-        console.log('Chunking operation completed!');
-        console.log(`  Total chunks: ${message.data.total_chunks}`);
-        console.log(`  Processing time: ${message.data.processing_time_seconds}s`);
-        this.close();
-        break;
-
-      case 'chunking_failed':
-        console.error('Chunking operation failed!');
-        console.error(`  Error: ${message.data.error}`);
-        console.error(`  Error code: ${message.data.error_code}`);
-        this.close();
-        break;
-
-      default:
-        console.log('Unknown message type:', message.type);
+    if (message.type === 'operation_failed' || status === 'failed') {
+      console.error(`Chunking failed: ${message.data?.error_message || 'Operation failed'}`);
+      this.close();
     }
   }
 
@@ -950,7 +878,7 @@ class ChunkingProgressMonitor {
 }
 
 // Usage
-const monitor = new ChunkingProgressMonitor('chunking:coll_123:op_456', 'your_token');
+const monitor = new ChunkingProgressMonitor('op_456', 'your_token');
 monitor.connect();
 ```
 

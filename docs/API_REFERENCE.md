@@ -4,7 +4,7 @@
 
 Semantik provides two main API services:
 - **WebUI API** (Port 8080) - User-facing API with authentication, collection management, and search
-- **Search API** (Port 8001) - Core search engine API for vector similarity search
+- **Search API** (Port 8000) - Core search engine API for vector similarity search
 
 All APIs follow RESTful principles with JSON request/response bodies.
 
@@ -572,7 +572,7 @@ Content-Type: application/json
   },
   "include_content": true,
   "hybrid_alpha": 0.7,
-  "hybrid_mode": "rerank",
+  "hybrid_mode": "weighted",
   "keyword_mode": "any"
 }
 ```
@@ -588,7 +588,7 @@ Content-Type: application/json
 - `metadata_filter` (optional): Filter results by metadata
 - `include_content` (optional): Include chunk content (default: true)
 - `hybrid_alpha` (optional): Weight for hybrid search (0.0-1.0, default: 0.7)
-- `hybrid_mode` (optional): Hybrid mode (filter, rerank, default: rerank)
+- `hybrid_mode` (optional): Hybrid mode (`filter`, `weighted`, default: `weighted`)
 - `keyword_mode` (optional): Keyword matching (any, all, default: any)
 
 **Response (200):**
@@ -697,7 +697,7 @@ The chunking API provides comprehensive document chunking capabilities with mult
 
 ###### Progress Tracking
 - `GET /api/v2/chunking/operations/{operation_id}/progress` - Get operation progress
-- WebSocket: `ws://localhost:8080/ws/channel/{websocket_channel}` - Real-time updates
+- WebSocket: operation progress streams via `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt_token>` (see `docs/WEBSOCKET_API.md`).
 
 For complete endpoint documentation, request/response schemas, and examples, see the [full Chunking API documentation](/docs/api/CHUNKING_API.md) or [practical examples](/docs/api/CHUNKING_EXAMPLES.md).
 
@@ -733,128 +733,49 @@ Cache-Control: private, max-age=3600
 
 ##### Scan Directory
 ```http
-POST /api/v2/directory-scan
+POST /api/v2/directory-scan/preview
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
   "path": "/docs/technical",
+  "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "recursive": true,
-  "follow_symlinks": false,
-  "filters": {
-    "extensions": [".md", ".txt", ".pdf"],
-    "ignore_patterns": ["**/node_modules/**", "**/.git/**"],
-    "min_size": 100,
-    "max_size": 104857600
-  }
+  "include_patterns": ["*.md", "*.txt", "*.pdf"],
+  "exclude_patterns": ["**/node_modules/**", "**/.git/**"]
 }
 ```
 
 **Response (200):**
 ```json
 {
-  "scan_id": "scan_123e4567",
+  "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
   "path": "/docs/technical",
   "files": [
     {
-      "path": "/docs/technical/api/endpoints.md",
-      "name": "endpoints.md",
-      "size": 15420,
+      "file_path": "/docs/technical/api/endpoints.md",
+      "file_name": "endpoints.md",
+      "file_size": 15420,
       "mime_type": "text/markdown",
-      "modified": "2024-01-15T09:00:00Z"
+      "content_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modified_at": "2024-01-15T09:00:00Z"
     }
   ],
-  "summary": {
-    "total_files": 150,
-    "total_size_bytes": 45678900,
-    "by_extension": {
-      ".md": 120,
-      ".txt": 20,
-      ".pdf": 10
-    }
-  },
-  "errors": []
+  "total_files": 1,
+  "total_size": 15420,
+  "warnings": []
 }
 ```
 
 ### WebSocket Endpoints
 
-#### Operation Progress
-```
-WS /api/v2/operations/{operation_uuid}/ws?token={jwt_token}
-```
+WebSockets are mounted at the app level and authenticate via `?token=<jwt_token>`.
 
-Real-time operation progress updates via WebSocket. Authentication is done via token query parameter.
+- **Global operations stream**: `ws://localhost:8080/ws/operations?token={jwt_token}`
+- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}`
+- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}?token={jwt_token}`
 
-**Connection Example (JavaScript):**
-```javascript
-const ws = new WebSocket(`ws://localhost:8080/api/v2/operations/${operationId}/ws?token=${jwtToken}`);
-
-ws.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    
-    switch(message.type) {
-        case 'progress':
-            console.log(`Progress: ${message.percentage}%`);
-            break;
-        case 'file_processed':
-            console.log(`Processed: ${message.file_path}`);
-            break;
-        case 'error':
-            console.error(`Error: ${message.message}`);
-            break;
-        case 'completed':
-            console.log('Operation completed!');
-            ws.close();
-            break;
-    }
-};
-```
-
-**Message Types:**
-
-1. **Progress Update:**
-```json
-{
-  "type": "progress",
-  "percentage": 45.5,
-  "processed_files": 68,
-  "total_files": 150,
-  "current_file": "api/authentication.md"
-}
-```
-
-2. **File Processed:**
-```json
-{
-  "type": "file_processed",
-  "file_path": "/docs/api/authentication.md",
-  "chunks_created": 15,
-  "status": "completed"
-}
-```
-
-3. **Error:**
-```json
-{
-  "type": "error",
-  "message": "Failed to process file",
-  "file_path": "/docs/corrupted.pdf",
-  "error_code": "PARSE_ERROR"
-}
-```
-
-4. **Completed:**
-```json
-{
-  "type": "completed",
-  "total_files": 150,
-  "processed_files": 148,
-  "failed_files": 2,
-  "total_chunks": 3420,
-  "duration_seconds": 125.5
-}
-```
+Operations are started via REST; directory scans via `POST /api/v2/directory-scan/preview`. See `docs/WEBSOCKET_API.md` for message schemas and event types.
 
 ### System Endpoints
 
@@ -866,14 +787,11 @@ GET /api/health
 **Response (200):**
 ```json
 {
-  "status": "healthy",
-  "service": "webui",
-  "version": "2.0.0",
-  "database": "connected",
-  "search_api": "connected",
-  "qdrant": "connected"
+  "status": "healthy"
 }
 ```
+
+For dependency checks, see `GET /api/health/readyz` and `GET /api/health/search-api`.
 
 #### Metrics
 ```http
@@ -894,7 +812,7 @@ The Search API provides the core vector search functionality.
 
 ### Base URL
 ```
-http://localhost:8001
+http://localhost:8000
 ```
 
 ### Authentication
@@ -911,18 +829,17 @@ GET /
 ```json
 {
   "status": "healthy",
-  "service": "Document Embedding Search API",
-  "version": "2.0.0",
-  "embedding_service": {
-    "status": "ready",
-    "mock_mode": false,
-    "model": "Qwen/Qwen3-Embedding-0.6B",
-    "quantization": "float16"
+  "collection": {
+    "name": "work_docs",
+    "points_count": 1234,
+    "vector_size": 1024
   },
-  "qdrant": {
-    "connected": true,
-    "host": "localhost",
-    "port": 6333
+  "embedding_mode": "real",
+  "embedding_service": {
+    "current_model": "Qwen/Qwen3-Embedding-0.6B",
+    "provider": "local",
+    "model_info": { ... },
+    "is_mock_mode": false
   }
 }
 ```
@@ -1360,8 +1277,8 @@ class SemantikClient {
 
 Both services provide interactive OpenAPI documentation:
 - WebUI API: `http://localhost:8080/docs`
-- Search API: `http://localhost:8001/docs`
+- Search API: `http://localhost:8000/docs`
 
 The OpenAPI spec can be accessed at:
 - WebUI API: `http://localhost:8080/openapi.json`
-- Search API: `http://localhost:8001/openapi.json`
+- Search API: `http://localhost:8000/openapi.json`
