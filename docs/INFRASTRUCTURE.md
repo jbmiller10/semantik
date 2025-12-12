@@ -1,25 +1,6 @@
-# Infrastructure Documentation
+# Infrastructure
 
-## Table of Contents
-
-1. [Infrastructure Overview](#infrastructure-overview)
-2. [Service Architecture](#service-architecture)
-3. [Development Environment](#development-environment)
-4. [Docker Infrastructure](#docker-infrastructure)
-5. [Testing Framework](#testing-framework)
-6. [Build System](#build-system)
-7. [Service Management](#service-management)
-8. [Networking](#networking)
-9. [Monitoring and Logging](#monitoring-and-logging)
-10. [Security & Operations](#security--operations)
-11. [CI/CD Pipeline](#cicd-pipeline)
-12. [Troubleshooting Guide](#troubleshooting-guide)
-
----
-
-## Infrastructure Overview
-
-### System Architecture
+## System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
