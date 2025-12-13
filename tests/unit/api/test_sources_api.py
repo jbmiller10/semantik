@@ -1,4 +1,8 @@
-"""Unit tests for Sources API v2 endpoints."""
+"""Unit tests for Sources API v2 endpoints.
+
+Note: Sync policy (mode, interval, pause/resume) is now managed at collection level.
+Sources only track per-source telemetry (last_run_* fields).
+"""
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
@@ -8,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError, ValidationError
+from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
 from shared.database.models import CollectionSource
 from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.v2.sources import router
@@ -32,7 +36,11 @@ def mock_service():
 
 @pytest.fixture()
 def mock_source():
-    """Create a mock CollectionSource."""
+    """Create a mock CollectionSource.
+
+    Note: sync_mode, interval_minutes, paused_at, next_run_at are no longer
+    on CollectionSource - they're at collection level now.
+    """
     return CollectionSource(
         id=1,
         collection_id=str(uuid4()),
@@ -41,10 +49,6 @@ def mock_source():
         source_config={"path": "/data/test"},
         document_count=10,
         size_bytes=1024,
-        sync_mode="one_time",
-        interval_minutes=None,
-        paused_at=None,
-        next_run_at=None,
         last_run_started_at=None,
         last_run_completed_at=None,
         last_run_status=None,
@@ -101,89 +105,6 @@ class TestListSourcesEndpoint:
         response = test_client.get("/api/v2/collections/test-id/sources")
 
         assert response.status_code == 403
-
-
-class TestCreateSourceEndpoint:
-    """Tests for POST /api/v2/collections/{collection_id}/sources."""
-
-    def test_create_source_success(self, test_client, mock_service, mock_source):
-        """Test successful source creation."""
-        # API expects (source, secret_types) tuple
-        mock_service.create_source.return_value = (mock_source, [])
-
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources",
-            json={
-                "source_type": "directory",
-                "source_path": "/data/test",
-                "source_config": {"path": "/data/test"},
-                "sync_mode": "one_time",
-            },
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["source_type"] == "directory"
-        assert data["source_path"] == "/data/test"
-
-    def test_create_source_continuous(self, test_client, mock_service, mock_source):
-        """Test creating continuous sync source."""
-        mock_source.sync_mode = "continuous"
-        mock_source.interval_minutes = 30
-        # API expects (source, secret_types) tuple
-        mock_service.create_source.return_value = (mock_source, [])
-
-        response = test_client.post(
-            f"/api/v2/collections/{mock_source.collection_id}/sources",
-            json={
-                "source_type": "directory",
-                "source_path": "/data/test",
-                "source_config": {"path": "/data/test"},
-                "sync_mode": "continuous",
-                "interval_minutes": 30,
-            },
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["sync_mode"] == "continuous"
-        assert data["interval_minutes"] == 30
-
-    def test_create_source_validation_error(self, test_client, mock_service):
-        """Test source creation with validation error from service layer."""
-        mock_service.create_source.side_effect = ValidationError("Invalid source configuration", "source_config")
-
-        # Valid Pydantic request but service raises ValidationError
-        response = test_client.post(
-            "/api/v2/collections/test-id/sources",
-            json={
-                "source_type": "directory",
-                "source_path": "/data/test",
-                "source_config": {"invalid": "config"},
-                "sync_mode": "one_time",
-            },
-        )
-
-        assert response.status_code == 400
-
-    def test_create_source_encryption_not_configured(self, test_client, mock_service):
-        """Test source creation with secrets when encryption is not configured."""
-        mock_service.create_source.side_effect = EncryptionNotConfiguredError(
-            "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
-        )
-
-        response = test_client.post(
-            "/api/v2/collections/test-id/sources",
-            json={
-                "source_type": "directory",
-                "source_path": "/data/test",
-                "source_config": {"path": "/data/test"},
-                "sync_mode": "one_time",
-                "secrets": {"password": "super-secret"},
-            },
-        )
-
-        assert response.status_code == 400
 
 
 class TestGetSourceEndpoint:
@@ -277,80 +198,3 @@ class TestDeleteSourceEndpoint:
         response = test_client.delete(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
         assert response.status_code == 409
-
-
-class TestRunSourceEndpoint:
-    """Tests for POST /api/v2/collections/{collection_id}/sources/{source_id}/run."""
-
-    def test_run_source_success(self, test_client, mock_service, mock_source):
-        """Test successful manual sync trigger."""
-        mock_service.run_now.return_value = {
-            "id": 1,
-            "uuid": str(uuid4()),
-            "type": "append",
-            "status": "pending",
-        }
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["type"] == "append"
-
-    def test_run_source_active_operation(self, test_client, mock_service, mock_source):
-        """Test running source blocked by active operation."""
-        mock_service.run_now.side_effect = InvalidStateError("Collection has active operation(s)")
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/run")
-
-        assert response.status_code == 409
-
-
-class TestPauseSourceEndpoint:
-    """Tests for POST /api/v2/collections/{collection_id}/sources/{source_id}/pause."""
-
-    def test_pause_source_success(self, test_client, mock_service, mock_source):
-        """Test successful source pause."""
-        mock_source.sync_mode = "continuous"
-        mock_source.paused_at = datetime.now(UTC)
-        mock_service.pause.return_value = mock_source
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["paused_at"] is not None
-
-    def test_pause_one_time_source(self, test_client, mock_service, mock_source):
-        """Test pausing one-time source raises error."""
-        mock_service.pause.side_effect = ValidationError("Can only pause continuous sync sources", "sync_mode")
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/pause")
-
-        assert response.status_code == 400
-
-
-class TestResumeSourceEndpoint:
-    """Tests for POST /api/v2/collections/{collection_id}/sources/{source_id}/resume."""
-
-    def test_resume_source_success(self, test_client, mock_service, mock_source):
-        """Test successful source resume."""
-        mock_source.sync_mode = "continuous"
-        mock_source.paused_at = None
-        mock_source.next_run_at = datetime.now(UTC)
-        mock_service.resume.return_value = mock_source
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["paused_at"] is None
-        assert data["next_run_at"] is not None
-
-    def test_resume_one_time_source(self, test_client, mock_service, mock_source):
-        """Test resuming one-time source raises error."""
-        mock_service.resume.side_effect = ValidationError("Can only resume continuous sync sources", "sync_mode")
-
-        response = test_client.post(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}/resume")
-
-        assert response.status_code == 400

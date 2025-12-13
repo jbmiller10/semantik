@@ -30,6 +30,13 @@ class PermissionTypeEnum(str, Enum):
     ADMIN = "admin"
 
 
+class SyncModeEnum(str, Enum):
+    """Sync mode for collections."""
+
+    ONE_TIME = "one_time"
+    CONTINUOUS = "continuous"
+
+
 # User schemas
 class UserBase(BaseModel):
     """Base user schema."""
@@ -123,6 +130,24 @@ class CollectionBase(BaseModel):
 class CollectionCreate(CollectionBase):
     """Schema for creating a collection."""
 
+    # Sync policy fields
+    sync_mode: SyncModeEnum = Field(
+        default=SyncModeEnum.ONE_TIME,
+        description="Sync mode: one_time or continuous",
+    )
+    sync_interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    @model_validator(mode="after")
+    def validate_continuous_requires_interval(self) -> "CollectionCreate":
+        """Validate that continuous sync has an interval."""
+        if self.sync_mode == SyncModeEnum.CONTINUOUS and self.sync_interval_minutes is None:
+            raise ValueError("sync_interval_minutes is required for continuous sync mode")
+        return self
+
 
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
@@ -137,6 +162,17 @@ class CollectionUpdate(BaseModel):
     description: str | None = None
     is_public: bool | None = None
     metadata: dict[str, Any] | None = None
+
+    # Sync policy fields
+    sync_mode: SyncModeEnum | None = Field(
+        default=None,
+        description="Sync mode: one_time or continuous",
+    )
+    sync_interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="Sync interval in minutes for continuous mode (min 15)",
+    )
 
     @field_validator("name", mode="after")
     @classmethod
@@ -223,6 +259,18 @@ class CollectionResponse(CollectionBase):
     status_message: str | None = None
     initial_operation_id: str | None = None  # ID of the initial INDEX operation
 
+    # Sync policy fields
+    sync_mode: str = "one_time"
+    sync_interval_minutes: int | None = None
+    sync_paused_at: datetime | None = None
+    sync_next_run_at: datetime | None = None
+
+    # Sync run tracking
+    sync_last_run_started_at: datetime | None = None
+    sync_last_run_completed_at: datetime | None = None
+    sync_last_run_status: str | None = None
+    sync_last_error: str | None = None
+
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
@@ -257,6 +305,16 @@ class CollectionResponse(CollectionBase):
             total_size_bytes=getattr(collection, "total_size_bytes", 0) or 0,
             status=collection.status.value if hasattr(collection.status, "value") else collection.status,
             status_message=getattr(collection, "status_message", None),
+            # Sync policy fields
+            sync_mode=getattr(collection, "sync_mode", "one_time") or "one_time",
+            sync_interval_minutes=getattr(collection, "sync_interval_minutes", None),
+            sync_paused_at=getattr(collection, "sync_paused_at", None),
+            sync_next_run_at=getattr(collection, "sync_next_run_at", None),
+            # Sync run tracking
+            sync_last_run_started_at=getattr(collection, "sync_last_run_started_at", None),
+            sync_last_run_completed_at=getattr(collection, "sync_last_run_completed_at", None),
+            sync_last_run_status=getattr(collection, "sync_last_run_status", None),
+            sync_last_error=getattr(collection, "sync_last_error", None),
         )
 
 
@@ -615,15 +673,15 @@ class OperationResponse(BaseModel):
 
 
 # Source schemas
-class SyncModeEnum(str, Enum):
-    """Sync mode for sources."""
-
-    ONE_TIME = "one_time"
-    CONTINUOUS = "continuous"
+# Note: Sync policy (mode, interval, pause) is now managed at collection level.
+# Sources only track per-source telemetry (last_run_* fields).
 
 
 class SourceCreate(BaseModel):
-    """Schema for creating a source."""
+    """Schema for creating a source.
+
+    Note: Sync policy is managed at collection level, not source level.
+    """
 
     source_type: str = Field(
         default="directory",
@@ -638,44 +696,22 @@ class SourceCreate(BaseModel):
         default_factory=dict,
         description="Connector-specific configuration",
     )
-    sync_mode: SyncModeEnum = Field(
-        default=SyncModeEnum.ONE_TIME,
-        description="Sync mode: one_time or continuous",
-    )
-    interval_minutes: int | None = Field(
-        default=None,
-        ge=15,
-        description="Sync interval in minutes for continuous mode (min 15)",
-    )
     secrets: dict[str, str] | None = Field(
         default=None,
         description="Connector secrets (write-only, never returned in responses). "
         "Valid keys: password, token, ssh_key, ssh_passphrase",
     )
 
-    @model_validator(mode="after")
-    def validate_continuous_requires_interval(self) -> "SourceCreate":
-        """Validate that continuous sync has an interval."""
-        if self.sync_mode == SyncModeEnum.CONTINUOUS and self.interval_minutes is None:
-            raise ValueError("interval_minutes is required for continuous sync mode")
-        return self
-
 
 class SourceUpdate(BaseModel):
-    """Schema for updating a source."""
+    """Schema for updating a source.
+
+    Note: Sync policy is managed at collection level, not source level.
+    """
 
     source_config: dict[str, Any] | None = Field(
         default=None,
         description="New connector-specific configuration",
-    )
-    sync_mode: SyncModeEnum | None = Field(
-        default=None,
-        description="New sync mode: one_time or continuous",
-    )
-    interval_minutes: int | None = Field(
-        default=None,
-        ge=15,
-        description="New sync interval in minutes (min 15)",
     )
     secrets: dict[str, str] | None = Field(
         default=None,
@@ -686,7 +722,11 @@ class SourceUpdate(BaseModel):
 
 
 class SourceResponse(BaseModel):
-    """Source response schema."""
+    """Source response schema.
+
+    Note: Sync policy (mode, interval, pause) is managed at collection level.
+    Sources only track per-source telemetry (last_run_* fields).
+    """
 
     id: int
     collection_id: str
@@ -696,15 +736,7 @@ class SourceResponse(BaseModel):
     document_count: int
     size_bytes: int
 
-    # Sync configuration
-    sync_mode: str
-    interval_minutes: int | None = None
-    paused_at: datetime | None = None
-
-    # Sync scheduling
-    next_run_at: datetime | None = None
-
-    # Sync status
+    # Per-source sync telemetry (sync policy is at collection level)
     last_run_started_at: datetime | None = None
     last_run_completed_at: datetime | None = None
     last_run_status: str | None = None
@@ -732,10 +764,6 @@ class SourceResponse(BaseModel):
                 "source_config": {"path": "/data/documents", "recursive": True},
                 "document_count": 100,
                 "size_bytes": 1048576,
-                "sync_mode": "continuous",
-                "interval_minutes": 60,
-                "paused_at": None,
-                "next_run_at": "2025-07-15T11:00:00Z",
                 "last_run_started_at": "2025-07-15T10:00:00Z",
                 "last_run_completed_at": "2025-07-15T10:05:00Z",
                 "last_run_status": "success",
@@ -756,6 +784,62 @@ class SourceListResponse(BaseModel):
     """Response for listing sources."""
 
     items: list[SourceResponse]
+    total: int
+    offset: int
+    limit: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [],
+                "total": 0,
+                "offset": 0,
+                "limit": 50,
+            }
+        }
+    )
+
+
+# Collection Sync Run schemas
+class CollectionSyncRunResponse(BaseModel):
+    """Response schema for a collection sync run."""
+
+    id: int
+    collection_id: str
+    triggered_by: str  # 'scheduler' | 'manual'
+    started_at: datetime
+    completed_at: datetime | None = None
+    status: str  # 'running' | 'success' | 'failed' | 'partial'
+    expected_sources: int
+    completed_sources: int
+    failed_sources: int
+    partial_sources: int
+    error_summary: str | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "triggered_by": "scheduler",
+                "started_at": "2025-07-15T10:00:00Z",
+                "completed_at": "2025-07-15T10:05:00Z",
+                "status": "success",
+                "expected_sources": 3,
+                "completed_sources": 3,
+                "failed_sources": 0,
+                "partial_sources": 0,
+                "error_summary": None,
+            }
+        },
+    )
+
+
+class SyncRunListResponse(BaseModel):
+    """Response for listing sync runs."""
+
+    items: list[CollectionSyncRunResponse]
     total: int
     offset: int
     limit: int

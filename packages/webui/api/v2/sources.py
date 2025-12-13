@@ -1,18 +1,18 @@
 """
 Collection Sources API v2 endpoints.
 
-This module provides RESTful API endpoints for managing collection sources,
-including sync configuration, pause/resume, and manual sync triggers.
+This module provides RESTful API endpoints for managing collection sources.
+Note: Sync policy (mode, interval, pause/resume) is managed at collection level.
+Sources only track per-source telemetry (last_run_* fields).
 """
 
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from shared.database.exceptions import (
     AccessDeniedError,
-    EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
     ValidationError,
@@ -20,7 +20,6 @@ from shared.database.exceptions import (
 from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.schemas import (
     ErrorResponse,
-    SourceCreate,
     SourceListResponse,
     SourceResponse,
     SourceUpdate,
@@ -37,6 +36,9 @@ router = APIRouter(prefix="/api/v2/collections", tags=["sources-v2"])
 def _source_to_response(source: Any, secret_types: list[str] | None = None) -> SourceResponse:
     """Convert a CollectionSource model to SourceResponse.
 
+    Note: Sync policy (mode, interval, pause) is managed at collection level.
+    Sources only track per-source telemetry (last_run_* fields).
+
     Args:
         source: CollectionSource model instance
         secret_types: List of secret types configured for this source (if known)
@@ -51,10 +53,7 @@ def _source_to_response(source: Any, secret_types: list[str] | None = None) -> S
         source_config=source.source_config or {},
         document_count=source.document_count,
         size_bytes=source.size_bytes,
-        sync_mode=source.sync_mode,
-        interval_minutes=source.interval_minutes,
-        paused_at=source.paused_at,
-        next_run_at=source.next_run_at,
+        # Per-source sync telemetry (sync policy is at collection level)
         last_run_started_at=source.last_run_started_at,
         last_run_completed_at=source.last_run_completed_at,
         last_run_status=source.last_run_status,
@@ -115,62 +114,8 @@ async def list_sources(
         raise HTTPException(status_code=500, detail="Failed to list sources") from e
 
 
-@router.post(
-    "/{collection_id}/sources",
-    response_model=SourceResponse,
-    status_code=201,
-    responses={
-        400: {"model": ErrorResponse, "description": "Invalid request"},
-        401: {"model": ErrorResponse, "description": "Unauthorized"},
-        403: {"model": ErrorResponse, "description": "Access denied"},
-        404: {"model": ErrorResponse, "description": "Collection not found"},
-        409: {"model": ErrorResponse, "description": "Source already exists"},
-    },
-)
-async def create_source(
-    collection_id: str,
-    request: Request,  # noqa: ARG001
-    create_request: SourceCreate,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: SourceService = Depends(get_source_service),
-) -> SourceResponse:
-    """Create a new source for a collection.
-
-    Creates a source with the specified configuration and sync settings.
-    The source can be configured for one-time import or continuous sync.
-
-    Secrets (passwords, tokens, SSH keys) are encrypted and stored securely.
-    They are never returned in responses - only has_* indicators are provided.
-    """
-    try:
-        source, secret_types = await service.create_source(
-            user_id=int(current_user["id"]),
-            collection_id=collection_id,
-            source_type=create_request.source_type,
-            source_path=create_request.source_path,
-            source_config=create_request.source_config,
-            sync_mode=create_request.sync_mode.value,
-            interval_minutes=create_request.interval_minutes,
-            secrets=create_request.secrets,
-        )
-
-        return _source_to_response(source, secret_types)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except EntityAlreadyExistsError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except EncryptionNotConfiguredError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error(f"Failed to create source: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create source") from e
+# Note: create_source endpoint removed - sources are created via
+# POST /api/v2/collections/{collection_id}/sources (in collections.py)
 
 
 @router.get(
@@ -229,8 +174,7 @@ async def update_source(
 ) -> SourceResponse:
     """Update a source's configuration.
 
-    Updates the source configuration and/or sync settings.
-    Note: Changing sync_mode to continuous requires interval_minutes.
+    Note: Sync policy (mode, interval, pause) is managed at collection level.
 
     Secrets can be updated by providing new values. Set a secret key to an
     empty string to delete that secret.
@@ -240,8 +184,6 @@ async def update_source(
             user_id=int(current_user["id"]),
             source_id=source_id,
             source_config=update_request.source_config,
-            sync_mode=update_request.sync_mode.value if update_request.sync_mode else None,
-            interval_minutes=update_request.interval_minutes,
             secrets=update_request.secrets,
         )
 
@@ -301,120 +243,8 @@ async def delete_source(
         raise HTTPException(status_code=500, detail="Failed to delete source") from e
 
 
-@router.post(
-    "/{collection_id}/sources/{source_id}/run",
-    responses={
-        401: {"model": ErrorResponse, "description": "Unauthorized"},
-        403: {"model": ErrorResponse, "description": "Access denied"},
-        404: {"model": ErrorResponse, "description": "Source not found"},
-        409: {"model": ErrorResponse, "description": "Active operation in progress"},
-    },
-)
-async def run_source(
-    collection_id: str,  # noqa: ARG001 - used for routing
-    source_id: int,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: SourceService = Depends(get_source_service),
-) -> dict[str, Any]:
-    """Trigger an immediate sync run for a source.
-
-    Creates an APPEND operation for the source and dispatches it.
-    For continuous sync sources, also updates the next scheduled run time.
-
-    Returns the operation details for tracking.
-    """
-    try:
-        result = await service.run_now(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-        )
-        return cast(dict[str, Any], result)
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except InvalidStateError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except Exception as e:
-        logger.error(f"Failed to run source sync: {e}")
-        raise HTTPException(status_code=500, detail="Failed to run source sync") from e
-
-
-@router.post(
-    "/{collection_id}/sources/{source_id}/pause",
-    response_model=SourceResponse,
-    responses={
-        400: {"model": ErrorResponse, "description": "Cannot pause non-continuous source"},
-        401: {"model": ErrorResponse, "description": "Unauthorized"},
-        403: {"model": ErrorResponse, "description": "Access denied"},
-        404: {"model": ErrorResponse, "description": "Source not found"},
-    },
-)
-async def pause_source(
-    collection_id: str,  # noqa: ARG001 - used for routing
-    source_id: int,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: SourceService = Depends(get_source_service),
-) -> SourceResponse:
-    """Pause a continuous sync source.
-
-    Stops the automatic sync schedule for the source.
-    Manual sync via /run is still available while paused.
-    """
-    try:
-        source = await service.pause(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-        )
-
-        return _source_to_response(source)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error(f"Failed to pause source: {e}")
-        raise HTTPException(status_code=500, detail="Failed to pause source") from e
-
-
-@router.post(
-    "/{collection_id}/sources/{source_id}/resume",
-    response_model=SourceResponse,
-    responses={
-        400: {"model": ErrorResponse, "description": "Cannot resume non-continuous source"},
-        401: {"model": ErrorResponse, "description": "Unauthorized"},
-        403: {"model": ErrorResponse, "description": "Access denied"},
-        404: {"model": ErrorResponse, "description": "Source not found"},
-    },
-)
-async def resume_source(
-    collection_id: str,  # noqa: ARG001 - used for routing
-    source_id: int,
-    current_user: dict[str, Any] = Depends(get_current_user),
-    service: SourceService = Depends(get_source_service),
-) -> SourceResponse:
-    """Resume a paused continuous sync source.
-
-    Restarts the automatic sync schedule for the source.
-    The next sync will be scheduled immediately.
-    """
-    try:
-        source = await service.resume(
-            user_id=int(current_user["id"]),
-            source_id=source_id,
-        )
-
-        return _source_to_response(source)
-
-    except EntityNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except AccessDeniedError as e:
-        raise HTTPException(status_code=403, detail="Access denied") from e
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        logger.error(f"Failed to resume source: {e}")
-        raise HTTPException(status_code=500, detail="Failed to resume source") from e
+# Note: run_source, pause_source, resume_source endpoints removed.
+# Sync operations are now managed at collection level via:
+# - POST /api/v2/collections/{collection_id}/sync/run
+# - POST /api/v2/collections/{collection_id}/sync/pause
+# - POST /api/v2/collections/{collection_id}/sync/resume

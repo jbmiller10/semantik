@@ -9,6 +9,8 @@ import type {
   RemoveSourceRequest,
   ReindexRequest,
   CollectionListResponse,
+  CollectionSyncRun,
+  SyncRunListResponse,
   PaginationParams,
 } from '../../../types/collection';
 import type {
@@ -50,11 +52,24 @@ export const collectionsV2Api = {
     apiClient.post<Operation>(`/api/v2/collections/${uuid}/reindex`, data || {}),
   
   // Collection queries
-  listOperations: (uuid: string, params?: PaginationParams) => 
+  listOperations: (uuid: string, params?: PaginationParams) =>
     apiClient.get<Operation[]>(`/api/v2/collections/${uuid}/operations`, { params }),
-    
-  listDocuments: (uuid: string, params?: PaginationParams) => 
+
+  listDocuments: (uuid: string, params?: PaginationParams) =>
     apiClient.get<DocumentListResponse>(`/api/v2/collections/${uuid}/documents`, { params }),
+
+  // Sync control (collection-level)
+  runSync: (uuid: string) =>
+    apiClient.post<CollectionSyncRun>(`/api/v2/collections/${uuid}/sync/run`),
+
+  pauseSync: (uuid: string) =>
+    apiClient.post<Collection>(`/api/v2/collections/${uuid}/sync/pause`),
+
+  resumeSync: (uuid: string) =>
+    apiClient.post<Collection>(`/api/v2/collections/${uuid}/sync/resume`),
+
+  listSyncRuns: (uuid: string, params?: { offset?: number; limit?: number }) =>
+    apiClient.get<SyncRunListResponse>(`/api/v2/collections/${uuid}/sync/runs`, { params }),
 };
 
 /**
