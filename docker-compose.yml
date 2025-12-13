@@ -371,6 +371,70 @@ services:
       retries: 3
       start_period: 60s
 
+  # Celery Beat Service (periodic task scheduler)
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: semantik-beat
+    command: [ "beat" ]
+    environment:
+      # Python path
+      - PYTHONPATH=/app/packages
+      # General configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Auth configuration
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      # PostgreSQL configuration
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-semantik}
+      - POSTGRES_USER=${POSTGRES_USER:-semantik}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      # Connection pool settings
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_TIMEOUT=${DB_POOL_TIMEOUT:-30}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-3600}
+      - DB_POOL_PRE_PING=${DB_POOL_PRE_PING:-true}
+      # Beat schedule storage
+      - CELERY_BEAT_SCHEDULE_FILE=${CELERY_BEAT_SCHEDULE_FILE:-/app/data/celerybeat-schedule}
+    volumes:
+      # Mount data directories (includes celery beat schedule file)
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          memory: 512M
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "bash", "-lc", "test -f /tmp/celerybeat.pid && kill -0 \"$(cat /tmp/celerybeat.pid)\"" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Flower monitoring service
   flower:
     build:

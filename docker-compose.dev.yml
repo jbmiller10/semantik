@@ -33,3 +33,12 @@ services:
       # Enable debug mode
       - ENVIRONMENT=development
       - DB_ECHO=true
+
+  beat:
+    volumes:
+      # Mount source code for live reloading
+      - ./packages:/app/packages:ro
+    environment:
+      # Enable debug mode
+      - ENVIRONMENT=development
+      - DB_ECHO=true
