@@ -85,9 +85,7 @@ class CollectionSyncRunRepository:
             CollectionSyncRun instance or None if not found
         """
         try:
-            result = await self.session.execute(
-                select(CollectionSyncRun).where(CollectionSyncRun.id == run_id)
-            )
+            result = await self.session.execute(select(CollectionSyncRun).where(CollectionSyncRun.id == run_id))
             return result.scalar_one_or_none()
         except Exception as e:
             logger.error(f"Failed to get sync run {run_id}: {e}")
@@ -244,9 +242,7 @@ class CollectionSyncRunRepository:
         try:
             # Get total count
             count_result = await self.session.execute(
-                select(func.count(CollectionSyncRun.id)).where(
-                    CollectionSyncRun.collection_id == collection_id
-                )
+                select(func.count(CollectionSyncRun.id)).where(CollectionSyncRun.collection_id == collection_id)
             )
             total = count_result.scalar() or 0
 
