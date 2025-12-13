@@ -231,7 +231,7 @@ Containers run with `no-new-privileges`, dropped capabilities, non-root user (UI
 
 ## Configuration
 
-Key environment variables: `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `DEFAULT_EMBEDDING_MODEL`, `CELERY_MAX_CONCURRENCY`
+Key environment variables: `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `CONNECTOR_SECRETS_KEY`, `DEFAULT_EMBEDDING_MODEL`, `CELERY_MAX_CONCURRENCY`
 
 See `.env.docker.example` for full list.
 

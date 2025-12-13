@@ -10,7 +10,7 @@ All docs in `/docs/`. Not listed here? Check app/package READMEs or it doesn't e
 
 **APIs:** [API_REFERENCE.md](./API_REFERENCE.md), [WEBSOCKET_API.md](./WEBSOCKET_API.md), [SEARCH.md](./SEARCH.md), [api/CHUNKING_API.md](./api/CHUNKING_API.md)
 
-**Features:** [COLLECTIONS.md](./COLLECTIONS.md), [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md), [RERANKING.md](./RERANKING.md), [CHUNKING_FEATURE_OVERVIEW.md](./CHUNKING_FEATURE_OVERVIEW.md), [EMBEDDING_PLUGINS.md](./EMBEDDING_PLUGINS.md), [EMBEDDING_VISUALIZATION.md](./EMBEDDING_VISUALIZATION.md)
+**Features:** [COLLECTIONS.md](./COLLECTIONS.md), [CONNECTORS.md](./CONNECTORS.md), [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md), [RERANKING.md](./RERANKING.md), [CHUNKING_FEATURE_OVERVIEW.md](./CHUNKING_FEATURE_OVERVIEW.md), [EMBEDDING_PLUGINS.md](./EMBEDDING_PLUGINS.md), [EMBEDDING_VISUALIZATION.md](./EMBEDDING_VISUALIZATION.md)
 
 **Operations:** [DOCKER.md](./DOCKER.md), [DEPLOYMENT.md](./DEPLOYMENT.md), [CONFIGURATION.md](./CONFIGURATION.md), [partition-monitoring.md](./partition-monitoring.md), [security.md](./security.md), [TESTING.md](./TESTING.md)
 
@@ -24,4 +24,4 @@ All docs in `/docs/`. Not listed here? Check app/package READMEs or it doesn't e
 
 ---
 
-**Version:** v0.6 (collection-centric) | **Docs updated:** 2025-12-12 | **API:** v2
+**Version:** v0.6 (collection-centric) | **Docs updated:** 2025-12-13 | **API:** v2

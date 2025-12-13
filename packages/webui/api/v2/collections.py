@@ -120,6 +120,7 @@ async def create_collection(
             updated_at=collection["updated_at"],
             document_count=collection["document_count"],
             vector_count=collection.get("vector_count", 0),
+            total_size_bytes=collection.get("total_size_bytes", 0),
             status=collection["status"],
             status_message=collection.get("status_message"),
             initial_operation_id=operation["uuid"],  # Include the initial operation ID
