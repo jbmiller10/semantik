@@ -70,6 +70,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         try {
           await addSourceMutation.mutateAsync({
             collectionId: collectionIdForSource,
+            sourceType: 'directory',
+            sourceConfig: { path: sourcePathForDelayedAdd },
             sourcePath: sourcePathForDelayedAdd,
             config: {
               chunking_strategy: strategyConfig.strategy,
