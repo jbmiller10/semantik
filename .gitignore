@@ -207,6 +207,7 @@ images/*
 *.backup
 test_*.png
 *.tmp
+*.kate-swp
 embedding-atlas-*.tgz
 embedding-atlas-codebase.txt
 page_content.html

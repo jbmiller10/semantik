@@ -14,6 +14,7 @@ from shared.database.exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
+    ValidationError,
 )
 from shared.database.models import Collection, CollectionStatus, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -236,14 +237,24 @@ class CollectionService:
             AccessDeniedError: If user doesn't have permission
             InvalidStateError: If collection is in invalid state
         """
-        # Normalize: derive source_config from legacy_source_path if needed
-        if source_config is None and legacy_source_path is not None:
-            source_config = {"path": legacy_source_path}
-            source_type = "directory"
+        # Normalize: derive/augment source_config from legacy_source_path if needed
+        if legacy_source_path is not None:
+            if not source_config:
+                source_config = {"path": legacy_source_path}
+                source_type = "directory"
+            elif source_type == "directory" and "path" not in source_config:
+                # Some clients send directory options (e.g., recursive) in source_config
+                # while still providing the actual path separately. Merge the path in.
+                source_config = {**source_config, "path": legacy_source_path}
 
         # Derive source_path for the operation config (for display/audit)
         # For directory sources, use "path"; for web sources, use "url"; otherwise first value
         source_path = self._derive_source_path(source_type, source_config)
+        if not source_path:
+            raise ValidationError(
+                "source_config must include a path/url/identifier (e.g. source_config={'path': ...}) or provide source_path",
+                "source_path",
+            )
 
         # Get collection with permission check
         collection = await self.collection_repo.get_by_uuid_with_permission_check(

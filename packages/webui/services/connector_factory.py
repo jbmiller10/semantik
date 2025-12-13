@@ -23,7 +23,7 @@ class ConnectorFactory:
         ```python
         connector = ConnectorFactory.get_connector(
             source_type="directory",
-            config={"source_path": "/data/docs", "recursive": True}
+            config={"path": "/data/docs", "recursive": True}
         )
         ```
     """

@@ -862,9 +862,28 @@ async def _process_append_operation_impl(
         # Store content for new/updated documents (avoid re-parsing)
         new_doc_contents: dict[int, str] = {}
 
-        # Iterate through connector's documents using savepoints for isolation
-        # This allows failures on individual documents without losing previously registered ones
-        async for ingested_doc in connector.load_documents():
+        # Iterate through connector's documents using savepoints for isolation.
+        #
+        # Some connectors may optionally accept `source_id` (useful for per-source
+        # cache keys, e.g. Git) but we keep this call backwards compatible.
+        import inspect
+
+        load_documents = getattr(connector, "load_documents", None)
+        if not callable(load_documents):
+            raise ValueError(f"Connector for source_type={source_type!r} does not implement load_documents()")
+
+        try:
+            signature = inspect.signature(load_documents)
+            accepts_source_id = (
+                "source_id" in signature.parameters
+                or any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+            )
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            accepts_source_id = False
+
+        documents_iter = load_documents(source_id=source_id) if accepts_source_id else load_documents()
+
+        async for ingested_doc in documents_iter:
             scan_stats["total_documents_found"] += 1
 
             try:
