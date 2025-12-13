@@ -89,6 +89,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends \
     python${PYTHON_VERSION} \
     python3-pip \
+    # Required for git connector sources
+    git \
+    openssh-client \
+    ca-certificates \
     # Required for unstructured document processing
     libmagic1 \
     libgomp1 \
