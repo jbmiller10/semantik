@@ -293,7 +293,7 @@ class TestGetEmailBody:
     def test_get_plain_text_body(self):
         """Test extracting plain text body from simple message."""
         msg = email.message_from_string(
-            "Subject: Test\n" "Content-Type: text/plain; charset=utf-8\n" "\n" "Hello, this is the body."
+            "Subject: Test\nContent-Type: text/plain; charset=utf-8\n\nHello, this is the body."
         )
         result = _get_email_body(msg)
         assert "Hello, this is the body." in result
@@ -334,7 +334,7 @@ class TestGetEmailBody:
         """Test that large bodies are truncated."""
         large_content = "x" * (MAX_EMAIL_BODY_SIZE + 1000)
         msg = email.message_from_string(
-            f"Subject: Test\n" f"Content-Type: text/plain; charset=utf-8\n" f"\n" f"{large_content}"
+            f"Subject: Test\nContent-Type: text/plain; charset=utf-8\n\n{large_content}"
         )
         result = _get_email_body(msg)
         assert len(result) <= MAX_EMAIL_BODY_SIZE + 100  # Some buffer for truncation message
@@ -639,7 +639,7 @@ class TestImapConnectorCursor:
         connector.set_cursor({})
 
         test_email = (
-            b"From: sender@example.com\r\n" b"Subject: Test\r\n" b"Message-ID: <test@example.com>\r\n" b"\r\n" b"Body"
+            b"From: sender@example.com\r\nSubject: Test\r\nMessage-ID: <test@example.com>\r\n\r\nBody"
         )
 
         mock_conn = MagicMock()

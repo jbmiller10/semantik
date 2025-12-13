@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from typing import cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,7 +171,7 @@ class ConnectorSecretRepository:
                 return None
 
             # Decrypt and return
-            plaintext = SecretEncryption.decrypt(secret.ciphertext)
+            plaintext = SecretEncryption.decrypt(cast(bytes, secret.ciphertext))
 
             logger.debug(f"Retrieved secret type={secret_type} for source_id={source_id}")
 
