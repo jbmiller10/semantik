@@ -131,10 +131,12 @@ export interface SyncRunListResponse {
 export interface AddSourceRequest {
   /** @deprecated Use source_type + source_config instead */
   source_path?: string;
-  /** Source type (e.g., "directory", "web", "slack"). Defaults to "directory" on backend. */
+  /** Source type (e.g., "directory", "git", "imap"). Defaults to "directory" on backend. */
   source_type?: string;
   /** Source-specific configuration (e.g., { path: "/data/docs" } for directory) */
   source_config?: Record<string, unknown>;
+  /** Secrets for authentication (e.g., tokens, passwords, SSH keys) - encrypted at rest */
+  secrets?: Record<string, string>;
   config?: {
     chunk_size?: number;         // Deprecated: use chunking_config instead
     chunk_overlap?: number;      // Deprecated: use chunking_config instead
