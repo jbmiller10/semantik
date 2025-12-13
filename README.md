@@ -21,7 +21,7 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
-- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system.
+- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
 - **Visualize:** project embeddings into 2D space & visualize relationships
 
