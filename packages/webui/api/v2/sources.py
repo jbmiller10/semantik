@@ -6,7 +6,7 @@ including sync configuration, pause/resume, and manual sync triggers.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -17,6 +17,7 @@ from shared.database.exceptions import (
     InvalidStateError,
     ValidationError,
 )
+from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.schemas import (
     ErrorResponse,
     SourceCreate,
@@ -33,8 +34,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v2/collections", tags=["sources-v2"])
 
 
-def _source_to_response(source: Any) -> SourceResponse:
-    """Convert a CollectionSource model to SourceResponse."""
+def _source_to_response(source: Any, secret_types: list[str] | None = None) -> SourceResponse:
+    """Convert a CollectionSource model to SourceResponse.
+
+    Args:
+        source: CollectionSource model instance
+        secret_types: List of secret types configured for this source (if known)
+    """
+    secret_types_set = set(secret_types or [])
+
     return SourceResponse(
         id=source.id,
         collection_id=source.collection_id,
@@ -54,6 +62,10 @@ def _source_to_response(source: Any) -> SourceResponse:
         last_indexed_at=source.last_indexed_at,
         created_at=source.created_at,
         updated_at=source.updated_at,
+        has_password="password" in secret_types_set,
+        has_token="token" in secret_types_set,
+        has_ssh_key="ssh_key" in secret_types_set,
+        has_ssh_passphrase="ssh_passphrase" in secret_types_set,
     )
 
 
@@ -76,17 +88,19 @@ async def list_sources(
     """List sources for a collection.
 
     Returns all sources configured for the collection with their sync status.
+    Includes secret indicators (has_password, has_token, etc.) for each source.
     """
     try:
-        sources, total = await service.list_sources(
+        sources_with_secrets, total = await service.list_sources(
             user_id=int(current_user["id"]),
             collection_id=collection_id,
             offset=offset,
             limit=limit,
+            include_secret_types=True,
         )
 
         return SourceListResponse(
-            items=[_source_to_response(s) for s in sources],
+            items=[_source_to_response(s, st) for s, st in sources_with_secrets],
             total=total,
             offset=offset,
             limit=limit,
@@ -124,9 +138,12 @@ async def create_source(
 
     Creates a source with the specified configuration and sync settings.
     The source can be configured for one-time import or continuous sync.
+
+    Secrets (passwords, tokens, SSH keys) are encrypted and stored securely.
+    They are never returned in responses - only has_* indicators are provided.
     """
     try:
-        source = await service.create_source(
+        source, secret_types = await service.create_source(
             user_id=int(current_user["id"]),
             collection_id=collection_id,
             source_type=create_request.source_type,
@@ -134,9 +151,10 @@ async def create_source(
             source_config=create_request.source_config,
             sync_mode=create_request.sync_mode.value,
             interval_minutes=create_request.interval_minutes,
+            secrets=create_request.secrets,
         )
 
-        return _source_to_response(source)
+        return _source_to_response(source, secret_types)
 
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -145,6 +163,8 @@ async def create_source(
     except EntityAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except EncryptionNotConfiguredError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -168,14 +188,18 @@ async def get_source(
     current_user: dict[str, Any] = Depends(get_current_user),
     service: SourceService = Depends(get_source_service),
 ) -> SourceResponse:
-    """Get a source by ID."""
+    """Get a source by ID.
+
+    Returns source details including secret indicators (has_password, etc.).
+    """
     try:
-        source = await service.get_source(
+        source, secret_types = await service.get_source(
             user_id=int(current_user["id"]),
             source_id=source_id,
+            include_secret_types=True,
         )
 
-        return _source_to_response(source)
+        return _source_to_response(source, secret_types)
 
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -207,23 +231,29 @@ async def update_source(
 
     Updates the source configuration and/or sync settings.
     Note: Changing sync_mode to continuous requires interval_minutes.
+
+    Secrets can be updated by providing new values. Set a secret key to an
+    empty string to delete that secret.
     """
     try:
-        source = await service.update_source(
+        source, secret_types = await service.update_source(
             user_id=int(current_user["id"]),
             source_id=source_id,
             source_config=update_request.source_config,
             sync_mode=update_request.sync_mode.value if update_request.sync_mode else None,
             interval_minutes=update_request.interval_minutes,
+            secrets=update_request.secrets,
         )
 
-        return _source_to_response(source)
+        return _source_to_response(source, secret_types)
 
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail="Access denied") from e
     except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except EncryptionNotConfiguredError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -255,10 +285,11 @@ async def delete_source(
     Returns the operation details for tracking.
     """
     try:
-        return await service.delete_source(
+        result = await service.delete_source(
             user_id=int(current_user["id"]),
             source_id=source_id,
         )
+        return cast(dict[str, Any], result)
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AccessDeniedError as e:
@@ -293,10 +324,11 @@ async def run_source(
     Returns the operation details for tracking.
     """
     try:
-        return await service.run_now(
+        result = await service.run_now(
             user_id=int(current_user["id"]),
             source_id=source_id,
         )
+        return cast(dict[str, Any], result)
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AccessDeniedError as e:

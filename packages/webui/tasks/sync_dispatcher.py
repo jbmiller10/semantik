@@ -28,7 +28,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
     Returns:
         Dictionary with dispatch statistics
     """
-    stats = {
+    stats: dict[str, Any] = {
         "checked_at": datetime.now(UTC).isoformat(),
         "due_count": 0,
         "dispatched_count": 0,

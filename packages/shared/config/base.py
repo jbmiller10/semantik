@@ -62,6 +62,11 @@ class BaseConfig(BaseSettings):
         return self.data_dir / "rejects"
 
     @property
+    def git_cache_dir(self) -> Path:
+        """Directory for caching cloned Git repositories."""
+        return self.data_dir / "git_cache"
+
+    @property
     def manifest_file(self) -> Path:
         return self.data_dir / "filelist.null"
 

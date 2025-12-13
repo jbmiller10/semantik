@@ -22,6 +22,7 @@ import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 
+from shared.config import settings
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -761,6 +762,55 @@ async def _process_append_operation_impl(
     except ValueError as e:
         raise ValueError(f"Invalid source configuration: {e}") from e
 
+    # Apply stored connector secrets (if any) before authentication.
+    #
+    # Secrets are stored encrypted in the DB (via SourceService). Celery workers do not
+    # run the FastAPI startup hooks, so we need to ensure encryption is initialised
+    # and then load/decrypt secrets here for connectors that support credentials.
+    set_credentials = getattr(connector, "set_credentials", None)
+    if callable(set_credentials):
+        import inspect
+
+        from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
+        from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption
+
+        if not SecretEncryption.is_initialized() and settings.CONNECTOR_SECRETS_KEY:
+            try:
+                SecretEncryption.initialize(settings.CONNECTOR_SECRETS_KEY)
+                logger.debug(
+                    "Connector secrets encryption initialised in worker (key_id=%s)",
+                    SecretEncryption.get_key_id(),
+                )
+            except ValueError as exc:
+                raise ValueError(f"Invalid CONNECTOR_SECRETS_KEY: {exc}") from exc
+
+        secret_repo = ConnectorSecretRepository(session)
+        secret_types = await secret_repo.get_secret_types_for_source(source_id)
+        if secret_types:
+            credentials: dict[str, str] = {}
+            for secret_type in secret_types:
+                try:
+                    secret_value = await secret_repo.get_secret(source_id, secret_type)
+                except (EncryptionNotConfiguredError, DecryptionError) as exc:
+                    raise ValueError(
+                        f"Failed to decrypt stored secrets for source_id={source_id}; "
+                        "ensure CONNECTOR_SECRETS_KEY matches the key used to encrypt them."
+                    ) from exc
+                if secret_value is not None:
+                    credentials[secret_type] = secret_value
+
+            if credentials:
+                allowed_params = set(inspect.signature(set_credentials).parameters.keys())
+                allowed_params.discard("self")
+                filtered_credentials = {k: v for k, v in credentials.items() if k in allowed_params}
+                if filtered_credentials:
+                    set_credentials(**filtered_credentials)
+                    logger.debug(
+                        "Applied connector secrets for source_id=%s: %s",
+                        source_id,
+                        sorted(filtered_credentials.keys()),
+                    )
+
     # Authenticate / validate access
     try:
         auth_ok = await connector.authenticate()
@@ -788,12 +838,15 @@ async def _process_append_operation_impl(
 
         # Create registry for document registration (with chunk_repo for sync updates)
         from shared.database.repositories.chunk_repository import ChunkRepository
+        from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 
         chunk_repo = ChunkRepository(session)
+        artifact_repo = DocumentArtifactRepository(session, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
         registry = DocumentRegistryService(
             db_session=session,
             document_repo=document_repo,
             chunk_repo=chunk_repo,
+            artifact_repo=artifact_repo,
         )
 
         # Track statistics
@@ -809,9 +862,27 @@ async def _process_append_operation_impl(
         # Store content for new/updated documents (avoid re-parsing)
         new_doc_contents: dict[int, str] = {}
 
-        # Iterate through connector's documents using savepoints for isolation
-        # This allows failures on individual documents without losing previously registered ones
-        async for ingested_doc in connector.load_documents():
+        # Iterate through connector's documents using savepoints for isolation.
+        #
+        # Some connectors may optionally accept `source_id` (useful for per-source
+        # cache keys, e.g. Git) but we keep this call backwards compatible.
+        import inspect
+
+        load_documents = getattr(connector, "load_documents", None)
+        if not callable(load_documents):
+            raise ValueError(f"Connector for source_type={source_type!r} does not implement load_documents()")
+
+        try:
+            signature = inspect.signature(load_documents)
+            accepts_source_id = "source_id" in signature.parameters or any(
+                param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+            )
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            accepts_source_id = False
+
+        documents_iter = load_documents(source_id=source_id) if accepts_source_id else load_documents()
+
+        async for ingested_doc in documents_iter:
             scan_stats["total_documents_found"] += 1
 
             try:
@@ -1317,16 +1388,16 @@ async def _process_append_operation_impl(
 
                 source_repo = CollectionSourceRepository(session)
                 status = "success" if success else ("partial" if scan_errors else "failed")
-                error_msg = None
+                sync_error_msg: str | None = None
                 if scan_errors:
-                    error_msg = f"{len(scan_errors)} document(s) failed to process"
+                    sync_error_msg = f"{len(scan_errors)} document(s) failed to process"
                 elif failed_count > 0:
-                    error_msg = f"{failed_count} document(s) failed embedding generation"
+                    sync_error_msg = f"{failed_count} document(s) failed embedding generation"
 
                 await source_repo.update_sync_status(
                     source_id=source_id,
                     status=status,
-                    error=error_msg,
+                    error=sync_error_msg,
                 )
                 await session.commit()
             except Exception as status_exc:

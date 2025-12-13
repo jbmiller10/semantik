@@ -1128,6 +1128,37 @@ class DockerSetupTUI:
                 return False
             self.config["JWT_SECRET_KEY"] = custom_jwt
 
+        # Connector Secrets Key (Fernet)
+        connector_key_choice = questionary.select(
+            "Connector Secrets Key (for encrypting passwords/tokens):",
+            choices=[
+                "Generate secure key automatically (Recommended)",
+                "Enter custom Fernet key",
+                "Skip (disable encryption)",
+            ],
+        ).ask()
+
+        if connector_key_choice is None:
+            return False
+
+        if "Generate" in connector_key_choice:
+            # Generate Fernet key (base64-encoded 32 bytes)
+            import base64
+
+            self.config["CONNECTOR_SECRETS_KEY"] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+            console.print("[green]Generated secure connector secrets key[/green]")
+        elif "Skip" in connector_key_choice:
+            self.config["CONNECTOR_SECRETS_KEY"] = ""
+            console.print(
+                "[yellow]Connector secrets encryption disabled - credentials will not be stored securely[/yellow]"
+            )
+        else:
+            custom_key = questionary.password("Enter Fernet key (44 chars, base64):").ask()
+            if custom_key is None or len(custom_key) != 44:
+                console.print("[red]Fernet key must be exactly 44 characters[/red]")
+                return False
+            self.config["CONNECTOR_SECRETS_KEY"] = custom_key
+
         # Access token expiration
         expiry = questionary.text("Access token expiration (minutes):", default="1440").ask()
         if expiry is None:
@@ -1191,6 +1222,11 @@ class DockerSetupTUI:
 
         # Security settings
         table.add_row("JWT Secret", "***" + self.config["JWT_SECRET_KEY"][-8:])
+        connector_key = self.config.get("CONNECTOR_SECRETS_KEY", "")
+        if connector_key:
+            table.add_row("Connector Secrets Key", "***" + connector_key[-8:])
+        else:
+            table.add_row("Connector Secrets Key", "[dim]disabled[/dim]")
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
         table.add_row("Log Level", self.config["LOG_LEVEL"])
         table.add_row("WebUI Workers", "auto")
@@ -1259,6 +1295,7 @@ class DockerSetupTUI:
         # Replace values
         replacements = {
             "CHANGE_THIS_TO_A_STRONG_SECRET_KEY": self.config["JWT_SECRET_KEY"],
+            "CHANGE_THIS_TO_A_FERNET_KEY": self.config.get("CONNECTOR_SECRETS_KEY", ""),
             "ACCESS_TOKEN_EXPIRE_MINUTES=1440": f"ACCESS_TOKEN_EXPIRE_MINUTES={self.config['ACCESS_TOKEN_EXPIRE_MINUTES']}",
             "DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B": f"DEFAULT_EMBEDDING_MODEL={self.config['DEFAULT_EMBEDDING_MODEL']}",
             "DEFAULT_QUANTIZATION=float16": f"DEFAULT_QUANTIZATION={self.config['DEFAULT_QUANTIZATION']}",

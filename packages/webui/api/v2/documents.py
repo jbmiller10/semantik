@@ -3,6 +3,12 @@ Document API v2 endpoints.
 
 This module provides RESTful API endpoints for document content access.
 Security is critical - all document access must be properly authorized.
+
+Content is served from two sources:
+1. Database artifacts (for non-file sources like Git, IMAP)
+2. Filesystem files (for local directory sources)
+
+The endpoint checks for artifacts first, then falls back to file serving.
 """
 
 import logging
@@ -10,13 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
 from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError
 from shared.database.models import Collection
+from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
 from webui.auth import get_current_user
 from webui.dependencies import create_document_repository, get_collection_for_user
 
@@ -27,6 +34,7 @@ router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
 
 @router.get(
     "/collections/{collection_uuid}/documents/{document_uuid}/content",
+    response_model=None,
     responses={
         200: {"description": "Document content", "content": {"application/octet-stream": {}}},
         401: {"description": "Unauthorized"},
@@ -41,12 +49,16 @@ async def get_document_content(
     collection: Collection = Depends(get_collection_for_user),  # noqa: ARG001
     current_user: dict[str, Any] = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> FileResponse:
+) -> FileResponse | Response:
     """Get the content of a specific document.
 
     This endpoint serves the raw document content for viewing. Access control
     is enforced through the get_collection_for_user dependency which verifies
     the user has at least read access to the collection.
+
+    Content is served from two sources (checked in order):
+    1. Database artifacts (for non-file sources like Git, IMAP)
+    2. Filesystem files (for local directory sources)
 
     Security considerations:
     - User authentication is required
@@ -75,6 +87,42 @@ async def get_document_content(
                 detail="Document does not belong to the specified collection",
             )
 
+        # Check for database artifact first (for non-file sources like Git, IMAP)
+        artifact_repo = DocumentArtifactRepository(db, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
+        artifact_content = await artifact_repo.get_content(document_uuid)
+
+        if artifact_content is not None:
+            content, mime_type, charset = artifact_content
+
+            # Log successful artifact access
+            logger.info(
+                f"User {current_user['id']} accessed artifact for document {document_uuid} "
+                f"from collection {collection_uuid}"
+            )
+
+            # Build media type with charset if applicable
+            media_type_header = f"{mime_type}; charset={charset}" if charset else mime_type
+
+            # Return artifact content as Response
+            if isinstance(content, str):
+                return Response(
+                    content=content.encode(charset or "utf-8"),
+                    media_type=media_type_header,
+                    headers={
+                        "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
+                        "Cache-Control": "private, max-age=3600",
+                    },
+                )
+            return Response(
+                content=content,
+                media_type=media_type_header,
+                headers={
+                    "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
+                    "Cache-Control": "private, max-age=3600",
+                },
+            )
+
+        # Fallback to file-based serving for local directory sources
         # CRITICAL SECURITY: Validate and sanitize the file path
         # Ensure the path is absolute and resolved to prevent path traversal
         try:
