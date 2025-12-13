@@ -439,6 +439,15 @@ class CollectionRepository:
                 "config",
                 "vector_store_name",
                 "meta",
+                # Sync policy fields
+                "sync_mode",
+                "sync_interval_minutes",
+                "sync_paused_at",
+                "sync_next_run_at",
+                "sync_last_run_started_at",
+                "sync_last_run_completed_at",
+                "sync_last_run_status",
+                "sync_last_error",
             }
 
             # Validate fields
@@ -493,3 +502,220 @@ class CollectionRepository:
         except Exception as e:
             logger.error(f"Failed to get document count: {e}")
             raise DatabaseOperationError("count", "documents", str(e)) from e
+
+    # =========================================================================
+    # Sync-related methods for collection-level continuous sync
+    # =========================================================================
+
+    async def get_due_for_sync(self, limit: int = 50) -> list[Collection]:
+        """Get collections due for sync.
+
+        Returns continuous sync collections where:
+        - sync_mode = 'continuous'
+        - sync_paused_at IS NULL
+        - sync_next_run_at <= now()
+        - status in (READY, DEGRADED)
+
+        Args:
+            limit: Maximum number of collections to return
+
+        Returns:
+            List of collections due for sync, ordered by sync_next_run_at
+
+        Raises:
+            DatabaseOperationError: For database errors
+        """
+        try:
+            now = datetime.now(UTC)
+            result = await self.session.execute(
+                select(Collection)
+                .where(
+                    Collection.sync_mode == "continuous",
+                    Collection.sync_paused_at.is_(None),
+                    Collection.sync_next_run_at <= now,
+                    Collection.status.in_([CollectionStatus.READY, CollectionStatus.DEGRADED]),
+                )
+                .order_by(Collection.sync_next_run_at.asc())
+                .limit(limit)
+            )
+            return list(result.scalars().all())
+        except Exception as e:
+            logger.error(f"Failed to get collections due for sync: {e}")
+            raise DatabaseOperationError("list", "collections", str(e)) from e
+
+    async def update_sync_status(
+        self,
+        collection_uuid: str,
+        status: str,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+        error: str | None = None,
+    ) -> Collection:
+        """Update collection sync run status.
+
+        Args:
+            collection_uuid: UUID of the collection
+            status: Sync status ('running', 'success', 'failed', 'partial')
+            started_at: When the sync run started
+            completed_at: When the sync run completed
+            error: Error message if failed
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            DatabaseOperationError: For database errors
+        """
+        try:
+            collection = await self.get_by_uuid(collection_uuid)
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
+
+            collection.sync_last_run_status = status
+
+            if started_at is not None:
+                collection.sync_last_run_started_at = started_at
+
+            if completed_at is not None:
+                collection.sync_last_run_completed_at = completed_at
+
+            if error is not None:
+                collection.sync_last_error = error
+
+            collection.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Updated collection {collection_uuid} sync status to {status}")
+            return collection
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update sync status: {e}")
+            raise DatabaseOperationError("update", "collection", str(e)) from e
+
+    async def set_next_sync_run(
+        self,
+        collection_uuid: str,
+        next_run_at: datetime | None = None,
+    ) -> Collection:
+        """Schedule the next sync run.
+
+        If next_run_at is not provided, calculates it from sync_interval_minutes.
+
+        Args:
+            collection_uuid: UUID of the collection
+            next_run_at: Explicit next run time, or None to calculate
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            DatabaseOperationError: For database errors
+        """
+        try:
+            from datetime import timedelta
+
+            collection = await self.get_by_uuid(collection_uuid)
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
+
+            if next_run_at is None:
+                # Calculate from interval
+                interval = collection.sync_interval_minutes or 60
+                next_run_at = datetime.now(UTC) + timedelta(minutes=interval)
+
+            collection.sync_next_run_at = next_run_at
+            collection.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.debug(f"Set collection {collection_uuid} next sync run at {next_run_at}")
+            return collection
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to set next sync run: {e}")
+            raise DatabaseOperationError("update", "collection", str(e)) from e
+
+    async def pause_sync(self, collection_uuid: str) -> Collection:
+        """Pause a collection's sync schedule.
+
+        Sets sync_paused_at to now and clears sync_next_run_at.
+
+        Args:
+            collection_uuid: UUID of the collection
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            ValidationError: If collection is not in continuous sync mode
+            DatabaseOperationError: For database errors
+        """
+        try:
+            collection = await self.get_by_uuid(collection_uuid)
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
+
+            if collection.sync_mode != "continuous":
+                raise ValidationError("Can only pause continuous sync collections", "sync_mode")
+
+            collection.sync_paused_at = datetime.now(UTC)
+            collection.sync_next_run_at = None
+            collection.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Paused sync for collection {collection_uuid}")
+            return collection
+
+        except (EntityNotFoundError, ValidationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to pause sync: {e}")
+            raise DatabaseOperationError("update", "collection", str(e)) from e
+
+    async def resume_sync(self, collection_uuid: str) -> Collection:
+        """Resume a paused collection's sync schedule.
+
+        Clears sync_paused_at and schedules next run immediately.
+
+        Args:
+            collection_uuid: UUID of the collection
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            ValidationError: If collection is not in continuous sync mode
+            DatabaseOperationError: For database errors
+        """
+        try:
+            collection = await self.get_by_uuid(collection_uuid)
+            if not collection:
+                raise EntityNotFoundError("collection", collection_uuid)
+
+            if collection.sync_mode != "continuous":
+                raise ValidationError("Can only resume continuous sync collections", "sync_mode")
+
+            collection.sync_paused_at = None
+            collection.sync_next_run_at = datetime.now(UTC)  # Schedule immediately
+            collection.updated_at = datetime.now(UTC)
+
+            await self.session.flush()
+
+            logger.info(f"Resumed sync for collection {collection_uuid}")
+            return collection
+
+        except (EntityNotFoundError, ValidationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to resume sync: {e}")
+            raise DatabaseOperationError("update", "collection", str(e)) from e

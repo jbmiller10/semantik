@@ -11,7 +11,7 @@ import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyle
 import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
 import ErrorBoundary from './ErrorBoundary';
 import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
-import type { CreateCollectionRequest } from '../types/collection';
+import type { CreateCollectionRequest, SyncMode } from '../types/collection';
 
 interface CreateCollectionModalProps {
   onClose: () => void;
@@ -48,6 +48,8 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     embedding_model: DEFAULT_EMBEDDING_MODEL,
     quantization: DEFAULT_QUANTIZATION,
     is_public: false,
+    sync_mode: 'one_time',
+    sync_interval_minutes: 60,
   });
   
   const [sourcePath, setSourcePath] = useState<string>('');
@@ -136,21 +138,28 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.name.trim()) {
       newErrors.name = 'Collection name is required';
     } else if (formData.name.length > 100) {
       newErrors.name = 'Collection name must be 100 characters or less';
     }
-    
+
     if (formData.description && formData.description.length > 500) {
       newErrors.description = 'Description must be 500 characters or less';
     }
-    
+
     if (sourcePath && !sourcePath.trim()) {
       newErrors.sourcePath = 'Source path cannot be empty if provided';
     }
-    
+
+    // Validate sync configuration
+    if (formData.sync_mode === 'continuous') {
+      if (!formData.sync_interval_minutes || formData.sync_interval_minutes < 15) {
+        newErrors.sync_interval_minutes = 'Sync interval must be at least 15 minutes for continuous sync';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -501,11 +510,11 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
             </div>
 
             {/* Chunking Strategy */}
-            <ErrorBoundary 
+            <ErrorBoundary
               level="component"
               fallback={(error, resetError) => (
-                <ConfigurationErrorFallback 
-                  error={error} 
+                <ConfigurationErrorFallback
+                  error={error}
                   resetError={resetError}
                   onResetConfiguration={() => {
                     const chunkingStore = useChunkingStore.getState();
@@ -515,11 +524,84 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
                 />
               )}
             >
-              <SimplifiedChunkingStrategySelector 
+              <SimplifiedChunkingStrategySelector
                 disabled={isSubmitting}
                 fileType={detectedFileType}
               />
             </ErrorBoundary>
+
+            {/* Sync Configuration */}
+            <div className="border-t pt-4 mt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Sync Configuration</h4>
+
+              {/* Sync Mode Radio Buttons */}
+              <div className="space-y-3">
+                <div className="flex items-start">
+                  <input
+                    id="sync_mode_one_time"
+                    name="sync_mode"
+                    type="radio"
+                    value="one_time"
+                    checked={formData.sync_mode === 'one_time'}
+                    onChange={() => handleChange('sync_mode', 'one_time' as SyncMode)}
+                    disabled={isSubmitting}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 mt-0.5"
+                  />
+                  <label htmlFor="sync_mode_one_time" className="ml-3">
+                    <span className="block text-sm font-medium text-gray-900">One-time Import</span>
+                    <span className="block text-sm text-gray-500">
+                      Documents are imported once. Add sources manually when you want to update.
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex items-start">
+                  <input
+                    id="sync_mode_continuous"
+                    name="sync_mode"
+                    type="radio"
+                    value="continuous"
+                    checked={formData.sync_mode === 'continuous'}
+                    onChange={() => handleChange('sync_mode', 'continuous' as SyncMode)}
+                    disabled={isSubmitting}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 mt-0.5"
+                  />
+                  <label htmlFor="sync_mode_continuous" className="ml-3">
+                    <span className="block text-sm font-medium text-gray-900">Continuous Sync</span>
+                    <span className="block text-sm text-gray-500">
+                      Automatically check for new and updated documents at regular intervals.
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Sync Interval (shown for continuous mode) */}
+              {formData.sync_mode === 'continuous' && (
+                <div className="mt-4 ml-7">
+                  <label htmlFor="sync_interval_minutes" className="block text-sm font-medium text-gray-700">
+                    Sync Interval (minutes)
+                  </label>
+                  <div className="mt-1 flex items-center gap-3">
+                    <input
+                      type="number"
+                      id="sync_interval_minutes"
+                      min={15}
+                      value={formData.sync_interval_minutes || 60}
+                      onChange={(e) => handleChange('sync_interval_minutes', parseInt(e.target.value, 10) || 60)}
+                      disabled={isSubmitting}
+                      className={getInputClassName(!!errors.sync_interval_minutes, isSubmitting) + ' w-24'}
+                    />
+                    <span className="text-sm text-gray-500">Minimum: 15 minutes</span>
+                  </div>
+                  {errors.sync_interval_minutes && (
+                    <p className="mt-1 text-sm text-red-600">{errors.sync_interval_minutes}</p>
+                  )}
+                  <p className="mt-1 text-sm text-gray-500">
+                    How often to check sources for changes
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Advanced Settings Accordion */}
             <div className="border-t pt-4">

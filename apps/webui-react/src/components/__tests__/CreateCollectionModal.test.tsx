@@ -277,6 +277,8 @@ describe('CreateCollectionModal', () => {
             preserve_sentences: true,
           },
           is_public: false,
+          sync_mode: 'one_time',
+          sync_interval_minutes: 60,
         });
       });
 
