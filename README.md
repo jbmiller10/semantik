@@ -59,6 +59,8 @@ make wizard
 
 # Manual setup:
 cp .env.docker.example .env
+# IMPORTANT: Replace placeholders in .env before starting.
+# If you are not using connectors with credentials, set CONNECTOR_SECRETS_KEY="" to disable secrets encryption.
 make docker-up
 ```
 
@@ -73,7 +75,7 @@ Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volume
 
 ## Usage
 1. Open the UI at `http://localhost:8080` and create a collection.
-2. Add one or more sources (directories). Semantik will index in the background.
+2. Add one or more sources (directories; optionally Git repos / IMAP mailboxes). Semantik will index in the background.
 3. Search across one or more collections.
 
 If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
@@ -85,6 +87,7 @@ If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_
 - `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
 - `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).
 - `HF_CACHE_DIR` – persistent HuggingFace model cache (avoids re‑downloads).
+- `CONNECTOR_SECRETS_KEY` – Fernet key for encrypting connector credentials in the DB (set to empty to disable).
 - `CELERY_CONCURRENCY`, `CELERY_MAX_CONCURRENCY` – worker parallelism.
 - `EMBEDDING_CONCURRENCY_PER_WORKER` – throttle embed calls per worker (VRAM‑friendly).
 

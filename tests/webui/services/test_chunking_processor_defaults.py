@@ -17,4 +17,3 @@ async def test_recursive_default_overlap_does_not_trigger_fallback() -> None:
 
     assert chunks
     assert {chunk["strategy"] for chunk in chunks} == {"recursive"}
-

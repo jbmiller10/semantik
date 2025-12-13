@@ -218,6 +218,7 @@ class CollectionResponse(CollectionBase):
     updated_at: datetime
     document_count: int | None = 0
     vector_count: int | None = 0
+    total_size_bytes: int | None = 0
     status: str  # Collection status: pending, ready, processing, error, degraded
     status_message: str | None = None
     initial_operation_id: str | None = None  # ID of the initial INDEX operation
@@ -253,6 +254,7 @@ class CollectionResponse(CollectionBase):
             updated_at=collection.updated_at,
             document_count=collection.document_count,
             vector_count=collection.vector_count,
+            total_size_bytes=getattr(collection, "total_size_bytes", 0) or 0,
             status=collection.status.value if hasattr(collection.status, "value") else collection.status,
             status_message=getattr(collection, "status_message", None),
         )

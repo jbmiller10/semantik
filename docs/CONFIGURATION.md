@@ -70,6 +70,11 @@ JWT_SECRET_KEY=CHANGE_THIS_TO_A_STRONG_SECRET_KEY  # Generate: uv run python scr
 JWT_ALGORITHM=HS256                                 # JWT signing algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES=1440                    # Access token expiration (24 hours)
 
+# Connector Secrets Encryption (for Git/IMAP/etc.)
+# - If set, must be a valid Fernet key (44-char base64) or the WebUI will refuse to start.
+# - If empty/unset, connectors that require credentials cannot be configured.
+CONNECTOR_SECRETS_KEY=CHANGE_THIS_TO_A_FERNET_KEY   # Generate: uv run python scripts/generate_secrets_key.py --write
+
 # Security
 DISABLE_AUTH=false           # Disable authentication (NEVER in production!)
 ```

@@ -289,6 +289,41 @@ Content-Type: application/json
 }
 ```
 
+**Supported `source_type` values (built-ins):**
+- `directory` (local filesystem directory)
+- `git` (remote Git repository)
+- `imap` (IMAP mailbox)
+
+**Example (Git repo, public or auth configured separately):**
+```json
+{
+  "source_type": "git",
+  "source_config": {
+    "repo_url": "https://github.com/org/repo.git",
+    "ref": "main",
+    "auth_method": "none",
+    "include_globs": ["docs/**", "*.md"],
+    "exclude_globs": ["node_modules/**"]
+  }
+}
+```
+
+**Example (IMAP mailbox; credentials configured separately):**
+```json
+{
+  "source_type": "imap",
+  "source_config": {
+    "host": "imap.gmail.com",
+    "port": 993,
+    "use_ssl": true,
+    "username": "user@example.com",
+    "mailboxes": ["INBOX"],
+    "since_days": 30,
+    "max_messages": 1000
+  }
+}
+```
+
 **Request (legacy, still supported):**
 ```json
 {
@@ -325,6 +360,11 @@ Content-Type: application/json
   "error_message": null
 }
 ```
+
+**Connector credentials (secrets):**
+- Passwords/tokens/SSH keys are encrypted and stored in the database (never returned in API responses).
+- Set `CONNECTOR_SECRETS_KEY` in your environment (see `.env.docker.example` and `docs/CONFIGURATION.md`).
+- After the source exists, update secrets via `PATCH /api/v2/collections/{collection_id}/sources/{source_id}` and then trigger a run via `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`.
 
 ##### Remove Source from Collection
 ```http
@@ -673,6 +713,7 @@ Authorization: Bearer {token}
 - Does not support range requests in the current implementation
 - Enforces strict access control - user must have access to the collection
 - Document must belong to the specified collection
+- For non-file sources (e.g., Git/IMAP), content may be served from database-backed document artifacts.
 
 **Response Headers:**
 ```http
@@ -687,6 +728,53 @@ Cache-Control: private, max-age=3600
 - `500 Internal Server Error`: File access error
 
 **Note:** Document metadata is included when listing documents through `/api/v2/collections/{collection_uuid}/documents`. There is no separate metadata endpoint in the v2 API.
+
+#### Connector Catalog Endpoints
+
+These endpoints expose the connector catalog used by the UI and provide lightweight “preview” checks for external connectors.
+
+##### List Connectors
+```http
+GET /api/v2/connectors
+Authorization: Bearer {token}
+```
+
+##### Get Connector Definition
+```http
+GET /api/v2/connectors/{connector_type}
+Authorization: Bearer {token}
+```
+
+##### Preview Git Connection
+```http
+POST /api/v2/connectors/preview/git
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "repo_url": "https://github.com/org/repo.git",
+  "ref": "main",
+  "auth_method": "https_token",
+  "token": "ghp_...",
+  "include_globs": ["docs/**"],
+  "exclude_globs": ["node_modules/**"]
+}
+```
+
+##### Preview IMAP Connection
+```http
+POST /api/v2/connectors/preview/imap
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "host": "imap.gmail.com",
+  "port": 993,
+  "use_ssl": true,
+  "username": "user@example.com",
+  "password": "app-password"
+}
+```
 
 #### Directory Scanning Endpoints
 
