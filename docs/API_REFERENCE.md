@@ -271,6 +271,8 @@ Authorization: Bearer {token}
 Content-Type: application/json
 ```
 
+This endpoint starts an `append` operation and (re)uses a `collection_sources` record under the hood. Use the “Manage Sources” endpoints below to update sync settings and store encrypted credentials.
+
 **Request (preferred flexible format):**
 ```json
 {
@@ -366,7 +368,62 @@ Content-Type: application/json
 - Set `CONNECTOR_SECRETS_KEY` in your environment (see `.env.docker.example` and `docs/CONFIGURATION.md`).
 - After the source exists, update secrets via `PATCH /api/v2/collections/{collection_id}/sources/{source_id}` and then trigger a run via `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`.
 
+##### Manage Sources (recommended for scheduling + secrets)
+
+List sources (to get `source_id` for updates/runs):
+```http
+GET /api/v2/collections/{collection_id}/sources?offset=0&limit=50
+Authorization: Bearer {token}
+```
+
+Update a source’s sync settings and/or encrypted secrets:
+```http
+PATCH /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "sync_mode": "continuous",
+  "interval_minutes": 60,
+  "secrets": {
+    "token": "ghp_...",
+    "ssh_key": "",
+    "ssh_passphrase": ""
+  }
+}
+```
+
+Trigger a run immediately (creates an `append` operation for that source):
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/run
+Authorization: Bearer {token}
+```
+
+Pause/resume continuous sync:
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/pause
+POST /api/v2/collections/{collection_id}/sources/{source_id}/resume
+Authorization: Bearer {token}
+```
+
 ##### Remove Source from Collection
+**Preferred:** delete by `source_id` (removes documents/vectors, then deletes the source record):
+```http
+DELETE /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  "id": 123,
+  "uuid": "op_789e0123-e89b-12d3-a456-426614174002",
+  "type": "remove_source",
+  "status": "pending"
+}
+```
+
+**Legacy (still supported):** delete by `source_path`:
 ```http
 DELETE /api/v2/collections/{collection_uuid}/sources?source_path=/docs/api
 Authorization: Bearer {token}

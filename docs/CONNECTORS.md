@@ -62,6 +62,19 @@ Preview endpoints validate connectivity only; they are not a substitute for secu
 
 **Runtime dependency:** the worker must have `git` available on `PATH` (the Docker image includes it).
 
+## Managing Sources (recommended workflow)
+
+1. Start an ingestion run and create/reuse the source record:
+   - `POST /api/v2/collections/{collection_id}/sources`
+2. List sources to get `source_id`:
+   - `GET /api/v2/collections/{collection_id}/sources`
+3. Store encrypted secrets and configure sync (optional):
+   - `PATCH /api/v2/collections/{collection_id}/sources/{source_id}`
+4. Trigger runs and scheduling:
+   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`
+   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/pause`
+   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/resume`
+
 ### IMAP
 ```json
 {
@@ -83,4 +96,3 @@ Preview endpoints validate connectivity only; they are not a substitute for secu
 For Git/IMAP (and other non-filesystem sources), Semantik stores a canonical representation of content in the `document_artifacts` table. The document content endpoint prefers artifacts and falls back to filesystem serving for local directory sources:
 
 - `GET /api/v2/collections/{collection_id}/documents/{document_id}/content`
-
