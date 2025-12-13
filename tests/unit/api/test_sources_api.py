@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError, ValidationError
 from shared.database.models import CollectionSource
+from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.api.v2.sources import router
 
 # Create test app
@@ -74,7 +75,8 @@ class TestListSourcesEndpoint:
 
     def test_list_sources_success(self, test_client, mock_service, mock_source):
         """Test successful source listing."""
-        mock_service.list_sources.return_value = ([mock_source], 1)
+        # API expects list of (source, secret_types) tuples
+        mock_service.list_sources.return_value = ([(mock_source, [])], 1)
 
         response = test_client.get(f"/api/v2/collections/{mock_source.collection_id}/sources")
 
@@ -106,7 +108,8 @@ class TestCreateSourceEndpoint:
 
     def test_create_source_success(self, test_client, mock_service, mock_source):
         """Test successful source creation."""
-        mock_service.create_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.create_source.return_value = (mock_source, [])
 
         response = test_client.post(
             f"/api/v2/collections/{mock_source.collection_id}/sources",
@@ -127,7 +130,8 @@ class TestCreateSourceEndpoint:
         """Test creating continuous sync source."""
         mock_source.sync_mode = "continuous"
         mock_source.interval_minutes = 30
-        mock_service.create_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.create_source.return_value = (mock_source, [])
 
         response = test_client.post(
             f"/api/v2/collections/{mock_source.collection_id}/sources",
@@ -162,13 +166,33 @@ class TestCreateSourceEndpoint:
 
         assert response.status_code == 400
 
+    def test_create_source_encryption_not_configured(self, test_client, mock_service):
+        """Test source creation with secrets when encryption is not configured."""
+        mock_service.create_source.side_effect = EncryptionNotConfiguredError(
+            "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+        )
+
+        response = test_client.post(
+            "/api/v2/collections/test-id/sources",
+            json={
+                "source_type": "directory",
+                "source_path": "/data/test",
+                "source_config": {"path": "/data/test"},
+                "sync_mode": "one_time",
+                "secrets": {"password": "super-secret"},
+            },
+        )
+
+        assert response.status_code == 400
+
 
 class TestGetSourceEndpoint:
     """Tests for GET /api/v2/collections/{collection_id}/sources/{source_id}."""
 
     def test_get_source_success(self, test_client, mock_service, mock_source):
         """Test successful source retrieval."""
-        mock_service.get_source.return_value = mock_source
+        # API expects (source, secret_types) tuple when include_secret_types=True
+        mock_service.get_source.return_value = (mock_source, [])
 
         response = test_client.get(f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}")
 
@@ -191,7 +215,8 @@ class TestUpdateSourceEndpoint:
     def test_update_source_success(self, test_client, mock_service, mock_source):
         """Test successful source update."""
         mock_source.source_config = {"path": "/data/updated"}
-        mock_service.update_source.return_value = mock_source
+        # API expects (source, secret_types) tuple
+        mock_service.update_source.return_value = (mock_source, [])
 
         response = test_client.patch(
             f"/api/v2/collections/{mock_source.collection_id}/sources/{mock_source.id}",
@@ -212,6 +237,19 @@ class TestUpdateSourceEndpoint:
         )
 
         assert response.status_code == 404
+
+    def test_update_source_encryption_not_configured(self, test_client, mock_service):
+        """Test source secrets update when encryption is not configured."""
+        mock_service.update_source.side_effect = EncryptionNotConfiguredError(
+            "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+        )
+
+        response = test_client.patch(
+            "/api/v2/collections/test-id/sources/1",
+            json={"secrets": {"password": "super-secret"}},
+        )
+
+        assert response.status_code == 400
 
 
 class TestDeleteSourceEndpoint:

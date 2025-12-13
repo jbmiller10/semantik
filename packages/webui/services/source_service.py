@@ -14,7 +14,9 @@ from shared.database.exceptions import (
 from shared.database.models import CollectionSource, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
 from shared.database.repositories.operation_repository import OperationRepository
+from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ class SourceService:
         collection_repo: CollectionRepository,
         source_repo: CollectionSourceRepository,
         operation_repo: OperationRepository,
+        secret_repo: ConnectorSecretRepository | None = None,
     ):
         """Initialize the source service.
 
@@ -46,11 +49,13 @@ class SourceService:
             collection_repo: Collection repository for access checks
             source_repo: Source repository for CRUD operations
             operation_repo: Operation repository for dispatching operations
+            secret_repo: Secret repository for encrypted credential storage (optional)
         """
         self.db_session = db_session
         self.collection_repo = collection_repo
         self.source_repo = source_repo
         self.operation_repo = operation_repo
+        self.secret_repo = secret_repo
 
     async def create_source(
         self,
@@ -61,7 +66,8 @@ class SourceService:
         source_config: dict[str, Any],
         sync_mode: str = "one_time",
         interval_minutes: int | None = None,
-    ) -> CollectionSource:
+        secrets: dict[str, str] | None = None,
+    ) -> tuple[CollectionSource, list[str]]:
         """Create a new source for a collection.
 
         Args:
@@ -72,14 +78,16 @@ class SourceService:
             source_config: Connector-specific configuration
             sync_mode: 'one_time' or 'continuous' (default: 'one_time')
             interval_minutes: Sync interval for continuous mode (min 15)
+            secrets: Dict mapping secret_type to plaintext value (optional)
 
         Returns:
-            Created CollectionSource instance
+            Tuple of (CollectionSource instance, list of secret types stored)
 
         Raises:
             EntityNotFoundError: If collection not found
             AccessDeniedError: If user doesn't have access
             ValidationError: If validation fails
+            EncryptionNotConfiguredError: If secrets provided but encryption not configured
         """
         # Verify user has access to collection
         collection = await self.collection_repo.get_by_id(collection_id)
@@ -88,6 +96,16 @@ class SourceService:
 
         if collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection", collection_id)
+
+        secrets_to_store = {secret_type: value for secret_type, value in (secrets or {}).items() if value}
+        if secrets_to_store and not self.secret_repo:
+            logger.warning(
+                "Secrets provided for source but encryption not configured "
+                f"(collection_id={collection_id}, source_type={source_type}, source_path={source_path})"
+            )
+            raise EncryptionNotConfiguredError(
+                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+            )
 
         # Create the source
         source = await self.source_repo.create(
@@ -99,11 +117,23 @@ class SourceService:
             interval_minutes=interval_minutes,
         )
 
+        # Store secrets if provided
+        secret_types: list[str] = []
+        if secrets_to_store and self.secret_repo:
+            try:
+                for secret_type, value in secrets_to_store.items():
+                    await self.secret_repo.set_secret(source.id, secret_type, value)
+                    secret_types.append(secret_type)
+            except EncryptionNotConfiguredError:
+                logger.warning(f"Secrets provided for source {source.id} but encryption not configured")
+                raise
+
         logger.info(
-            f"Created source {source.id} for collection {collection_id} (type={source_type}, sync_mode={sync_mode})"
+            f"Created source {source.id} for collection {collection_id} "
+            f"(type={source_type}, sync_mode={sync_mode}, secrets={secret_types})"
         )
 
-        return source
+        return source, secret_types
 
     async def update_source(
         self,
@@ -112,7 +142,8 @@ class SourceService:
         source_config: dict[str, Any] | None = None,
         sync_mode: str | None = None,
         interval_minutes: int | None = None,
-    ) -> CollectionSource:
+        secrets: dict[str, str] | None = None,
+    ) -> tuple[CollectionSource, list[str]]:
         """Update a source's configuration.
 
         Args:
@@ -121,14 +152,16 @@ class SourceService:
             source_config: New connector-specific configuration
             sync_mode: New sync mode ('one_time' or 'continuous')
             interval_minutes: New sync interval (min 15)
+            secrets: Dict mapping secret_type to new value (empty string deletes)
 
         Returns:
-            Updated CollectionSource instance
+            Tuple of (Updated CollectionSource instance, list of current secret types)
 
         Raises:
             EntityNotFoundError: If source not found
             AccessDeniedError: If user doesn't have access
             ValidationError: If validation fails
+            EncryptionNotConfiguredError: If secrets provided but encryption not configured
         """
         # Get source and verify access
         source = await self.source_repo.get_by_id(source_id)
@@ -139,6 +172,12 @@ class SourceService:
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
+        if secrets and not self.secret_repo:
+            logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+            raise EncryptionNotConfiguredError(
+                "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
+            )
+
         # Update the source
         updated_source = await self.source_repo.update(
             source_id=source_id,
@@ -147,8 +186,25 @@ class SourceService:
             interval_minutes=interval_minutes,
         )
 
+        # Update secrets if provided
+        if secrets and self.secret_repo:
+            try:
+                for secret_type, value in secrets.items():
+                    if value:  # Non-empty: store/update
+                        await self.secret_repo.set_secret(source_id, secret_type, value)
+                    else:  # Empty string: delete
+                        await self.secret_repo.delete_secret(source_id, secret_type)
+            except EncryptionNotConfiguredError:
+                logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+                raise
+
+        # Get current secret types
+        secret_types: list[str] = []
+        if self.secret_repo:
+            secret_types = await self.secret_repo.get_secret_types_for_source(source_id)
+
         logger.info(f"Updated source {source_id}")
-        return updated_source
+        return updated_source, secret_types
 
     async def delete_source(
         self,
@@ -219,15 +275,17 @@ class SourceService:
         self,
         user_id: int,
         source_id: int,
-    ) -> CollectionSource:
+        include_secret_types: bool = False,
+    ) -> CollectionSource | tuple[CollectionSource, list[str]]:
         """Get a source by ID.
 
         Args:
             user_id: ID of the user requesting the source
             source_id: ID of the source
+            include_secret_types: If True, return tuple with secret types list
 
         Returns:
-            CollectionSource instance
+            CollectionSource instance, or tuple of (source, secret_types) if include_secret_types
 
         Raises:
             EntityNotFoundError: If source not found
@@ -241,6 +299,12 @@ class SourceService:
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
+        if include_secret_types:
+            secret_types: list[str] = []
+            if self.secret_repo:
+                secret_types = await self.secret_repo.get_secret_types_for_source(source_id)
+            return source, secret_types
+
         return source
 
     async def list_sources(
@@ -249,7 +313,8 @@ class SourceService:
         collection_id: str,
         offset: int = 0,
         limit: int = 50,
-    ) -> tuple[list[CollectionSource], int]:
+        include_secret_types: bool = False,
+    ) -> tuple[list[CollectionSource], int] | tuple[list[tuple[CollectionSource, list[str]]], int]:
         """List sources for a collection.
 
         Args:
@@ -257,9 +322,10 @@ class SourceService:
             collection_id: UUID of the collection
             offset: Pagination offset
             limit: Maximum results
+            include_secret_types: If True, return (source, secret_types) tuples
 
         Returns:
-            Tuple of (sources list, total count)
+            Tuple of (sources list, total count) or ((source, secret_types) list, total count)
 
         Raises:
             EntityNotFoundError: If collection not found
@@ -273,11 +339,23 @@ class SourceService:
         if collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection", collection_id)
 
-        return await self.source_repo.list_by_collection(
+        sources, total = await self.source_repo.list_by_collection(
             collection_id=collection_id,
             offset=offset,
             limit=limit,
         )
+
+        if include_secret_types:
+            # Get secret types for each source
+            sources_with_secrets: list[tuple[CollectionSource, list[str]]] = []
+            for source in sources:
+                secret_types: list[str] = []
+                if self.secret_repo:
+                    secret_types = await self.secret_repo.get_secret_types_for_source(source.id)
+                sources_with_secrets.append((source, secret_types))
+            return sources_with_secrets, total
+
+        return sources, total
 
     async def run_now(
         self,

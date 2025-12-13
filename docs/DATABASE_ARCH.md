@@ -141,6 +141,39 @@ CREATE UNIQUE INDEX idx_documents_collection_uri_unique
 - Soft delete via 'deleted' status
 - Cascade delete when collection is removed
 
+#### Document Artifacts
+Database-backed document content for non-file sources (Git/IMAP/web), used by the document content endpoint.
+
+```sql
+CREATE TABLE document_artifacts (
+    id SERIAL PRIMARY KEY,
+    document_id VARCHAR NOT NULL,              -- FK to documents (cascade delete)
+    collection_id VARCHAR NOT NULL,            -- FK to collections (cascade delete)
+    artifact_kind VARCHAR(20) NOT NULL DEFAULT 'primary', -- primary|preview|thumbnail
+    mime_type VARCHAR(255) NOT NULL,
+    charset VARCHAR(50),
+    content_text TEXT,
+    content_bytes BYTEA,
+    content_hash VARCHAR(64) NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    is_truncated BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+    CONSTRAINT uq_document_artifact_kind UNIQUE (document_id, artifact_kind),
+    CONSTRAINT ck_content_present CHECK (content_text IS NOT NULL OR content_bytes IS NOT NULL),
+    CONSTRAINT ck_artifact_kind_values CHECK (artifact_kind IN ('primary', 'preview', 'thumbnail'))
+);
+
+CREATE INDEX ix_document_artifacts_document ON document_artifacts(document_id);
+CREATE INDEX ix_document_artifacts_collection ON document_artifacts(collection_id);
+```
+
+**Key points:**
+- Enables serving document content when `documents.file_path` is not present/meaningful (non-file sources).
+- The content endpoint prefers artifacts and falls back to filesystem serving for local directory sources.
+
 #### Operations
 Asynchronous operations on collections (formerly "jobs").
 
@@ -202,6 +235,30 @@ CREATE INDEX idx_collection_sources_collection_id ON collection_sources(collecti
 ALTER TABLE collection_sources
     ADD CONSTRAINT uq_collection_source_path UNIQUE (collection_id, source_path);
 ```
+
+#### Connector Secrets
+Encrypted connector credentials associated with `collection_sources` (Git tokens, IMAP passwords, SSH keys).
+
+```sql
+CREATE TABLE connector_secrets (
+    id SERIAL PRIMARY KEY,
+    collection_source_id INTEGER NOT NULL,     -- FK to collection_sources (cascade delete)
+    secret_type VARCHAR(50) NOT NULL,          -- password|token|ssh_key|ssh_passphrase
+    ciphertext BYTEA NOT NULL,                 -- Fernet-encrypted payload
+    key_id VARCHAR(64) NOT NULL,               -- Which CONNECTOR_SECRETS_KEY encrypted this row
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (collection_source_id) REFERENCES collection_sources(id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_connector_secrets_source ON connector_secrets(collection_source_id);
+ALTER TABLE connector_secrets
+    ADD CONSTRAINT uq_source_secret_type UNIQUE (collection_source_id, secret_type);
+```
+
+**Key points:**
+- Secrets are encrypted at rest (Fernet) using `CONNECTOR_SECRETS_KEY`.
+- Secrets are never returned via API responses; only presence indicators are exposed (e.g., `has_token`).
 
 #### Collection Permissions
 Access control for collections.

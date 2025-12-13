@@ -52,6 +52,8 @@ Memory: Qwen3-0.6B uses ~1.2GB (float16), ~0.6GB (int8)
 
 Required: `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `FLOWER_USERNAME`, `FLOWER_PASSWORD`
 
+Connector credentials (Git/IMAP/etc.): set `CONNECTOR_SECRETS_KEY` to a valid Fernet key (or set it to empty to disable).
+
 See `.env.docker.example` for full list.
 
 ## Networking

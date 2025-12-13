@@ -516,7 +516,7 @@ class TestCollectionServiceIntegration:
         await db_session.commit()
 
         with pytest.raises(self.INVALID_STATE_ERRORS):
-            await service.add_source(collection_dict["id"], owner.id, "/tmp/new")
+            await service.add_source(collection_dict["id"], owner.id, legacy_source_path="/tmp/new")
 
     async def test_remove_source_requires_ready_state(
         self,

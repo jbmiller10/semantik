@@ -8,6 +8,7 @@ import pytest
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, InvalidStateError
 from shared.database.models import Collection, CollectionSource, Operation, OperationStatus, OperationType
+from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.services.source_service import SourceService
 
 
@@ -97,7 +98,10 @@ class TestSourceService:
             source_config={"path": "/data/new"},
         )
 
-        assert result == expected_source
+        # create_source returns (source, secret_types) tuple
+        source, secret_types = result
+        assert source == expected_source
+        assert secret_types == []
         mock_collection_repo.get_by_id.assert_called_once_with(sample_collection.id)
         mock_source_repo.create.assert_called_once()
 
@@ -130,6 +134,54 @@ class TestSourceService:
                 source_config={},
             )
 
+    @pytest.mark.asyncio()
+    async def test_create_source_rejects_secrets_without_encryption(
+        self, service, mock_collection_repo, mock_source_repo, sample_collection
+    ) -> None:
+        """Reject secrets when connector secrets encryption is disabled."""
+        mock_collection_repo.get_by_id.return_value = sample_collection
+
+        with pytest.raises(EncryptionNotConfiguredError):
+            await service.create_source(
+                user_id=sample_collection.owner_id,
+                collection_id=sample_collection.id,
+                source_type="directory",
+                source_path="/data/new",
+                source_config={"path": "/data/new"},
+                secrets={"password": "super-secret"},
+            )
+
+        mock_source_repo.create.assert_not_called()
+
+    @pytest.mark.asyncio()
+    async def test_create_source_ignores_empty_secrets_without_encryption(
+        self, service, mock_collection_repo, mock_source_repo, sample_collection
+    ) -> None:
+        """Empty secret values are ignored, so encryption is not required."""
+        mock_collection_repo.get_by_id.return_value = sample_collection
+
+        expected_source = CollectionSource(
+            id=1,
+            collection_id=sample_collection.id,
+            source_type="directory",
+            source_path="/data/new",
+            source_config={"path": "/data/new"},
+            sync_mode="one_time",
+        )
+        mock_source_repo.create.return_value = expected_source
+
+        source, secret_types = await service.create_source(
+            user_id=sample_collection.owner_id,
+            collection_id=sample_collection.id,
+            source_type="directory",
+            source_path="/data/new",
+            source_config={"path": "/data/new"},
+            secrets={"password": ""},
+        )
+
+        assert source == expected_source
+        assert secret_types == []
+
     # --- update_source tests ---
 
     @pytest.mark.asyncio()
@@ -159,7 +211,10 @@ class TestSourceService:
             interval_minutes=30,
         )
 
-        assert result == updated_source
+        # update_source returns (source, secret_types) tuple
+        source, secret_types = result
+        assert source == updated_source
+        assert secret_types == []
         mock_source_repo.update.assert_called_once()
 
     @pytest.mark.asyncio()
@@ -181,6 +236,23 @@ class TestSourceService:
 
         with pytest.raises(AccessDeniedError):
             await service.update_source(user_id=999, source_id=sample_source.id)
+
+    @pytest.mark.asyncio()
+    async def test_update_source_rejects_secrets_without_encryption(
+        self, service, mock_collection_repo, mock_source_repo, sample_collection, sample_source
+    ) -> None:
+        """Reject secrets updates when connector secrets encryption is disabled."""
+        mock_source_repo.get_by_id.return_value = sample_source
+        mock_collection_repo.get_by_id.return_value = sample_collection
+
+        with pytest.raises(EncryptionNotConfiguredError):
+            await service.update_source(
+                user_id=sample_collection.owner_id,
+                source_id=sample_source.id,
+                secrets={"password": "super-secret"},
+            )
+
+        mock_source_repo.update.assert_not_called()
 
     # --- delete_source tests ---
 

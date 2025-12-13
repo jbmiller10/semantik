@@ -348,6 +348,41 @@ class TestAddSource:
         assert result["type"] == mock_operation.type.value
 
     @pytest.mark.asyncio()
+    async def test_add_source_merges_legacy_source_path_into_directory_config(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test that legacy_source_path fills in directory source_config.path when missing."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.return_value = []
+        mock_operation_repo.create.return_value = mock_operation
+        mock_collection_source_repo.get_or_create.return_value = (mock_collection_source, True)
+
+        with patch("webui.celery_app.celery_app.send_task"):
+            await collection_service.add_source(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                source_type="directory",
+                source_config={"recursive": True},
+                legacy_source_path="/path/to/source",
+                additional_config=None,
+            )
+
+        mock_collection_source_repo.get_or_create.assert_called_once_with(
+            collection_id=mock_collection.id,
+            source_type="directory",
+            source_path="/path/to/source",
+            source_config={"recursive": True, "path": "/path/to/source"},
+        )
+
+    @pytest.mark.asyncio()
     async def test_add_source_reuses_existing_collection_source(
         self,
         collection_service: CollectionService,

@@ -210,7 +210,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                 )
 
                 # Create chunk entity
-                effective_min_tokens = min(config.min_tokens, token_count, 1)
+                effective_min_tokens = max(1, min(config.min_tokens, token_count))
 
                 chunk = Chunk(
                     content=chunk_text,
@@ -251,8 +251,17 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             min_chars = max(1, min(min_chars, len(content)))
         overlap_chars = config.overlap_tokens * chars_per_token
 
-        # Start recursive splitting
-        splits = self._recursive_split(content, self.separators, max_chars, min_chars)
+        # Start recursive splitting.
+        #
+        # Splits are later combined with overlap. Ensure the split size budget
+        # leaves room for the overlap so the final chunk doesn't violate the
+        # max_tokens constraint enforced by the domain Chunk entity.
+        split_budget = max_chars
+        if overlap_chars > 0:
+            split_budget = max(1, max_chars - overlap_chars)
+            min_chars = min(min_chars, split_budget)
+
+        splits = self._recursive_split(content, self.separators, split_budget, min_chars)
 
         if not splits:
             splits = [content]
@@ -316,7 +325,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             )
 
             # Create chunk entity
-            effective_min_tokens = min(config.min_tokens, token_count, 1)
+            effective_min_tokens = max(1, min(config.min_tokens, token_count))
 
             chunk = Chunk(
                 content=chunk_text,
