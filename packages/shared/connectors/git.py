@@ -304,11 +304,11 @@ class GitConnector(BaseConnector):
         ssh_script.write_text(
             "#!/bin/sh\n"
             "set -eu\n"
-            f"SSH_OPTS=\"{ssh_opts}\"\n"
-            "if [ -n \"${GIT_SSH_PASSPHRASE_FILE:-}\" ]; then\n"
-            "  exec sshpass -f \"$GIT_SSH_PASSPHRASE_FILE\" ssh $SSH_OPTS -i \"$GIT_SSH_KEY_FILE\" \"$@\"\n"
+            f'SSH_OPTS="{ssh_opts}"\n'
+            'if [ -n "${GIT_SSH_PASSPHRASE_FILE:-}" ]; then\n'
+            '  exec sshpass -f "$GIT_SSH_PASSPHRASE_FILE" ssh $SSH_OPTS -i "$GIT_SSH_KEY_FILE" "$@"\n'
             "fi\n"
-            "exec ssh $SSH_OPTS -i \"$GIT_SSH_KEY_FILE\" \"$@\"\n"
+            'exec ssh $SSH_OPTS -i "$GIT_SSH_KEY_FILE" "$@"\n'
         )
 
         ssh_script.chmod(0o700)
@@ -342,9 +342,9 @@ class GitConnector(BaseConnector):
         askpass_script.write_text(
             "#!/bin/sh\n"
             "set -eu\n"
-            "prompt=\"${1:-}\"\n"
-            "token=\"$(cat \"$GIT_ASKPASS_TOKEN_FILE\")\"\n"
-            "case \"$prompt\" in\n"
+            'prompt="${1:-}"\n'
+            'token="$(cat "$GIT_ASKPASS_TOKEN_FILE")"\n'
+            'case "$prompt" in\n'
             "  *Username*|*username*) printf '%s\\n' \"$token\" ;;\n"
             "  *) printf '\\n' ;;\n"
             "esac\n"

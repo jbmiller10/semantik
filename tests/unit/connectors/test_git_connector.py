@@ -234,7 +234,10 @@ class TestGitConnectorSshEnv:
                 return "/usr/bin/ssh"
             return None
 
-        with patch("shared.connectors.git.shutil.which", side_effect=which_side_effect), tempfile.TemporaryDirectory() as temp_dir:
+        with (
+            patch("shared.connectors.git.shutil.which", side_effect=which_side_effect),
+            tempfile.TemporaryDirectory() as temp_dir,
+        ):
             env = connector._setup_ssh_env(Path(temp_dir))
 
             assert "GIT_SSH_COMMAND" in env
@@ -264,7 +267,10 @@ class TestGitConnectorSshEnv:
                 return "/usr/bin/sshpass"
             return None
 
-        with patch("shared.connectors.git.shutil.which", side_effect=which_side_effect), tempfile.TemporaryDirectory() as temp_dir:
+        with (
+            patch("shared.connectors.git.shutil.which", side_effect=which_side_effect),
+            tempfile.TemporaryDirectory() as temp_dir,
+        ):
             env = connector._setup_ssh_env(Path(temp_dir))
             assert "GIT_SSH_COMMAND" in env
 

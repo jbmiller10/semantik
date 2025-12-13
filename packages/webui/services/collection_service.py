@@ -237,18 +237,6 @@ class CollectionService:
             AccessDeniedError: If user doesn't have permission
             InvalidStateError: If collection is in invalid state
         """
-        # Backward compatibility: older callers passed source_path as the 3rd positional arg.
-        # If the "source_type" argument looks like a filesystem path and no other source
-        # fields were provided, interpret it as the legacy source path.
-        if (
-            legacy_source_path is None
-            and source_config is None
-            and source_type not in {"directory", "web"}
-            and (source_type.startswith(("/", "./", "../", "~")) or ":\\" in source_type)
-        ):
-            legacy_source_path = source_type
-            source_type = "directory"
-
         # Normalize: derive/augment source_config from legacy_source_path if needed
         if legacy_source_path is not None:
             if not source_config:

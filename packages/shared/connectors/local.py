@@ -116,7 +116,8 @@ class LocalFileConnector(BaseConnector):
 
         if include_patterns:
             return any(
-                fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(file_name, pattern) for pattern in include_patterns
+                fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(file_name, pattern)
+                for pattern in include_patterns
             )
 
         return True
