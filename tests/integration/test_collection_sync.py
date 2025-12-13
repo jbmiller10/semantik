@@ -143,9 +143,7 @@ class TestCollectionSyncFlow:
         assert completed_run.status == "partial"  # Mixed results
         assert completed_run.completed_at is not None
 
-    async def test_sync_run_all_success(
-        self, db_session: AsyncSession, test_user_db, collection_factory
-    ) -> None:
+    async def test_sync_run_all_success(self, db_session: AsyncSession, test_user_db, collection_factory) -> None:
         """Test sync run with all successful sources."""
         collection = await collection_factory(owner_id=test_user_db.id)
         sync_run_repo = CollectionSyncRunRepository(db_session)
@@ -163,9 +161,7 @@ class TestCollectionSyncFlow:
         completed_run = await sync_run_repo.complete_run(sync_run.id)
         assert completed_run.status == "success"
 
-    async def test_sync_run_all_failed(
-        self, db_session: AsyncSession, test_user_db, collection_factory
-    ) -> None:
+    async def test_sync_run_all_failed(self, db_session: AsyncSession, test_user_db, collection_factory) -> None:
         """Test sync run with all failed sources."""
         collection = await collection_factory(owner_id=test_user_db.id)
         sync_run_repo = CollectionSyncRunRepository(db_session)
@@ -224,9 +220,7 @@ class TestCollectionSyncPauseResume:
             await repo.pause_sync(collection.id)
         assert "continuous" in str(exc_info.value).lower()
 
-    async def test_resume_paused_collection(
-        self, db_session: AsyncSession, test_user_db, collection_factory
-    ) -> None:
+    async def test_resume_paused_collection(self, db_session: AsyncSession, test_user_db, collection_factory) -> None:
         """Test resuming a paused collection."""
         repo = CollectionRepository(db_session)
 
@@ -243,9 +237,7 @@ class TestCollectionSyncPauseResume:
         assert resumed.sync_paused_at is None
         assert resumed.sync_next_run_at is not None
 
-    async def test_resume_not_paused_is_noop(
-        self, db_session: AsyncSession, test_user_db, collection_factory
-    ) -> None:
+    async def test_resume_not_paused_is_noop(self, db_session: AsyncSession, test_user_db, collection_factory) -> None:
         """Test that resuming an unpaused collection is a no-op."""
         repo = CollectionRepository(db_session)
 
@@ -409,20 +401,18 @@ class TestCollectionSyncEdgeCases:
 
         now = datetime.now(UTC)
         await repo.update_sync_status(
-            collection_id=collection.id,
+            collection.id,
             status="running",
             started_at=now,
         )
         await db_session.commit()
 
         # Refresh and check
-        updated = await repo.get_by_id(collection.id)
+        updated = await repo.get_by_uuid(collection.id)
         assert updated.sync_last_run_status == "running"
         assert updated.sync_last_run_started_at is not None
 
-    async def test_set_next_sync_run(
-        self, db_session: AsyncSession, test_user_db, collection_factory
-    ) -> None:
+    async def test_set_next_sync_run(self, db_session: AsyncSession, test_user_db, collection_factory) -> None:
         """Test setting the next sync run time."""
         repo = CollectionRepository(db_session)
 
@@ -437,7 +427,7 @@ class TestCollectionSyncEdgeCases:
         await repo.set_next_sync_run(collection.id, future_time)
         await db_session.commit()
 
-        updated = await repo.get_by_id(collection.id)
+        updated = await repo.get_by_uuid(collection.id)
         assert updated.sync_next_run_at is not None
         # Should be close to the specified time
         assert abs((updated.sync_next_run_at - future_time).total_seconds()) < 1
@@ -466,7 +456,5 @@ class TestCollectionSyncEdgeCases:
         await db_session.commit()
 
         # Sync run should be gone (cascade delete)
-        result = await db_session.execute(
-            select(CollectionSyncRun).where(CollectionSyncRun.id == sync_run_id)
-        )
+        result = await db_session.execute(select(CollectionSyncRun).where(CollectionSyncRun.id == sync_run_id))
         assert result.scalar_one_or_none() is None
