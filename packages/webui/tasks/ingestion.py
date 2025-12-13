@@ -874,9 +874,8 @@ async def _process_append_operation_impl(
 
         try:
             signature = inspect.signature(load_documents)
-            accepts_source_id = (
-                "source_id" in signature.parameters
-                or any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+            accepts_source_id = "source_id" in signature.parameters or any(
+                param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
             )
         except (TypeError, ValueError):  # pragma: no cover - defensive
             accepts_source_id = False

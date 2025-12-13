@@ -102,4 +102,3 @@ def test_add_source_returns_400_on_validation_error(test_client: tuple[TestClien
 
     assert response.status_code == 400
     assert "Source path is required" in response.json()["detail"]
-
