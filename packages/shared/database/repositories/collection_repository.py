@@ -685,6 +685,7 @@ class CollectionRepository:
         """Resume a paused collection's sync schedule.
 
         Clears sync_paused_at and schedules next run immediately.
+        If the collection is not paused, this is a no-op.
 
         Args:
             collection_uuid: UUID of the collection
@@ -704,6 +705,10 @@ class CollectionRepository:
 
             if collection.sync_mode != "continuous":
                 raise ValidationError("Can only resume continuous sync collections", "sync_mode")
+
+            # If not paused, this is a no-op
+            if collection.sync_paused_at is None:
+                return collection
 
             collection.sync_paused_at = None
             collection.sync_next_run_at = datetime.now(UTC)  # Schedule immediately
