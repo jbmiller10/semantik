@@ -16,6 +16,7 @@ This is a personal project and still pre‑release — expect rough edges and AP
 ## What It Does
 - **Collections**: group documents with their own embedding + chunking config.
 - **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
+- **Connectors**: pluggable ingestion sources — built-ins so far are directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
 - **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
 - **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
