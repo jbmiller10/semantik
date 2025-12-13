@@ -96,3 +96,4 @@ Preview endpoints validate connectivity only; they are not a substitute for secu
 For Git/IMAP (and other non-filesystem sources), Semantik stores a canonical representation of content in the `document_artifacts` table. The document content endpoint prefers artifacts and falls back to filesystem serving for local directory sources:
 
 - `GET /api/v2/collections/{collection_id}/documents/{document_id}/content`
+
