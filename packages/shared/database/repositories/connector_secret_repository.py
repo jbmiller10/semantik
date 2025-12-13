@@ -171,7 +171,7 @@ class ConnectorSecretRepository:
                 return None
 
             # Decrypt and return
-            plaintext = SecretEncryption.decrypt(cast(bytes, secret.ciphertext))
+            plaintext: str = SecretEncryption.decrypt(cast(bytes, secret.ciphertext))
 
             logger.debug(f"Retrieved secret type={secret_type} for source_id={source_id}")
 
