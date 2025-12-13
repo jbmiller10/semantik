@@ -374,6 +374,8 @@ describe('CreateCollectionModal', () => {
       await waitFor(() => {
         expect(mockAddSourceMutation.mutateAsync).toHaveBeenCalledWith({
           collectionId: 'test-collection-id',
+          sourceType: 'directory',
+          sourceConfig: { path: '/data/documents' },
           sourcePath: '/data/documents',
           config: {
             chunking_strategy: 'recursive',
