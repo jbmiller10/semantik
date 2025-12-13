@@ -6,7 +6,7 @@ including sync configuration, pause/resume, and manual sync triggers.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
@@ -285,10 +285,11 @@ async def delete_source(
     Returns the operation details for tracking.
     """
     try:
-        return await service.delete_source(
+        result = await service.delete_source(
             user_id=int(current_user["id"]),
             source_id=source_id,
         )
+        return cast(dict[str, Any], result)
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AccessDeniedError as e:
@@ -323,10 +324,11 @@ async def run_source(
     Returns the operation details for tracking.
     """
     try:
-        return await service.run_now(
+        result = await service.run_now(
             user_id=int(current_user["id"]),
             source_id=source_id,
         )
+        return cast(dict[str, Any], result)
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except AccessDeniedError as e:
