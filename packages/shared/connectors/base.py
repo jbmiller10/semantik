@@ -21,7 +21,7 @@ class BaseConnector(ABC):
 
     Example:
         ```python
-        connector = LocalFileConnector({"source_path": "/data/docs"})
+        connector = LocalFileConnector({"path": "/data/docs"})
         if await connector.authenticate():
             async for doc in connector.load_documents():
                 result = await registry.register(collection_id, doc)
@@ -65,7 +65,10 @@ class BaseConnector(ABC):
         ...
 
     @abstractmethod
-    def load_documents(self) -> AsyncIterator[IngestedDocument]:
+    def load_documents(
+        self,
+        source_id: int | None = None,
+    ) -> AsyncIterator[IngestedDocument]:
         """Yield documents from the source.
 
         This is an async generator that yields IngestedDocument objects.

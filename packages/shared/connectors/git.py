@@ -129,6 +129,9 @@ class GitConnector(BaseConnector):
         if auth_method not in ("none", "https_token", "ssh_key"):
             raise ValueError(f"Invalid auth_method: {auth_method}")
 
+        if auth_method == "https_token" and not url.startswith(("http://", "https://")):
+            raise ValueError("auth_method=https_token requires an HTTP(S) repo_url")
+
     def set_credentials(
         self,
         token: str | None = None,
@@ -208,17 +211,13 @@ class GitConnector(BaseConnector):
 
         return Path(settings.git_cache_dir / dir_name)
 
-    def _build_auth_url(self) -> str:
-        """Build authenticated URL for HTTPS cloning."""
-        if self.auth_method != "https_token" or not self._token:
-            return self.repo_url
-
-        parsed = urlparse(self.repo_url)
-        if parsed.scheme not in ("http", "https"):
-            return self.repo_url
-
-        # Insert token into URL: https://token@github.com/user/repo.git
-        return f"{parsed.scheme}://{self._token}@{parsed.netloc}{parsed.path}"
+    def _redact_sensitive(self, text: str) -> str:
+        """Redact secrets (tokens, etc.) from text that may be logged or raised."""
+        if not text:
+            return text
+        if self._token:
+            return text.replace(self._token, "***")
+        return text
 
     async def _run_git_command(
         self,
@@ -257,6 +256,8 @@ class GitConnector(BaseConnector):
                 stdout_bytes.decode("utf-8", errors="replace"),
                 stderr_bytes.decode("utf-8", errors="replace"),
             )
+        except FileNotFoundError as exc:
+            raise ValueError("Git binary not found - ensure 'git' is installed and on PATH") from exc
         except TimeoutError:
             logger.error(f"Git command timed out: git {' '.join(args)}")
             raise ValueError(f"Git command timed out after {timeout}s") from None
@@ -269,29 +270,89 @@ class GitConnector(BaseConnector):
         """
         env: dict[str, str] = {}
 
-        if self.auth_method != "ssh_key" or not self._ssh_key:
+        if self.auth_method != "ssh_key":
             return env
+
+        if not self._ssh_key:
+            raise ValueError("SSH key not set - call set_credentials() first")
+
+        if shutil.which("ssh") is None:
+            raise ValueError("SSH binary not found - install an OpenSSH client to use ssh_key auth")
 
         # Write SSH key to temp file
         key_file = temp_dir / "id_rsa"
         key_file.write_text(self._ssh_key)
         key_file.chmod(0o600)
 
+        env["GIT_SSH_KEY_FILE"] = str(key_file)
+
         # Create SSH wrapper script
         ssh_script = temp_dir / "ssh_wrapper.sh"
         ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
         if self._ssh_passphrase:
-            # Use sshpass for passphrase if available
-            ssh_script.write_text(
-                f'#!/bin/bash\nsshpass -p "{self._ssh_passphrase}" ssh {ssh_opts} -i "{key_file}" "$@"'
-            )
-        else:
-            ssh_script.write_text(f'#!/bin/bash\nssh {ssh_opts} -i "{key_file}" "$@"')
+            if shutil.which("sshpass") is None:
+                raise ValueError(
+                    "sshpass is required for encrypted SSH keys - install sshpass or use an unencrypted key"
+                )
+
+            passphrase_file = temp_dir / "ssh_passphrase"
+            passphrase_file.write_text(self._ssh_passphrase)
+            passphrase_file.chmod(0o600)
+            env["GIT_SSH_PASSPHRASE_FILE"] = str(passphrase_file)
+
+        ssh_script.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            f"SSH_OPTS=\"{ssh_opts}\"\n"
+            "if [ -n \"${GIT_SSH_PASSPHRASE_FILE:-}\" ]; then\n"
+            "  exec sshpass -f \"$GIT_SSH_PASSPHRASE_FILE\" ssh $SSH_OPTS -i \"$GIT_SSH_KEY_FILE\" \"$@\"\n"
+            "fi\n"
+            "exec ssh $SSH_OPTS -i \"$GIT_SSH_KEY_FILE\" \"$@\"\n"
+        )
 
         ssh_script.chmod(0o700)
 
         env["GIT_SSH_COMMAND"] = str(ssh_script)
+        return env
+
+    def _setup_https_env(self, temp_dir: Path) -> dict[str, str]:
+        """Set up HTTPS token auth via GIT_ASKPASS.
+
+        This avoids embedding tokens in clone URLs (which can be persisted in
+        `.git/config` or echoed in error output).
+        """
+        env: dict[str, str] = {}
+
+        if self.auth_method != "https_token":
+            return env
+
+        if not self._token:
+            raise ValueError("Token not set - call set_credentials() first")
+
+        parsed = urlparse(self.repo_url)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("auth_method=https_token requires an HTTP(S) repo_url")
+
+        token_file = temp_dir / "git_token"
+        token_file.write_text(self._token)
+        token_file.chmod(0o600)
+
+        askpass_script = temp_dir / "git_askpass.sh"
+        askpass_script.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "prompt=\"${1:-}\"\n"
+            "token=\"$(cat \"$GIT_ASKPASS_TOKEN_FILE\")\"\n"
+            "case \"$prompt\" in\n"
+            "  *Username*|*username*) printf '%s\\n' \"$token\" ;;\n"
+            "  *) printf '\\n' ;;\n"
+            "esac\n"
+        )
+        askpass_script.chmod(0o700)
+
+        env["GIT_ASKPASS"] = str(askpass_script)
+        env["GIT_ASKPASS_TOKEN_FILE"] = str(token_file)
         return env
 
     async def authenticate(self) -> bool:
@@ -305,22 +366,19 @@ class GitConnector(BaseConnector):
         """
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            env = self._setup_ssh_env(temp_path)
-
-            # Use authenticated URL for HTTPS
-            url = self._build_auth_url() if self.auth_method == "https_token" else self.repo_url
+            env = {}
+            env.update(self._setup_ssh_env(temp_path))
+            env.update(self._setup_https_env(temp_path))
 
             # Get all refs (branches and tags)
             code, stdout, stderr = await self._run_git_command(
-                ["ls-remote", "--heads", "--tags", url],
+                ["ls-remote", "--heads", "--tags", self.repo_url],
                 env=env,
                 timeout=60,
             )
 
             if code != 0:
-                # Sanitize error message to not leak credentials
-                safe_stderr = stderr.replace(self._token or "", "***") if self._token else stderr
-                raise ValueError(f"Cannot access repository: {safe_stderr}")
+                raise ValueError(f"Cannot access repository: {self._redact_sensitive(stderr)}")
 
             # Parse refs from output
             # Format: sha\trefs/heads/branch or sha\trefs/tags/tag
@@ -362,10 +420,9 @@ class GitConnector(BaseConnector):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            env = self._setup_ssh_env(temp_path)
-
-            # Use authenticated URL for HTTPS
-            url = self._build_auth_url() if self.auth_method == "https_token" else self.repo_url
+            env = {}
+            env.update(self._setup_ssh_env(temp_path))
+            env.update(self._setup_https_env(temp_path))
 
             if cache_dir.exists() and (cache_dir / ".git").exists():
                 # Fetch updates
@@ -377,7 +434,7 @@ class GitConnector(BaseConnector):
                     timeout=300,
                 )
                 if code != 0:
-                    logger.warning(f"Fetch failed, will re-clone: {stderr}")
+                    logger.warning("Fetch failed, will re-clone: %s", self._redact_sensitive(stderr))
                     shutil.rmtree(cache_dir)
 
             if not cache_dir.exists():
@@ -388,7 +445,7 @@ class GitConnector(BaseConnector):
                 if self.shallow_depth > 0:
                     clone_args.extend(["--depth", str(self.shallow_depth)])
 
-                clone_args.extend([url, str(cache_dir)])
+                clone_args.extend([self.repo_url, str(cache_dir)])
 
                 code, _, stderr = await self._run_git_command(
                     clone_args,
@@ -396,7 +453,7 @@ class GitConnector(BaseConnector):
                     timeout=600,
                 )
                 if code != 0:
-                    raise ValueError(f"Clone failed: {stderr}")
+                    raise ValueError(f"Clone failed: {self._redact_sensitive(stderr)}")
 
             # Checkout the specified ref
             code, _, stderr = await self._run_git_command(
@@ -418,7 +475,7 @@ class GitConnector(BaseConnector):
                     timeout=60,
                 )
                 if code != 0:
-                    raise ValueError(f"Cannot checkout ref '{self.ref}': {stderr}")
+                    raise ValueError(f"Cannot checkout ref '{self.ref}': {self._redact_sensitive(stderr)}")
 
             # Get current commit SHA
             code, stdout, _ = await self._run_git_command(
@@ -540,6 +597,11 @@ class GitConnector(BaseConnector):
         Returns:
             IngestedDocument or None if file should be skipped
         """
+        # Avoid reading through symlinks (can escape repo root)
+        if file_path.is_symlink():
+            logger.debug(f"Skipping symlinked file: {rel_path}")
+            return None
+
         # Check file size
         try:
             stat = file_path.stat()

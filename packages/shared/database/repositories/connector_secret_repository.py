@@ -1,5 +1,6 @@
 """Repository implementation for ConnectorSecret model."""
 
+import asyncio
 import logging
 
 from sqlalchemy import delete, select
@@ -308,7 +309,10 @@ class ConnectorSecretRepository:
             result = await self.session.execute(
                 select(ConnectorSecret.secret_type).where(ConnectorSecret.collection_source_id == source_id)
             )
-            return [row[0] for row in result.all()]
+            rows = result.all()
+            if asyncio.iscoroutine(rows):
+                rows = await rows
+            return [row[0] for row in rows]
 
         except Exception as e:
             logger.error(f"Failed to get secret types for source {source_id}: {e}")

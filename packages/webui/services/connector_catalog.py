@@ -75,7 +75,7 @@ CONNECTOR_CATALOG: dict[str, ConnectorDefinition] = {
         "icon": "folder",
         "fields": [
             {
-                "name": "source_path",
+                "name": "path",
                 "type": "text",
                 "label": "Directory Path",
                 "description": "Absolute path to the directory to index",

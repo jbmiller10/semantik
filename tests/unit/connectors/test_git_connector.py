@@ -165,11 +165,22 @@ class TestGitConnectorCredentials:
         assert connector._ssh_passphrase == "secret"
 
 
-class TestGitConnectorAuthUrl:
-    """Test authenticated URL building."""
+class TestGitConnectorHttpsEnv:
+    """Test HTTPS token auth environment setup."""
 
-    def test_build_auth_url_with_token(self):
-        """Test building authenticated HTTPS URL."""
+    def test_setup_https_env_no_token(self):
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "https_token",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with pytest.raises(ValueError, match=r"Token not set"):
+                connector._setup_https_env(Path(temp_dir))
+
+    def test_setup_https_env_with_token_does_not_embed_token_in_script(self):
         connector = GitConnector(
             {
                 "repo_url": "https://github.com/user/repo.git",
@@ -178,33 +189,19 @@ class TestGitConnectorAuthUrl:
         )
         connector.set_credentials(token="ghp_xxx")
 
-        url = connector._build_auth_url()
-        assert url == "https://ghp_xxx@github.com/user/repo.git"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env = connector._setup_https_env(Path(temp_dir))
 
-    def test_build_auth_url_no_token(self):
-        """Test URL unchanged when no token."""
-        connector = GitConnector(
-            {
-                "repo_url": "https://github.com/user/repo.git",
-                "auth_method": "none",
-            }
-        )
+            assert "GIT_ASKPASS" in env
+            assert "GIT_ASKPASS_TOKEN_FILE" in env
 
-        url = connector._build_auth_url()
-        assert url == "https://github.com/user/repo.git"
+            askpass_script = Path(env["GIT_ASKPASS"])
+            assert askpass_script.exists()
+            assert "ghp_xxx" not in askpass_script.read_text()
 
-    def test_build_auth_url_ssh(self):
-        """Test SSH URL unchanged."""
-        connector = GitConnector(
-            {
-                "repo_url": "git@github.com:user/repo.git",
-                "auth_method": "ssh_key",
-            }
-        )
-        connector.set_credentials(token="ignored")
-
-        url = connector._build_auth_url()
-        assert url == "git@github.com:user/repo.git"
+            token_file = Path(env["GIT_ASKPASS_TOKEN_FILE"])
+            assert token_file.exists()
+            assert token_file.read_text() == "ghp_xxx"
 
 
 class TestGitConnectorSshEnv:
@@ -233,15 +230,21 @@ class TestGitConnectorSshEnv:
         )
         connector.set_credentials(ssh_key="-----BEGIN OPENSSH PRIVATE KEY-----")
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            env = connector._setup_ssh_env(Path(temp_dir))
+        def which_side_effect(cmd: str):
+            if cmd == "ssh":
+                return "/usr/bin/ssh"
+            return None
 
-            assert "GIT_SSH_COMMAND" in env
+        with patch("shared.connectors.git.shutil.which", side_effect=which_side_effect):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                env = connector._setup_ssh_env(Path(temp_dir))
 
-            # Check key file was created
-            key_file = Path(temp_dir) / "id_rsa"
-            assert key_file.exists()
-            assert key_file.read_text() == "-----BEGIN OPENSSH PRIVATE KEY-----"
+                assert "GIT_SSH_COMMAND" in env
+
+                # Check key file was created
+                key_file = Path(temp_dir) / "id_rsa"
+                assert key_file.exists()
+                assert key_file.read_text() == "-----BEGIN OPENSSH PRIVATE KEY-----"
 
     def test_setup_ssh_env_with_passphrase(self):
         """Test SSH env setup with passphrase."""
@@ -256,15 +259,23 @@ class TestGitConnectorSshEnv:
             ssh_passphrase="secret",
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            env = connector._setup_ssh_env(Path(temp_dir))
-            assert "GIT_SSH_COMMAND" in env
+        def which_side_effect(cmd: str):
+            if cmd == "ssh":
+                return "/usr/bin/ssh"
+            if cmd == "sshpass":
+                return "/usr/bin/sshpass"
+            return None
 
-            # Check SSH wrapper script contains sshpass
-            ssh_script = Path(temp_dir) / "ssh_wrapper.sh"
-            assert ssh_script.exists()
-            content = ssh_script.read_text()
-            assert "sshpass" in content
+        with patch("shared.connectors.git.shutil.which", side_effect=which_side_effect):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                env = connector._setup_ssh_env(Path(temp_dir))
+                assert "GIT_SSH_COMMAND" in env
+
+                # Check SSH wrapper script contains sshpass
+                ssh_script = Path(temp_dir) / "ssh_wrapper.sh"
+                assert ssh_script.exists()
+                content = ssh_script.read_text()
+                assert "sshpass" in content
 
 
 class TestGitConnectorCacheDir:
