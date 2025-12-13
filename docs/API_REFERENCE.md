@@ -405,7 +405,6 @@ POST /api/v2/collections/{collection_id}/sources/{source_id}/pause
 POST /api/v2/collections/{collection_id}/sources/{source_id}/resume
 Authorization: Bearer {token}
 ```
-
 ##### Remove Source from Collection
 **Preferred:** delete by `source_id` (removes documents/vectors, then deletes the source record):
 ```http
