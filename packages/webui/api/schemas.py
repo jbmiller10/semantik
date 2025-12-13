@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Enums
@@ -171,17 +171,20 @@ class AddSourceRequest(BaseModel):
     source_type: str = Field(
         default="directory",
         description="Type of source (e.g., 'directory', 'web', 'slack')",
+        validation_alias=AliasChoices("source_type", "sourceType"),
     )
     source_config: dict[str, Any] | None = Field(
         default=None,
         description="Connector-specific configuration",
         json_schema_extra={"example": {"path": "/data/docs", "recursive": True}},
+        validation_alias=AliasChoices("source_config", "sourceConfig"),
     )
 
     # Legacy field (deprecated)
     source_path: str | None = Field(
         default=None,
         description="[DEPRECATED] Path to the source. Use source_config={'path': ...} instead.",
+        validation_alias=AliasChoices("source_path", "sourcePath"),
     )
 
     # Keep existing config field for backward compatibility (chunk settings, metadata)
@@ -193,11 +196,13 @@ class AddSourceRequest(BaseModel):
         },
     )
 
+    model_config = ConfigDict(populate_by_name=True)
+
     @model_validator(mode="after")
     def normalize_legacy_source_path(self) -> "AddSourceRequest":
         """Convert legacy source_path to source_type/source_config format."""
         # If legacy source_path provided and source_config not set, derive it
-        if self.source_path is not None and self.source_config is None:
+        if self.source_path is not None and not self.source_config:
             self.source_config = {"path": self.source_path}
         # source_type defaults to "directory" already
         return self

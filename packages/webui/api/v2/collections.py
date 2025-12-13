@@ -359,7 +359,7 @@ async def add_source(
             collection_id=collection_uuid,
             user_id=int(current_user["id"]),
             source_type=add_source_request.source_type,
-            source_config=add_source_request.source_config or {},
+            source_config=add_source_request.source_config,
             legacy_source_path=add_source_request.source_path,
             additional_config=add_source_request.config or {},
         )
@@ -390,6 +390,16 @@ async def add_source(
     except InvalidStateError as e:
         raise HTTPException(
             status_code=409,
+            detail=str(e),
+        ) from e
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
             detail=str(e),
         ) from e
     except Exception as e:
