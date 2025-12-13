@@ -1389,16 +1389,16 @@ async def _process_append_operation_impl(
 
                 source_repo = CollectionSourceRepository(session)
                 status = "success" if success else ("partial" if scan_errors else "failed")
-                error_msg = None
+                sync_error_msg: str | None = None
                 if scan_errors:
-                    error_msg = f"{len(scan_errors)} document(s) failed to process"
+                    sync_error_msg = f"{len(scan_errors)} document(s) failed to process"
                 elif failed_count > 0:
-                    error_msg = f"{failed_count} document(s) failed embedding generation"
+                    sync_error_msg = f"{failed_count} document(s) failed embedding generation"
 
                 await source_repo.update_sync_status(
                     source_id=source_id,
                     status=status,
-                    error=error_msg,
+                    error=sync_error_msg,
                 )
                 await session.commit()
             except Exception as status_exc:
