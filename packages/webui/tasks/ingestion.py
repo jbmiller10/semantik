@@ -1429,11 +1429,7 @@ async def _process_append_operation_impl(
                 # Check if all sources are done
                 sync_run = await sync_run_repo.get_by_id(sync_run_id)
                 if sync_run:
-                    total_done = (
-                        sync_run.completed_sources
-                        + sync_run.failed_sources
-                        + sync_run.partial_sources
-                    )
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
 
                     if total_done >= sync_run.expected_sources:
                         # Complete the sync run
@@ -1518,11 +1514,7 @@ async def _process_append_operation_impl(
                 # Check if all sources are done
                 sync_run = await sync_run_repo.get_by_id(sync_run_id)
                 if sync_run:
-                    total_done = (
-                        sync_run.completed_sources
-                        + sync_run.failed_sources
-                        + sync_run.partial_sources
-                    )
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
 
                     if total_done >= sync_run.expected_sources:
                         # Complete the sync run

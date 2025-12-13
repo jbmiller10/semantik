@@ -70,10 +70,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
                 # Check for active operations (collection-level gating)
                 active_ops = await operation_repo.get_active_operations(collection.id)
                 if active_ops:
-                    logger.debug(
-                        f"Skipping collection {collection.id} - "
-                        f"has {len(active_ops)} active operations"
-                    )
+                    logger.debug(f"Skipping collection {collection.id} - " f"has {len(active_ops)} active operations")
                     stats["collections_skipped"] += 1
                     continue
 
