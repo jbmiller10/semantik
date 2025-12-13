@@ -277,6 +277,8 @@ describe('useCollectionOperations', () => {
       await act(async () => {
         await result.current.mutateAsync({
           collectionId: 'col-1',
+          sourceType: 'directory',
+          sourceConfig: { path: sourcePath },
           sourcePath,
         });
       });
@@ -286,6 +288,7 @@ describe('useCollectionOperations', () => {
         source_path: sourcePath,
         source_type: 'directory',
         source_config: { path: sourcePath },
+        secrets: undefined,
         config: undefined,
       });
     });

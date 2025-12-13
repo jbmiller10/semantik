@@ -57,6 +57,43 @@ vi.mock('../../hooks/useDirectoryScan', () => ({
   }),
 }));
 
+// Mock connector catalog
+const mockConnectorCatalog = {
+  directory: {
+    name: 'Local Directory',
+    description: 'Index files from a local directory path',
+    icon: 'folder',
+    fields: [
+      {
+        name: 'path',
+        type: 'text',
+        label: 'Directory Path',
+        description: 'Absolute path to the directory',
+        required: true,
+        placeholder: '/path/to/documents',
+      },
+    ],
+    secrets: [],
+    supports_sync: true,
+  },
+};
+
+vi.mock('../../hooks/useConnectors', () => ({
+  useConnectorCatalog: () => ({
+    data: mockConnectorCatalog,
+    isLoading: false,
+    isError: false,
+  }),
+  useGitPreview: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useImapPreview: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
 // Mock operation progress
 vi.mock('../../hooks/useOperationProgress', () => ({
   useOperationProgress: () => ({
@@ -235,51 +272,51 @@ describe('Collection Modals - API Validation Errors', () => {
       mockAddSourceMutation.mutateAsync.mockRejectedValue(
         new Error('Path does not exist or is not accessible: /nonexistent/path')
       )
-      
+
       renderWithErrorHandlers(
-        <AddDataToCollectionModal 
-          onClose={vi.fn()} 
+        <AddDataToCollectionModal
+          onClose={vi.fn()}
           collection={mockCollection}
           onSuccess={vi.fn()}
         />,
         []
       )
 
-      await userEvent.type(screen.getByLabelText(/source directory path/i), '/nonexistent/path')
-      await userEvent.click(screen.getByRole('button', { name: /add data/i }))
-      
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/nonexistent/path')
+      await userEvent.click(screen.getByRole('button', { name: /add source/i }))
+
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
           message: 'Path does not exist or is not accessible: /nonexistent/path',
           type: 'error'
         })
       })
-      
+
       // User should be able to correct the path
-      const pathInput = screen.getByLabelText(/source directory path/i)
+      const pathInput = screen.getByLabelText(/directory path/i)
       await userEvent.clear(pathInput)
       await userEvent.type(pathInput, '/valid/path')
-      
-      expect(screen.getByRole('button', { name: /add data/i })).not.toBeDisabled()
+
+      expect(screen.getByRole('button', { name: /add source/i })).not.toBeDisabled()
     })
 
     it('should handle permission denied for path', async () => {
       mockAddSourceMutation.mutateAsync.mockRejectedValue(
         new Error('Permission denied: Cannot access /restricted/path')
       )
-      
+
       renderWithErrorHandlers(
-        <AddDataToCollectionModal 
-          onClose={vi.fn()} 
+        <AddDataToCollectionModal
+          onClose={vi.fn()}
           collection={mockCollection}
           onSuccess={vi.fn()}
         />,
         []
       )
 
-      await userEvent.type(screen.getByLabelText(/source directory path/i), '/restricted/path')
-      await userEvent.click(screen.getByRole('button', { name: /add data/i }))
-      
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/restricted/path')
+      await userEvent.click(screen.getByRole('button', { name: /add source/i }))
+
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
           message: 'Permission denied: Cannot access /restricted/path',
@@ -292,26 +329,26 @@ describe('Collection Modals - API Validation Errors', () => {
       mockAddSourceMutation.mutateAsync.mockRejectedValue(
         new Error('Maximum number of sources (10) reached for this collection')
       )
-      
+
       renderWithErrorHandlers(
-        <AddDataToCollectionModal 
-          onClose={vi.fn()} 
+        <AddDataToCollectionModal
+          onClose={vi.fn()}
           collection={mockCollection}
           onSuccess={vi.fn()}
         />,
         []
       )
 
-      await userEvent.type(screen.getByLabelText(/source directory path/i), '/another/source')
-      await userEvent.click(screen.getByRole('button', { name: /add data/i }))
-      
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/another/source')
+      await userEvent.click(screen.getByRole('button', { name: /add source/i }))
+
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
           message: 'Maximum number of sources (10) reached for this collection',
           type: 'error'
         })
       })
-      
+
       // User should understand they cannot add more sources
     })
 
@@ -319,19 +356,19 @@ describe('Collection Modals - API Validation Errors', () => {
       mockAddSourceMutation.mutateAsync.mockRejectedValue(
         new Error('Too many operations in progress. Please wait and try again.')
       )
-      
+
       renderWithErrorHandlers(
-        <AddDataToCollectionModal 
-          onClose={vi.fn()} 
+        <AddDataToCollectionModal
+          onClose={vi.fn()}
           collection={mockCollection}
           onSuccess={vi.fn()}
         />,
         []
       )
 
-      await userEvent.type(screen.getByLabelText(/source directory path/i), '/data/docs')
-      await userEvent.click(screen.getByRole('button', { name: /add data/i }))
-      
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/data/docs')
+      await userEvent.click(screen.getByRole('button', { name: /add source/i }))
+
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
           message: 'Too many operations in progress. Please wait and try again.',
