@@ -1566,34 +1566,26 @@ class TestBuildVectorStoreName:
 
     def test_build_vector_store_name_basic(self) -> None:
         """Test basic vector store name generation."""
-        result = CollectionService._build_vector_store_name(
-            "123e4567-e89b-12d3-a456-426614174000", "My Collection"
-        )
+        result = CollectionService._build_vector_store_name("123e4567-e89b-12d3-a456-426614174000", "My Collection")
         assert result.startswith("col_")
         assert "my_collection" in result
 
     def test_build_vector_store_name_special_characters(self) -> None:
         """Test vector store name with special characters removed."""
-        result = CollectionService._build_vector_store_name(
-            "123e4567-e89b-12d3-a456-426614174000", "My!@#$%Collection"
-        )
+        result = CollectionService._build_vector_store_name("123e4567-e89b-12d3-a456-426614174000", "My!@#$%Collection")
         assert "!" not in result
         assert "@" not in result
         assert "#" not in result
 
     def test_build_vector_store_name_empty_slug(self) -> None:
         """Test vector store name when slug becomes empty."""
-        result = CollectionService._build_vector_store_name(
-            "123e4567-e89b-12d3-a456-426614174000", "!@#$%"
-        )
+        result = CollectionService._build_vector_store_name("123e4567-e89b-12d3-a456-426614174000", "!@#$%")
         assert result.startswith("col_")
 
     def test_build_vector_store_name_truncation(self) -> None:
         """Test vector store name truncation for long names."""
         long_name = "a" * 200
-        result = CollectionService._build_vector_store_name(
-            "123e4567-e89b-12d3-a456-426614174000", long_name
-        )
+        result = CollectionService._build_vector_store_name("123e4567-e89b-12d3-a456-426614174000", long_name)
         assert len(result) <= 120
 
 
@@ -2125,7 +2117,7 @@ class TestCollectionSyncMethods:
         mock_collection: MagicMock,
     ) -> None:
         """Test successful resume of collection sync."""
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         mock_collection.sync_mode = "continuous"
         mock_collection.sync_paused_at = datetime.now(UTC)
