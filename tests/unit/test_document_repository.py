@@ -241,3 +241,181 @@ class TestDocumentRepository:
         with pytest.raises(DatabaseOperationError) as exc_info:
             await repository.get_by_id(str(uuid4()))
         assert "Database connection lost" in str(exc_info.value)
+
+    # --- Sync Tracking Tests ---
+
+    @pytest.mark.asyncio()
+    async def test_update_last_seen_calls_correct_methods(self, repository, mock_session) -> None:
+        """Test that update_last_seen updates the document timestamp."""
+        # Setup
+        doc_id = str(uuid4())
+        existing_doc = Document(
+            id=doc_id,
+            collection_id=str(uuid4()),
+            file_path="/test.txt",
+            file_name="test.txt",
+            file_size=100,
+            content_hash="a" * 64,
+            status=DocumentStatus.COMPLETED,
+            is_stale=True,
+        )
+
+        repository.get_by_id = AsyncMock(return_value=existing_doc)
+        mock_session.flush = AsyncMock()
+
+        # Act
+        result = await repository.update_last_seen(doc_id)
+
+        # Assert
+        assert result.last_seen_at is not None
+        assert result.is_stale is False
+        repository.get_by_id.assert_called_once_with(doc_id)
+        mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_update_last_seen_document_not_found(self, repository, mock_session) -> None:
+        """Test update_last_seen raises EntityNotFoundError for missing document."""
+        # Setup
+        doc_id = str(uuid4())
+        repository.get_by_id = AsyncMock(return_value=None)
+
+        # Act & Assert
+        with pytest.raises(EntityNotFoundError) as exc_info:
+            await repository.update_last_seen(doc_id)
+        assert "document" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_update_content_updates_fields(self, repository, mock_session) -> None:
+        """Test that update_content updates the document fields."""
+        # Setup
+        doc_id = str(uuid4())
+        existing_doc = Document(
+            id=doc_id,
+            collection_id=str(uuid4()),
+            file_path="/test.txt",
+            file_name="test.txt",
+            file_size=100,
+            content_hash="a" * 64,
+            status=DocumentStatus.COMPLETED,
+        )
+
+        repository.get_by_id = AsyncMock(return_value=existing_doc)
+        mock_session.flush = AsyncMock()
+
+        new_hash = "b" * 64
+        new_size = 200
+
+        # Act
+        result = await repository.update_content(
+            document_id=doc_id,
+            content_hash=new_hash,
+            file_size=new_size,
+        )
+
+        # Assert
+        assert result.content_hash == new_hash
+        assert result.file_size == new_size
+        assert result.last_seen_at is not None
+        assert result.is_stale is False
+        repository.get_by_id.assert_called_once_with(doc_id)
+        mock_session.flush.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_update_content_document_not_found(self, repository, mock_session) -> None:
+        """Test update_content raises EntityNotFoundError for missing document."""
+        # Setup
+        doc_id = str(uuid4())
+        repository.get_by_id = AsyncMock(return_value=None)
+
+        # Act & Assert
+        with pytest.raises(EntityNotFoundError) as exc_info:
+            await repository.update_content(doc_id, content_hash="b" * 64)
+        assert "document" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_mark_unseen_as_stale_executes_update(self, repository, mock_session) -> None:
+        """Test that mark_unseen_as_stale executes update query."""
+        # Setup
+        from datetime import UTC, datetime
+
+        collection_id = str(uuid4())
+        source_id = 1
+        since = datetime.now(UTC)
+
+        mock_result = AsyncMock()
+        mock_result.rowcount = 5
+        mock_session.execute.return_value = mock_result
+
+        # Act
+        count = await repository.mark_unseen_as_stale(collection_id, source_id, since)
+
+        # Assert
+        assert count == 5
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_get_stale_documents_returns_correct_structure(self, repository, mock_session) -> None:
+        """Test that get_stale_documents returns documents and count."""
+        from unittest.mock import MagicMock
+
+        # Setup
+        collection_id = str(uuid4())
+        stale_doc = Document(
+            id=str(uuid4()),
+            collection_id=collection_id,
+            file_path="/stale.txt",
+            file_name="stale.txt",
+            file_size=100,
+            content_hash="a" * 64,
+            status=DocumentStatus.COMPLETED,
+            is_stale=True,
+        )
+
+        # Mock scalar for count query (async - session.scalar is awaited)
+        mock_session.scalar = AsyncMock(return_value=1)
+
+        # Mock execute for documents query
+        # result.scalars().all() is synchronous, so use MagicMock for the chain
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [stale_doc]
+        docs_result = MagicMock()
+        docs_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=docs_result)
+
+        # Act
+        documents, total = await repository.get_stale_documents(collection_id)
+
+        # Assert
+        assert len(documents) == 1
+        assert total == 1
+        assert documents[0].is_stale is True
+        mock_session.scalar.assert_called_once()
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_get_stale_documents_with_source_filter(self, repository, mock_session) -> None:
+        """Test that get_stale_documents filters by source_id when provided."""
+        from unittest.mock import MagicMock
+
+        # Setup
+        collection_id = str(uuid4())
+        source_id = 1
+
+        # Mock scalar for count query
+        mock_session.scalar = AsyncMock(return_value=0)
+
+        # Mock execute for documents query
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = []
+        docs_result = MagicMock()
+        docs_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=docs_result)
+
+        # Act
+        documents, total = await repository.get_stale_documents(collection_id, source_id=source_id)
+
+        # Assert
+        assert len(documents) == 0
+        assert total == 0
+        mock_session.scalar.assert_called_once()
+        mock_session.execute.assert_called_once()

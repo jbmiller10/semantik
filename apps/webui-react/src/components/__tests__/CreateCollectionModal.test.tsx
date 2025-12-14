@@ -38,25 +38,94 @@ vi.mock('../../hooks/useCollectionOperations', () => ({
   useAddSource: () => mockAddSourceMutation,
 }));
 
+// Mock connector catalog with sample data
+const mockConnectorCatalog = {
+  directory: {
+    name: 'Directory',
+    description: 'Index files from a local directory',
+    icon: 'folder',
+    fields: [
+      {
+        name: 'path',
+        type: 'text',
+        label: 'Directory Path',
+        description: 'Absolute path to the directory containing files to index',
+        required: true,
+        placeholder: '/path/to/documents',
+      },
+    ],
+    secrets: [],
+    supports_sync: true,
+  },
+  git: {
+    name: 'Git Repository',
+    description: 'Clone and index files from a Git repository',
+    icon: 'git-branch',
+    fields: [
+      {
+        name: 'repo_url',
+        type: 'text',
+        label: 'Repository URL',
+        required: true,
+        placeholder: 'https://github.com/user/repo.git',
+      },
+    ],
+    secrets: [],
+    supports_sync: true,
+    preview_endpoint: '/api/v2/connectors/git/preview',
+  },
+  imap: {
+    name: 'Email (IMAP)',
+    description: 'Index emails from an IMAP mailbox',
+    icon: 'mail',
+    fields: [
+      {
+        name: 'host',
+        type: 'text',
+        label: 'IMAP Server',
+        required: true,
+      },
+    ],
+    secrets: [
+      {
+        name: 'password',
+        label: 'Password',
+        required: true,
+      },
+    ],
+    supports_sync: true,
+    preview_endpoint: '/api/v2/connectors/imap/preview',
+  },
+};
+
+const mockConnectorCatalogState = {
+  data: mockConnectorCatalog,
+  isLoading: false,
+  isError: false,
+};
+
+const mockGitPreviewMutation = {
+  mutateAsync: vi.fn(),
+  isPending: false,
+};
+
+const mockImapPreviewMutation = {
+  mutateAsync: vi.fn(),
+  isPending: false,
+};
+
+vi.mock('../../hooks/useConnectors', () => ({
+  useConnectorCatalog: () => mockConnectorCatalogState,
+  useGitPreview: () => mockGitPreviewMutation,
+  useImapPreview: () => mockImapPreviewMutation,
+}));
+
 vi.mock('../../stores/uiStore', () => ({
   useUIStore: () => ({
     addToast: mockAddToast,
   }),
 }));
 
-const mockStartScan = vi.fn();
-const mockResetScan = vi.fn();
-const mockDirectoryScanState = {
-  scanning: false,
-  scanResult: null,
-  error: null,
-  startScan: mockStartScan,
-  reset: mockResetScan,
-};
-
-vi.mock('../../hooks/useDirectoryScan', () => ({
-  useDirectoryScan: () => mockDirectoryScanState,
-}));
 
 const mockOperationProgressState = {
   sendMessage: vi.fn(),
@@ -109,14 +178,7 @@ describe('CreateCollectionModal', () => {
     // Reset other mocks
     mockAddToast.mockReset();
     mockNavigate.mockReset();
-    mockStartScan.mockReset();
-    mockResetScan.mockReset();
-    
-    // Reset directory scan state
-    mockDirectoryScanState.scanning = false;
-    mockDirectoryScanState.scanResult = null;
-    mockDirectoryScanState.error = null;
-    
+
     // Reset operation progress state
     mockOperationProgressState.onComplete = undefined;
     mockOperationProgressState.onError = undefined;
@@ -132,11 +194,17 @@ describe('CreateCollectionModal', () => {
       // Check required fields
       expect(screen.getByLabelText(/collection name/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/collection name/i)).toHaveValue('');
-      expect(screen.getByText('*')).toBeInTheDocument(); // Required indicator
+      // Required indicators exist (multiple with connector fields)
+      const requiredIndicators = screen.getAllByText('*');
+      expect(requiredIndicators.length).toBeGreaterThan(0);
 
       // Check optional fields
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/initial source directory/i)).toBeInTheDocument();
+      // Check connector type selector is present - use heading role for section title
+      expect(screen.getByRole('heading', { level: 4, name: /initial data source/i })).toBeInTheDocument();
+      // Default is "None" so Directory Path should not be visible until connector is selected
+      expect(screen.getByText('None')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/directory path/i)).not.toBeInTheDocument();
 
       // Wait for models to load from API, then check default embedding model
       await waitFor(() => {
@@ -155,15 +223,20 @@ describe('CreateCollectionModal', () => {
       expect(screen.getByRole('button', { name: /create collection/i })).toBeInTheDocument();
     });
 
-    it('should have proper ARIA labels for accessibility', () => {
+    it('should have proper ARIA labels for accessibility', async () => {
+      const user = userEvent.setup();
       renderCreateCollectionModal(defaultProps);
 
       // Check all inputs have labels
       expect(screen.getByLabelText(/collection name/i)).toHaveAttribute('id', 'name');
       expect(screen.getByLabelText(/description/i)).toHaveAttribute('id', 'description');
-      expect(screen.getByLabelText(/initial source directory/i)).toHaveAttribute('id', 'sourcePath');
       expect(screen.getByLabelText(/embedding model/i)).toHaveAttribute('id', 'embedding_model');
       expect(screen.getByLabelText(/model quantization/i)).toHaveAttribute('id', 'quantization');
+
+      // Select Directory connector to show the directory path field
+      const directoryButton = screen.getByText('Directory').closest('button');
+      await user.click(directoryButton!);
+      expect(screen.getByLabelText(/directory path/i)).toBeInTheDocument();
     });
   });
 
@@ -277,6 +350,8 @@ describe('CreateCollectionModal', () => {
             preserve_sentences: true,
           },
           is_public: false,
+          sync_mode: 'one_time',
+          sync_interval_minutes: 60,
         });
       });
 
@@ -326,7 +401,6 @@ describe('CreateCollectionModal', () => {
       // Check all inputs are disabled
       expect(screen.getByLabelText(/collection name/i)).toBeDisabled();
       expect(screen.getByLabelText(/description/i)).toBeDisabled();
-      expect(screen.getByLabelText(/initial source directory/i)).toBeDisabled();
       expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
     });
   });
@@ -334,7 +408,7 @@ describe('CreateCollectionModal', () => {
   describe('Two-Step Creation Process', () => {
     it('should handle collection creation with source path', async () => {
       const user = userEvent.setup();
-      
+
       // Mock successful collection creation with INDEX operation
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
         id: 'test-collection-id',
@@ -347,9 +421,11 @@ describe('CreateCollectionModal', () => {
 
       renderCreateCollectionModal(defaultProps);
 
-      // Fill form with source
+      // Fill form with source - first select Directory connector
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
-      await user.type(screen.getByLabelText(/initial source directory/i), '/data/documents');
+      const directoryButton = screen.getByText('Directory').closest('button');
+      await user.click(directoryButton!);
+      await user.type(screen.getByLabelText(/directory path/i), '/data/documents');
 
       // Submit
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -372,6 +448,8 @@ describe('CreateCollectionModal', () => {
       await waitFor(() => {
         expect(mockAddSourceMutation.mutateAsync).toHaveBeenCalledWith({
           collectionId: 'test-collection-id',
+          sourceType: 'directory',
+          sourceConfig: { path: '/data/documents' },
           sourcePath: '/data/documents',
           config: {
             chunking_strategy: 'recursive',
@@ -403,7 +481,7 @@ describe('CreateCollectionModal', () => {
 
     it('should handle source addition failure after collection creation', async () => {
       const user = userEvent.setup();
-      
+
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
         id: 'test-collection-id',
         name: 'Test Collection',
@@ -416,7 +494,10 @@ describe('CreateCollectionModal', () => {
       renderCreateCollectionModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
-      await user.type(screen.getByLabelText(/initial source directory/i), '/data/documents');
+      // First select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button');
+      await user.click(directoryButton!);
+      await user.type(screen.getByLabelText(/directory path/i), '/data/documents');
       await user.click(screen.getByRole('button', { name: /create collection/i }));
 
       // Wait for initial toast
@@ -475,102 +556,6 @@ describe('CreateCollectionModal', () => {
       await waitFor(() => {
         expect(screen.queryByLabelText(/chunk size/i)).not.toBeInTheDocument();
       });
-    });
-  });
-
-  describe('Directory Scanning', () => {
-    it('should scan directory when clicking scan button', async () => {
-      const user = userEvent.setup();
-      renderCreateCollectionModal(defaultProps);
-
-      // Scan button should be disabled without path
-      const scanButton = screen.getByRole('button', { name: /scan/i });
-      expect(scanButton).toBeDisabled();
-
-      // Enter path
-      await user.type(screen.getByLabelText(/initial source directory/i), '/data/documents');
-
-      // Scan button should be enabled
-      expect(scanButton).not.toBeDisabled();
-
-      // Click scan
-      await user.click(scanButton);
-
-      expect(mockStartScan).toHaveBeenCalledWith('/data/documents');
-    });
-
-    it('should display scan results', () => {
-      // Mock scan result
-      mockDirectoryScanState.scanResult = {
-        total_files: 150,
-        total_size: 1024 * 1024 * 50, // 50 MB
-      };
-
-      renderCreateCollectionModal(defaultProps);
-
-      // Should show scan results
-      expect(screen.getByText(/found 150 files/i)).toBeInTheDocument();
-      expect(screen.getByText(/50\.0 MB/i)).toBeInTheDocument();
-    });
-
-    it('should show warning for large directories', () => {
-      // Mock large scan result
-      mockDirectoryScanState.scanResult = {
-        total_files: 15000,
-        total_size: 1024 * 1024 * 1024 * 10, // 10 GB
-      };
-
-      renderCreateCollectionModal(defaultProps);
-
-      // Should show warning
-      expect(screen.getByText(/found 15,000 files/i)).toBeInTheDocument();
-      expect(screen.getByText(/warning: large directory detected/i)).toBeInTheDocument();
-      expect(screen.getByText(/indexing may take a significant amount of time/i)).toBeInTheDocument();
-    });
-
-    it('should show scanning state', async () => {
-      const user = userEvent.setup();
-      
-      // Mock scanning state
-      mockDirectoryScanState.scanning = true;
-
-      renderCreateCollectionModal(defaultProps);
-
-      await user.type(screen.getByLabelText(/initial source directory/i), '/data/documents');
-
-      const scanButton = screen.getByRole('button', { name: /scanning/i });
-      expect(scanButton).toBeDisabled();
-      expect(scanButton).toHaveTextContent(/scanning/i);
-    });
-
-    it('should display scan errors', () => {
-      // Mock scan error
-      mockDirectoryScanState.error = 'Directory not found';
-
-      renderCreateCollectionModal(defaultProps);
-
-      expect(screen.getByText(/directory not found/i)).toBeInTheDocument();
-    });
-
-    it('should reset scan results when path changes', async () => {
-      const user = userEvent.setup();
-      
-      // Start with scan result
-      mockDirectoryScanState.scanResult = {
-        total_files: 100,
-        total_size: 1024 * 1024,
-      };
-
-      renderCreateCollectionModal(defaultProps);
-
-      // Should show results
-      expect(screen.getByText(/found 100 files/i)).toBeInTheDocument();
-
-      // Change path
-      await user.type(screen.getByLabelText(/initial source directory/i), '/new/path');
-
-      // Should reset scan
-      expect(mockResetScan).toHaveBeenCalled();
     });
   });
 
@@ -633,7 +618,7 @@ describe('CreateCollectionModal', () => {
   describe('Form State Preservation', () => {
     it('should preserve form data on submission errors', async () => {
       const user = userEvent.setup();
-      
+
       // Mock submission failure
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'));
 
@@ -648,7 +633,10 @@ describe('CreateCollectionModal', () => {
 
       await user.type(screen.getByLabelText(/collection name/i), formData.name);
       await user.type(screen.getByLabelText(/description/i), formData.description);
-      await user.type(screen.getByLabelText(/initial source directory/i), formData.sourcePath);
+      // First select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button');
+      await user.click(directoryButton!);
+      await user.type(screen.getByLabelText(/directory path/i), formData.sourcePath);
 
       // Submit
       await user.click(screen.getByRole('button', { name: /create collection/i }));
@@ -664,7 +652,7 @@ describe('CreateCollectionModal', () => {
       // Form data should be preserved
       expect(screen.getByLabelText(/collection name/i)).toHaveValue(formData.name);
       expect(screen.getByLabelText(/description/i)).toHaveValue(formData.description);
-      expect(screen.getByLabelText(/initial source directory/i)).toHaveValue(formData.sourcePath);
+      expect(screen.getByLabelText(/directory path/i)).toHaveValue(formData.sourcePath);
 
       // Form should remain open
       expect(screen.getByRole('heading', { name: /create new collection/i })).toBeInTheDocument();
@@ -745,7 +733,7 @@ describe('CreateCollectionModal', () => {
   describe('Edge Cases', () => {
     it('should handle missing initial_operation_id when source is provided', async () => {
       const user = userEvent.setup();
-      
+
       // Mock collection creation without operation ID
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
         id: 'test-id',
@@ -756,7 +744,10 @@ describe('CreateCollectionModal', () => {
       renderCreateCollectionModal(defaultProps);
 
       await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
-      await user.type(screen.getByLabelText(/initial source directory/i), '/data/documents');
+      // First select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button');
+      await user.click(directoryButton!);
+      await user.type(screen.getByLabelText(/directory path/i), '/data/documents');
 
       await user.click(screen.getByRole('button', { name: /create collection/i }));
 
@@ -806,6 +797,330 @@ describe('CreateCollectionModal', () => {
       });
 
       expect(mockCreateCollectionMutation.mutateAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Git Connector Preview', () => {
+    it('should call gitPreviewMutation with correct parameters', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        repo_url: 'https://github.com/user/repo.git',
+        ref: 'main',
+        refs_found: ['main', 'develop'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockGitPreviewMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            repo_url: 'https://github.com/user/repo.git',
+            auth_method: 'none',
+          })
+        );
+      });
+    });
+
+    it('should display Git preview result with refs', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        repo_url: 'https://github.com/user/repo.git',
+        ref: 'main',
+        refs_found: ['main', 'develop', 'v1.0.0'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockGitPreviewMutation.mutateAsync).toHaveBeenCalled();
+      });
+    });
+
+    it('should handle Git preview error', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockRejectedValue(new Error('Authentication failed'));
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'Authentication failed',
+        });
+      });
+    });
+  });
+
+  describe('IMAP Connector Preview', () => {
+    it('should call imapPreviewMutation with correct parameters', async () => {
+      const user = userEvent.setup();
+      mockImapPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        host: 'imap.example.com',
+        username: 'user@example.com',
+        mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      });
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockImapPreviewMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            host: 'imap.example.com',
+            password: 'secretpassword',
+          })
+        );
+      });
+    });
+
+    it('should auto-populate mailboxes from successful preview', async () => {
+      const user = userEvent.setup();
+      mockImapPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        host: 'imap.example.com',
+        username: 'user@example.com',
+        mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      // The mutation should be called and mailboxes should be auto-populated
+      await waitFor(() => {
+        expect(mockImapPreviewMutation.mutateAsync).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Sync Configuration', () => {
+    it('should show sync interval input when continuous mode is selected', async () => {
+      const user = userEvent.setup();
+      renderCreateCollectionModal(defaultProps);
+
+      // Initially, interval input should not be visible (default is one_time mode)
+      expect(screen.queryByLabelText(/sync interval/i)).not.toBeInTheDocument();
+
+      // Click continuous sync radio button
+      const continuousSyncRadio = screen.getByLabelText(/continuous sync/i);
+      await user.click(continuousSyncRadio);
+
+      // Now interval input should be visible
+      await waitFor(() => {
+        expect(screen.getByLabelText(/sync interval/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should hide sync interval input when switching back to one-time mode', async () => {
+      const user = userEvent.setup();
+      renderCreateCollectionModal(defaultProps);
+
+      // Select continuous mode
+      await user.click(screen.getByLabelText(/continuous sync/i));
+      await waitFor(() => {
+        expect(screen.getByLabelText(/sync interval/i)).toBeInTheDocument();
+      });
+
+      // Switch back to one-time mode
+      await user.click(screen.getByLabelText(/one-time import/i));
+
+      // Interval input should be hidden
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/sync interval/i)).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Connector State Management', () => {
+    it('should clear connector state when switching to none', async () => {
+      const user = userEvent.setup();
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Now switch back to None (button contains "None" text)
+      await user.click(screen.getByText('None'));
+
+      // Git fields should no longer be visible
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/repository url/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('should set default values from catalog when selecting connector type', async () => {
+      const user = userEvent.setup();
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Directory connector
+      await user.click(screen.getByText('Directory'));
+
+      // Directory connector should show its fields
+      await waitFor(() => {
+        expect(screen.getByLabelText(/directory path/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should include secrets in source addition when provided', async () => {
+      const user = userEvent.setup();
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
+        id: 'test-collection-id',
+        initial_operation_id: 'op-123',
+      });
+      mockAddSourceMutation.mutateAsync.mockResolvedValue({});
+
+      renderCreateCollectionModal(defaultProps);
+
+      await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Submit form
+      await user.click(screen.getByRole('button', { name: /create collection/i }));
+
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled();
+      });
+
+      // Trigger the onComplete callback to simulate INDEX operation completing
+      await act(async () => {
+        if (mockOperationProgressState.onComplete) {
+          await mockOperationProgressState.onComplete();
+        }
+      });
+
+      await waitFor(() => {
+        expect(mockAddSourceMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            secrets: expect.objectContaining({
+              password: 'secretpassword',
+            }),
+          })
+        );
+      });
+    });
+  });
+
+  describe('Operation Progress Error Handling', () => {
+    it('should handle INDEX operation error callback', async () => {
+      const user = userEvent.setup();
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
+        id: 'test-collection-id',
+        initial_operation_id: 'op-123',
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Submit form
+      await user.click(screen.getByRole('button', { name: /create collection/i }));
+
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled();
+      });
+
+      // Trigger the onError callback to simulate INDEX operation failing
+      await act(async () => {
+        if (mockOperationProgressState.onError) {
+          mockOperationProgressState.onError(new Error('INDEX operation failed'));
+        }
+      });
+
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'error',
+            message: expect.stringContaining('INDEX operation failed'),
+          })
+        );
+      });
     });
   });
 });

@@ -16,13 +16,23 @@ This is a personal project and still pre‑release — expect rough edges and AP
 ## What It Does
 - **Collections**: group documents with their own embedding + chunking config.
 - **Ingestion pipeline**: scan → extract → chunk → embed → upsert, all async.
+- **Connectors**: pluggable ingestion sources — built-ins so far are directories, Git repos, and IMAP mailboxes (credentials encrypted at rest; see `docs/CONNECTORS.md`).
 - **Formats** include PDF, DOCX, Markdown, HTML, plain text, and more (via `unstructured`).
 - **Search**: semantic, keyword, and hybrid modes, with optional cross‑encoder reranking.
 - **Live progress** is streamed to the UI over Redis + WebSockets.
 - **Zero‑downtime reindexing**: blue/green staging + swap + cleanup.
-- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system.
+- **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
 - **Visualize:** project embeddings into 2D space & visualize relationships
+- **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
+
+## Sources & Continuous Sync
+
+Collections support multiple data sources with optional continuous sync:
+
+- **Sync Modes**: `one_time` (manual) or `continuous` (automatic at intervals)
+- **Interval**: Minimum 15 minutes for continuous sync
+- **Encrypted Credentials**: Git tokens, SSH keys, and IMAP passwords stored encrypted at rest
 
 ## Architecture
 Three Python packages, one frontend:
@@ -59,6 +69,8 @@ make wizard
 
 # Manual setup:
 cp .env.docker.example .env
+# IMPORTANT: Replace placeholders in .env before starting.
+# If you are not using connectors with credentials, set CONNECTOR_SECRETS_KEY="" to disable secrets encryption.
 make docker-up
 ```
 
@@ -73,7 +85,7 @@ Stop: `make docker-down` (keep volumes) or `make docker-down-clean` (wipe volume
 
 ## Usage
 1. Open the UI at `http://localhost:8080` and create a collection.
-2. Add one or more sources (directories). Semantik will index in the background.
+2. Add one or more sources (directories; optionally Git repos / IMAP mailboxes). Semantik will index in the background.
 3. Search across one or more collections.
 
 If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_REFERENCE.md`.
@@ -85,6 +97,7 @@ If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_
 - `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
 - `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).
 - `HF_CACHE_DIR` – persistent HuggingFace model cache (avoids re‑downloads).
+- `CONNECTOR_SECRETS_KEY` – Fernet key for encrypting connector credentials in the DB (set to empty to disable).
 - `CELERY_CONCURRENCY`, `CELERY_MAX_CONCURRENCY` – worker parallelism.
 - `EMBEDDING_CONCURRENCY_PER_WORKER` – throttle embed calls per worker (VRAM‑friendly).
 

@@ -220,7 +220,7 @@ async def _lookup_collection_from_operation(operation_uuid: str) -> str | None:
             operation = await repo.get_by_uuid(operation_uuid)
             if operation and operation.collection:
                 # Return the vector_store_name which is the Qdrant collection name
-                return operation.collection.vector_store_name
+                return cast(str, operation.collection.vector_store_name)
     except Exception as e:
         logger.warning(f"Failed to lookup operation {operation_uuid}: {e}")
 
@@ -393,7 +393,7 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     # Check cache first
     cached = get_collection_info(collection_name)
     if cached is not None:
-        return cached
+        return cast(tuple[int, dict[str, Any] | None], cached)
 
     cfg = _get_settings()
     vector_dim = 1024
@@ -435,7 +435,7 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
     # Check cache first
     cached = get_collection_metadata(collection_name)
     if not is_cache_miss(cached):
-        return cached
+        return cast(dict[str, Any] | None, cached)
 
     # Cache miss - fetch from Qdrant
     try:
@@ -446,7 +446,7 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         if sdk_client is not None:
             metadata = await get_collection_metadata_async(sdk_client, collection_name)
             set_collection_metadata(collection_name, metadata)
-            return metadata
+            return cast(dict[str, Any] | None, metadata)
 
         # Fallback: create ad-hoc client (rare - only when state not initialized)
         from qdrant_client import AsyncQdrantClient
@@ -455,7 +455,7 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         try:
             metadata = await get_collection_metadata_async(async_client, collection_name)
             set_collection_metadata(collection_name, metadata)
-            return metadata
+            return cast(dict[str, Any] | None, metadata)
         finally:
             await async_client.close()
     except Exception as e:  # pragma: no cover - best effort path

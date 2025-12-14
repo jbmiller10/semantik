@@ -207,6 +207,8 @@ Content-Type: application/json
 Authorization: Bearer {token}
 ```
 
+This endpoint starts an `append` operation and (re)uses a `collection_sources` record under the hood. Use the “Manage Sources” endpoints below to update sync settings and store encrypted credentials.
+
 **Request (preferred flexible format):**
 ```json
 {
@@ -233,6 +235,48 @@ Authorization: Bearer {token}
 ```
 
 Initiates an operation to add documents from a source to the collection.
+
+### Manage Sources (sync, secrets, runs)
+
+List sources (to get `source_id` for updates/runs):
+```http
+GET /api/v2/collections/{collection_id}/sources?offset=0&limit=50
+Authorization: Bearer {token}
+```
+
+Update a source’s sync settings and/or encrypted secrets:
+```http
+PATCH /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "sync_mode": "continuous",
+  "interval_minutes": 60,
+  "secrets": {
+    "token": "ghp_..."
+  }
+}
+```
+
+Trigger a run immediately:
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/run
+Authorization: Bearer {token}
+```
+
+Pause/resume continuous sync:
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/pause
+POST /api/v2/collections/{collection_id}/sources/{source_id}/resume
+Authorization: Bearer {token}
+```
+
+Delete a source (removes documents/vectors, then deletes the source record):
+```http
+DELETE /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {token}
+```
 
 ### List Collection Documents
 ```http

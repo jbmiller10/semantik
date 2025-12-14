@@ -40,6 +40,9 @@ class CollectionSourceRepository:
     ) -> CollectionSource:
         """Create a new collection source.
 
+        Note: Sync policy (mode, interval, pause) is now managed at the collection level.
+        Sources only track per-source telemetry (last_run_* fields).
+
         Args:
             collection_id: UUID of the parent collection
             source_type: Type of source (directory, web, slack, etc.)
@@ -304,3 +307,108 @@ class CollectionSourceRepository:
         except Exception as e:
             logger.error(f"Failed to delete collection source: {e}")
             raise DatabaseOperationError("delete", "collection_source", str(e)) from e
+
+    # -------------------------------------------------------------------------
+    # Source update and sync telemetry methods
+    # Note: Sync policy (mode, interval, pause) is now at collection level.
+    # Sources only track per-source telemetry (last_run_* fields).
+    # -------------------------------------------------------------------------
+
+    async def update(
+        self,
+        source_id: int,
+        source_config: dict[str, Any] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> CollectionSource:
+        """Update a collection source.
+
+        Note: Sync policy is managed at collection level, not source level.
+
+        Args:
+            source_id: Integer ID of the source
+            source_config: New connector-specific configuration
+            meta: New metadata
+
+        Returns:
+            Updated CollectionSource instance
+
+        Raises:
+            EntityNotFoundError: If source not found
+        """
+        try:
+            source = await self.get_by_id(source_id)
+            if not source:
+                raise EntityNotFoundError("collection_source", str(source_id))
+
+            # Apply updates
+            if source_config is not None:
+                source.source_config = source_config
+            if meta is not None:
+                source.meta = meta
+
+            source.updated_at = datetime.now(UTC)
+            await self.session.flush()
+
+            logger.info(f"Updated collection source {source_id}")
+            return source
+
+        except EntityNotFoundError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update collection source: {e}")
+            raise DatabaseOperationError("update", "collection_source", str(e)) from e
+
+    async def update_sync_status(
+        self,
+        source_id: int,
+        status: str,
+        error: str | None = None,
+        started_at: datetime | None = None,
+        completed_at: datetime | None = None,
+    ) -> CollectionSource:
+        """Update sync telemetry after a run.
+
+        This tracks per-source sync results for observability.
+        Sync scheduling is managed at the collection level.
+
+        Args:
+            source_id: Integer ID of the source
+            status: Run status ('success', 'failed', 'partial')
+            error: Error message if status is 'failed' or 'partial'
+            started_at: When the run started
+            completed_at: When the run completed
+
+        Returns:
+            Updated CollectionSource instance
+
+        Raises:
+            EntityNotFoundError: If source not found
+            ValidationError: If status is invalid
+        """
+        try:
+            if status not in ("success", "failed", "partial"):
+                raise ValidationError("status must be 'success', 'failed', or 'partial'", "status")
+
+            source = await self.get_by_id(source_id)
+            if not source:
+                raise EntityNotFoundError("collection_source", str(source_id))
+
+            source.last_run_status = status
+            source.last_error = error if status in ("failed", "partial") else None
+
+            if started_at:
+                source.last_run_started_at = started_at
+            if completed_at:
+                source.last_run_completed_at = completed_at
+
+            source.updated_at = datetime.now(UTC)
+            await self.session.flush()
+
+            logger.info(f"Updated sync status for source {source_id}: {status}")
+            return source
+
+        except (EntityNotFoundError, ValidationError):
+            raise
+        except Exception as e:
+            logger.error(f"Failed to update sync status: {e}")
+            raise DatabaseOperationError("update_sync_status", "collection_source", str(e)) from e

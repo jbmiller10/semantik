@@ -36,12 +36,17 @@
     <purpose>React components organized by feature</purpose>
     <subdirs>
       - chunking/: Chunking UI components
+      - connectors/: Data source connector UI (Directory, Git, IMAP)
       - __tests__/: Component tests
     </subdirs>
     <key-components>
       - CollectionsDashboard: Main collection view
       - SearchInterface: Semantic search UI
       - OperationProgress: Real-time progress tracking
+      - CreateCollectionModal: Collection creation with optional data source
+      - AddDataToCollectionModal: Add data sources to existing collections
+      - ConnectorTypeSelector: Card-based connector type picker
+      - ConnectorForm: Dynamic form rendering based on connector definition
     </key-components>
   </dir>
   
@@ -64,6 +69,7 @@
       - collections.ts: Collection API
       - operations.ts: Operation tracking
       - search.ts: Search API
+      - connectors.ts: Connector catalog and preview APIs
     </modules>
   </dir>
   
@@ -73,9 +79,32 @@
       - useWebSocket: WebSocket with auto-reconnect
       - useCollections: Collection data fetching
       - useOperationProgress: Real-time progress
+      - useConnectorCatalog: Fetch available connector types
+      - useGitPreview: Test Git repository connections
+      - useImapPreview: Test IMAP server connections
     </key-hooks>
   </dir>
 </directory-structure>
+
+<connector-system>
+  <overview>
+    Dynamic connector UI for adding data sources (Directory, Git, IMAP).
+    Connector definitions come from backend API at /api/v2/connectors.
+    Forms render dynamically based on field definitions.
+  </overview>
+  <components>
+    - ConnectorTypeSelector: Card-based picker with icons
+    - ConnectorForm: Dynamic field rendering with validation
+  </components>
+  <adding-new-connectors>
+    Backend changes auto-populate the UI, but frontend needs:
+    1. Icon mapping in ConnectorTypeSelector.tsx (connectorIcons)
+    2. Display order in ConnectorTypeSelector.tsx (displayOrder)
+    3. Short description in getShortDescription()
+    4. Preview handler in handlePreview() if connector supports preview
+    5. Source path case in getSourcePath()
+  </adding-new-connectors>
+</connector-system>
 
 <websocket-integration>
   <client>services/websocket.ts</client>

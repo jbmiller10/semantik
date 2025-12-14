@@ -43,6 +43,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -218,6 +219,18 @@ class Collection(Base):
     chunks_total_count = Column(Integer, nullable=False, default=0)
     chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Sync policy fields (collection-level sync configuration)
+    sync_mode = Column(String(20), nullable=False, default="one_time")  # 'one_time' or 'continuous'
+    sync_interval_minutes = Column(Integer, nullable=True)  # Sync interval for continuous mode (min 15)
+    sync_paused_at = Column(DateTime(timezone=True), nullable=True)  # NULL = not paused
+    sync_next_run_at = Column(DateTime(timezone=True), nullable=True)  # When next sync should run
+
+    # Sync run tracking fields
+    sync_last_run_started_at = Column(DateTime(timezone=True), nullable=True)
+    sync_last_run_completed_at = Column(DateTime(timezone=True), nullable=True)
+    sync_last_run_status = Column(String(20), nullable=True)  # 'running', 'success', 'failed', 'partial'
+    sync_last_error = Column(Text, nullable=True)  # Error summary from last failed sync
+
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
@@ -233,6 +246,7 @@ class Collection(Base):
         "ChunkingConfig", foreign_keys=[default_chunking_config_id], back_populates="collections"
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
+    sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -270,11 +284,16 @@ class Document(Base):
     chunking_started_at = Column(DateTime(timezone=True), nullable=True)
     chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Sync tracking fields (for continuous sync "keep last-known" behavior)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)  # When document was last seen during sync
+    is_stale = Column(Boolean, nullable=False, default=False)  # Marks documents not seen in recent sync
+
     # Relationships
     collection = relationship("Collection", back_populates="documents")
     source = relationship("CollectionSource", back_populates="documents")
     chunking_config = relationship("ChunkingConfig", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+    artifacts = relationship("DocumentArtifact", back_populates="document", cascade="all, delete-orphan")
 
     # Indexes
     __table_args__ = (
@@ -286,6 +305,70 @@ class Document(Base):
             "uri",
             unique=True,
             postgresql_where=text("uri IS NOT NULL"),
+        ),
+    )
+
+
+class ArtifactKind(str, enum.Enum):
+    """Types of document artifacts."""
+
+    PRIMARY = "primary"
+    PREVIEW = "preview"
+    THUMBNAIL = "thumbnail"
+
+
+class DocumentArtifact(Base):
+    """Artifact model for storing document content in database.
+
+    Used for non-file sources (Git, IMAP, web) where content cannot be
+    served from the filesystem. The content endpoint checks for artifacts
+    first, then falls back to file serving.
+
+    Artifacts can be:
+    - primary: The canonical document content
+    - preview: A preview/summary version
+    - thumbnail: A thumbnail image (for visual documents)
+    """
+
+    __tablename__ = "document_artifacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(
+        String,
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    artifact_kind = Column(String(20), nullable=False, default="primary")
+    mime_type = Column(String(255), nullable=False)
+    charset = Column(String(50), nullable=True)
+    content_text = Column(Text, nullable=True)  # For text-based content
+    content_bytes = Column(LargeBinary, nullable=True)  # For binary content
+    content_hash = Column(String(64), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    is_truncated = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    document = relationship("Document", back_populates="artifacts")
+    collection = relationship("Collection")
+
+    __table_args__ = (
+        UniqueConstraint("document_id", "artifact_kind", name="uq_document_artifact_kind"),
+        CheckConstraint(
+            "content_text IS NOT NULL OR content_bytes IS NOT NULL",
+            name="ck_content_present",
+        ),
+        CheckConstraint(
+            "artifact_kind IN ('primary', 'preview', 'thumbnail')",
+            name="ck_artifact_kind_values",
         ),
     )
 
@@ -385,12 +468,100 @@ class CollectionSource(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
+    # Sync telemetry fields (per-source status tracking)
+    # Note: Sync policy (mode, interval, pause) is now at collection level
+    last_run_started_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_completed_at = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(String(20), nullable=True)  # 'success', 'failed', 'partial'
+    last_error = Column(Text, nullable=True)  # Error message from last failed sync
+
     # Relationships
     collection = relationship("Collection", back_populates="sources")
     documents = relationship("Document", back_populates="source")
+    secrets = relationship("ConnectorSecret", back_populates="source", cascade="all, delete-orphan")
 
     # Constraints
     __table_args__ = (UniqueConstraint("collection_id", "source_path", name="uq_collection_source_path"),)
+
+
+class ConnectorSecret(Base):
+    """Encrypted secrets for connector authentication.
+
+    Stores encrypted credentials (passwords, tokens, SSH keys) for
+    connector sources. Secrets are encrypted using Fernet symmetric
+    encryption and are never returned via API responses.
+
+    Secret types:
+    - password: IMAP password, generic password
+    - token: HTTPS access token, API key
+    - ssh_key: SSH private key content
+    - ssh_passphrase: Passphrase for encrypted SSH key
+    """
+
+    __tablename__ = "connector_secrets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_source_id = Column(
+        Integer,
+        ForeignKey("collection_sources.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    secret_type = Column(String(50), nullable=False)  # 'password', 'token', 'ssh_key', etc.
+    ciphertext = Column(LargeBinary, nullable=False)  # Fernet-encrypted data
+    key_id = Column(String(64), nullable=False)  # Identifies which key encrypted this
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    source = relationship("CollectionSource", back_populates="secrets")
+
+    __table_args__ = (UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),)
+
+
+class CollectionSyncRun(Base):
+    """Tracks a single sync run across all sources in a collection.
+
+    Each sync run fans out APPEND operations to all sources and tracks
+    their completion status for aggregated reporting.
+
+    Status values:
+    - running: Sync run in progress
+    - success: All sources completed successfully
+    - partial: Some sources failed or had partial success
+    - failed: All sources failed
+
+    The triggered_by field indicates how the sync was initiated:
+    - scheduler: Automatic dispatch from Celery Beat
+    - manual: User triggered via API
+    """
+
+    __tablename__ = "collection_sync_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    triggered_by = Column(String(50), nullable=False)  # 'scheduler', 'manual'
+    started_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(20), nullable=False, default="running")  # running, success, failed, partial
+
+    # Source completion tracking
+    expected_sources = Column(Integer, nullable=False, default=0)
+    completed_sources = Column(Integer, nullable=False, default=0)
+    failed_sources = Column(Integer, nullable=False, default=0)
+    partial_sources = Column(Integer, nullable=False, default=0)
+
+    # Error summary
+    error_summary = Column(Text, nullable=True)
+    meta = Column(JSON, nullable=True)
+
+    # Relationships
+    collection = relationship("Collection", back_populates="sync_runs")
 
 
 class Operation(Base):

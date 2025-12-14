@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +15,12 @@ from shared.database.exceptions import (
     EntityAlreadyExistsError,
     EntityNotFoundError,
     InvalidStateError,
+    ValidationError,
 )
-from shared.database.models import Collection, CollectionStatus, OperationType
+from shared.database.models import Collection, CollectionStatus, CollectionSyncRun, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.collection_source_repository import CollectionSourceRepository
+from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.managers import QdrantManager
@@ -46,6 +49,7 @@ class CollectionService:
         document_repo: DocumentRepository,
         collection_source_repo: CollectionSourceRepository,
         qdrant_manager: QdrantManager | None,
+        sync_run_repo: CollectionSyncRunRepository | None = None,
     ):
         """Initialize the collection service."""
         self.db_session = db_session
@@ -54,6 +58,7 @@ class CollectionService:
         self.document_repo = document_repo
         self.collection_source_repo = collection_source_repo
         self.qdrant_manager = qdrant_manager
+        self.sync_run_repo = sync_run_repo
 
     def _ensure_qdrant_manager(self) -> QdrantManager | None:
         """Lazily resolve a Qdrant manager, honoring test monkeypatches."""
@@ -108,6 +113,21 @@ class CollectionService:
             is_public = (config.get("is_public") if config else None) or False
 
             meta = config.get("metadata") if config else None
+            sync_mode = (config.get("sync_mode") if config else None) or "one_time"
+            sync_interval_minutes = config.get("sync_interval_minutes") if config else None
+            sync_next_run_at = None
+
+            if sync_mode not in {"one_time", "continuous"}:
+                raise ValueError("sync_mode must be one_time or continuous")
+
+            if sync_mode == "continuous":
+                if sync_interval_minutes is None:
+                    raise ValueError("sync_interval_minutes is required for continuous sync mode")
+                if sync_interval_minutes < 15:
+                    raise ValueError("sync_interval_minutes must be at least 15 minutes for continuous sync mode")
+                sync_next_run_at = datetime.now(UTC) + timedelta(minutes=sync_interval_minutes)
+            else:
+                sync_interval_minutes = None
 
             # Validate chunking strategy if provided
             if chunking_strategy is not None:
@@ -163,6 +183,9 @@ class CollectionService:
                 chunking_config=chunking_config,
                 is_public=is_public,
                 meta=meta,
+                sync_mode=sync_mode,
+                sync_interval_minutes=sync_interval_minutes,
+                sync_next_run_at=sync_next_run_at,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -236,14 +259,24 @@ class CollectionService:
             AccessDeniedError: If user doesn't have permission
             InvalidStateError: If collection is in invalid state
         """
-        # Normalize: derive source_config from legacy_source_path if needed
-        if source_config is None and legacy_source_path is not None:
-            source_config = {"path": legacy_source_path}
-            source_type = "directory"
+        # Normalize: derive/augment source_config from legacy_source_path if needed
+        if legacy_source_path is not None:
+            if not source_config:
+                source_config = {"path": legacy_source_path}
+                source_type = "directory"
+            elif source_type == "directory" and "path" not in source_config:
+                # Some clients send directory options (e.g., recursive) in source_config
+                # while still providing the actual path separately. Merge the path in.
+                source_config = {**source_config, "path": legacy_source_path}
 
         # Derive source_path for the operation config (for display/audit)
         # For directory sources, use "path"; for web sources, use "url"; otherwise first value
         source_path = self._derive_source_path(source_type, source_config)
+        if not source_path:
+            raise ValidationError(
+                "source_config must include a path/url/identifier (e.g. source_config={'path': ...}) or provide source_path",
+                "source_path",
+            )
 
         # Get collection with permission check
         collection = await self.collection_repo.get_by_uuid_with_permission_check(
@@ -646,6 +679,50 @@ class CollectionService:
         if collection.owner_id != user_id:
             raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
 
+        # Handle sync policy updates
+        current_sync_mode = getattr(collection, "sync_mode", "one_time") or "one_time"
+        current_sync_interval_minutes = getattr(collection, "sync_interval_minutes", None)
+
+        if "sync_mode" in updates or "sync_interval_minutes" in updates:
+            requested_sync_mode = updates.get("sync_mode", current_sync_mode) or current_sync_mode
+            requested_sync_mode = str(requested_sync_mode)
+            requested_sync_interval_minutes = updates.get("sync_interval_minutes", current_sync_interval_minutes)
+
+            mode_changed = "sync_mode" in updates and requested_sync_mode != current_sync_mode
+            interval_changed = (
+                "sync_interval_minutes" in updates and requested_sync_interval_minutes != current_sync_interval_minutes
+            )
+
+            if requested_sync_mode not in {"one_time", "continuous"}:
+                raise ValidationError("sync_mode must be one_time or continuous", "sync_mode")
+
+            if requested_sync_mode == "one_time":
+                updates["sync_mode"] = "one_time"
+                updates["sync_interval_minutes"] = None
+                updates["sync_paused_at"] = None
+                updates["sync_next_run_at"] = None
+            else:
+                if requested_sync_interval_minutes is None:
+                    raise ValidationError(
+                        "sync_interval_minutes is required for continuous sync mode",
+                        "sync_interval_minutes",
+                    )
+                if requested_sync_interval_minutes < 15:
+                    raise ValidationError(
+                        "sync_interval_minutes must be at least 15 minutes for continuous sync mode",
+                        "sync_interval_minutes",
+                    )
+
+                updates["sync_mode"] = "continuous"
+                updates["sync_interval_minutes"] = requested_sync_interval_minutes
+
+                paused_at = updates.get("sync_paused_at", getattr(collection, "sync_paused_at", None))
+                if mode_changed and current_sync_mode != "continuous":
+                    updates["sync_paused_at"] = None
+                    paused_at = None
+                if paused_at is None and (mode_changed or interval_changed):
+                    updates["sync_next_run_at"] = datetime.now(UTC) + timedelta(minutes=requested_sync_interval_minutes)
+
         # Handle chunking strategy update with validation
         if "chunking_strategy" in updates:
             strategy = updates["chunking_strategy"]
@@ -1041,8 +1118,19 @@ class CollectionService:
             "updated_at": getattr(collection, "updated_at", None),
             "document_count": getattr(collection, "document_count", 0),
             "vector_count": getattr(collection, "vector_count", 0),
+            "total_size_bytes": getattr(collection, "total_size_bytes", 0) or 0,
             "status": status_value,
             "status_message": getattr(collection, "status_message", None),
+            # Sync policy fields
+            "sync_mode": getattr(collection, "sync_mode", "one_time") or "one_time",
+            "sync_interval_minutes": getattr(collection, "sync_interval_minutes", None),
+            "sync_paused_at": getattr(collection, "sync_paused_at", None),
+            "sync_next_run_at": getattr(collection, "sync_next_run_at", None),
+            # Sync run tracking
+            "sync_last_run_started_at": getattr(collection, "sync_last_run_started_at", None),
+            "sync_last_run_completed_at": getattr(collection, "sync_last_run_completed_at", None),
+            "sync_last_run_status": getattr(collection, "sync_last_run_status", None),
+            "sync_last_error": getattr(collection, "sync_last_error", None),
         }
         base["config"] = {
             "embedding_model": base["embedding_model"],
@@ -1055,3 +1143,248 @@ class CollectionService:
             "metadata": base["metadata"],
         }
         return base
+
+    def _ensure_sync_run_repo(self) -> CollectionSyncRunRepository:
+        """Ensure sync run repository is available."""
+        if self.sync_run_repo is None:
+            self.sync_run_repo = CollectionSyncRunRepository(self.db_session)
+        return self.sync_run_repo
+
+    # =========================================================================
+    # Collection Sync Methods
+    # =========================================================================
+
+    async def run_collection_sync(
+        self,
+        collection_id: str,
+        user_id: int,
+        triggered_by: str = "manual",
+    ) -> CollectionSyncRun:
+        """Trigger a sync run for all sources in a collection.
+
+        Fans out APPEND operations for each source and creates a sync run record
+        to track completion aggregation.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user triggering the sync
+            triggered_by: How the sync was triggered ('manual' or 'scheduler')
+
+        Returns:
+            Created CollectionSyncRun instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+            InvalidStateError: If collection is not in valid state or has active operations
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Validate collection state - must be READY or DEGRADED
+        if collection.status not in [CollectionStatus.READY, CollectionStatus.DEGRADED]:
+            raise InvalidStateError(
+                f"Cannot sync collection in {collection.status} state. "
+                f"Collection must be in READY or DEGRADED state."
+            )
+
+        # Check for active operations (collection-level gating)
+        active_operations = await self.operation_repo.get_active_operations(collection.id)
+        if active_operations:
+            raise InvalidStateError(
+                "Cannot start sync while another operation is in progress. "
+                "Please wait for all current operations to complete."
+            )
+
+        # Get all sources for this collection
+        sources, total = await self.collection_source_repo.list_by_collection(
+            collection_id=collection.id,
+            offset=0,
+            limit=1000,  # Assume reasonable upper bound
+        )
+
+        if not sources:
+            raise InvalidStateError("Cannot sync collection with no sources.")
+
+        # Create sync run record
+        sync_run_repo = self._ensure_sync_run_repo()
+        sync_run = await sync_run_repo.create(
+            collection_id=collection.id,
+            triggered_by=triggered_by,
+            expected_sources=len(sources),
+        )
+
+        # Update collection sync status
+        now = datetime.now(UTC)
+        await self.collection_repo.update_sync_status(
+            collection_uuid=collection.id,
+            status="running",
+            started_at=now,
+        )
+
+        # Create APPEND operations for each source
+        operations = []
+        for source in sources:
+            operation = await self.operation_repo.create(
+                collection_id=collection.id,
+                user_id=user_id,
+                operation_type=OperationType.APPEND,
+                config={
+                    "source_id": source.id,
+                    "source_type": source.source_type,
+                    "source_path": source.source_path,
+                    "source_config": source.source_config or {},
+                    "sync_run_id": sync_run.id,  # CRITICAL: Link to sync run for aggregation
+                    "triggered_by": triggered_by,
+                },
+            )
+            operations.append(operation)
+
+        # Update collection status to PROCESSING
+        await self.collection_repo.update_status(collection.id, CollectionStatus.PROCESSING)
+
+        # Calculate and set next sync run if continuous mode
+        if collection.sync_mode == "continuous" and collection.sync_interval_minutes:
+            next_run = now + timedelta(minutes=collection.sync_interval_minutes)
+            await self.collection_repo.set_next_sync_run(collection.id, next_run)
+
+        # Commit the transaction BEFORE dispatching tasks
+        await self.db_session.commit()
+
+        # Dispatch Celery tasks AFTER commit to avoid race condition
+        for operation in operations:
+            celery_app.send_task(
+                "webui.tasks.process_collection_operation",
+                args=[operation.uuid],
+                task_id=str(uuid.uuid4()),
+            )
+
+        logger.info(
+            f"Started sync run {sync_run.id} for collection {collection_id} "
+            f"with {len(sources)} sources (triggered_by={triggered_by})"
+        )
+
+        return sync_run
+
+    async def pause_collection_sync(
+        self,
+        collection_id: str,
+        user_id: int,
+    ) -> Collection:
+        """Pause continuous sync for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+            ValidationError: If collection is not in continuous sync mode
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Validate - must be continuous mode
+        if collection.sync_mode != "continuous":
+            raise ValidationError(
+                "Cannot pause sync - collection is not in continuous sync mode",
+                "sync_mode",
+            )
+
+        # Pause via repository
+        updated_collection = await self.collection_repo.pause_sync(collection.id)
+
+        await self.db_session.commit()
+
+        logger.info(f"Paused sync for collection {collection_id}")
+        return cast(Collection, updated_collection)
+
+    async def resume_collection_sync(
+        self,
+        collection_id: str,
+        user_id: int,
+    ) -> Collection:
+        """Resume continuous sync for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+
+        Returns:
+            Updated Collection instance
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+            ValidationError: If collection is not paused or not in continuous mode
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # Validate - must be continuous mode and paused
+        if collection.sync_mode != "continuous":
+            raise ValidationError(
+                "Cannot resume sync - collection is not in continuous sync mode",
+                "sync_mode",
+            )
+
+        if collection.sync_paused_at is None:
+            raise ValidationError(
+                "Cannot resume sync - collection is not paused",
+                "sync_paused_at",
+            )
+
+        # Resume via repository
+        updated_collection = await self.collection_repo.resume_sync(collection.id)
+
+        await self.db_session.commit()
+
+        logger.info(f"Resumed sync for collection {collection_id}")
+        return cast(Collection, updated_collection)
+
+    async def list_collection_sync_runs(
+        self,
+        collection_id: str,
+        user_id: int,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[CollectionSyncRun], int]:
+        """List sync runs for a collection.
+
+        Args:
+            collection_id: UUID of the collection
+            user_id: ID of the user
+            offset: Pagination offset
+            limit: Pagination limit
+
+        Returns:
+            Tuple of (sync runs list, total count)
+
+        Raises:
+            EntityNotFoundError: If collection not found
+            AccessDeniedError: If user doesn't have permission
+        """
+        # Get collection with permission check
+        collection = await self.collection_repo.get_by_uuid_with_permission_check(
+            collection_uuid=collection_id, user_id=user_id
+        )
+
+        # List sync runs
+        sync_run_repo = self._ensure_sync_run_repo()
+        sync_runs, total = await sync_run_repo.list_for_collection(
+            collection_id=collection.id,
+            offset=offset,
+            limit=limit,
+        )
+
+        return sync_runs, total

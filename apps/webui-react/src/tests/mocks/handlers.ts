@@ -282,6 +282,97 @@ export const handlers = [
     return HttpResponse.json({ message: 'Collection deleted successfully' })
   }),
 
+  // Connectors catalog endpoint
+  http.get('/api/v2/connectors', () => {
+    return HttpResponse.json({
+      directory: {
+        name: 'Directory',
+        description: 'Index files from a local directory',
+        icon: 'folder',
+        fields: [
+          {
+            name: 'path',
+            type: 'text',
+            label: 'Directory Path',
+            required: true,
+            placeholder: '/path/to/documents',
+          },
+        ],
+        secrets: [],
+        supports_sync: true,
+      },
+      git: {
+        name: 'Git Repository',
+        description: 'Clone and index a Git repository',
+        icon: 'git-branch',
+        fields: [
+          {
+            name: 'url',
+            type: 'text',
+            label: 'Repository URL',
+            required: true,
+            placeholder: 'https://github.com/user/repo.git',
+          },
+          {
+            name: 'branch',
+            type: 'text',
+            label: 'Branch',
+            required: false,
+            placeholder: 'main',
+            default: 'main',
+          },
+        ],
+        secrets: [
+          {
+            name: 'token',
+            label: 'Personal Access Token',
+            required: false,
+            placeholder: 'ghp_xxxx (optional for public repos)',
+          },
+        ],
+        supports_sync: true,
+      },
+      imap: {
+        name: 'Email (IMAP)',
+        description: 'Index emails from an IMAP server',
+        icon: 'mail',
+        fields: [
+          {
+            name: 'host',
+            type: 'text',
+            label: 'IMAP Server',
+            required: true,
+            placeholder: 'imap.gmail.com',
+          },
+          {
+            name: 'username',
+            type: 'text',
+            label: 'Username',
+            required: true,
+            placeholder: 'user@example.com',
+          },
+          {
+            name: 'folder',
+            type: 'text',
+            label: 'Folder',
+            required: false,
+            placeholder: 'INBOX',
+            default: 'INBOX',
+          },
+        ],
+        secrets: [
+          {
+            name: 'password',
+            label: 'Password',
+            required: true,
+            placeholder: 'App password',
+          },
+        ],
+        supports_sync: true,
+      },
+    })
+  }),
+
   // Search endpoint
   http.post('/api/v2/search', async ({ request }) => {
     const body = await request.json() as { use_reranker?: boolean }

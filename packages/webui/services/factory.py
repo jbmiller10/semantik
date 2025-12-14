@@ -29,6 +29,7 @@ from .projection_service import ProjectionService
 from .redis_manager import RedisManager
 from .resource_manager import ResourceManager
 from .search_service import SearchService
+from .source_service import SourceService
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +317,45 @@ async def get_chunking_service(
     """Backward-compatible dependency returning the orchestrator."""
 
     return await get_chunking_orchestrator(db)
+
+
+def create_source_service(db: AsyncSession) -> SourceService:
+    """Create a SourceService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured SourceService instance
+    """
+    from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
+    from shared.utils.encryption import SecretEncryption
+
+    # Create repository instances
+    collection_repo = CollectionRepository(db)
+    source_repo = CollectionSourceRepository(db)
+    operation_repo = OperationRepository(db)
+
+    # Create secret repository only if encryption is configured
+    secret_repo: ConnectorSecretRepository | None = None
+    if SecretEncryption.is_configured():
+        secret_repo = ConnectorSecretRepository(db)
+    else:
+        logger.debug("Connector secrets encryption not configured - secrets storage disabled")
+
+    # Create and return service
+    return SourceService(
+        db_session=db,
+        collection_repo=collection_repo,
+        source_repo=source_repo,
+        operation_repo=operation_repo,
+        secret_repo=secret_repo,
+    )
+
+
+async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
+    """FastAPI dependency for SourceService injection."""
+    return create_source_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

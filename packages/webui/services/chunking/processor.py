@@ -88,9 +88,30 @@ class ChunkingProcessor:
         """Execute a specific chunking strategy."""
         factory_name = self._map_strategy_name(strategy)
 
-        # Get and validate configuration
-        chunk_size = int(config.get("chunk_size", self.DEFAULT_CHUNK_SIZE))
-        chunk_overlap = int(config.get("chunk_overlap", self.DEFAULT_CHUNK_OVERLAP))
+        # Get and validate configuration.
+        #
+        # Legacy configs (from UI + strategy registry) are character-based:
+        #   {chunk_size: 1000, chunk_overlap: 200}
+        #
+        # The shared ChunkConfig is token-based and most unified strategies use
+        # an approximate chars_per_token conversion internally. Convert legacy
+        # values to token units so defaults like overlap=200 don't violate
+        # overlap_tokens < min_tokens.
+        is_token_config = any(key in config for key in ("max_tokens", "min_tokens", "overlap_tokens"))
+        chars_per_token = 4
+
+        if is_token_config:
+            max_tokens = int(config.get("max_tokens", self.DEFAULT_CHUNK_SIZE))
+            overlap_tokens = int(config.get("overlap_tokens", self.DEFAULT_CHUNK_OVERLAP))
+            min_tokens_raw = config.get("min_tokens")
+        else:
+            chunk_size_chars = int(config.get("chunk_size", self.DEFAULT_CHUNK_SIZE))
+            chunk_overlap_chars = int(config.get("chunk_overlap", self.DEFAULT_CHUNK_OVERLAP))
+
+            # Ceiling division to avoid rounding chunk sizes down too aggressively.
+            max_tokens = max(1, (chunk_size_chars + chars_per_token - 1) // chars_per_token)
+            overlap_tokens = max(0, chunk_overlap_chars // chars_per_token)
+            min_tokens_raw = config.get("min_chunk_size")
 
         # Get strategy from domain layer
         strategy_impl = get_strategy(factory_name)
@@ -101,10 +122,26 @@ class ChunkingProcessor:
         # Create a ChunkConfig object for strategies that need it
         from shared.chunking.domain.value_objects import ChunkConfig
 
+        # Derive a safe min_tokens default that is compatible with the overlap.
+        # The domain ChunkConfig enforces overlap_tokens < min_tokens <= max_tokens.
+        if min_tokens_raw is None:
+            derived_min = max(max_tokens // 5, overlap_tokens * 2, 10)
+            min_tokens = min(derived_min, max_tokens)
+        else:
+            min_tokens = int(min_tokens_raw)
+            min_tokens = max(1, min(min_tokens, max_tokens))
+
+        # Ensure overlap constraints for domain validation.
+        if overlap_tokens >= min_tokens:
+            overlap_tokens = max(0, min_tokens - 1)
+        if overlap_tokens >= max_tokens:
+            overlap_tokens = max(0, max_tokens - 1)
+
         chunk_config = ChunkConfig(
             strategy_name=factory_name,
-            max_tokens=chunk_size,
-            overlap_tokens=chunk_overlap,
+            min_tokens=min_tokens,
+            max_tokens=max_tokens,
+            overlap_tokens=overlap_tokens,
             separator=config.get("separator", " "),
         )
 

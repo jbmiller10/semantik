@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 # Enums
@@ -28,6 +28,13 @@ class PermissionTypeEnum(str, Enum):
     READ = "read"
     WRITE = "write"
     ADMIN = "admin"
+
+
+class SyncModeEnum(str, Enum):
+    """Sync mode for collections."""
+
+    ONE_TIME = "one_time"
+    CONTINUOUS = "continuous"
 
 
 # User schemas
@@ -123,6 +130,24 @@ class CollectionBase(BaseModel):
 class CollectionCreate(CollectionBase):
     """Schema for creating a collection."""
 
+    # Sync policy fields
+    sync_mode: SyncModeEnum = Field(
+        default=SyncModeEnum.ONE_TIME,
+        description="Sync mode: one_time or continuous",
+    )
+    sync_interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="Sync interval in minutes for continuous mode (min 15)",
+    )
+
+    @model_validator(mode="after")
+    def validate_continuous_requires_interval(self) -> "CollectionCreate":
+        """Validate that continuous sync has an interval."""
+        if self.sync_mode == SyncModeEnum.CONTINUOUS and self.sync_interval_minutes is None:
+            raise ValueError("sync_interval_minutes is required for continuous sync mode")
+        return self
+
 
 class CollectionUpdate(BaseModel):
     """Schema for updating a collection."""
@@ -137,6 +162,17 @@ class CollectionUpdate(BaseModel):
     description: str | None = None
     is_public: bool | None = None
     metadata: dict[str, Any] | None = None
+
+    # Sync policy fields
+    sync_mode: SyncModeEnum | None = Field(
+        default=None,
+        description="Sync mode: one_time or continuous",
+    )
+    sync_interval_minutes: int | None = Field(
+        default=None,
+        ge=15,
+        description="Sync interval in minutes for continuous mode (min 15)",
+    )
 
     @field_validator("name", mode="after")
     @classmethod
@@ -171,17 +207,20 @@ class AddSourceRequest(BaseModel):
     source_type: str = Field(
         default="directory",
         description="Type of source (e.g., 'directory', 'web', 'slack')",
+        validation_alias=AliasChoices("source_type", "sourceType"),
     )
     source_config: dict[str, Any] | None = Field(
         default=None,
         description="Connector-specific configuration",
         json_schema_extra={"example": {"path": "/data/docs", "recursive": True}},
+        validation_alias=AliasChoices("source_config", "sourceConfig"),
     )
 
     # Legacy field (deprecated)
     source_path: str | None = Field(
         default=None,
         description="[DEPRECATED] Path to the source. Use source_config={'path': ...} instead.",
+        validation_alias=AliasChoices("source_path", "sourcePath"),
     )
 
     # Keep existing config field for backward compatibility (chunk settings, metadata)
@@ -193,11 +232,13 @@ class AddSourceRequest(BaseModel):
         },
     )
 
+    model_config = ConfigDict(populate_by_name=True)
+
     @model_validator(mode="after")
     def normalize_legacy_source_path(self) -> "AddSourceRequest":
         """Convert legacy source_path to source_type/source_config format."""
         # If legacy source_path provided and source_config not set, derive it
-        if self.source_path is not None and self.source_config is None:
+        if self.source_path is not None and not self.source_config:
             self.source_config = {"path": self.source_path}
         # source_type defaults to "directory" already
         return self
@@ -213,9 +254,22 @@ class CollectionResponse(CollectionBase):
     updated_at: datetime
     document_count: int | None = 0
     vector_count: int | None = 0
+    total_size_bytes: int | None = 0
     status: str  # Collection status: pending, ready, processing, error, degraded
     status_message: str | None = None
     initial_operation_id: str | None = None  # ID of the initial INDEX operation
+
+    # Sync policy fields
+    sync_mode: str = "one_time"
+    sync_interval_minutes: int | None = None
+    sync_paused_at: datetime | None = None
+    sync_next_run_at: datetime | None = None
+
+    # Sync run tracking
+    sync_last_run_started_at: datetime | None = None
+    sync_last_run_completed_at: datetime | None = None
+    sync_last_run_status: str | None = None
+    sync_last_error: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -248,8 +302,19 @@ class CollectionResponse(CollectionBase):
             updated_at=collection.updated_at,
             document_count=collection.document_count,
             vector_count=collection.vector_count,
+            total_size_bytes=getattr(collection, "total_size_bytes", 0) or 0,
             status=collection.status.value if hasattr(collection.status, "value") else collection.status,
             status_message=getattr(collection, "status_message", None),
+            # Sync policy fields
+            sync_mode=getattr(collection, "sync_mode", "one_time") or "one_time",
+            sync_interval_minutes=getattr(collection, "sync_interval_minutes", None),
+            sync_paused_at=getattr(collection, "sync_paused_at", None),
+            sync_next_run_at=getattr(collection, "sync_next_run_at", None),
+            # Sync run tracking
+            sync_last_run_started_at=getattr(collection, "sync_last_run_started_at", None),
+            sync_last_run_completed_at=getattr(collection, "sync_last_run_completed_at", None),
+            sync_last_run_status=getattr(collection, "sync_last_run_status", None),
+            sync_last_error=getattr(collection, "sync_last_error", None),
         )
 
 
@@ -604,4 +669,351 @@ class OperationResponse(BaseModel):
                 "created_at": "2025-07-15T10:00:00Z",
             }
         },
+    )
+
+
+# Source schemas
+# Note: Sync policy (mode, interval, pause) is now managed at collection level.
+# Sources only track per-source telemetry (last_run_* fields).
+
+
+class SourceCreate(BaseModel):
+    """Schema for creating a source.
+
+    Note: Sync policy is managed at collection level, not source level.
+    """
+
+    source_type: str = Field(
+        default="directory",
+        description="Type of source connector (directory, git, imap)",
+    )
+    source_path: str = Field(
+        ...,
+        min_length=1,
+        description="Display path or identifier for the source",
+    )
+    source_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Connector-specific configuration",
+    )
+    secrets: dict[str, str] | None = Field(
+        default=None,
+        description="Connector secrets (write-only, never returned in responses). "
+        "Valid keys: password, token, ssh_key, ssh_passphrase",
+    )
+
+
+class SourceUpdate(BaseModel):
+    """Schema for updating a source.
+
+    Note: Sync policy is managed at collection level, not source level.
+    """
+
+    source_config: dict[str, Any] | None = Field(
+        default=None,
+        description="New connector-specific configuration",
+    )
+    secrets: dict[str, str] | None = Field(
+        default=None,
+        description="Connector secrets to update (write-only, never returned in responses). "
+        "Valid keys: password, token, ssh_key, ssh_passphrase. "
+        "Set a key to empty string to delete that secret.",
+    )
+
+
+class SourceResponse(BaseModel):
+    """Source response schema.
+
+    Note: Sync policy (mode, interval, pause) is managed at collection level.
+    Sources only track per-source telemetry (last_run_* fields).
+    """
+
+    id: int
+    collection_id: str
+    source_type: str
+    source_path: str
+    source_config: dict[str, Any]
+    document_count: int
+    size_bytes: int
+
+    # Per-source sync telemetry (sync policy is at collection level)
+    last_run_started_at: datetime | None = None
+    last_run_completed_at: datetime | None = None
+    last_run_status: str | None = None
+    last_error: str | None = None
+    last_indexed_at: datetime | None = None
+
+    # Timestamps
+    created_at: datetime
+    updated_at: datetime
+
+    # Secret indicators (never expose actual secrets, just presence)
+    has_password: bool = False
+    has_token: bool = False
+    has_ssh_key: bool = False
+    has_ssh_passphrase: bool = False
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "source_type": "directory",
+                "source_path": "/data/documents",
+                "source_config": {"path": "/data/documents", "recursive": True},
+                "document_count": 100,
+                "size_bytes": 1048576,
+                "last_run_started_at": "2025-07-15T10:00:00Z",
+                "last_run_completed_at": "2025-07-15T10:05:00Z",
+                "last_run_status": "success",
+                "last_error": None,
+                "last_indexed_at": "2025-07-15T10:05:00Z",
+                "created_at": "2025-07-15T09:00:00Z",
+                "updated_at": "2025-07-15T10:05:00Z",
+                "has_password": False,
+                "has_token": False,
+                "has_ssh_key": False,
+                "has_ssh_passphrase": False,
+            }
+        },
+    )
+
+
+class SourceListResponse(BaseModel):
+    """Response for listing sources."""
+
+    items: list[SourceResponse]
+    total: int
+    offset: int
+    limit: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [],
+                "total": 0,
+                "offset": 0,
+                "limit": 50,
+            }
+        }
+    )
+
+
+# Collection Sync Run schemas
+class CollectionSyncRunResponse(BaseModel):
+    """Response schema for a collection sync run."""
+
+    id: int
+    collection_id: str
+    triggered_by: str  # 'scheduler' | 'manual'
+    started_at: datetime
+    completed_at: datetime | None = None
+    status: str  # 'running' | 'success' | 'failed' | 'partial'
+    expected_sources: int
+    completed_sources: int
+    failed_sources: int
+    partial_sources: int
+    error_summary: str | None = None
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "collection_id": "123e4567-e89b-12d3-a456-426614174000",
+                "triggered_by": "scheduler",
+                "started_at": "2025-07-15T10:00:00Z",
+                "completed_at": "2025-07-15T10:05:00Z",
+                "status": "success",
+                "expected_sources": 3,
+                "completed_sources": 3,
+                "failed_sources": 0,
+                "partial_sources": 0,
+                "error_summary": None,
+            }
+        },
+    )
+
+
+class SyncRunListResponse(BaseModel):
+    """Response for listing sync runs."""
+
+    items: list[CollectionSyncRunResponse]
+    total: int
+    offset: int
+    limit: int
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "items": [],
+                "total": 0,
+                "offset": 0,
+                "limit": 50,
+            }
+        }
+    )
+
+
+class GitPreviewRequest(BaseModel):
+    """Request schema for Git repository preview/validation."""
+
+    repo_url: str = Field(
+        ...,
+        description="Git repository URL (HTTPS or SSH)",
+    )
+    ref: str = Field(
+        default="main",
+        description="Branch, tag, or commit to checkout",
+    )
+    auth_method: str = Field(
+        default="none",
+        description="Authentication method: none, https_token, or ssh_key",
+    )
+    token: str | None = Field(
+        default=None,
+        description="HTTPS personal access token (for auth_method=https_token)",
+    )
+    ssh_key: str | None = Field(
+        default=None,
+        description="SSH private key content (for auth_method=ssh_key)",
+    )
+    ssh_passphrase: str | None = Field(
+        default=None,
+        description="SSH key passphrase (optional)",
+    )
+    include_globs: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns to include (e.g., ['*.md', 'docs/**'])",
+    )
+    exclude_globs: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns to exclude (e.g., ['*.min.js'])",
+    )
+
+    @field_validator("auth_method")
+    @classmethod
+    def validate_auth_method(cls, v: str) -> str:
+        if v not in ("none", "https_token", "ssh_key"):
+            raise ValueError(f"Invalid auth_method: {v}")
+        return v
+
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, v: str) -> str:
+        if not v.startswith(("https://", "git@", "ssh://")):
+            raise ValueError("repo_url must be an HTTPS or SSH URL")
+        return v
+
+
+class GitPreviewResponse(BaseModel):
+    """Response from Git repository preview/validation."""
+
+    valid: bool = Field(
+        description="Whether the repository is accessible",
+    )
+    repo_url: str = Field(
+        description="The repository URL that was validated",
+    )
+    ref: str = Field(
+        description="The ref that will be checked out",
+    )
+    refs_found: list[str] = Field(
+        default_factory=list,
+        description="Available refs (branches/tags) found in the repository",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if validation failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "valid": True,
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "main",
+                "refs_found": ["main", "develop", "v1.0.0"],
+                "error": None,
+            }
+        }
+    )
+
+
+# =============================================================================
+# IMAP Connector Schemas
+# =============================================================================
+
+
+class ImapPreviewRequest(BaseModel):
+    """Request schema for IMAP connection preview/validation."""
+
+    host: str = Field(
+        description="IMAP server hostname",
+    )
+    port: int = Field(
+        default=993,
+        description="IMAP port (default: 993 for SSL)",
+    )
+    use_ssl: bool = Field(
+        default=True,
+        description="Use SSL connection",
+    )
+    username: str = Field(
+        description="IMAP username/email",
+    )
+    password: str = Field(
+        description="IMAP password",
+    )
+    mailboxes: list[str] = Field(
+        default_factory=lambda: ["INBOX"],
+        description="Mailboxes to sync",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "host": "imap.gmail.com",
+                "port": 993,
+                "use_ssl": True,
+                "username": "user@example.com",
+                "password": "app_password",
+                "mailboxes": ["INBOX", "Sent"],
+            }
+        }
+    )
+
+
+class ImapPreviewResponse(BaseModel):
+    """Response from IMAP connection preview/validation."""
+
+    valid: bool = Field(
+        description="Whether the connection succeeded",
+    )
+    host: str = Field(
+        description="The IMAP host that was validated",
+    )
+    username: str = Field(
+        description="The username used for authentication",
+    )
+    mailboxes_found: list[str] = Field(
+        default_factory=list,
+        description="Available mailboxes found on the server",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if validation failed",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "valid": True,
+                "host": "imap.gmail.com",
+                "username": "user@example.com",
+                "mailboxes_found": ["INBOX", "Sent", "Drafts", "Trash"],
+                "error": None,
+            }
+        }
     )

@@ -575,6 +575,8 @@ Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
 
+This endpoint starts an `append` operation and (re)uses a `collection_sources` record under the hood. Use the “Manage Sources” endpoints below to update sync settings and store encrypted credentials.
+
 **Request:**
 ```json
 {
@@ -589,6 +591,39 @@ Content-Type: application/json
       "extensions": [".md", ".txt", ".pdf"],
       "ignore_patterns": ["**/node_modules/**"]
     }
+  }
+}
+```
+
+**Supported `source_type` values (built-ins):**
+- `directory` (local filesystem directory)
+- `git` (remote Git repository)
+- `imap` (IMAP mailbox)
+
+**Example (Git repo, public or auth configured separately):**
+```json
+{
+  "source_type": "git",
+  "source_config": {
+    "repo_url": "https://github.com/org/repo.git",
+    "ref": "main",
+    "auth_method": "none",
+    "include_globs": ["docs/**", "*.md"],
+    "exclude_globs": ["node_modules/**"]
+  }
+}
+```
+
+**Example (IMAP mailbox; credentials configured separately):**
+```json
+{
+  "source_type": "imap",
+  "source_config": {
+    "host": "imap.gmail.com",
+    "port": 993,
+    "use_ssl": true,
+    "username": "user@example.com",
+    "mailboxes": ["INBOX"]
   }
 }
 ```
@@ -622,7 +657,65 @@ Content-Type: application/json
 }
 ```
 
+**Connector credentials (secrets):**
+- Passwords/tokens/SSH keys are encrypted and stored in the database (never returned in API responses).
+- Set `CONNECTOR_SECRETS_KEY` in your environment (see `.env.docker.example` and `docs/CONFIGURATION.md`).
+- After the source exists, update secrets via `PATCH /api/v2/collections/{collection_id}/sources/{source_id}` and then trigger a run via `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`.
+
+#### Manage Sources (recommended for scheduling + secrets)
+
+List sources (to get `source_id` for updates/runs):
+```http
+GET /api/v2/collections/{collection_id}/sources?offset=0&limit=50
+Authorization: Bearer {access_token}
+```
+
+Update a source’s sync settings and/or encrypted secrets:
+```http
+PATCH /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "sync_mode": "continuous",
+  "interval_minutes": 60,
+  "secrets": {
+    "password": "app-password"
+  }
+}
+```
+
+Trigger a run immediately (creates an `append` operation for that source):
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/run
+Authorization: Bearer {access_token}
+```
+
+Pause/resume continuous sync:
+```http
+POST /api/v2/collections/{collection_id}/sources/{source_id}/pause
+POST /api/v2/collections/{collection_id}/sources/{source_id}/resume
+Authorization: Bearer {access_token}
+```
+
 #### 7. Remove Source from Collection
+**Preferred:** delete by `source_id` (removes documents/vectors, then deletes the source record):
+```http
+DELETE /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {access_token}
+```
+
+**Response (200):**
+```json
+{
+  "id": 123,
+  "uuid": "op_789e0123-e89b-12d3-a456-426614174002",
+  "type": "remove_source",
+  "status": "pending"
+}
+```
+
+**Legacy (still supported):** delete by `source_path`:
 ```http
 DELETE /api/v2/collections/{collection_uuid}/sources?source_path=/docs/api
 Authorization: Bearer {access_token}
@@ -927,8 +1020,54 @@ Authorization: Bearer {access_token}
 - Does not support range requests in the current implementation
 - Enforces strict access control - user must have access to the collection
 - Document must belong to the specified collection
+- For non-file sources (e.g., Git/IMAP), content may be served from database-backed document artifacts.
 
 **Note:** Document metadata is included when listing documents through `/api/v2/collections/{collection_uuid}/documents`. There is no separate metadata endpoint in the v2 API.
+
+### Connector Catalog Endpoints
+
+These endpoints expose the connector catalog used by the UI and provide lightweight “preview” checks for external connectors.
+
+#### 1. List Connectors
+```http
+GET /api/v2/connectors
+Authorization: Bearer {access_token}
+```
+
+#### 2. Get Connector Definition
+```http
+GET /api/v2/connectors/{connector_type}
+Authorization: Bearer {access_token}
+```
+
+#### 3. Preview Git Connection
+```http
+POST /api/v2/connectors/preview/git
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "repo_url": "https://github.com/org/repo.git",
+  "ref": "main",
+  "auth_method": "https_token",
+  "token": "ghp_..."
+}
+```
+
+#### 4. Preview IMAP Connection
+```http
+POST /api/v2/connectors/preview/imap
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "host": "imap.gmail.com",
+  "port": 993,
+  "use_ssl": true,
+  "username": "user@example.com",
+  "password": "app-password"
+}
+```
 
 ### Directory Scanning Endpoints
 

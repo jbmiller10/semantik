@@ -165,7 +165,8 @@ exclude = [
     "scripts/",
     "manual_tests/",
     "alembic/versions/",
-    "verify_reindex_fixes.py"
+    "verify_reindex_fixes.py",
+    "data/",
 ]
 
 [[tool.mypy.overrides]]

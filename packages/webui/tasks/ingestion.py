@@ -14,6 +14,7 @@ import contextlib
 import os
 import time
 import uuid
+from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,6 +22,7 @@ import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 
+from shared.config import settings
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -760,6 +762,55 @@ async def _process_append_operation_impl(
     except ValueError as e:
         raise ValueError(f"Invalid source configuration: {e}") from e
 
+    # Apply stored connector secrets (if any) before authentication.
+    #
+    # Secrets are stored encrypted in the DB (via SourceService). Celery workers do not
+    # run the FastAPI startup hooks, so we need to ensure encryption is initialised
+    # and then load/decrypt secrets here for connectors that support credentials.
+    set_credentials = getattr(connector, "set_credentials", None)
+    if callable(set_credentials):
+        import inspect
+
+        from shared.database.repositories.connector_secret_repository import ConnectorSecretRepository
+        from shared.utils.encryption import DecryptionError, EncryptionNotConfiguredError, SecretEncryption
+
+        if not SecretEncryption.is_initialized() and settings.CONNECTOR_SECRETS_KEY:
+            try:
+                SecretEncryption.initialize(settings.CONNECTOR_SECRETS_KEY)
+                logger.debug(
+                    "Connector secrets encryption initialised in worker (key_id=%s)",
+                    SecretEncryption.get_key_id(),
+                )
+            except ValueError as exc:
+                raise ValueError(f"Invalid CONNECTOR_SECRETS_KEY: {exc}") from exc
+
+        secret_repo = ConnectorSecretRepository(session)
+        secret_types = await secret_repo.get_secret_types_for_source(source_id)
+        if secret_types:
+            credentials: dict[str, str] = {}
+            for secret_type in secret_types:
+                try:
+                    secret_value = await secret_repo.get_secret(source_id, secret_type)
+                except (EncryptionNotConfiguredError, DecryptionError) as exc:
+                    raise ValueError(
+                        f"Failed to decrypt stored secrets for source_id={source_id}; "
+                        "ensure CONNECTOR_SECRETS_KEY matches the key used to encrypt them."
+                    ) from exc
+                if secret_value is not None:
+                    credentials[secret_type] = secret_value
+
+            if credentials:
+                allowed_params = set(inspect.signature(set_credentials).parameters.keys())
+                allowed_params.discard("self")
+                filtered_credentials = {k: v for k, v in credentials.items() if k in allowed_params}
+                if filtered_credentials:
+                    set_credentials(**filtered_credentials)
+                    logger.debug(
+                        "Applied connector secrets for source_id=%s: %s",
+                        source_id,
+                        sorted(filtered_credentials.keys()),
+                    )
+
     # Authenticate / validate access
     try:
         auth_ok = await connector.authenticate()
@@ -772,6 +823,8 @@ async def _process_append_operation_impl(
 
     try:
         scan_start = time.time()
+        # Record sync start time for marking stale documents after processing
+        sync_started_at = datetime.now(UTC)
 
         # Commit any pending changes from setup phase and ensure session is in clean state
         # This prevents idle-in-transaction timeouts during file scanning/parsing
@@ -783,31 +836,60 @@ async def _process_append_operation_impl(
                 with contextlib.suppress(Exception):
                     await session.rollback()
 
-        # Create registry for document registration
-        registry = DocumentRegistryService(db_session=session, document_repo=document_repo)
+        # Create registry for document registration (with chunk_repo for sync updates)
+        from shared.database.repositories.chunk_repository import ChunkRepository
+        from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
+
+        chunk_repo = ChunkRepository(session)
+        artifact_repo = DocumentArtifactRepository(session, max_artifact_bytes=settings.MAX_ARTIFACT_BYTES)
+        registry = DocumentRegistryService(
+            db_session=session,
+            document_repo=document_repo,
+            chunk_repo=chunk_repo,
+            artifact_repo=artifact_repo,
+        )
 
         # Track statistics
         scan_stats: dict[str, Any] = {
             "total_documents_found": 0,
             "new_documents_registered": 0,
-            "duplicate_documents_skipped": 0,
+            "documents_updated": 0,
+            "unchanged_documents_skipped": 0,
             "errors": [],
             "total_size_bytes": 0,
         }
 
-        # Store content for new documents (avoid re-parsing)
+        # Store content for new/updated documents (avoid re-parsing)
         new_doc_contents: dict[int, str] = {}
 
-        # Iterate through connector's documents using savepoints for isolation
-        # This allows failures on individual documents without losing previously registered ones
-        async for ingested_doc in connector.load_documents():
+        # Iterate through connector's documents using savepoints for isolation.
+        #
+        # Some connectors may optionally accept `source_id` (useful for per-source
+        # cache keys, e.g. Git) but we keep this call backwards compatible.
+        import inspect
+
+        load_documents = getattr(connector, "load_documents", None)
+        if not callable(load_documents):
+            raise ValueError(f"Connector for source_type={source_type!r} does not implement load_documents()")
+
+        try:
+            signature = inspect.signature(load_documents)
+            accepts_source_id = "source_id" in signature.parameters or any(
+                param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+            )
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            accepts_source_id = False
+
+        documents_iter = load_documents(source_id=source_id) if accepts_source_id else load_documents()
+
+        async for ingested_doc in documents_iter:
             scan_stats["total_documents_found"] += 1
 
             try:
                 # Use savepoint (nested transaction) for isolation - if this document's
                 # registration fails, only this document's changes are rolled back
                 async with session.begin_nested():
-                    result = await registry.register(
+                    result = await registry.register_or_update(
                         collection_id=collection["id"],
                         ingested=ingested_doc,
                         source_id=source_id,
@@ -817,8 +899,12 @@ async def _process_append_operation_impl(
                     scan_stats["new_documents_registered"] += 1
                     # Store content for later chunking
                     new_doc_contents[result["document_id"]] = ingested_doc.content
+                elif result.get("is_updated", False):
+                    scan_stats["documents_updated"] += 1
+                    # Updated documents need re-chunking too
+                    new_doc_contents[result["document_id"]] = ingested_doc.content
                 else:
-                    scan_stats["duplicate_documents_skipped"] += 1
+                    scan_stats["unchanged_documents_skipped"] += 1
 
                 scan_stats["total_size_bytes"] += result["file_size"]
 
@@ -854,12 +940,13 @@ async def _process_append_operation_impl(
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
 
         logger.info(
-            "Scan stats for %s (%s): %s documents found, %s new, %s duplicates, %s errors",
+            "Scan stats for %s (%s): %s documents found, %s new, %s updated, %s unchanged, %s errors",
             display_path,
             source_type,
             scan_stats["total_documents_found"],
             scan_stats["new_documents_registered"],
-            scan_stats["duplicate_documents_skipped"],
+            scan_stats["documents_updated"],
+            scan_stats["unchanged_documents_skipped"],
             len(scan_stats.get("errors", [])),
         )
 
@@ -869,14 +956,17 @@ async def _process_append_operation_impl(
                 "status": "scanning_completed",
                 "total_files_found": scan_stats["total_documents_found"],
                 "new_documents_registered": scan_stats["new_documents_registered"],
-                "duplicate_documents_skipped": scan_stats["duplicate_documents_skipped"],
+                "documents_updated": scan_stats["documents_updated"],
+                "unchanged_documents_skipped": scan_stats["unchanged_documents_skipped"],
                 "errors_count": len(scan_stats.get("errors", [])),
             },
         )
 
         for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
-        for _ in range(scan_stats["duplicate_documents_skipped"]):
+        for _ in range(scan_stats["documents_updated"]):
+            record_document_processed("append", "updated")
+        for _ in range(scan_stats["unchanged_documents_skipped"]):
             record_document_processed("append", "skipped")
         for _ in range(len(scan_stats.get("errors", []))):
             record_document_processed("append", "failed")
@@ -890,7 +980,8 @@ async def _process_append_operation_impl(
                 "source_type": source_type,
                 "source": display_path,
                 "documents_added": scan_stats["new_documents_registered"],
-                "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
+                "documents_updated": scan_stats["documents_updated"],
+                "unchanged_skipped": scan_stats["unchanged_documents_skipped"],
             },
         )
 
@@ -904,7 +995,7 @@ async def _process_append_operation_impl(
                     unprocessed_documents.append(doc)
 
         logger.info(
-            "Found %s new documents to process for %s (%s)",
+            "Found %s documents (new + updated) to process for %s (%s)",
             len(unprocessed_documents),
             display_path,
             source_type,
@@ -1235,21 +1326,149 @@ async def _process_append_operation_impl(
                     "source": display_path,
                     "source_type": source_type,
                     "documents_added": scan_stats["new_documents_registered"],
+                    "documents_updated": scan_stats["documents_updated"],
                     "total_files_scanned": scan_stats["total_documents_found"],
-                    "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
+                    "unchanged_skipped": scan_stats["unchanged_documents_skipped"],
                 },
             )
 
         scan_errors = scan_stats.get("errors", []) or []
         success = failed_count == 0 and not scan_errors
 
+        # Mark documents not seen during this sync as stale (keep last-known behavior)
+        # Only mark stale for this specific source
+        #
+        # IMPORTANT: Only mark stale when the entire sync completed cleanly.
+        # If scan/registration errors occurred, some existing documents may have been present in
+        # the source but failed to register/update last_seen_at; marking unseen docs stale in
+        # that scenario can incorrectly flag healthy documents as stale.
+        #
+        # Similarly, if downstream processing (chunking/embedding) fails, the run is incomplete and
+        # marking unseen docs stale can mislabel valid documents as stale after a partial sync.
+        if source_id is not None and success:
+            try:
+                stale_count = await document_repo.mark_unseen_as_stale(
+                    collection_id=collection["id"],
+                    source_id=source_id,
+                    since=sync_started_at,
+                )
+                if stale_count > 0:
+                    logger.info(
+                        "Marked %s documents as stale for source %s (not seen since %s)",
+                        stale_count,
+                        source_id,
+                        sync_started_at.isoformat(),
+                    )
+                scan_stats["documents_marked_stale"] = stale_count
+                await session.commit()
+            except Exception as stale_exc:
+                logger.warning("Failed to mark stale documents: %s", stale_exc)
+                scan_stats["documents_marked_stale"] = 0
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+        elif source_id is not None:
+            scan_stats["documents_marked_stale"] = 0
+            reasons: list[str] = []
+            if scan_errors:
+                reasons.append(f"{len(scan_errors)} scan/registration error(s)")
+            if failed_count > 0:
+                reasons.append(f"{failed_count} embedding/chunking failure(s)")
+            logger.info(
+                "Skipping stale marking for source %s due to %s",
+                source_id,
+                ", ".join(reasons),
+            )
+
+        # Update source sync status
+        if source_id is not None:
+            try:
+                from shared.database.repositories.collection_source_repository import (
+                    CollectionSourceRepository,
+                )
+
+                source_repo = CollectionSourceRepository(session)
+                status = "success" if success else ("partial" if scan_errors else "failed")
+                sync_error_msg: str | None = None
+                if scan_errors:
+                    sync_error_msg = f"{len(scan_errors)} document(s) failed to process"
+                elif failed_count > 0:
+                    sync_error_msg = f"{failed_count} document(s) failed embedding generation"
+
+                await source_repo.update_sync_status(
+                    source_id=source_id,
+                    status=status,
+                    error=sync_error_msg,
+                    completed_at=datetime.now(UTC),
+                )
+                await session.commit()
+            except Exception as status_exc:
+                logger.warning("Failed to update source sync status: %s", status_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+
+        # Sync run completion aggregation hook
+        # If this operation was part of a sync run, update the run's counters
+        sync_run_id = op_config.get("sync_run_id")
+        if sync_run_id is not None:
+            try:
+                from shared.database.repositories.collection_repository import (
+                    CollectionRepository as _CollectionRepo,
+                )
+                from shared.database.repositories.collection_sync_run_repository import (
+                    CollectionSyncRunRepository,
+                )
+
+                sync_run_repo = CollectionSyncRunRepository(session)
+
+                # Determine source completion status
+                source_status = "success" if success else ("partial" if scan_errors else "failed")
+
+                # Increment appropriate counter on sync run
+                await sync_run_repo.update_source_completion(sync_run_id, source_status)
+
+                # Check if all sources are done
+                sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                if sync_run:
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
+
+                    if total_done >= sync_run.expected_sources:
+                        # Complete the sync run
+                        await sync_run_repo.complete_run(sync_run_id)
+
+                        # Re-fetch to get final status
+                        sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                        if sync_run:
+                            # Update collection sync status
+                            coll_repo = _CollectionRepo(session)
+                            await coll_repo.update_sync_status(
+                                collection_uuid=collection["id"],
+                                status=sync_run.status,
+                                completed_at=datetime.now(UTC),
+                            )
+                            logger.info(
+                                "Sync run %s completed with status %s (%s/%s/%s completed/failed/partial)",
+                                sync_run_id,
+                                sync_run.status,
+                                sync_run.completed_sources,
+                                sync_run.failed_sources,
+                                sync_run.partial_sources,
+                            )
+
+                await session.commit()
+            except Exception as sync_run_exc:
+                logger.warning("Failed to update sync run completion: %s", sync_run_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+
         return {
             "success": success,
             "source": display_path,
             "source_type": source_type,
             "documents_added": scan_stats["new_documents_registered"],
+            "documents_updated": scan_stats["documents_updated"],
             "total_files_scanned": scan_stats["total_documents_found"],
-            "duplicates_skipped": scan_stats["duplicate_documents_skipped"],
+            "unchanged_skipped": scan_stats["unchanged_documents_skipped"],
+            "documents_marked_stale": scan_stats.get("documents_marked_stale", 0),
             "total_size_bytes": scan_stats["total_size_bytes"],
             "scan_duration_seconds": scan_duration,
             "errors": scan_errors,
@@ -1258,6 +1477,69 @@ async def _process_append_operation_impl(
 
     except Exception as exc:
         logger.error("Failed to process %s source %s: %s", source_type, display_path, exc)
+        # Update source sync status on failure
+        if source_id is not None:
+            try:
+                from shared.database.repositories.collection_source_repository import (
+                    CollectionSourceRepository,
+                )
+
+                source_repo = CollectionSourceRepository(session)
+                await source_repo.update_sync_status(
+                    source_id=source_id,
+                    status="failed",
+                    error=str(exc)[:500],  # Truncate long errors
+                    completed_at=datetime.now(UTC),
+                )
+                await session.commit()
+            except Exception:
+                pass  # Don't mask the original exception
+
+        # Sync run completion aggregation hook (failure path)
+        sync_run_id = op_config.get("sync_run_id")
+        if sync_run_id is not None:
+            try:
+                from shared.database.repositories.collection_repository import (
+                    CollectionRepository as _CollectionRepo,
+                )
+                from shared.database.repositories.collection_sync_run_repository import (
+                    CollectionSyncRunRepository,
+                )
+
+                sync_run_repo = CollectionSyncRunRepository(session)
+
+                # Record this source as failed
+                await sync_run_repo.update_source_completion(sync_run_id, "failed")
+
+                # Check if all sources are done
+                sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                if sync_run:
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
+
+                    if total_done >= sync_run.expected_sources:
+                        # Complete the sync run
+                        await sync_run_repo.complete_run(sync_run_id)
+
+                        # Re-fetch to get final status
+                        sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                        if sync_run:
+                            # Update collection sync status
+                            coll_repo = _CollectionRepo(session)
+                            await coll_repo.update_sync_status(
+                                collection_uuid=collection["id"],
+                                status=sync_run.status,
+                                completed_at=datetime.now(UTC),
+                            )
+                            logger.info(
+                                "Sync run %s completed (from failure path) with status %s",
+                                sync_run_id,
+                                sync_run.status,
+                            )
+
+                await session.commit()
+            except Exception:
+                pass  # Don't mask the original exception
+
         raise
 
 

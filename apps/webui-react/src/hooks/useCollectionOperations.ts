@@ -39,6 +39,16 @@ export function useCollectionOperations(collectionId: string, options?: { limit?
   });
 }
 
+// Parameters for adding a source to a collection
+interface AddSourceParams {
+  collectionId: string;
+  sourceType: string;
+  sourceConfig: Record<string, unknown>;
+  secrets?: Record<string, string>;
+  sourcePath?: string; // For backward compat / display
+  config?: AddSourceRequest['config'];
+}
+
 // Hook to add a source to a collection
 export function useAddSource() {
   const queryClient = useQueryClient();
@@ -47,24 +57,23 @@ export function useAddSource() {
   return useMutation({
     mutationFn: async ({
       collectionId,
+      sourceType,
+      sourceConfig,
+      secrets,
       sourcePath,
       config
-    }: {
-      collectionId: string;
-      sourcePath: string;
-      config?: AddSourceRequest['config'];
-    }) => {
-      // Build new format while keeping source_path for backward compatibility
+    }: AddSourceParams) => {
       const request: AddSourceRequest = {
-        source_type: 'directory',
-        source_config: { path: sourcePath },
-        source_path: sourcePath,  // Keep for backward compatibility
+        source_type: sourceType,
+        source_config: sourceConfig,
+        source_path: sourcePath,  // Keep for backward compatibility/display
+        secrets: secrets && Object.keys(secrets).length > 0 ? secrets : undefined,
         config,
       };
       const response = await collectionsV2Api.addSource(collectionId, request);
       return { operation: response.data, collectionId };
     },
-    onMutate: async ({ collectionId, sourcePath, config }) => {
+    onMutate: async ({ collectionId, sourceType, sourceConfig, sourcePath, config }: AddSourceParams) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: operationKeys.list(collectionId) });
       await queryClient.cancelQueries({ queryKey: collectionKeys.detail(collectionId) });
@@ -77,7 +86,7 @@ export function useAddSource() {
         collectionKeys.detail(collectionId)
       );
 
-      // Create temporary operation with both old and new format
+      // Create temporary operation with the new format
       const tempOperation: Operation = {
         id: `temp-op-${Date.now()}`,
         collection_id: collectionId,
@@ -85,8 +94,8 @@ export function useAddSource() {
         status: 'pending',
         config: {
           source_path: sourcePath,
-          source_type: 'directory',
-          source_config: { path: sourcePath },
+          source_type: sourceType,
+          source_config: sourceConfig,
           ...config
         },
         created_at: new Date().toISOString(),
@@ -102,8 +111,8 @@ export function useAddSource() {
       if (previousCollection) {
         queryClient.setQueryData<Collection>(
           collectionKeys.detail(collectionId),
-          { 
-            ...previousCollection, 
+          {
+            ...previousCollection,
             status: 'processing',
             isProcessing: true,
             activeOperation: tempOperation

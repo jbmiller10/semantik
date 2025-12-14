@@ -43,6 +43,7 @@ from .api.chunking_exception_handlers import register_chunking_exception_handler
 from .api.v2 import (
     chunking as v2_chunking,
     collections as v2_collections,
+    connectors as v2_connectors,
     directory_scan as v2_directory_scan,
     documents as v2_documents,
     embedding as v2_embedding,
@@ -50,6 +51,7 @@ from .api.v2 import (
     partition_monitoring as v2_partition_monitoring,
     projections as v2_projections,
     search as v2_search,
+    sources as v2_sources,
     system as v2_system,
 )
 from .api.v2.directory_scan import directory_scan_websocket
@@ -103,6 +105,33 @@ def _configure_internal_api_key() -> None:
     except RuntimeError as exc:
         logger.error("Internal API key configuration failed: %s", exc)
         raise
+
+
+def _configure_connector_secrets_encryption() -> None:
+    """Initialize the connector secrets encryption if configured.
+
+    This must be called at app startup before any services that use
+    encrypted secrets are created.
+    """
+    from shared.utils.encryption import SecretEncryption
+
+    key = shared_settings.CONNECTOR_SECRETS_KEY
+    if key:
+        try:
+            enabled = SecretEncryption.initialize(key)
+            if enabled:
+                logger.info(
+                    "Connector secrets encryption enabled (key_id=%s)",
+                    SecretEncryption.get_key_id(),
+                )
+            else:
+                logger.info("Connector secrets encryption disabled (no key configured)")
+        except ValueError as exc:
+            logger.error("Invalid CONNECTOR_SECRETS_KEY: %s", exc)
+            raise
+    else:
+        SecretEncryption.initialize(None)
+        logger.info("Connector secrets encryption disabled (CONNECTOR_SECRETS_KEY not set)")
 
 
 def _validate_cors_origins(origins: list[str]) -> list[str]:
@@ -182,6 +211,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
 
     # Configure internal API key
     _configure_internal_api_key()
+
+    # Configure connector secrets encryption
+    _configure_connector_secrets_encryption()
 
     # Start background tasks for Redis cleanup
     logger.info("Starting background tasks...")
@@ -298,6 +330,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     # Include v2 API routers
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
+    app.include_router(v2_connectors.router)
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)
     app.include_router(v2_embedding.router)
@@ -305,6 +338,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_projections.router)
     app.include_router(v2_partition_monitoring.router)
     app.include_router(v2_search.router)
+    app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
 
     # Mount static files BEFORE catch-all route

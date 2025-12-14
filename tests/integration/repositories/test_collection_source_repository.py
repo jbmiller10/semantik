@@ -1,4 +1,8 @@
-"""Integration tests for CollectionSourceRepository using the real database session."""
+"""Integration tests for CollectionSourceRepository using the real database session.
+
+Note: Sync policy (mode, interval, pause/resume) is now managed at collection level.
+Sources only track per-source telemetry (last_run_* fields).
+"""
 
 from __future__ import annotations
 
@@ -388,3 +392,94 @@ class TestCollectionSourceRepositoryIntegration:
         """delete should raise EntityNotFoundError for missing source."""
         with pytest.raises(EntityNotFoundError):
             await repository.delete(999999)
+
+    async def test_update_source_config(
+        self, repository: CollectionSourceRepository, collection_factory, test_user_db
+    ) -> None:
+        """Update should modify source_config."""
+        collection = await collection_factory(owner_id=test_user_db.id)
+        source = await repository.create(
+            collection_id=collection.id,
+            source_type="directory",
+            source_path=f"/data/update-{uuid4().hex[:8]}",
+            source_config={"recursive": False},
+        )
+
+        updated = await repository.update(
+            source_id=source.id,
+            source_config={"recursive": True, "max_depth": 5},
+        )
+
+        assert updated.source_config["recursive"] is True
+        assert updated.source_config["max_depth"] == 5
+
+    async def test_update_source_raises_for_missing(self, repository: CollectionSourceRepository) -> None:
+        """Update should raise EntityNotFoundError for missing source."""
+        with pytest.raises(EntityNotFoundError):
+            await repository.update(source_id=999999, source_config={"test": True})
+
+    # -------------------------------------------------------------------------
+    # Per-source telemetry tests (last_run_* fields are still on source)
+    # -------------------------------------------------------------------------
+
+    async def test_update_sync_status_success(
+        self, repository: CollectionSourceRepository, collection_factory, test_user_db
+    ) -> None:
+        """update_sync_status should set status and timestamps."""
+        collection = await collection_factory(owner_id=test_user_db.id)
+        source = await repository.create(
+            collection_id=collection.id,
+            source_type="directory",
+            source_path=f"/data/status-{uuid4().hex[:8]}",
+        )
+
+        now = datetime.now(UTC)
+        updated = await repository.update_sync_status(
+            source_id=source.id,
+            status="success",
+            started_at=now,
+            completed_at=now,
+        )
+
+        assert updated.last_run_status == "success"
+        assert updated.last_run_started_at is not None
+        assert updated.last_run_completed_at is not None
+        assert updated.last_error is None
+
+    async def test_update_sync_status_failed_with_error(
+        self, repository: CollectionSourceRepository, collection_factory, test_user_db
+    ) -> None:
+        """update_sync_status should store error message on failure."""
+        collection = await collection_factory(owner_id=test_user_db.id)
+        source = await repository.create(
+            collection_id=collection.id,
+            source_type="directory",
+            source_path=f"/data/failed-{uuid4().hex[:8]}",
+        )
+
+        updated = await repository.update_sync_status(
+            source_id=source.id,
+            status="failed",
+            error="Connection timeout",
+        )
+
+        assert updated.last_run_status == "failed"
+        assert updated.last_error == "Connection timeout"
+
+    async def test_update_sync_status_invalid_status(
+        self, repository: CollectionSourceRepository, collection_factory, test_user_db
+    ) -> None:
+        """update_sync_status should reject invalid status values."""
+        collection = await collection_factory(owner_id=test_user_db.id)
+        source = await repository.create(
+            collection_id=collection.id,
+            source_type="directory",
+            source_path=f"/data/invstat-{uuid4().hex[:8]}",
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            await repository.update_sync_status(
+                source_id=source.id,
+                status="invalid_status",
+            )
+        assert "status" in str(exc_info.value).lower()

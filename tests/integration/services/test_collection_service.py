@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -144,6 +144,35 @@ class TestCollectionServiceIntegration:
         assert capture_celery[0]["name"] == "webui.tasks.process_collection_operation"
         assert capture_celery[0]["args"] == [operation_dict["uuid"]]
 
+    async def test_create_collection_persists_sync_policy(
+        self,
+        service,
+        db_session,
+        user_factory,
+    ) -> None:
+        """Collection creation should persist sync policy when provided."""
+        owner = await user_factory()
+        before = datetime.now(UTC)
+
+        collection_dict, _operation_dict = await service.create_collection(
+            user_id=owner.id,
+            name=f"svc-sync-create-{uuid4().hex[:8]}",
+            config={
+                "sync_mode": "continuous",
+                "sync_interval_minutes": 30,
+            },
+        )
+
+        assert collection_dict["sync_mode"] == "continuous"
+        assert collection_dict["sync_interval_minutes"] == 30
+
+        result = await db_session.execute(select(Collection).where(Collection.id == collection_dict["id"]))
+        persisted = result.scalar_one()
+        assert persisted.sync_mode == "continuous"
+        assert persisted.sync_interval_minutes == 30
+        assert persisted.sync_next_run_at is not None
+        assert abs((persisted.sync_next_run_at - (before + timedelta(minutes=30))).total_seconds()) < 10
+
     async def test_delete_collection_removes_records_and_invokes_qdrant(
         self,
         service,
@@ -230,6 +259,40 @@ class TestCollectionServiceIntegration:
         assert persisted.chunk_size == 512
         assert persisted.chunk_overlap == 64
         assert persisted.is_public is True
+
+    async def test_update_collection_persists_sync_policy(
+        self,
+        service,
+        db_session,
+        user_factory,
+    ) -> None:
+        """Updating a collection should persist changes to the sync policy."""
+        owner = await user_factory()
+        collection_dict, operation_dict = await service.create_collection(
+            user_id=owner.id,
+            name=f"svc-sync-update-{uuid4().hex[:8]}",
+        )
+
+        await self._mark_initial_operation_complete(
+            service,
+            db_session,
+            operation_dict["uuid"],
+            collection_dict["id"],
+        )
+
+        before = datetime.now(UTC)
+        await service.update_collection(
+            collection_dict["id"],
+            {"sync_mode": "continuous", "sync_interval_minutes": 15},
+            user_id=owner.id,
+        )
+
+        result = await db_session.execute(select(Collection).where(Collection.id == collection_dict["id"]))
+        persisted = result.scalar_one()
+        assert persisted.sync_mode == "continuous"
+        assert persisted.sync_interval_minutes == 15
+        assert persisted.sync_next_run_at is not None
+        assert abs((persisted.sync_next_run_at - (before + timedelta(minutes=15))).total_seconds()) < 10
 
     async def test_add_source_creates_append_operation_and_sets_processing_status(
         self,
@@ -516,7 +579,7 @@ class TestCollectionServiceIntegration:
         await db_session.commit()
 
         with pytest.raises(self.INVALID_STATE_ERRORS):
-            await service.add_source(collection_dict["id"], owner.id, "/tmp/new")
+            await service.add_source(collection_dict["id"], owner.id, legacy_source_path="/tmp/new")
 
     async def test_remove_source_requires_ready_state(
         self,

@@ -80,6 +80,14 @@ def _build_base_config() -> dict[str, Any]:
                     "priority": 3,
                 },
             },
+            "dispatch-sync-sources": {
+                "task": "webui.tasks.dispatch_due_syncs",
+                "schedule": 60.0,  # Every 60 seconds
+                "options": {
+                    "queue": "default",
+                    "priority": 8,  # Higher priority for sync coordination
+                },
+            },
         },
     }
 
@@ -124,7 +132,7 @@ def _create_celery_app() -> Celery:
         "webui",
         broker=broker_url,
         backend=backend_url,
-        include=["webui.tasks", "webui.chunking_tasks"],
+        include=["webui.tasks", "webui.chunking_tasks", "webui.tasks.sync_dispatcher"],
     )
 
     config = _build_base_config()

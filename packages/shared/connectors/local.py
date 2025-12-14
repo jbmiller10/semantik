@@ -1,5 +1,6 @@
 """Local file system connector for directory document sources."""
 
+import fnmatch
 import logging
 import mimetypes
 import os
@@ -60,7 +61,10 @@ class LocalFileConnector(BaseConnector):
             raise ValueError(f"Path is not a directory: {path}")
         return True
 
-    async def load_documents(self) -> AsyncIterator[IngestedDocument]:
+    async def load_documents(
+        self,
+        source_id: int | None = None,  # noqa: ARG002
+    ) -> AsyncIterator[IngestedDocument]:
         """Yield documents from the directory.
 
         Walks the directory, reads and parses each supported file,
@@ -76,6 +80,8 @@ class LocalFileConnector(BaseConnector):
             for root, _, files in os.walk(source_path):
                 for filename in files:
                     file_path = Path(root) / filename
+                    if not self._should_include_file(file_path):
+                        continue
                     doc = await self._process_file(file_path)
                     if doc is not None:
                         yield doc
@@ -83,9 +89,38 @@ class LocalFileConnector(BaseConnector):
             for filename in os.listdir(source_path):
                 file_path = Path(source_path) / filename
                 if file_path.is_file():
+                    if not self._should_include_file(file_path):
+                        continue
                     doc = await self._process_file(file_path)
                     if doc is not None:
                         yield doc
+
+    def _should_include_file(self, file_path: Path) -> bool:
+        include_patterns = [p for p in (self._config.get("include_patterns") or []) if p]
+        exclude_patterns = [p for p in (self._config.get("exclude_patterns") or []) if p]
+
+        if not include_patterns and not exclude_patterns:
+            return True
+
+        source_path = self._config.get("path")
+        if not source_path:
+            return True
+
+        rel_path = os.path.relpath(str(file_path), start=source_path).replace(os.sep, "/")
+        file_name = file_path.name
+
+        if exclude_patterns and any(
+            fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(file_name, pattern) for pattern in exclude_patterns
+        ):
+            return False
+
+        if include_patterns:
+            return any(
+                fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(file_name, pattern)
+                for pattern in include_patterns
+            )
+
+        return True
 
     async def _process_file(self, file_path: Path) -> IngestedDocument | None:
         """Process a single file and return IngestedDocument or None if skipped.
