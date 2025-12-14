@@ -1,17 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useCreateCollection } from '../hooks/useCollections';
 import { useAddSource } from '../hooks/useCollectionOperations';
 import { useOperationProgress } from '../hooks/useOperationProgress';
 import { useEmbeddingModels } from '../hooks/useModels';
+import { useConnectorCatalog, useGitPreview, useImapPreview } from '../hooks/useConnectors';
 import { useUIStore } from '../stores/uiStore';
 import { useChunkingStore } from '../stores/chunkingStore';
 import { useNavigate } from 'react-router-dom';
-import { useDirectoryScan } from '../hooks/useDirectoryScan';
-import { getInputClassName, getInputClassNameWithBase } from '../utils/formStyles';
+import { getInputClassName } from '../utils/formStyles';
 import { SimplifiedChunkingStrategySelector } from './chunking/SimplifiedChunkingStrategySelector';
+import { ConnectorTypeSelector, ConnectorForm } from './connectors';
+import { shouldShowField } from '../types/connector';
 import ErrorBoundary from './ErrorBoundary';
 import { ConfigurationErrorFallback } from './common/ChunkingErrorFallback';
 import type { CreateCollectionRequest, SyncMode } from '../types/collection';
+import type { GitPreviewResponse, ImapPreviewResponse } from '../types/connector';
 
 interface CreateCollectionModalProps {
   onClose: () => void;
@@ -21,27 +25,20 @@ interface CreateCollectionModalProps {
 const DEFAULT_EMBEDDING_MODEL = 'Qwen/Qwen3-Embedding-0.6B';
 const DEFAULT_QUANTIZATION = 'float16';
 
-// Utility function to format file sizes
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`;
-}
-
 function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProps) {
   const createCollectionMutation = useCreateCollection();
   const addSourceMutation = useAddSource();
   const { addToast } = useUIStore();
   const { strategyConfig } = useChunkingStore();
   const navigate = useNavigate();
-  const { scanning, scanResult, error: scanError, startScan, reset: resetScan } = useDirectoryScan();
   const { data: modelsData, isLoading: modelsLoading } = useEmbeddingModels();
   const formRef = useRef<HTMLFormElement>(null);
-  
+
+  // Connector catalog and preview hooks
+  const { data: catalog, isLoading: catalogLoading } = useConnectorCatalog();
+  const gitPreviewMutation = useGitPreview();
+  const imapPreviewMutation = useImapPreview();
+
   const [formData, setFormData] = useState<CreateCollectionRequest>({
     name: '',
     description: '',
@@ -51,43 +48,53 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     sync_mode: 'one_time',
     sync_interval_minutes: 60,
   });
-  
-  const [sourcePath, setSourcePath] = useState<string>('');
+
+  // Connector state - default to 'none' so user can skip adding a source
+  const [connectorType, setConnectorType] = useState<string>('none');
+  const [configValues, setConfigValues] = useState<Record<string, unknown>>({});
+  const [secrets, setSecrets] = useState<Record<string, string>>({});
+  const [previewResult, setPreviewResult] = useState<GitPreviewResponse | ImapPreviewResponse | null>(null);
   const [detectedFileType, setDetectedFileType] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [pendingIndexOperationId, setPendingIndexOperationId] = useState<string | null>(null);
   const [collectionIdForSource, setCollectionIdForSource] = useState<string | null>(null);
-  const [sourcePathForDelayedAdd, setSourcePathForDelayedAdd] = useState<string | null>(null);
+  const [connectorDataForDelayedAdd, setConnectorDataForDelayedAdd] = useState<{
+    type: string;
+    config: Record<string, unknown>;
+    secrets?: Record<string, string>;
+    sourcePath: string;
+  } | null>(null);
 
   // Monitor INDEX operation progress
   useOperationProgress(pendingIndexOperationId, {
     showToasts: false, // We'll show our own toasts
     onComplete: async () => {
       // INDEX operation completed, now we can add the source
-      if (collectionIdForSource && sourcePathForDelayedAdd) {
+      if (collectionIdForSource && connectorDataForDelayedAdd) {
         try {
           await addSourceMutation.mutateAsync({
             collectionId: collectionIdForSource,
-            sourceType: 'directory',
-            sourceConfig: { path: sourcePathForDelayedAdd },
-            sourcePath: sourcePathForDelayedAdd,
+            sourceType: connectorDataForDelayedAdd.type,
+            sourceConfig: connectorDataForDelayedAdd.config,
+            secrets: connectorDataForDelayedAdd.secrets,
+            sourcePath: connectorDataForDelayedAdd.sourcePath,
             config: {
               chunking_strategy: strategyConfig.strategy,
               chunking_config: strategyConfig.parameters,
             }
           });
-          
+
           // Show success with source addition
           addToast({
             message: 'Collection created and source added successfully! Navigating to collection...',
             type: 'success'
           });
-          
+
           // Call onSuccess first, then navigate
           onSuccess();
-          
+
           // Delay navigation slightly to let user see the success feedback
           setTimeout(() => {
             navigate(`/collections/${collectionIdForSource}`);
@@ -95,18 +102,18 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         } catch (sourceError) {
           // Collection was created but source addition failed
           addToast({
-            message: 'Collection created but failed to add source: ' + 
+            message: 'Collection created but failed to add source: ' +
                      (sourceError instanceof Error ? sourceError.message : 'Unknown error'),
             type: 'warning'
           });
-          
+
           // Still call onSuccess since collection was created
           onSuccess();
         } finally {
           // Clean up state
           setPendingIndexOperationId(null);
           setCollectionIdForSource(null);
-          setSourcePathForDelayedAdd(null);
+          setConnectorDataForDelayedAdd(null);
           setIsSubmitting(false);
         }
       }
@@ -118,7 +125,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       });
       setPendingIndexOperationId(null);
       setCollectionIdForSource(null);
-      setSourcePathForDelayedAdd(null);
+      setConnectorDataForDelayedAdd(null);
       setIsSubmitting(false);
     }
   });
@@ -135,8 +142,109 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose, isSubmitting]);
 
-  // Removed the useEffect that was preventing all form submissions
-  // The form onSubmit handler already prevents default behavior
+  // Initialize default values when connector type changes
+  useEffect(() => {
+    // Handle 'none' type - clear all connector state
+    if (connectorType === 'none') {
+      setConfigValues({});
+      setSecrets({});
+      setPreviewResult(null);
+      return;
+    }
+
+    if (!catalog) return;
+
+    const definition = catalog[connectorType];
+    if (!definition) return;
+
+    // Set default values from field definitions
+    const defaults: Record<string, unknown> = {};
+    for (const field of definition.fields) {
+      if (field.default !== undefined) {
+        defaults[field.name] = field.default;
+      }
+    }
+
+    setConfigValues(defaults);
+    setSecrets({});
+    setPreviewResult(null);
+    // Don't clear errors on type change - only clear connector-related errors
+  }, [connectorType, catalog]);
+
+  // Handle connector type change
+  const handleTypeChange = useCallback((type: string) => {
+    setConnectorType(type);
+    // Detect file type for directory connector
+    if (type !== 'directory') {
+      setDetectedFileType(undefined);
+    }
+  }, []);
+
+  // Handle preview/test connection
+  const handlePreview = useCallback(async () => {
+    setPreviewResult(null);
+
+    try {
+      if (connectorType === 'git') {
+        const result = await gitPreviewMutation.mutateAsync({
+          repo_url: configValues.repo_url as string,
+          ref: (configValues.ref as string) || 'main',
+          auth_method: (configValues.auth_method as 'none' | 'https_token' | 'ssh_key') || 'none',
+          token: secrets.token,
+          ssh_key: secrets.ssh_key,
+          ssh_passphrase: secrets.ssh_passphrase,
+          include_globs: configValues.include_globs as string[],
+          exclude_globs: configValues.exclude_globs as string[],
+        });
+        setPreviewResult(result);
+      } else if (connectorType === 'imap') {
+        const result = await imapPreviewMutation.mutateAsync({
+          host: configValues.host as string,
+          port: configValues.port as number,
+          use_ssl: configValues.use_ssl as boolean,
+          username: configValues.username as string,
+          password: secrets.password,
+          mailboxes: configValues.mailboxes as string[],
+        });
+        setPreviewResult(result);
+
+        // If successful, populate mailboxes options from result
+        if (result.valid && result.mailboxes_found.length > 0 && !configValues.mailboxes) {
+          const defaultMailbox = result.mailboxes_found.includes('INBOX')
+            ? ['INBOX']
+            : [result.mailboxes_found[0]];
+          setConfigValues((prev) => ({ ...prev, mailboxes: defaultMailbox }));
+        }
+      }
+    } catch (error) {
+      addToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Connection test failed',
+      });
+    }
+  }, [connectorType, configValues, secrets, gitPreviewMutation, imapPreviewMutation, addToast]);
+
+  // Build source path for display/backward compat
+  const getSourcePath = useCallback((): string => {
+    switch (connectorType) {
+      case 'none':
+        return '';
+      case 'directory':
+        return (configValues.path as string) || '';
+      case 'git':
+        return (configValues.repo_url as string) || '';
+      case 'imap':
+        return `${configValues.username || ''}@${configValues.host || ''}`;
+      default:
+        return '';
+    }
+  }, [connectorType, configValues]);
+
+  // Check if user has provided any source configuration
+  const hasSourceConfig = useCallback((): boolean => {
+    const sourcePath = getSourcePath();
+    return sourcePath.trim().length > 0;
+  }, [getSourcePath]);
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -151,14 +259,35 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       newErrors.description = 'Description must be 500 characters or less';
     }
 
-    if (sourcePath && !sourcePath.trim()) {
-      newErrors.sourcePath = 'Source path cannot be empty if provided';
-    }
-
     // Validate sync configuration
     if (formData.sync_mode === 'continuous') {
       if (!formData.sync_interval_minutes || formData.sync_interval_minutes < 15) {
         newErrors.sync_interval_minutes = 'Sync interval must be at least 15 minutes for continuous sync';
+      }
+    }
+
+    // Validate connector fields if user has started configuring a source
+    if (catalog && hasSourceConfig()) {
+      const definition = catalog[connectorType];
+      if (definition) {
+        // Validate required fields
+        for (const field of definition.fields) {
+          if (field.required && shouldShowField(field, configValues)) {
+            const value = configValues[field.name];
+            if (value === undefined || value === '' || value === null) {
+              newErrors[field.name] = `${field.label} is required`;
+            }
+          }
+        }
+
+        // Validate required secrets
+        for (const secret of definition.secrets) {
+          if (secret.required && shouldShowField(secret, configValues)) {
+            if (!secrets[secret.name]) {
+              newErrors[secret.name] = `${secret.label} is required`;
+            }
+          }
+        }
       }
     }
 
@@ -170,7 +299,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     // Always prevent default first to avoid page reload
     e.preventDefault();
     e.stopPropagation();
-    
+
     try {
       if (!validateForm()) {
         return;
@@ -179,9 +308,9 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
       console.error('Validation error:', error);
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       // Step 1: Create the collection with chunking configuration
       const response = await createCollectionMutation.mutateAsync({
@@ -189,27 +318,32 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
         chunking_strategy: strategyConfig.strategy,
         chunking_config: strategyConfig.parameters,
       });
-      
+
       // The response should include the initial INDEX operation ID
-      // Let's check if we have an operation in the response
       const indexOperationId = response.initial_operation_id;
-      
+
       // Step 2: Handle initial source if provided
-      if (sourcePath.trim() && indexOperationId) {
+      const sourcePath = getSourcePath();
+      if (sourcePath && indexOperationId) {
         // Set up state to track the INDEX operation and add source when it completes
         setPendingIndexOperationId(indexOperationId);
         setCollectionIdForSource(response.id);
-        setSourcePathForDelayedAdd(sourcePath.trim());
-        
+        setConnectorDataForDelayedAdd({
+          type: connectorType,
+          config: configValues,
+          secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
+          sourcePath,
+        });
+
         // Show progress message
         addToast({
           message: 'Collection created! Waiting for initialization before adding source...',
           type: 'info'
         });
-        
+
         // Don't set isSubmitting to false yet - it will be done when operations complete
         return;
-      } else if (sourcePath.trim() && !indexOperationId) {
+      } else if (sourcePath && !indexOperationId) {
         // Fallback: if we don't get an operation ID, just show success
         // This shouldn't happen but handle it gracefully
         addToast({
@@ -225,7 +359,7 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
           message: 'Collection created successfully!',
           type: 'success'
         });
-        
+
         // Call parent's onSuccess to close modal and refresh list
         onSuccess();
       }
@@ -250,30 +384,9 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
     }
   };
 
-  const handleSourcePathChange = (value: string) => {
-    setSourcePath(value);
-    // Clear error when field is modified
-    if (errors.sourcePath) {
-      setErrors(prev => ({ ...prev, sourcePath: '' }));
-    }
-    // Reset scan results when path changes
-    if (scanResult) {
-      resetScan();
-    }
-    // Detect file type from path for chunking recommendations
-    if (value.trim()) {
-      const extension = value.split('.').pop()?.toLowerCase();
-      setDetectedFileType(extension);
-    } else {
-      setDetectedFileType(undefined);
-    }
-  };
-
-  const handleScan = async () => {
-    if (sourcePath.trim()) {
-      await startScan(sourcePath.trim());
-    }
-  };
+  // Computed state for preview loading and disabled state
+  const isPreviewLoading = gitPreviewMutation.isPending || imapPreviewMutation.isPending;
+  const isDisabled = isSubmitting || createCollectionMutation.isPending || addSourceMutation.isPending;
 
   return (
     <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
@@ -371,87 +484,51 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               )}
             </div>
 
-            {/* Source Path */}
-            <div>
-              <label htmlFor="sourcePath" className="block text-sm font-medium text-gray-700">
-                Initial Source Directory (Optional)
-              </label>
-              <div className="mt-1 flex rounded-md shadow-sm">
-                <input
-                  type="text"
-                  id="sourcePath"
-                  value={sourcePath}
-                  onChange={(e) => handleSourcePathChange(e.target.value)}
-                  disabled={isSubmitting || scanning}
-                  className={getInputClassNameWithBase(!!errors.sourcePath || !!scanError, isSubmitting || scanning, 'flex-1 rounded-l-md shadow-sm sm:text-sm px-3 py-2 border appearance-none')}
-                  placeholder="/path/to/documents"
-                />
-                <button
-                  type="button"
-                  onClick={handleScan}
-                  disabled={!sourcePath.trim() || isSubmitting || scanning}
-                  className={`inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 rounded-r-md text-sm font-medium ${
-                    !sourcePath.trim() || isSubmitting || scanning
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                  }`}
-                >
-                  {scanning ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Scanning...
-                    </>
-                  ) : (
-                    'Scan'
+            {/* Initial Data Source (Optional) */}
+            <div className="border-t pt-4 mt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Initial Data Source (Optional)</h4>
+              <p className="text-sm text-gray-500 mb-4">
+                Optionally add an initial data source to start indexing immediately after collection creation.
+              </p>
+
+              {catalogLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-gray-600">Loading connectors...</span>
+                </div>
+              ) : catalog ? (
+                <>
+                  {/* Connector Type Selector */}
+                  <ConnectorTypeSelector
+                    catalog={catalog}
+                    selectedType={connectorType}
+                    onSelect={handleTypeChange}
+                    disabled={isDisabled}
+                    showNoneOption={true}
+                  />
+
+                  {/* Dynamic Connector Form - only show when a connector type is selected */}
+                  {connectorType !== 'none' && (
+                    <ConnectorForm
+                      catalog={catalog}
+                      connectorType={connectorType}
+                      values={configValues}
+                      secrets={secrets}
+                      onValuesChange={setConfigValues}
+                      onSecretsChange={setSecrets}
+                      errors={errors}
+                      disabled={isDisabled}
+                      onPreview={handlePreview}
+                      previewResult={previewResult}
+                      isPreviewLoading={isPreviewLoading}
+                    />
                   )}
-                </button>
-              </div>
-              {errors.sourcePath && (
-                <p className="mt-1 text-sm text-red-600">{errors.sourcePath}</p>
-              )}
-              {scanError && (
-                <p className="mt-1 text-sm text-red-600">{scanError}</p>
-              )}
-              
-              {/* Scan Results */}
-              {scanResult && (
-                <div className={`mt-3 p-3 rounded-md ${
-                  scanResult.total_files > 10000 
-                    ? 'bg-yellow-50 border border-yellow-200' 
-                    : 'bg-blue-50 border border-blue-200'
-                }`}>
-                  <div className="flex items-start">
-                    {scanResult.total_files > 10000 ? (
-                      <svg className="h-5 w-5 text-yellow-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5 text-blue-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                    <div className="ml-3 flex-1">
-                      <p className={`text-sm font-medium ${
-                        scanResult.total_files > 10000 ? 'text-yellow-800' : 'text-blue-800'
-                      }`}>
-                        Found {scanResult.total_files.toLocaleString()} files ({formatFileSize(scanResult.total_size)})
-                      </p>
-                      {scanResult.total_files > 10000 && (
-                        <p className="mt-1 text-sm text-yellow-700">
-                          Warning: Large directory detected. Indexing may take a significant amount of time.
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                </>
+              ) : (
+                <div className="text-center py-4 text-gray-500">
+                  Failed to load connector catalog. You can add sources after creating the collection.
                 </div>
               )}
-              
-              <p className="mt-1 text-sm text-gray-500">
-                Specify a directory to start indexing immediately after collection creation
-              </p>
             </div>
 
             {/* Embedding Model */}

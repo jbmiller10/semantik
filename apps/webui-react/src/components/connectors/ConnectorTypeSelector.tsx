@@ -1,4 +1,4 @@
-import { Folder, GitBranch, Mail } from 'lucide-react';
+import { Folder, GitBranch, Mail, Ban } from 'lucide-react';
 import type { ConnectorCatalog } from '../../types/connector';
 
 interface ConnectorTypeSelectorProps {
@@ -6,6 +6,8 @@ interface ConnectorTypeSelectorProps {
   selectedType: string;
   onSelect: (type: string) => void;
   disabled?: boolean;
+  /** Show a "None" option for cases where source is optional */
+  showNoneOption?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export function ConnectorTypeSelector({
   selectedType,
   onSelect,
   disabled = false,
+  showNoneOption = false,
 }: ConnectorTypeSelectorProps) {
   // Sort connector types by display order
   const sortedTypes = Object.keys(catalog).sort((a, b) => {
@@ -42,12 +45,48 @@ export function ConnectorTypeSelector({
     return aIndex - bIndex;
   });
 
+  // Determine grid columns based on whether we show the none option
+  const gridCols = showNoneOption ? 'grid-cols-4' : 'grid-cols-3';
+
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-gray-700">
         Select Source Type
       </label>
-      <div className="grid grid-cols-3 gap-3">
+      <div className={`grid ${gridCols} gap-3`}>
+        {/* None option - only shown when showNoneOption is true */}
+        {showNoneOption && (
+          <button
+            type="button"
+            onClick={() => onSelect('none')}
+            disabled={disabled}
+            className={`
+              relative flex flex-col items-center p-4 rounded-lg border-2 transition-all
+              ${
+                selectedType === 'none'
+                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                  : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+              }
+              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            `}
+          >
+            {selectedType === 'none' && (
+              <div className="absolute top-2 right-2">
+                <div className="h-2 w-2 rounded-full bg-blue-500" />
+              </div>
+            )}
+            <div className={`mb-2 ${selectedType === 'none' ? 'text-blue-600' : 'text-gray-500'}`}>
+              <Ban className="h-6 w-6" />
+            </div>
+            <span className={`text-sm font-medium ${selectedType === 'none' ? 'text-blue-900' : 'text-gray-900'}`}>
+              None
+            </span>
+            <span className={`text-xs mt-1 text-center ${selectedType === 'none' ? 'text-blue-700' : 'text-gray-500'}`}>
+              Add later
+            </span>
+          </button>
+        )}
+
         {sortedTypes.map((type) => {
           const definition = catalog[type];
           const isSelected = type === selectedType;
