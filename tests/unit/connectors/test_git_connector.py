@@ -671,31 +671,31 @@ class TestGitConnectorCloneOrFetch:
             }
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with (
-                patch.object(connector, "_get_cache_dir") as mock_cache_dir,
-                patch.object(connector, "_run_git_command") as mock_run,
-                patch.object(connector, "_setup_ssh_env", return_value={}),
-                patch.object(connector, "_setup_https_env", return_value={}),
-            ):
-                cache_dir = Path(temp_dir) / "cache"
-                mock_cache_dir.return_value = cache_dir
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(connector, "_get_cache_dir") as mock_cache_dir,
+            patch.object(connector, "_run_git_command") as mock_run,
+            patch.object(connector, "_setup_ssh_env", return_value={}),
+            patch.object(connector, "_setup_https_env", return_value={}),
+        ):
+            cache_dir = Path(temp_dir) / "cache"
+            mock_cache_dir.return_value = cache_dir
 
-                # Mock successful clone and checkout
-                mock_run.side_effect = [
-                    (0, "", ""),  # clone
-                    (0, "", ""),  # checkout
-                    (0, "abc123", ""),  # rev-parse
-                ]
+            # Mock successful clone and checkout
+            mock_run.side_effect = [
+                (0, "", ""),  # clone
+                (0, "", ""),  # checkout
+                (0, "abc123", ""),  # rev-parse
+            ]
 
-                result = await connector._clone_or_fetch()
+            result = await connector._clone_or_fetch()
 
-                assert result == cache_dir
-                # Verify clone was called
-                clone_call = mock_run.call_args_list[0]
-                assert "clone" in clone_call[0][0]
-                assert "--depth" in clone_call[0][0]
-                assert "1" in clone_call[0][0]
+            assert result == cache_dir
+            # Verify clone was called
+            clone_call = mock_run.call_args_list[0]
+            assert "clone" in clone_call[0][0]
+            assert "--depth" in clone_call[0][0]
+            assert "1" in clone_call[0][0]
 
     @pytest.mark.asyncio()
     async def test_clone_or_fetch_fetches_existing_repo(self):
@@ -775,28 +775,28 @@ class TestGitConnectorCloneOrFetch:
             }
         )
 
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with (
-                patch.object(connector, "_get_cache_dir") as mock_cache_dir,
-                patch.object(connector, "_run_git_command") as mock_run,
-                patch.object(connector, "_setup_ssh_env", return_value={}),
-                patch.object(connector, "_setup_https_env", return_value={}),
-            ):
-                cache_dir = Path(temp_dir) / "cache"
-                mock_cache_dir.return_value = cache_dir
+        with (
+            tempfile.TemporaryDirectory() as temp_dir,
+            patch.object(connector, "_get_cache_dir") as mock_cache_dir,
+            patch.object(connector, "_run_git_command") as mock_run,
+            patch.object(connector, "_setup_ssh_env", return_value={}),
+            patch.object(connector, "_setup_https_env", return_value={}),
+        ):
+            cache_dir = Path(temp_dir) / "cache"
+            mock_cache_dir.return_value = cache_dir
 
-                mock_run.side_effect = [
-                    (0, "", ""),  # clone
-                    (1, "", "ref not found"),  # first checkout fails
-                    (0, "", ""),  # fetch origin ref:ref
-                    (0, "", ""),  # second checkout succeeds
-                    (0, "abc123", ""),  # rev-parse
-                ]
+            mock_run.side_effect = [
+                (0, "", ""),  # clone
+                (1, "", "ref not found"),  # first checkout fails
+                (0, "", ""),  # fetch origin ref:ref
+                (0, "", ""),  # second checkout succeeds
+                (0, "abc123", ""),  # rev-parse
+            ]
 
-                result = await connector._clone_or_fetch()
+            result = await connector._clone_or_fetch()
 
-                assert result == cache_dir
-                assert connector._commit_sha == "abc123"
+            assert result == cache_dir
+            assert connector._commit_sha == "abc123"
 
 
 class TestGitConnectorProcessFile:

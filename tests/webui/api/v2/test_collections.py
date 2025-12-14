@@ -217,7 +217,7 @@ async def test_delete_collection_success(
     api_auth_headers: dict[str, str],
     test_user_db,
     collection_factory,
-    stub_celery_send_task,
+    stub_celery_send_task,  # noqa: ARG001
 ) -> None:
     """Successfully delete a collection."""
     collection = await collection_factory(owner_id=test_user_db.id)
@@ -273,7 +273,7 @@ async def test_add_source_success(
     api_auth_headers: dict[str, str],
     test_user_db,
     collection_factory,
-    stub_celery_send_task,
+    stub_celery_send_task,  # noqa: ARG001
 ) -> None:
     """Successfully add a source to a collection."""
     collection = await collection_factory(owner_id=test_user_db.id)
@@ -389,7 +389,7 @@ async def test_reindex_collection_success(
     api_auth_headers: dict[str, str],
     test_user_db,
     collection_factory,
-    stub_celery_send_task,
+    stub_celery_send_task,  # noqa: ARG001
 ) -> None:
     """Successfully trigger reindex on a collection."""
     collection = await collection_factory(owner_id=test_user_db.id)
