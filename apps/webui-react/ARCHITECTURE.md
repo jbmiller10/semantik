@@ -54,7 +54,13 @@ App.tsx
         └── Global Components
             ├── Toast Container
             ├── DocumentViewerModal
-            └── CollectionDetailsModal
+            ├── CollectionDetailsModal
+            ├── CreateCollectionModal
+            │   ├── ConnectorTypeSelector
+            │   └── ConnectorForm
+            └── AddDataToCollectionModal
+                ├── ConnectorTypeSelector
+                └── ConnectorForm
 ```
 
 ### Component Design Patterns
@@ -98,6 +104,47 @@ showCollectionDetailsModal: string | null
 #### Feature Hooks
 - `useRerankingAvailability()`: Check reranking model availability
 - `useDirectoryScan()`: Directory scanning functionality
+
+#### Connector Hooks
+- `useConnectorCatalog()`: Fetch available connector types from backend
+- `useGitPreview()`: Test Git repository connections before adding
+- `useImapPreview()`: Test IMAP server connections before adding
+
+### Connector System
+
+#### Overview
+The connector system provides a dynamic UI for adding data sources (Directory, Git, IMAP) to collections. Connector definitions are fetched from the backend API (`/api/v2/connectors`), allowing new connector types to be added with minimal frontend changes.
+
+#### Components
+```
+components/connectors/
+├── index.ts                  # Barrel exports
+├── ConnectorTypeSelector.tsx # Card-based connector picker
+└── ConnectorForm.tsx         # Dynamic form field rendering
+```
+
+#### ConnectorTypeSelector
+Card-based picker that displays available connector types with:
+- Icons for each connector type
+- Short descriptions
+- Selection state highlighting
+- Optional "None" option for skipping source addition
+
+#### ConnectorForm
+Dynamically renders form fields based on connector definition:
+- Text inputs, numbers, checkboxes, selects
+- Conditional field visibility (`show_when` conditions)
+- Secret fields (passwords, tokens)
+- Preview/test connection functionality
+- Validation error display
+
+#### Adding New Connectors
+When a new connector is added to the backend, the frontend needs:
+1. **Icon mapping**: Add to `connectorIcons` in `ConnectorTypeSelector.tsx`
+2. **Display order**: Add to `displayOrder` array
+3. **Short description**: Add case to `getShortDescription()`
+4. **Preview handler**: Add logic to `handlePreview()` if connector supports preview
+5. **Source path**: Add case to `getSourcePath()` for display purposes
 
 ## 2. State Management with Zustand
 
@@ -235,6 +282,7 @@ services/api/v2/
 ├── documents.ts    # Document operations
 ├── search.ts       # Search functionality
 ├── chunking.ts     # Chunking strategies
+├── connectors.ts   # Connector catalog and preview APIs
 ├── settings.ts     # User settings
 ├── system.ts       # System information
 └── directoryScan.ts # Directory scanning
