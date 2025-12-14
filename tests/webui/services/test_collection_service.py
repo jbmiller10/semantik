@@ -125,6 +125,9 @@ class TestCreateCollection:
             chunking_config=None,
             is_public=True,
             meta={"custom": "data"},
+            sync_mode="one_time",
+            sync_interval_minutes=None,
+            sync_next_run_at=None,
         )
 
         mock_operation_repo.create.assert_called_once_with(
@@ -195,6 +198,9 @@ class TestCreateCollection:
             chunking_config=None,
             is_public=False,
             meta=None,
+            sync_mode="one_time",
+            sync_interval_minutes=None,
+            sync_next_run_at=None,
         )
 
     @pytest.mark.asyncio()
@@ -272,6 +278,9 @@ class TestCreateCollection:
             chunking_config=None,
             is_public=False,
             meta=None,
+            sync_mode="one_time",
+            sync_interval_minutes=None,
+            sync_next_run_at=None,
         )
 
 
