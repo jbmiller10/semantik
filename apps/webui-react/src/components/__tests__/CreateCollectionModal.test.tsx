@@ -72,6 +72,7 @@ const mockConnectorCatalog = {
     ],
     secrets: [],
     supports_sync: true,
+    preview_endpoint: '/api/v2/connectors/git/preview',
   },
   imap: {
     name: 'Email (IMAP)',
@@ -93,6 +94,7 @@ const mockConnectorCatalog = {
       },
     ],
     supports_sync: true,
+    preview_endpoint: '/api/v2/connectors/imap/preview',
   },
 };
 
@@ -795,6 +797,330 @@ describe('CreateCollectionModal', () => {
       });
 
       expect(mockCreateCollectionMutation.mutateAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Git Connector Preview', () => {
+    it('should call gitPreviewMutation with correct parameters', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        repo_url: 'https://github.com/user/repo.git',
+        ref: 'main',
+        refs_found: ['main', 'develop'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockGitPreviewMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            repo_url: 'https://github.com/user/repo.git',
+            auth_method: 'none',
+          })
+        );
+      });
+    });
+
+    it('should display Git preview result with refs', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        repo_url: 'https://github.com/user/repo.git',
+        ref: 'main',
+        refs_found: ['main', 'develop', 'v1.0.0'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockGitPreviewMutation.mutateAsync).toHaveBeenCalled();
+      });
+    });
+
+    it('should handle Git preview error', async () => {
+      const user = userEvent.setup();
+      mockGitPreviewMutation.mutateAsync.mockRejectedValue(new Error('Authentication failed'));
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith({
+          type: 'error',
+          message: 'Authentication failed',
+        });
+      });
+    });
+  });
+
+  describe('IMAP Connector Preview', () => {
+    it('should call imapPreviewMutation with correct parameters', async () => {
+      const user = userEvent.setup();
+      mockImapPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        host: 'imap.example.com',
+        username: 'user@example.com',
+        mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+      });
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      await waitFor(() => {
+        expect(mockImapPreviewMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            host: 'imap.example.com',
+            password: 'secretpassword',
+          })
+        );
+      });
+    });
+
+    it('should auto-populate mailboxes from successful preview', async () => {
+      const user = userEvent.setup();
+      mockImapPreviewMutation.mutateAsync.mockResolvedValue({
+        valid: true,
+        host: 'imap.example.com',
+        username: 'user@example.com',
+        mailboxes_found: ['INBOX', 'Sent', 'Drafts'],
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Click Test Connection button
+      const testButton = screen.getByRole('button', { name: /test connection/i });
+      await user.click(testButton);
+
+      // The mutation should be called and mailboxes should be auto-populated
+      await waitFor(() => {
+        expect(mockImapPreviewMutation.mutateAsync).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Sync Configuration', () => {
+    it('should show sync interval input when continuous mode is selected', async () => {
+      const user = userEvent.setup();
+      renderCreateCollectionModal(defaultProps);
+
+      // Initially, interval input should not be visible (default is one_time mode)
+      expect(screen.queryByLabelText(/sync interval/i)).not.toBeInTheDocument();
+
+      // Click continuous sync radio button
+      const continuousSyncRadio = screen.getByLabelText(/continuous sync/i);
+      await user.click(continuousSyncRadio);
+
+      // Now interval input should be visible
+      await waitFor(() => {
+        expect(screen.getByLabelText(/sync interval/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should hide sync interval input when switching back to one-time mode', async () => {
+      const user = userEvent.setup();
+      renderCreateCollectionModal(defaultProps);
+
+      // Select continuous mode
+      await user.click(screen.getByLabelText(/continuous sync/i));
+      await waitFor(() => {
+        expect(screen.getByLabelText(/sync interval/i)).toBeInTheDocument();
+      });
+
+      // Switch back to one-time mode
+      await user.click(screen.getByLabelText(/one-time import/i));
+
+      // Interval input should be hidden
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/sync interval/i)).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Connector State Management', () => {
+    it('should clear connector state when switching to none', async () => {
+      const user = userEvent.setup();
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Now switch back to None (button contains "None" text)
+      await user.click(screen.getByText('None'));
+
+      // Git fields should no longer be visible
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/repository url/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('should set default values from catalog when selecting connector type', async () => {
+      const user = userEvent.setup();
+
+      renderCreateCollectionModal(defaultProps);
+
+      // Select Directory connector
+      await user.click(screen.getByText('Directory'));
+
+      // Directory connector should show its fields
+      await waitFor(() => {
+        expect(screen.getByLabelText(/directory path/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should include secrets in source addition when provided', async () => {
+      const user = userEvent.setup();
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
+        id: 'test-collection-id',
+        initial_operation_id: 'op-123',
+      });
+      mockAddSourceMutation.mutateAsync.mockResolvedValue({});
+
+      renderCreateCollectionModal(defaultProps);
+
+      await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
+
+      // Select IMAP connector
+      await user.click(screen.getByText(/email.*imap/i));
+
+      // Fill in IMAP fields
+      const hostInput = await screen.findByLabelText(/imap server/i);
+      await user.type(hostInput, 'imap.example.com');
+
+      const passwordInput = screen.getByLabelText(/password/i);
+      await user.type(passwordInput, 'secretpassword');
+
+      // Submit form
+      await user.click(screen.getByRole('button', { name: /create collection/i }));
+
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled();
+      });
+
+      // Trigger the onComplete callback to simulate INDEX operation completing
+      await act(async () => {
+        if (mockOperationProgressState.onComplete) {
+          await mockOperationProgressState.onComplete();
+        }
+      });
+
+      await waitFor(() => {
+        expect(mockAddSourceMutation.mutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            secrets: expect.objectContaining({
+              password: 'secretpassword',
+            }),
+          })
+        );
+      });
+    });
+  });
+
+  describe('Operation Progress Error Handling', () => {
+    it('should handle INDEX operation error callback', async () => {
+      const user = userEvent.setup();
+      mockCreateCollectionMutation.mutateAsync.mockResolvedValue({
+        id: 'test-collection-id',
+        initial_operation_id: 'op-123',
+      });
+
+      renderCreateCollectionModal(defaultProps);
+
+      await user.type(screen.getByLabelText(/collection name/i), 'Test Collection');
+
+      // Select Git connector
+      await user.click(screen.getByText('Git Repository'));
+
+      // Fill in repo URL
+      const repoUrlInput = await screen.findByLabelText(/repository url/i);
+      await user.type(repoUrlInput, 'https://github.com/user/repo.git');
+
+      // Submit form
+      await user.click(screen.getByRole('button', { name: /create collection/i }));
+
+      await waitFor(() => {
+        expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled();
+      });
+
+      // Trigger the onError callback to simulate INDEX operation failing
+      await act(async () => {
+        if (mockOperationProgressState.onError) {
+          mockOperationProgressState.onError(new Error('INDEX operation failed'));
+        }
+      });
+
+      await waitFor(() => {
+        expect(mockAddToast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'error',
+            message: expect.stringContaining('INDEX operation failed'),
+          })
+        );
+      });
     });
   });
 });

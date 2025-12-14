@@ -513,3 +513,557 @@ class TestGitConnectorFileMatching:
         # When include_globs are set, extension check returns True
         # (trusting the include patterns)
         assert connector._is_supported_extension(Path("image.png"))
+
+
+class TestGitConnectorRedactSensitive:
+    """Test _redact_sensitive method."""
+
+    def test_redact_sensitive_replaces_token(self):
+        """Test that token is redacted from error messages."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "auth_method": "https_token",
+            }
+        )
+        connector.set_credentials(token="ghp_secret123")
+
+        result = connector._redact_sensitive("Error: ghp_secret123 authentication failed")
+
+        assert "ghp_secret123" not in result
+        assert "***" in result
+        assert "Error:" in result
+
+    def test_redact_sensitive_no_token_set(self):
+        """Test redaction returns unchanged text when no token set."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        result = connector._redact_sensitive("Error: some message")
+        assert result == "Error: some message"
+
+    def test_redact_sensitive_empty_text(self):
+        """Test redaction handles empty text."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+        connector.set_credentials(token="ghp_secret123")
+
+        assert connector._redact_sensitive("") == ""
+        assert connector._redact_sensitive(None) is None
+
+
+class TestGitConnectorCleanup:
+    """Test cleanup method."""
+
+    def test_cleanup_removes_repo_directory(self):
+        """Test cleanup() removes the cached repository directory."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a mock repo directory
+            repo_dir = Path(temp_dir) / "test_repo"
+            repo_dir.mkdir()
+            (repo_dir / "file.txt").write_text("content")
+
+            connector._repo_dir = repo_dir
+            assert repo_dir.exists()
+
+            connector.cleanup()
+
+            assert not repo_dir.exists()
+            assert connector._repo_dir is None
+
+    def test_cleanup_handles_no_repo_dir(self):
+        """Test cleanup() handles case when no repo directory is set."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        # Should not raise
+        connector.cleanup()
+        assert connector._repo_dir is None
+
+
+class TestGitConnectorGetBlobSha:
+    """Test _get_blob_sha method."""
+
+    @pytest.mark.asyncio()
+    async def test_get_blob_sha_returns_sha(self):
+        """Test _get_blob_sha returns blob SHA from git ls-tree."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+            test_file = repo_dir / "README.md"
+            test_file.write_text("# Test")
+
+            with patch.object(connector, "_run_git_command") as mock_run:
+                mock_run.return_value = (0, "100644 blob abc123def456\tREADME.md", "")
+
+                sha = await connector._get_blob_sha(test_file)
+
+                assert sha == "abc123def456"
+
+    @pytest.mark.asyncio()
+    async def test_get_blob_sha_returns_none_for_not_found(self):
+        """Test _get_blob_sha returns None when file not in tree."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+            test_file = repo_dir / "missing.txt"
+            test_file.write_text("content")
+
+            with patch.object(connector, "_run_git_command") as mock_run:
+                mock_run.return_value = (0, "", "")
+
+                sha = await connector._get_blob_sha(test_file)
+
+                assert sha is None
+
+    @pytest.mark.asyncio()
+    async def test_get_blob_sha_returns_none_when_no_repo_dir(self):
+        """Test _get_blob_sha returns None when no repo directory set."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+        connector._repo_dir = None
+
+        sha = await connector._get_blob_sha(Path("/some/file.txt"))
+
+        assert sha is None
+
+
+class TestGitConnectorCloneOrFetch:
+    """Test _clone_or_fetch method."""
+
+    @pytest.mark.asyncio()
+    async def test_clone_or_fetch_creates_new_clone(self):
+        """Test cloning when cache dir doesn't exist."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "shallow_depth": 1,
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.object(connector, "_get_cache_dir") as mock_cache_dir,
+                patch.object(connector, "_run_git_command") as mock_run,
+                patch.object(connector, "_setup_ssh_env", return_value={}),
+                patch.object(connector, "_setup_https_env", return_value={}),
+            ):
+                cache_dir = Path(temp_dir) / "cache"
+                mock_cache_dir.return_value = cache_dir
+
+                # Mock successful clone and checkout
+                mock_run.side_effect = [
+                    (0, "", ""),  # clone
+                    (0, "", ""),  # checkout
+                    (0, "abc123", ""),  # rev-parse
+                ]
+
+                result = await connector._clone_or_fetch()
+
+                assert result == cache_dir
+                # Verify clone was called
+                clone_call = mock_run.call_args_list[0]
+                assert "clone" in clone_call[0][0]
+                assert "--depth" in clone_call[0][0]
+                assert "1" in clone_call[0][0]
+
+    @pytest.mark.asyncio()
+    async def test_clone_or_fetch_fetches_existing_repo(self):
+        """Test fetching when .git directory exists."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir) / "cache"
+            cache_dir.mkdir(parents=True)
+            (cache_dir / ".git").mkdir()
+
+            with (
+                patch.object(connector, "_get_cache_dir", return_value=cache_dir),
+                patch.object(connector, "_run_git_command") as mock_run,
+                patch.object(connector, "_setup_ssh_env", return_value={}),
+                patch.object(connector, "_setup_https_env", return_value={}),
+            ):
+                mock_run.side_effect = [
+                    (0, "", ""),  # fetch
+                    (0, "", ""),  # checkout
+                    (0, "def456", ""),  # rev-parse
+                ]
+
+                result = await connector._clone_or_fetch()
+
+                assert result == cache_dir
+                # Verify fetch was called (not clone)
+                fetch_call = mock_run.call_args_list[0]
+                assert "fetch" in fetch_call[0][0]
+
+    @pytest.mark.asyncio()
+    async def test_clone_or_fetch_reclones_on_fetch_failure(self):
+        """Test re-clone when fetch fails."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir) / "cache"
+            cache_dir.mkdir(parents=True)
+            (cache_dir / ".git").mkdir()
+            (cache_dir / "old_file.txt").write_text("old")
+
+            with (
+                patch.object(connector, "_get_cache_dir", return_value=cache_dir),
+                patch.object(connector, "_run_git_command") as mock_run,
+                patch.object(connector, "_setup_ssh_env", return_value={}),
+                patch.object(connector, "_setup_https_env", return_value={}),
+            ):
+                mock_run.side_effect = [
+                    (128, "", "fetch failed"),  # fetch fails
+                    (0, "", ""),  # clone succeeds
+                    (0, "", ""),  # checkout
+                    (0, "abc123", ""),  # rev-parse
+                ]
+
+                result = await connector._clone_or_fetch()
+
+                assert result == cache_dir
+                # Verify clone was called after fetch failure
+                call_args = [call[0][0] for call in mock_run.call_args_list]
+                assert any("clone" in args for args in call_args)
+
+    @pytest.mark.asyncio()
+    async def test_clone_or_fetch_handles_checkout_retry(self):
+        """Test ref fetching when initial checkout fails."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "feature-branch",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.object(connector, "_get_cache_dir") as mock_cache_dir,
+                patch.object(connector, "_run_git_command") as mock_run,
+                patch.object(connector, "_setup_ssh_env", return_value={}),
+                patch.object(connector, "_setup_https_env", return_value={}),
+            ):
+                cache_dir = Path(temp_dir) / "cache"
+                mock_cache_dir.return_value = cache_dir
+
+                mock_run.side_effect = [
+                    (0, "", ""),  # clone
+                    (1, "", "ref not found"),  # first checkout fails
+                    (0, "", ""),  # fetch origin ref:ref
+                    (0, "", ""),  # second checkout succeeds
+                    (0, "abc123", ""),  # rev-parse
+                ]
+
+                result = await connector._clone_or_fetch()
+
+                assert result == cache_dir
+                assert connector._commit_sha == "abc123"
+
+
+class TestGitConnectorProcessFile:
+    """Test _process_file method."""
+
+    @pytest.mark.asyncio()
+    async def test_process_file_skips_symlinks(self):
+        """Test that symlinks are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+
+            # Create a file and a symlink
+            real_file = repo_dir / "real.txt"
+            real_file.write_text("content")
+            symlink = repo_dir / "link.txt"
+            symlink.symlink_to(real_file)
+
+            result = await connector._process_file(symlink, "link.txt")
+
+            assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_process_file_skips_large_files(self):
+        """Test files exceeding max_file_size are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "max_file_size_mb": 1,  # 1 MB limit
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+
+            # Create a large file (>1 MB)
+            large_file = repo_dir / "large.txt"
+            large_file.write_text("x" * (2 * 1024 * 1024))  # 2 MB
+
+            result = await connector._process_file(large_file, "large.txt")
+
+            assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_process_file_skips_empty_files(self):
+        """Test empty files (0 bytes) are skipped."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+
+            empty_file = repo_dir / "empty.txt"
+            empty_file.write_text("")
+
+            result = await connector._process_file(empty_file, "empty.txt")
+
+            assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_process_file_reads_text_files_directly(self):
+        """Test text files are read without extraction service."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+            connector._commit_sha = "abc123"
+
+            md_file = repo_dir / "README.md"
+            md_file.write_text("# Hello World\n\nThis is a test.")
+
+            with patch.object(connector, "_get_blob_sha", return_value="blob123"):
+                result = await connector._process_file(md_file, "README.md")
+
+            assert result is not None
+            assert "Hello World" in result.content
+            assert result.unique_id == "git://https://github.com/user/repo.git/README.md"
+            assert result.source_type == "git"
+            assert result.metadata["blob_sha"] == "blob123"
+            assert result.metadata["commit_sha"] == "abc123"
+
+    @pytest.mark.asyncio()
+    async def test_process_file_builds_correct_metadata(self):
+        """Test that metadata is correctly populated."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "ref": "main",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            connector._repo_dir = repo_dir
+            connector._commit_sha = "commit123"
+
+            py_file = repo_dir / "src" / "main.py"
+            py_file.parent.mkdir(parents=True)
+            py_file.write_text("print('hello')")
+
+            with patch.object(connector, "_get_blob_sha", return_value="blob456"):
+                result = await connector._process_file(py_file, "src/main.py")
+
+            assert result is not None
+            assert result.metadata["file_path"] == "src/main.py"
+            assert result.metadata["ref"] == "main"
+            assert result.metadata["repo_url"] == "https://github.com/user/repo.git"
+            assert result.content_hash is not None
+
+
+class TestGitConnectorLoadDocuments:
+    """Test load_documents method."""
+
+    @pytest.mark.asyncio()
+    async def test_load_documents_yields_documents(self):
+        """Test that load_documents yields IngestedDocument objects."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+            (repo_dir / "README.md").write_text("# Test")
+            (repo_dir / "src").mkdir()
+            (repo_dir / "src" / "main.py").write_text("print('hello')")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                docs = [doc async for doc in connector.load_documents()]
+
+            assert len(docs) == 2
+            paths = [doc.metadata["file_path"] for doc in docs]
+            assert "README.md" in paths
+            assert "src/main.py" in paths
+
+    @pytest.mark.asyncio()
+    async def test_load_documents_skips_git_directory(self):
+        """Test that .git directory is skipped during traversal."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+            (repo_dir / ".git" / "config").write_text("[core]")
+            (repo_dir / "README.md").write_text("# Test")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                docs = [doc async for doc in connector.load_documents()]
+
+            # Only README.md should be yielded, not .git/config
+            assert len(docs) == 1
+            assert docs[0].metadata["file_path"] == "README.md"
+
+    @pytest.mark.asyncio()
+    async def test_load_documents_respects_include_patterns(self):
+        """Test include_globs filtering in load_documents."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "include_globs": ["*.md"],
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+            (repo_dir / "README.md").write_text("# Test")
+            (repo_dir / "main.py").write_text("print('hello')")
+            (repo_dir / "CHANGELOG.md").write_text("# Changes")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                docs = [doc async for doc in connector.load_documents()]
+
+            # Only .md files should be yielded
+            assert len(docs) == 2
+            paths = [doc.metadata["file_path"] for doc in docs]
+            assert "README.md" in paths
+            assert "CHANGELOG.md" in paths
+            assert "main.py" not in paths
+
+    @pytest.mark.asyncio()
+    async def test_load_documents_respects_exclude_patterns(self):
+        """Test exclude_globs filtering in load_documents."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+                "exclude_globs": ["*.min.js"],
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_dir = Path(temp_dir)
+            (repo_dir / ".git").mkdir()
+            (repo_dir / "app.js").write_text("console.log('hi')")
+            (repo_dir / "app.min.js").write_text("console.log('hi')")
+
+            with (
+                patch.object(connector, "_clone_or_fetch", return_value=repo_dir),
+                patch.object(connector, "_get_blob_sha", return_value="blob123"),
+            ):
+                connector._repo_dir = repo_dir
+                connector._commit_sha = "abc123"
+
+                docs = [doc async for doc in connector.load_documents()]
+
+            # app.min.js should be excluded
+            paths = [doc.metadata["file_path"] for doc in docs]
+            assert "app.js" in paths
+            assert "app.min.js" not in paths
+
+
+class TestGitConnectorRunGitCommandFileNotFound:
+    """Test _run_git_command FileNotFoundError handling."""
+
+    @pytest.mark.asyncio()
+    async def test_run_git_command_file_not_found_error(self):
+        """Test FileNotFoundError when git binary not installed."""
+        connector = GitConnector(
+            {
+                "repo_url": "https://github.com/user/repo.git",
+            }
+        )
+
+        with patch("shared.connectors.git.asyncio.create_subprocess_exec") as mock_exec:
+            mock_exec.side_effect = FileNotFoundError("git not found")
+
+            with pytest.raises(ValueError, match=r"Git binary not found") as exc_info:
+                await connector._run_git_command(["status"])
+
+            assert "Git binary not found" in str(exc_info.value)
