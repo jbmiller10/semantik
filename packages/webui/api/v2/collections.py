@@ -23,10 +23,12 @@ from webui.api.schemas import (
     CollectionCreate,
     CollectionListResponse,
     CollectionResponse,
+    CollectionSyncRunResponse,
     CollectionUpdate,
     DocumentListResponse,
     ErrorResponse,
     OperationResponse,
+    SyncRunListResponse,
 )
 from webui.auth import get_current_user
 from webui.dependencies import get_collection_for_user
@@ -703,4 +705,244 @@ async def list_collection_documents(
         raise HTTPException(
             status_code=500,
             detail="Failed to list documents",
+        ) from e
+
+
+# =============================================================================
+# Collection Sync Endpoints
+# =============================================================================
+
+
+@router.post(
+    "/{collection_uuid}/sync/run",
+    response_model=CollectionSyncRunResponse,
+    status_code=202,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        409: {"model": ErrorResponse, "description": "Invalid collection state or operation in progress"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
+    },
+)
+@limiter.limit("10/hour")
+async def run_collection_sync(
+    request: Request,  # noqa: ARG001
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> CollectionSyncRunResponse:
+    """Trigger a sync run for all sources in the collection.
+
+    Fans out APPEND operations for each source and creates a sync run record
+    to track completion aggregation. Returns 409 if collection has active
+    operations or is not in a valid state (READY/DEGRADED).
+    """
+    try:
+        sync_run = await service.run_collection_sync(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            triggered_by="manual",
+        )
+
+        return CollectionSyncRunResponse(
+            id=sync_run.id,
+            collection_id=sync_run.collection_id,
+            triggered_by=sync_run.triggered_by,
+            started_at=sync_run.started_at,
+            completed_at=sync_run.completed_at,
+            status=sync_run.status,
+            expected_sources=sync_run.expected_sources,
+            completed_sources=sync_run.completed_sources,
+            failed_sources=sync_run.failed_sources,
+            partial_sources=sync_run.partial_sources,
+            error_summary=sync_run.error_summary,
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to sync this collection",
+        ) from e
+    except InvalidStateError as e:
+        raise HTTPException(
+            status_code=409,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"Failed to run collection sync: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to run collection sync",
+        ) from e
+
+
+@router.post(
+    "/{collection_uuid}/sync/pause",
+    response_model=CollectionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        400: {"model": ErrorResponse, "description": "Collection is not in continuous sync mode"},
+    },
+)
+async def pause_collection_sync(
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> CollectionResponse:
+    """Pause continuous sync for a collection.
+
+    Sets sync_paused_at timestamp to pause scheduled sync runs.
+    Collection must be in continuous sync mode.
+    """
+    try:
+        collection = await service.pause_collection_sync(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+        )
+
+        return CollectionResponse.from_collection(collection)
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to modify this collection",
+        ) from e
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"Failed to pause collection sync: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to pause collection sync",
+        ) from e
+
+
+@router.post(
+    "/{collection_uuid}/sync/resume",
+    response_model=CollectionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        400: {"model": ErrorResponse, "description": "Collection is not paused"},
+    },
+)
+async def resume_collection_sync(
+    collection_uuid: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> CollectionResponse:
+    """Resume continuous sync for a collection.
+
+    Clears sync_paused_at and recalculates sync_next_run_at.
+    Collection must be paused and in continuous sync mode.
+    """
+    try:
+        collection = await service.resume_collection_sync(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+        )
+
+        return CollectionResponse.from_collection(collection)
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to modify this collection",
+        ) from e
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e),
+        ) from e
+    except Exception as e:
+        logger.error(f"Failed to resume collection sync: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to resume collection sync",
+        ) from e
+
+
+@router.get(
+    "/{collection_uuid}/sync/runs",
+    response_model=SyncRunListResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Collection not found"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+    },
+)
+async def list_collection_sync_runs(
+    collection_uuid: str,
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum records to return"),
+    current_user: dict[str, Any] = Depends(get_current_user),
+    service: CollectionService = Depends(get_collection_service),
+) -> SyncRunListResponse:
+    """List sync runs for a collection.
+
+    Returns a paginated list of sync runs ordered by start time (newest first).
+    """
+    try:
+        sync_runs, total = await service.list_collection_sync_runs(
+            collection_id=collection_uuid,
+            user_id=int(current_user["id"]),
+            offset=offset,
+            limit=limit,
+        )
+
+        return SyncRunListResponse(
+            items=[
+                CollectionSyncRunResponse(
+                    id=run.id,
+                    collection_id=run.collection_id,
+                    triggered_by=run.triggered_by,
+                    started_at=run.started_at,
+                    completed_at=run.completed_at,
+                    status=run.status,
+                    expected_sources=run.expected_sources,
+                    completed_sources=run.completed_sources,
+                    failed_sources=run.failed_sources,
+                    partial_sources=run.partial_sources,
+                    error_summary=run.error_summary,
+                )
+                for run in sync_runs
+            ],
+            total=total,
+            offset=offset,
+            limit=limit,
+        )
+
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Collection '{collection_uuid}' not found",
+        ) from e
+    except _ACCESS_DENIED_ERRORS as e:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to this collection",
+        ) from e
+    except Exception as e:
+        logger.error(f"Failed to list sync runs: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to list sync runs",
         ) from e

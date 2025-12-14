@@ -41,6 +41,15 @@ class TestCollectionGetEndpoint:
         mock_collection.total_size_bytes = total_size_bytes
         mock_collection.status = CollectionStatus.READY
         mock_collection.status_message = None
+        # Sync policy fields (now at collection level)
+        mock_collection.sync_mode = "one_time"
+        mock_collection.sync_interval_minutes = None
+        mock_collection.sync_paused_at = None
+        mock_collection.sync_next_run_at = None
+        mock_collection.sync_last_run_started_at = None
+        mock_collection.sync_last_run_completed_at = None
+        mock_collection.sync_last_run_status = None
+        mock_collection.sync_last_error = None
 
         async def override_get_collection_for_user(collection_uuid: str) -> Collection:  # type: ignore[override]
             mock_collection.id = collection_uuid

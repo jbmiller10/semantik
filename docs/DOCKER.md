@@ -20,10 +20,14 @@ Files: `docker-compose.yml` (main), `.cuda.yml` (GPU), `.dev.yml` (dev), `.prod.
 ## Services
 
 **Data:** Qdrant (6333, 6334), PostgreSQL (5432), Redis (6379)
-**App:** WebUI (8080), Vecpipe (8000), Worker, Flower (5555, profile: backend)
+**App:** WebUI (8080), Vecpipe (8000), Worker, Beat, Flower (5555, profile: backend)
 **Test:** PostgreSQL Test (55432, profile: testing)
 
 All have health checks and resource limits.
+
+## Periodic tasks (Celery Beat)
+
+The `beat` service schedules periodic Celery tasks (including the continuous source sync dispatcher). If `beat` is not running, continuous sync sources will not auto-run.
 
 ## Profiles
 

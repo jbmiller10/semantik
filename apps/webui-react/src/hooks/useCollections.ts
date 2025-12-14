@@ -91,6 +91,8 @@ export function useCreateCollection() {
         vector_count: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        sync_mode: newCollection.sync_mode || 'one_time',
+        sync_interval_minutes: newCollection.sync_interval_minutes,
         isProcessing: true,
       };
 
