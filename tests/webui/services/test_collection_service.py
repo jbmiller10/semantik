@@ -1515,3 +1515,780 @@ class TestCollectionServiceEdgeCases:
         assert task_ids[0] != task_ids[1]
         assert task_ids[0] == "11111111-1111-1111-1111-111111111111"
         assert task_ids[1] == "22222222-2222-2222-2222-222222222222"
+
+
+class TestDeriveSourcePath:
+    """Test _derive_source_path helper method."""
+
+    def test_derive_source_path_directory(self, collection_service: CollectionService) -> None:
+        """Test deriving path for directory source type."""
+        result = collection_service._derive_source_path("directory", {"path": "/data/documents"})
+        assert result == "/data/documents"
+
+    def test_derive_source_path_web(self, collection_service: CollectionService) -> None:
+        """Test deriving path for web source type."""
+        result = collection_service._derive_source_path("web", {"url": "https://example.com"})
+        assert result == "https://example.com"
+
+    def test_derive_source_path_empty_config(self, collection_service: CollectionService) -> None:
+        """Test deriving path with empty config."""
+        result = collection_service._derive_source_path("directory", None)
+        assert result == ""
+
+    def test_derive_source_path_fallback_keys(self, collection_service: CollectionService) -> None:
+        """Test deriving path using fallback keys."""
+        result = collection_service._derive_source_path("slack", {"channel": "#general"})
+        assert result == "#general"
+
+    def test_derive_source_path_identifier_key(self, collection_service: CollectionService) -> None:
+        """Test deriving path using identifier key."""
+        result = collection_service._derive_source_path("custom", {"identifier": "my-source-id"})
+        assert result == "my-source-id"
+
+    def test_derive_source_path_fallback_first_string(self, collection_service: CollectionService) -> None:
+        """Test deriving path using first string value as fallback."""
+        result = collection_service._derive_source_path("unknown", {"some_key": "some_value", "number": 123})
+        assert result == "some_value"
+
+    def test_derive_source_path_no_string_values(self, collection_service: CollectionService) -> None:
+        """Test deriving path with no string values returns empty string."""
+        result = collection_service._derive_source_path("custom", {"count": 123, "enabled": True})
+        assert result == ""
+
+    def test_derive_source_path_none_path_value(self, collection_service: CollectionService) -> None:
+        """Test deriving path when path is None."""
+        result = collection_service._derive_source_path("directory", {"path": None})
+        assert result == ""
+
+
+class TestBuildVectorStoreName:
+    """Test _build_vector_store_name static method."""
+
+    def test_build_vector_store_name_basic(self) -> None:
+        """Test basic vector store name generation."""
+        result = CollectionService._build_vector_store_name(
+            "123e4567-e89b-12d3-a456-426614174000", "My Collection"
+        )
+        assert result.startswith("col_")
+        assert "my_collection" in result
+
+    def test_build_vector_store_name_special_characters(self) -> None:
+        """Test vector store name with special characters removed."""
+        result = CollectionService._build_vector_store_name(
+            "123e4567-e89b-12d3-a456-426614174000", "My!@#$%Collection"
+        )
+        assert "!" not in result
+        assert "@" not in result
+        assert "#" not in result
+
+    def test_build_vector_store_name_empty_slug(self) -> None:
+        """Test vector store name when slug becomes empty."""
+        result = CollectionService._build_vector_store_name(
+            "123e4567-e89b-12d3-a456-426614174000", "!@#$%"
+        )
+        assert result.startswith("col_")
+
+    def test_build_vector_store_name_truncation(self) -> None:
+        """Test vector store name truncation for long names."""
+        long_name = "a" * 200
+        result = CollectionService._build_vector_store_name(
+            "123e4567-e89b-12d3-a456-426614174000", long_name
+        )
+        assert len(result) <= 120
+
+
+class TestListOperationsFiltered:
+    """Test list_operations_filtered method."""
+
+    @pytest.mark.asyncio()
+    async def test_list_operations_filtered_by_status(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing operations filtered by status."""
+        from shared.database.models import OperationStatus
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        # Create operations with different statuses
+        pending_op = MagicMock()
+        pending_op.status = OperationStatus.PENDING
+        pending_op.type = OperationType.INDEX
+
+        completed_op = MagicMock()
+        completed_op.status = OperationStatus.COMPLETED
+        completed_op.type = OperationType.INDEX
+
+        mock_operation_repo.list_for_collection.return_value = ([pending_op, completed_op], 2)
+
+        operations, total = await collection_service.list_operations_filtered(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+            status="pending",
+        )
+
+        assert len(operations) == 1
+        assert operations[0].status == OperationStatus.PENDING
+
+    @pytest.mark.asyncio()
+    async def test_list_operations_filtered_by_type(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing operations filtered by type."""
+        from shared.database.models import OperationStatus
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        index_op = MagicMock()
+        index_op.status = OperationStatus.PENDING
+        index_op.type = OperationType.INDEX
+
+        reindex_op = MagicMock()
+        reindex_op.status = OperationStatus.PENDING
+        reindex_op.type = OperationType.REINDEX
+
+        mock_operation_repo.list_for_collection.return_value = ([index_op, reindex_op], 2)
+
+        operations, total = await collection_service.list_operations_filtered(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+            operation_type="reindex",
+        )
+
+        assert len(operations) == 1
+        assert operations[0].type == OperationType.REINDEX
+
+    @pytest.mark.asyncio()
+    async def test_list_operations_filtered_invalid_status(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing operations with invalid status raises ValueError."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValueError, match="Invalid status"):
+            await collection_service.list_operations_filtered(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                status="invalid_status",
+            )
+
+    @pytest.mark.asyncio()
+    async def test_list_operations_filtered_invalid_type(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing operations with invalid type raises ValueError."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValueError, match="Invalid operation type"):
+            await collection_service.list_operations_filtered(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                operation_type="invalid_type",
+            )
+
+    @pytest.mark.asyncio()
+    async def test_list_operations_filtered_no_filters(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing operations without filters returns all."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        ops = [MagicMock(), MagicMock()]
+        mock_operation_repo.list_for_collection.return_value = (ops, 2)
+
+        operations, total = await collection_service.list_operations_filtered(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+        )
+
+        assert len(operations) == 2
+        assert total == 2
+
+
+class TestListDocumentsFiltered:
+    """Test list_documents_filtered method."""
+
+    @pytest.mark.asyncio()
+    async def test_list_documents_filtered_by_status(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_document_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing documents filtered by status."""
+        from shared.database.models import DocumentStatus
+
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        completed_doc = MagicMock()
+        completed_doc.status = DocumentStatus.COMPLETED
+
+        pending_doc = MagicMock()
+        pending_doc.status = DocumentStatus.PENDING
+
+        mock_document_repo.list_by_collection.return_value = ([completed_doc, pending_doc], 2)
+
+        documents, total = await collection_service.list_documents_filtered(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+            status="completed",
+        )
+
+        assert len(documents) == 1
+        assert documents[0].status == DocumentStatus.COMPLETED
+
+    @pytest.mark.asyncio()
+    async def test_list_documents_filtered_invalid_status(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing documents with invalid status raises ValueError."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValueError, match="Invalid status"):
+            await collection_service.list_documents_filtered(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                status="invalid_status",
+            )
+
+    @pytest.mark.asyncio()
+    async def test_list_documents_filtered_no_filter(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_document_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing documents without filter returns all."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        docs = [MagicMock(), MagicMock()]
+        mock_document_repo.list_by_collection.return_value = (docs, 2)
+
+        documents, total = await collection_service.list_documents_filtered(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+        )
+
+        assert len(documents) == 2
+        assert total == 2
+
+
+class TestCreateOperation:
+    """Test create_operation method."""
+
+    @pytest.mark.asyncio()
+    async def test_create_operation_index(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test creating an index operation."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation.meta = {"operation_type": "index"}
+        mock_operation_repo.create.return_value = mock_operation
+
+        result = await collection_service.create_operation(
+            collection_id=str(mock_collection.uuid),
+            operation_type="index",
+            config={"source_path": "/data"},
+            user_id=1,
+        )
+
+        mock_operation_repo.create.assert_called_once()
+        mock_db_session.commit.assert_called_once()
+
+        assert result["uuid"] == mock_operation.uuid
+        assert result["type"] == mock_operation.type.value
+
+    @pytest.mark.asyncio()
+    async def test_create_operation_chunking_maps_to_index(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test that 'chunking' operation type maps to INDEX."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation.meta = {"operation_type": "chunking"}
+        mock_operation_repo.create.return_value = mock_operation
+
+        await collection_service.create_operation(
+            collection_id=str(mock_collection.uuid),
+            operation_type="chunking",
+            config={},
+            user_id=1,
+        )
+
+        call_args = mock_operation_repo.create.call_args[1]
+        assert call_args["operation_type"] == OperationType.INDEX
+        assert call_args["meta"] == {"operation_type": "chunking"}
+
+    @pytest.mark.asyncio()
+    async def test_create_operation_rechunking_maps_to_reindex(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test that 'rechunking' operation type maps to REINDEX."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation.meta = {"operation_type": "rechunking"}
+        mock_operation_repo.create.return_value = mock_operation
+
+        await collection_service.create_operation(
+            collection_id=str(mock_collection.uuid),
+            operation_type="rechunking",
+            config={},
+            user_id=1,
+        )
+
+        call_args = mock_operation_repo.create.call_args[1]
+        assert call_args["operation_type"] == OperationType.REINDEX
+
+    @pytest.mark.asyncio()
+    async def test_create_operation_collection_not_found(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+    ) -> None:
+        """Test creating operation for non-existent collection."""
+        mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError(
+            "Collection", "nonexistent"
+        )
+
+        with pytest.raises(EntityNotFoundError):
+            await collection_service.create_operation(
+                collection_id="nonexistent",
+                operation_type="index",
+                config={},
+                user_id=1,
+            )
+
+
+class TestUpdateCollection:
+    """Test update_collection method (alias for update that returns dict)."""
+
+    @pytest.mark.asyncio()
+    async def test_update_collection_returns_dict(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test update_collection returns a dictionary."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        updated_collection.id = mock_collection.id
+        updated_collection.name = "Updated Name"
+        updated_collection.description = "Updated description"
+        updated_collection.owner_id = mock_collection.owner_id
+        updated_collection.vector_store_name = mock_collection.vector_store_name
+        updated_collection.embedding_model = mock_collection.embedding_model
+        updated_collection.quantization = mock_collection.quantization
+        updated_collection.chunk_size = mock_collection.chunk_size
+        updated_collection.chunk_overlap = mock_collection.chunk_overlap
+        updated_collection.chunking_strategy = None
+        updated_collection.chunking_config = None
+        updated_collection.is_public = False
+        updated_collection.meta = None
+        updated_collection.created_at = mock_collection.created_at
+        updated_collection.updated_at = mock_collection.updated_at
+        updated_collection.document_count = 0
+        updated_collection.vector_count = 0
+        updated_collection.status = CollectionStatus.READY
+        updated_collection.status_message = None
+        mock_collection_repo.update.return_value = updated_collection
+
+        result = await collection_service.update_collection(
+            collection_id=str(mock_collection.uuid),
+            updates={"description": "Updated description"},
+            user_id=mock_collection.owner_id,
+        )
+
+        assert isinstance(result, dict)
+        assert "id" in result
+        assert "name" in result
+        assert "config" in result
+
+
+class TestCollectionSyncMethods:
+    """Test collection sync methods."""
+
+    @pytest.fixture()
+    def mock_sync_run_repo(self) -> AsyncMock:
+        """Create a mock sync run repository."""
+        from shared.database.repositories.collection_sync_run_repository import CollectionSyncRunRepository
+
+        mock = AsyncMock(spec=CollectionSyncRunRepository)
+        mock.create = AsyncMock()
+        mock.list_for_collection = AsyncMock()
+        return mock
+
+    @pytest.fixture()
+    def collection_service_with_sync(
+        self,
+        mock_db_session: AsyncMock,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_document_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_qdrant_manager: AsyncMock,
+        mock_sync_run_repo: AsyncMock,
+    ) -> CollectionService:
+        """Create a CollectionService with sync run repository."""
+        return CollectionService(
+            db_session=mock_db_session,
+            collection_repo=mock_collection_repo,
+            operation_repo=mock_operation_repo,
+            document_repo=mock_document_repo,
+            collection_source_repo=mock_collection_source_repo,
+            qdrant_manager=mock_qdrant_manager,
+            sync_run_repo=mock_sync_run_repo,
+        )
+
+    @pytest.mark.asyncio()
+    async def test_run_collection_sync_success(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_sync_run_repo: AsyncMock,
+        mock_collection: MagicMock,
+        mock_collection_source: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test successful sync run creation."""
+        mock_collection.sync_mode = None
+        mock_collection.sync_interval_minutes = None
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.return_value = []
+        mock_collection_source_repo.list_by_collection.return_value = ([mock_collection_source], 1)
+
+        sync_run = MagicMock()
+        sync_run.id = 1
+        mock_sync_run_repo.create.return_value = sync_run
+
+        mock_operation_repo.create.return_value = mock_operation
+
+        with patch("webui.celery_app.celery_app.send_task"):
+            result = await collection_service_with_sync.run_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+                triggered_by="manual",
+            )
+
+        assert result == sync_run
+        mock_sync_run_repo.create.assert_called_once()
+        mock_operation_repo.create.assert_called_once()
+        mock_db_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_run_collection_sync_invalid_status(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test sync run fails for collection in PROCESSING state."""
+        mock_collection.status = CollectionStatus.PROCESSING
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(InvalidStateError, match="Cannot sync collection"):
+            await collection_service_with_sync.run_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+            )
+
+    @pytest.mark.asyncio()
+    async def test_run_collection_sync_active_operations(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test sync run fails when active operations exist."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.return_value = [MagicMock()]
+
+        with pytest.raises(InvalidStateError, match="Cannot start sync while another operation"):
+            await collection_service_with_sync.run_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+            )
+
+    @pytest.mark.asyncio()
+    async def test_run_collection_sync_no_sources(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_collection_source_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test sync run fails when collection has no sources."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+        mock_operation_repo.get_active_operations.return_value = []
+        mock_collection_source_repo.list_by_collection.return_value = ([], 0)
+
+        with pytest.raises(InvalidStateError, match="Cannot sync collection with no sources"):
+            await collection_service_with_sync.run_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+            )
+
+    @pytest.mark.asyncio()
+    async def test_pause_collection_sync_success(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test successful pause of collection sync."""
+        mock_collection.sync_mode = "continuous"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        paused_collection = MagicMock()
+        mock_collection_repo.pause_sync.return_value = paused_collection
+
+        result = await collection_service_with_sync.pause_collection_sync(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+        )
+
+        assert result == paused_collection
+        mock_collection_repo.pause_sync.assert_called_once_with(mock_collection.id)
+        mock_db_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_pause_collection_sync_not_continuous(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test pause fails when not in continuous mode."""
+        from shared.database.exceptions import ValidationError
+
+        mock_collection.sync_mode = "manual"
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValidationError, match="not in continuous sync mode"):
+            await collection_service_with_sync.pause_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+            )
+
+    @pytest.mark.asyncio()
+    async def test_resume_collection_sync_success(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test successful resume of collection sync."""
+        from datetime import datetime, UTC
+
+        mock_collection.sync_mode = "continuous"
+        mock_collection.sync_paused_at = datetime.now(UTC)
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        resumed_collection = MagicMock()
+        mock_collection_repo.resume_sync.return_value = resumed_collection
+
+        result = await collection_service_with_sync.resume_collection_sync(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+        )
+
+        assert result == resumed_collection
+        mock_collection_repo.resume_sync.assert_called_once_with(mock_collection.id)
+        mock_db_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_resume_collection_sync_not_paused(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test resume fails when not paused."""
+        from shared.database.exceptions import ValidationError
+
+        mock_collection.sync_mode = "continuous"
+        mock_collection.sync_paused_at = None
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValidationError, match="not paused"):
+            await collection_service_with_sync.resume_collection_sync(
+                collection_id=str(mock_collection.uuid),
+                user_id=1,
+            )
+
+    @pytest.mark.asyncio()
+    async def test_list_collection_sync_runs_success(
+        self,
+        collection_service_with_sync: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_sync_run_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test listing sync runs for a collection."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        sync_runs = [MagicMock(), MagicMock()]
+        mock_sync_run_repo.list_for_collection.return_value = (sync_runs, 2)
+
+        result, total = await collection_service_with_sync.list_collection_sync_runs(
+            collection_id=str(mock_collection.uuid),
+            user_id=1,
+            offset=0,
+            limit=50,
+        )
+
+        assert result == sync_runs
+        assert total == 2
+        mock_sync_run_repo.list_for_collection.assert_called_once_with(
+            collection_id=mock_collection.id,
+            offset=0,
+            limit=50,
+        )
+
+
+class TestChunkingStrategyValidation:
+    """Test chunking strategy validation in create_collection."""
+
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_valid_chunking_strategy(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_operation_repo: AsyncMock,
+        mock_db_session: AsyncMock,
+        mock_collection: MagicMock,
+        mock_operation: MagicMock,
+    ) -> None:
+        """Test collection creation with valid chunking strategy."""
+        mock_collection_repo.create.return_value = mock_collection
+        mock_operation_repo.create.return_value = mock_operation
+
+        with patch("webui.celery_app.celery_app.send_task"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "chunking_strategy": "semantic",
+                    "chunking_config": {"max_chunk_size": 1000},
+                },
+            )
+
+        call_args = mock_collection_repo.create.call_args[1]
+        assert call_args["chunking_strategy"] == "semantic"
+        assert call_args["chunking_config"] is not None
+
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_invalid_chunking_strategy(
+        self,
+        collection_service: CollectionService,
+    ) -> None:
+        """Test collection creation with invalid chunking strategy raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid chunking_strategy"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "chunking_strategy": "nonexistent_strategy",
+                },
+            )
+
+    @pytest.mark.asyncio()
+    async def test_create_collection_with_config_but_no_strategy(
+        self,
+        collection_service: CollectionService,
+    ) -> None:
+        """Test collection creation with config but no strategy raises ValueError."""
+        with pytest.raises(ValueError, match="chunking_config requires chunking_strategy"):
+            await collection_service.create_collection(
+                user_id=1,
+                name="Test Collection",
+                config={
+                    "chunking_config": {"max_chunk_size": 1000},
+                },
+            )
+
+
+class TestUpdateChunkingValidation:
+    """Test chunking validation in update method."""
+
+    @pytest.mark.asyncio()
+    async def test_update_with_invalid_chunking_strategy(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test update with invalid chunking strategy raises ValueError."""
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValueError, match="Invalid chunking strategy"):
+            await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"chunking_strategy": "nonexistent_strategy"},
+            )
+
+    @pytest.mark.asyncio()
+    async def test_update_chunking_config_without_strategy(
+        self,
+        collection_service: CollectionService,
+        mock_collection_repo: AsyncMock,
+        mock_collection: MagicMock,
+    ) -> None:
+        """Test update with chunking config but no strategy raises ValueError."""
+        mock_collection.chunking_strategy = None  # No existing strategy
+        mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
+
+        with pytest.raises(ValueError, match="chunking_config requires chunking_strategy"):
+            await collection_service.update(
+                collection_id=str(mock_collection.uuid),
+                user_id=mock_collection.owner_id,
+                updates={"chunking_config": {"max_chunk_size": 1000}},
+            )
