@@ -2355,3 +2355,801 @@ class TestProcessIndexOperationAdditional:
             await ingestion_module._process_index_operation(
                 operation, collection, mock_collection_repo, mock_document_repo, updater
             )
+
+
+# ---------------------------------------------------------------------------
+# Tests for APPEND Transaction Handling (coverage for lines 831-938)
+# ---------------------------------------------------------------------------
+
+
+class TestAppendTransactionHandling:
+    """Tests for transaction/session error handling in _process_append_operation_impl."""
+
+    @pytest.mark.asyncio()
+    async def test_commit_failure_before_scan_triggers_rollback(self):
+        """Test that commit failure before document scan triggers rollback (lines 831-837)."""
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": [],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        # Create mock session that fails on first commit but succeeds on rollback
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=True)
+        mock_session.commit = AsyncMock(side_effect=Exception("commit failed"))
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        # Mock connector that returns no documents (to keep test simple)
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_load_documents():
+            return
+            yield  # Make it an async generator that yields nothing
+
+        mock_connector.load_documents = empty_load_documents
+
+        mock_connector_factory = Mock()
+        mock_connector_factory.get_connector = Mock(return_value=mock_connector)
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch.object(ingestion_module, "ConnectorFactory", mock_connector_factory),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Rollback should have been called when commit failed
+        mock_session.rollback.assert_awaited()
+        assert result["success"] is True
+
+    @pytest.mark.asyncio()
+    async def test_invalid_transaction_state_recovery(self):
+        """Test recovery when session enters invalid state during registration (lines 916-928)."""
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": [],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        # Create mock session
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+
+        # begin_nested raises invalid transaction error
+        mock_nested_context = AsyncMock()
+        mock_nested_context.__aenter__ = AsyncMock(side_effect=Exception("invalid transaction state"))
+        mock_nested_context.__aexit__ = AsyncMock()
+        mock_session.begin_nested = Mock(return_value=mock_nested_context)
+
+        mock_document_repo.session = mock_session
+
+        # Mock connector that yields one document
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        mock_doc = Mock()
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.content = "test content"
+
+        async def load_documents_gen():
+            yield mock_doc
+
+        mock_connector.load_documents = load_documents_gen
+
+        mock_connector_factory = Mock()
+        mock_connector_factory.get_connector = Mock(return_value=mock_connector)
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch.object(ingestion_module, "ConnectorFactory", mock_connector_factory),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Should have recorded an error but still succeed overall
+        assert result["success"] is True
+        assert result["scan_stats"]["errors"]
+
+    @pytest.mark.asyncio()
+    async def test_commit_failure_after_registrations(self):
+        """Test commit failure after document registrations triggers rollback (lines 930-937)."""
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": [],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        # Track commit calls - first succeeds, subsequent fail
+        commit_call_count = [0]
+
+        async def commit_side_effect():
+            commit_call_count[0] += 1
+            if commit_call_count[0] > 1:
+                raise Exception("post-registration commit failed")
+
+        mock_session = AsyncMock()
+        # First in_transaction returns False (no pre-scan commit needed)
+        # Second returns True (post-registrations commit needed)
+        in_transaction_calls = [False, True, False]
+        call_index = [0]
+
+        def in_transaction_side_effect():
+            idx = call_index[0]
+            call_index[0] += 1
+            return in_transaction_calls[idx] if idx < len(in_transaction_calls) else False
+
+        mock_session.in_transaction = Mock(side_effect=in_transaction_side_effect)
+        mock_session.commit = AsyncMock(side_effect=commit_side_effect)
+        mock_session.rollback = AsyncMock()
+
+        mock_nested_context = AsyncMock()
+        mock_nested_context.__aenter__ = AsyncMock()
+        mock_nested_context.__aexit__ = AsyncMock()
+        mock_session.begin_nested = Mock(return_value=mock_nested_context)
+
+        mock_document_repo.session = mock_session
+
+        # Mock connector with no documents
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Should still succeed (commit failure is logged but not fatal)
+        assert result["success"] is True
+
+    @pytest.mark.asyncio()
+    async def test_registration_savepoint_handles_error(self):
+        """Test that savepoint (nested transaction) handles registration errors (lines 888-896)."""
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": [],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+
+        # Savepoint enters successfully but registry raises error
+        mock_nested_context = AsyncMock()
+        mock_nested_context.__aenter__ = AsyncMock()
+        mock_nested_context.__aexit__ = AsyncMock()
+        mock_session.begin_nested = Mock(return_value=mock_nested_context)
+
+        mock_document_repo.session = mock_session
+
+        # Mock connector with one document
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        mock_doc = Mock()
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.content = "test content"
+
+        async def load_documents_gen():
+            yield mock_doc
+
+        mock_connector.load_documents = load_documents_gen
+
+        # Mock registry that raises during register
+        mock_registry = AsyncMock()
+        mock_registry.register_or_update = AsyncMock(side_effect=Exception("DB constraint violation"))
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "DocumentRegistryService", return_value=mock_registry),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch("shared.database.repositories.chunk_repository.ChunkRepository"),
+            patch("shared.database.repositories.document_artifact_repository.DocumentArtifactRepository"),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Should have recorded the error
+        assert result["success"] is True
+        assert len(result["scan_stats"]["errors"]) == 1
+        assert "test-doc-1" in result["scan_stats"]["errors"][0]["document"]
+
+
+# ---------------------------------------------------------------------------
+# Tests for APPEND Batch Processing Errors (coverage for lines 1150-1293)
+# ---------------------------------------------------------------------------
+
+
+class TestAppendBatchProcessing:
+    """Tests for batch processing error handling in _process_append_operation_impl."""
+
+    @pytest.mark.asyncio()
+    async def test_empty_chunks_marks_document_failed(self):
+        """Test that empty chunks from chunking service marks document as failed (lines 1150-1158)."""
+        from shared.database.models import DocumentStatus
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": ["qdrant_test_col"],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[])
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        # Mock connector with no documents during scan (skip scan phase)
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        # Mock a pending document for chunking phase
+        mock_doc = Mock()
+        mock_doc.id = 1
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.source_path = "/test/doc.txt"
+
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[mock_doc])
+        mock_document_repo.update_status = AsyncMock()
+
+        # Mock text extraction to return content
+        mock_extract = Mock(return_value=(["Test content"], {}))
+
+        # Mock chunking service to return empty chunks
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(return_value=[])
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch.object(ingestion_module, "resolve_qdrant_manager", return_value=Mock(get_client=Mock())),
+            patch.object(ingestion_module, "_tasks_namespace", return_value=Mock(extract_and_serialize_thread_safe=mock_extract)),
+            patch("webui.services.factory.get_chunking_orchestrator", AsyncMock(return_value=mock_chunking_service)),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Document should be marked as failed due to empty chunks
+        mock_document_repo.update_status.assert_any_call(
+            mock_doc.id,
+            DocumentStatus.FAILED,
+            error_message="No chunks created",
+        )
+        assert result["success"] is True
+
+    @pytest.mark.asyncio()
+    async def test_dimension_mismatch_raises_value_error(self):
+        """Test that embedding dimension mismatch raises ValueError (lines 1207-1221)."""
+        from shared.database.exceptions import DimensionMismatchError
+        from shared.database.models import DocumentStatus
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": ["qdrant_test_col"],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        # Mock a pending document
+        mock_doc = Mock()
+        mock_doc.id = 1
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.source_path = "/test/doc.txt"
+
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[mock_doc])
+        mock_document_repo.update_status = AsyncMock()
+
+        mock_extract = Mock(return_value=(["Test content"], {}))
+
+        # Mock chunking to return chunks
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(return_value=[
+            {"chunk_id": "c1", "text": "chunk 1", "metadata": {}}
+        ])
+
+        # Mock httpx to return embeddings with wrong dimension
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json = Mock(return_value={"embeddings": [[0.1] * 512]})  # Wrong dim (512 vs 1024)
+
+        mock_http_client = AsyncMock()
+        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
+        mock_http_client.__aexit__ = AsyncMock()
+
+        # Mock dimension validation to raise error
+        def mock_validate_dimension(expected_dimension, actual_dimension, collection_name, model_name):
+            if expected_dimension != actual_dimension:
+                raise DimensionMismatchError(f"Expected {expected_dimension}, got {actual_dimension}")
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch.object(ingestion_module, "resolve_qdrant_manager", return_value=Mock(get_client=Mock())),
+            patch.object(ingestion_module, "_tasks_namespace", return_value=Mock(extract_and_serialize_thread_safe=mock_extract)),
+            patch("webui.services.factory.get_chunking_orchestrator", AsyncMock(return_value=mock_chunking_service)),
+            patch("httpx.AsyncClient", return_value=mock_http_client),
+            patch("shared.embedding.validation.get_collection_dimension", return_value=1024),
+            patch("shared.embedding.validation.validate_dimension_compatibility", side_effect=mock_validate_dimension),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Document should be marked as failed due to dimension mismatch
+        mock_document_repo.update_status.assert_called()
+        assert result["failed_count"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_vecpipe_embed_error_marks_document_failed(self):
+        """Test that vecpipe /embed error marks document as failed (lines 1181-1184)."""
+        from shared.database.models import DocumentStatus
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": ["qdrant_test_col"],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        mock_doc = Mock()
+        mock_doc.id = 1
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.source_path = "/test/doc.txt"
+
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[mock_doc])
+        mock_document_repo.update_status = AsyncMock()
+
+        mock_extract = Mock(return_value=(["Test content"], {}))
+
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(return_value=[
+            {"chunk_id": "c1", "text": "chunk 1", "metadata": {}}
+        ])
+
+        # Mock httpx to return error status
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+
+        mock_http_client = AsyncMock()
+        mock_http_client.post = AsyncMock(return_value=mock_response)
+        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
+        mock_http_client.__aexit__ = AsyncMock()
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch.object(ingestion_module, "resolve_qdrant_manager", return_value=Mock(get_client=Mock())),
+            patch.object(ingestion_module, "_tasks_namespace", return_value=Mock(extract_and_serialize_thread_safe=mock_extract)),
+            patch("webui.services.factory.get_chunking_orchestrator", AsyncMock(return_value=mock_chunking_service)),
+            patch("httpx.AsyncClient", return_value=mock_http_client),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Document should be marked as failed
+        assert result["failed_count"] == 1
+        mock_document_repo.update_status.assert_called()
+
+    @pytest.mark.asyncio()
+    async def test_vecpipe_upsert_error_marks_document_failed(self):
+        """Test that vecpipe /upsert error marks document as failed (lines 1261-1264)."""
+        from shared.database.models import DocumentStatus
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": ["qdrant_test_col"],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        mock_doc = Mock()
+        mock_doc.id = 1
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.source_path = "/test/doc.txt"
+
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[mock_doc])
+        mock_document_repo.update_status = AsyncMock()
+
+        mock_extract = Mock(return_value=(["Test content"], {}))
+
+        mock_chunking_service = AsyncMock()
+        mock_chunking_service.execute_ingestion_chunking = AsyncMock(return_value=[
+            {"chunk_id": "c1", "text": "chunk 1", "metadata": {}}
+        ])
+
+        # Track which endpoint is being called
+        call_count = [0]
+
+        async def mock_post(url, json=None):
+            call_count[0] += 1
+            mock_response = Mock()
+            if "embed" in url:
+                # Embedding succeeds
+                mock_response.status_code = 200
+                mock_response.json = Mock(return_value={"embeddings": [[0.1] * 1024]})
+            else:
+                # Upsert fails
+                mock_response.status_code = 503
+                mock_response.text = "Service Unavailable"
+            return mock_response
+
+        mock_http_client = AsyncMock()
+        mock_http_client.post = mock_post
+        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
+        mock_http_client.__aexit__ = AsyncMock()
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch.object(ingestion_module, "resolve_qdrant_manager", return_value=Mock(get_client=Mock())),
+            patch.object(ingestion_module, "_tasks_namespace", return_value=Mock(extract_and_serialize_thread_safe=mock_extract)),
+            patch("webui.services.factory.get_chunking_orchestrator", AsyncMock(return_value=mock_chunking_service)),
+            patch("httpx.AsyncClient", return_value=mock_http_client),
+            patch("shared.embedding.validation.get_collection_dimension", return_value=1024),
+            patch("shared.embedding.validation.validate_dimension_compatibility"),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Document should be marked as failed due to upsert error
+        assert result["failed_count"] == 1
+
+    @pytest.mark.asyncio()
+    async def test_document_processing_exception_triggers_rollback(self):
+        """Test that exception during document processing triggers rollback (lines 1288-1292)."""
+        from shared.database.models import DocumentStatus
+
+        operation = {
+            "id": 1,
+            "uuid": "op-123",
+            "collection_id": "col-456",
+            "type": Mock(value="APPEND"),
+            "config": {"source_id": 1, "source_type": "directory", "source_config": {"path": "/test"}},
+            "user_id": 1,
+        }
+
+        collection = {
+            "id": "col-456",
+            "uuid": "col-456",
+            "name": "Test Collection",
+            "vector_store_name": "qdrant_test_col",
+            "vector_collection_id": "qdrant_test_col",
+            "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+            "quantization": "float16",
+            "chunking_strategy": "recursive",
+            "chunking_config": {},
+            "config": {"vector_dim": 1024},
+            "qdrant_collections": ["qdrant_test_col"],
+            "qdrant_staging": [],
+        }
+
+        mock_collection_repo = AsyncMock()
+        mock_document_repo = AsyncMock()
+
+        mock_session = AsyncMock()
+        mock_session.in_transaction = Mock(return_value=False)
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+        mock_document_repo.session = mock_session
+
+        mock_connector = AsyncMock()
+        mock_connector.authenticate = AsyncMock(return_value=True)
+
+        async def empty_gen():
+            return
+            yield
+
+        mock_connector.load_documents = empty_gen
+
+        mock_doc = Mock()
+        mock_doc.id = 1
+        mock_doc.unique_id = "test-doc-1"
+        mock_doc.source_path = "/test/doc.txt"
+
+        mock_document_repo.list_pending_documents = AsyncMock(return_value=[mock_doc])
+        mock_document_repo.update_status = AsyncMock()
+
+        # Mock extract to raise an exception
+        mock_extract = Mock(side_effect=Exception("Extraction failed catastrophically"))
+
+        updater = MockUpdater("op-123")
+
+        with (
+            patch("webui.tasks.ingestion.ConnectorFactory.get_connector", return_value=mock_connector),
+            patch.object(ingestion_module, "_audit_log_operation", new_callable=AsyncMock),
+            patch.object(ingestion_module, "_update_collection_metrics", new_callable=AsyncMock),
+            patch("shared.metrics.collection_metrics.record_document_processed"),
+            patch("shared.metrics.collection_metrics.document_processing_duration", Mock(labels=Mock(return_value=Mock()))),
+            patch.object(ingestion_module, "resolve_qdrant_manager", return_value=Mock(get_client=Mock())),
+            patch.object(ingestion_module, "_tasks_namespace", return_value=Mock(extract_and_serialize_thread_safe=mock_extract)),
+        ):
+            result = await ingestion_module._process_append_operation_impl(
+                operation, collection, mock_collection_repo, mock_document_repo, updater
+            )
+
+        # Rollback should have been called to clear transaction state
+        mock_session.rollback.assert_awaited()
+        # Document should be marked as failed
+        assert result["failed_count"] == 1
