@@ -136,6 +136,60 @@ def test_client(mock_current_user, mock_service):
 class TestCreateCollectionEndpoint:
     """Tests for POST /api/v2/collections."""
 
+    def test_create_collection_passes_sync_policy_to_service(self, test_client, mock_service):
+        """Sync policy fields should be forwarded to CollectionService on create."""
+        now = datetime.now(UTC)
+        operation_uuid = str(uuid4())
+
+        mock_service.create_collection.return_value = (
+            {
+                "id": str(uuid4()),
+                "name": "Test Collection",
+                "description": None,
+                "owner_id": 1,
+                "vector_store_name": "col_test",
+                "embedding_model": "test-model",
+                "quantization": "float16",
+                "chunk_size": 1000,
+                "chunk_overlap": 200,
+                "chunking_strategy": None,
+                "chunking_config": None,
+                "is_public": False,
+                "metadata": {},
+                "created_at": now,
+                "updated_at": now,
+                "document_count": 0,
+                "vector_count": 0,
+                "total_size_bytes": 0,
+                "status": "pending",
+                "status_message": None,
+                "sync_mode": "continuous",
+                "sync_interval_minutes": 15,
+                "sync_paused_at": None,
+                "sync_next_run_at": None,
+                "sync_last_run_started_at": None,
+                "sync_last_run_completed_at": None,
+                "sync_last_run_status": None,
+                "sync_last_error": None,
+            },
+            {"uuid": operation_uuid},
+        )
+
+        response = test_client.post(
+            "/api/v2/collections",
+            json={
+                "name": "Test Collection",
+                "sync_mode": "continuous",
+                "sync_interval_minutes": 15,
+            },
+        )
+
+        assert response.status_code == 201
+
+        _args, kwargs = mock_service.create_collection.call_args
+        assert kwargs["config"]["sync_mode"] == "continuous"
+        assert kwargs["config"]["sync_interval_minutes"] == 15
+
     def test_create_collection_duplicate_name_returns_409(self, test_client, mock_service):
         """Return 409 when collection name already exists."""
         mock_service.create_collection.side_effect = EntityAlreadyExistsError(

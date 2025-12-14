@@ -83,7 +83,10 @@ async def create_collection(
             "embedding_model": create_request.embedding_model,
             "quantization": create_request.quantization,
             "is_public": create_request.is_public,
+            "sync_mode": create_request.sync_mode.value,
         }
+        if create_request.sync_mode == "continuous":
+            cfg["sync_interval_minutes"] = create_request.sync_interval_minutes
         if create_request.chunk_size is not None:
             cfg["chunk_size"] = create_request.chunk_size
         if create_request.chunk_overlap is not None:
@@ -125,6 +128,16 @@ async def create_collection(
             total_size_bytes=collection.get("total_size_bytes", 0),
             status=collection["status"],
             status_message=collection.get("status_message"),
+            # Sync policy fields
+            sync_mode=collection.get("sync_mode", "one_time") or "one_time",
+            sync_interval_minutes=collection.get("sync_interval_minutes"),
+            sync_paused_at=collection.get("sync_paused_at"),
+            sync_next_run_at=collection.get("sync_next_run_at"),
+            # Sync run tracking
+            sync_last_run_started_at=collection.get("sync_last_run_started_at"),
+            sync_last_run_completed_at=collection.get("sync_last_run_completed_at"),
+            sync_last_run_status=collection.get("sync_last_run_status"),
+            sync_last_error=collection.get("sync_last_error"),
             initial_operation_id=operation["uuid"],  # Include the initial operation ID
         )
 
@@ -240,6 +253,10 @@ async def update_collection(
             updates["is_public"] = request.is_public
         if request.metadata is not None:
             updates["meta"] = request.metadata
+        if request.sync_mode is not None:
+            updates["sync_mode"] = request.sync_mode.value
+        if request.sync_interval_minutes is not None:
+            updates["sync_interval_minutes"] = request.sync_interval_minutes
 
         # Perform update through service
         updated_collection = await service.update(

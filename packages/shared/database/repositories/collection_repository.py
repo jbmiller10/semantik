@@ -46,6 +46,10 @@ class CollectionRepository:
         chunking_config: dict[str, Any] | None = None,
         is_public: bool = False,
         meta: dict[str, Any] | None = None,
+        sync_mode: str = "one_time",
+        sync_interval_minutes: int | None = None,
+        sync_paused_at: datetime | None = None,
+        sync_next_run_at: datetime | None = None,
     ) -> Collection:
         """Create a new collection.
 
@@ -61,6 +65,10 @@ class CollectionRepository:
             chunking_config: Strategy-specific configuration
             is_public: Whether collection is publicly accessible
             meta: Optional metadata
+            sync_mode: Sync mode ('one_time' or 'continuous')
+            sync_interval_minutes: Sync interval in minutes for continuous mode (min 15)
+            sync_paused_at: Timestamp when sync was paused, if applicable
+            sync_next_run_at: Timestamp for when next sync should run
 
         Returns:
             Created Collection instance
@@ -104,6 +112,10 @@ class CollectionRepository:
                 vector_store_name=vector_store_name,
                 status=CollectionStatus.PENDING,  # Pass enum object, not value
                 meta=meta or {},
+                sync_mode=sync_mode,
+                sync_interval_minutes=sync_interval_minutes,
+                sync_paused_at=sync_paused_at,
+                sync_next_run_at=sync_next_run_at,
             )
 
             self.session.add(collection)

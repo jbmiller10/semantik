@@ -113,6 +113,21 @@ class CollectionService:
             is_public = (config.get("is_public") if config else None) or False
 
             meta = config.get("metadata") if config else None
+            sync_mode = (config.get("sync_mode") if config else None) or "one_time"
+            sync_interval_minutes = config.get("sync_interval_minutes") if config else None
+            sync_next_run_at = None
+
+            if sync_mode not in {"one_time", "continuous"}:
+                raise ValueError("sync_mode must be one_time or continuous")
+
+            if sync_mode == "continuous":
+                if sync_interval_minutes is None:
+                    raise ValueError("sync_interval_minutes is required for continuous sync mode")
+                if sync_interval_minutes < 15:
+                    raise ValueError("sync_interval_minutes must be at least 15 minutes for continuous sync mode")
+                sync_next_run_at = datetime.now(UTC) + timedelta(minutes=sync_interval_minutes)
+            else:
+                sync_interval_minutes = None
 
             # Validate chunking strategy if provided
             if chunking_strategy is not None:
@@ -168,6 +183,9 @@ class CollectionService:
                 chunking_config=chunking_config,
                 is_public=is_public,
                 meta=meta,
+                sync_mode=sync_mode,
+                sync_interval_minutes=sync_interval_minutes,
+                sync_next_run_at=sync_next_run_at,
             )
         except EntityAlreadyExistsError:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
@@ -661,6 +679,50 @@ class CollectionService:
         if collection.owner_id != user_id:
             raise AccessDeniedError(user_id=str(user_id), resource_type="Collection", resource_id=collection_id)
 
+        # Handle sync policy updates
+        current_sync_mode = getattr(collection, "sync_mode", "one_time") or "one_time"
+        current_sync_interval_minutes = getattr(collection, "sync_interval_minutes", None)
+
+        if "sync_mode" in updates or "sync_interval_minutes" in updates:
+            requested_sync_mode = updates.get("sync_mode", current_sync_mode) or current_sync_mode
+            requested_sync_mode = str(requested_sync_mode)
+            requested_sync_interval_minutes = updates.get("sync_interval_minutes", current_sync_interval_minutes)
+
+            mode_changed = "sync_mode" in updates and requested_sync_mode != current_sync_mode
+            interval_changed = (
+                "sync_interval_minutes" in updates and requested_sync_interval_minutes != current_sync_interval_minutes
+            )
+
+            if requested_sync_mode not in {"one_time", "continuous"}:
+                raise ValidationError("sync_mode must be one_time or continuous", "sync_mode")
+
+            if requested_sync_mode == "one_time":
+                updates["sync_mode"] = "one_time"
+                updates["sync_interval_minutes"] = None
+                updates["sync_paused_at"] = None
+                updates["sync_next_run_at"] = None
+            else:
+                if requested_sync_interval_minutes is None:
+                    raise ValidationError(
+                        "sync_interval_minutes is required for continuous sync mode",
+                        "sync_interval_minutes",
+                    )
+                if requested_sync_interval_minutes < 15:
+                    raise ValidationError(
+                        "sync_interval_minutes must be at least 15 minutes for continuous sync mode",
+                        "sync_interval_minutes",
+                    )
+
+                updates["sync_mode"] = "continuous"
+                updates["sync_interval_minutes"] = requested_sync_interval_minutes
+
+                paused_at = updates.get("sync_paused_at", getattr(collection, "sync_paused_at", None))
+                if mode_changed and current_sync_mode != "continuous":
+                    updates["sync_paused_at"] = None
+                    paused_at = None
+                if paused_at is None and (mode_changed or interval_changed):
+                    updates["sync_next_run_at"] = datetime.now(UTC) + timedelta(minutes=requested_sync_interval_minutes)
+
         # Handle chunking strategy update with validation
         if "chunking_strategy" in updates:
             strategy = updates["chunking_strategy"]
@@ -1056,8 +1118,19 @@ class CollectionService:
             "updated_at": getattr(collection, "updated_at", None),
             "document_count": getattr(collection, "document_count", 0),
             "vector_count": getattr(collection, "vector_count", 0),
+            "total_size_bytes": getattr(collection, "total_size_bytes", 0) or 0,
             "status": status_value,
             "status_message": getattr(collection, "status_message", None),
+            # Sync policy fields
+            "sync_mode": getattr(collection, "sync_mode", "one_time") or "one_time",
+            "sync_interval_minutes": getattr(collection, "sync_interval_minutes", None),
+            "sync_paused_at": getattr(collection, "sync_paused_at", None),
+            "sync_next_run_at": getattr(collection, "sync_next_run_at", None),
+            # Sync run tracking
+            "sync_last_run_started_at": getattr(collection, "sync_last_run_started_at", None),
+            "sync_last_run_completed_at": getattr(collection, "sync_last_run_completed_at", None),
+            "sync_last_run_status": getattr(collection, "sync_last_run_status", None),
+            "sync_last_error": getattr(collection, "sync_last_error", None),
         }
         base["config"] = {
             "embedding_model": base["embedding_model"],
