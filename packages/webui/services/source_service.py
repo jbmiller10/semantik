@@ -64,8 +64,8 @@ class SourceService:
         source_type: str,
         source_path: str,
         source_config: dict[str, Any],
-        sync_mode: str = "one_time",
-        interval_minutes: int | None = None,
+        _sync_mode: str = "one_time",
+        _interval_minutes: int | None = None,
         secrets: dict[str, str] | None = None,
     ) -> tuple[CollectionSource, list[str]]:
         """Create a new source for a collection.
@@ -129,7 +129,7 @@ class SourceService:
 
         logger.info(
             f"Created source {source.id} for collection {collection_id} "
-            f"(type={source_type}, sync_mode={sync_mode}, secrets={secret_types})"
+            f"(type={source_type}, secrets={secret_types})"
         )
 
         return source, secret_types
@@ -139,8 +139,8 @@ class SourceService:
         user_id: int,
         source_id: int,
         source_config: dict[str, Any] | None = None,
-        sync_mode: str | None = None,
-        interval_minutes: int | None = None,
+        _sync_mode: str | None = None,
+        _interval_minutes: int | None = None,
         secrets: dict[str, str] | None = None,
     ) -> tuple[CollectionSource, list[str]]:
         """Update a source's configuration.
@@ -149,8 +149,8 @@ class SourceService:
             user_id: ID of the user updating the source
             source_id: ID of the source to update
             source_config: New connector-specific configuration
-            sync_mode: New sync mode ('one_time' or 'continuous')
-            interval_minutes: New sync interval (min 15)
+            _sync_mode: Deprecated - sync mode is now managed at collection level
+            _interval_minutes: Deprecated - sync interval is now managed at collection level
             secrets: Dict mapping secret_type to new value (empty string deletes)
 
         Returns:

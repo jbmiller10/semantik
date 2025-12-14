@@ -19,7 +19,7 @@ from shared.database.exceptions import (
     InvalidStateError,
     ValidationError,
 )
-from shared.database.models import Collection, CollectionStatus, Operation, OperationStatus, OperationType
+from shared.database.models import CollectionStatus, OperationStatus, OperationType
 from webui.api.v2.collections import router
 
 # Create test app
@@ -114,7 +114,6 @@ def mock_sync_run():
 @pytest.fixture()
 def test_client(mock_current_user, mock_service):
     """Create test client with mocked dependencies."""
-    from webui.api.v2 import collections
     from webui.auth import get_current_user
     from webui.services.factory import get_collection_service
 
@@ -192,9 +191,7 @@ class TestCreateCollectionEndpoint:
 
     def test_create_collection_duplicate_name_returns_409(self, test_client, mock_service):
         """Return 409 when collection name already exists."""
-        mock_service.create_collection.side_effect = EntityAlreadyExistsError(
-            "collection", "Test Collection"
-        )
+        mock_service.create_collection.side_effect = EntityAlreadyExistsError("collection", "Test Collection")
 
         response = test_client.post(
             "/api/v2/collections",
@@ -247,9 +244,7 @@ class TestAddSourceEndpoint:
 
     def test_add_source_invalid_state_returns_409(self, test_client, mock_service):
         """Return 409 when collection is in invalid state."""
-        mock_service.add_source.side_effect = InvalidStateError(
-            "Collection has active operation"
-        )
+        mock_service.add_source.side_effect = InvalidStateError("Collection has active operation")
 
         response = test_client.post(
             f"/api/v2/collections/{uuid4()}/sources",
@@ -300,9 +295,7 @@ class TestRemoveSourceEndpoint:
 
     def test_remove_source_invalid_state_returns_409(self, test_client, mock_service):
         """Return 409 when collection has active operation."""
-        mock_service.remove_source.side_effect = InvalidStateError(
-            "Collection has active operation"
-        )
+        mock_service.remove_source.side_effect = InvalidStateError("Collection has active operation")
 
         response = test_client.delete(
             f"/api/v2/collections/{uuid4()}/sources",
@@ -322,9 +315,7 @@ class TestReindexCollectionEndpoint:
 
     def test_reindex_invalid_state_returns_409(self, test_client, mock_service):
         """Return 409 when collection is in invalid state."""
-        mock_service.reindex_collection.side_effect = InvalidStateError(
-            "Cannot reindex while operation in progress"
-        )
+        mock_service.reindex_collection.side_effect = InvalidStateError("Cannot reindex while operation in progress")
 
         response = test_client.post(f"/api/v2/collections/{uuid4()}/reindex")
 
@@ -350,9 +341,7 @@ class TestListOperationsEndpoint:
 
     def test_list_operations_not_found_returns_404(self, test_client, mock_service):
         """Return 404 when collection not found."""
-        mock_service.list_operations_filtered.side_effect = EntityNotFoundError(
-            "collection", "fake-uuid"
-        )
+        mock_service.list_operations_filtered.side_effect = EntityNotFoundError("collection", "fake-uuid")
 
         response = test_client.get(f"/api/v2/collections/{uuid4()}/operations")
 
@@ -360,9 +349,7 @@ class TestListOperationsEndpoint:
 
     def test_list_operations_forbidden_returns_403(self, test_client, mock_service):
         """Return 403 when user doesn't have access."""
-        mock_service.list_operations_filtered.side_effect = AccessDeniedError(
-            "1", "collection", "fake-uuid"
-        )
+        mock_service.list_operations_filtered.side_effect = AccessDeniedError("1", "collection", "fake-uuid")
 
         response = test_client.get(f"/api/v2/collections/{uuid4()}/operations")
 
@@ -370,9 +357,7 @@ class TestListOperationsEndpoint:
 
     def test_list_operations_invalid_filter_returns_400(self, test_client, mock_service):
         """Return 400 when filter is invalid."""
-        mock_service.list_operations_filtered.side_effect = ValueError(
-            "Invalid status filter: invalid"
-        )
+        mock_service.list_operations_filtered.side_effect = ValueError("Invalid status filter: invalid")
 
         response = test_client.get(
             f"/api/v2/collections/{uuid4()}/operations",
@@ -393,9 +378,7 @@ class TestListDocumentsEndpoint:
 
     def test_list_documents_invalid_filter_returns_400(self, test_client, mock_service):
         """Return 400 when filter is invalid."""
-        mock_service.list_documents_filtered.side_effect = ValueError(
-            "Invalid status filter: invalid"
-        )
+        mock_service.list_documents_filtered.side_effect = ValueError("Invalid status filter: invalid")
 
         response = test_client.get(
             f"/api/v2/collections/{uuid4()}/documents",
@@ -424,9 +407,7 @@ class TestRunSyncEndpoint:
 
     def test_run_sync_invalid_state_returns_409(self, test_client, mock_service):
         """Return 409 when collection has active operation."""
-        mock_service.run_collection_sync.side_effect = InvalidStateError(
-            "Collection has active operation"
-        )
+        mock_service.run_collection_sync.side_effect = InvalidStateError("Collection has active operation")
 
         response = test_client.post(f"/api/v2/collections/{uuid4()}/sync/run")
 
