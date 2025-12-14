@@ -12,7 +12,7 @@ from shared.utils.encryption import (
 
 
 @pytest.fixture(autouse=True)
-def reset_encryption():
+def _reset_encryption():
     """Reset encryption state before and after each test."""
     SecretEncryption.reset()
     yield
