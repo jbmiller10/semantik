@@ -39,14 +39,39 @@ vi.mock('../../stores/uiStore', () => ({
   }),
 }));
 
-// Mock directory scan
-vi.mock('../../hooks/useDirectoryScan', () => ({
-  useDirectoryScan: () => ({
-    scanning: false,
-    scanResult: null,
-    error: null,
-    startScan: vi.fn(),
-    reset: vi.fn(),
+// Mock connector catalog
+const mockConnectorCatalog = {
+  directory: {
+    name: 'Directory',
+    description: 'Index files from a local directory',
+    icon: 'folder',
+    fields: [
+      {
+        name: 'path',
+        type: 'text',
+        label: 'Directory Path',
+        required: true,
+        placeholder: '/path/to/documents',
+      },
+    ],
+    secrets: [],
+    supports_sync: true,
+  },
+};
+
+vi.mock('../../hooks/useConnectors', () => ({
+  useConnectorCatalog: () => ({
+    data: mockConnectorCatalog,
+    isLoading: false,
+    isError: false,
+  }),
+  useGitPreview: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useImapPreview: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
   }),
 }));
 
@@ -105,7 +130,7 @@ describe('CreateCollectionModal - Network Error Handling', () => {
 
     it('should preserve all form data after network error', async () => {
       mockCreateCollectionMutation.mutateAsync.mockRejectedValue(new Error('Network error'))
-      
+
       renderWithErrorHandlers(
         <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         collectionErrorHandlers.networkError()
@@ -116,20 +141,22 @@ describe('CreateCollectionModal - Network Error Handling', () => {
         'Collection Name': 'My Test Collection',
         'Description': 'A detailed description of my collection',
       }
-      
+
       await userEvent.type(screen.getByLabelText(/collection name/i), formData['Collection Name'])
       await userEvent.type(screen.getByLabelText(/description/i), formData['Description'])
-      
+
       // Expand and fill advanced settings
       await userEvent.click(screen.getByText(/advanced settings/i))
       // Don't modify chunk size and overlap - use defaults
-      
-      // Add initial source
-      await userEvent.type(screen.getByLabelText(/initial source/i), '/data/documents')
-      
+
+      // Add initial source - first select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button')
+      await userEvent.click(directoryButton!)
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/data/documents')
+
       // Submit
       await userEvent.click(screen.getByRole('button', { name: /create collection/i }))
-      
+
       await waitFor(() => {
         expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalled()
         expect(mockCreateCollectionMutation.mutateAsync).toHaveBeenCalledWith(
@@ -139,10 +166,10 @@ describe('CreateCollectionModal - Network Error Handling', () => {
           })
         )
       })
-      
+
       // All data should be preserved
       expectFormDataPreserved(formData)
-      expect(screen.getByLabelText(/initial source/i)).toHaveValue('/data/documents')
+      expect(screen.getByLabelText(/directory path/i)).toHaveValue('/data/documents')
     })
 
     it('should handle offline scenario gracefully', async () => {
@@ -218,17 +245,20 @@ describe('CreateCollectionModal - Network Error Handling', () => {
       // First call succeeds, second fails
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' })
       mockAddSourceMutation.mutateAsync.mockRejectedValue(new Error('Network error during add source'))
-      
+
       renderWithErrorHandlers(
         <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
-      await userEvent.type(screen.getByLabelText(/initial source/i), '/data/docs')
-      
+      // First select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button')
+      await userEvent.click(directoryButton!)
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/data/docs')
+
       await userEvent.click(screen.getByRole('button', { name: /create collection/i }))
-      
+
       // Should show info toast about waiting for initialization
       await waitFor(() => {
         expect(mockAddToast).toHaveBeenCalledWith({
@@ -240,19 +270,22 @@ describe('CreateCollectionModal - Network Error Handling', () => {
 
     it('should handle network recovery between creation and add-source', async () => {
       mockCreateCollectionMutation.mutateAsync.mockResolvedValue({ id: 'test-uuid', name: 'Test', initial_operation_id: 'op-123' })
-      
+
       // First attempt at add-source fails
       mockAddSourceMutation.mutateAsync.mockRejectedValueOnce(new Error('Network error'))
       // But component doesn't retry automatically, so this test just verifies the warning
-      
+
       renderWithErrorHandlers(
         <CreateCollectionModal onClose={vi.fn()} onSuccess={vi.fn()} />,
         []
       )
 
       await userEvent.type(screen.getByLabelText(/collection name/i), 'Test Collection')
-      await userEvent.type(screen.getByLabelText(/initial source/i), '/data/docs')
-      
+      // First select Directory connector
+      const directoryButton = screen.getByText('Directory').closest('button')
+      await userEvent.click(directoryButton!)
+      await userEvent.type(screen.getByLabelText(/directory path/i), '/data/docs')
+
       await userEvent.click(screen.getByRole('button', { name: /create collection/i }))
       
       await waitFor(() => {
