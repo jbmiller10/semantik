@@ -28,6 +28,7 @@ examples and utilities for working with partitioned tables.
 """
 
 import enum
+import hashlib
 import sys
 from typing import Any, cast
 
@@ -44,12 +45,14 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 # Ensure both ``shared.database.models`` and ``packages.shared.database.models``
@@ -196,6 +199,7 @@ class Collection(Base):
     chunking_strategy = Column(String, nullable=True)  # New field for chunking strategy type
     chunking_config = Column(JSON, nullable=True)  # New field for strategy-specific configuration
     is_public = Column(Boolean, nullable=False, default=False, index=True)
+    graph_enabled = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
@@ -247,6 +251,8 @@ class Collection(Base):
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
+    entities = relationship("Entity", back_populates="collection", cascade="all, delete-orphan")
+    graph_relationships = relationship("Relationship", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -863,3 +869,185 @@ class Chunk(Base):
             },
         },
     )
+
+
+class Entity(Base):
+    """Entity model for storing extracted named entities.
+
+    Entities are extracted from document chunks using NER (Named Entity Recognition).
+    The table is partitioned by partition_key (100 LIST partitions) for scalability.
+
+    Partition Awareness:
+    - The table uses LIST partitioning on partition_key (0-99)
+    - partition_key is computed from collection_id: abs(hash(collection_id)) % 100
+    - Primary key is (id, collection_id, partition_key) to support partitioning
+    - Always include collection_id in WHERE clauses for optimal partition pruning
+
+    Deduplication:
+    - name_hash is computed as SHA256(f"{entity_type}:{name_normalized}")
+    - canonical_id points to the "master" entity when duplicates are merged
+    - Entities with canonical_id set are considered aliases
+    """
+
+    __tablename__ = "entities"
+
+    # Primary key includes partition key for partitioned table support
+    id = Column(BigInteger, autoincrement=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
+    partition_key = Column(Integer, nullable=False, server_default="0")
+
+    # Document/chunk reference (soft references to avoid cross-partition FK issues)
+    document_id = Column(String, nullable=False)
+    chunk_id = Column(BigInteger)
+
+    # Entity identification
+    name = Column(String(500), nullable=False)
+    name_normalized = Column(String(500), nullable=False)
+    name_hash = Column(String(64), nullable=False, index=True)
+    entity_type = Column(String(100), nullable=False, index=True)
+
+    # Deduplication (soft self-reference to canonical entity)
+    canonical_id = Column(BigInteger, index=True)
+
+    # Position in source text
+    start_offset = Column(Integer)
+    end_offset = Column(Integer)
+
+    # Confidence score from NER model
+    confidence = Column(Float, default=0.85)
+
+    # Flexible metadata storage
+    metadata_ = Column("metadata", JSONB, default={})
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    collection = relationship("Collection", back_populates="entities")
+
+    # Composite indexes optimized for partition pruning
+    __table_args__ = (
+        PrimaryKeyConstraint("id", "collection_id", "partition_key"),
+        Index("idx_entities_collection", "collection_id"),
+        Index("idx_entities_document", "document_id"),
+        Index("idx_entities_name_hash", "name_hash"),
+        Index("idx_entities_type", "entity_type"),
+        Index("idx_entities_canonical", "canonical_id"),
+        {"postgresql_partition_by": "LIST (partition_key)"},
+    )
+
+    @staticmethod
+    def compute_partition_key(collection_id: str) -> int:
+        """Compute partition key from collection_id.
+
+        Uses the same algorithm as Chunk table for consistency.
+
+        Args:
+            collection_id: The collection UUID string.
+
+        Returns:
+            Partition key in range 0-99.
+        """
+        hash_val = hash(collection_id)
+        return abs(hash_val) % 100
+
+    @staticmethod
+    def compute_name_hash(name: str, entity_type: str) -> str:
+        """Compute hash for entity deduplication.
+
+        Args:
+            name: The entity name.
+            entity_type: The entity type (PERSON, ORG, etc.).
+
+        Returns:
+            SHA256 hash of normalized "{entity_type}:{name_normalized}".
+        """
+        normalized = f"{entity_type}:{name.lower().strip()}"
+        return hashlib.sha256(normalized.encode()).hexdigest()
+
+    @staticmethod
+    def normalize_name(name: str) -> str:
+        """Normalize entity name for matching.
+
+        Args:
+            name: The entity name to normalize.
+
+        Returns:
+            Lowercase, stripped name.
+        """
+        return name.lower().strip()
+
+    def __repr__(self) -> str:
+        """Return string representation of Entity."""
+        return f"<Entity(id={self.id}, name='{self.name}', type='{self.entity_type}')>"
+
+
+class Relationship(Base):
+    """Relationship model for storing entity relationships.
+
+    Relationships are extracted from document text, representing connections
+    between entities (e.g., "John Smith" WORKS_FOR "Acme Corp").
+
+    The table is partitioned by partition_key (100 LIST partitions) for scalability.
+
+    Partition Awareness:
+    - The table uses LIST partitioning on partition_key (0-99)
+    - partition_key is computed from collection_id: abs(hash(collection_id)) % 100
+    - Primary key is (id, collection_id, partition_key) to support partitioning
+    - Always include collection_id in WHERE clauses for optimal partition pruning
+    """
+
+    __tablename__ = "relationships"
+
+    # Primary key includes partition key for partitioned table support
+    id = Column(BigInteger, autoincrement=True)
+    collection_id = Column(String, ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
+    partition_key = Column(Integer, nullable=False, server_default="0")
+
+    # Relationship endpoints (entity IDs - soft references)
+    source_entity_id = Column(BigInteger, nullable=False, index=True)
+    target_entity_id = Column(BigInteger, nullable=False, index=True)
+
+    # Relationship type (verb/predicate)
+    relationship_type = Column(String(200), nullable=False, index=True)
+
+    # Extraction metadata
+    confidence = Column(Float, default=0.7)
+    extraction_method = Column(String(50))  # 'dependency', 'pattern', 'llm'
+
+    # Flexible metadata storage
+    metadata_ = Column("metadata", JSONB, default={})
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+
+    # Relationships
+    collection = relationship("Collection", back_populates="graph_relationships")
+
+    # Composite indexes optimized for partition pruning
+    __table_args__ = (
+        PrimaryKeyConstraint("id", "collection_id", "partition_key"),
+        Index("idx_relationships_collection", "collection_id"),
+        Index("idx_relationships_source", "source_entity_id"),
+        Index("idx_relationships_target", "target_entity_id"),
+        Index("idx_relationships_type", "relationship_type"),
+        {"postgresql_partition_by": "LIST (partition_key)"},
+    )
+
+    @staticmethod
+    def compute_partition_key(collection_id: str) -> int:
+        """Compute partition key from collection_id.
+
+        Args:
+            collection_id: The collection UUID string.
+
+        Returns:
+            Partition key in range 0-99.
+        """
+        hash_val = hash(collection_id)
+        return abs(hash_val) % 100
+
+    def __repr__(self) -> str:
+        """Return string representation of Relationship."""
+        return f"<Relationship(id={self.id}, type='{self.relationship_type}')>"

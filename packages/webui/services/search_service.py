@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from packages.vecpipe.graphrag.search import GraphEnhancedSearchService
 from shared.config import settings
 from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
@@ -41,6 +42,72 @@ class SearchService:
         self.collection_repo = collection_repo
         self.default_timeout = default_timeout or httpx.Timeout(timeout=30.0, connect=5.0, read=30.0, write=5.0)
         self.retry_timeout_multiplier = retry_timeout_multiplier
+
+    async def search_with_graph_enhancement(
+        self,
+        results: list[dict[str, Any]],
+        query: str,
+        collection: Collection,
+        graph_weight: float | None = None,
+        max_hops: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Enhance search results with graph context if enabled.
+
+        This method checks if the collection has graph enhancement enabled
+        and, if so, uses the GraphEnhancedSearchService to boost results
+        that have entity relationships to the query.
+
+        Args:
+            results: Vector search results from vecpipe
+            query: Original search query
+            collection: Collection being searched
+            graph_weight: Optional override for graph weight (0-1).
+                         Default is 0.2 (20% graph, 80% vector).
+            max_hops: Optional override for max graph traversal hops.
+                     Default is 2.
+
+        Returns:
+            Enhanced results with additional fields (original_score, graph_score,
+            matched_entities) if graph is enabled, or original results unchanged
+            if graph is disabled or enhancement fails.
+        """
+        if not collection.graph_enabled:
+            logger.debug(f"Graph enhancement skipped for collection '{collection.name}' (not enabled)")
+            return results
+
+        if not results:
+            logger.debug("Graph enhancement skipped: no results to enhance")
+            return results
+
+        try:
+            start_time = time.time()
+
+            graph_service = GraphEnhancedSearchService(
+                db_session=self.db_session,
+                graph_weight=graph_weight if graph_weight is not None else 0.2,
+                max_hops=max_hops if max_hops is not None else 2,
+            )
+
+            enhanced = await graph_service.enhance_results(
+                query=query,
+                vector_results=results,
+                collection_id=collection.id,
+            )
+
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.debug(
+                f"Graph enhancement applied for collection '{collection.name}': "
+                f"{len(results)} results enhanced in {elapsed_ms:.1f}ms"
+            )
+
+            return enhanced
+
+        except Exception as e:
+            logger.warning(
+                f"Graph enhancement failed for collection '{collection.name}', "
+                f"returning original results: {e}"
+            )
+            return results
 
     @staticmethod
     def _result_sort_key(result: dict[str, Any]) -> float:
@@ -142,7 +209,16 @@ class SearchService:
                 response.raise_for_status()
 
             result = response.json()
-            return (collection, result.get("results", []), None)
+            results = result.get("results", [])
+
+            # Apply graph enhancement if enabled for this collection
+            results = await self.search_with_graph_enhancement(
+                results=results,
+                query=query,
+                collection=collection,
+            )
+
+            return (collection, results, None)
 
         except httpx.ReadTimeout:
             # Retry with longer timeout
@@ -168,7 +244,16 @@ class SearchService:
                     response.raise_for_status()
 
                 result = response.json()
-                return (collection, result.get("results", []), None)
+                results = result.get("results", [])
+
+                # Apply graph enhancement if enabled for this collection
+                results = await self.search_with_graph_enhancement(
+                    results=results,
+                    query=query,
+                    collection=collection,
+                )
+
+                return (collection, results, None)
 
             except httpx.HTTPStatusError as e:
                 return self._handle_http_error(e, collection, retry=True)
@@ -434,6 +519,15 @@ class SearchService:
                 response.raise_for_status()
 
             result: dict[str, Any] = response.json()
+
+            # Apply graph enhancement if enabled for this collection
+            if "results" in result:
+                result["results"] = await self.search_with_graph_enhancement(
+                    results=result["results"],
+                    query=query,
+                    collection=collection,
+                )
+
             return result
 
         except httpx.HTTPStatusError as e:

@@ -14,6 +14,16 @@ from .errors import (
     create_not_found_error,
     create_validation_error,
 )
+from .graph import (
+    EntityResponse,
+    EntitySearchRequest,
+    EntitySearchResponse,
+    GraphEdge,
+    GraphNode,
+    GraphResponse,
+    GraphStatsResponse,
+    GraphTraversalRequest,
+)
 from .search import (
     BatchSearchRequest,
     BatchSearchResponse,
@@ -39,6 +49,15 @@ __all__ = [
     "HybridSearchResult",
     "PreloadModelRequest",
     "PreloadModelResponse",
+    # Graph contracts
+    "EntityResponse",
+    "EntitySearchRequest",
+    "EntitySearchResponse",
+    "GraphEdge",
+    "GraphNode",
+    "GraphResponse",
+    "GraphStatsResponse",
+    "GraphTraversalRequest",
     # Error contracts
     "ErrorResponse",
     "ErrorDetail",

@@ -62,6 +62,7 @@ from .middleware.csp import CSPMiddleware
 from .middleware.exception_handlers import register_global_exception_handlers
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
+from .routers import graph as graph_router
 from .websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,9 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_search.router)
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)
+
+    # Include graph API router
+    app.include_router(graph_router.router)
 
     # Mount static files BEFORE catch-all route
     # Mount static files with proper path resolution

@@ -22,6 +22,7 @@
     "@uwdata/mosaic-spec": "^0.20.1",
     "@uwdata/mosaic-sql": "^0.20.1",
     "@uwdata/vgplot": "^0.20.1",
+    "@xyflow/react": "^12.10.0",
     "autoprefixer": "^10.4.21",
     "axios": "^1.12.2",
     "embedding-atlas": "^0.11.0",

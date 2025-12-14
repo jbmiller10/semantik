@@ -22,9 +22,14 @@ import httpx
 import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 
+# GraphRAG imports for entity/relationship extraction
+from packages.vecpipe.graphrag.entity_extraction import EntityExtractionService
+from packages.vecpipe.graphrag.relationship_extraction import RelationshipExtractionService
 from shared.config import settings
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
+from shared.database.repositories.entity_repository import EntityRepository
+from shared.database.repositories.relationship_repository import RelationshipRepository
 from shared.metrics.collection_metrics import (
     OperationTimer,
     QdrantOperationTimer,
@@ -78,6 +83,216 @@ _embedding_semaphore = asyncio.Semaphore(_get_embedding_concurrency())
 def _tasks_namespace() -> ModuleType:
     """Return the top-level tasks module for accessing patched attributes."""
     return import_module("webui.tasks")
+
+
+async def extract_and_store_graph_data(
+    chunks: list[dict[str, Any]],
+    document_id: str,
+    collection_id: str,
+    db_session: Any,
+    updater: Any,
+) -> dict[str, int]:
+    """Extract entities and relationships from chunks and store them.
+
+    This function runs entity extraction using spaCy NER, then extracts
+    relationships via dependency parsing, and stores both in the database.
+
+    Args:
+        chunks: List of chunk dicts with 'chunk_id' (or 'id') and 'text' keys
+        document_id: Document ID (string, typically a UUID)
+        collection_id: Collection ID (string, typically a UUID)
+        db_session: Database session for repository operations
+        updater: Progress updater for status messages
+
+    Returns:
+        Dict with counts: {'entities': N, 'relationships': M}
+    """
+    await updater.send_update(
+        "extracting_entities",
+        {"status": "extracting_entities", "message": "Starting entity extraction..."},
+    )
+
+    # Initialize services
+    entity_service = EntityExtractionService()
+    relationship_service = RelationshipExtractionService()
+
+    # Prepare chunks in the format expected by extraction services
+    # The chunking service uses 'chunk_id' key, but extraction expects 'id'
+    prepared_chunks: list[dict[str, Any]] = []
+    for chunk in chunks:
+        chunk_id = chunk.get("id") or chunk.get("chunk_id")
+        text = chunk.get("text", "")
+        if text and text.strip():
+            prepared_chunks.append({
+                "id": chunk_id,
+                "text": text,
+            })
+
+    if not prepared_chunks:
+        logger.info(f"No valid text chunks to process for document {document_id}")
+        return {"entities": 0, "relationships": 0}
+
+    # Extract entities from chunks with progress callback
+    async def entity_progress(msg: str) -> None:
+        await updater.send_update(
+            "extracting_entities",
+            {"status": "extracting_entities", "message": msg},
+        )
+
+    entities = await entity_service.extract_from_chunks(
+        chunks=prepared_chunks,
+        document_id=document_id,
+        collection_id=collection_id,
+        progress_callback=entity_progress,
+    )
+
+    if not entities:
+        logger.info(f"No entities found in document {document_id}")
+        return {"entities": 0, "relationships": 0}
+
+    # Store entities
+    await updater.send_update(
+        "storing_entities",
+        {"status": "storing_entities", "message": f"Storing {len(entities)} entities..."},
+    )
+
+    entity_repo = EntityRepository(db_session)
+    await entity_repo.bulk_create(entities, collection_id)
+
+    # Flush to ensure entities are persisted before querying them back
+    await db_session.flush()
+
+    # Extract relationships
+    await updater.send_update(
+        "extracting_relationships",
+        {"status": "extracting_relationships", "message": "Extracting relationships..."},
+    )
+
+    async def rel_progress(msg: str) -> None:
+        await updater.send_update(
+            "extracting_relationships",
+            {"status": "extracting_relationships", "message": msg},
+        )
+
+    relationships = await relationship_service.extract_from_chunks(
+        chunks=prepared_chunks,
+        all_entities=entities,
+        progress_callback=rel_progress,
+    )
+
+    # Store relationships (need entity IDs, so we need to map them)
+    relationship_count = 0
+    if relationships:
+        await updater.send_update(
+            "storing_relationships",
+            {"status": "storing_relationships", "message": f"Storing {len(relationships)} relationships..."},
+        )
+
+        # Get stored entities to map names to IDs
+        stored_entities = await entity_repo.get_by_document(document_id, collection_id)
+        entity_name_to_id: dict[tuple[str, str], int] = {
+            (e.name, e.entity_type): e.id for e in stored_entities
+        }
+
+        # Prepare relationship records with entity IDs
+        rel_records: list[dict[str, Any]] = []
+        for rel in relationships:
+            source_key = (
+                rel["source_entity"]["name"],
+                rel["source_entity"]["entity_type"],
+            )
+            target_key = (
+                rel["target_entity"]["name"],
+                rel["target_entity"]["entity_type"],
+            )
+
+            source_id = entity_name_to_id.get(source_key)
+            target_id = entity_name_to_id.get(target_key)
+
+            if source_id and target_id:
+                rel_records.append({
+                    "source_entity_id": source_id,
+                    "target_entity_id": target_id,
+                    "relationship_type": rel["relationship_type"],
+                    "confidence": rel["confidence"],
+                    "extraction_method": rel["extraction_method"],
+                })
+
+        if rel_records:
+            rel_repo = RelationshipRepository(db_session)
+            relationship_count = await rel_repo.bulk_create(rel_records, collection_id)
+
+    await updater.send_update(
+        "graph_extraction_complete",
+        {
+            "status": "graph_extraction_complete",
+            "message": f"Extracted {len(entities)} entities, {relationship_count} relationships",
+        },
+    )
+
+    logger.info(
+        f"Graph extraction complete for document {document_id}: "
+        f"{len(entities)} entities, {relationship_count} relationships"
+    )
+
+    return {"entities": len(entities), "relationships": relationship_count}
+
+
+async def reextract_graph_for_document(
+    document_id: str,
+    collection_id: str,
+    db_session: Any,
+) -> dict[str, int]:
+    """Re-extract graph data for an existing document.
+
+    Used when graph_enabled is turned on for a collection with existing documents.
+    This function deletes any existing entities/relationships for the document
+    and re-extracts them from the stored chunks.
+
+    Args:
+        document_id: Document ID
+        collection_id: Collection ID
+        db_session: Database session
+
+    Returns:
+        Dict with extraction counts: {'entities': N, 'relationships': M}
+    """
+    from shared.database.repositories.chunk_repository import ChunkRepository
+
+    # Delete existing entities for this document
+    # Note: Relationships referencing deleted entities will be cascade-deleted
+    # via FK constraints, so we only need to delete entities explicitly
+    entity_repo = EntityRepository(db_session)
+    await entity_repo.delete_by_document(document_id, collection_id)
+
+    # Get chunks for the document
+    chunk_repo = ChunkRepository(db_session)
+    chunks = await chunk_repo.get_chunks_by_document(document_id, collection_id)
+
+    if not chunks:
+        logger.info(f"No chunks found for document {document_id}")
+        return {"entities": 0, "relationships": 0}
+
+    # Convert Chunk objects to dicts
+    chunk_dicts: list[dict[str, Any]] = [
+        {"id": c.id, "text": c.content}
+        for c in chunks
+    ]
+
+    # Create a no-op updater that does nothing
+    class NoOpUpdater:
+        """No-operation updater for background re-extraction."""
+
+        async def send_update(self, *args: Any, **kwargs: Any) -> None:
+            """Do nothing - used for silent re-extraction."""
+
+    return await extract_and_store_graph_data(
+        chunks=chunk_dicts,
+        document_id=document_id,
+        collection_id=collection_id,
+        db_session=db_session,
+        updater=NoOpUpdater(),
+    )
 
 
 @celery_app.task(bind=True)
@@ -240,6 +455,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
                         "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
                         "vector_count": getattr(collection_obj, "vector_count", 0),
+                        "graph_enabled": getattr(collection_obj, "graph_enabled", False),
                     }
 
                     vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
@@ -1147,6 +1363,38 @@ async def _process_append_operation_impl(
                         chunking_stats["duration_ms"],
                     )
 
+                    # Graph extraction (if enabled for this collection)
+                    if collection.get("graph_enabled", False) and chunks:
+                        try:
+                            graph_stats = await extract_and_store_graph_data(
+                                chunks=chunks,
+                                document_id=str(doc.id),
+                                collection_id=collection["id"],
+                                db_session=session,
+                                updater=updater,
+                            )
+                            logger.info(
+                                "Graph extraction for %s: %s entities, %s relationships",
+                                doc_identifier,
+                                graph_stats["entities"],
+                                graph_stats["relationships"],
+                            )
+                        except Exception as e:
+                            # Log but don't fail the entire ingestion
+                            logger.error(
+                                "Graph extraction failed for document %s: %s",
+                                doc.id,
+                                e,
+                            )
+                            await updater.send_update(
+                                "graph_extraction_error",
+                                {
+                                    "status": "graph_extraction_error",
+                                    "message": f"Graph extraction failed: {str(e)[:100]}",
+                                },
+                            )
+                            # Continue with ingestion - graph extraction is non-critical
+
                     if not chunks:
                         logger.warning("No chunks created for %s", doc_identifier)
                         await document_repo.update_status(
@@ -1868,4 +2116,6 @@ __all__ = [
     "_process_remove_source_operation",
     "_handle_task_failure",
     "_handle_task_failure_async",
+    "extract_and_store_graph_data",
+    "reextract_graph_for_document",
 ]

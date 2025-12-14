@@ -9,6 +9,7 @@ import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
+import { EntitiesTab } from './graph';
 import type { DocumentResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
@@ -28,7 +29,7 @@ function CollectionDetailsModal() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'visualize' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'files' | 'entities' | 'visualize' | 'settings'>('overview');
   const [filesPage, setFilesPage] = useState(1);
   const [configChanges, setConfigChanges] = useState<{
     instruction?: string;
@@ -280,6 +281,16 @@ function CollectionDetailsModal() {
               }`}
             >
               Files
+            </button>
+            <button
+              onClick={() => setActiveTab('entities')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'entities'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Entities
             </button>
             <button
               onClick={() => setActiveTab('visualize')}
@@ -596,6 +607,10 @@ function CollectionDetailsModal() {
                 </div>
               )}
             </div>
+          )}
+
+          {collection && activeTab === 'entities' && (
+            <EntitiesTab collectionId={collection.id} />
           )}
 
           {collection && activeTab === 'settings' && (
