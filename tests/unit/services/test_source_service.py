@@ -391,9 +391,7 @@ class TestSourceService:
         assert "collection" in str(exc_info.value)
 
     @pytest.mark.asyncio()
-    async def test_create_source_access_denied(
-        self, service, mock_collection_repo, sample_collection
-    ) -> None:
+    async def test_create_source_access_denied(self, service, mock_collection_repo, sample_collection) -> None:
         """Test creating source without access to collection."""
         mock_collection_repo.get_by_id.return_value = sample_collection
 
@@ -719,7 +717,13 @@ class TestSourceService:
 
     @pytest.mark.asyncio()
     async def test_get_source_with_secret_types(
-        self, service_with_secrets, mock_collection_repo, mock_source_repo, mock_secret_repo, sample_collection, sample_source
+        self,
+        service_with_secrets,
+        mock_collection_repo,
+        mock_source_repo,
+        mock_secret_repo,
+        sample_collection,
+        sample_source,
     ) -> None:
         """Test get_source with include_secret_types=True."""
         mock_source_repo.get_by_id.return_value = sample_source
@@ -749,9 +753,7 @@ class TestSourceService:
             await service.get_source(user_id=999, source_id=sample_source.id)
 
     @pytest.mark.asyncio()
-    async def test_list_sources_access_denied(
-        self, service, mock_collection_repo, sample_collection
-    ) -> None:
+    async def test_list_sources_access_denied(self, service, mock_collection_repo, sample_collection) -> None:
         """Test list_sources without access to collection."""
         mock_collection_repo.get_by_id.return_value = sample_collection
 
@@ -760,7 +762,13 @@ class TestSourceService:
 
     @pytest.mark.asyncio()
     async def test_update_source_deletes_secret_with_empty_string(
-        self, service_with_secrets, mock_collection_repo, mock_source_repo, mock_secret_repo, sample_collection, sample_source
+        self,
+        service_with_secrets,
+        mock_collection_repo,
+        mock_source_repo,
+        mock_secret_repo,
+        sample_collection,
+        sample_source,
     ) -> None:
         """Test that passing empty string for a secret deletes it."""
         mock_source_repo.get_by_id.return_value = sample_source
