@@ -371,23 +371,43 @@ class PartitionAwareMixin:
         """Resolve the partition key for a collection id.
 
         Prefers the database helper (get_partition_key) when available so that
-        computed keys always match production behaviour. Falls back to a
-        deterministic hash if the helper is missing (e.g., in tests with a
-        simplified schema).
+        computed keys always match production behaviour. If the helper function
+        is not available, attempts to compute the key using PostgreSQL's native
+        hashtext() expression. As a final fallback (e.g., non-PostgreSQL test
+        environments), uses a deterministic pure-Python hash.
         """
 
         validated_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
 
+        # IMPORTANT: If a DB-side query fails (e.g., undefined function), PostgreSQL
+        # aborts the current transaction. Use a SAVEPOINT via begin_nested() so we
+        # can safely fall back without poisoning the caller's transaction.
         try:
-            result = await session.execute(
-                text("SELECT get_partition_key(:collection_id)"),
-                {"collection_id": validated_id},
-            )
-            db_value = result.scalar_one_or_none()
-            if db_value is not None:
-                return int(db_value)
+            async with session.begin_nested():
+                result = await session.execute(
+                    text("SELECT get_partition_key(:collection_id)"),
+                    {"collection_id": validated_id},
+                )
+                db_value = result.scalar_one_or_none()
+                if db_value is not None:
+                    return int(db_value)
         except SQLAlchemyError:
-            logger.debug("Database helper get_partition_key unavailable, falling back to Python hash", exc_info=True)
+            logger.debug("Database helper get_partition_key unavailable; attempting hashtext()", exc_info=True)
+
+        # Compute directly using PostgreSQL's hashtext() builtin. This matches the
+        # partitioning logic used by chunking triggers:
+        #   abs(hashtext(collection_id::text)) % 100
+        try:
+            async with session.begin_nested():
+                result = await session.execute(
+                    text("SELECT abs(hashtext(CAST(:collection_id AS text))) % 100"),
+                    {"collection_id": validated_id},
+                )
+                db_value = result.scalar_one_or_none()
+                if db_value is not None:
+                    return int(db_value)
+        except SQLAlchemyError:
+            logger.debug("Database hashtext() unavailable; falling back to deterministic Python hash", exc_info=True)
 
         return PartitionValidation.compute_partition_key_from_hash(validated_id)
 

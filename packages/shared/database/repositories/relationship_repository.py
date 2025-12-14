@@ -20,6 +20,7 @@ from shared.database.exceptions import (
     EntityNotFoundError,
 )
 from shared.database.models import Entity, Relationship
+from shared.database.partition_utils import PartitionAwareMixin
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,8 @@ class RelationshipRepository:
     partition rather than the entire table.
 
     Partition Key Computation:
-        partition_key = abs(hash(collection_id)) % 100
+        partition_key = abs(hashtext(collection_id::text)) % 100
+        (resolved via database-side logic when available)
 
     Graph Traversal:
         - get_neighbors: BFS traversal with configurable max_hops
@@ -49,20 +51,17 @@ class RelationshipRepository:
             session: AsyncSession instance for database operations
         """
         self.session = session
+        self._partition_key_cache: dict[str, int] = {}
 
-    @staticmethod
-    def _compute_partition_key(collection_id: str) -> int:
-        """Compute partition key from collection_id.
+    async def _compute_partition_key(self, collection_id: str) -> int:
+        """Compute (and cache) partition key from collection_id."""
+        cached = self._partition_key_cache.get(collection_id)
+        if cached is not None:
+            return cached
 
-        Must match the algorithm used in migrations and other repositories.
-
-        Args:
-            collection_id: The collection UUID string.
-
-        Returns:
-            Partition key in range 0-99.
-        """
-        return abs(hash(collection_id)) % 100
+        partition_key = await PartitionAwareMixin.compute_partition_key(self.session, collection_id)
+        self._partition_key_cache[collection_id] = partition_key
+        return partition_key
 
     @staticmethod
     def _normalize_relationship_type(relationship_type: str) -> str:
@@ -104,7 +103,7 @@ class RelationshipRepository:
             DatabaseOperationError: If creation fails
         """
         try:
-            partition_key = self._compute_partition_key(collection_id)
+            partition_key = await self._compute_partition_key(collection_id)
             normalized_type = self._normalize_relationship_type(relationship_type)
 
             relationship = Relationship(
@@ -163,7 +162,7 @@ class RelationshipRepository:
             return 0
 
         try:
-            partition_key = self._compute_partition_key(collection_id)
+            partition_key = await self._compute_partition_key(collection_id)
 
             # Prepare records with computed fields
             records = []
@@ -178,7 +177,7 @@ class RelationshipRepository:
                     ),
                     "confidence": rel.get("confidence", 0.7),
                     "extraction_method": rel.get("extraction_method"),
-                    "metadata": rel.get("metadata", {}),
+                    "metadata_": rel.get("metadata", {}),
                 })
 
             # Bulk insert using PostgreSQL's efficient multi-row INSERT
@@ -212,7 +211,7 @@ class RelationshipRepository:
         Raises:
             EntityNotFoundError: If relationship not found
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Relationship).where(
@@ -246,7 +245,7 @@ class RelationshipRepository:
         Returns:
             List of Relationship instances
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         conditions = [
             Relationship.source_entity_id == entity_id,
@@ -281,7 +280,7 @@ class RelationshipRepository:
         Returns:
             List of Relationship instances
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         conditions = [
             Relationship.target_entity_id == entity_id,
@@ -360,7 +359,7 @@ class RelationshipRepository:
         # Cap max_hops to prevent runaway queries
         max_hops = min(max_hops, MAX_HOPS_LIMIT)
 
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         # BFS state
         visited: dict[int, int] = {}  # entity_id -> hop distance
@@ -478,7 +477,7 @@ class RelationshipRepository:
         # Cap max_hops
         max_hops = min(max_hops, MAX_HOPS_LIMIT)
 
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         # Get neighbors using BFS
         neighbor_data = await self.get_neighbors(
@@ -537,7 +536,7 @@ class RelationshipRepository:
         Returns:
             Total relationship count
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(func.count(Relationship.id)).where(
@@ -558,7 +557,7 @@ class RelationshipRepository:
         Returns:
             Dict mapping relationship_type to count
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Relationship.relationship_type, func.count(Relationship.id))
@@ -588,7 +587,7 @@ class RelationshipRepository:
         Returns:
             Number of relationships deleted
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         # Delete relationships where entity is source or target
         result = await self.session.execute(
@@ -621,7 +620,7 @@ class RelationshipRepository:
         Returns:
             Number of relationships deleted
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             delete(Relationship).where(

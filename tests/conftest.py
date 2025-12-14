@@ -1,10 +1,14 @@
 """Shared test configuration and fixtures."""
 
 import contextlib
+import fcntl
+import hashlib
 import os
+import subprocess
 import sys
 import warnings
 from collections.abc import Generator
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -48,11 +52,14 @@ from shared.database.models import (  # noqa: E402
     CollectionStatus,
     Document,
     DocumentStatus,
+    Entity,
     Operation,
     OperationStatus,
     OperationType,
+    Relationship,
     User,
 )
+from shared.database.partition_utils import PartitionAwareMixin  # noqa: E402
 from webui.auth import create_access_token, get_current_user  # noqa: E402
 from webui.main import app  # noqa: E402
 from webui.qdrant import qdrant_manager  # noqa: E402
@@ -170,6 +177,101 @@ async def _ensure_chunk_partition_triggers(conn) -> None:
         )
     except Exception as exc:
         warnings.warn(f"Unable to ensure chunk partition trigger: {exc}", stacklevel=1)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _migrate_test_database_schema() -> None:
+    """Ensure the test database schema is migrated to the latest Alembic revision.
+
+    Many DB-backed tests assume the database schema matches the current models.
+    SQLAlchemy's create_all() is not a schema migration tool; it won't add new
+    columns to existing tables. When running against a persistent test DB, we
+    apply Alembic migrations once per test session.
+    """
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return
+
+    parsed = urlparse(database_url)
+    db_name = (parsed.path or "").lstrip("/")
+    if db_name and "test" not in db_name:
+        warnings.warn(
+            f"Refusing to auto-migrate non-test database '{db_name}'. Set DATABASE_URL to a test DB to enable.",
+            stacklevel=1,
+        )
+        return
+
+    lock_path = project_root / ".pytest-alembic-migrate.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Use a simple file lock for xdist/multi-process safety.
+    with open(lock_path, "w", encoding="utf-8") as lock_file:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:
+            warnings.warn(f"Unable to lock migration file {lock_path}: {exc}", stacklevel=1)
+
+        try:
+            # If the database was previously initialized via SQLAlchemy create_all(),
+            # it may contain "future" tables (like entities/relationships) without
+            # the corresponding Alembic revision applied, which causes migrations
+            # to fail. Clean up known GraphRAG tables when the collections table
+            # doesn't yet have graph_enabled.
+            try:
+                from sqlalchemy import create_engine as _create_engine
+
+                sync_url = database_url
+                if sync_url.startswith("postgresql+asyncpg://"):
+                    sync_url = sync_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+                elif sync_url.startswith("postgresql://"):
+                    sync_url = sync_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+                engine = _create_engine(sync_url)
+                with engine.begin() as conn:
+                    graph_enabled_exists = conn.execute(
+                        text(
+                            """
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'collections'
+                              AND column_name = 'graph_enabled'
+                            LIMIT 1
+                            """
+                        )
+                    ).scalar_one_or_none()
+                    if graph_enabled_exists is None:
+                        conn.execute(text("DROP TABLE IF EXISTS relationships CASCADE"))
+                        conn.execute(text("DROP TABLE IF EXISTS entities CASCADE"))
+                engine.dispose()
+            except Exception as exc:
+                warnings.warn(f"Unable to pre-clean GraphRAG tables before migration: {exc}", stacklevel=1)
+
+            # Avoid importing the Alembic Python package directly here because this
+            # repository has an `alembic/` package that shadows the third-party
+            # dependency in pytest (sys.path[0] is the repo root).
+            alembic_bin = str(Path(sys.executable).with_name("alembic"))
+            _ = subprocess.run(
+                [alembic_bin, "upgrade", "head"],
+                cwd=str(project_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            # If the database is unavailable, db_session will skip DB tests.
+            if isinstance(exc, subprocess.CalledProcessError):
+                warnings.warn(
+                    "Alembic migration skipped/failed for tests: "
+                    f"{exc}\nstdout:\n{exc.stdout}\nstderr:\n{exc.stderr}",
+                    stacklevel=1,
+                )
+            else:
+                warnings.warn(f"Alembic migration skipped/failed for tests: {exc}", stacklevel=1)
+        finally:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
 
 
 @pytest.fixture(autouse=True)
@@ -375,14 +477,23 @@ def test_user_headers(auth_headers) -> None:
 
 
 @pytest_asyncio.fixture
-async def async_client(test_user) -> None:
-    """Create an async test client for the FastAPI app with auth mocked."""
+async def async_client(test_user_db, db_session: AsyncSession) -> None:
+    """Create an async test client for the FastAPI app with auth + DB wired up."""
+
+    current_user = {
+        "id": test_user_db.id,
+        "username": test_user_db.username,
+    }
 
     # Override the authentication dependency
     async def override_get_current_user() -> None:
-        return test_user
+        return current_user
+
+    async def override_get_db() -> Generator[Any, None, None]:
+        yield db_session
 
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[get_db] = override_get_db
 
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
@@ -671,7 +782,17 @@ async def db_session():
 
     # Create tables if they don't exist (idempotent operation)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # When running against a migrated database, rely on Alembic-managed schema.
+        # SQLAlchemy create_all() won't apply schema changes (e.g., adding columns),
+        # and can create tables that conflict with pending migrations.
+        try:
+            result = await conn.execute(text("SELECT to_regclass('public.alembic_version')"))
+            has_alembic = result.scalar_one_or_none() is not None
+        except Exception:
+            has_alembic = False
+
+        if not has_alembic:
+            await conn.run_sync(Base.metadata.create_all)
         await _ensure_chunk_partition_triggers(conn)
 
     # Create session for this test
@@ -892,3 +1013,348 @@ def test_documents_fixture() -> Path:
             return docker_path
         pytest.skip(f"Test data directory not found at {test_data_path}")
     return test_data_path
+
+
+# ---------------------------------------------------------------------------
+# Graph Testing Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def entity_factory(db_session, collection_factory, document_factory, test_user_db) -> None:
+    """Factory for creating Entity instances for testing.
+
+    Creates Entity instances with automatic computation of:
+    - partition_key: abs(hashtext(collection_id::text)) % 100 (via DB when available; deterministic fallback otherwise)
+    - name_hash: SHA256 of "{entity_type}:{name.lower().strip()}"
+    - name_normalized: name.lower().strip()
+
+    If collection_id is not provided, creates a new collection with graph_enabled=True.
+    If document_id is not provided, creates a new document in the collection.
+
+    Usage:
+        entity = await entity_factory(name="John Smith", entity_type="PERSON")
+        entity = await entity_factory(
+            name="Acme Corp",
+            entity_type="ORG",
+            collection_id=existing_collection.id,
+            confidence=0.95,
+        )
+    """
+    created_entities = []
+    # Cache for collections/documents created by this factory
+    _default_collection = None
+    _default_document = None
+
+    async def _create_entity(
+        name: str = "Test Entity",
+        entity_type: str = "PERSON",
+        collection_id: str | None = None,
+        document_id: str | None = None,
+        chunk_id: int | None = None,
+        confidence: float = 0.85,
+        start_offset: int | None = None,
+        end_offset: int | None = None,
+        canonical_id: int | None = None,
+        metadata: dict | None = None,
+        **kwargs,
+    ) -> Entity:
+        nonlocal _default_collection, _default_document
+
+        # Create or use cached collection
+        if collection_id is None:
+            if _default_collection is None:
+                _default_collection = await collection_factory(
+                    owner_id=test_user_db.id,
+                    graph_enabled=True,
+                )
+            collection_id = _default_collection.id
+
+        # Create or use cached document
+        if document_id is None:
+            if _default_document is None or _default_document.collection_id != collection_id:
+                _default_document = await document_factory(
+                    collection_id=collection_id,
+                    file_name="test_entity_doc.txt",
+                )
+            document_id = _default_document.id
+
+        # Compute partition_key
+        partition_key = await PartitionAwareMixin.compute_partition_key(db_session, collection_id)
+
+        # Compute name_normalized and name_hash
+        name_normalized = name.lower().strip()
+        hash_input = f"{entity_type}:{name_normalized}"
+        name_hash = hashlib.sha256(hash_input.encode()).hexdigest()
+
+        entity = Entity(
+            collection_id=collection_id,
+            partition_key=partition_key,
+            document_id=document_id,
+            chunk_id=chunk_id,
+            name=name,
+            name_normalized=name_normalized,
+            name_hash=name_hash,
+            entity_type=entity_type,
+            confidence=confidence,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            canonical_id=canonical_id,
+            metadata_=metadata or {},
+            **kwargs,
+        )
+        db_session.add(entity)
+        await db_session.flush()
+        await db_session.refresh(entity)
+        created_entities.append(entity)
+        return entity
+
+    yield _create_entity
+    # Cleanup handled by transaction rollback
+
+
+@pytest_asyncio.fixture
+async def relationship_factory(db_session, entity_factory) -> None:
+    """Factory for creating Relationship instances for testing.
+
+    Creates Relationship instances with automatic computation of:
+    - partition_key: abs(hashtext(collection_id::text)) % 100 (via DB when available; deterministic fallback otherwise)
+    - relationship_type: normalized to uppercase
+
+    If source_entity_id or target_entity_id are not provided, creates new entities.
+
+    Usage:
+        relationship = await relationship_factory(
+            source_entity_id=entity1.id,
+            target_entity_id=entity2.id,
+            relationship_type="WORKS_FOR",
+        )
+        # Or let the factory create entities automatically:
+        relationship = await relationship_factory(relationship_type="LOCATED_IN")
+    """
+    created_relationships = []
+    # Cache for entities created by this factory
+    _cached_source_entity = None
+    _cached_target_entity = None
+
+    async def _create_relationship(
+        source_entity_id: int | None = None,
+        target_entity_id: int | None = None,
+        collection_id: str | None = None,
+        relationship_type: str = "RELATED_TO",
+        confidence: float = 0.7,
+        extraction_method: str | None = "dependency",
+        metadata: dict | None = None,
+        **kwargs,
+    ) -> Relationship:
+        nonlocal _cached_source_entity, _cached_target_entity
+
+        # Create source entity if not provided
+        if source_entity_id is None:
+            if _cached_source_entity is None:
+                _cached_source_entity = await entity_factory(
+                    name="Source Entity",
+                    entity_type="PERSON",
+                    collection_id=collection_id,
+                )
+            source_entity_id = _cached_source_entity.id
+            if collection_id is None:
+                collection_id = _cached_source_entity.collection_id
+
+        # Create target entity if not provided
+        if target_entity_id is None:
+            if _cached_target_entity is None:
+                _cached_target_entity = await entity_factory(
+                    name="Target Entity",
+                    entity_type="ORG",
+                    collection_id=collection_id,
+                )
+            target_entity_id = _cached_target_entity.id
+            if collection_id is None:
+                collection_id = _cached_target_entity.collection_id
+
+        # Must have collection_id at this point
+        if collection_id is None:
+            raise ValueError("collection_id must be provided or inferred from entities")
+
+        # Compute partition_key
+        partition_key = await PartitionAwareMixin.compute_partition_key(db_session, collection_id)
+
+        # Normalize relationship_type to uppercase
+        relationship_type_normalized = relationship_type.upper()
+
+        relationship = Relationship(
+            collection_id=collection_id,
+            partition_key=partition_key,
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            relationship_type=relationship_type_normalized,
+            confidence=confidence,
+            extraction_method=extraction_method,
+            metadata_=metadata or {},
+            **kwargs,
+        )
+        db_session.add(relationship)
+        await db_session.flush()
+        await db_session.refresh(relationship)
+        created_relationships.append(relationship)
+        return relationship
+
+    yield _create_relationship
+    # Cleanup handled by transaction rollback
+
+
+@pytest_asyncio.fixture
+async def collection_with_graph(collection_factory, test_user_db) -> None:
+    """Convenience fixture for creating a graph-enabled collection.
+
+    Usage:
+        collection = await collection_with_graph()
+        collection = await collection_with_graph(name="My Graph Collection")
+    """
+
+    async def _create_collection(**kwargs) -> None:
+        defaults = {
+            "owner_id": test_user_db.id,
+            "graph_enabled": True,
+        }
+        defaults.update(kwargs)
+        return await collection_factory(**defaults)
+
+    yield _create_collection
+
+
+@dataclass
+class GraphTestData:
+    """Container for a complete test graph with collection, entities, and relationships.
+
+    Note: Named GraphTestData (not TestGraph) to avoid pytest collection warnings.
+    """
+
+    collection: Any
+    entities: list = field(default_factory=list)
+    relationships: list = field(default_factory=list)
+
+    @property
+    def entity_count(self) -> int:
+        """Return the number of entities in the graph."""
+        return len(self.entities)
+
+    @property
+    def relationship_count(self) -> int:
+        """Return the number of relationships in the graph."""
+        return len(self.relationships)
+
+    def get_entity_by_name(self, name: str) -> Any | None:
+        """Find an entity by name (case-insensitive)."""
+        name_lower = name.lower()
+        for entity in self.entities:
+            if entity.name.lower() == name_lower:
+                return entity
+        return None
+
+    def get_entities_by_type(self, entity_type: str) -> list:
+        """Get all entities of a specific type."""
+        return [e for e in self.entities if e.entity_type == entity_type]
+
+
+@pytest_asyncio.fixture
+async def graph_factory(
+    db_session,
+    collection_factory,
+    document_factory,
+    entity_factory,
+    relationship_factory,
+    test_user_db,
+) -> None:
+    """Factory for creating complete test graphs.
+
+    Creates a collection with graph_enabled=True, multiple entities of different types,
+    and relationships connecting them in a chain structure.
+
+    Args:
+        num_entities: Number of entities to create (default: 5)
+        num_relationships: Number of relationships to create (default: num_entities - 1)
+        entity_types: List of entity types to cycle through (default: ["PERSON", "ORG", "GPE"])
+        relationship_types: List of relationship types to cycle through (default: ["WORKS_FOR", "LOCATED_IN", "AFFILIATED_WITH"])
+
+    Usage:
+        graph = await graph_factory()
+        graph = await graph_factory(num_entities=10, num_relationships=9)
+
+    Returns:
+        GraphTestData dataclass with collection, entities, and relationships.
+    """
+    created_graphs = []
+
+    async def _create_graph(
+        num_entities: int = 5,
+        num_relationships: int | None = None,
+        entity_types: list[str] | None = None,
+        relationship_types: list[str] | None = None,
+        collection_name: str | None = None,
+        **collection_kwargs,
+    ) -> GraphTestData:
+        # Default values
+        if entity_types is None:
+            entity_types = ["PERSON", "ORG", "GPE"]
+        if relationship_types is None:
+            relationship_types = ["WORKS_FOR", "LOCATED_IN", "AFFILIATED_WITH"]
+        if num_relationships is None:
+            num_relationships = max(0, num_entities - 1)
+
+        # Create collection with graph enabled
+        collection_defaults = {
+            "owner_id": test_user_db.id,
+            "graph_enabled": True,
+        }
+        if collection_name:
+            collection_defaults["name"] = collection_name
+        collection_defaults.update(collection_kwargs)
+        collection = await collection_factory(**collection_defaults)
+
+        # Create a document for the entities
+        document = await document_factory(
+            collection_id=collection.id,
+            file_name="test_graph_doc.txt",
+        )
+
+        # Create entities cycling through types
+        entities = []
+        for i in range(num_entities):
+            entity_type = entity_types[i % len(entity_types)]
+            entity_name = f"Entity_{i}_{entity_type}"
+
+            entity = await entity_factory(
+                name=entity_name,
+                entity_type=entity_type,
+                collection_id=collection.id,
+                document_id=document.id,
+                confidence=0.85 + (i * 0.01),  # Slightly varying confidence
+            )
+            entities.append(entity)
+
+        # Create relationships in a chain structure (entity[0] -> entity[1] -> entity[2] -> ...)
+        relationships = []
+        for i in range(min(num_relationships, len(entities) - 1)):
+            rel_type = relationship_types[i % len(relationship_types)]
+
+            relationship = await relationship_factory(
+                source_entity_id=entities[i].id,
+                target_entity_id=entities[i + 1].id,
+                collection_id=collection.id,
+                relationship_type=rel_type,
+                confidence=0.7 + (i * 0.05),  # Slightly varying confidence
+            )
+            relationships.append(relationship)
+
+        graph = GraphTestData(
+            collection=collection,
+            entities=entities,
+            relationships=relationships,
+        )
+        created_graphs.append(graph)
+        return graph
+
+    yield _create_graph
+    # Cleanup handled by transaction rollback

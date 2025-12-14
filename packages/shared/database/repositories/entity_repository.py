@@ -18,6 +18,7 @@ from shared.database.exceptions import (
     EntityNotFoundError,
 )
 from shared.database.models import Entity
+from shared.database.partition_utils import PartitionAwareMixin
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,8 @@ class EntityRepository:
     partition rather than the entire table.
 
     Partition Key Computation:
-        partition_key = abs(hash(collection_id)) % 100
+        partition_key = abs(hashtext(collection_id::text)) % 100
+        (resolved via database-side logic when available)
 
     Name Hash Computation (for deduplication):
         name_hash = sha256(f"{entity_type}:{name.lower().strip()}")
@@ -43,20 +45,17 @@ class EntityRepository:
             session: AsyncSession instance for database operations
         """
         self.session = session
+        self._partition_key_cache: dict[str, int] = {}
 
-    @staticmethod
-    def _compute_partition_key(collection_id: str) -> int:
-        """Compute partition key from collection_id.
+    async def _compute_partition_key(self, collection_id: str) -> int:
+        """Compute (and cache) partition key from collection_id."""
+        cached = self._partition_key_cache.get(collection_id)
+        if cached is not None:
+            return cached
 
-        Must match the algorithm used in migrations and other repositories.
-
-        Args:
-            collection_id: The collection UUID string.
-
-        Returns:
-            Partition key in range 0-99.
-        """
-        return abs(hash(collection_id)) % 100
+        partition_key = await PartitionAwareMixin.compute_partition_key(self.session, collection_id)
+        self._partition_key_cache[collection_id] = partition_key
+        return partition_key
 
     @staticmethod
     def _compute_name_hash(name: str, entity_type: str) -> str:
@@ -104,7 +103,7 @@ class EntityRepository:
             DatabaseOperationError: If creation fails
         """
         try:
-            partition_key = self._compute_partition_key(collection_id)
+            partition_key = await self._compute_partition_key(collection_id)
             name_normalized = name.lower().strip()
             name_hash = self._compute_name_hash(name, entity_type)
 
@@ -162,7 +161,7 @@ class EntityRepository:
             return 0
 
         try:
-            partition_key = self._compute_partition_key(collection_id)
+            partition_key = await self._compute_partition_key(collection_id)
 
             # Prepare records with computed fields
             records = []
@@ -181,7 +180,7 @@ class EntityRepository:
                     "start_offset": entity.get("start_offset"),
                     "end_offset": entity.get("end_offset"),
                     "confidence": entity.get("confidence", 0.85),
-                    "metadata": entity.get("metadata", {}),
+                    "metadata_": entity.get("metadata", {}),
                 })
 
             # Bulk insert using PostgreSQL's efficient multi-row INSERT
@@ -213,7 +212,7 @@ class EntityRepository:
         Raises:
             EntityNotFoundError: If entity not found
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Entity).where(
@@ -245,7 +244,7 @@ class EntityRepository:
         Returns:
             List of Entity instances ordered by creation time
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Entity).where(
@@ -272,7 +271,7 @@ class EntityRepository:
         Returns:
             List of Entity instances
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Entity).where(
@@ -306,7 +305,7 @@ class EntityRepository:
         Returns:
             List of Entity instances ordered by normalized name
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Entity).where(
@@ -329,26 +328,26 @@ class EntityRepository:
         entity_types: list[str] | None = None,
         limit: int = 50,
     ) -> list[Entity]:
-        """Search entities by name prefix.
+        """Search entities by name (substring match on normalized name).
 
         Only returns canonical entities (those without a canonical_id set).
 
         Args:
             collection_id: Collection ID
-            query: Name prefix to search for
+            query: Substring to search for (case-insensitive)
             entity_types: Optional list of entity types to filter by
             limit: Maximum results to return
 
         Returns:
             List of matching Entity instances ordered by normalized name
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
         query_normalized = query.lower().strip()
 
         conditions = [
             Entity.collection_id == collection_id,
             Entity.partition_key == partition_key,
-            Entity.name_normalized.startswith(query_normalized),
+            Entity.name_normalized.contains(query_normalized),
             Entity.canonical_id.is_(None),  # Only canonical entities
         ]
 
@@ -383,7 +382,7 @@ class EntityRepository:
         Returns:
             List of entities with matching name_hash
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
         name_hash = self._compute_name_hash(name, entity_type)
 
         result = await self.session.execute(
@@ -417,7 +416,7 @@ class EntityRepository:
             DatabaseOperationError: If update fails
         """
         try:
-            partition_key = self._compute_partition_key(collection_id)
+            partition_key = await self._compute_partition_key(collection_id)
 
             await self.session.execute(
                 update(Entity)
@@ -449,7 +448,7 @@ class EntityRepository:
         Returns:
             Total entity count
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(func.count(Entity.id)).where(
@@ -473,7 +472,7 @@ class EntityRepository:
         Returns:
             Dict mapping entity_type to count
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             select(Entity.entity_type, func.count(Entity.id))
@@ -504,7 +503,7 @@ class EntityRepository:
         Returns:
             Number of entities deleted
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             delete(Entity).where(
@@ -535,7 +534,7 @@ class EntityRepository:
         Returns:
             Number of entities deleted
         """
-        partition_key = self._compute_partition_key(collection_id)
+        partition_key = await self._compute_partition_key(collection_id)
 
         result = await self.session.execute(
             delete(Entity).where(
