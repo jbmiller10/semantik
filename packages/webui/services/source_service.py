@@ -90,7 +90,7 @@ class SourceService:
             EncryptionNotConfiguredError: If secrets provided but encryption not configured
         """
         # Verify user has access to collection
-        collection = await self.collection_repo.get_by_id(collection_id)
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise EntityNotFoundError("collection", collection_id)
 
@@ -167,7 +167,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
@@ -231,7 +231,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
@@ -293,7 +293,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
@@ -330,7 +330,7 @@ class SourceService:
             AccessDeniedError: If user doesn't have access
         """
         # Verify user has access to collection
-        collection = await self.collection_repo.get_by_id(collection_id)
+        collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
             raise EntityNotFoundError("collection", collection_id)
 
@@ -382,7 +382,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
@@ -460,7 +460,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
@@ -490,7 +490,7 @@ class SourceService:
         if not source:
             raise EntityNotFoundError("collection_source", str(source_id))
 
-        collection = await self.collection_repo.get_by_id(source.collection_id)
+        collection = await self.collection_repo.get_by_uuid(source.collection_id)
         if not collection or collection.owner_id != user_id:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 

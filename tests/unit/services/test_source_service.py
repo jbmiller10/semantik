@@ -91,7 +91,7 @@ class TestSourceService:
     ) -> None:
         """Test successful source update."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         updated_source = CollectionSource(
             id=sample_source.id,
@@ -129,7 +129,7 @@ class TestSourceService:
     ) -> None:
         """Test updating source without access."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.update_source(user_id=999, source_id=sample_source.id)
@@ -140,7 +140,7 @@ class TestSourceService:
     ) -> None:
         """Reject secrets updates when connector secrets encryption is disabled."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(EncryptionNotConfiguredError):
             await service.update_source(
@@ -168,7 +168,7 @@ class TestSourceService:
     ) -> None:
         """Test successful source deletion."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = []
 
         operation = Operation(
@@ -204,7 +204,7 @@ class TestSourceService:
     ) -> None:
         """Test delete source blocked by active operation."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = [MagicMock()]
 
         with pytest.raises(InvalidStateError) as exc_info:
@@ -222,7 +222,7 @@ class TestSourceService:
     ) -> None:
         """Test successful source retrieval."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         result = await service.get_source(
             user_id=sample_collection.owner_id,
@@ -247,7 +247,7 @@ class TestSourceService:
         self, service, mock_collection_repo, mock_source_repo, sample_collection, sample_source
     ) -> None:
         """Test successful source listing."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_source_repo.list_by_collection.return_value = ([sample_source], 1)
 
         # list_sources returns list of (source, secret_types) tuples when include_secret_types=True
@@ -264,7 +264,7 @@ class TestSourceService:
     @pytest.mark.asyncio()
     async def test_list_sources_collection_not_found(self, service, mock_collection_repo) -> None:
         """Test listing sources for non-existent collection."""
-        mock_collection_repo.get_by_id.return_value = None
+        mock_collection_repo.get_by_uuid.return_value = None
 
         with pytest.raises(EntityNotFoundError):
             await service.list_sources(user_id=1, collection_id=str(uuid4()))
@@ -320,7 +320,7 @@ class TestSourceService:
         self, service, mock_collection_repo, mock_source_repo, sample_collection
     ) -> None:
         """Test successful source creation without secrets."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         new_source = CollectionSource(
             id=1,
@@ -349,7 +349,7 @@ class TestSourceService:
         self, service_with_secrets, mock_collection_repo, mock_source_repo, mock_secret_repo, sample_collection
     ) -> None:
         """Test successful source creation with encrypted secrets."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         new_source = CollectionSource(
             id=1,
@@ -378,7 +378,7 @@ class TestSourceService:
     @pytest.mark.asyncio()
     async def test_create_source_collection_not_found(self, service, mock_collection_repo) -> None:
         """Test creating source for non-existent collection."""
-        mock_collection_repo.get_by_id.return_value = None
+        mock_collection_repo.get_by_uuid.return_value = None
 
         with pytest.raises(EntityNotFoundError) as exc_info:
             await service.create_source(
@@ -393,7 +393,7 @@ class TestSourceService:
     @pytest.mark.asyncio()
     async def test_create_source_access_denied(self, service, mock_collection_repo, sample_collection) -> None:
         """Test creating source without access to collection."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.create_source(
@@ -409,7 +409,7 @@ class TestSourceService:
         self, service, mock_collection_repo, sample_collection
     ) -> None:
         """Test creating source with secrets when encryption not configured."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(EncryptionNotConfiguredError):
             await service.create_source(
@@ -426,7 +426,7 @@ class TestSourceService:
         self, service_with_secrets, mock_collection_repo, mock_source_repo, mock_secret_repo, sample_collection
     ) -> None:
         """Test that create_source returns the list of stored secret types."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         new_source = MagicMock(spec=CollectionSource)
         new_source.id = 1
@@ -467,7 +467,7 @@ class TestSourceService:
     ) -> None:
         """Test successful manual sync trigger."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = []
 
         operation = Operation(
@@ -506,7 +506,7 @@ class TestSourceService:
     ) -> None:
         """Test run_now without access to collection."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.run_now(user_id=999, source_id=sample_source.id)
@@ -523,7 +523,7 @@ class TestSourceService:
     ) -> None:
         """Test run_now blocked by active operation."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = [MagicMock()]
 
         with pytest.raises(InvalidStateError) as exc_info:
@@ -548,7 +548,7 @@ class TestSourceService:
     ) -> None:
         """Test that run_now dispatches Celery task with correct args."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = []
 
         operation_uuid = str(uuid4())
@@ -589,7 +589,7 @@ class TestSourceService:
     ) -> None:
         """Test that run_now updates sync status to partial."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_operation_repo.get_active_operations.return_value = []
 
         operation = Operation(
@@ -621,7 +621,7 @@ class TestSourceService:
     ) -> None:
         """Test successful pause of continuous sync."""
         mock_source_repo.get_by_id.return_value = sample_continuous_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         # Create a mock paused source with paused_at set
         paused_source = MagicMock(spec=CollectionSource)
@@ -657,7 +657,7 @@ class TestSourceService:
     ) -> None:
         """Test pausing without access to collection."""
         mock_source_repo.get_by_id.return_value = sample_continuous_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.pause(user_id=999, source_id=sample_continuous_source.id)
@@ -671,7 +671,7 @@ class TestSourceService:
         """Test successful resume of paused sync."""
         sample_continuous_source.paused_at = datetime.now(UTC)
         mock_source_repo.get_by_id.return_value = sample_continuous_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         # Create a mock resumed source with paused_at cleared
         resumed_source = MagicMock(spec=CollectionSource)
@@ -708,7 +708,7 @@ class TestSourceService:
         """Test resuming without access to collection."""
         sample_continuous_source.paused_at = datetime.now(UTC)
         mock_source_repo.get_by_id.return_value = sample_continuous_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.resume(user_id=999, source_id=sample_continuous_source.id)
@@ -727,7 +727,7 @@ class TestSourceService:
     ) -> None:
         """Test get_source with include_secret_types=True."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_secret_repo.get_secret_types_for_source.return_value = ["password", "token"]
 
         result = await service_with_secrets.get_source(
@@ -747,7 +747,7 @@ class TestSourceService:
     ) -> None:
         """Test get_source without access to collection."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.get_source(user_id=999, source_id=sample_source.id)
@@ -755,7 +755,7 @@ class TestSourceService:
     @pytest.mark.asyncio()
     async def test_list_sources_access_denied(self, service, mock_collection_repo, sample_collection) -> None:
         """Test list_sources without access to collection."""
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.list_sources(user_id=999, collection_id=sample_collection.id)
@@ -772,7 +772,7 @@ class TestSourceService:
     ) -> None:
         """Test that passing empty string for a secret deletes it."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
         mock_source_repo.update.return_value = sample_source
         mock_secret_repo.get_secret_types_for_source.return_value = []
 
@@ -800,7 +800,7 @@ class TestSourceService:
     ) -> None:
         """Test deleting source without access to collection."""
         mock_source_repo.get_by_id.return_value = sample_source
-        mock_collection_repo.get_by_id.return_value = sample_collection
+        mock_collection_repo.get_by_uuid.return_value = sample_collection
 
         with pytest.raises(AccessDeniedError):
             await service.delete_source(user_id=999, source_id=sample_source.id)
