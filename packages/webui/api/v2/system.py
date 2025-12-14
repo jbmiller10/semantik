@@ -42,21 +42,22 @@ async def get_system_status(
     """
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{VECPIPE_BASE_URL}/model/status")
+            # Use /models/suggest endpoint which checks actual GPU hardware availability
+            # via memory detection, not just configuration flags
+            response = await client.get(f"{VECPIPE_BASE_URL}/models/suggest")
             response.raise_for_status()
-            vecpipe_status = response.json()
+            suggest_response = response.json()
 
-        # Vecpipe has GPU access - if it responds, check if models can load
-        # The is_mock_mode flag indicates if real embeddings are disabled
-        is_mock_mode = vecpipe_status.get("is_mock_mode", False)
-        gpu_available = not is_mock_mode
+        # The suggest endpoint returns gpu_available based on actual hardware detection
+        gpu_available = suggest_response.get("gpu_available", False)
+        gpu_memory = suggest_response.get("gpu_memory", {})
 
         return {
             "gpu_available": gpu_available,
             "reranking_available": gpu_available,
             "available_reranking_models": AVAILABLE_RERANKING_MODELS if gpu_available else [],
             "cuda_device_count": 1 if gpu_available else 0,
-            "cuda_device_name": "GPU (via vecpipe)" if gpu_available else None,
+            "cuda_device_name": f"GPU ({gpu_memory.get('total_mb', 0)}MB)" if gpu_available else None,
         }
     except httpx.RequestError as e:
         logger.warning(f"Could not reach vecpipe service: {e}")
