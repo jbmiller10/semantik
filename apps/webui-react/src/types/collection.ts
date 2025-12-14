@@ -1,9 +1,13 @@
-export type CollectionStatus = 
+export type CollectionStatus =
   | 'pending'
   | 'ready'
   | 'processing'
   | 'error'
   | 'degraded';
+
+export type SyncMode = 'one_time' | 'continuous';
+
+export type SyncRunStatus = 'running' | 'success' | 'failed' | 'partial';
 
 export type OperationType = 
   | 'index'
@@ -40,7 +44,19 @@ export interface Collection {
   total_size_bytes?: number;
   created_at: string;              // ISO 8601 string
   updated_at: string;              // ISO 8601 string
-  
+
+  // Sync policy (collection-level)
+  sync_mode: SyncMode;
+  sync_interval_minutes?: number;
+  sync_paused_at?: string;         // ISO 8601 string, null if not paused
+  sync_next_run_at?: string;       // ISO 8601 string
+
+  // Sync run tracking
+  sync_last_run_started_at?: string;   // ISO 8601 string
+  sync_last_run_completed_at?: string; // ISO 8601 string
+  sync_last_run_status?: SyncRunStatus;
+  sync_last_error?: string;
+
   // Frontend-specific fields
   isProcessing?: boolean;          // Optimistic UI state
   activeOperation?: Operation;     // Current operation
@@ -75,6 +91,9 @@ export interface CreateCollectionRequest {
   chunking_config?: Record<string, number | boolean | string>; // New: strategy-specific configuration
   is_public?: boolean;
   metadata?: Record<string, unknown>;
+  // Sync configuration
+  sync_mode?: SyncMode;           // 'one_time' (default) or 'continuous'
+  sync_interval_minutes?: number; // Required for continuous mode, minimum 15
 }
 
 export interface UpdateCollectionRequest {
@@ -82,15 +101,42 @@ export interface UpdateCollectionRequest {
   description?: string;
   is_public?: boolean;
   metadata?: Record<string, unknown>;
+  // Sync configuration updates
+  sync_mode?: SyncMode;
+  sync_interval_minutes?: number;
+}
+
+// Sync run tracking
+export interface CollectionSyncRun {
+  id: number;
+  collection_id: string;
+  triggered_by: 'scheduler' | 'manual';
+  started_at: string;              // ISO 8601 string
+  completed_at?: string;           // ISO 8601 string
+  status: SyncRunStatus;
+  expected_sources: number;
+  completed_sources: number;
+  failed_sources: number;
+  partial_sources: number;
+  error_summary?: string;
+}
+
+export interface SyncRunListResponse {
+  items: CollectionSyncRun[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface AddSourceRequest {
   /** @deprecated Use source_type + source_config instead */
   source_path?: string;
-  /** Source type (e.g., "directory", "web", "slack"). Defaults to "directory" on backend. */
+  /** Source type (e.g., "directory", "git", "imap"). Defaults to "directory" on backend. */
   source_type?: string;
   /** Source-specific configuration (e.g., { path: "/data/docs" } for directory) */
   source_config?: Record<string, unknown>;
+  /** Secrets for authentication (e.g., tokens, passwords, SSH keys) - encrypted at rest */
+  secrets?: Record<string, string>;
   config?: {
     chunk_size?: number;         // Deprecated: use chunking_config instead
     chunk_overlap?: number;      // Deprecated: use chunking_config instead

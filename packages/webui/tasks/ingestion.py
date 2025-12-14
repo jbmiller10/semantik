@@ -1398,10 +1398,65 @@ async def _process_append_operation_impl(
                     source_id=source_id,
                     status=status,
                     error=sync_error_msg,
+                    completed_at=datetime.now(UTC),
                 )
                 await session.commit()
             except Exception as status_exc:
                 logger.warning("Failed to update source sync status: %s", status_exc)
+                with contextlib.suppress(Exception):
+                    await session.rollback()
+
+        # Sync run completion aggregation hook
+        # If this operation was part of a sync run, update the run's counters
+        sync_run_id = op_config.get("sync_run_id")
+        if sync_run_id is not None:
+            try:
+                from shared.database.repositories.collection_repository import (
+                    CollectionRepository as _CollectionRepo,
+                )
+                from shared.database.repositories.collection_sync_run_repository import (
+                    CollectionSyncRunRepository,
+                )
+
+                sync_run_repo = CollectionSyncRunRepository(session)
+
+                # Determine source completion status
+                source_status = "success" if success else ("partial" if scan_errors else "failed")
+
+                # Increment appropriate counter on sync run
+                await sync_run_repo.update_source_completion(sync_run_id, source_status)
+
+                # Check if all sources are done
+                sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                if sync_run:
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
+
+                    if total_done >= sync_run.expected_sources:
+                        # Complete the sync run
+                        await sync_run_repo.complete_run(sync_run_id)
+
+                        # Re-fetch to get final status
+                        sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                        if sync_run:
+                            # Update collection sync status
+                            coll_repo = _CollectionRepo(session)
+                            await coll_repo.update_sync_status(
+                                collection_uuid=collection["id"],
+                                status=sync_run.status,
+                                completed_at=datetime.now(UTC),
+                            )
+                            logger.info(
+                                "Sync run %s completed with status %s (%s/%s/%s completed/failed/partial)",
+                                sync_run_id,
+                                sync_run.status,
+                                sync_run.completed_sources,
+                                sync_run.failed_sources,
+                                sync_run.partial_sources,
+                            )
+
+                await session.commit()
+            except Exception as sync_run_exc:
+                logger.warning("Failed to update sync run completion: %s", sync_run_exc)
                 with contextlib.suppress(Exception):
                     await session.rollback()
 
@@ -1434,10 +1489,57 @@ async def _process_append_operation_impl(
                     source_id=source_id,
                     status="failed",
                     error=str(exc)[:500],  # Truncate long errors
+                    completed_at=datetime.now(UTC),
                 )
                 await session.commit()
             except Exception:
                 pass  # Don't mask the original exception
+
+        # Sync run completion aggregation hook (failure path)
+        sync_run_id = op_config.get("sync_run_id")
+        if sync_run_id is not None:
+            try:
+                from shared.database.repositories.collection_repository import (
+                    CollectionRepository as _CollectionRepo,
+                )
+                from shared.database.repositories.collection_sync_run_repository import (
+                    CollectionSyncRunRepository,
+                )
+
+                sync_run_repo = CollectionSyncRunRepository(session)
+
+                # Record this source as failed
+                await sync_run_repo.update_source_completion(sync_run_id, "failed")
+
+                # Check if all sources are done
+                sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                if sync_run:
+                    total_done = sync_run.completed_sources + sync_run.failed_sources + sync_run.partial_sources
+
+                    if total_done >= sync_run.expected_sources:
+                        # Complete the sync run
+                        await sync_run_repo.complete_run(sync_run_id)
+
+                        # Re-fetch to get final status
+                        sync_run = await sync_run_repo.get_by_id(sync_run_id)
+                        if sync_run:
+                            # Update collection sync status
+                            coll_repo = _CollectionRepo(session)
+                            await coll_repo.update_sync_status(
+                                collection_uuid=collection["id"],
+                                status=sync_run.status,
+                                completed_at=datetime.now(UTC),
+                            )
+                            logger.info(
+                                "Sync run %s completed (from failure path) with status %s",
+                                sync_run_id,
+                                sync_run.status,
+                            )
+
+                await session.commit()
+            except Exception:
+                pass  # Don't mask the original exception
+
         raise
 
 

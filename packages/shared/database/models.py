@@ -219,6 +219,18 @@ class Collection(Base):
     chunks_total_count = Column(Integer, nullable=False, default=0)
     chunking_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Sync policy fields (collection-level sync configuration)
+    sync_mode = Column(String(20), nullable=False, default="one_time")  # 'one_time' or 'continuous'
+    sync_interval_minutes = Column(Integer, nullable=True)  # Sync interval for continuous mode (min 15)
+    sync_paused_at = Column(DateTime(timezone=True), nullable=True)  # NULL = not paused
+    sync_next_run_at = Column(DateTime(timezone=True), nullable=True)  # When next sync should run
+
+    # Sync run tracking fields
+    sync_last_run_started_at = Column(DateTime(timezone=True), nullable=True)
+    sync_last_run_completed_at = Column(DateTime(timezone=True), nullable=True)
+    sync_last_run_status = Column(String(20), nullable=True)  # 'running', 'success', 'failed', 'partial'
+    sync_last_error = Column(Text, nullable=True)  # Error summary from last failed sync
+
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
@@ -234,6 +246,7 @@ class Collection(Base):
         "ChunkingConfig", foreign_keys=[default_chunking_config_id], back_populates="collections"
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
+    sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
 
 
 class Document(Base):
@@ -455,15 +468,8 @@ class CollectionSource(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
     meta = Column(JSON)
 
-    # Sync configuration fields
-    sync_mode = Column(String(20), nullable=False, default="one_time")  # 'one_time' or 'continuous'
-    interval_minutes = Column(Integer, nullable=True)  # Sync interval for continuous mode (min 15)
-    paused_at = Column(DateTime(timezone=True), nullable=True)  # NULL = not paused
-
-    # Sync scheduling fields
-    next_run_at = Column(DateTime(timezone=True), nullable=True)  # When the next sync should run
-
-    # Sync status fields
+    # Sync telemetry fields (per-source status tracking)
+    # Note: Sync policy (mode, interval, pause) is now at collection level
     last_run_started_at = Column(DateTime(timezone=True), nullable=True)
     last_run_completed_at = Column(DateTime(timezone=True), nullable=True)
     last_run_status = Column(String(20), nullable=True)  # 'success', 'failed', 'partial'
@@ -511,6 +517,51 @@ class ConnectorSecret(Base):
     source = relationship("CollectionSource", back_populates="secrets")
 
     __table_args__ = (UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),)
+
+
+class CollectionSyncRun(Base):
+    """Tracks a single sync run across all sources in a collection.
+
+    Each sync run fans out APPEND operations to all sources and tracks
+    their completion status for aggregated reporting.
+
+    Status values:
+    - running: Sync run in progress
+    - success: All sources completed successfully
+    - partial: Some sources failed or had partial success
+    - failed: All sources failed
+
+    The triggered_by field indicates how the sync was initiated:
+    - scheduler: Automatic dispatch from Celery Beat
+    - manual: User triggered via API
+    """
+
+    __tablename__ = "collection_sync_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    triggered_by = Column(String(50), nullable=False)  # 'scheduler', 'manual'
+    started_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    status = Column(String(20), nullable=False, default="running")  # running, success, failed, partial
+
+    # Source completion tracking
+    expected_sources = Column(Integer, nullable=False, default=0)
+    completed_sources = Column(Integer, nullable=False, default=0)
+    failed_sources = Column(Integer, nullable=False, default=0)
+    partial_sources = Column(Integer, nullable=False, default=0)
+
+    # Error summary
+    error_summary = Column(Text, nullable=True)
+    meta = Column(JSON, nullable=True)
+
+    # Relationships
+    collection = relationship("Collection", back_populates="sync_runs")
 
 
 class Operation(Base):

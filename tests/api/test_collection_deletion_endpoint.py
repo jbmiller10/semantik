@@ -182,8 +182,20 @@ class TestCollectionDeletionIntegration:
         mock_collection.updated_at = datetime.now(UTC)
         mock_collection.document_count = 0
         mock_collection.vector_count = 0
+        mock_collection.total_size_bytes = 0
         mock_collection.status = CollectionStatus.READY
         mock_collection.status_message = None
+        mock_collection.chunking_strategy = None
+        mock_collection.chunking_config = None
+        # Sync policy fields (now at collection level)
+        mock_collection.sync_mode = "one_time"
+        mock_collection.sync_interval_minutes = None
+        mock_collection.sync_paused_at = None
+        mock_collection.sync_next_run_at = None
+        mock_collection.sync_last_run_started_at = None
+        mock_collection.sync_last_run_completed_at = None
+        mock_collection.sync_last_run_status = None
+        mock_collection.sync_last_error = None
 
         mock_service.list_for_user = AsyncMock(return_value=([mock_collection], 1))
         mock_service.delete_collection = AsyncMock()

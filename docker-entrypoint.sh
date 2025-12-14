@@ -147,6 +147,16 @@ PY
         echo "Using Celery concurrency=${CELERY_CONCURRENCY}"
         exec celery -A webui.celery_app worker --loglevel=info --concurrency="${CELERY_CONCURRENCY}"
         ;;
+
+    beat)
+        run_strict_env_validation "beat" false
+        echo "Starting Celery beat..."
+        # Store PID and schedule in writable locations (avoid writing to /app root).
+        exec celery -A webui.celery_app beat \
+            --loglevel=info \
+            --pidfile=/tmp/celerybeat.pid \
+            --schedule="${CELERY_BEAT_SCHEDULE_FILE:-/app/data/celerybeat-schedule}"
+        ;;
         
     flower)
         run_strict_env_validation "flower"
@@ -164,7 +174,7 @@ PY
         
     *)
         echo "Unknown service: $SERVICE"
-        echo "Usage: $0 [webui|vecpipe|worker|flower]"
+        echo "Usage: $0 [webui|vecpipe|worker|beat|flower]"
         exit 1
         ;;
 esac
