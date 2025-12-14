@@ -24,6 +24,15 @@ This is a personal project and still pre‑release — expect rough edges and AP
 - **Chunking lab**: 6 built‑in strategies (character, recursive, markdown, semantic, hierarchical, hybrid) plus a plugin system for adding additional strategies.
 - **Embeddings lab**: swap models/quantization per collection; mock mode for testing.
 - **Visualize:** project embeddings into 2D space & visualize relationships
+- **Continuous sync**: keep collections up-to-date automatically with configurable sync intervals for your data sources.
+
+## Sources & Continuous Sync
+
+Collections support multiple data sources with optional continuous sync:
+
+- **Sync Modes**: `one_time` (manual) or `continuous` (automatic at intervals)
+- **Interval**: Minimum 15 minutes for continuous sync
+- **Encrypted Credentials**: Git tokens, SSH keys, and IMAP passwords stored encrypted at rest
 
 ## Architecture
 Three Python packages, one frontend:
