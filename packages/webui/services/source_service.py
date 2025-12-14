@@ -108,13 +108,12 @@ class SourceService:
             )
 
         # Create the source
+        # Note: sync_mode and interval_minutes are now managed at collection level
         source = await self.source_repo.create(
             collection_id=collection_id,
             source_type=source_type,
             source_path=source_path,
             source_config=source_config,
-            sync_mode=sync_mode,
-            interval_minutes=interval_minutes,
         )
 
         # Store secrets if provided
@@ -179,11 +178,10 @@ class SourceService:
             )
 
         # Update the source
+        # Note: sync_mode and interval_minutes are now managed at collection level
         updated_source = await self.source_repo.update(
             source_id=source_id,
             source_config=source_config,
-            sync_mode=sync_mode,
-            interval_minutes=interval_minutes,
         )
 
         # Update secrets if provided
@@ -415,9 +413,9 @@ class SourceService:
             },
         )
 
-        # Update next_run_at for continuous sync
-        if source.sync_mode == "continuous" and source.interval_minutes:
-            await self.source_repo.set_next_run(source_id)
+        # Update next_run_at for continuous sync (now at collection level)
+        if collection.sync_mode == "continuous" and collection.sync_interval_minutes:
+            await self.collection_repo.set_next_sync_run(source.collection_id)
 
         # Commit before dispatching Celery task
         await self.db_session.commit()
