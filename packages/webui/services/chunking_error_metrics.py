@@ -6,7 +6,8 @@ This module provides comprehensive metrics for monitoring chunking errors,
 recovery operations, and resource usage patterns.
 """
 
-from typing import Any, Mapping, TypeVar, cast
+from collections.abc import Mapping
+from typing import Any, TypeVar, cast
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info
 
@@ -39,6 +40,7 @@ def _get_or_create_metric(
 
     labels = tuple(labelnames or ())
     return metric_cls(name, documentation, labelnames=labels, registry=registry, **kwargs)
+
 
 # Error tracking metrics
 chunking_error_events_total = _get_or_create_metric(

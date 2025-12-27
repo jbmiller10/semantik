@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 if TYPE_CHECKING:  # pragma: no cover
     from httpx import AsyncClient

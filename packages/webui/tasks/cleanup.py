@@ -79,9 +79,7 @@ def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, A
                 ]
                 cutoff_expr = func.coalesce(Operation.completed_at, Operation.started_at, Operation.created_at)
                 op_ids_stmt = (
-                    select(Operation.id)
-                    .where(Operation.status.in_(terminal_statuses))
-                    .where(cutoff_expr < cutoff_time)
+                    select(Operation.id).where(Operation.status.in_(terminal_statuses)).where(cutoff_expr < cutoff_time)
                 )
 
                 audit_result = await session.execute(
