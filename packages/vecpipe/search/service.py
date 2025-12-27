@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import inspect
 import logging
 import time
@@ -68,16 +69,17 @@ def _get_patched_callable(name: str, default: Any) -> Any:
     if local is not None and local is not default:
         return local
 
-    # Then look for overrides on the public entrypoint module
-    try:
-        import vecpipe.search_api as search_api
+    # Then look for overrides on the public entrypoint module(s)
+    for module_name in ("vecpipe.search_api", "packages.vecpipe.search_api"):
+        try:
+            search_api = importlib.import_module(module_name)
 
-        candidate = getattr(search_api, name, None)
-        if candidate is not None and candidate is not default:
-            return candidate
-    except Exception:
-        # Best effort only; fall back to default when anything goes wrong
-        pass
+            candidate = getattr(search_api, name, None)
+            if candidate is not None and candidate is not default:
+                return candidate
+        except Exception:
+            # Best effort only; fall back to default when anything goes wrong
+            continue
 
     return default
 
