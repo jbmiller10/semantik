@@ -377,10 +377,10 @@ class ChunkingCache:
                         if ":user:" not in key:  # Skip user metrics
                             strategy_name = key.split(":")[-1]
                             data = await self.redis.hgetall(key)
-                        metrics[strategy_name] = {
-                            "hits": int(data.get("hits", 0)),
-                            "misses": int(data.get("misses", 0)),
-                        }
+                            metrics[strategy_name] = {
+                                "hits": int(data.get("hits", 0)),
+                                "misses": int(data.get("misses", 0)),
+                            }
         except Exception as e:
             logger.error("Error getting usage metrics: %s", str(e))
 

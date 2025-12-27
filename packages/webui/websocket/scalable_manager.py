@@ -138,6 +138,7 @@ class ScalableWebSocketManager:
                     return
 
                 except Exception as e:
+                    await self._close_redis_connections()
                     if attempt < max_retries - 1:
                         wait_time = retry_delay * (2**attempt)
                         logger.warning(f"Failed to start manager: {e}. Retrying in {wait_time:.1f}s...")
@@ -190,10 +191,7 @@ class ScalableWebSocketManager:
                 logger.error(f"Error cleaning up Redis state: {e}")
 
         # Close Redis connections
-        if self.pubsub:
-            await self.pubsub.aclose()
-        if self.redis_client:
-            await self.redis_client.close()
+        await self._close_redis_connections()
 
         logger.info(f"ScalableWebSocketManager instance {self.instance_id} shut down complete")
 
@@ -459,6 +457,17 @@ class ScalableWebSocketManager:
             )
 
         logger.info(f"Registered instance {self.instance_id} in Redis")
+
+    async def _close_redis_connections(self) -> None:
+        """Close Redis client and pubsub connections safely."""
+        if self.pubsub:
+            with contextlib.suppress(Exception):
+                await self.pubsub.aclose()
+        if self.redis_client:
+            with contextlib.suppress(Exception):
+                await self.redis_client.close()
+        self.pubsub = None
+        self.redis_client = None
 
     async def _register_connection(
         self, connection_id: str, user_id: str, operation_id: str | None = None, collection_id: str | None = None

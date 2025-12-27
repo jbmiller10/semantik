@@ -51,6 +51,13 @@ def require_jwt_secret(config: WebuiConfig) -> str:
     return secret
 
 
+def require_auth_enabled(config: WebuiConfig) -> None:
+    """Ensure DISABLE_AUTH is not enabled in production."""
+    environment = (config.ENVIRONMENT or "").lower()
+    if environment == "production" and config.DISABLE_AUTH:
+        raise RuntimeError("DISABLE_AUTH cannot be enabled in production environments.")
+
+
 def _distinct_paths(paths: list[Path | None]) -> tuple[Path, ...]:
     seen: dict[Path, None] = {}
     for maybe_path in paths:
@@ -60,4 +67,4 @@ def _distinct_paths(paths: list[Path | None]) -> tuple[Path, ...]:
     return tuple(seen.keys())
 
 
-__all__ = ["ensure_base_directories", "ensure_webui_directories", "require_jwt_secret"]
+__all__ = ["ensure_base_directories", "ensure_webui_directories", "require_jwt_secret", "require_auth_enabled"]

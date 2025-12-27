@@ -86,17 +86,23 @@ describe('ActiveOperationsTab navigation', () => {
       }) as unknown as ReturnType<typeof useCollections>
     )
 
+    const operations = [
+      {
+        id: 'op-1',
+        collection_id: 'coll-1',
+        type: 'index',
+        status: 'processing',
+        config: {},
+        created_at: new Date().toISOString(),
+      },
+    ]
     vi.mocked(operationsV2Api.list).mockResolvedValue({
-      data: [
-        {
-          id: 'op-1',
-          collection_id: 'coll-1',
-          type: 'index',
-          status: 'processing',
-          config: {},
-          created_at: new Date().toISOString(),
-        },
-      ],
+      data: {
+        operations,
+        total: operations.length,
+        page: 1,
+        per_page: 100,
+      },
     })
   })
 

@@ -147,7 +147,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                 <ul className="mt-1 list-disc list-inside">
                   {failedCollections.map((failed) => (
                     <li key={failed.collection_id}>
-                      <span className="font-medium">{failed.collection_name}</span>: {failed.error_message}
+                      <span className="font-medium">{failed.collection_name}</span>: {failed.error_message ?? failed.error ?? 'Unknown error'}
                     </li>
                   ))}
                 </ul>

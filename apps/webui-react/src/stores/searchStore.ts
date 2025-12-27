@@ -41,7 +41,8 @@ export interface SearchParams {
 interface FailedCollection {
   collection_id: string;
   collection_name: string;
-  error_message: string;
+  error_message?: string;
+  error?: string;
 }
 
 interface SearchState {

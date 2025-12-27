@@ -94,6 +94,20 @@ class ChunkingConfigBuilder:
         except ValueError:
             return None
 
+    @staticmethod
+    def _coerce_bool(value: Any) -> bool:
+        """Coerce common string/number representations into booleans."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "n", "off", ""}:
+                return False
+            raise ValueError(f"Invalid boolean string: {value}")
+        return bool(value)
+
     def _merge_configs(self, default: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         """Merge user config with defaults."""
         result = default.copy()
@@ -104,12 +118,12 @@ class ChunkingConfigBuilder:
                 if type(result[key]) is not type(value):
                     # Try to convert
                     try:
-                        if isinstance(result[key], int):
+                        if isinstance(result[key], bool):
+                            value = self._coerce_bool(value)
+                        elif isinstance(result[key], int) and not isinstance(result[key], bool):
                             value = int(value)
                         elif isinstance(result[key], float):
                             value = float(value)
-                        elif isinstance(result[key], bool):
-                            value = bool(value)
                         elif isinstance(result[key], list) and not isinstance(value, list):
                             value = [value]
                     except (ValueError, TypeError):

@@ -1,5 +1,6 @@
 """Internal API endpoints for system services"""
 
+import secrets
 import uuid
 from typing import Annotated, Any
 
@@ -24,7 +25,7 @@ def verify_internal_api_key(
     if not expected_key:
         raise HTTPException(status_code=500, detail="Internal API key is not configured")
 
-    if x_internal_api_key != expected_key:
+    if not x_internal_api_key or not secrets.compare_digest(x_internal_api_key, expected_key):
         raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
 
 

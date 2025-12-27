@@ -97,7 +97,8 @@ export interface SearchResponse {
   failed_collections?: Array<{
     collection_id: string;
     collection_name: string;
-    error_message: string;
+    error?: string;
+    error_message?: string;
   }>;
   api_version: string;
 }

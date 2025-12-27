@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import inspect
 import logging
 import time
@@ -68,16 +69,17 @@ def _get_patched_callable(name: str, default: Any) -> Any:
     if local is not None and local is not default:
         return local
 
-    # Then look for overrides on the public entrypoint module
-    try:
-        import vecpipe.search_api as search_api
+    # Then look for overrides on the public entrypoint module(s)
+    for module_name in ("vecpipe.search_api", "packages.vecpipe.search_api"):
+        try:
+            search_api = importlib.import_module(module_name)
 
-        candidate = getattr(search_api, name, None)
-        if candidate is not None and candidate is not default:
-            return candidate
-    except Exception:
-        # Best effort only; fall back to default when anything goes wrong
-        pass
+            candidate = getattr(search_api, name, None)
+            if candidate is not None and candidate is not default:
+                return candidate
+        except Exception:
+            # Best effort only; fall back to default when anything goes wrong
+            continue
 
     return default
 
@@ -928,7 +930,8 @@ async def perform_hybrid_search(
         else:
             query_vector = generate_mock_embedding(query, vector_dim)
 
-        results = hybrid_engine.hybrid_search(
+        results = await asyncio.to_thread(
+            hybrid_engine.hybrid_search,
             query_vector=query_vector,
             query_text=query,
             limit=k,
@@ -972,7 +975,8 @@ async def perform_hybrid_search(
         raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchResponse:
@@ -1101,7 +1105,7 @@ async def perform_keyword_search(
             mode,
         )
 
-        results = hybrid_engine.search_by_keywords(keywords=keywords, limit=k, mode=mode)
+        results = await asyncio.to_thread(hybrid_engine.search_by_keywords, keywords=keywords, limit=k, mode=mode)
 
         hybrid_results: list[HybridSearchResult] = []
         for r in results:
@@ -1133,7 +1137,8 @@ async def perform_keyword_search(
         raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def embed_texts(request: EmbedRequest) -> EmbedResponse:

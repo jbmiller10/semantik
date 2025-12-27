@@ -214,7 +214,12 @@ describe('Error States - Integration Tests', () => {
     it('should show empty active operations state', async () => {
       // Mock the API to return empty operations
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: []
+        data: {
+          operations: [],
+          total: 0,
+          page: 1,
+          per_page: 100,
+        }
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])

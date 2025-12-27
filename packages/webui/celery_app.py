@@ -9,7 +9,7 @@ from celery.signals import worker_process_init
 
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
-from shared.config.runtime import ensure_webui_directories, require_jwt_secret
+from shared.config.runtime import ensure_webui_directories, require_auth_enabled, require_jwt_secret
 from shared.database.postgres_database import pg_connection_manager
 
 # Configure logging
@@ -62,7 +62,7 @@ def _build_base_config() -> dict[str, Any]:
             "cleanup-old-results": {
                 "task": "webui.tasks.cleanup_old_results",
                 "schedule": 86400.0,  # Run daily
-                "args": (7,),
+                "args": (30,),
             },
             "refresh-collection-chunking-stats": {
                 "task": "webui.tasks.refresh_collection_chunking_stats",
@@ -109,6 +109,7 @@ def _create_celery_app() -> Celery:
     try:
         ensure_webui_directories(shared_settings)
         require_jwt_secret(shared_settings)
+        require_auth_enabled(shared_settings)
         ensure_internal_api_key(shared_settings)
     except RuntimeError as exc:
         logger.error("Failed to initialise internal API key for Celery: %s", exc)

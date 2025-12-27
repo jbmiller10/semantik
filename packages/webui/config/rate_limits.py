@@ -6,6 +6,7 @@ the chunking API, including per-operation limits and circuit breaker settings.
 """
 
 import os
+import secrets
 from typing import Any
 
 
@@ -74,7 +75,7 @@ class RateLimitConfig:
         auth_header = request_headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
-            return bool(token == cls.BYPASS_TOKEN)
+            return secrets.compare_digest(token, cls.BYPASS_TOKEN)
 
         return False
 

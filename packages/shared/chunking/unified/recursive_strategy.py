@@ -137,7 +137,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
             return []
 
         # Run synchronous method in executor to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             self.chunk,

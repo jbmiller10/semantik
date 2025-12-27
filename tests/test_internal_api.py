@@ -48,6 +48,16 @@ class TestInternalAPIAuth:
 
             assert exc_info.value.status_code == 401
 
+    def test_verify_internal_api_key_not_configured(self) -> None:
+        """Test API key verification when key is not configured."""
+        with patch("webui.api.internal.settings") as mock_settings:
+            mock_settings.INTERNAL_API_KEY = ""
+
+            with pytest.raises(HTTPException) as exc_info:
+                verify_internal_api_key("any-key")
+
+            assert exc_info.value.status_code == 500
+
 
 class TestInternalAPIEndpoints:
     """Test internal API endpoints."""
