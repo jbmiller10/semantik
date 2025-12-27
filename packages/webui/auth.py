@@ -150,6 +150,11 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
 # FastAPI dependency
 async def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> dict[str, Any]:
     """Get current authenticated user"""
+    if settings.DISABLE_AUTH and (settings.ENVIRONMENT or "").lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="DISABLE_AUTH cannot be enabled in production.",
+        )
     # Check if auth is disabled for development
     if settings.DISABLE_AUTH and credentials is None:
         # Return a dummy user for development when auth is disabled and no credentials were provided
@@ -221,6 +226,8 @@ async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
     Raises:
         ValueError: If authentication fails
     """
+    if settings.DISABLE_AUTH and (settings.ENVIRONMENT or "").lower() == "production":
+        raise ValueError("DISABLE_AUTH cannot be enabled in production.")
     if not token:
         if settings.DISABLE_AUTH:
             # Return a dummy user for development when auth is disabled

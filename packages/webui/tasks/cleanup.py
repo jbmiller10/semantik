@@ -47,17 +47,76 @@ async def _resolve_session_factory() -> async_sessionmaker[AsyncSession]:
 @celery_app.task(name="webui.tasks.cleanup_old_results")
 def cleanup_old_results(days_to_keep: int = DEFAULT_DAYS_TO_KEEP) -> dict[str, Any]:
     """Clean up old Celery results and operation records."""
-    stats: dict[str, Any] = {"celery_results_deleted": 0, "old_operations_marked": 0, "errors": []}
+    stats: dict[str, Any] = {
+        "celery_results_deleted": 0,
+        "old_operations_marked": 0,
+        "old_operations_deleted": 0,
+        "audit_logs_cleared": 0,
+        "errors": [],
+    }
 
     tasks_ns = _tasks_namespace()
     log = getattr(tasks_ns, "logger", logger)
     datetime_module = getattr(tasks_ns, "datetime", datetime)
 
     try:
-        cutoff_time = datetime_module.now(UTC) - timedelta(days=days_to_keep)
+        keep_days = max(1, int(days_to_keep))
+        cutoff_time = datetime_module.now(UTC) - timedelta(days=keep_days)
 
-        log.info("Starting cleanup of results older than %s days", days_to_keep)
-        log.info("Cleanup of operations older than %s is handled by operation lifecycle", cutoff_time)
+        log.info("Starting cleanup of results older than %s days", keep_days)
+
+        async def _cleanup_operations() -> dict[str, int]:
+            from sqlalchemy import delete, func, select, update
+
+            from shared.database.models import CollectionAuditLog, Operation, OperationStatus
+
+            session_factory = await _resolve_session_factory()
+            async with session_factory() as session:
+                terminal_statuses = [
+                    OperationStatus.COMPLETED,
+                    OperationStatus.FAILED,
+                    OperationStatus.CANCELLED,
+                ]
+                cutoff_expr = func.coalesce(Operation.completed_at, Operation.started_at, Operation.created_at)
+                op_ids_stmt = (
+                    select(Operation.id)
+                    .where(Operation.status.in_(terminal_statuses))
+                    .where(cutoff_expr < cutoff_time)
+                )
+
+                audit_result = await session.execute(
+                    update(CollectionAuditLog)
+                    .where(CollectionAuditLog.operation_id.in_(op_ids_stmt))
+                    .values(operation_id=None)
+                )
+                audit_cleared = audit_result.rowcount or 0
+
+                delete_result = await session.execute(delete(Operation).where(Operation.id.in_(op_ids_stmt)))
+                deleted_count = delete_result.rowcount or 0
+
+                await session.commit()
+
+                return {"deleted": deleted_count, "audit_cleared": audit_cleared}
+
+        cleanup_counts = cast(dict[str, int], resolve_awaitable_sync(_cleanup_operations()))
+        stats["old_operations_marked"] = cleanup_counts.get("deleted", 0)
+        stats["old_operations_deleted"] = cleanup_counts.get("deleted", 0)
+        stats["audit_logs_cleared"] = cleanup_counts.get("audit_cleared", 0)
+        log.info(
+            "Cleaned %s operations and cleared %s audit logs older than %s",
+            stats["old_operations_deleted"],
+            stats["audit_logs_cleared"],
+            cutoff_time,
+        )
+
+        try:
+            backend = celery_app.backend
+            if backend is not None and hasattr(backend, "cleanup"):
+                cleanup_result = backend.cleanup()
+                if isinstance(cleanup_result, int):
+                    stats["celery_results_deleted"] = cleanup_result
+        except Exception as exc:
+            log.warning("Failed to cleanup Celery results: %s", exc)
 
         log.info("Cleanup completed: %s", stats)
         return stats

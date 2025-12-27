@@ -6,52 +6,98 @@ This module provides comprehensive metrics for monitoring chunking errors,
 recovery operations, and resource usage patterns.
 """
 
-from prometheus_client import Counter, Gauge, Histogram, Info
+from typing import Any, Mapping, TypeVar, cast
+
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, Info
+
+from shared.metrics.prometheus import registry
+
+MetricT = TypeVar("MetricT")
+
+
+def _get_or_create_metric(
+    metric_cls: type[MetricT],
+    name: str,
+    documentation: str,
+    *,
+    registry: CollectorRegistry,
+    labelnames: list[str] | tuple[str, ...] | None = None,
+    **kwargs: Any,
+) -> MetricT:
+    """Return existing metric from registry or create a new one."""
+    existing: MetricT | None = None
+    if hasattr(registry, "_names_to_collectors"):
+        names_to_collectors = getattr(registry, "_names_to_collectors", None)
+        if isinstance(names_to_collectors, Mapping):
+            existing = cast(MetricT | None, names_to_collectors.get(name))
+
+    if existing is not None:
+        return existing
+
+    if metric_cls is Info:
+        return metric_cls(name, documentation, registry=registry, **kwargs)
+
+    labels = tuple(labelnames or ())
+    return metric_cls(name, documentation, labelnames=labels, registry=registry, **kwargs)
 
 # Error tracking metrics
-chunking_errors_total = Counter(
-    "chunking_errors_total",
+chunking_error_events_total = _get_or_create_metric(
+    Counter,
+    "chunking_error_events_total",
     "Total number of chunking errors by type and strategy",
-    ["error_type", "strategy", "recoverable"],
+    registry=registry,
+    labelnames=["error_type", "strategy", "recoverable"],
 )
 
-chunking_error_recovery_attempts = Counter(
+chunking_error_recovery_attempts = _get_or_create_metric(
+    Counter,
     "chunking_error_recovery_attempts_total",
     "Total number of error recovery attempts",
-    ["error_type", "recovery_strategy", "success"],
+    registry=registry,
+    labelnames=["error_type", "recovery_strategy", "success"],
 )
 
-chunking_error_recovery_duration = Histogram(
+chunking_error_recovery_duration = _get_or_create_metric(
+    Histogram,
     "chunking_error_recovery_duration_seconds",
     "Time taken to recover from errors",
-    ["error_type", "recovery_strategy"],
+    registry=registry,
+    labelnames=["error_type", "recovery_strategy"],
     buckets=[0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
 )
 
 # Operation status metrics
-chunking_operations_active = Gauge(
+chunking_operations_active = _get_or_create_metric(
+    Gauge,
     "chunking_operations_active",
     "Number of currently active chunking operations",
-    ["strategy", "operation_type"],
+    registry=registry,
+    labelnames=["strategy", "operation_type"],
 )
 
-chunking_operations_failed = Gauge(
+chunking_operations_failed = _get_or_create_metric(
+    Gauge,
     "chunking_operations_failed",
     "Current number of failed operations pending retry",
-    ["strategy", "error_type"],
+    registry=registry,
+    labelnames=["strategy", "error_type"],
 )
 
-chunking_operations_queued = Gauge(
+chunking_operations_queued = _get_or_create_metric(
+    Gauge,
     "chunking_operations_queued",
     "Number of operations queued due to resource limits",
-    ["resource_type"],
+    registry=registry,
+    labelnames=["resource_type"],
 )
 
 # Resource usage metrics
-chunking_memory_usage_bytes = Histogram(
+chunking_memory_usage_bytes = _get_or_create_metric(
+    Histogram,
     "chunking_memory_usage_bytes",
     "Memory usage per chunking operation",
-    ["strategy", "status"],
+    registry=registry,
+    labelnames=["strategy", "status"],
     buckets=[
         1_000_000,  # 1MB
         10_000_000,  # 10MB
@@ -63,98 +109,126 @@ chunking_memory_usage_bytes = Histogram(
     ],
 )
 
-chunking_cpu_usage_seconds = Histogram(
+chunking_cpu_usage_seconds = _get_or_create_metric(
+    Histogram,
     "chunking_cpu_usage_seconds",
     "CPU time used per chunking operation",
-    ["strategy", "status"],
+    registry=registry,
+    labelnames=["strategy", "status"],
     buckets=[0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300],
 )
 
-chunking_document_processing_duration = Histogram(
+chunking_document_processing_duration = _get_or_create_metric(
+    Histogram,
     "chunking_document_processing_duration_seconds",
     "Time taken to process individual documents",
-    ["strategy", "document_type", "status"],
+    registry=registry,
+    labelnames=["strategy", "document_type", "status"],
     buckets=[0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30, 60],
 )
 
 # Chunk metrics
-chunking_chunks_created_total = Counter(
+chunking_chunks_created_total = _get_or_create_metric(
+    Counter,
     "chunking_chunks_created_total",
     "Total number of chunks created",
-    ["strategy", "document_type"],
+    registry=registry,
+    labelnames=["strategy", "document_type"],
 )
 
-chunking_chunk_size_bytes = Histogram(
+chunking_chunk_size_bytes = _get_or_create_metric(
+    Histogram,
     "chunking_chunk_size_bytes",
     "Size distribution of created chunks",
-    ["strategy"],
+    registry=registry,
+    labelnames=["strategy"],
     buckets=[100, 500, 1000, 2000, 5000, 10000, 20000, 50000],
 )
 
 # Retry and failure metrics
-chunking_retry_count = Counter(
+chunking_retry_count = _get_or_create_metric(
+    Counter,
     "chunking_retry_count_total",
     "Total number of retry attempts",
-    ["operation_type", "retry_reason"],
+    registry=registry,
+    labelnames=["operation_type", "retry_reason"],
 )
 
-chunking_max_retries_exceeded = Counter(
+chunking_max_retries_exceeded = _get_or_create_metric(
+    Counter,
     "chunking_max_retries_exceeded_total",
     "Number of operations that exceeded max retries",
-    ["strategy", "final_error_type"],
+    registry=registry,
+    labelnames=["strategy", "final_error_type"],
 )
 
-chunking_dead_letter_queue_size = Gauge(
+chunking_dead_letter_queue_size = _get_or_create_metric(
+    Gauge,
     "chunking_dead_letter_queue_size",
     "Number of messages in the dead letter queue",
-    ["queue_name"],
+    registry=registry,
+    labelnames=["queue_name"],
 )
 
 # Circuit breaker metrics
-chunking_circuit_breaker_state = Gauge(
+chunking_circuit_breaker_state = _get_or_create_metric(
+    Gauge,
     "chunking_circuit_breaker_state",
     "Circuit breaker state (0=closed, 1=open, 2=half-open)",
-    ["service"],
+    registry=registry,
+    labelnames=["service"],
 )
 
-chunking_circuit_breaker_trips = Counter(
+chunking_circuit_breaker_trips = _get_or_create_metric(
+    Counter,
     "chunking_circuit_breaker_trips_total",
     "Number of times circuit breaker has tripped",
-    ["service", "reason"],
+    registry=registry,
+    labelnames=["service", "reason"],
 )
 
 # Partial failure metrics
-chunking_partial_failures_total = Counter(
+chunking_partial_failures_total = _get_or_create_metric(
+    Counter,
     "chunking_partial_failures_total",
     "Total number of partial failures",
-    ["strategy"],
+    registry=registry,
+    labelnames=["strategy"],
 )
 
-chunking_partial_failure_document_ratio = Histogram(
+chunking_partial_failure_document_ratio = _get_or_create_metric(
+    Histogram,
     "chunking_partial_failure_document_ratio",
     "Ratio of failed documents in partial failures",
-    ["strategy"],
+    registry=registry,
+    labelnames=["strategy"],
     buckets=[0.01, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0],
 )
 
 # Cleanup metrics
-chunking_cleanup_operations_total = Counter(
+chunking_cleanup_operations_total = _get_or_create_metric(
+    Counter,
     "chunking_cleanup_operations_total",
     "Total number of cleanup operations",
-    ["cleanup_strategy", "success"],
+    registry=registry,
+    labelnames=["cleanup_strategy", "success"],
 )
 
-chunking_cleanup_duration_seconds = Histogram(
+chunking_cleanup_duration_seconds = _get_or_create_metric(
+    Histogram,
     "chunking_cleanup_duration_seconds",
     "Time taken for cleanup operations",
-    ["cleanup_strategy"],
+    registry=registry,
+    labelnames=["cleanup_strategy"],
     buckets=[0.1, 0.5, 1, 2, 5, 10, 30, 60],
 )
 
 # System health metrics
-chunking_error_handler_info = Info(
+chunking_error_handler_info = _get_or_create_metric(
+    Info,
     "chunking_error_handler",
     "Information about the error handler configuration",
+    registry=registry,
 )
 
 # Helper functions for metric updates
@@ -172,7 +246,7 @@ def record_chunking_error(
         strategy: Chunking strategy in use
         recoverable: Whether the error is recoverable
     """
-    chunking_errors_total.labels(
+    chunking_error_events_total.labels(
         error_type=error_type,
         strategy=strategy,
         recoverable=str(recoverable),

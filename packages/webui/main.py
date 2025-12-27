@@ -34,7 +34,7 @@ from starlette.responses import Response  # noqa: TCH002
 
 from shared.config import settings as shared_settings
 from shared.config.internal_api_key import ensure_internal_api_key
-from shared.config.runtime import ensure_webui_directories, require_jwt_secret
+from shared.config.runtime import ensure_webui_directories, require_auth_enabled, require_jwt_secret
 from shared.database import pg_connection_manager
 from shared.embedding import configure_global_embedding_service
 
@@ -185,6 +185,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
     # Prepare filesystem and required secrets
     ensure_webui_directories(shared_settings)
     require_jwt_secret(shared_settings)
+    require_auth_enabled(shared_settings)
     logger.info("Runtime directories prepared and JWT secret validated")
 
     # Initialize PostgreSQL connection

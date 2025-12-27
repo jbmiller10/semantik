@@ -66,9 +66,10 @@ function ActiveOperationsTab() {
     queryFn: async () => {
       const response = await operationsV2Api.list({
         status: 'processing,pending',
-        limit: 100
+        page: 1,
+        per_page: 100,
       });
-      return response.data;
+      return response.data.operations;
     },
     refetchInterval: shouldPollActiveOperations ? 5000 : false,
   });

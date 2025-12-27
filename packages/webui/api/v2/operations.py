@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from shared.database import get_db
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from shared.database.repositories.operation_repository import OperationRepository
-from webui.api.schemas import ErrorResponse, OperationResponse
+from webui.api.schemas import ErrorResponse, OperationListResponse, OperationResponse
 from webui.auth import get_current_user, get_current_user_websocket
 from webui.services.factory import get_operation_service
 from webui.services.operation_service import OperationService
@@ -144,7 +144,7 @@ async def cancel_operation(
 
 @router.get(
     "",
-    response_model=list[OperationResponse],
+    response_model=OperationListResponse,
     responses={
         400: {"model": ErrorResponse, "description": "Invalid parameters"},
     },
@@ -156,7 +156,7 @@ async def list_operations(
     per_page: int = Query(50, ge=1, le=100, description="Items per page"),
     current_user: dict[str, Any] = Depends(get_current_user),
     service: OperationService = Depends(get_operation_service),
-) -> list[OperationResponse]:
+) -> OperationListResponse:
     """List operations for the current user.
 
     Returns a paginated list of all operations created by the current user,
@@ -174,8 +174,7 @@ async def list_operations(
             limit=per_page,
         )
 
-        # Convert ORM objects to response models
-        return [
+        operations_response = [
             OperationResponse(
                 id=op.uuid,
                 collection_id=op.collection_id,
@@ -189,6 +188,12 @@ async def list_operations(
             )
             for op in operations
         ]
+        return OperationListResponse(
+            operations=operations_response,
+            total=total,
+            page=page,
+            per_page=per_page,
+        )
 
     except ValueError as e:
         # Service method raises ValueError for invalid filters

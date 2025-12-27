@@ -672,6 +672,15 @@ class OperationResponse(BaseModel):
     )
 
 
+class OperationListResponse(BaseModel):
+    """Response for listing operations."""
+
+    operations: list[OperationResponse]
+    total: int
+    page: int
+    per_page: int
+
+
 # Source schemas
 # Note: Sync policy (mode, interval, pause) is now managed at collection level.
 # Sources only track per-source telemetry (last_run_* fields).

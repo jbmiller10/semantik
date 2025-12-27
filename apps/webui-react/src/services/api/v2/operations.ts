@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { Operation } from '../../../types/collection';
+import type { Operation, OperationListResponse } from '../../../types/collection';
 import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
 
 export const operationsV2Api = {
@@ -15,19 +15,27 @@ export const operationsV2Api = {
    * List operations with optional filters
    */
   list: async (params?: {
-    collection_id?: string;
     status?: string;
+    operation_type?: string;
+    page?: number;
+    per_page?: number;
     limit?: number;
     offset?: number;
-  }): Promise<{ operations: Operation[]; total: number }> => {
+  }): Promise<OperationListResponse> => {
     const queryParams = new URLSearchParams();
-    if (params?.collection_id) queryParams.append('collection_id', params.collection_id);
     if (params?.status) queryParams.append('status', params.status);
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.operation_type) queryParams.append('operation_type', params.operation_type);
+
+    const perPage = params?.per_page ?? params?.limit;
+    const page =
+      params?.page ??
+      (params?.offset !== undefined && params?.limit ? Math.floor(params.offset / params.limit) + 1 : undefined);
+
+    if (page) queryParams.append('page', page.toString());
+    if (perPage) queryParams.append('per_page', perPage.toString());
     
     const query = queryParams.toString();
-    const response = await apiClient.get<{ operations: Operation[]; total: number }>(
+    const response = await apiClient.get<OperationListResponse>(
       `/api/v2/operations${query ? `?${query}` : ''}`
     );
     return response.data;

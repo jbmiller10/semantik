@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import socket
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -71,7 +72,7 @@ REDIS_STREAM_MAX_LEN = 1000  # Keep last 1000 messages
 REDIS_STREAM_TTL = 86400  # 24 hours
 
 # Cleanup configuration
-DEFAULT_DAYS_TO_KEEP = 7  # Days to keep old results
+DEFAULT_DAYS_TO_KEEP = 30  # Days to keep old results
 CLEANUP_DELAY_SECONDS = 300  # 5 minutes default delay before cleaning up old collections
 CLEANUP_DELAY_MIN_SECONDS = 300  # 5 minutes minimum
 CLEANUP_DELAY_MAX_SECONDS = 1800  # 30 minutes maximum
@@ -413,6 +414,8 @@ async def await_if_awaitable(value: Any) -> Any:
 
 
 _WORKER_EVENT_LOOP_ATTR = "_celery_worker_event_loop"
+_WORKER_EVENT_LOOP_MAP_ATTR = "_celery_worker_event_loop_map"
+_WORKER_EVENT_LOOP_LOCK = threading.Lock()
 
 
 def resolve_awaitable_sync(value: Any) -> Any:
@@ -428,16 +431,24 @@ def resolve_awaitable_sync(value: Any) -> Any:
         if patched_run is not None and _is_mock_like(patched_run):
             return patched_run(value)
 
-        loop = getattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, None)
-        if loop is None or loop.is_closed():
-            loop = asyncio_module.new_event_loop()
+        with _WORKER_EVENT_LOOP_LOCK:
+            loop_map = getattr(tasks_module, _WORKER_EVENT_LOOP_MAP_ATTR, None)
+            if not isinstance(loop_map, dict):
+                loop_map = {}
+                setattr(tasks_module, _WORKER_EVENT_LOOP_MAP_ATTR, loop_map)
+
+            thread_id = threading.get_ident()
+            loop = loop_map.get(thread_id)
+            if loop is None or loop.is_closed():
+                loop = asyncio_module.new_event_loop()
+                loop_map[thread_id] = loop
+
+            # Maintain legacy attribute for compatibility with tests/patching.
             setattr(tasks_module, _WORKER_EVENT_LOOP_ATTR, loop)
+
             with contextlib.suppress(RuntimeError):
                 # set_event_loop may fail if policy forbids setting outside main thread.
                 # In that case the loop will still be passed explicitly to ensure_future/run_until_complete.
-                asyncio_module.set_event_loop(loop)
-        else:
-            with contextlib.suppress(RuntimeError):
                 asyncio_module.set_event_loop(loop)
 
         task = asyncio_module.ensure_future(value, loop=loop)

@@ -928,7 +928,8 @@ async def perform_hybrid_search(
         else:
             query_vector = generate_mock_embedding(query, vector_dim)
 
-        results = hybrid_engine.hybrid_search(
+        results = await asyncio.to_thread(
+            hybrid_engine.hybrid_search,
             query_vector=query_vector,
             query_text=query,
             limit=k,
@@ -972,7 +973,8 @@ async def perform_hybrid_search(
         raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchResponse:
@@ -1101,7 +1103,7 @@ async def perform_keyword_search(
             mode,
         )
 
-        results = hybrid_engine.search_by_keywords(keywords=keywords, limit=k, mode=mode)
+        results = await asyncio.to_thread(hybrid_engine.search_by_keywords, keywords=keywords, limit=k, mode=mode)
 
         hybrid_results: list[HybridSearchResult] = []
         for r in results:
@@ -1133,7 +1135,8 @@ async def perform_keyword_search(
         raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def embed_texts(request: EmbedRequest) -> EmbedResponse:
