@@ -9,7 +9,9 @@ provider for each model name, enabling support for third-party embedding plugins
 import asyncio
 import contextlib
 import gc
+import hashlib
 import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
@@ -440,9 +442,10 @@ class ModelManager:
         # Perform reranking
         if self.is_mock_mode:
             # Mock reranking - just return indices with fake scores
-            import random
-
-            scores = [(i, random.random()) for i in range(len(documents))]
+            seed_source = f"{query}|{len(documents)}|{top_k}|{'|'.join(documents)}"
+            seed = int(hashlib.sha256(seed_source.encode()).hexdigest()[:8], 16)
+            rng = random.Random(seed)
+            scores = [(i, rng.random()) for i in range(len(documents))]
             scores.sort(key=lambda x: x[1], reverse=True)
             return scores[:top_k]
 

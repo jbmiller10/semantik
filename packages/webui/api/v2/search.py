@@ -116,6 +116,7 @@ async def multi_collection_search(
                         "collection_id": str(cd["collection_id"]),
                         "collection_name": cd["collection_name"],
                         "error": cd["error"],
+                        "error_message": cd["error"],
                     }
                     for cd in metadata["collection_details"]
                     if "error" in cd
