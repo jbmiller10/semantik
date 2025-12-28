@@ -167,6 +167,9 @@ async def single_collection_search(
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             include_content=search_request.include_content,
+            hybrid_alpha=search_request.hybrid_alpha,
+            hybrid_mode=search_request.hybrid_mode,
+            keyword_mode=search_request.keyword_mode,
         )
 
         # Convert service result to API response format
@@ -209,5 +212,5 @@ async def single_collection_search(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        logger.error(f"Search failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed") from e

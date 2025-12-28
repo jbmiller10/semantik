@@ -151,6 +151,8 @@ class HybridSearchEngine:
 
             # Extract keywords
             keywords = self.extract_keywords(query_text)
+            if not keywords:
+                logger.debug("No keywords extracted, skipping keyword reranking")
 
             # Score and rerank based on keyword matches
             scored_results = []
@@ -188,7 +190,7 @@ class HybridSearchEngine:
             return scored_results[:limit]
 
         except Exception as e:
-            logger.error(f"Hybrid search failed: {e}")
+            logger.error(f"Hybrid search failed: {e}", exc_info=True)
             raise
 
     def search_by_keywords(self, keywords: list[str], limit: int = 10, mode: str = "any") -> list[dict[str, Any]]:
@@ -221,7 +223,7 @@ class HybridSearchEngine:
             return output
 
         except Exception as e:
-            logger.error(f"Keyword search failed: {e}")
+            logger.error(f"Keyword search failed: {e}", exc_info=True)
             raise
 
     def close(self) -> None:

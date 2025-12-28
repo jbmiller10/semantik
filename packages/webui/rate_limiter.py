@@ -10,6 +10,7 @@ are only added to rate limit exceeded responses via the error handler.
 """
 
 import functools
+import hmac
 import inspect
 import logging
 import os
@@ -66,7 +67,8 @@ def get_user_or_ip(request: Request) -> str:
         auth_header = request.headers.get("authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
-            if token == bypass_token:
+            # Use timing-safe comparison to prevent timing attacks
+            if hmac.compare_digest(token, bypass_token):
                 # Return a special key that has unlimited rate limit
                 return "admin_bypass"
 

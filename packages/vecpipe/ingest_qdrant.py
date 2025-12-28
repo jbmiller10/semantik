@@ -78,10 +78,7 @@ def process_parquet_file(file_path: str, client: QdrantClient, batch_size: int =
         return True
 
     except Exception as e:
-        logger.error(f"Failed to process {file_path}: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Failed to process {file_path}: {e}", exc_info=True)
         return False
 
 

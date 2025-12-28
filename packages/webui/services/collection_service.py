@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
@@ -191,7 +192,7 @@ class CollectionService:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
             raise
         except Exception as e:
-            logger.error(f"Failed to create collection: {e}")
+            logger.error(f"Failed to create collection: {e}", exc_info=True)
             raise
 
         # Create operation record
@@ -290,7 +291,15 @@ class CollectionService:
                 f"Collection must be in {CollectionStatus.PENDING}, {CollectionStatus.READY} or {CollectionStatus.DEGRADED} state."
             )
 
-        # Check if there's already an active operation
+        # Lock the collection row to prevent race conditions between checking
+        # for active operations and creating a new one (TOCTOU protection)
+        await self.db_session.execute(
+            select(Collection)
+            .where(Collection.id == collection.id)
+            .with_for_update()
+        )
+
+        # Check if there's already an active operation (now safe due to row lock)
         active_operations = await self.operation_repo.get_active_operations(collection.id)
         if active_operations:
             # Allow a short grace period for recently-finished operations to commit their status.
@@ -536,7 +545,7 @@ class CollectionService:
                         manager.client.delete_collection(collection.vector_store_name)
                         logger.info(f"Deleted Qdrant collection: {collection.vector_store_name}")
                 except Exception as e:
-                    logger.error(f"Failed to delete Qdrant collection: {e}")
+                    logger.error(f"Failed to delete Qdrant collection: {e}", exc_info=True)
                     # Continue with database deletion even if Qdrant deletion fails
 
             # Delete from database (cascade will handle operations, documents, etc.)
@@ -548,7 +557,7 @@ class CollectionService:
             logger.info(f"Deleted collection {collection_id} and all associated data")
 
         except Exception as e:
-            logger.error(f"Failed to delete collection {collection_id}: {e}")
+            logger.error(f"Failed to delete collection {collection_id}: {e}", exc_info=True)
             raise
 
     async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> dict[str, Any]:

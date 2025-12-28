@@ -7,6 +7,7 @@ the chunking API, including per-operation limits and circuit breaker settings.
 
 import os
 import secrets
+import threading
 from typing import Any
 
 
@@ -81,11 +82,80 @@ class RateLimitConfig:
 
 
 class CircuitBreakerConfig:
-    """Configuration for circuit breaker pattern."""
+    """Configuration for circuit breaker pattern.
+
+    Thread-safe implementation using a lock to protect shared state.
+    """
 
     def __init__(self) -> None:
         """Initialize circuit breaker configuration."""
         self.failure_threshold = RateLimitConfig.CIRCUIT_BREAKER_FAILURES
         self.timeout_seconds = RateLimitConfig.CIRCUIT_BREAKER_TIMEOUT
+        self._lock = threading.Lock()
         self.failure_counts: dict[str, int] = {}
         self.blocked_until: dict[str, float] = {}
+
+    def record_failure(self, key: str) -> bool:
+        """Record a failure for the given key and check if circuit should open.
+
+        Args:
+            key: The rate limit key (user/IP identifier)
+
+        Returns:
+            True if circuit breaker is now open for this key
+        """
+        import time
+
+        with self._lock:
+            current_time = time.time()
+
+            # Check if already blocked
+            if key in self.blocked_until and current_time < self.blocked_until[key]:
+                return True
+
+            # Increment failure count
+            self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
+
+            # Check if threshold reached
+            if self.failure_counts[key] >= self.failure_threshold:
+                self.blocked_until[key] = current_time + self.timeout_seconds
+                self.failure_counts[key] = 0
+                return True
+
+            return False
+
+    def is_blocked(self, key: str) -> tuple[bool, int]:
+        """Check if the circuit breaker is open for the given key.
+
+        Args:
+            key: The rate limit key (user/IP identifier)
+
+        Returns:
+            Tuple of (is_blocked, remaining_seconds)
+        """
+        import time
+
+        with self._lock:
+            if key not in self.blocked_until:
+                return False, 0
+
+            current_time = time.time()
+            blocked_time = self.blocked_until[key]
+
+            if current_time >= blocked_time:
+                # Block expired - reset state
+                del self.blocked_until[key]
+                self.failure_counts.pop(key, None)
+                return False, 0
+
+            remaining = int(blocked_time - current_time)
+            return True, remaining
+
+    def reset(self, key: str) -> None:
+        """Reset failure count for a key (call on successful request).
+
+        Args:
+            key: The rate limit key (user/IP identifier)
+        """
+        with self._lock:
+            self.failure_counts.pop(key, None)

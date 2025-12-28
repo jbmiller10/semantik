@@ -37,8 +37,8 @@ def _resolve_start_metrics_server() -> Any:
         patched = getattr(search_api, "start_metrics_server", None)
         if patched and patched is not _base_start_metrics_server:
             return patched
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to check for patched start_metrics_server: %s", e, exc_info=True)
 
     # 3) Fall back to the base implementation
     return _base_start_metrics_server

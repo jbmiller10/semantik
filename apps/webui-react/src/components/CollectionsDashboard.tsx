@@ -111,6 +111,7 @@ function CollectionsDashboard() {
               aria-label="Filter collections by status"
             >
               <option value="all">All Status</option>
+              <option value="pending">Pending</option>
               <option value="ready">Ready</option>
               <option value="processing">Processing</option>
               <option value="error">Error</option>

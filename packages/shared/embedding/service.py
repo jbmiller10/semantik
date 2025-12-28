@@ -121,7 +121,7 @@ async def get_embedding_service(
                 raise RuntimeError("Embedding service not initialized")
             return _embedding_service
     except Exception as e:
-        logger.error(f"Failed to create embedding service: {e}")
+        logger.error(f"Failed to create embedding service: {e}", exc_info=True)
         raise RuntimeError(f"Failed to create embedding service: {e}") from e
 
 
@@ -151,7 +151,7 @@ async def initialize_embedding_service(
 
         return service
     except Exception as e:
-        logger.error(f"Failed to initialize embedding service with model {model_name}: {e}")
+        logger.error(f"Failed to initialize embedding service with model {model_name}: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize embedding service with model {model_name}: {e}") from e
 
 
@@ -187,7 +187,7 @@ def get_embedding_service_sync(config: VecpipeConfig | None = None) -> BaseEmbed
     try:
         return loop.run_until_complete(get_embedding_service(config=config))
     except Exception as e:
-        logger.error(f"Failed to get embedding service synchronously: {e}")
+        logger.error(f"Failed to get embedding service synchronously: {e}", exc_info=True)
         raise RuntimeError(f"Failed to get embedding service synchronously: {e}") from e
     finally:
         loop.close()
@@ -216,7 +216,7 @@ async def embed_texts(texts: list[str], model_name: str, batch_size: int = 32, *
         service = await initialize_embedding_service(model_name, **kwargs)
         return await service.embed_texts(texts, batch_size, **kwargs)
     except Exception as e:
-        logger.error(f"Failed to embed texts with model {model_name}: {e}")
+        logger.error(f"Failed to embed texts with model {model_name}: {e}", exc_info=True)
         raise RuntimeError(f"Failed to embed texts with model {model_name}: {e}") from e
 
 
@@ -240,7 +240,7 @@ async def embed_single(text: str, model_name: str, **kwargs: Any) -> NDArray[np.
         service = await initialize_embedding_service(model_name, **kwargs)
         return await service.embed_single(text, **kwargs)
     except Exception as e:
-        logger.error(f"Failed to embed single text with model {model_name}: {e}")
+        logger.error(f"Failed to embed single text with model {model_name}: {e}", exc_info=True)
         raise RuntimeError(f"Failed to embed single text with model {model_name}: {e}") from e
 
 
@@ -260,5 +260,5 @@ async def cleanup() -> None:
                 _embedding_service = None
                 logger.info("Embedding service cleaned up successfully")
     except Exception as e:
-        logger.error(f"Failed to clean up embedding service: {e}")
+        logger.error(f"Failed to clean up embedding service: {e}", exc_info=True)
         raise RuntimeError(f"Failed to clean up embedding service: {e}") from e

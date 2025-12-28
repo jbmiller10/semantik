@@ -106,13 +106,15 @@ class ChunkingCache:
                 preview_data.setdefault("preview_id", preview_id)
 
             if self.redis is not None:
-                await self.redis.setex(
-                    cache_key,
-                    ttl,
-                    json.dumps(preview_data),
-                )
+                data_json = json.dumps(preview_data)
                 if alias_key:
-                    await self.redis.setex(alias_key, ttl, json.dumps(preview_data))
+                    # Use pipeline for atomic operation when setting both keys
+                    async with self.redis.pipeline(transaction=True) as pipe:
+                        pipe.setex(cache_key, ttl, data_json)
+                        pipe.setex(alias_key, ttl, data_json)
+                        await pipe.execute()
+                else:
+                    await self.redis.setex(cache_key, ttl, data_json)
             logger.debug("Cached preview with key: %s (TTL: %ds)", cache_key, ttl)
             return cache_key
         except Exception as e:

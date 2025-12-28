@@ -80,7 +80,7 @@ class SearchService:
                 )
                 collections.append(collection)
             except (EntityNotFoundError, AccessDeniedError) as e:
-                logger.error(f"Error accessing collection {uuid}: {e}")
+                logger.error(f"Error accessing collection {uuid}: {e}", exc_info=True)
                 raise AccessDeniedError(str(user_id), "collection", uuid) from e
 
         return collections
@@ -185,7 +185,7 @@ class SearchService:
             return (collection, None, f"Network error searching collection '{collection.name}': {str(e)}")
 
         except Exception as e:
-            logger.error(f"Unexpected error searching collection {collection.name}: {e}")
+            logger.error(f"Unexpected error searching collection {collection.name}: {e}", exc_info=True)
             return (collection, None, f"Unexpected error searching collection '{collection.name}': {str(e)}")
 
     def _handle_http_error(
@@ -441,9 +441,9 @@ class SearchService:
                 raise EntityNotFoundError("collection", collection_uuid) from e
             if e.response.status_code == 403:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid) from e
-            logger.error(f"Search failed with status {e.response.status_code}: {e}")
+            logger.error(f"Search failed with status {e.response.status_code}: {e}", exc_info=True)
             raise
 
         except Exception as e:
-            logger.error(f"Search failed: {e}")
+            logger.error(f"Search failed: {e}", exc_info=True)
             raise

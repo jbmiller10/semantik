@@ -778,7 +778,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                     },
                 ) from e
             except Exception as e:  # pragma: no cover - safety path
-                logger.error(f"Reranking failed: {e}, falling back to vector search results")
+                logger.error(f"Reranking failed: {e}, falling back to vector search results", exc_info=True)
                 results = results[: request.k]
                 reranker_model_used = None
 
@@ -820,11 +820,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details."
         ) from e
     except Exception as e:  # pragma: no cover - uncaught path
-        logger.error("Search error: %s", e)
+        logger.error("Search error: %s", e, exc_info=True)
         search_errors.labels(endpoint="/search", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
@@ -967,11 +964,8 @@ async def perform_hybrid_search(
             search_mode=mode,
         )
     except Exception as e:  # pragma: no cover - failure path
-        logger.error("Hybrid search error: %s", e)
+        logger.error("Hybrid search error: %s", e, exc_info=True)
         search_errors.labels(endpoint="/hybrid_search", error_type="search_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
@@ -1130,10 +1124,7 @@ async def perform_keyword_search(
             search_mode="keywords_only",
         )
     except Exception as e:  # pragma: no cover - failure path
-        logger.error("Keyword search error: %s", e)
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Keyword search error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
@@ -1209,11 +1200,8 @@ async def embed_texts(request: EmbedRequest) -> EmbedResponse:
         search_errors.labels(endpoint="/embed", error_type="runtime_error").inc()
         raise HTTPException(status_code=503, detail=f"Embedding service error: {str(e)}") from e
     except Exception as e:  # pragma: no cover - unexpected path
-        logger.error("Unexpected error in /embed: %s", e)
+        logger.error("Unexpected error in /embed: %s", e, exc_info=True)
         search_errors.labels(endpoint="/embed", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
@@ -1337,11 +1325,8 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
 
         raise HTTPException(status_code=502, detail=detail_text) from e
     except Exception as e:  # pragma: no cover - unexpected
-        logger.error("Unexpected error in /upsert: %s", e)
+        logger.error("Unexpected error in /upsert: %s", e, exc_info=True)
         search_errors.labels(endpoint="/upsert", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
