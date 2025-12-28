@@ -15,7 +15,10 @@ from fastapi.testclient import TestClient
 from prometheus_client import Counter, Histogram
 
 import vecpipe.search_api as search_api_module
-from vecpipe.memory_utils import InsufficientMemoryError
+
+# Import InsufficientMemoryError from the service module to ensure class identity
+# matches what the exception handler catches (avoids dual-path import issues)
+from vecpipe.search.service import InsufficientMemoryError
 from vecpipe.search import state as search_state
 from vecpipe.search_api import (
     PointPayload,
