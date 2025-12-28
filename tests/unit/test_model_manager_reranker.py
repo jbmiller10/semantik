@@ -1,7 +1,10 @@
 import pytest
 
 from vecpipe import model_manager as model_manager_module
-from vecpipe.memory_utils import InsufficientMemoryError
+
+# Import InsufficientMemoryError from the same module that model_manager uses
+# to avoid class identity mismatch due to dual-path imports (vecpipe vs packages.vecpipe)
+InsufficientMemoryError = model_manager_module.InsufficientMemoryError
 
 
 def test_ensure_reranker_loaded_raises_when_memory_can_be_freed(monkeypatch):
