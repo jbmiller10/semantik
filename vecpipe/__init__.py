@@ -24,16 +24,16 @@ class _AliasLoader(Loader):
         self.fullname = fullname
         self.alias = alias
 
-    def create_module(self, spec):  # type: ignore[override]
+    def create_module(self, _spec):  # type: ignore[override]
         return None
 
-    def exec_module(self, module) -> None:  # type: ignore[override]
+    def exec_module(self, _module) -> None:  # type: ignore[override]
         target = importlib.import_module(self.alias)
         sys.modules[self.fullname] = target
 
 
 class _VecpipeAliasFinder(MetaPathFinder):
-    def find_spec(self, fullname: str, path, target=None):  # type: ignore[override]
+    def find_spec(self, fullname: str, _path, _target=None):  # type: ignore[override]
         if not fullname.startswith("vecpipe."):
             return None
 

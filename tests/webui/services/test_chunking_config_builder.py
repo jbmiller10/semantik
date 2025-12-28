@@ -52,7 +52,7 @@ def test_merge_configs_coerces_boolean_strings():
 def test_coerce_bool_invalid_string_raises():
     builder = ChunkingConfigBuilder()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid boolean string"):
         builder._coerce_bool("maybe")
 
 
