@@ -1,4 +1,5 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError } from 'axios';
+import type { InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../../../stores/authStore';
 import { navigateTo } from '../../navigation';
 import { getApiBaseUrl } from '../baseUrl';
