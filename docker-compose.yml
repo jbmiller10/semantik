@@ -223,6 +223,7 @@ services:
       - SEARCH_API_HOST=vecpipe
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Model defaults
       - JWT_SECRET_KEY=${JWT_SECRET_KEY?JWT_SECRET_KEY must be set}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
