@@ -34,7 +34,8 @@ _manager_instance: UnifiedQdrantManager | None = None
 def _build_client() -> QdrantClient:
     """Create and verify a Qdrant client with retries."""
     url = f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-    client = QdrantClient(url=url)
+    api_key = settings.QDRANT_API_KEY if settings.QDRANT_API_KEY else None
+    client = QdrantClient(url=url, api_key=api_key)
     # Basic connectivity check; will raise on failure to be retried by decorator
     client.get_collections()
     logger.info("Connected to Qdrant at %s", url)
