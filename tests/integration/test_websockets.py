@@ -115,8 +115,10 @@ class TestOperationsWebSocket:
                 assert mock_websocket_client.query_params.get("token") == "valid-test-token"
 
                 # Verify connection was established with correct parameter order
-                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id)
-                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "1", "test-operation-id")
+                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id, subprotocol)
+                mock_ws_manager.connect.assert_called_once_with(
+                    mock_websocket_client, "1", "test-operation-id", subprotocol=None
+                )
 
                 # Verify disconnection was called with connection_id only
                 # ScalableWebSocketManager expects: disconnect(connection_id)
