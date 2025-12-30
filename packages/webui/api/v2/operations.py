@@ -276,11 +276,13 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     # Format: "access_token.<jwt_token>"
     # Falls back to query param for backward compatibility (deprecated)
     token = None
+    accepted_subprotocol = None
     protocol_header = websocket.headers.get("sec-websocket-protocol", "")
     for protocol in protocol_header.split(","):
         protocol = protocol.strip()
         if protocol.startswith("access_token."):
             token = protocol[len("access_token.") :]
+            accepted_subprotocol = protocol  # Echo back the full subprotocol
             break
 
     # Fallback to query param (deprecated, will be removed in future)
@@ -327,7 +329,8 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         return
 
     # Authentication and authorization successful, connect the WebSocket
-    connection_id = await ws_manager.connect(websocket, user_id, operation_id)
+    # Pass the subprotocol so the server echoes it back (required by WebSocket spec)
+    connection_id = await ws_manager.connect(websocket, user_id, operation_id, subprotocol=accepted_subprotocol)
 
     try:
         # Keep the connection alive and handle any incoming messages
@@ -397,11 +400,13 @@ async def operation_websocket_global(websocket: WebSocket) -> None:
     # Format: "access_token.<jwt_token>"
     # Falls back to query param for backward compatibility (deprecated)
     token = None
+    accepted_subprotocol = None
     protocol_header = websocket.headers.get("sec-websocket-protocol", "")
     for protocol in protocol_header.split(","):
         protocol = protocol.strip()
         if protocol.startswith("access_token."):
             token = protocol[len("access_token.") :]
+            accepted_subprotocol = protocol  # Echo back the full subprotocol
             break
 
     # Fallback to query param (deprecated, will be removed in future)
@@ -425,7 +430,8 @@ async def operation_websocket_global(websocket: WebSocket) -> None:
 
     # Connect the WebSocket using only user_id (no operation_id)
     # This will subscribe to the user:{user_id} channel
-    connection_id = await ws_manager.connect(websocket, user_id)
+    # Pass the subprotocol so the server echoes it back (required by WebSocket spec)
+    connection_id = await ws_manager.connect(websocket, user_id, subprotocol=accepted_subprotocol)
 
     try:
         # Keep the connection alive and handle any incoming messages

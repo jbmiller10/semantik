@@ -201,7 +201,12 @@ class ScalableWebSocketManager:
         logger.info(f"ScalableWebSocketManager instance {self.instance_id} shut down complete")
 
     async def connect(
-        self, websocket: WebSocket, user_id: str, operation_id: str | None = None, collection_id: str | None = None
+        self,
+        websocket: WebSocket,
+        user_id: str,
+        operation_id: str | None = None,
+        collection_id: str | None = None,
+        subprotocol: str | None = None,
     ) -> str:
         """Handle new WebSocket connection.
 
@@ -210,6 +215,7 @@ class ScalableWebSocketManager:
             user_id: User identifier
             operation_id: Optional operation ID to subscribe to
             collection_id: Optional collection ID to subscribe to
+            subprotocol: WebSocket subprotocol to echo back (required when client sends Sec-WebSocket-Protocol)
 
         Returns:
             Connection ID for this connection
@@ -235,8 +241,9 @@ class ScalableWebSocketManager:
             await websocket.close(code=1008, reason="User connection limit exceeded")
             raise ConnectionError("User connection limit exceeded")
 
-        # Accept connection
-        await websocket.accept()
+        # Accept connection with subprotocol if provided
+        # When client sends Sec-WebSocket-Protocol, server MUST echo back the accepted protocol
+        await websocket.accept(subprotocol=subprotocol)
 
         # Generate connection ID
         connection_id = str(uuid.uuid4())
