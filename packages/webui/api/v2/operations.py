@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 
+from shared.config import settings as shared_settings
 from shared.database import get_db
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError, ValidationError
 from shared.database.repositories.operation_repository import OperationRepository
@@ -23,6 +24,45 @@ from webui.services.operation_service import OperationService
 from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _get_allowed_websocket_origins() -> list[str]:
+    """Get list of allowed origins for WebSocket connections.
+
+    Uses CORS_ORIGINS from settings with fallback defaults for development.
+    """
+    origins = [
+        origin.strip()
+        for origin in shared_settings.CORS_ORIGINS.split(",")
+        if origin.strip()
+    ]
+    # Fallback for development if no origins configured
+    if not origins:
+        origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+    return origins
+
+
+async def _validate_websocket_origin(websocket: WebSocket) -> bool:
+    """Validate WebSocket Origin header against allowed origins.
+
+    Returns True if origin is valid or not present (same-origin requests may not send Origin).
+    Returns False if origin is present but not in allowed list.
+    """
+    origin = websocket.headers.get("origin")
+    if not origin:
+        # Same-origin requests may not include Origin header
+        return True
+
+    allowed_origins = _get_allowed_websocket_origins()
+    if origin not in allowed_origins:
+        logger.warning(
+            "WebSocket connection rejected: origin %s not in allowed origins %s",
+            origin,
+            allowed_origins,
+        )
+        return False
+    return True
+
 
 router = APIRouter(prefix="/api/v2/operations", tags=["operations-v2"])
 
@@ -219,13 +259,33 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     The token should be passed as ?token=<jwt_token> in the WebSocket URL.
 
     The WebSocket will:
-    1. Authenticate the user via JWT token
-    2. Verify user has permission to access the operation
-    3. Subscribe to Redis updates for the operation
-    4. Stream progress updates until the operation completes or the connection closes
+    1. Validate Origin header against allowed origins
+    2. Authenticate the user via JWT token
+    3. Verify user has permission to access the operation
+    4. Subscribe to Redis updates for the operation
+    5. Stream progress updates until the operation completes or the connection closes
     """
-    # Extract token from query parameters
-    token = websocket.query_params.get("token")
+    # Validate Origin header to prevent cross-site WebSocket hijacking
+    if not await _validate_websocket_origin(websocket):
+        await websocket.close(code=4003, reason="Origin not allowed")
+        return
+
+    # Extract token from Sec-WebSocket-Protocol header (preferred, more secure)
+    # Format: "access_token.<jwt_token>"
+    # Falls back to query param for backward compatibility (deprecated)
+    token = None
+    protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+    for protocol in protocol_header.split(","):
+        protocol = protocol.strip()
+        if protocol.startswith("access_token."):
+            token = protocol[len("access_token."):]
+            break
+
+    # Fallback to query param (deprecated, will be removed in future)
+    if not token:
+        token = websocket.query_params.get("token")
+        if token:
+            logger.warning("WebSocket using deprecated query param authentication - migrate to subprotocol")
 
     try:
         # Authenticate the user
@@ -321,12 +381,32 @@ async def operation_websocket_global(websocket: WebSocket) -> None:
     The token should be passed as ?token=<jwt_token> in the WebSocket URL.
 
     The WebSocket will:
-    1. Authenticate the user via JWT token
-    2. Subscribe to Redis updates for the user channel
-    3. Stream progress updates for all operations belonging to the user
+    1. Validate Origin header against allowed origins
+    2. Authenticate the user via JWT token
+    3. Subscribe to Redis updates for the user channel
+    4. Stream progress updates for all operations belonging to the user
     """
-    # Extract token from query parameters
-    token = websocket.query_params.get("token")
+    # Validate Origin header to prevent cross-site WebSocket hijacking
+    if not await _validate_websocket_origin(websocket):
+        await websocket.close(code=4003, reason="Origin not allowed")
+        return
+
+    # Extract token from Sec-WebSocket-Protocol header (preferred, more secure)
+    # Format: "access_token.<jwt_token>"
+    # Falls back to query param for backward compatibility (deprecated)
+    token = None
+    protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+    for protocol in protocol_header.split(","):
+        protocol = protocol.strip()
+        if protocol.startswith("access_token."):
+            token = protocol[len("access_token."):]
+            break
+
+    # Fallback to query param (deprecated, will be removed in future)
+    if not token:
+        token = websocket.query_params.get("token")
+        if token:
+            logger.warning("WebSocket using deprecated query param authentication - migrate to subprotocol")
 
     try:
         # Authenticate the user

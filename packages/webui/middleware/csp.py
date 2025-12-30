@@ -25,7 +25,7 @@ class CSPMiddleware(BaseHTTPMiddleware):
         "default-src 'self'; "
         "worker-src 'self' blob:; "
         "child-src 'self' blob:; "
-        "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; "
+        "script-src 'self' blob: 'wasm-unsafe-eval';"
         "style-src 'self' 'unsafe-inline'; "  # Allow inline styles for UI frameworks
         "img-src 'self' data: https:; "  # Allow data URIs and HTTPS images
         "font-src 'self' data:; "

@@ -24,6 +24,23 @@ const CLEAR_KEY_PATTERNS = [
 ];
 
 /**
+ * Compare two semantic version strings.
+ * Returns -1 if a < b, 0 if a === b, 1 if a > b.
+ * Handles version strings like "1.0.0", "2.1.0", "10.0.0" correctly.
+ */
+function compareVersions(a: string, b: string): number {
+  const partsA = a.split('.').map(Number);
+  const partsB = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const numA = partsA[i] || 0;
+    const numB = partsB[i] || 0;
+    if (numA < numB) return -1;
+    if (numA > numB) return 1;
+  }
+  return 0;
+}
+
+/**
  * Check localStorage version and migrate if necessary
  * This function should be called before the app renders
  */
@@ -61,8 +78,8 @@ export function checkAndMigrateLocalStorage(): void {
 function performMigration(oldVersion: string | null): void {
   // For now, we're doing a complete clear for the v2.0.0 migration
   // In the future, we can add version-specific migrations here
-  
-  if (!oldVersion || oldVersion < '2.0.0') {
+
+  if (!oldVersion || compareVersions(oldVersion, '2.0.0') < 0) {
     // Complete clear for pre-2.0 or unknown versions
     clearLocalStorage();
   }

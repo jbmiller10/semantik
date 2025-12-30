@@ -118,6 +118,20 @@ class PostgresConnectionManager:
             self._engine = None
             self._sessionmaker = None
 
+    def reset(self) -> None:
+        """Reset connection state for worker process initialization.
+
+        This should be called after fork to ensure child processes don't reuse
+        connections from the parent process (which are not fork-safe). The next
+        database operation will create fresh connections.
+
+        Note: This does NOT close existing connections - it just clears the
+        reference so they aren't reused. In a forked process, the parent's
+        connections are invalid anyway.
+        """
+        self._engine = None
+        self._sessionmaker = None
+
     @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
         """Get a database session with automatic cleanup."""

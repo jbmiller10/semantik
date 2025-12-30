@@ -1,6 +1,12 @@
 import apiClient from './client';
 import type { Operation, OperationListResponse } from '../../../types/collection';
-import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
+import { buildWebSocketUrl, buildWebSocketProtocols, getAuthToken } from '../baseUrl';
+
+/** WebSocket connection info with URL and authentication protocols */
+export interface WebSocketConnectionInfo {
+  url: string;
+  protocols: string[];
+}
 
 export const operationsV2Api = {
   /**
@@ -50,18 +56,41 @@ export const operationsV2Api = {
   },
 
   /**
-   * Get the WebSocket URL for operation progress
+   * Get WebSocket connection info for operation progress
    * @param operationId - The operation ID to track
-   * @returns WebSocket URL with authentication token
+   * @param token - Optional auth token override (defaults to stored token)
+   * @returns WebSocket URL and authentication protocols
    */
-  getWebSocketUrl: (operationId: string, token?: string | null): string | null => {
-    return buildWebSocketUrl(`/ws/operations/${operationId}`, getAuthToken(token));
+  getWebSocketConnectionInfo: (operationId: string, token?: string | null): WebSocketConnectionInfo | null => {
+    const url = buildWebSocketUrl(`/ws/operations/${operationId}`);
+    if (!url) return null;
+    return {
+      url,
+      protocols: buildWebSocketProtocols(getAuthToken(token)),
+    };
   },
 
   /**
-   * Global operations feed (broadcast for all operations)
+   * Get WebSocket connection info for global operations feed
+   * @param token - Optional auth token override (defaults to stored token)
+   * @returns WebSocket URL and authentication protocols
    */
-  getGlobalWebSocketUrl: (token?: string | null): string | null => {
-    return buildWebSocketUrl('/ws/operations', getAuthToken(token));
+  getGlobalWebSocketConnectionInfo: (token?: string | null): WebSocketConnectionInfo | null => {
+    const url = buildWebSocketUrl('/ws/operations');
+    if (!url) return null;
+    return {
+      url,
+      protocols: buildWebSocketProtocols(getAuthToken(token)),
+    };
+  },
+
+  // Deprecated: Use getWebSocketConnectionInfo instead
+  getWebSocketUrl: (operationId: string): string | null => {
+    return buildWebSocketUrl(`/ws/operations/${operationId}`);
+  },
+
+  // Deprecated: Use getGlobalWebSocketConnectionInfo instead
+  getGlobalWebSocketUrl: (): string | null => {
+    return buildWebSocketUrl('/ws/operations');
   },
 };

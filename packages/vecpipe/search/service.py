@@ -403,7 +403,14 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     created_client = False
 
     if client is None:
-        client = httpx.AsyncClient(base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", timeout=httpx.Timeout(60.0))
+        headers = {}
+        if cfg.QDRANT_API_KEY:
+            headers["api-key"] = cfg.QDRANT_API_KEY
+        client = httpx.AsyncClient(
+            base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            timeout=httpx.Timeout(60.0),
+            headers=headers,
+        )
         created_client = True
 
     try:
@@ -453,7 +460,10 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         # Fallback: create ad-hoc client (rare - only when state not initialized)
         from qdrant_client import AsyncQdrantClient
 
-        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        async_client = AsyncQdrantClient(
+            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            api_key=cfg.QDRANT_API_KEY,
+        )
         try:
             metadata = await get_collection_metadata_async(async_client, collection_name)
             set_collection_metadata(collection_name, metadata)

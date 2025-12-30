@@ -18,6 +18,10 @@ from starlette.types import ASGIApp
 # Context variable to store correlation ID for the current request
 correlation_id_var: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
+# Maximum length for correlation ID to prevent DoS via oversized headers
+# UUID v4 is 36 characters (8-4-4-4-12 with hyphens), allow some buffer
+MAX_CORRELATION_ID_LENGTH = 64
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,12 +103,21 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
 
         # Validate correlation ID format if provided
         if correlation_id:
-            try:
-                # Ensure it's a valid UUID format
-                uuid.UUID(correlation_id)
-            except ValueError:
-                logger.warning(f"Invalid correlation ID format received: {correlation_id}. Generating new ID.")
+            # Check length first to prevent DoS via oversized headers
+            if len(correlation_id) > MAX_CORRELATION_ID_LENGTH:
+                logger.warning(
+                    "Correlation ID exceeds maximum length (%d > %d). Generating new ID.",
+                    len(correlation_id),
+                    MAX_CORRELATION_ID_LENGTH,
+                )
                 correlation_id = None
+            else:
+                try:
+                    # Ensure it's a valid UUID format
+                    uuid.UUID(correlation_id)
+                except ValueError:
+                    logger.warning(f"Invalid correlation ID format received: {correlation_id}. Generating new ID.")
+                    correlation_id = None
 
         # Generate new correlation ID if missing or invalid
         if not correlation_id and self.generate_id_on_missing:

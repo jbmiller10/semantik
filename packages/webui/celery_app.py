@@ -157,6 +157,5 @@ def init_worker_process(**kwargs: Any) -> None:  # noqa: ARG001
     # Reset the connection manager state to ensure we don't use inherited
     # connections from the parent process (which are not fork-safe).
     # This forces a fresh engine creation when the first task runs.
-    pg_connection_manager._engine = None
-    pg_connection_manager._sessionmaker = None
+    pg_connection_manager.reset()
     logger.info("Worker process initialized - database connection reset")

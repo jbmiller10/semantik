@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useMemo } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { useUpdateOperationInCache } from './useCollectionOperations';
 import { useUIStore } from '../stores/uiStore';
@@ -40,8 +40,13 @@ export function useOperationProgress(
     onErrorRef.current = onError;
   }, [onError]);
 
-  // Construct WebSocket URL with authentication token
-  const wsUrl = operationId ? operationsV2Api.getWebSocketUrl(operationId) : null;
+  // Construct WebSocket connection info with authentication via subprotocol
+  const connectionInfo = useMemo(() => {
+    return operationId ? operationsV2Api.getWebSocketConnectionInfo(operationId) : null;
+  }, [operationId]);
+
+  const wsUrl = connectionInfo?.url ?? null;
+  const wsProtocols = connectionInfo?.protocols;
 
   const handleMessage = useCallback((event: MessageEvent) => {
     try {
@@ -162,6 +167,7 @@ export function useOperationProgress(
     onClose: () => {
       console.log('WebSocket closed for operation', operationIdRef.current);
     },
+    protocols: wsProtocols,
   });
 
   return {

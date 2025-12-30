@@ -8,6 +8,8 @@ interface UseWebSocketOptions {
   autoReconnect?: boolean;
   reconnectInterval?: number;
   reconnectAttempts?: number;
+  /** WebSocket subprotocols - used for passing auth token securely */
+  protocols?: string[];
 }
 
 export function useWebSocket(
@@ -22,6 +24,7 @@ export function useWebSocket(
     autoReconnect = true,
     reconnectInterval = 3000,
     reconnectAttempts = 5,
+    protocols,
   } = options;
 
   const ws = useRef<WebSocket | null>(null);
@@ -61,8 +64,9 @@ export function useWebSocket(
     }
 
     try {
-      ws.current = new WebSocket(url);
-      
+      // Pass protocols for authentication (token is sent via Sec-WebSocket-Protocol header)
+      ws.current = protocols?.length ? new WebSocket(url, protocols) : new WebSocket(url);
+
       // Add a connection timeout
       const timeoutId = setTimeout(() => {
         if (ws.current?.readyState === WebSocket.CONNECTING) {
@@ -114,6 +118,7 @@ export function useWebSocket(
     autoReconnect,
     reconnectInterval,
     reconnectAttempts,
+    protocols,
   ]);
 
   const disconnect = useCallback(() => {

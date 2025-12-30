@@ -182,8 +182,13 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
               contentRef.current.innerHTML = window.DOMPurify ? 
                 window.DOMPurify.sanitize(html) : html;
             } else {
-              // Display plain text or JSON
-              contentRef.current.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${text}</pre>`;
+              // Display plain text or JSON - use textContent to prevent XSS
+              const pre = document.createElement('pre');
+              pre.style.whiteSpace = 'pre-wrap';
+              pre.style.wordWrap = 'break-word';
+              pre.textContent = text;
+              contentRef.current.innerHTML = '';
+              contentRef.current.appendChild(pre);
             }
           }
         } else if (contentType.includes('image/')) {

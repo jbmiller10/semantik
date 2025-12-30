@@ -45,7 +45,7 @@ class CacheManager:
         """
         # Sort params for consistent key generation
         sorted_params = json.dumps(params, sort_keys=True)
-        param_hash = hashlib.md5(sorted_params.encode()).hexdigest()
+        param_hash = hashlib.sha256(sorted_params.encode()).hexdigest()
         return f"cache:{prefix}:{param_hash}"
 
     async def get(self, key: str, deserializer: Callable = json.loads) -> Any | None:
