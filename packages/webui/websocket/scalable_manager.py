@@ -226,7 +226,9 @@ class ScalableWebSocketManager:
                 raise ConnectionError("Server connection limit exceeded")
 
         async with self._metadata_lock:
-            user_conn_count = sum(1 for metadata in self.connection_metadata.values() if metadata.get("user_id") == user_id)
+            user_conn_count = sum(
+                1 for metadata in self.connection_metadata.values() if metadata.get("user_id") == user_id
+            )
 
         if user_conn_count >= self.max_connections_per_user:
             logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
@@ -323,7 +325,9 @@ class ScalableWebSocketManager:
                 # Handle operation channel
                 if self.pubsub and operation_id:
                     async with self._metadata_lock:
-                        remaining_op = any(m.get("operation_id") == operation_id for m in self.connection_metadata.values())
+                        remaining_op = any(
+                            m.get("operation_id") == operation_id for m in self.connection_metadata.values()
+                        )
                     if not remaining_op:
                         await self.pubsub.unsubscribe(f"operation:{operation_id}")
 

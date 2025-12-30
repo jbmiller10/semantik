@@ -34,7 +34,7 @@ env:
   QDRANT_HOST: localhost
   QDRANT_PORT: 6333
   REDIS_URL: redis://localhost:6379/0
-  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci-test-only-secret-key-not-for-production-32chars!' }}
   USE_MOCK_EMBEDDINGS: "true"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
   # Performance optimizations
