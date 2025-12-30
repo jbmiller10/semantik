@@ -293,11 +293,7 @@ class CollectionService:
 
         # Lock the collection row to prevent race conditions between checking
         # for active operations and creating a new one (TOCTOU protection)
-        await self.db_session.execute(
-            select(Collection)
-            .where(Collection.id == collection.id)
-            .with_for_update()
-        )
+        await self.db_session.execute(select(Collection).where(Collection.id == collection.id).with_for_update())
 
         # Check if there's already an active operation (now safe due to row lock)
         active_operations = await self.operation_repo.get_active_operations(collection.id)

@@ -47,6 +47,7 @@ def sanitize_filename_for_header(filename: str) -> str:
     # URL-encode the filename per RFC 5987
     return urllib.parse.quote(safe, safe="")
 
+
 router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
 
 

@@ -31,11 +31,7 @@ def _get_allowed_websocket_origins() -> list[str]:
 
     Uses CORS_ORIGINS from settings with fallback defaults for development.
     """
-    origins = [
-        origin.strip()
-        for origin in shared_settings.CORS_ORIGINS.split(",")
-        if origin.strip()
-    ]
+    origins = [origin.strip() for origin in shared_settings.CORS_ORIGINS.split(",") if origin.strip()]
     # Fallback for development if no origins configured
     if not origins:
         origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
@@ -278,7 +274,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
     for protocol in protocol_header.split(","):
         protocol = protocol.strip()
         if protocol.startswith("access_token."):
-            token = protocol[len("access_token."):]
+            token = protocol[len("access_token.") :]
             break
 
     # Fallback to query param (deprecated, will be removed in future)
@@ -399,7 +395,7 @@ async def operation_websocket_global(websocket: WebSocket) -> None:
     for protocol in protocol_header.split(","):
         protocol = protocol.strip()
         if protocol.startswith("access_token."):
-            token = protocol[len("access_token."):]
+            token = protocol[len("access_token.") :]
             break
 
     # Fallback to query param (deprecated, will be removed in future)
