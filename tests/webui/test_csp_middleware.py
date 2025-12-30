@@ -7,7 +7,7 @@ DEFAULT_POLICY = (
     "default-src 'self'; "
     "worker-src 'self' blob:; "
     "child-src 'self' blob:; "
-    "script-src 'self' blob: 'wasm-unsafe-eval' 'unsafe-eval'; "
+    "script-src 'self' blob: 'wasm-unsafe-eval';"  # 'unsafe-eval' removed for security
     "style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: https:; "
     "font-src 'self' data:; "

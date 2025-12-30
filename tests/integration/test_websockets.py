@@ -26,6 +26,8 @@ class TestOperationsWebSocket:
         mock.send_json = AsyncMock()
         mock.close = AsyncMock()
         mock.query_params = {"token": "valid-test-token"}
+        # Mock headers - no origin means same-origin (passes validation)
+        mock.headers = {}
         mock.received_messages = []
 
         # Store messages when send_json is called
