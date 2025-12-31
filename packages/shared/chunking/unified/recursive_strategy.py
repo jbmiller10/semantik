@@ -476,9 +476,7 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
     def _validate_config(config: ChunkConfig) -> None:
         """Validate chunking configuration."""
         if config.min_tokens >= config.max_tokens:
-            raise ValueError(
-                f"min_tokens ({config.min_tokens}) must be less than max_tokens ({config.max_tokens})"
-            )
+            raise ValueError(f"min_tokens ({config.min_tokens}) must be less than max_tokens ({config.max_tokens})")
 
         if config.overlap_tokens >= config.min_tokens:
             raise ValueError(
