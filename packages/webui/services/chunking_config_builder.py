@@ -8,7 +8,7 @@ chunking configurations, removing business logic from routers.
 from dataclasses import dataclass
 from typing import Any
 
-from webui.api.v2.chunking_schemas import ChunkingStrategy as ChunkingStrategyEnum
+from shared.chunking.types import ChunkingStrategy as ChunkingStrategyEnum
 from webui.services.chunking.strategy_registry import get_strategy_defaults, resolve_api_identifier
 
 
