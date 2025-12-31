@@ -46,6 +46,7 @@ from shared.database.factory import (  # noqa: E402
 from shared.database.models import (  # noqa: E402
     Base,
     Collection,
+    CollectionSource,
     CollectionStatus,
     Document,
     DocumentStatus,
@@ -581,8 +582,8 @@ def mock_redis_client() -> None:
 @pytest.fixture()
 def mock_websocket() -> None:
     """Create a mock WebSocket connection."""
-
-    mock = AsyncMock(spec=WebSocket)
+    # Don't use spec - it can cause issues with async methods being auto-specced
+    mock = AsyncMock()
     mock.accept = AsyncMock()
     mock.send_json = AsyncMock()
     mock.close = AsyncMock()
@@ -803,6 +804,34 @@ async def document_factory(db_session) -> None:
 
 
 @pytest_asyncio.fixture
+async def source_factory(db_session) -> None:
+    """Factory for creating test collection sources."""
+
+    created_sources = []
+
+    async def _create_source(**kwargs) -> CollectionSource:
+        defaults = {
+            "collection_id": kwargs.get("collection_id", "test-collection"),
+            "source_path": f"/test/source_{len(created_sources)}",
+            "source_type": "directory",
+            "source_config": {},
+            "document_count": 0,
+            "size_bytes": 0,
+        }
+        defaults.update(kwargs)
+
+        source = CollectionSource(**defaults)
+        db_session.add(source)
+        await db_session.commit()
+        await db_session.refresh(source)
+
+        created_sources.append(source)
+        return source
+
+    yield _create_source
+
+
+@pytest_asyncio.fixture
 async def operation_factory(db_session) -> None:
     """Factory for creating test operations."""
 
@@ -896,12 +925,25 @@ def test_documents_fixture() -> Path:
 
 
 @pytest.fixture()
-def mock_scalable_ws_manager(mock_redis_client):
+def mock_scalable_ws_manager():
     """Create ScalableWebSocketManager with mocked Redis for testing."""
     from webui.websocket.scalable_manager import ScalableWebSocketManager
 
     manager = ScalableWebSocketManager()
-    manager.redis_client = mock_redis_client
+
+    # Create a proper async mock for redis_client with all needed methods
+    mock_redis = AsyncMock()
+    mock_redis.eval = AsyncMock(return_value=1)
+    mock_redis.smembers = AsyncMock(return_value=set())
+    mock_redis.exists = AsyncMock(return_value=True)
+    mock_redis.hget = AsyncMock(return_value=None)
+    mock_redis.hgetall = AsyncMock(return_value={})
+    mock_redis.setex = AsyncMock()
+    mock_redis.expire = AsyncMock()
+    mock_redis.publish = AsyncMock()
+    mock_redis.close = AsyncMock()
+
+    manager.redis_client = mock_redis
     manager.pubsub = AsyncMock()
     manager.pubsub.subscribe = AsyncMock()
     manager.pubsub.unsubscribe = AsyncMock()

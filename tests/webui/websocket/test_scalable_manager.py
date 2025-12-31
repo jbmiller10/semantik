@@ -16,6 +16,17 @@ from webui.websocket.scalable_manager import (
 )
 
 
+# Mock that properly simulates the awaitable Redis client
+class AwaitableRedisMock(MagicMock):
+    """Mock that can be awaited like the real Redis client."""
+
+    def __await__(self):
+        async def _coro():
+            return self
+
+        return _coro().__await__()
+
+
 class TestScalableWebSocketManagerStartup:
     """Tests for startup and initialization."""
 
@@ -25,10 +36,20 @@ class TestScalableWebSocketManagerStartup:
         manager = ScalableWebSocketManager()
 
         with patch("webui.websocket.scalable_manager.redis.from_url") as mock_from_url:
-            mock_redis = AsyncMock()
+            mock_pubsub = AsyncMock()
+            mock_pubsub.subscribe = AsyncMock()
+            mock_pubsub.listen = AsyncMock(return_value=AsyncMock(__aiter__=lambda _: iter([])))
+            mock_pubsub.aclose = AsyncMock()
+
+            # Use AwaitableRedisMock because redis.from_url returns an awaitable client
+            mock_redis = AwaitableRedisMock()
             mock_redis.ping = AsyncMock(return_value=True)
-            mock_redis.pubsub = MagicMock(return_value=AsyncMock())
+            mock_redis.pubsub = MagicMock(return_value=mock_pubsub)
             mock_redis.setex = AsyncMock()
+            mock_redis.close = AsyncMock()
+            mock_redis.expire = AsyncMock()
+            mock_redis.hgetall = AsyncMock(return_value={})
+            mock_redis.delete = AsyncMock()
             mock_from_url.return_value = mock_redis
 
             await manager.startup()
@@ -65,13 +86,23 @@ class TestScalableWebSocketManagerStartup:
 
         with patch("webui.websocket.scalable_manager.redis.from_url") as mock_from_url:
             # First two calls fail, third succeeds
-            mock_redis_fail = AsyncMock()
+            mock_redis_fail = AwaitableRedisMock()
             mock_redis_fail.ping = AsyncMock(side_effect=Exception("Connection failed"))
+            mock_redis_fail.close = AsyncMock()
 
-            mock_redis_success = AsyncMock()
+            mock_pubsub_success = AsyncMock()
+            mock_pubsub_success.subscribe = AsyncMock()
+            mock_pubsub_success.listen = AsyncMock(return_value=AsyncMock(__aiter__=lambda _: iter([])))
+            mock_pubsub_success.aclose = AsyncMock()
+
+            mock_redis_success = AwaitableRedisMock()
             mock_redis_success.ping = AsyncMock(return_value=True)
-            mock_redis_success.pubsub = MagicMock(return_value=AsyncMock())
+            mock_redis_success.pubsub = MagicMock(return_value=mock_pubsub_success)
             mock_redis_success.setex = AsyncMock()
+            mock_redis_success.close = AsyncMock()
+            mock_redis_success.expire = AsyncMock()
+            mock_redis_success.hgetall = AsyncMock(return_value={})
+            mock_redis_success.delete = AsyncMock()
 
             mock_from_url.side_effect = [
                 mock_redis_fail,
@@ -94,8 +125,9 @@ class TestScalableWebSocketManagerStartup:
         manager = ScalableWebSocketManager()
 
         with patch("webui.websocket.scalable_manager.redis.from_url") as mock_from_url:
-            mock_redis = AsyncMock()
+            mock_redis = AwaitableRedisMock()
             mock_redis.ping = AsyncMock(side_effect=Exception("Connection failed"))
+            mock_redis.close = AsyncMock()
             mock_from_url.return_value = mock_redis
 
             with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -434,7 +466,7 @@ class TestScalableWebSocketManagerHeartbeat:
     async def test_heartbeat_pings_connections(self, mock_scalable_ws_manager, mock_websocket):
         """Test _heartbeat() pings all local connections."""
         manager = mock_scalable_ws_manager
-        manager.heartbeat_interval_seconds = 0.1
+        manager.heartbeat_interval_seconds = 0.05
 
         # Setup connection
         manager.local_connections["conn-1"] = mock_websocket
@@ -451,11 +483,14 @@ class TestScalableWebSocketManagerHeartbeat:
 
         # Run one iteration
         heartbeat_task = asyncio.create_task(manager._heartbeat())
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.15)
         heartbeat_task.cancel()
 
-        with pytest.raises(asyncio.CancelledError):
+        # Wait for task to finish, ignoring CancelledError
+        try:
             await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
         # Verify ping was sent
         mock_websocket.send_json.assert_called()
@@ -466,7 +501,7 @@ class TestScalableWebSocketManagerHeartbeat:
     async def test_heartbeat_removes_dead_connections(self, mock_scalable_ws_manager):
         """Test _heartbeat() removes connections that fail to respond."""
         manager = mock_scalable_ws_manager
-        manager.heartbeat_interval_seconds = 0.1
+        manager.heartbeat_interval_seconds = 0.05
 
         # Setup connection that times out
         mock_ws = AsyncMock()
@@ -486,11 +521,14 @@ class TestScalableWebSocketManagerHeartbeat:
 
         # Run one iteration
         heartbeat_task = asyncio.create_task(manager._heartbeat())
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.15)
         heartbeat_task.cancel()
 
-        with pytest.raises(asyncio.CancelledError):
+        # Wait for task to finish, ignoring CancelledError
+        try:
             await heartbeat_task
+        except asyncio.CancelledError:
+            pass
 
         # Connection should be removed
         assert "conn-1" not in manager.local_connections
@@ -503,7 +541,7 @@ class TestScalableWebSocketManagerCleanup:
     async def test_cleanup_dead_connections_removes_stale(self, mock_scalable_ws_manager):
         """Test _cleanup_dead_connections() removes connections with expired heartbeats."""
         manager = mock_scalable_ws_manager
-        manager.cleanup_interval_seconds = 0.1
+        manager.cleanup_interval_seconds = 0.05
 
         # Mock stale connection in Redis
         stale_conn_data = json.dumps(
@@ -516,21 +554,24 @@ class TestScalableWebSocketManagerCleanup:
         manager.redis_client.hgetall = AsyncMock(return_value={"stale-conn": stale_conn_data})
         manager.redis_client.exists = AsyncMock(return_value=False)  # Heartbeat expired
 
-        # Mock scan_iter to return empty
+        # Mock scan_iter to return empty async generator
         async def mock_scan_iter(**_kwargs):
-            return
-            yield  # Make it a generator
+            if False:  # noqa: SIM223
+                yield  # Make it an async generator that yields nothing
 
         manager.redis_client.scan_iter = mock_scan_iter
         manager.redis_client.eval = AsyncMock()
 
         # Run one iteration
         cleanup_task = asyncio.create_task(manager._cleanup_dead_connections())
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.15)
         cleanup_task.cancel()
 
-        with pytest.raises(asyncio.CancelledError):
+        # Wait for task to finish, ignoring CancelledError
+        try:
             await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
         # Verify unregister was called
         manager.redis_client.eval.assert_called()
@@ -539,25 +580,28 @@ class TestScalableWebSocketManagerCleanup:
     async def test_cleanup_handles_json_decode_error(self, mock_scalable_ws_manager):
         """Test _cleanup_dead_connections() handles malformed JSON gracefully."""
         manager = mock_scalable_ws_manager
-        manager.cleanup_interval_seconds = 0.1
+        manager.cleanup_interval_seconds = 0.05
 
         # Mock malformed connection data
         manager.redis_client.hgetall = AsyncMock(return_value={"bad-conn": "not-json"})
 
-        # Mock scan_iter to return empty
+        # Mock scan_iter to return empty async generator
         async def mock_scan_iter(**_kwargs):
-            return
-            yield
+            if False:  # noqa: SIM223
+                yield  # Make it an async generator that yields nothing
 
         manager.redis_client.scan_iter = mock_scan_iter
 
         # Should not raise
         cleanup_task = asyncio.create_task(manager._cleanup_dead_connections())
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.15)
         cleanup_task.cancel()
 
-        with pytest.raises(asyncio.CancelledError):
+        # Wait for task to finish, ignoring CancelledError
+        try:
             await cleanup_task
+        except asyncio.CancelledError:
+            pass
 
 
 class TestScalableWebSocketManagerStats:

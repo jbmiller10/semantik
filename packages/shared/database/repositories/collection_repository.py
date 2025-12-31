@@ -127,6 +127,8 @@ class CollectionRepository:
         except IntegrityError as e:
             logger.error("Integrity error creating collection: %s", e, exc_info=True)
             raise EntityAlreadyExistsError("collection", name) from e
+        except (EntityAlreadyExistsError, ValidationError):
+            raise
         except Exception as e:
             logger.error("Failed to create collection: %s", e, exc_info=True)
             raise DatabaseOperationError("create", "collection", str(e)) from e

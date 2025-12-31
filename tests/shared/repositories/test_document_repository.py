@@ -218,20 +218,23 @@ class TestDocumentRepositorySyncTracking:
 
     @pytest.mark.asyncio()
     async def test_mark_unseen_as_stale_updates_correct_documents(
-        self, db_session, test_user_db, collection_factory, document_factory
+        self, db_session, test_user_db, collection_factory, document_factory, source_factory
     ):
         """Test mark_unseen_as_stale() marks documents with last_seen_at < since."""
         user = test_user_db
         collection = await collection_factory(owner_id=user.id)
 
+        # Create a source first
+        source = await source_factory(collection_id=collection.id)
+
         # Create document with old last_seen_at
-        old_doc = await document_factory(collection_id=collection.id, source_id=1)
+        old_doc = await document_factory(collection_id=collection.id, source_id=source.id)
         old_doc.last_seen_at = datetime.now(UTC) - timedelta(hours=2)
         old_doc.is_stale = False
         await db_session.flush()
 
         # Create document with recent last_seen_at
-        recent_doc = await document_factory(collection_id=collection.id, source_id=1)
+        recent_doc = await document_factory(collection_id=collection.id, source_id=source.id)
         recent_doc.last_seen_at = datetime.now(UTC)
         recent_doc.is_stale = False
         await db_session.flush()
@@ -242,7 +245,7 @@ class TestDocumentRepositorySyncTracking:
         since = datetime.now(UTC) - timedelta(hours=1)
         count = await repo.mark_unseen_as_stale(
             collection_id=collection.id,
-            source_id=1,
+            source_id=source.id,
             since=since,
         )
 
@@ -250,14 +253,17 @@ class TestDocumentRepositorySyncTracking:
 
     @pytest.mark.asyncio()
     async def test_mark_unseen_as_stale_handles_null_last_seen_at(
-        self, db_session, test_user_db, collection_factory, document_factory
+        self, db_session, test_user_db, collection_factory, document_factory, source_factory
     ):
         """Test mark_unseen_as_stale() also marks documents with NULL last_seen_at."""
         user = test_user_db
         collection = await collection_factory(owner_id=user.id)
 
+        # Create a source first
+        source = await source_factory(collection_id=collection.id)
+
         # Create document with NULL last_seen_at
-        doc = await document_factory(collection_id=collection.id, source_id=1)
+        doc = await document_factory(collection_id=collection.id, source_id=source.id)
         doc.last_seen_at = None
         doc.is_stale = False
         await db_session.flush()
@@ -266,7 +272,7 @@ class TestDocumentRepositorySyncTracking:
 
         count = await repo.mark_unseen_as_stale(
             collection_id=collection.id,
-            source_id=1,
+            source_id=source.id,
             since=datetime.now(UTC),
         )
 

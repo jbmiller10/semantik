@@ -476,7 +476,7 @@ class ScalableWebSocketManager:
         """
         # Send to local connections
         local_sent = 0
-        for conn_id, metadata in self.connection_metadata.items():
+        for conn_id, metadata in list(self.connection_metadata.items()):
             if metadata.get("operation_id") == operation_id:
                 websocket = self.local_connections.get(conn_id)
                 if websocket:
@@ -511,7 +511,7 @@ class ScalableWebSocketManager:
         """
         # Send to local connections
         local_sent = 0
-        for conn_id, metadata in self.connection_metadata.items():
+        for conn_id, metadata in list(self.connection_metadata.items()):
             if metadata.get("collection_id") == collection_id:
                 websocket = self.local_connections.get(conn_id)
                 if websocket:
