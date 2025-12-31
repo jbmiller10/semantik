@@ -66,9 +66,7 @@ class TestResourceManager:
         return AsyncMock()
 
     @pytest.fixture()
-    def resource_manager(
-        self, mock_collection_repo, mock_operation_repo, mock_qdrant_manager
-    ) -> ResourceManager:
+    def resource_manager(self, mock_collection_repo, mock_operation_repo, mock_qdrant_manager) -> ResourceManager:
         """Create a ResourceManager instance with mocked dependencies."""
         return ResourceManager(
             collection_repo=mock_collection_repo,
@@ -91,9 +89,7 @@ class TestResourceManager:
     # --- can_create_collection Tests ---
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_under_limit(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_create_collection_under_limit(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection returns True when under limit."""
         # Mock only a few collections
         mock_collection_repo.list_for_user.return_value = (
@@ -109,9 +105,7 @@ class TestResourceManager:
             assert result is True
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_at_limit(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_create_collection_at_limit(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection returns False when at limit."""
         mock_collection_repo.list_for_user.return_value = (
             [MagicMock(status="ready") for _ in range(10)],
@@ -126,9 +120,7 @@ class TestResourceManager:
             assert result is False
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_excludes_deleted(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_create_collection_excludes_deleted(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection excludes deleted collections from count."""
         collections = [MagicMock(status="ready") for _ in range(8)]
         collections.extend([MagicMock(status="deleted") for _ in range(5)])
@@ -142,9 +134,7 @@ class TestResourceManager:
             assert result is True  # Only 8 active, under 10
 
     @pytest.mark.asyncio()
-    async def test_can_create_collection_error_returns_false(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_create_collection_error_returns_false(self, resource_manager, mock_collection_repo) -> None:
         """Test can_create_collection returns False on error."""
         mock_collection_repo.list_for_user.side_effect = Exception("Database error")
 
@@ -155,9 +145,7 @@ class TestResourceManager:
     # --- can_allocate Tests ---
 
     @pytest.mark.asyncio()
-    async def test_can_allocate_with_sufficient_resources(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_allocate_with_sufficient_resources(self, resource_manager, mock_collection_repo) -> None:
         """Test can_allocate returns True when resources available."""
         mock_collection_repo.list_for_user.return_value = ([], 0)
 
@@ -177,18 +165,14 @@ class TestResourceManager:
             assert result is True
 
     @pytest.mark.asyncio()
-    async def test_can_allocate_insufficient_memory(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_allocate_insufficient_memory(self, resource_manager, mock_collection_repo) -> None:
         """Test can_allocate returns False when insufficient memory."""
         mock_collection_repo.list_for_user.return_value = ([], 0)
 
         estimate = ResourceEstimate(memory_mb=10000)
 
         with patch("webui.services.resource_manager.psutil") as mock_psutil:
-            mock_psutil.virtual_memory.return_value = MagicMock(
-                available=100 * 1024 * 1024
-            )  # Only 100MB
+            mock_psutil.virtual_memory.return_value = MagicMock(available=100 * 1024 * 1024)  # Only 100MB
             mock_psutil.disk_usage.return_value = MagicMock(free=100 * 1024 * 1024 * 1024)
 
             result = await resource_manager.can_allocate(1, estimate)
@@ -196,9 +180,7 @@ class TestResourceManager:
             assert result is False
 
     @pytest.mark.asyncio()
-    async def test_can_allocate_insufficient_storage(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_allocate_insufficient_storage(self, resource_manager, mock_collection_repo) -> None:
         """Test can_allocate returns False when insufficient storage."""
         mock_collection_repo.list_for_user.return_value = ([], 0)
 
@@ -213,9 +195,7 @@ class TestResourceManager:
             assert result is False
 
     @pytest.mark.asyncio()
-    async def test_can_allocate_error_returns_false(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_can_allocate_error_returns_false(self, resource_manager, mock_collection_repo) -> None:
         """Test can_allocate returns False on error."""
         estimate = ResourceEstimate(memory_mb=100)
 
@@ -279,9 +259,7 @@ class TestResourceManager:
     # --- reserve_for_reindex Tests ---
 
     @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_success(
-        self, resource_manager, mock_collection_repo, sample_collection
-    ) -> None:
+    async def test_reserve_for_reindex_success(self, resource_manager, mock_collection_repo, sample_collection) -> None:
         """Test reserve_for_reindex successfully reserves resources."""
         mock_collection_repo.get_by_uuid.return_value = sample_collection
 
@@ -295,9 +273,7 @@ class TestResourceManager:
             assert f"reindex_{sample_collection.id}" in resource_manager._reserved_resources
 
     @pytest.mark.asyncio()
-    async def test_reserve_for_reindex_collection_not_found(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_reserve_for_reindex_collection_not_found(self, resource_manager, mock_collection_repo) -> None:
         """Test reserve_for_reindex returns False for missing collection."""
         mock_collection_repo.get_by_uuid.return_value = None
 
@@ -324,9 +300,7 @@ class TestResourceManager:
     # --- release_reindex_reservation Tests ---
 
     @pytest.mark.asyncio()
-    async def test_release_reindex_reservation_success(
-        self, resource_manager, sample_collection
-    ) -> None:
+    async def test_release_reindex_reservation_success(self, resource_manager, sample_collection) -> None:
         """Test release_reindex_reservation removes reservation."""
         collection_id = sample_collection.id
         resource_manager._reserved_resources[f"reindex_{collection_id}"] = ResourceEstimate()
@@ -375,9 +349,7 @@ class TestResourceManager:
         mock_collection_repo.get_by_uuid.assert_not_called()
 
     @pytest.mark.asyncio()
-    async def test_get_resource_usage_collection_not_found(
-        self, resource_manager, mock_collection_repo
-    ) -> None:
+    async def test_get_resource_usage_collection_not_found(self, resource_manager, mock_collection_repo) -> None:
         """Test get_resource_usage returns empty dict for missing collection."""
         mock_collection_repo.get_by_uuid.return_value = None
 
@@ -484,9 +456,7 @@ class TestResourceManager:
         estimate = ResourceEstimate(memory_mb=5000)
 
         with patch("webui.services.resource_manager.psutil") as mock_psutil:
-            mock_psutil.virtual_memory.return_value = MagicMock(
-                available=10 * 1024 * 1024 * 1024
-            )  # 10GB = ~10240 MB
+            mock_psutil.virtual_memory.return_value = MagicMock(available=10 * 1024 * 1024 * 1024)  # 10GB = ~10240 MB
             mock_psutil.disk_usage.return_value = MagicMock(free=100 * 1024 * 1024 * 1024)
 
             result = await resource_manager._check_system_resources(estimate)

@@ -116,9 +116,7 @@ class TestCollectionRepository:
         repository.get_by_uuid = AsyncMock(return_value=sample_collection)
         mock_session.flush = AsyncMock()
 
-        result = await repository.update_status(
-            sample_collection.id, CollectionStatus.PROCESSING, "Processing started"
-        )
+        result = await repository.update_status(sample_collection.id, CollectionStatus.PROCESSING, "Processing started")
 
         assert result.status == CollectionStatus.PROCESSING
         assert result.status_message == "Processing started"

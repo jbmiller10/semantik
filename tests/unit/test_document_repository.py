@@ -590,9 +590,7 @@ class TestDocumentRepository:
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
-        documents, total = await repository.list_by_collection(
-            collection_id, status=DocumentStatus.PENDING
-        )
+        documents, total = await repository.list_by_collection(collection_id, status=DocumentStatus.PENDING)
 
         # Assert
         assert total == 1
@@ -655,9 +653,7 @@ class TestDocumentRepository:
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         # Act
-        result = await repository.list_by_source_id(
-            str(uuid4()), 1, status=DocumentStatus.FAILED
-        )
+        result = await repository.list_by_source_id(str(uuid4()), 1, status=DocumentStatus.FAILED)
 
         # Assert
         assert len(result) == 0
