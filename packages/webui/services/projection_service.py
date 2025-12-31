@@ -624,7 +624,11 @@ class ProjectionService:
                 await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
                 await self.db_session.flush()
             except Exception:  # pragma: no cover - defensive logging
-                logger.warning("Failed to mark projection %s as degraded after missing artifacts directory", run.uuid)
+                logger.warning(
+                    "Failed to mark projection %s as degraded after missing artifacts directory",
+                    run.uuid,
+                    exc_info=True,
+                )
             raise
 
         file_path = (resolved_dir / self._ALLOWED_ARTIFACTS[normalized_name]).resolve()
@@ -640,7 +644,10 @@ class ProjectionService:
                 await self.db_session.flush()
             except Exception:  # pragma: no cover - defensive logging
                 logger.warning(
-                    "Failed to mark projection %s as degraded after missing artifact %s", run.uuid, artifact_name
+                    "Failed to mark projection %s as degraded after missing artifact %s",
+                    run.uuid,
+                    artifact_name,
+                    exc_info=True,
                 )
             raise FileNotFoundError(f"Projection artifact '{artifact_name}' not found")
 
@@ -699,7 +706,11 @@ class ProjectionService:
                 await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
                 await self.db_session.flush()
             except Exception:  # pragma: no cover - defensive logging
-                logger.warning("Failed to mark projection %s as degraded after missing artifacts directory", run.uuid)
+                logger.warning(
+                    "Failed to mark projection %s as degraded after missing artifacts directory",
+                    run.uuid,
+                    exc_info=True,
+                )
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -713,7 +724,11 @@ class ProjectionService:
                 await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
                 await self.db_session.flush()
             except Exception:  # pragma: no cover - defensive logging
-                logger.warning("Failed to mark projection %s as degraded after missing ids artifact", run.uuid)
+                logger.warning(
+                    "Failed to mark projection %s as degraded after missing ids artifact",
+                    run.uuid,
+                    exc_info=True,
+                )
             raise HTTPException(status_code=404, detail="Projection ids artifact is missing")
 
         meta_payload: dict[str, Any] = {}
@@ -728,7 +743,11 @@ class ProjectionService:
                     await self.projection_repo.update_metadata(run.uuid, meta={"degraded": True})
                     await self.db_session.flush()
                 except Exception:  # pragma: no cover - defensive logging
-                    logger.warning("Failed to mark projection %s as degraded after invalid meta.json", run.uuid)
+                    logger.warning(
+                        "Failed to mark projection %s as degraded after invalid meta.json",
+                        run.uuid,
+                        exc_info=True,
+                    )
                 meta_payload = {}
 
         run_meta: dict[str, Any] = run.meta if isinstance(run.meta, dict) else {}
@@ -954,7 +973,12 @@ class ProjectionService:
             except FileNotFoundError:
                 artifacts_dir = None
             except PermissionError as exc:  # pragma: no cover - defensive cleanup
-                logger.warning("Projection storage path for %s is outside data dir: %s", projection_id, exc)
+                logger.warning(
+                    "Projection storage path for %s is outside data dir: %s",
+                    projection_id,
+                    exc,
+                    exc_info=True,
+                )
                 artifacts_dir = None
 
             if artifacts_dir:
@@ -963,7 +987,12 @@ class ProjectionService:
                 except FileNotFoundError:
                     pass
                 except Exception as exc:  # pragma: no cover - defensive cleanup
-                    logger.warning("Failed to delete projection artifacts %s: %s", artifacts_dir, exc)
+                    logger.warning(
+                        "Failed to delete projection artifacts %s: %s",
+                        artifacts_dir,
+                        exc,
+                        exc_info=True,
+                    )
 
         await self.projection_repo.delete(projection_id)
         await self.db_session.commit()

@@ -59,7 +59,7 @@ class ServiceStrategyInfo:
         try:
             config = ChunkingConfigBase(**config_data)
         except ValidationError as e:
-            logger.warning(f"Invalid config for strategy {self.id}: {e}")
+            logger.warning("Invalid config for strategy %s: %s", self.id, e, exc_info=True)
             # Use minimal valid config as fallback
             config = ChunkingConfigBase(strategy=self.id)
 
@@ -158,14 +158,14 @@ class ServicePreviewResponse:
         try:
             strategy = ChunkingStrategy(self.strategy) if isinstance(self.strategy, str) else self.strategy
         except ValueError as e:
-            logger.warning(f"Invalid strategy value {self.strategy}: {e}")
+            logger.warning("Invalid strategy value %s: %s", self.strategy, e, exc_info=True)
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback
 
         # Create config with error handling
         try:
             config = ChunkingConfigBase(**config_data)
         except ValidationError as e:
-            logger.warning(f"Invalid config for preview {self.preview_id}: {e}")
+            logger.warning("Invalid config for preview %s: %s", self.preview_id, e, exc_info=True)
             # Use minimal valid config as fallback
             config = ChunkingConfigBase(strategy=strategy)
 
@@ -202,7 +202,7 @@ class ServiceStrategyRecommendation:
         try:
             strategy = ChunkingStrategy(self.strategy) if isinstance(self.strategy, str) else self.strategy
         except ValueError as e:
-            logger.warning(f"Invalid strategy value {self.strategy}: {e}")
+            logger.warning("Invalid strategy value %s: %s", self.strategy, e, exc_info=True)
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback
 
         # Convert alternatives to enums
@@ -214,7 +214,7 @@ class ServiceStrategyRecommendation:
                 else:
                     alternative_strategies.append(alt)
             except ValueError as e:
-                logger.warning(f"Invalid alternative strategy {alt}: {e}")
+                logger.warning("Invalid alternative strategy %s: %s", alt, e, exc_info=True)
                 # Skip invalid alternatives
 
         # Build suggested config
@@ -229,7 +229,7 @@ class ServiceStrategyRecommendation:
                 metadata=metadata,
             )
         except ValidationError as e:
-            logger.warning(f"Invalid suggested config: {e}")
+            logger.warning("Invalid suggested config: %s", e, exc_info=True)
             # Use minimal valid config as fallback
             suggested_config = ChunkingConfigBase(strategy=strategy, metadata=metadata)
 
@@ -263,7 +263,7 @@ class ServiceStrategyComparison:
         try:
             strategy = ChunkingStrategy(self.strategy) if isinstance(self.strategy, str) else self.strategy
         except ValueError as e:
-            logger.warning(f"Invalid strategy value {self.strategy}: {e}")
+            logger.warning("Invalid strategy value %s: %s", self.strategy, e, exc_info=True)
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback
 
         # Ensure config has strategy field
@@ -293,7 +293,7 @@ class ServiceStrategyComparison:
         try:
             config = ChunkingConfigBase(**config_data)
         except ValidationError as e:
-            logger.warning(f"Invalid config for comparison: {e}")
+            logger.warning("Invalid config for comparison: %s", e, exc_info=True)
             # Use minimal valid config as fallback
             config = ChunkingConfigBase(strategy=strategy)
 
@@ -399,7 +399,7 @@ class ServiceStrategyMetrics:
         try:
             strategy = ChunkingStrategy(self.strategy) if isinstance(self.strategy, str) else self.strategy
         except ValueError as e:
-            logger.warning(f"Invalid strategy value {self.strategy}: {e}")
+            logger.warning("Invalid strategy value %s: %s", self.strategy, e, exc_info=True)
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback
 
         return StrategyMetrics(
@@ -460,7 +460,7 @@ class ServiceChunkingStats:
                 ChunkingStrategy(self.strategy_used) if isinstance(self.strategy_used, str) else self.strategy_used
             )
         except ValueError as e:
-            logger.warning(f"Invalid strategy value {self.strategy_used}: {e}")
+            logger.warning("Invalid strategy value %s: %s", self.strategy_used, e, exc_info=True)
             strategy = ChunkingStrategy.FIXED_SIZE  # Default fallback
 
         return ChunkingStats(

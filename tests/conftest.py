@@ -1,5 +1,6 @@
 """Shared test configuration and fixtures."""
 
+import asyncio
 import contextlib
 import os
 import sys
@@ -29,7 +30,6 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 import redis.asyncio as redis  # noqa: E402
 from dotenv import dotenv_values, load_dotenv  # noqa: E402
-from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
@@ -45,6 +45,7 @@ from shared.database.factory import (  # noqa: E402
 from shared.database.models import (  # noqa: E402
     Base,
     Collection,
+    CollectionSource,
     CollectionStatus,
     Document,
     DocumentStatus,
@@ -580,8 +581,8 @@ def mock_redis_client() -> None:
 @pytest.fixture()
 def mock_websocket() -> None:
     """Create a mock WebSocket connection."""
-
-    mock = AsyncMock(spec=WebSocket)
+    # Don't use spec - it can cause issues with async methods being auto-specced
+    mock = AsyncMock()
     mock.accept = AsyncMock()
     mock.send_json = AsyncMock()
     mock.close = AsyncMock()
@@ -802,6 +803,34 @@ async def document_factory(db_session) -> None:
 
 
 @pytest_asyncio.fixture
+async def source_factory(db_session) -> None:
+    """Factory for creating test collection sources."""
+
+    created_sources = []
+
+    async def _create_source(**kwargs) -> CollectionSource:
+        defaults = {
+            "collection_id": kwargs.get("collection_id", "test-collection"),
+            "source_path": f"/test/source_{len(created_sources)}",
+            "source_type": "directory",
+            "source_config": {},
+            "document_count": 0,
+            "size_bytes": 0,
+        }
+        defaults.update(kwargs)
+
+        source = CollectionSource(**defaults)
+        db_session.add(source)
+        await db_session.commit()
+        await db_session.refresh(source)
+
+        created_sources.append(source)
+        return source
+
+    yield _create_source
+
+
+@pytest_asyncio.fixture
 async def operation_factory(db_session) -> None:
     """Factory for creating test operations."""
 
@@ -892,3 +921,76 @@ def test_documents_fixture() -> Path:
             return docker_path
         pytest.skip(f"Test data directory not found at {test_data_path}")
     return test_data_path
+
+
+@pytest.fixture()
+def mock_scalable_ws_manager():
+    """Create ScalableWebSocketManager with mocked Redis for testing."""
+    from webui.websocket.scalable_manager import ScalableWebSocketManager
+
+    manager = ScalableWebSocketManager()
+
+    # Create a proper async mock for redis_client with all needed methods
+    mock_redis = AsyncMock()
+    mock_redis.eval = AsyncMock(return_value=1)
+    mock_redis.smembers = AsyncMock(return_value=set())
+    mock_redis.exists = AsyncMock(return_value=True)
+    mock_redis.hget = AsyncMock(return_value=None)
+    mock_redis.hgetall = AsyncMock(return_value={})
+    mock_redis.setex = AsyncMock()
+    mock_redis.expire = AsyncMock()
+    mock_redis.publish = AsyncMock()
+    mock_redis.close = AsyncMock()
+
+    manager.redis_client = mock_redis
+    manager.pubsub = AsyncMock()
+    manager.pubsub.subscribe = AsyncMock()
+    manager.pubsub.unsubscribe = AsyncMock()
+    manager._startup_complete = True
+    manager.running = True
+    return manager
+
+
+@pytest.fixture()
+def mock_chunking_orchestrator():
+    """Mock ChunkingOrchestrator for API tests."""
+    orchestrator = AsyncMock()
+    orchestrator.preview_chunks = AsyncMock(return_value={"chunks": [], "preview_id": "test-id"})
+    orchestrator.get_cached_preview_by_id = AsyncMock(return_value=None)
+    orchestrator.get_strategy_details = AsyncMock(return_value={"name": "recursive", "description": "Test"})
+    orchestrator.list_strategies = AsyncMock(return_value=[{"name": "recursive"}, {"name": "semantic"}])
+    orchestrator.clear_preview_cache = AsyncMock(return_value=True)
+    return orchestrator
+
+
+@pytest.fixture()
+def mock_collection_service():
+    """Mock CollectionService for API tests."""
+    service = AsyncMock()
+    service.create_collection = AsyncMock(return_value=MagicMock(id="col-123", name="Test"))
+    service.get_collection = AsyncMock(return_value=MagicMock(id="col-123", name="Test"))
+    service.create_operation = AsyncMock(return_value=MagicMock(uuid="op-123", status="pending"))
+    service.add_source = AsyncMock()
+    service.delete_collection = AsyncMock()
+    service.reindex_collection = AsyncMock()
+    return service
+
+
+@pytest.fixture()
+def mock_celery_app():
+    """Mock Celery app for task dispatch tests."""
+    app = MagicMock()
+    app.send_task = MagicMock(return_value=MagicMock(id="task-123"))
+    return app
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_pending_tasks():
+    """Clean up any pending asyncio tasks after each test."""
+    yield
+    # Cancel any remaining tasks
+    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
+    for task in pending:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

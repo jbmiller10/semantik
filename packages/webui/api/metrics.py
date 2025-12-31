@@ -32,7 +32,7 @@ def update_metrics_loop() -> None:
         try:
             metrics_collector.update_resource_metrics(force=True)
         except Exception as e:
-            logger.warning(f"Error in metrics update loop: {e}")
+            logger.warning("Error in metrics update loop: %s", e, exc_info=True)
         time.sleep(1)
 
 
@@ -45,7 +45,7 @@ if METRICS_PORT:
         generate_latest = _generate_latest
         registry = _registry
         start_metrics_server(METRICS_PORT)
-        logger.info(f"Metrics server started on port {METRICS_PORT}")
+        logger.info("Metrics server started on port %s", METRICS_PORT)
         METRICS_AVAILABLE = True
 
         # Start background metrics updater thread
@@ -55,7 +55,7 @@ if METRICS_PORT:
         metrics_updater_thread.start()
         logger.info("Started background metrics updater thread")
     except Exception as e:
-        logger.warning(f"Failed to start metrics server: {e}")
+        logger.warning("Failed to start metrics server: %s", e, exc_info=True)
 
 
 @router.get("/metrics")
@@ -75,7 +75,7 @@ async def get_metrics(current_user: User = Depends(get_current_user)) -> dict[st
                     return {"available": True, "metrics_port": METRICS_PORT, "data": response.text}
                 return {"error": "Metrics server not responding", "metrics_port": METRICS_PORT}
         except Exception as e:
-            logger.error(f"Failed to fetch metrics from port {METRICS_PORT}: {e}")
+            logger.error("Failed to fetch metrics from port %s: %s", METRICS_PORT, e, exc_info=True)
             return {"error": f"Metrics not available: {str(e)}", "metrics_port": METRICS_PORT}
 
     try:
@@ -85,5 +85,5 @@ async def get_metrics(current_user: User = Depends(get_current_user)) -> dict[st
             return {"available": True, "metrics_port": METRICS_PORT, "data": metrics_data.decode("utf-8")}
         return {"error": "Metrics not initialized", "metrics_port": METRICS_PORT}
     except Exception as e:
-        logger.error(f"Failed to generate metrics: {e}")
+        logger.error("Failed to generate metrics: %s", e, exc_info=True)
         return {"error": str(e), "metrics_port": METRICS_PORT}

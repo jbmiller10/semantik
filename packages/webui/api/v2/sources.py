@@ -110,7 +110,7 @@ async def list_sources(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail="Access denied") from e
     except Exception as e:
-        logger.error(f"Failed to list sources: {e}")
+        logger.error("Failed to list sources: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to list sources") from e
 
 
@@ -151,7 +151,7 @@ async def get_source(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail="Access denied") from e
     except Exception as e:
-        logger.error(f"Failed to get source: {e}")
+        logger.error("Failed to get source: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to get source") from e
 
 
@@ -200,7 +200,7 @@ async def update_source(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to update source: {e}")
+        logger.error("Failed to update source: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update source") from e
 
 
@@ -239,7 +239,7 @@ async def delete_source(
     except InvalidStateError as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to delete source: {e}")
+        logger.error("Failed to delete source: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete source") from e
 
 

@@ -76,7 +76,7 @@ class QdrantManager:
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         staging_name = f"{self._staging_prefix}{base_name}_{timestamp}"
 
-        logger.info(f"Creating staging collection: {staging_name}")
+        logger.info("Creating staging collection: %s", staging_name)
 
         try:
             # Set default optimizer config if not provided
@@ -97,14 +97,15 @@ class QdrantManager:
             collection_info = self.client.get_collection(staging_name)
             if collection_info:
                 logger.info(
-                    f"Successfully created staging collection {staging_name} "
-                    f"with {collection_info.vectors_count} vectors"
+                    "Successfully created staging collection %s with %s vectors",
+                    staging_name,
+                    collection_info.vectors_count,
                 )
                 return staging_name
             raise Exception(f"Failed to verify staging collection creation: {staging_name}")
 
         except Exception as e:
-            logger.error(f"Failed to create staging collection {staging_name}: {str(e)}")
+            logger.error("Failed to create staging collection %s: %s", staging_name, e, exc_info=True)
             # Attempt cleanup if partially created
             with contextlib.suppress(Exception):
                 self.client.delete_collection(staging_name)
@@ -125,7 +126,7 @@ class QdrantManager:
         Returns:
             List[str]: Names of collections that were deleted (or would be deleted in dry_run)
         """
-        logger.info(f"Starting orphaned collection cleanup (dry_run={dry_run})")
+        logger.info("Starting orphaned collection cleanup (dry_run=%s)", dry_run)
 
         try:
             # Get all collections from Qdrant
@@ -151,11 +152,11 @@ class QdrantManager:
                         if self._is_staging_collection_old(collection_name):
                             orphaned.append(collection_name)
                         else:
-                            logger.info(f"Skipping recent staging collection: {collection_name}")
+                            logger.info("Skipping recent staging collection: %s", collection_name)
                     else:
                         orphaned.append(collection_name)
 
-            logger.info(f"Found {len(orphaned)} orphaned collections")
+            logger.info("Found %d orphaned collections", len(orphaned))
 
             # Delete orphaned collections
             deleted = []
@@ -165,9 +166,17 @@ class QdrantManager:
                     vector_count = collection_info.vectors_count if collection_info else 0
 
                     if dry_run:
-                        logger.info(f"[DRY RUN] Would delete collection {collection_name} with {vector_count} vectors")
+                        logger.info(
+                            "[DRY RUN] Would delete collection %s with %s vectors",
+                            collection_name,
+                            vector_count,
+                        )
                     else:
-                        logger.info(f"Deleting orphaned collection {collection_name} with {vector_count} vectors")
+                        logger.info(
+                            "Deleting orphaned collection %s with %s vectors",
+                            collection_name,
+                            vector_count,
+                        )
                         self.client.delete_collection(collection_name)
                         # Add small delay to avoid overwhelming Qdrant
                         time.sleep(0.1)
@@ -175,13 +184,17 @@ class QdrantManager:
                     deleted.append(collection_name)
 
                 except Exception as e:
-                    logger.error(f"Failed to delete collection {collection_name}: {str(e)}")
+                    logger.error("Failed to delete collection %s: %s", collection_name, e, exc_info=True)
 
-            logger.info(f"Cleanup complete. {'Would delete' if dry_run else 'Deleted'} {len(deleted)} collections")
+            logger.info(
+                "Cleanup complete. %s %d collections",
+                "Would delete" if dry_run else "Deleted",
+                len(deleted),
+            )
             return deleted
 
         except Exception as e:
-            logger.error(f"Error during orphaned collection cleanup: {str(e)}")
+            logger.error("Error during orphaned collection cleanup: %s", e, exc_info=True)
             raise
 
     def list_collections(self) -> list[str]:
@@ -195,7 +208,7 @@ class QdrantManager:
             collections = self.client.get_collections()
             return [col.name for col in collections.collections]
         except Exception as e:
-            logger.error(f"Failed to list collections: {str(e)}")
+            logger.error("Failed to list collections: %s", e, exc_info=True)
             raise
 
     def get_collection_info(self, collection_name: str) -> CollectionInfo:
@@ -218,7 +231,7 @@ class QdrantManager:
                 raise ValueError(f"Collection {collection_name} not found") from e
             raise
         except Exception as e:
-            logger.error(f"Failed to get collection info for {collection_name}: {str(e)}")
+            logger.error("Failed to get collection info for %s: %s", collection_name, e, exc_info=True)
             raise
 
     def collection_exists(self, collection_name: str) -> bool:
@@ -229,7 +242,10 @@ class QdrantManager:
             collection_name: Name of the collection to check
 
         Returns:
-            bool: True if collection exists, False otherwise
+            bool: True if collection exists, False if it does not (404)
+
+        Raises:
+            RuntimeError: If existence cannot be determined due to other errors
         """
         try:
             self.client.get_collection(collection_name)
@@ -237,11 +253,22 @@ class QdrantManager:
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 return False
-            logger.error(f"Unexpected error checking collection {collection_name}: {str(e)}")
-            return False
+            logger.error(
+                "Qdrant API error checking collection '%s': status=%s, message=%s",
+                collection_name,
+                e.status_code,
+                str(e),
+                exc_info=True,
+            )
+            raise RuntimeError(f"Cannot determine if collection '{collection_name}' exists: {e}") from e
         except Exception as e:
-            logger.error(f"Error checking collection existence: {str(e)}")
-            return False
+            logger.error(
+                "Unexpected error checking collection '%s' existence: %s",
+                collection_name,
+                e,
+                exc_info=True,
+            )
+            raise RuntimeError(f"Cannot determine if collection '{collection_name}' exists: {e}") from e
 
     async def get_collection_usage(self, collection_name: str) -> dict[str, int]:
         """Return document, vector, and storage usage metrics for a collection.
@@ -301,7 +328,12 @@ class QdrantManager:
 
                 return age_hours > hours
         except Exception as e:
-            logger.warning(f"Could not parse timestamp from collection name {collection_name}: {str(e)}")
+            logger.warning(
+                "Could not parse timestamp from collection name %s: %s",
+                collection_name,
+                e,
+                exc_info=True,
+            )
             # If we can't parse the timestamp, consider it old to be safe
             return True
 
@@ -322,7 +354,7 @@ class QdrantManager:
         except ValueError:
             return None
         except Exception as e:
-            logger.warning(f"Error getting info for collection {collection_name}: {str(e)}")
+            logger.warning("Error getting info for collection %s: %s", collection_name, e, exc_info=True)
             return None
 
     def validate_collection_health(self, collection_name: str) -> dict[str, Any]:
@@ -399,7 +431,7 @@ class QdrantManager:
                 self.client.delete_collection(old_name)
 
         except Exception:
-            logger.error("Rename failed; rolling back new collection %s", new_name)
+            logger.error("Rename failed; rolling back new collection %s", new_name, exc_info=True)
             with contextlib.suppress(Exception):
                 self.client.delete_collection(new_name)
             raise
@@ -517,7 +549,13 @@ class QdrantManager:
                 with QdrantOperationTimer("rename_collection_index"):
                     self.client.create_payload_index(**create_kwargs)
             except Exception as exc:
-                logger.error("Failed to recreate payload index %s on %s: %s", field_name, destination, exc)
+                logger.error(
+                    "Failed to recreate payload index %s on %s: %s",
+                    field_name,
+                    destination,
+                    exc,
+                    exc_info=True,
+                )
                 raise
 
     @staticmethod

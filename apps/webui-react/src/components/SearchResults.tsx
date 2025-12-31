@@ -279,7 +279,7 @@ function SearchResults({ onSelectSmallerModel }: SearchResultsProps = {}) {
                             <div className="bg-gray-50 border-t border-gray-200">
                               {doc.chunks.map((chunk, index) => (
                                 <div
-                                  key={index}
+                                  key={chunk.chunk_id || `${docId}-${chunk.chunk_index}`}
                                   className={`px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors ${index !== doc.chunks.length - 1 ? 'border-b border-gray-200' : ''
                                     }`}
                                   onClick={() => {/* TODO: Open chunk detail/context view */ }}

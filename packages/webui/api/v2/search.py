@@ -129,7 +129,7 @@ async def multi_collection_search(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
+        logger.error("Search failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed") from e
 
 
@@ -212,5 +212,5 @@ async def single_collection_search(
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Search failed: {e}", exc_info=True)
+        logger.error("Search failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed") from e

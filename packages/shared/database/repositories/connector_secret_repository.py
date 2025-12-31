@@ -132,7 +132,7 @@ class ConnectorSecretRepository:
         except (ValueError, EncryptionNotConfiguredError):
             raise
         except Exception as e:
-            logger.error(f"Failed to store secret for source {source_id}: {e}")
+            logger.error("Failed to store secret for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("store", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -180,7 +180,7 @@ class ConnectorSecretRepository:
         except (ValueError, EncryptionNotConfiguredError, DecryptionError):
             raise
         except Exception as e:
-            logger.error(f"Failed to retrieve secret for source {source_id}: {e}")
+            logger.error("Failed to retrieve secret for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("retrieve", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -219,7 +219,7 @@ class ConnectorSecretRepository:
         except ValueError:
             raise
         except Exception as e:
-            logger.error(f"Failed to check secret existence for source {source_id}: {e}")
+            logger.error("Failed to check secret existence for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("check", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -260,7 +260,7 @@ class ConnectorSecretRepository:
         except ValueError:
             raise
         except Exception as e:
-            logger.error(f"Failed to delete secret for source {source_id}: {e}")
+            logger.error("Failed to delete secret for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("delete", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -290,7 +290,7 @@ class ConnectorSecretRepository:
             return count
 
         except Exception as e:
-            logger.error(f"Failed to delete secrets for source {source_id}: {e}")
+            logger.error("Failed to delete secrets for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("delete_all", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)
@@ -316,7 +316,7 @@ class ConnectorSecretRepository:
             return [row[0] for row in rows]
 
         except Exception as e:
-            logger.error(f"Failed to get secret types for source {source_id}: {e}")
+            logger.error("Failed to get secret types for source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("get_types", "ConnectorSecret", str(e)) from e
 
     @with_db_retry(retries=3, delay=0.3, backoff=2.0, max_delay=5.0)

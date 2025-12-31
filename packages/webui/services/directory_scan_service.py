@@ -1,5 +1,6 @@
 """Directory scan service for previewing directory contents without creating collections."""
 
+import asyncio
 import logging
 import mimetypes
 import os
@@ -82,7 +83,7 @@ class DirectoryScanService:
         channel_id = f"directory-scan:{scan_id}"
 
         # First, count total files for progress tracking
-        logger.info(f"Starting file count for directory: {path}")
+        logger.info("Starting file count for directory: %s", path)
         try:
             await self._send_progress(
                 channel_id=channel_id,
@@ -93,7 +94,7 @@ class DirectoryScanService:
 
             total_files = await self._count_files(scan_path, recursive, include_patterns, exclude_patterns)
 
-            logger.info(f"Found {total_files} supported files in {path}")
+            logger.info("Found %d supported files in %s", total_files, path)
 
             await self._send_progress(
                 channel_id=channel_id,
@@ -107,7 +108,7 @@ class DirectoryScanService:
                 },
             )
         except Exception as e:
-            logger.warning(f"Error counting files: {e}")
+            logger.warning("Error counting files: %s", e, exc_info=True)
             # Continue without total count
 
         # Scan files
@@ -143,7 +144,8 @@ class DirectoryScanService:
                             )
             else:
                 # Non-recursive scan
-                for entry in os.listdir(scan_path):
+                entries = await asyncio.to_thread(os.listdir, scan_path)
+                for entry in entries:
                     entry_path = scan_path / entry
                     if entry_path.is_file():
                         file_info, warning = await self._scan_file(entry_path, include_patterns, exclude_patterns)
@@ -169,7 +171,7 @@ class DirectoryScanService:
                                 )
 
         except Exception as e:
-            logger.error(f"Error during directory scan: {e}")
+            logger.error("Error during directory scan: %s", e, exc_info=True)
             await self._send_progress(
                 channel_id=channel_id,
                 scan_id=scan_id,
@@ -211,9 +213,10 @@ class DirectoryScanService:
         exclude_patterns: list[str] | None,
     ) -> int:
         """Count supported files in directory."""
-        count = 0
 
-        try:
+        def _count_files_sync() -> int:
+            count = 0
+
             if recursive:
                 for root, _, files in os.walk(path):
                     for filename in files:
@@ -227,10 +230,13 @@ class DirectoryScanService:
                         entry_path, include_patterns, exclude_patterns
                     ):
                         count += 1
-        except Exception as e:
-            logger.warning(f"Error counting files in {path}: {e}")
+            return count
 
-        return count
+        try:
+            return await asyncio.to_thread(_count_files_sync)
+        except Exception as e:
+            logger.warning("Error counting files in %s: %s", path, e, exc_info=True)
+            return 0
 
     async def _scan_recursive(
         self,
@@ -240,13 +246,15 @@ class DirectoryScanService:
     ) -> AsyncIterator[tuple[DirectoryScanFile | None, str | None]]:
         """Recursively scan directory yielding file info or warnings."""
         try:
-            for root, _, files in os.walk(path):
+            walk_results = await asyncio.to_thread(lambda: list(os.walk(path)))
+            for root, _, files in walk_results:
                 for filename in files:
                     file_path = Path(root) / filename
                     file_info, warning = await self._scan_file(file_path, include_patterns, exclude_patterns)
                     yield file_info, warning
+                    await asyncio.sleep(0)
         except Exception as e:
-            logger.error(f"Error scanning directory {path}: {e}")
+            logger.error("Error scanning directory %s: %s", path, e, exc_info=True)
             yield None, f"Error scanning directory {path}: {str(e)}"
 
     async def _scan_file(
@@ -289,7 +297,7 @@ class DirectoryScanService:
         except PermissionError:
             return None, f"Permission denied: {file_path}"
         except Exception as e:
-            logger.warning(f"Error scanning file {file_path}: {e}")
+            logger.warning("Error scanning file %s: %s", file_path, e, exc_info=True)
             return None, f"Error scanning file {file_path}: {str(e)}"
 
     def _should_include_file(
@@ -321,8 +329,7 @@ class DirectoryScanService:
         Delegates to shared.utils.hashing.compute_file_hash for consistent
         hashing across the codebase.
         """
-        result: str = compute_file_hash(file_path)
-        return result
+        return await asyncio.to_thread(compute_file_hash, file_path)
 
     def _get_mime_type(self, file_path: Path) -> str | None:
         """Get MIME type for a file."""
@@ -370,4 +377,4 @@ class DirectoryScanService:
             # Use send_to_operation since scan_id is treated as operation_id in the WebSocket handler
             await ws_manager.send_to_operation(scan_id, progress_msg.model_dump())
         except Exception as e:
-            logger.warning(f"Failed to send WebSocket progress update: {e}")
+            logger.warning("Failed to send WebSocket progress update: %s", e, exc_info=True)

@@ -374,6 +374,7 @@ async def _process_reindex_operation_impl(
                     "Failed to ensure metadata collection before storing staging metadata for %s: %s",
                     staging_collection_name,
                     ensure_exc,
+                    exc_info=True,
                 )
 
             store_collection_metadata(
@@ -396,7 +397,7 @@ async def _process_reindex_operation_impl(
                 ensure=False,
             )
         except Exception as exc:
-            logger.warning("Failed to store staging collection metadata: %s", exc)
+            logger.warning("Failed to store staging collection metadata: %s", exc, exc_info=True)
 
         await collection_repo.update(
             collection["id"],
@@ -576,6 +577,7 @@ async def _process_reindex_operation_impl(
                                         exc,
                                         actual_dim,
                                         expected_dim,
+                                        exc_info=True,
                                     )
                                     embeddings = adjust_embeddings_dimension(
                                         embeddings, target_dimension=expected_dim, normalize=True
@@ -585,7 +587,7 @@ async def _process_reindex_operation_impl(
                                         "Embedding dimension mismatch during reindexing: {}. Staging collection {} expects {}-dimensional vectors, "
                                         "but model {} produced {}-dimensional vectors."
                                     ).format(exc, staging_collection_name, expected_dim, model_name, actual_dim)
-                                    logger.error(error_msg)
+                                    logger.error("%s", error_msg, exc_info=True)
                                     raise ValueError(error_msg) from exc
 
                     points = []
@@ -645,7 +647,7 @@ async def _process_reindex_operation_impl(
                     gc.collect()
 
                 except Exception as exc:
-                    logger.error("Failed to reprocess document %s: %s", file_path, exc)
+                    logger.error("Failed to reprocess document %s: %s", file_path, exc, exc_info=True)
                     failed_count += 1
 
                     if document_id:
@@ -657,7 +659,11 @@ async def _process_reindex_operation_impl(
                             )
                             logger.info("Marked document %s as FAILED due to reprocessing error", document_id)
                         except Exception as update_error:
-                            logger.error("Failed to update document status to FAILED: %s", update_error)
+                            logger.error(
+                                "Failed to update document status to FAILED: %s",
+                                update_error,
+                                exc_info=True,
+                            )
 
             progress = (processed_count / total_documents) * 100 if total_documents > 0 else 0
             await updater.send_update(
@@ -807,6 +813,7 @@ async def _process_reindex_operation_impl(
         logger.error(
             "Failed to reindex collection at checkpoint: %s",
             checkpoints[-1][0] if checkpoints else "unknown",
+            exc_info=True,
         )
 
         if staging_collection_name:
@@ -814,7 +821,7 @@ async def _process_reindex_operation_impl(
                 qdrant_client.delete_collection(staging_collection_name)
                 logger.info("Cleaned up staging collection %s", staging_collection_name)
             except Exception as cleanup_error:
-                logger.error("Failed to cleanup staging collection: %s", cleanup_error)
+                logger.error("Failed to cleanup staging collection: %s", cleanup_error, exc_info=True)
 
             await collection_repo.update(collection["id"], {"qdrant_staging": None})
 
@@ -903,7 +910,7 @@ async def _validate_reindex(
                             )
 
             except Exception as exc:
-                logger.warning("Failed to perform search validation: %s", exc)
+                logger.warning("Failed to perform search validation: %s", exc, exc_info=True)
                 issues.append(f"Could not validate search quality: {str(exc)}")
 
         if hasattr(old_info.config, "params") and hasattr(new_info.config, "params"):
@@ -935,7 +942,7 @@ async def _validate_reindex(
         }
 
     except Exception as exc:
-        logger.error("Validation error: %s", exc)
+        logger.error("Validation error: %s", exc, exc_info=True)
         return {
             "passed": False,
             "issues": [f"Validation error: {str(exc)}"],
@@ -970,7 +977,7 @@ async def _cleanup_staging_resources(collection_id: str, operation: dict) -> Non
                 try:
                     staging_info = json.loads(staging_info)
                 except json.JSONDecodeError:
-                    logger.error("Failed to parse staging info: %s", staging_info)
+                    logger.error("Failed to parse staging info: %s", staging_info, exc_info=True)
                     return
 
             staging_collections = []
@@ -996,7 +1003,12 @@ async def _cleanup_staging_resources(collection_id: str, operation: dict) -> Non
                     else:
                         logger.warning("Staging collection %s not found in Qdrant", staging_collection)
                 except Exception as exc:
-                    logger.error("Failed to delete staging collection %s: %s", staging_collection, exc)
+                    logger.error(
+                        "Failed to delete staging collection %s: %s",
+                        staging_collection,
+                        exc,
+                        exc_info=True,
+                    )
 
             await collection_repo.update(collection_id, {"qdrant_staging": None})
 

@@ -48,20 +48,29 @@ if _os.getenv("TESTING", "false").lower() in ("true", "1", "yes"):
         # If fakeredis isn't available, skip patching
         pass
 
-# Import Celery app
-try:
-    from .celery_app import celery_app
-except Exception as exc:  # pragma: no cover - fail fast with guidance
-    raise RuntimeError(
-        "Failed to import webui.celery_app. Ensure required environment (e.g., JWT_SECRET_KEY) "
-        "and dependencies are configured before importing webui."
-    ) from exc
-
-try:
-    from .main import app
-except Exception as exc:  # pragma: no cover
-    raise RuntimeError(
-        "Failed to import webui.main. Verify configuration (including JWT_SECRET_KEY) and dependencies."
-    ) from exc
-
 __all__ = ["app", "celery_app"]
+
+
+def __getattr__(name: str):  # pragma: no cover - exercised indirectly in imports
+    if name == "celery_app":
+        try:
+            from .celery_app import celery_app as _celery_app
+        except Exception as exc:  # pragma: no cover - fail fast with guidance
+            raise RuntimeError(
+                "Failed to import webui.celery_app. Ensure required environment (e.g., JWT_SECRET_KEY) "
+                "and dependencies are configured before importing webui."
+            ) from exc
+        return _celery_app
+    if name == "app":
+        try:
+            from .main import app as _app
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError(
+                "Failed to import webui.main. Verify configuration (including JWT_SECRET_KEY) and dependencies."
+            ) from exc
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted({*globals().keys(), *__all__})

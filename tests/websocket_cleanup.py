@@ -25,7 +25,7 @@ class MockWebSocket:
         self.should_fail = should_fail
         self.connection_state = "open"
 
-    async def accept(self) -> None:
+    async def accept(self, subprotocol: str | None = None) -> None:  # noqa: ARG002
         """Accept the WebSocket connection."""
         self.accepted = True
 
@@ -304,6 +304,23 @@ class TestTTLManagement:
         # If no more connections, set should be removed
         exists = await redis_client.exists(user_key)
         assert not exists
+
+    @pytest.mark.asyncio()
+    async def test_connection_heartbeat_ttl(self, manager, redis_client) -> None:
+        """Test that per-connection heartbeat keys are created and cleaned up."""
+        await manager.startup()
+
+        ws = MockWebSocket()
+        user_id = "heartbeat_user"
+        conn_id = await manager.connect(ws, user_id)
+
+        heartbeat_key = f"websocket:connection:heartbeat:{conn_id}"
+        ttl = await redis_client.ttl(heartbeat_key)
+        assert ttl > 0
+
+        await manager.disconnect(conn_id)
+
+        assert not await redis_client.exists(heartbeat_key)
 
     @pytest.mark.asyncio()
     async def test_connection_data_persistence(self, manager, redis_client) -> None:

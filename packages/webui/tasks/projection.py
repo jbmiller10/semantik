@@ -753,6 +753,7 @@ async def _compute_projection_async(projection_id: str) -> dict[str, Any]:
                             requested_reducer,
                             projection_id,
                             exc,
+                            exc_info=True,
                         )
                         projection_result = _compute_pca_projection(vectors_array)
                         reducer_used = "pca"

@@ -406,6 +406,6 @@ class DocumentRegistryService:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to store artifact for document {document_id}: {e}")
+            logger.error("Failed to store artifact for document %s: %s", document_id, e, exc_info=True)
             # Don't fail the registration - artifact is optional
             return False

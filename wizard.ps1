@@ -19,14 +19,14 @@ try {
         $minor = [int]$matches[2]
         Write-Host "✅ $pythonVersion detected" -ForegroundColor Green
         
-        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 12)) {
-            Write-Host "❌ Error: Python 3.12 or higher is required" -ForegroundColor Red
+        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 11)) {
+            Write-Host "❌ Error: Python 3.11 or higher is required" -ForegroundColor Red
             exit 1
         }
     }
 } catch {
     Write-Host "❌ Error: Python 3 is required but not found" -ForegroundColor Red
-    Write-Host "Please install Python 3.12 or higher from https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "Please install Python 3.11 or higher from https://www.python.org/downloads/" -ForegroundColor Yellow
     exit 1
 }
 

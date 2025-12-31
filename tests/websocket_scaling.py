@@ -24,7 +24,7 @@ class MockWebSocket:
         self.sent_messages: list[dict[str, Any]] = []
         self.connection_state = "open"
 
-    async def accept(self) -> None:
+    async def accept(self, subprotocol: str | None = None) -> None:  # noqa: ARG002
         """Accept the WebSocket connection."""
         self.accepted = True
 

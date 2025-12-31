@@ -33,8 +33,21 @@ class WebuiConfig(BaseConfig):
     # Search Configuration
     SEARCH_CANDIDATE_MULTIPLIER: int = 3  # How many candidates to retrieve for re-ranking (k * multiplier)
 
+    # Resource limits (configurable)
+    MAX_COLLECTIONS_PER_USER: int = 10
+    MAX_STORAGE_GB_PER_USER: float = 50.0
+
+    # Cache defaults
+    CACHE_DEFAULT_TTL_SECONDS: int = 300
+
     # Redis Configuration (for Celery and WebSocket pub/sub)
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Background cleanup circuit breaker configuration
+    REDIS_CLEANUP_INTERVAL_SECONDS: int = 60
+    REDIS_CLEANUP_MAX_CONSECUTIVE_FAILURES: int = 5
+    REDIS_CLEANUP_BACKOFF_MULTIPLIER: float = 2.0
+    REDIS_CLEANUP_MAX_BACKOFF_SECONDS: int = 300
 
     # CORS Configuration
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080"
@@ -102,6 +115,33 @@ class WebuiConfig(BaseConfig):
                 "Generate with: python scripts/generate_secrets_key.py"
             ) from e
 
+        return value
+
+    @field_validator(
+        "MAX_COLLECTIONS_PER_USER",
+        "CACHE_DEFAULT_TTL_SECONDS",
+        "REDIS_CLEANUP_INTERVAL_SECONDS",
+        "REDIS_CLEANUP_MAX_CONSECUTIVE_FAILURES",
+        "REDIS_CLEANUP_MAX_BACKOFF_SECONDS",
+    )
+    @classmethod
+    def _validate_positive_ints(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Value must be a positive integer")
+        return value
+
+    @field_validator("MAX_STORAGE_GB_PER_USER")
+    @classmethod
+    def _validate_positive_float(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Value must be a positive number")
+        return value
+
+    @field_validator("REDIS_CLEANUP_BACKOFF_MULTIPLIER")
+    @classmethod
+    def _validate_backoff_multiplier(cls, value: float) -> float:
+        if value < 1.0:
+            raise ValueError("REDIS_CLEANUP_BACKOFF_MULTIPLIER must be >= 1.0")
         return value
 
     @property

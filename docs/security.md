@@ -45,7 +45,7 @@ For service-to-service communication. Auto-generated in dev, required in product
 
 **Stack:** Correlation ID → CSP → CORS → Rate Limiting
 
-**CORS:** Set via `CORS_ORIGINS` env var. Wildcards rejected in production.
+**CORS:** Set via `CORS_ORIGINS` env var. Wildcards (`*`) and `null` origins are rejected in all environments.
 
 **CSP:** XSS protection with strict policies. Chunking endpoints get extra-strict CSP.
 

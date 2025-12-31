@@ -7,15 +7,23 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+# Import cache module via the same path the service uses to avoid module aliasing issues
+# (packages.vecpipe vs vecpipe can create separate module instances)
 from vecpipe.search import cache
+from vecpipe.search.cache import (
+    clear_cache as clear_cache_direct,
+)
 
 
 @pytest.fixture(autouse=True)
 def _clear_caches():
     """Clear all caches before and after each test."""
+    # Clear both module instances to handle aliasing
     cache.clear_cache()
+    clear_cache_direct()
     yield
     cache.clear_cache()
+    clear_cache_direct()
 
 
 class TestCollectionInfoCache:
@@ -185,21 +193,33 @@ class TestSearchUtilsConnectionCleanup:
 
 
 class TestCachedCollectionMetadataHelper:
-    """Tests for _get_cached_collection_metadata helper."""
+    """Tests for _get_cached_collection_metadata helper.
+
+    Note: These tests mock cache functions at the service module level to avoid
+    module aliasing issues (packages.vecpipe vs vecpipe can create separate instances).
+    """
 
     @pytest.mark.asyncio()
     async def test_cache_hit_skips_qdrant_call(self):
         """When cache has data, Qdrant should not be called."""
+        # Pre-import the cache module to ensure it's loaded before patching
+        # This is necessary because the service uses lazy imports
+        import vecpipe.search.cache  # noqa: F401
         from vecpipe.search.service import _get_cached_collection_metadata
 
         metadata = {"model_name": "test-model", "quantization": "float32"}
-        cache.set_collection_metadata("test_collection", metadata)
 
         mock_cfg = AsyncMock()
         mock_cfg.QDRANT_HOST = "localhost"
         mock_cfg.QDRANT_PORT = 6333
 
-        with patch("shared.database.collection_metadata.get_collection_metadata_async") as mock_fetch:
+        # Mock the cache functions - must patch vecpipe.search.cache since that's
+        # the import path used by the service module
+        with (
+            patch("vecpipe.search.cache.get_collection_metadata", return_value=metadata),
+            patch("vecpipe.search.cache.is_cache_miss", return_value=False),
+            patch("shared.database.collection_metadata.get_collection_metadata_async") as mock_fetch,
+        ):
             result = await _get_cached_collection_metadata("test_collection", mock_cfg)
 
             # Should return cached value
@@ -210,10 +230,13 @@ class TestCachedCollectionMetadataHelper:
     @pytest.mark.asyncio()
     async def test_cache_miss_calls_qdrant_and_caches(self):
         """When cache misses, should fetch from Qdrant and cache result."""
+        # Pre-import the cache module to ensure it's loaded before patching
+        import vecpipe.search.cache  # noqa: F401
         from vecpipe.search import state as search_state
         from vecpipe.search.service import _get_cached_collection_metadata
 
         metadata = {"model_name": "fetched-model", "quantization": "int8"}
+        cache_miss_sentinel = {"__cache_miss__": True}
 
         mock_sdk_client = AsyncMock()
         original_sdk_client = search_state.sdk_client
@@ -222,14 +245,24 @@ class TestCachedCollectionMetadataHelper:
         mock_cfg.QDRANT_HOST = "localhost"
         mock_cfg.QDRANT_PORT = 6333
 
+        cached_values = {}
+
+        def mock_set_cache(name, value):
+            cached_values[name] = value
+
         try:
             search_state.sdk_client = mock_sdk_client
 
-            with patch(
-                "shared.database.collection_metadata.get_collection_metadata_async",
-                new_callable=AsyncMock,
-                return_value=metadata,
-            ) as mock_fetch:
+            with (
+                patch("vecpipe.search.cache.get_collection_metadata", return_value=cache_miss_sentinel),
+                patch("vecpipe.search.cache.is_cache_miss", return_value=True),
+                patch("vecpipe.search.cache.set_collection_metadata", side_effect=mock_set_cache),
+                patch(
+                    "shared.database.collection_metadata.get_collection_metadata_async",
+                    new_callable=AsyncMock,
+                    return_value=metadata,
+                ) as mock_fetch,
+            ):
                 result = await _get_cached_collection_metadata("new_collection", mock_cfg)
 
                 # Should return fetched value
@@ -237,9 +270,8 @@ class TestCachedCollectionMetadataHelper:
                 # Should call Qdrant
                 mock_fetch.assert_awaited_once()
 
-                # Should now be cached
-                cached = cache.get_collection_metadata("new_collection")
-                assert not cache.is_cache_miss(cached)
-                assert cached == metadata
+                # Should have cached the result
+                assert "new_collection" in cached_values
+                assert cached_values["new_collection"] == metadata
         finally:
             search_state.sdk_client = original_sdk_client

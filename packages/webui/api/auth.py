@@ -10,9 +10,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from shared.database.base import AuthRepository, UserRepository
+from webui.api.schemas import UserResponse
 from webui.auth import (
     Token,
-    User,
     UserCreate,
     UserLogin,
     create_access_token,
@@ -20,6 +20,7 @@ from webui.auth import (
     get_current_user,
     get_password_hash,
     pwd_context,
+    sanitize_user_dict,
 )
 from webui.dependencies import get_auth_repository, get_user_repository
 
@@ -36,11 +37,11 @@ class LogoutRequest(BaseModel):
     refresh_token: str | None = None
 
 
-@router.post("/register", response_model=User)
+@router.post("/register", response_model=UserResponse)
 async def register(
     user_data: UserCreate,
     user_repo: UserRepository = Depends(get_user_repository),
-) -> User:
+) -> UserResponse:
     """Register a new user"""
     try:
         hashed_password = get_password_hash(user_data.password)
@@ -62,11 +63,11 @@ async def register(
 
         if is_first_user:
             logger.info(f"Created first user '{user_data.username}' as superuser")
-        return User(**user_dict)
+        return UserResponse(**sanitize_user_dict(user_dict))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Registration error: {e}")
+        logger.error("Registration error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Registration failed") from e
 
 
@@ -154,7 +155,7 @@ async def logout(
     return {"message": "Logged out successfully"}
 
 
-@router.get("/me", response_model=User)
-async def get_me(current_user: dict[str, Any] = Depends(get_current_user)) -> User:
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: dict[str, Any] = Depends(get_current_user)) -> UserResponse:
     """Get current user info"""
-    return User(**current_user)
+    return UserResponse(**current_user)

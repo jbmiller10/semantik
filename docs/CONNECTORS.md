@@ -9,6 +9,7 @@ Semantik ingests documents via *connectors*: per-source implementations that kno
 - `imap`: Connect to an IMAP mailbox and index emails as markdown documents.
 
 The connector catalog exposed by the API is the source of truth for supported fields/secrets and UI metadata.
+Connector plugins can add additional `source_type` values; use `GET /api/v2/connectors` to discover what is enabled.
 
 ## Connector Secrets Encryption (`CONNECTOR_SECRETS_KEY`)
 
@@ -70,10 +71,10 @@ Preview endpoints validate connectivity only; they are not a substitute for secu
    - `GET /api/v2/collections/{collection_id}/sources`
 3. Store encrypted secrets and configure sync (optional):
    - `PATCH /api/v2/collections/{collection_id}/sources/{source_id}`
-4. Trigger runs and scheduling:
-   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`
-   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/pause`
-   - `POST /api/v2/collections/{collection_id}/sources/{source_id}/resume`
+4. Trigger runs and scheduling (collection-level):
+   - `POST /api/v2/collections/{collection_id}/sync/run`
+   - `POST /api/v2/collections/{collection_id}/sync/pause`
+   - `POST /api/v2/collections/{collection_id}/sync/resume`
 
 ### IMAP
 ```json
@@ -96,4 +97,3 @@ Preview endpoints validate connectivity only; they are not a substitute for secu
 For Git/IMAP (and other non-filesystem sources), Semantik stores a canonical representation of content in the `document_artifacts` table. The document content endpoint prefers artifacts and falls back to filesystem serving for local directory sources:
 
 - `GET /api/v2/collections/{collection_id}/documents/{document_id}/content`
-

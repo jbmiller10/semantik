@@ -2,6 +2,7 @@
 """Safe regex operations with ReDoS protection."""
 
 import logging
+from functools import lru_cache
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,19 @@ class RegexTimeoutError(Exception):
 RegexTimeout = RegexTimeoutError
 
 
+@lru_cache(maxsize=100)
+def _compile_regex_cached(pattern: str, use_re2: bool, flags: int) -> Pattern[str] | Any:
+    """Compile and cache regex patterns with LRU eviction."""
+    if use_re2 and HAS_RE2:
+        try:
+            # RE2 doesn't support all Python regex features but is safe
+            return re2.compile(pattern, flags=flags)
+        except Exception:
+            # Fall back to regex module with timeout protection
+            logger.debug("RE2 compilation failed for pattern: %s. Using regex module.", pattern)
+    return regex.compile(pattern, flags=flags)
+
+
 class SafeRegex:
     """Safe regex operations with ReDoS protection."""
 
@@ -57,7 +71,14 @@ class SafeRegex:
             timeout: Maximum time allowed for regex operations (seconds)
         """
         self.timeout = timeout
-        self._pattern_cache: dict[tuple[str, bool, int], Pattern[str] | Any] = {}
+
+    def clear_cache(self) -> None:
+        """Clear the compiled pattern cache."""
+        _compile_regex_cached.cache_clear()
+
+    def cache_info(self):  # type: ignore[override]
+        """Return cache statistics for compiled patterns."""
+        return _compile_regex_cached.cache_info()
 
     def compile_safe(self, pattern: str, use_re2: bool = True, flags: int = 0) -> Pattern[str] | Any:
         """Compile pattern with safety checks.
@@ -73,31 +94,11 @@ class SafeRegex:
         Raises:
             ValueError: If pattern is deemed unsafe
         """
-        # Check cache first
-        cache_key = (pattern, use_re2, flags)
-        if cache_key in self._pattern_cache:
-            return self._pattern_cache[cache_key]
-
         # Check pattern complexity
         if self._is_pattern_dangerous(pattern):
             raise ValueError(f"Pattern rejected as potentially dangerous: {pattern}")
 
-        if use_re2 and HAS_RE2:
-            try:
-                # RE2 doesn't support all Python regex features but is safe
-                compiled = re2.compile(pattern, flags=flags)
-            except Exception:
-                # Fall back to regex module with timeout protection
-                logger.debug(f"RE2 compilation failed for pattern: {pattern}. Using regex module.")
-                compiled = regex.compile(pattern, flags=flags)
-        else:
-            compiled = regex.compile(pattern, flags=flags)
-
-        # Cache the compiled pattern (limit cache size)
-        if len(self._pattern_cache) < 100:
-            self._pattern_cache[cache_key] = compiled
-
-        return compiled
+        return _compile_regex_cached(pattern, use_re2, flags)
 
     def match_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match[str] | None:
         """Match pattern with timeout protection.
@@ -127,7 +128,7 @@ class SafeRegex:
                 raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
             raise
         except Exception as e:
-            logger.error(f"Match failed: {e}")
+            logger.error("Match failed: %s", e, exc_info=True)
             return None
 
     def findall_safe(self, pattern: str, text: str, max_matches: int = 1000, flags: int = 0) -> list[str]:
@@ -165,7 +166,7 @@ class SafeRegex:
                 raise RegexTimeoutError(f"Regex timeout after {self.timeout}s. Pattern: {pattern[:50]}...") from None
             raise
         except Exception as e:
-            logger.error(f"Findall failed: {e}")
+            logger.error("Findall failed: %s", e, exc_info=True)
             return []
 
     def search_with_timeout(self, pattern: str, text: str, timeout: float | None = None) -> Match[str] | None:
@@ -196,7 +197,7 @@ class SafeRegex:
                 raise RegexTimeoutError(f"Regex timeout after {timeout}s. Pattern: {pattern[:50]}...") from None
             raise
         except Exception as e:
-            logger.error(f"Search failed: {e}")
+            logger.error("Search failed: %s", e, exc_info=True)
             return None
 
     def _is_pattern_dangerous(self, pattern: str) -> bool:

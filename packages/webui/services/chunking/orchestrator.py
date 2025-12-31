@@ -398,7 +398,7 @@ class ChunkingOrchestrator:
             except Exception as e:
                 fallback_used = True
                 fallback_reason = getattr(e, "reason", None) or type(e).__name__
-                logger.warning("Strategy %s failed, using fallback: %s", strategy, str(e))
+                logger.warning("Strategy %s failed, using fallback: %s", strategy, e, exc_info=True)
                 self.metrics.record_fallback(strategy)
                 chunks = await self.processor.process_document(content, strategy, merged_config, use_fallback=True)
 

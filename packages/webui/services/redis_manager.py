@@ -170,7 +170,7 @@ class RedisManager:
                 yield pipe
                 await pipe.execute()
             except Exception as e:
-                logger.error("Async Redis transaction failed: %s", e)
+                logger.error("Async Redis transaction failed: %s", e, exc_info=True)
                 raise
 
     @contextmanager
@@ -195,7 +195,7 @@ class RedisManager:
                 yield pipe
                 pipe.execute()
             except Exception as e:
-                logger.error("Sync Redis transaction failed: %s", e)
+                logger.error("Sync Redis transaction failed: %s", e, exc_info=True)
                 raise
 
     async def close_async(self) -> None:
@@ -239,7 +239,7 @@ class RedisManager:
             await client.ping()
             return True
         except Exception as e:
-            logger.warning("Async Redis health check failed: %s", e)
+            logger.warning("Async Redis health check failed: %s", e, exc_info=True)
             return False
 
     def health_check_sync(self) -> bool:
@@ -252,5 +252,5 @@ class RedisManager:
             self.sync_client.ping()
             return True
         except Exception as e:
-            logger.warning("Sync Redis health check failed: %s", e)
+            logger.warning("Sync Redis health check failed: %s", e, exc_info=True)
             return False

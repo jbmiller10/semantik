@@ -149,7 +149,7 @@ async def create_collection(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to create collection: {e}", exc_info=True)
+        logger.error("Failed to create collection: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to create collection",
@@ -196,7 +196,7 @@ async def list_collections(
         )
 
     except Exception as e:
-        logger.error(f"Failed to list collections: {e}", exc_info=True)
+        logger.error("Failed to list collections: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list collections",
@@ -285,7 +285,7 @@ async def update_collection(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to update collection: {e}", exc_info=True)
+        logger.error("Failed to update collection: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to update collection",
@@ -340,7 +340,7 @@ async def delete_collection(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to delete collection: {e}", exc_info=True)
+        logger.error("Failed to delete collection: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to delete collection",
@@ -423,7 +423,7 @@ async def add_source(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to add source: {e}")
+        logger.error("Failed to add source: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to add source",
@@ -490,7 +490,7 @@ async def remove_source(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to remove source: {e}")
+        logger.error("Failed to remove source: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to remove source",
@@ -558,7 +558,7 @@ async def reindex_collection(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to reindex collection: {e}")
+        logger.error("Failed to reindex collection: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to reindex collection",
@@ -633,7 +633,7 @@ async def list_collection_operations(
             detail="You don't have access to this collection",
         ) from e
     except Exception as e:
-        logger.error(f"Failed to list operations: {e}")
+        logger.error("Failed to list operations: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list operations",
@@ -718,7 +718,7 @@ async def list_collection_documents(
             detail="You don't have access to this collection",
         ) from e
     except Exception as e:
-        logger.error(f"Failed to list documents: {e}")
+        logger.error("Failed to list documents: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list documents",
@@ -791,7 +791,7 @@ async def run_collection_sync(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to run collection sync: {e}")
+        logger.error("Failed to run collection sync: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to run collection sync",
@@ -841,7 +841,7 @@ async def pause_collection_sync(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to pause collection sync: {e}")
+        logger.error("Failed to pause collection sync: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to pause collection sync",
@@ -891,7 +891,7 @@ async def resume_collection_sync(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to resume collection sync: {e}")
+        logger.error("Failed to resume collection sync: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to resume collection sync",
@@ -958,7 +958,7 @@ async def list_collection_sync_runs(
             detail="You don't have access to this collection",
         ) from e
     except Exception as e:
-        logger.error(f"Failed to list sync runs: {e}")
+        logger.error("Failed to list sync runs: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list sync runs",

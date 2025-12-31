@@ -122,7 +122,7 @@ async def list_strategies(
         return [entry.to_api_model() for entry in strategies]
 
     except Exception as e:
-        logger.error(f"Failed to list strategies: {e}")
+        logger.error("Failed to list strategies: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list strategies",
@@ -162,7 +162,7 @@ async def get_strategy_details(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get strategy details: {e}")
+        logger.error("Failed to get strategy details: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get strategy details",
@@ -195,7 +195,7 @@ async def recommend_strategy(
         raise TypeError(f"Unsupported recommendation payload type: {type(resolved)!r}")
 
     except Exception as e:
-        logger.error(f"Failed to get strategy recommendation: {e}")
+        logger.error("Failed to get strategy recommendation: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate strategy recommendation",
@@ -347,7 +347,7 @@ async def compare_strategies(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Strategy comparison failed: {e}")
+        logger.error("Strategy comparison failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to compare strategies",
@@ -395,7 +395,7 @@ async def get_cached_preview(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to retrieve preview: {e}")
+        logger.error("Failed to retrieve preview: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve preview",
@@ -420,7 +420,7 @@ async def clear_preview_cache(
     try:
         await service.clear_preview_cache(preview_id)
     except Exception as e:
-        logger.warning(f"Failed to clear preview cache: {e}")
+        logger.warning("Failed to clear preview cache: %s", e, exc_info=True)
         # Don't raise error for cache clear failures
 
 
@@ -489,7 +489,7 @@ async def start_chunking_operation(
 
             celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
         except Exception as exc:  # pragma: no cover - defensive dispatch
-            logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc)
+            logger.warning("Failed to enqueue chunking operation %s: %s", operation["uuid"], exc, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Chunking task could not be queued; retry later.",
@@ -517,7 +517,7 @@ async def start_chunking_operation(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to start chunking operation: {e}")
+        logger.error("Failed to start chunking operation: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to start chunking operation",
@@ -574,7 +574,7 @@ async def update_chunking_strategy(
 
                 celery_app.send_task("webui.tasks.process_collection_operation", args=[operation["uuid"]])
             except Exception as exc:  # pragma: no cover
-                logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc)
+                logger.warning("Failed to enqueue rechunking operation %s: %s", operation["uuid"], exc, exc_info=True)
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                     detail="Rechunking task could not be queued; retry later.",
@@ -597,7 +597,7 @@ async def update_chunking_strategy(
         )
 
     except Exception as e:
-        logger.error(f"Failed to update chunking strategy: {e}")
+        logger.error("Failed to update chunking strategy: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update chunking strategy",
@@ -643,7 +643,7 @@ async def get_collection_chunks(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to fetch chunks: {e}")
+        logger.error("Failed to fetch chunks: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chunks",
@@ -679,7 +679,7 @@ async def get_chunking_stats(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to fetch chunking stats: {e}")
+        logger.error("Failed to fetch chunking stats: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch chunking statistics",
@@ -718,7 +718,7 @@ async def get_global_metrics(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to fetch global metrics: {e}")
+        logger.error("Failed to fetch global metrics: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch global metrics",
@@ -751,7 +751,7 @@ async def get_metrics_by_strategy(
         return [cast(StrategyMetrics, dto.to_api_model()) for dto in metrics_dtos]
 
     except Exception as e:
-        logger.error(f"Failed to fetch strategy metrics: {e}")
+        logger.error("Failed to fetch strategy metrics: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch strategy metrics",
@@ -782,7 +782,7 @@ async def get_quality_scores(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to analyze quality: {e}")
+        logger.error("Failed to analyze quality: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze chunk quality",
@@ -820,7 +820,7 @@ async def analyze_document(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to analyze document: {e}")
+        logger.error("Failed to analyze document: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to analyze document",
@@ -866,7 +866,7 @@ async def save_configuration(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to save configuration: {e}")
+        logger.error("Failed to save configuration: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save configuration",
@@ -907,7 +907,7 @@ async def list_configurations(
     except ApplicationError as e:
         raise exception_translator.translate_application_to_api(e) from e
     except Exception as e:
-        logger.error(f"Failed to list configurations: {e}")
+        logger.error("Failed to list configurations: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list configurations",
@@ -957,7 +957,7 @@ async def get_operation_progress(
     except AccessDeniedError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to get operation progress: {e}")
+        logger.error("Failed to get operation progress: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get operation progress",

@@ -292,6 +292,22 @@ class TestQdrantManager:
 
         assert result is False
 
+    def test_collection_exists_error_raises(self, qdrant_manager, mock_qdrant_client) -> None:
+        """Test checking if collection exists raises on non-404 errors."""
+        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(
+            status_code=503, reason_phrase="Service Unavailable", content=b"", headers={}
+        )  # type: ignore
+
+        with pytest.raises(RuntimeError, match="Cannot determine if collection"):
+            qdrant_manager.collection_exists("flaky_collection")
+
+    def test_collection_exists_network_error_raises(self, qdrant_manager, mock_qdrant_client) -> None:
+        """Test checking if collection exists raises on network errors."""
+        mock_qdrant_client.get_collection.side_effect = ConnectionError("Network unreachable")
+
+        with pytest.raises(RuntimeError, match="Cannot determine if collection"):
+            qdrant_manager.collection_exists("network_collection")
+
     def test_validate_collection_health_healthy(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test validating health of a healthy collection"""
         mock_info = Mock(spec=CollectionInfo)

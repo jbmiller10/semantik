@@ -116,7 +116,7 @@ async def get_operation(
             detail="You don't have access to this operation",
         ) from e
     except Exception as e:
-        logger.error(f"Failed to get operation: {e}")
+        logger.error("Failed to get operation: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to get operation",
@@ -177,7 +177,7 @@ async def cancel_operation(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to cancel operation: {e}")
+        logger.error("Failed to cancel operation: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to cancel operation",
@@ -246,7 +246,7 @@ async def list_operations(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list operations: {e}")
+        logger.error("Failed to list operations: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list operations",
@@ -300,7 +300,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         await websocket.close(code=1008, reason=str(e))
         return
     except Exception as e:
-        logger.error(f"WebSocket authentication error: {e}")
+        logger.error("WebSocket authentication error: %s", e, exc_info=True)
         await websocket.close(code=1011, reason="Internal server error")
         return
 
@@ -324,7 +324,7 @@ async def operation_websocket(websocket: WebSocket, operation_id: str) -> None:
         await websocket.close(code=1008, reason="You don't have access to this operation")
         return
     except Exception as e:
-        logger.error(f"Error verifying operation access: {e}")
+        logger.error("Error verifying operation access: %s", e, exc_info=True)
         await websocket.close(code=1011, reason="Internal server error")
         return
 
@@ -424,7 +424,7 @@ async def operation_websocket_global(websocket: WebSocket) -> None:
         await websocket.close(code=1008, reason=str(e))
         return
     except Exception as e:
-        logger.error(f"WebSocket authentication error: {e}")
+        logger.error("WebSocket authentication error: %s", e, exc_info=True)
         await websocket.close(code=1011, reason="Internal server error")
         return
 

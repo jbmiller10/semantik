@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -29,6 +30,22 @@ class _FakeSession:
 
     async def rollback(self) -> None:
         return None
+
+
+class _FailingRollbackSession(_FakeSession):
+    def __init__(self) -> None:
+        self._commit_calls = 0
+
+    def in_transaction(self) -> bool:
+        return self._commit_calls == 0
+
+    async def commit(self) -> None:
+        self._commit_calls += 1
+        if self._commit_calls == 1:
+            raise RuntimeError("commit failed")
+
+    async def rollback(self) -> None:
+        raise RuntimeError("rollback failed")
 
 
 @dataclass(frozen=True)
@@ -118,6 +135,41 @@ async def test_append_skips_stale_marking_when_scan_has_errors(monkeypatch) -> N
 
     assert result["success"] is False
     assert result["documents_marked_stale"] == 0
+
+
+@pytest.mark.asyncio()
+async def test_append_logs_rollback_failure(monkeypatch, caplog) -> None:
+    docs: list[_IngestedDoc] = []
+    connector = _FakeConnector(docs)
+
+    monkeypatch.setattr("webui.tasks.ingestion.ConnectorFactory.get_connector", lambda *_args, **_kwargs: connector)
+    monkeypatch.setattr("webui.tasks.ingestion.DocumentRegistryService", _FakeRegistry)
+    monkeypatch.setattr("shared.database.repositories.chunk_repository.ChunkRepository", _FakeChunkRepository)
+    monkeypatch.setattr("webui.tasks.ingestion._audit_log_operation", AsyncMock(return_value=None))
+
+    document_repo = Mock()
+    document_repo.session = _FailingRollbackSession()
+    document_repo.mark_unseen_as_stale = AsyncMock(return_value=0)
+
+    collection_repo = Mock()
+    updater = Mock()
+    updater.send_update = AsyncMock(return_value=None)
+
+    operation = {
+        "id": "op-rollback",
+        "user_id": 1,
+        "config": {
+            "source_id": 456,
+            "source_type": "directory",
+            "source_config": {"path": "/tmp"},
+        },
+    }
+    collection = {"id": "col-rollback"}
+
+    with caplog.at_level(logging.WARNING):
+        await _process_append_operation_impl(operation, collection, collection_repo, document_repo, updater)
+
+    assert "Failed to rollback after pre-scan commit error" in caplog.text
     assert document_repo.mark_unseen_as_stale.await_count == 0
 
 

@@ -59,22 +59,27 @@ async def reset_database_endpoint(
                 collection_name = str(collection.vector_store_name)
                 try:
                     await async_client.delete_collection(collection_name)
-                    logger.info(f"Deleted Qdrant collection: {collection_name}")
+                    logger.info("Deleted Qdrant collection: %s", collection_name)
                 except Exception as e:
-                    logger.warning(f"Failed to delete collection {collection_name}: {e}")
+                    logger.warning(
+                        "Failed to delete collection %s: %s",
+                        collection_name,
+                        e,
+                        exc_info=True,
+                    )
 
             # Also delete the metadata collection
             try:
                 await async_client.delete_collection("_collection_metadata")
                 logger.info("Deleted metadata collection")
             except Exception as e:
-                logger.warning(f"Failed to delete metadata collection: {e}")
+                logger.warning("Failed to delete metadata collection: %s", e, exc_info=True)
         finally:
             try:
                 if async_client is not None:
                     await async_client.close()
             except Exception as e:
-                logger.warning("Failed to close Qdrant client: %s", e)
+                logger.warning("Failed to close Qdrant client: %s", e, exc_info=True)
 
         # Delete all parquet files
         try:
@@ -82,9 +87,9 @@ async def reset_database_endpoint(
             parquet_files = list(output_path.glob("*.parquet"))
             for pf in parquet_files:
                 pf.unlink()
-                logger.info(f"Deleted parquet file: {pf}")
+                logger.info("Deleted parquet file: %s", pf)
         except Exception as e:
-            logger.warning(f"Failed to delete parquet files: {e}")
+            logger.warning("Failed to delete parquet files: %s", e, exc_info=True)
 
         # Clear all tables in the database
         # Note: This is a destructive operation and should be protected
@@ -105,12 +110,12 @@ async def reset_database_endpoint(
             logger.info("Database tables cleared successfully")
         except Exception as e:
             await db.rollback()
-            logger.error(f"Failed to clear database tables: {e}")
+            logger.error("Failed to clear database tables: %s", e, exc_info=True)
             raise
 
         return {"status": "success", "message": "Database reset successfully"}
     except Exception as e:
-        logger.error(f"Failed to reset database: {e}")
+        logger.error("Failed to reset database: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
@@ -127,7 +132,7 @@ async def get_database_stats(
     try:
         collection_count = await db.scalar(collection_count_query) or 0
     except SQLAlchemyError as exc:
-        logger.warning("Failed querying collection count: %s", exc)
+        logger.warning("Failed querying collection count: %s", exc, exc_info=True)
         if db.in_transaction():  # pragma: no branch - defensive rollback
             await db.rollback()
 
@@ -137,7 +142,7 @@ async def get_database_stats(
     try:
         document_count = await db.scalar(document_count_query) or 0
     except SQLAlchemyError as exc:
-        logger.warning("Failed querying document count: %s", exc)
+        logger.warning("Failed querying document count: %s", exc, exc_info=True)
         if db.in_transaction():  # pragma: no branch - defensive rollback
             await db.rollback()
 
@@ -150,15 +155,15 @@ async def get_database_stats(
         if size_result is not None:
             database_size_mb = round(int(size_result) / 1024 / 1024, 2)
     except OperationalError as exc:
-        logger.warning("Failed querying database size: %s", exc)
+        logger.warning("Failed querying database size: %s", exc, exc_info=True)
         if db.in_transaction():
             await db.rollback()
     except SQLAlchemyError as exc:
-        logger.warning("Unexpected SQL error while querying database size: %s", exc)
+        logger.warning("Unexpected SQL error while querying database size: %s", exc, exc_info=True)
         if db.in_transaction():
             await db.rollback()
     except Exception as exc:  # pragma: no cover - unexpected error path
-        logger.warning("Unexpected error while querying database size: %s", exc)
+        logger.warning("Unexpected error while querying database size: %s", exc, exc_info=True)
         if db.in_transaction():
             await db.rollback()
 
@@ -174,11 +179,11 @@ async def get_database_stats(
                 try:
                     parquet_size_bytes += parquet_file.stat().st_size
                 except OSError as exc:
-                    logger.warning("Failed to stat parquet file %s: %s", parquet_file, exc)
+                    logger.warning("Failed to stat parquet file %s: %s", parquet_file, exc, exc_info=True)
         else:
             logger.debug("Parquet output directory does not exist: %s", output_path)
     except Exception as exc:  # pragma: no cover - filesystem errors are unexpected
-        logger.warning("Unexpected error while scanning parquet files: %s", exc)
+        logger.warning("Unexpected error while scanning parquet files: %s", exc, exc_info=True)
 
     parquet_size_mb = round(parquet_size_bytes / 1024 / 1024, 2) if parquet_size_bytes else 0.0
 

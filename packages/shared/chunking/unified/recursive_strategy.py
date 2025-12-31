@@ -68,6 +68,9 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         else:
             self._llama_available = False
 
+    MAX_RECURSION_DEPTH = 100
+    MAX_SPLIT_ITERATIONS = 10_000
+
     def _init_llama_splitter(self, config: ChunkConfig) -> Any:
         """Initialize LlamaIndex splitter if needed."""
         if not self._use_llama_index or not self._llama_available:
@@ -106,6 +109,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         """
         if not content:
             return []
+
+        self._validate_config(config)
 
         # Try LlamaIndex implementation if enabled
         if self._use_llama_index and self._llama_available:
@@ -281,14 +286,24 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                 start_offset = self.find_word_boundary(content, start_offset, prefer_before=False)
 
             # Calculate end offset
-            end_offset = content.find(split, start_offset) + len(split)
-            if end_offset < start_offset:
-                # If we can't find the split, estimate the position
+            found_pos = content.find(split, start_offset)
+            if found_pos == -1:
+                logger.warning(
+                    "Chunk text not found at expected position. start_offset=%d, chunk_preview='%s...'",
+                    start_offset,
+                    split[:50],
+                )
                 end_offset = min(start_offset + len(split), len(content))
+            else:
+                end_offset = found_pos + len(split)
 
             # Ensure end_offset is always greater than start_offset
             if end_offset <= start_offset:
-                # Make sure we have at least 1 character
+                logger.error(
+                    "Invalid offset calculation: start=%d, end=%d. Forcing valid range.",
+                    start_offset,
+                    end_offset,
+                )
                 end_offset = min(start_offset + max(1, len(split) if split else 1), len(content))
                 if end_offset <= start_offset and start_offset < len(content):
                     end_offset = start_offset + 1
@@ -349,6 +364,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         separators: list[str],
         max_size: int,
         min_size: int,
+        depth: int = 0,
+        _iteration_count: list[int] | None = None,
     ) -> list[str]:
         """
         Recursively split text using a hierarchy of separators.
@@ -362,9 +379,33 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
         Returns:
             List of text chunks
         """
+        # Initialize iteration counter on first call
+        if _iteration_count is None:
+            _iteration_count = [0]
+
+        # Check recursion depth
+        if depth > self.MAX_RECURSION_DEPTH:
+            logger.warning(
+                "Max recursion depth reached in chunking. Returning text as-is. Length: %d",
+                len(text),
+            )
+            return [text] if text else []
+
+        # Check iteration count
+        _iteration_count[0] += 1
+        if _iteration_count[0] > self.MAX_SPLIT_ITERATIONS:
+            logger.warning(
+                "Max iterations reached in chunking. Returning remaining text. Length: %d",
+                len(text),
+            )
+            return [text] if text else []
+
         # Base case: text is within size limits
         if len(text) <= max_size:
             return [text] if len(text) >= min_size else []
+
+        if not separators:
+            return self._force_split_by_size(text, max_size, min_size)
 
         # Try each separator in order
         for separator in separators:
@@ -404,6 +445,8 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
                             separators[separators.index(separator) + 1 :],
                             max_size,
                             min_size,
+                            depth=depth + 1,
+                            _iteration_count=_iteration_count,
                         )
                         final_result.extend(sub_splits)
                     else:
@@ -411,14 +454,34 @@ class RecursiveChunkingStrategy(UnifiedChunkingStrategy):
 
                 return final_result
 
-        # Last resort: split by max_size
+        return self._force_split_by_size(text, max_size, min_size)
+
+    def _force_split_by_size(
+        self,
+        text: str,
+        max_size: int,
+        min_size: int,
+    ) -> list[str]:
+        """Split text by size when no separators work."""
         result = []
         for i in range(0, len(text), max_size):
             chunk = text[i : i + max_size]
             if len(chunk) >= min_size:
                 result.append(chunk)
-
+            elif result:
+                result[-1] += chunk
         return result
+
+    @staticmethod
+    def _validate_config(config: ChunkConfig) -> None:
+        """Validate chunking configuration."""
+        if config.min_tokens >= config.max_tokens:
+            raise ValueError(f"min_tokens ({config.min_tokens}) must be less than max_tokens ({config.max_tokens})")
+
+        if config.overlap_tokens >= config.min_tokens:
+            raise ValueError(
+                f"overlap_tokens ({config.overlap_tokens}) must be less than min_tokens ({config.min_tokens})"
+            )
 
     def validate_content(self, content: str) -> tuple[bool, str | None]:
         """

@@ -13,6 +13,33 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 P = ParamSpec("P")
 
+RETRYABLE_ERROR_PATTERNS = [
+    # SQLite
+    "database is locked",
+    # PostgreSQL connection errors
+    "connection refused",
+    "could not connect",
+    "connection timed out",
+    "server closed the connection unexpectedly",
+    "ssl connection has been closed unexpectedly",
+    "connection reset by peer",
+    "no connection to the server",
+    "terminating connection due to administrator command",
+    # PostgreSQL transaction errors
+    "deadlock detected",
+    "serialization failure",
+    "could not serialize access",
+    # General transient errors
+    "temporary failure",
+    "connection aborted",
+]
+
+
+def _is_retryable_error(error: Exception) -> bool:
+    """Check if an OperationalError is transient and safe to retry."""
+    error_str = str(error).lower()
+    return any(pattern in error_str for pattern in RETRYABLE_ERROR_PATTERNS)
+
 
 def with_db_retry(
     retries: int = 3,
@@ -40,13 +67,16 @@ def with_db_retry(
                 try:
                     return await func(*args, **kwargs)
                 except OperationalError as e:
-                    if "database is locked" not in str(e) or attempt == retries:
+                    if not _is_retryable_error(e) or attempt == retries:
                         raise
 
                     last_exception = e
                     logger.warning(
-                        f"Database locked on attempt {attempt + 1}/{retries + 1}, "
-                        f"retrying in {current_delay:.1f}s: {e}"
+                        "Retryable database error (attempt %d/%d): %s",
+                        attempt + 1,
+                        retries + 1,
+                        e,
+                        exc_info=True,
                     )
 
                     await asyncio.sleep(current_delay)
@@ -66,13 +96,16 @@ def with_db_retry(
                 try:
                     return func(*args, **kwargs)
                 except OperationalError as e:
-                    if "database is locked" not in str(e) or attempt == retries:
+                    if not _is_retryable_error(e) or attempt == retries:
                         raise
 
                     last_exception = e
                     logger.warning(
-                        f"Database locked on attempt {attempt + 1}/{retries + 1}, "
-                        f"retrying in {current_delay:.1f}s: {e}"
+                        "Retryable database error (attempt %d/%d): %s",
+                        attempt + 1,
+                        retries + 1,
+                        e,
+                        exc_info=True,
                     )
 
                     import time

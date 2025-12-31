@@ -29,6 +29,7 @@ from webui.celery_app import celery_app
 from webui.qdrant import get_qdrant_manager
 from webui.services.chunking_config_builder import ChunkingConfigBuilder
 from webui.services.chunking_strategy_factory import ChunkingStrategyFactory
+from webui.services.connector_factory import ConnectorFactory
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class CollectionService:
         try:
             self.qdrant_manager = get_qdrant_manager()
         except Exception as exc:  # pragma: no cover - network dependent
-            logger.warning("Qdrant manager unavailable: %s", exc)
+            logger.warning("Qdrant manager unavailable: %s", exc, exc_info=True)
             return None
 
         return self.qdrant_manager
@@ -192,7 +193,7 @@ class CollectionService:
             # Re-raise EntityAlreadyExistsError to be handled by the API endpoint
             raise
         except Exception as e:
-            logger.error(f"Failed to create collection: {e}", exc_info=True)
+            logger.error("Failed to create collection: %s", e, exc_info=True)
             raise
 
         # Create operation record
@@ -260,6 +261,8 @@ class CollectionService:
             AccessDeniedError: If user doesn't have permission
             InvalidStateError: If collection is in invalid state
         """
+        source_type = (source_type or "").strip().lower()
+
         # Normalize: derive/augment source_config from legacy_source_path if needed
         if legacy_source_path is not None:
             if not source_config:
@@ -269,6 +272,14 @@ class CollectionService:
                 # Some clients send directory options (e.g., recursive) in source_config
                 # while still providing the actual path separately. Merge the path in.
                 source_config = {**source_config, "path": legacy_source_path}
+
+        available_types = ConnectorFactory.list_available_types()
+        if not source_type or source_type not in available_types:
+            available = ", ".join(sorted(available_types)) if available_types else "none registered"
+            raise ValidationError(
+                f"Invalid source_type: '{source_type}'. Must be one of: {available}",
+                "source_type",
+            )
 
         # Derive source_path for the operation config (for display/audit)
         # For directory sources, use "path"; for web sources, use "url"; otherwise first value
@@ -539,9 +550,9 @@ class CollectionService:
                     collection_names = manager.list_collections()
                     if collection.vector_store_name in collection_names:
                         manager.client.delete_collection(collection.vector_store_name)
-                        logger.info(f"Deleted Qdrant collection: {collection.vector_store_name}")
+                        logger.info("Deleted Qdrant collection: %s", collection.vector_store_name)
                 except Exception as e:
-                    logger.error(f"Failed to delete Qdrant collection: {e}", exc_info=True)
+                    logger.error("Failed to delete Qdrant collection: %s", e, exc_info=True)
                     # Continue with database deletion even if Qdrant deletion fails
 
             # Delete from database (cascade will handle operations, documents, etc.)
@@ -550,10 +561,10 @@ class CollectionService:
             # Commit the transaction to persist the deletion
             await self.db_session.commit()
 
-            logger.info(f"Deleted collection {collection_id} and all associated data")
+            logger.info("Deleted collection %s and all associated data", collection_id)
 
         except Exception as e:
-            logger.error(f"Failed to delete collection {collection_id}: {e}", exc_info=True)
+            logger.error("Failed to delete collection %s: %s", collection_id, e, exc_info=True)
             raise
 
     async def remove_source(self, collection_id: str, user_id: int, source_path: str) -> dict[str, Any]:
@@ -786,38 +797,51 @@ class CollectionService:
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name
 
-        qdrant_rename_performed = False
+        original_values: dict[str, Any] | None = None
+        if requires_qdrant_sync:
+            original_values = {key: getattr(collection, key, None) for key in updates}
 
         try:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)
+            await self.db_session.commit()
+        except Exception as exc:  # pragma: no cover - covered via explicit tests
+            await self.db_session.rollback()
+            raise exc
 
-            if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
+        if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
+            try:
                 assert qdrant_manager_for_rename is not None  # mypy assurance
                 await qdrant_manager_for_rename.rename_collection(
                     old_name=old_vector_store_name,
                     new_name=new_vector_store_name,
                 )
-                qdrant_rename_performed = True
+            except Exception as qdrant_exc:  # pragma: no cover - covered via explicit tests
+                logger.error(
+                    "Qdrant rename failed for collection %s (old=%s new=%s): %s",
+                    collection_id,
+                    old_vector_store_name,
+                    new_vector_store_name,
+                    qdrant_exc,
+                    exc_info=True,
+                )
+                if original_values is not None:
+                    try:
+                        await self.collection_repo.update(str(collection.id), original_values)
+                        await self.db_session.commit()
+                        logger.info("Successfully reverted collection %s after Qdrant rename failure", collection_id)
+                    except Exception as revert_exc:  # pragma: no cover - defensive logging
+                        logger.critical(
+                            "CRITICAL: Failed to revert DB after Qdrant rename failure. "
+                            "Collection ID: %s, DB has: %s, Qdrant has: %s, Revert error: %s",
+                            collection_id,
+                            new_vector_store_name,
+                            old_vector_store_name,
+                            revert_exc,
+                            exc_info=True,
+                        )
+                raise qdrant_exc
 
-            await self.db_session.commit()
-            return cast(Collection, updated_collection)
-        except Exception as exc:  # pragma: no cover - covered via explicit tests
-            await self.db_session.rollback()
-            if qdrant_rename_performed and requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
-                try:
-                    assert qdrant_manager_for_rename is not None  # mypy assurance
-                    await qdrant_manager_for_rename.rename_collection(
-                        old_name=new_vector_store_name,
-                        new_name=old_vector_store_name,
-                    )
-                except Exception as revert_exc:  # best effort rollback; log and continue raising
-                    logger.error(
-                        "Failed to revert Qdrant rename from %s back to %s after DB rollback: %s",
-                        new_vector_store_name,
-                        old_vector_store_name,
-                        revert_exc,
-                    )
-            raise exc
+        return cast(Collection, updated_collection)
 
     @staticmethod
     def _build_vector_store_name(collection_id: str, new_name: str) -> str:

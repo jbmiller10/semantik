@@ -74,7 +74,8 @@ class ChunkingProcessor:
                 logger.warning(
                     "Strategy %s failed, using fallback: %s",
                     strategy,
-                    str(e),
+                    e,
+                    exc_info=True,
                 )
                 return self._apply_simple_fallback(content, config)
             raise ChunkingStrategyError(strategy=strategy, reason=f"Chunking failed: {str(e)}") from e

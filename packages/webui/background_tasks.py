@@ -47,7 +47,13 @@ class RedisCleanupTask:
         self.redis = redis_client
         self.running = False
         self._task: asyncio.Task | None = None
-        self._cleanup_interval = 60  # Run every minute
+        self._cleanup_interval = settings.REDIS_CLEANUP_INTERVAL_SECONDS
+        self._max_consecutive_failures = settings.REDIS_CLEANUP_MAX_CONSECUTIVE_FAILURES
+        self._backoff_multiplier = settings.REDIS_CLEANUP_BACKOFF_MULTIPLIER
+        self._max_backoff_seconds = settings.REDIS_CLEANUP_MAX_BACKOFF_SECONDS
+        self._consecutive_failures = 0
+        self._current_backoff = self._cleanup_interval
+        self._circuit_open = False
         self._last_metrics: dict[str, Any] = {}
 
     async def start(self) -> None:
@@ -68,7 +74,7 @@ class RedisCleanupTask:
                 await self.redis.ping()
                 logger.info(f"Redis cleanup task connected to {settings.REDIS_URL}")
             except Exception as e:
-                logger.error(f"Failed to connect to Redis for cleanup task: {e}")
+                logger.error("Failed to connect to Redis for cleanup task: %s", e, exc_info=True)
                 return
 
         self.running = True
@@ -95,14 +101,57 @@ class RedisCleanupTask:
     async def _cleanup_loop(self) -> None:
         """Main cleanup loop that runs periodically."""
         while self.running:
+            if self._circuit_open:
+                logger.warning(
+                    "Cleanup circuit breaker open - pausing for %d seconds",
+                    self._current_backoff,
+                )
+                await asyncio.sleep(self._current_backoff)
+                self._circuit_open = False  # Half-open: try again
+
             try:
                 await self._perform_cleanup()
-                await asyncio.sleep(self._cleanup_interval)
+                await self._on_success()
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in cleanup loop: {e}")
-                await asyncio.sleep(self._cleanup_interval)
+                await self._on_failure(e)
+
+    async def _on_success(self) -> None:
+        """Reset circuit breaker state after a successful cleanup."""
+        if self._consecutive_failures > 0:
+            logger.info("Cleanup recovered after %d failures", self._consecutive_failures)
+        self._consecutive_failures = 0
+        self._current_backoff = self._cleanup_interval
+        await asyncio.sleep(self._cleanup_interval)
+
+    async def _on_failure(self, error: Exception) -> None:
+        """Handle cleanup failure with circuit breaker logic."""
+        self._consecutive_failures += 1
+
+        logger.error(
+            "Cleanup failed (attempt %d/%d): %s",
+            self._consecutive_failures,
+            self._max_consecutive_failures,
+            error,
+            exc_info=True,
+        )
+
+        if self._consecutive_failures >= self._max_consecutive_failures:
+            self._circuit_open = True
+            self._current_backoff = min(
+                int(self._current_backoff * self._backoff_multiplier),
+                self._max_backoff_seconds,
+            )
+            logger.critical(
+                "CIRCUIT BREAKER OPEN: Cleanup failed %d consecutive times. Pausing for %d seconds. Last error: %s",
+                self._consecutive_failures,
+                self._current_backoff,
+                error,
+                exc_info=True,
+            )
+        else:
+            await asyncio.sleep(self._cleanup_interval)
 
     async def _perform_cleanup(self) -> None:
         """Perform the actual cleanup operations."""
@@ -154,7 +203,7 @@ class RedisCleanupTask:
             self._log_metrics(metrics)
 
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error("Error during cleanup: %s", e, exc_info=True)
             metrics["error"] = str(e)
             self._log_metrics(metrics)
 
@@ -196,7 +245,7 @@ class RedisCleanupTask:
                     break
 
         except Exception as e:
-            logger.error(f"Error cleaning pattern {pattern}: {e}")
+            logger.error("Error cleaning pattern %s: %s", pattern, e, exc_info=True)
 
     async def _trim_streams(self, metrics: dict[str, Any]) -> None:
         """Trim Redis streams to prevent unbounded growth.
@@ -232,13 +281,23 @@ class RedisCleanupTask:
                                 metrics["streams_trimmed"] += 1
                                 logger.debug(f"Trimmed {deleted} entries from stream: {key}")
                         except Exception as e:
-                            logger.warning(f"Failed to trim stream {key}: {e}")
+                            logger.warning("Failed to trim stream %s: %s", key, e, exc_info=True)
 
                     if cursor == 0:
                         break
 
         except Exception as e:
-            logger.error(f"Error trimming streams: {e}")
+            logger.error("Error trimming streams: %s", e, exc_info=True)
+
+    def get_health_status(self) -> dict[str, Any]:
+        """Get circuit breaker status for health checks."""
+        return {
+            "consecutive_failures": self._consecutive_failures,
+            "circuit_open": self._circuit_open,
+            "current_backoff_seconds": self._current_backoff,
+            "max_consecutive_failures": self._max_consecutive_failures,
+            "healthy": self._consecutive_failures < self._max_consecutive_failures,
+        }
 
     def _get_operation_ttl(self, key: str) -> int:  # noqa: ARG002
         """Determine TTL for an operation key based on its status.
