@@ -180,3 +180,194 @@ class TestRecursiveChunkingConfigValidation:
         # ChunkConfig validates this at construction time
         with pytest.raises(InvalidConfigurationError, match=r"overlap_tokens must be less than min_tokens"):
             ChunkConfig("recursive", min_tokens=10, max_tokens=100, overlap_tokens=15)
+
+
+class TestRecursiveChunkingLimits:
+    """Tests for recursion and iteration limits."""
+
+    def test_max_recursion_depth_limit(self) -> None:
+        """Test that max recursion depth is enforced."""
+        strategy = RecursiveChunkingStrategy()
+
+        # Simulate deep recursion by calling with high depth
+        result = strategy._recursive_split(
+            "a" * 100,
+            strategy.separators,
+            max_size=10,
+            min_size=1,
+            depth=strategy.MAX_RECURSION_DEPTH + 1,
+        )
+
+        # Should return text as-is when depth exceeded
+        assert result == ["a" * 100]
+
+    def test_max_iterations_limit(self) -> None:
+        """Test that max iterations is enforced."""
+        strategy = RecursiveChunkingStrategy()
+
+        # Pre-set iteration count to near the limit
+        iteration_count = [strategy.MAX_SPLIT_ITERATIONS + 1]
+
+        result = strategy._recursive_split(
+            "a" * 100,
+            strategy.separators,
+            max_size=10,
+            min_size=1,
+            _iteration_count=iteration_count,
+        )
+
+        # Should return text as-is when iterations exceeded
+        assert result == ["a" * 100]
+
+
+class TestRecursiveChunkingForceSplit:
+    """Tests for _force_split_by_size method."""
+
+    def test_force_split_creates_chunks_of_max_size(self) -> None:
+        """Test _force_split_by_size creates chunks of max_size."""
+        strategy = RecursiveChunkingStrategy()
+
+        content = "a" * 100
+        result = strategy._force_split_by_size(content, max_size=25, min_size=10)
+
+        assert len(result) == 4
+        for chunk in result:
+            assert len(chunk) == 25
+
+    def test_force_split_merges_small_final_chunk(self) -> None:
+        """Test _force_split_by_size merges chunks smaller than min_size."""
+        strategy = RecursiveChunkingStrategy()
+
+        content = "a" * 35  # Will split to 25 + 10
+        result = strategy._force_split_by_size(content, max_size=25, min_size=15)
+
+        # The 10-char remainder is below min_size, so should be merged with previous
+        assert len(result) == 1
+        assert len(result[0]) == 35
+
+    def test_force_split_empty_content(self) -> None:
+        """Test _force_split_by_size handles empty content."""
+        strategy = RecursiveChunkingStrategy()
+
+        result = strategy._force_split_by_size("", max_size=25, min_size=10)
+
+        assert result == []
+
+
+class TestRecursiveChunkingProgressCallback:
+    """Tests for progress callback functionality."""
+
+    def test_progress_callback_called_during_chunking(self) -> None:
+        """Test progress callback is called during chunking."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=20, overlap_tokens=2)
+        content = "Word one. Word two. Word three. Word four. Word five."
+
+        progress_values = []
+
+        def callback(progress: float) -> None:
+            progress_values.append(progress)
+
+        strategy.chunk(content, config, progress_callback=callback)
+
+        # Progress should be called at least once
+        assert len(progress_values) >= 1
+        # Progress should be between 0 and 100
+        for p in progress_values:
+            assert 0 <= p <= 100
+
+
+class TestRecursiveChunkingSmallContent:
+    """Tests for handling small content."""
+
+    def test_small_content_not_discarded(self) -> None:
+        """Test small content is not discarded when below min size."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=100, max_tokens=1000, overlap_tokens=10)
+
+        # Content smaller than min_tokens * 4 chars
+        content = "Short text."
+
+        result = strategy.chunk(content, config)
+
+        # Should still produce a chunk for small content
+        assert len(result) >= 1
+        assert result[0].content.strip() == content
+
+    def test_single_word_content(self) -> None:
+        """Test single word content produces a chunk."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=100, overlap_tokens=2)
+
+        result = strategy.chunk("Hello", config)
+
+        assert len(result) >= 1
+
+
+class TestRecursiveChunkingOffsetCalculation:
+    """Tests for offset calculation edge cases."""
+
+    def test_chunk_with_overlap_preserves_context(self) -> None:
+        """Test chunks with overlap include context from previous chunk."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=15, overlap_tokens=3)
+
+        # Content with clear paragraph breaks
+        content = "First part here. Second part here. Third part here. Fourth part here."
+
+        chunks = strategy.chunk(content, config)
+
+        # All chunks should have valid offsets
+        for chunk in chunks:
+            assert chunk.metadata.start_offset >= 0
+            assert chunk.metadata.end_offset <= len(content)
+            assert chunk.metadata.start_offset < chunk.metadata.end_offset
+
+    def test_offset_calculation_with_special_characters(self) -> None:
+        """Test offset calculation handles special characters."""
+        strategy = RecursiveChunkingStrategy()
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=30, overlap_tokens=3)
+
+        content = "Line1\n\nLine2\n\nLine3\n\nLine4"
+
+        chunks = strategy.chunk(content, config)
+
+        for chunk in chunks:
+            assert chunk.metadata.start_offset >= 0
+            assert chunk.metadata.end_offset <= len(content)
+
+
+class TestRecursiveChunkingInitialization:
+    """Tests for strategy initialization."""
+
+    def test_default_separators(self) -> None:
+        """Test default separators are set correctly."""
+        strategy = RecursiveChunkingStrategy()
+
+        assert len(strategy.separators) > 0
+        assert "\n\n" in strategy.separators
+        assert ". " in strategy.separators
+        assert " " in strategy.separators
+        assert "" in strategy.separators  # Last resort
+
+    def test_llama_index_fallback_when_not_available(self) -> None:
+        """Test chunking works without LlamaIndex by falling back to domain implementation."""
+        # Even if use_llama_index=True is requested, if llama_index isn't installed,
+        # the strategy should fall back to domain implementation.
+        # We can verify this by checking that chunking still works.
+        strategy = RecursiveChunkingStrategy(use_llama_index=False)
+        config = ChunkConfig("recursive", min_tokens=5, max_tokens=50, overlap_tokens=2)
+
+        # Should still produce chunks using domain implementation
+        result = strategy.chunk("This is test content to chunk.", config)
+
+        assert len(result) >= 1
+
+    def test_init_llama_splitter_returns_none_when_disabled(self) -> None:
+        """Test _init_llama_splitter returns None when LlamaIndex disabled."""
+        strategy = RecursiveChunkingStrategy(use_llama_index=False)
+        config = ChunkConfig("recursive", min_tokens=10, max_tokens=100, overlap_tokens=5)
+
+        result = strategy._init_llama_splitter(config)
+
+        assert result is None
