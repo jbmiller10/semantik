@@ -1,7 +1,7 @@
 """Unit tests for CollectionSourceRepository."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -17,7 +17,7 @@ from shared.database.repositories.collection_source_repository import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_session():
     """Create a mock async session."""
     session = AsyncMock()
@@ -28,7 +28,7 @@ def mock_session():
     return session
 
 
-@pytest.fixture
+@pytest.fixture()
 def repo(mock_session):
     """Create repository with mock session."""
     return CollectionSourceRepository(mock_session)
@@ -39,7 +39,7 @@ def repo(mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_success(repo, mock_session):
     """Test successful source creation."""
     mock_session.flush = AsyncMock()
@@ -60,7 +60,7 @@ async def test_create_success(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_missing_collection_id_raises_validation_error(repo):
     """Test that missing collection_id raises ValidationError."""
     with pytest.raises(ValidationError):
@@ -71,7 +71,7 @@ async def test_create_missing_collection_id_raises_validation_error(repo):
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_missing_source_type_raises_validation_error(repo):
     """Test that missing source_type raises ValidationError."""
     with pytest.raises(ValidationError):
@@ -82,7 +82,7 @@ async def test_create_missing_source_type_raises_validation_error(repo):
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_missing_source_path_raises_validation_error(repo):
     """Test that missing source_path raises ValidationError."""
     with pytest.raises(ValidationError):
@@ -93,7 +93,7 @@ async def test_create_missing_source_path_raises_validation_error(repo):
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_integrity_error_raises_already_exists(repo, mock_session):
     """Test that IntegrityError raises EntityAlreadyExistsError."""
     mock_session.flush.side_effect = IntegrityError("duplicate", None, None)
@@ -106,7 +106,7 @@ async def test_create_integrity_error_raises_already_exists(repo, mock_session):
         )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_create_database_error_raises_operation_error(repo, mock_session):
     """Test that database errors raise DatabaseOperationError."""
     mock_session.flush.side_effect = Exception("DB error")
@@ -124,7 +124,7 @@ async def test_create_database_error_raises_operation_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_id_found(repo, mock_session):
     """Test get_by_id returns source when found."""
     mock_source = MagicMock()
@@ -139,7 +139,7 @@ async def test_get_by_id_found(repo, mock_session):
     mock_session.execute.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_id_not_found(repo, mock_session):
     """Test get_by_id returns None when not found."""
     mock_result = MagicMock()
@@ -151,7 +151,7 @@ async def test_get_by_id_not_found(repo, mock_session):
     assert result is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_id_database_error(repo, mock_session):
     """Test get_by_id raises DatabaseOperationError on error."""
     mock_session.execute.side_effect = Exception("DB error")
@@ -165,7 +165,7 @@ async def test_get_by_id_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_collection_and_path_found(repo, mock_session):
     """Test get_by_collection_and_path returns source when found."""
     mock_source = MagicMock()
@@ -178,7 +178,7 @@ async def test_get_by_collection_and_path_found(repo, mock_session):
     assert result == mock_source
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_collection_and_path_not_found(repo, mock_session):
     """Test get_by_collection_and_path returns None when not found."""
     mock_result = MagicMock()
@@ -190,7 +190,7 @@ async def test_get_by_collection_and_path_not_found(repo, mock_session):
     assert result is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_by_collection_and_path_database_error(repo, mock_session):
     """Test get_by_collection_and_path raises DatabaseOperationError on error."""
     mock_session.execute.side_effect = Exception("DB error")
@@ -204,7 +204,7 @@ async def test_get_by_collection_and_path_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_or_create_existing_no_update(repo, mock_session):
     """Test get_or_create returns existing source without update."""
     mock_source = MagicMock()
@@ -227,7 +227,7 @@ async def test_get_or_create_existing_no_update(repo, mock_session):
     assert mock_session.flush.await_count == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_or_create_existing_updates_type(repo, mock_session):
     """Test get_or_create updates source_type when different."""
     mock_source = MagicMock()
@@ -249,7 +249,7 @@ async def test_get_or_create_existing_updates_type(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_or_create_existing_updates_config(repo, mock_session):
     """Test get_or_create updates source_config when different."""
     mock_source = MagicMock()
@@ -272,7 +272,7 @@ async def test_get_or_create_existing_updates_config(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_or_create_creates_new(repo, mock_session):
     """Test get_or_create creates new source when not found."""
     # First call returns None (not found)
@@ -291,7 +291,7 @@ async def test_get_or_create_creates_new(repo, mock_session):
     mock_session.add.assert_called_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_or_create_database_error(repo, mock_session):
     """Test get_or_create raises DatabaseOperationError on error."""
     mock_session.execute.side_effect = Exception("DB error")
@@ -309,7 +309,7 @@ async def test_get_or_create_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_list_by_collection_returns_sources(repo, mock_session):
     """Test list_by_collection returns sources and count."""
     mock_sources = [MagicMock(), MagicMock()]
@@ -330,7 +330,7 @@ async def test_list_by_collection_returns_sources(repo, mock_session):
     assert total == 2
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_list_by_collection_empty(repo, mock_session):
     """Test list_by_collection returns empty list when no sources."""
     mock_session.scalar = AsyncMock(return_value=0)
@@ -346,7 +346,7 @@ async def test_list_by_collection_empty(repo, mock_session):
     assert total == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_list_by_collection_database_error(repo, mock_session):
     """Test list_by_collection raises DatabaseOperationError on error."""
     mock_session.execute.side_effect = Exception("DB error")
@@ -360,7 +360,7 @@ async def test_list_by_collection_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_stats_success(repo, mock_session):
     """Test update_stats successfully updates stats."""
     mock_source = MagicMock()
@@ -382,21 +382,21 @@ async def test_update_stats_success(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_stats_negative_document_count_raises_validation_error(repo):
     """Test that negative document_count raises ValidationError."""
     with pytest.raises(ValidationError):
         await repo.update_stats(source_id=1, document_count=-1)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_stats_negative_size_bytes_raises_validation_error(repo):
     """Test that negative size_bytes raises ValidationError."""
     with pytest.raises(ValidationError):
         await repo.update_stats(source_id=1, size_bytes=-1)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_stats_not_found_raises_entity_not_found(repo, mock_session):
     """Test update_stats raises EntityNotFoundError when source not found."""
     mock_result = MagicMock()
@@ -407,7 +407,7 @@ async def test_update_stats_not_found_raises_entity_not_found(repo, mock_session
         await repo.update_stats(source_id=999, document_count=10)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_stats_database_error(repo, mock_session):
     """Test update_stats raises DatabaseOperationError on error."""
     mock_source = MagicMock()
@@ -425,7 +425,7 @@ async def test_update_stats_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_delete_success(repo, mock_session):
     """Test successful source deletion."""
     mock_source = MagicMock()
@@ -441,7 +441,7 @@ async def test_delete_success(repo, mock_session):
     mock_session.flush.assert_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_delete_not_found_raises_entity_not_found(repo, mock_session):
     """Test delete raises EntityNotFoundError when source not found."""
     mock_result = MagicMock()
@@ -452,7 +452,7 @@ async def test_delete_not_found_raises_entity_not_found(repo, mock_session):
         await repo.delete(999)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_delete_database_error(repo, mock_session):
     """Test delete raises DatabaseOperationError on error."""
     mock_source = MagicMock()
@@ -471,7 +471,7 @@ async def test_delete_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_success(repo, mock_session):
     """Test successful source update."""
     mock_source = MagicMock()
@@ -494,7 +494,7 @@ async def test_update_success(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_not_found_raises_entity_not_found(repo, mock_session):
     """Test update raises EntityNotFoundError when source not found."""
     mock_result = MagicMock()
@@ -505,7 +505,7 @@ async def test_update_not_found_raises_entity_not_found(repo, mock_session):
         await repo.update(source_id=999, source_config={})
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_database_error(repo, mock_session):
     """Test update raises DatabaseOperationError on error."""
     mock_source = MagicMock()
@@ -523,7 +523,7 @@ async def test_update_database_error(repo, mock_session):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_success(repo, mock_session):
     """Test successful sync status update."""
     mock_source = MagicMock()
@@ -548,7 +548,7 @@ async def test_update_sync_status_success(repo, mock_session):
     mock_session.flush.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_failed_with_error(repo, mock_session):
     """Test sync status update with failure and error message."""
     mock_source = MagicMock()
@@ -568,7 +568,7 @@ async def test_update_sync_status_failed_with_error(repo, mock_session):
     assert mock_source.last_error == "Connection timeout"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_partial_with_error(repo, mock_session):
     """Test sync status update with partial status and error."""
     mock_source = MagicMock()
@@ -588,14 +588,14 @@ async def test_update_sync_status_partial_with_error(repo, mock_session):
     assert mock_source.last_error == "Some files skipped"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_invalid_status_raises_validation_error(repo):
     """Test that invalid status raises ValidationError."""
     with pytest.raises(ValidationError):
         await repo.update_sync_status(source_id=1, status="invalid")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_not_found_raises_entity_not_found(repo, mock_session):
     """Test update_sync_status raises EntityNotFoundError when not found."""
     mock_result = MagicMock()
@@ -606,7 +606,7 @@ async def test_update_sync_status_not_found_raises_entity_not_found(repo, mock_s
         await repo.update_sync_status(source_id=999, status="success")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_update_sync_status_database_error(repo, mock_session):
     """Test update_sync_status raises DatabaseOperationError on error."""
     mock_source = MagicMock()

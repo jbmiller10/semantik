@@ -12,18 +12,17 @@ from webui.websocket.scalable_manager import (
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def manager():
     """Create a ScalableWebSocketManager instance."""
-    mgr = ScalableWebSocketManager(
+    return ScalableWebSocketManager(
         redis_url="redis://localhost:6379/2",
         max_connections_per_user=5,
         max_total_connections=100,
     )
-    return mgr
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_redis_client():
     """Create a mock Redis client."""
     client = AsyncMock()
@@ -55,7 +54,7 @@ def mock_redis_client():
     client.pipeline = MagicMock(return_value=pipeline)
 
     # Scan iter mock
-    async def scan_iter_mock(*args, **kwargs):
+    async def scan_iter_mock(*_args, **_kwargs):
         return
         yield  # Make it an async generator
 
@@ -64,7 +63,7 @@ def mock_redis_client():
     return client
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_pubsub():
     """Create a mock PubSub client."""
     pubsub = AsyncMock()
@@ -81,7 +80,7 @@ def mock_pubsub():
     return pubsub
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_websocket():
     """Create a mock WebSocket."""
     ws = AsyncMock()
@@ -116,7 +115,7 @@ def test_init_creates_unique_instance_id(manager):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_startup_connects_to_redis(manager, mock_redis_client, mock_pubsub):
     """Test startup connects to Redis and starts background tasks."""
     with patch("redis.asyncio.from_url", new_callable=AsyncMock) as mock_from_url:
@@ -131,7 +130,7 @@ async def test_startup_connects_to_redis(manager, mock_redis_client, mock_pubsub
         mock_redis_client.ping.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_startup_idempotent(manager, mock_redis_client, mock_pubsub):
     """Test calling startup twice only connects once."""
     with patch("redis.asyncio.from_url", new_callable=AsyncMock) as mock_from_url:
@@ -145,12 +144,12 @@ async def test_startup_idempotent(manager, mock_redis_client, mock_pubsub):
         assert mock_from_url.await_count == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_startup_retries_on_failure(manager, mock_redis_client, mock_pubsub):
     """Test startup retries on connection failure."""
     call_count = 0
 
-    async def failing_then_succeeding(*args, **kwargs):
+    async def failing_then_succeeding(*_args, **_kwargs):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
@@ -166,7 +165,7 @@ async def test_startup_retries_on_failure(manager, mock_redis_client, mock_pubsu
         assert call_count == 3
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_startup_falls_back_to_local_mode(manager):
     """Test startup falls back to local mode after max retries."""
     with patch("redis.asyncio.from_url", side_effect=Exception("Connection failed")):
@@ -181,7 +180,7 @@ async def test_startup_falls_back_to_local_mode(manager):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_shutdown_closes_connections(manager, mock_websocket):
     """Test shutdown closes all connections."""
     manager.local_connections["conn-1"] = mock_websocket
@@ -195,7 +194,7 @@ async def test_shutdown_closes_connections(manager, mock_websocket):
     assert manager.connection_metadata == {}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_shutdown_cancels_background_tasks(manager, mock_redis_client):
     """Test shutdown cancels background tasks."""
     manager.redis_client = mock_redis_client
@@ -221,7 +220,7 @@ async def test_shutdown_cancels_background_tasks(manager, mock_redis_client):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_accepts_websocket(manager, mock_websocket):
     """Test connect accepts the websocket and returns connection ID."""
     manager._startup_complete = True
@@ -238,7 +237,7 @@ async def test_connect_accepts_websocket(manager, mock_websocket):
     assert manager.connection_metadata[conn_id]["user_id"] == "user-1"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_with_operation_id(manager, mock_websocket):
     """Test connect stores operation_id in metadata."""
     manager._startup_complete = True
@@ -253,7 +252,7 @@ async def test_connect_with_operation_id(manager, mock_websocket):
     assert manager.connection_metadata[conn_id]["operation_id"] == "op-123"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_with_collection_id(manager, mock_websocket):
     """Test connect stores collection_id in metadata."""
     manager._startup_complete = True
@@ -268,7 +267,7 @@ async def test_connect_with_collection_id(manager, mock_websocket):
     assert manager.connection_metadata[conn_id]["collection_id"] == "col-456"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_with_subprotocol(manager, mock_websocket):
     """Test connect passes subprotocol to accept."""
     manager._startup_complete = True
@@ -283,7 +282,7 @@ async def test_connect_with_subprotocol(manager, mock_websocket):
     mock_websocket.accept.assert_awaited_once_with(subprotocol="graphql-ws")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_rejects_at_total_limit(manager, mock_websocket):
     """Test connect rejects when total connection limit reached."""
     manager._startup_complete = True
@@ -299,7 +298,7 @@ async def test_connect_rejects_at_total_limit(manager, mock_websocket):
     mock_websocket.close.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_rejects_at_user_limit(manager, mock_websocket):
     """Test connect rejects when user connection limit reached."""
     manager._startup_complete = True
@@ -315,7 +314,7 @@ async def test_connect_rejects_at_user_limit(manager, mock_websocket):
         await manager.connect(websocket=mock_websocket, user_id="user-1")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_registers_in_redis(manager, mock_websocket, mock_redis_client):
     """Test connect registers connection in Redis."""
     manager._startup_complete = True
@@ -330,7 +329,7 @@ async def test_connect_registers_in_redis(manager, mock_websocket, mock_redis_cl
     assert conn_id in manager.local_connections
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_handles_redis_too_many_connections(manager, mock_websocket, mock_redis_client):
     """Test connect handles TooManyConnectionsError from Redis."""
     manager._startup_complete = True
@@ -341,7 +340,7 @@ async def test_connect_handles_redis_too_many_connections(manager, mock_websocke
         await manager.connect(websocket=mock_websocket, user_id="user-1")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_connect_handles_redis_registration_failure(manager, mock_websocket, mock_redis_client):
     """Test connect continues when Redis registration fails."""
     manager._startup_complete = True
@@ -362,7 +361,7 @@ async def test_connect_handles_redis_registration_failure(manager, mock_websocke
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_disconnect_removes_connection(manager, mock_websocket):
     """Test disconnect removes connection from local tracking."""
     conn_id = "conn-123"
@@ -376,14 +375,14 @@ async def test_disconnect_removes_connection(manager, mock_websocket):
     assert conn_id not in manager.connection_metadata
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_disconnect_nonexistent_connection(manager):
     """Test disconnect handles nonexistent connection gracefully."""
     await manager.disconnect("nonexistent")
     # Should not raise
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_disconnect_unregisters_from_redis(manager, mock_websocket, mock_redis_client):
     """Test disconnect removes connection from Redis."""
     conn_id = "conn-123"
@@ -403,7 +402,7 @@ async def test_disconnect_unregisters_from_redis(manager, mock_websocket, mock_r
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_send_to_user_sends_to_local(manager, mock_websocket):
     """Test send_to_user sends to local connections."""
     conn_id = "conn-123"
@@ -416,7 +415,7 @@ async def test_send_to_user_sends_to_local(manager, mock_websocket):
     mock_websocket.send_json.assert_awaited_once_with({"type": "test", "data": "hello"})
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_send_to_user_handles_send_failure(manager, mock_websocket):
     """Test send_to_user disconnects on send failure."""
     conn_id = "conn-123"
@@ -431,7 +430,7 @@ async def test_send_to_user_handles_send_failure(manager, mock_websocket):
     assert conn_id not in manager.local_connections
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_send_to_user_publishes_to_redis(manager, mock_redis_client):
     """Test send_to_user publishes to Redis for remote connections."""
     manager.redis_client = mock_redis_client
@@ -448,7 +447,7 @@ async def test_send_to_user_publishes_to_redis(manager, mock_redis_client):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_send_to_operation_sends_to_local(manager, mock_websocket):
     """Test send_to_operation sends to local connections watching operation."""
     conn_id = "conn-123"
@@ -464,7 +463,7 @@ async def test_send_to_operation_sends_to_local(manager, mock_websocket):
     mock_websocket.send_json.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_send_to_operation_publishes_to_redis(manager, mock_redis_client):
     """Test send_to_operation publishes to Redis."""
     manager.redis_client = mock_redis_client
@@ -481,7 +480,7 @@ async def test_send_to_operation_publishes_to_redis(manager, mock_redis_client):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_broadcast_to_collection_sends_to_local(manager, mock_websocket):
     """Test broadcast_to_collection sends to local connections."""
     conn_id = "conn-123"
@@ -497,7 +496,7 @@ async def test_broadcast_to_collection_sends_to_local(manager, mock_websocket):
     mock_websocket.send_json.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_broadcast_to_collection_publishes_to_redis(manager, mock_redis_client):
     """Test broadcast_to_collection publishes to Redis."""
     manager.redis_client = mock_redis_client
@@ -514,7 +513,7 @@ async def test_broadcast_to_collection_publishes_to_redis(manager, mock_redis_cl
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_stats_returns_local_stats(manager, mock_websocket):
     """Test get_stats returns local connection statistics."""
     manager.local_connections["conn-1"] = mock_websocket
@@ -539,7 +538,7 @@ async def test_get_stats_returns_local_stats(manager, mock_websocket):
     assert stats["collections"] == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_stats_includes_redis_stats(manager, mock_redis_client):
     """Test get_stats includes global Redis statistics."""
     manager.redis_client = mock_redis_client
@@ -552,7 +551,7 @@ async def test_get_stats_includes_redis_stats(manager, mock_redis_client):
     assert stats["active_instances"] == 3
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_stats_handles_redis_error(manager, mock_redis_client):
     """Test get_stats handles Redis errors gracefully."""
     manager.redis_client = mock_redis_client
@@ -569,14 +568,14 @@ async def test_get_stats_handles_redis_error(manager, mock_redis_client):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_handle_instance_message_ping(manager):
     """Test handling ping command."""
     # Should not raise
     await manager._handle_instance_message({"command": "ping"})
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_handle_instance_message_disconnect_user(manager, mock_websocket):
     """Test handling disconnect_user command."""
     conn_id = "conn-123"
@@ -589,7 +588,7 @@ async def test_handle_instance_message_disconnect_user(manager, mock_websocket):
     mock_websocket.close.assert_awaited_once()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_handle_instance_message_stats(manager, mock_websocket):
     """Test handling stats command."""
     manager.local_connections["conn-1"] = mock_websocket
@@ -619,14 +618,14 @@ def test_heartbeat_key(manager):
     assert key == "websocket:connection:heartbeat:conn-456"
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_hostname(manager):
     """Test _get_hostname returns hostname."""
     hostname = await manager._get_hostname()
     assert isinstance(hostname, str)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_get_hostname_handles_error(manager):
     """Test _get_hostname returns 'unknown' on error."""
     with patch("socket.gethostname", side_effect=Exception("Error")):
@@ -639,7 +638,7 @@ async def test_get_hostname_handles_error(manager):
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_register_connection_handles_bytes_result(manager, mock_redis_client):
     """Test _register_connection handles bytes result from eval."""
     manager.redis_client = mock_redis_client
@@ -649,7 +648,7 @@ async def test_register_connection_handles_bytes_result(manager, mock_redis_clie
     await manager._register_connection("conn-1", "user-1", None, None, 1000.0)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_register_connection_handles_string_result(manager, mock_redis_client):
     """Test _register_connection handles string result from eval."""
     manager.redis_client = mock_redis_client
@@ -659,7 +658,7 @@ async def test_register_connection_handles_string_result(manager, mock_redis_cli
     await manager._register_connection("conn-1", "user-1", None, None, 1000.0)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_register_connection_handles_bool_result(manager, mock_redis_client):
     """Test _register_connection handles bool result from eval."""
     manager.redis_client = mock_redis_client
@@ -669,7 +668,7 @@ async def test_register_connection_handles_bool_result(manager, mock_redis_clien
     await manager._register_connection("conn-1", "user-1", None, None, 1000.0)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_register_connection_raises_on_limit_exceeded(manager, mock_redis_client):
     """Test _register_connection raises TooManyConnectionsError."""
     manager.redis_client = mock_redis_client
@@ -679,7 +678,7 @@ async def test_register_connection_raises_on_limit_exceeded(manager, mock_redis_
         await manager._register_connection("conn-1", "user-1", None, None, 1000.0)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_register_connection_no_redis(manager):
     """Test _register_connection does nothing without Redis."""
     manager.redis_client = None
@@ -688,7 +687,7 @@ async def test_register_connection_no_redis(manager):
     await manager._register_connection("conn-1", "user-1", None, None, 1000.0)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_unregister_connection_no_redis(manager):
     """Test _unregister_connection does nothing without Redis."""
     manager.redis_client = None
@@ -697,7 +696,7 @@ async def test_unregister_connection_no_redis(manager):
     await manager._unregister_connection("conn-1", "user-1")
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_unregister_connection_with_unknown_user(manager, mock_redis_client):
     """Test _unregister_connection handles None user_id."""
     manager.redis_client = mock_redis_client
@@ -712,7 +711,7 @@ async def test_unregister_connection_with_unknown_user(manager, mock_redis_clien
 # -----------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_close_redis_connections(manager, mock_redis_client, mock_pubsub):
     """Test _close_redis_connections closes both clients."""
     manager.redis_client = mock_redis_client
@@ -726,7 +725,7 @@ async def test_close_redis_connections(manager, mock_redis_client, mock_pubsub):
     assert manager.pubsub is None
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio()
 async def test_close_redis_connections_handles_errors(manager, mock_redis_client, mock_pubsub):
     """Test _close_redis_connections handles errors gracefully."""
     manager.redis_client = mock_redis_client
