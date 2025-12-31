@@ -69,7 +69,10 @@ make wizard
 
 # Manual setup:
 cp .env.docker.example .env
-# IMPORTANT: Replace placeholders in .env before starting.
+# IMPORTANT: Replace ALL placeholder credentials in .env before starting:
+#   JWT_SECRET_KEY, POSTGRES_PASSWORD, REDIS_PASSWORD, QDRANT_API_KEY,
+#   FLOWER_USERNAME, FLOWER_PASSWORD
+# Generate secrets with: openssl rand -hex 32
 # If you are not using connectors with credentials, set CONNECTOR_SECRETS_KEY="" to disable secrets encryption.
 make docker-up
 ```
@@ -93,6 +96,9 @@ If you prefer the API, the v2 endpoints are under `/api/v2/*` — see `docs/API_
 ## Configuration
 `make wizard` or `.env.docker.example` covers the common knobs. A few highlights:
 - `JWT_SECRET_KEY` – auth secret (wizard generates one).
+- `POSTGRES_PASSWORD` – database password.
+- `REDIS_PASSWORD` – Redis authentication (v7.1+).
+- `QDRANT_API_KEY` – vector database authentication (v7.1+).
 - `DATABASE_URL`, `REDIS_URL`, `QDRANT_HOST|PORT` – infra wiring.
 - `DEFAULT_EMBEDDING_MODEL`, `DEFAULT_QUANTIZATION`, `USE_MOCK_EMBEDDINGS` – model defaults.
 - `DOCUMENT_PATH` – host folder to index (mounted read‑only into containers; default `./documents`).

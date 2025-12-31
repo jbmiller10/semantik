@@ -602,14 +602,16 @@ Authorization: Bearer {token}
       "collection_id": "550e8400-e29b-41d4-a716-446655440000",
       "type": "index",
       "status": "processing",
+      "config": {},
       "created_at": "2024-01-15T10:00:00Z",
-      "progress_percentage": 30.0
+      "started_at": "2024-01-15T10:01:00Z",
+      "completed_at": null,
+      "error_message": null
     }
   ],
   "total": 5,
   "page": 1,
-  "per_page": 20,
-  "pages": 1
+  "per_page": 20
 }
 ```
 
@@ -754,7 +756,7 @@ Multiple strategies, real-time processing, quality analysis. See [CHUNKING_API.m
 
 **Key endpoints**: strategies, preview (10/min), compare (5/min), collection processing, metrics, quality scores, configs
 
-**Progress**: WebSocket at `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt_token>`
+**Progress**: WebSocket at `ws://localhost:8080/ws/operations/{operation_id}` (authenticate via subprotocol, see WebSocket Endpoints)
 
 #### Document Access Endpoints
 
@@ -872,11 +874,19 @@ Content-Type: application/json
 
 ### WebSocket Endpoints
 
-WebSockets are mounted at the app level and authenticate via `?token=<jwt_token>`.
+WebSocket endpoints for real-time progress updates.
 
-- **Global operations stream**: `ws://localhost:8080/ws/operations?token={jwt_token}`
-- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}`
-- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}?token={jwt_token}`
+**Endpoints:**
+- **Global operations stream**: `ws://localhost:8080/ws/operations`
+- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}`
+- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}`
+
+**Authentication (v7.1+):** Pass JWT via WebSocket subprotocol header (preferred):
+```javascript
+const ws = new WebSocket(url, [`access_token.${token}`]);
+```
+
+**Deprecated:** Query parameter `?token={jwt_token}` still works but will be removed in a future version.
 
 Operations are started via REST; directory scans via `POST /api/v2/directory-scan/preview`. See `docs/WEBSOCKET_API.md` for message schemas and event types.
 

@@ -54,9 +54,16 @@ Memory: Qwen3-0.6B uses ~1.2GB (float16), ~0.6GB (int8)
 
 ## Configuration
 
-Required: `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`, `FLOWER_USERNAME`, `FLOWER_PASSWORD`
+**Required credentials (v7.1+):**
+- `JWT_SECRET_KEY` - Authentication secret
+- `POSTGRES_PASSWORD` - Database password
+- `REDIS_PASSWORD` - Redis authentication
+- `QDRANT_API_KEY` - Vector database authentication
+- `FLOWER_USERNAME`, `FLOWER_PASSWORD` - Task monitoring UI
 
-Connector credentials (Git/IMAP/etc.): set `CONNECTOR_SECRETS_KEY` to a valid Fernet key (or set it to empty to disable).
+Docker Compose enforces these values on startup - containers won't start with placeholder values. Run `make wizard` to auto-generate all credentials, or generate manually with `openssl rand -hex 32`.
+
+**Optional:** `CONNECTOR_SECRETS_KEY` - Fernet key for encrypting connector credentials (Git/IMAP/etc.). Set to empty to disable.
 
 See `.env.docker.example` for full list.
 
