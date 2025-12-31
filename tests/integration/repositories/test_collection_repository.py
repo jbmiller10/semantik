@@ -62,11 +62,11 @@ class TestCollectionRepositoryIntegration:
         test_user_db,
         collection_factory,
     ) -> None:
-        """Duplicate collection names should raise DatabaseOperationError."""
+        """Duplicate collection names should raise EntityAlreadyExistsError."""
         duplicate_name = f"duplicate-{uuid4().hex[:8]}"
         existing = await collection_factory(owner_id=test_user_db.id, name=duplicate_name)
 
-        with pytest.raises(DatabaseOperationError) as exc_info:
+        with pytest.raises(EntityAlreadyExistsError) as exc_info:
             await repository.create(name=existing.name, owner_id=test_user_db.id)
 
         assert "already exists" in str(exc_info.value)
@@ -75,8 +75,8 @@ class TestCollectionRepositoryIntegration:
     async def test_create_collection_invalid_chunk_size_raises_validation_error(
         self, repository: CollectionRepository, test_user_db
     ) -> None:
-        """Invalid chunk configuration should bubble up as ValidationError."""
-        with pytest.raises(DatabaseOperationError) as exc_info:
+        """Invalid chunk configuration should raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
             await repository.create(name=f"invalid-{uuid4().hex[:6]}", owner_id=test_user_db.id, chunk_size=0)
 
         assert "Chunk size must be positive" in str(exc_info.value)
