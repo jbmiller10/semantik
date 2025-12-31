@@ -247,9 +247,7 @@ class QdrantManager:
                 str(e),
                 exc_info=True,
             )
-            raise RuntimeError(
-                f"Cannot determine if collection '{collection_name}' exists: {e}"
-            ) from e
+            raise RuntimeError(f"Cannot determine if collection '{collection_name}' exists: {e}") from e
         except Exception as e:
             logger.error(
                 "Unexpected error checking collection '%s' existence: %s",
@@ -257,9 +255,7 @@ class QdrantManager:
                 e,
                 exc_info=True,
             )
-            raise RuntimeError(
-                f"Cannot determine if collection '{collection_name}' exists: {e}"
-            ) from e
+            raise RuntimeError(f"Cannot determine if collection '{collection_name}' exists: {e}") from e
 
     async def get_collection_usage(self, collection_name: str) -> dict[str, int]:
         """Return document, vector, and storage usage metrics for a collection.

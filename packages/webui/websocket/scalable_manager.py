@@ -608,7 +608,7 @@ class ScalableWebSocketManager:
         )
 
         result_int: int
-        if isinstance(result, (bytes, str)):
+        if isinstance(result, bytes | str):
             try:
                 result_int = int(result)
             except (TypeError, ValueError):

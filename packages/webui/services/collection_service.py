@@ -788,7 +788,7 @@ class CollectionService:
 
         original_values: dict[str, Any] | None = None
         if requires_qdrant_sync:
-            original_values = {key: getattr(collection, key, None) for key in updates.keys()}
+            original_values = {key: getattr(collection, key, None) for key in updates}
 
         try:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)

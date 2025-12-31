@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -5,7 +6,6 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-import logging
 
 from webui.tasks import _process_append_operation_impl
 
