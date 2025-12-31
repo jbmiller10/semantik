@@ -38,5 +38,5 @@ def test_recursive_chunking_rejects_equal_min_max_tokens() -> None:
     strategy = RecursiveChunkingStrategy()
     config = ChunkConfig("recursive", min_tokens=50, max_tokens=50, overlap_tokens=5)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"min_tokens .* must be less than max_tokens"):
         strategy.chunk("Short content to trigger validation.", config)

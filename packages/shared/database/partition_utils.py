@@ -482,7 +482,7 @@ class ChunkPartitionHelper:
             if stats.avg_content_length is not None:
                 try:
                     avg_length = float(stats.avg_content_length)
-                except (ValueError, TypeError) as e:
+                except (ValueError, TypeError):
                     logger.warning(
                         "Invalid avg_content_length value: %s",
                         stats.avg_content_length,

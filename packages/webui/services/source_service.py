@@ -135,7 +135,7 @@ class SourceService:
                 for secret_type, value in secrets_to_store.items():
                     await self.secret_repo.set_secret(source.id, secret_type, value)
                     secret_types.append(secret_type)
-            except EncryptionNotConfiguredError as e:
+            except EncryptionNotConfiguredError:
                 logger.warning(
                     "Secrets provided for source %s but encryption not configured",
                     source.id,
@@ -211,7 +211,7 @@ class SourceService:
                         await self.secret_repo.set_secret(source_id, secret_type, value)
                     else:  # Empty string: delete
                         await self.secret_repo.delete_secret(source_id, secret_type)
-            except EncryptionNotConfiguredError as e:
+            except EncryptionNotConfiguredError:
                 logger.warning(
                     "Secrets update requested for source %s but encryption not configured",
                     source_id,

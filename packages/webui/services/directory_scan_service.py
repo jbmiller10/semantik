@@ -83,7 +83,7 @@ class DirectoryScanService:
         channel_id = f"directory-scan:{scan_id}"
 
         # First, count total files for progress tracking
-            logger.info("Starting file count for directory: %s", path)
+        logger.info("Starting file count for directory: %s", path)
         try:
             await self._send_progress(
                 channel_id=channel_id,
@@ -213,6 +213,7 @@ class DirectoryScanService:
         exclude_patterns: list[str] | None,
     ) -> int:
         """Count supported files in directory."""
+
         def _count_files_sync() -> int:
             count = 0
 

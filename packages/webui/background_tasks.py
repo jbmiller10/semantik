@@ -144,7 +144,7 @@ class RedisCleanupTask:
                 self._max_backoff_seconds,
             )
             logger.critical(
-                "CIRCUIT BREAKER OPEN: Cleanup failed %d consecutive times. " "Pausing for %d seconds. Last error: %s",
+                "CIRCUIT BREAKER OPEN: Cleanup failed %d consecutive times. Pausing for %d seconds. Last error: %s",
                 self._consecutive_failures,
                 self._current_backoff,
                 error,

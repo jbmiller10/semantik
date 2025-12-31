@@ -144,7 +144,7 @@ class SearchService:
             result = response.json()
             return (collection, result.get("results", []), None)
 
-        except httpx.ReadTimeout as e:
+        except httpx.ReadTimeout:
             # Retry with longer timeout
             logger.warning("Search timeout for collection %s, retrying...", collection.name, exc_info=True)
             # Calculate extended timeout by multiplying current timeout values

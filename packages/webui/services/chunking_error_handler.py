@@ -1200,7 +1200,7 @@ class ChunkingErrorHandler:
             )
             return True
 
-        except TimeoutError as e:
+        except TimeoutError:
             logger.warning(
                 "Failed to acquire resource lock for %s within %ss",
                 resource_type.value,

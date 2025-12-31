@@ -12,8 +12,8 @@ from typing import Any
 
 import psutil
 
-from shared.managers import QdrantCollectionNotFoundError
 from shared.config import settings
+from shared.managers import QdrantCollectionNotFoundError
 
 logger = logging.getLogger(__name__)
 

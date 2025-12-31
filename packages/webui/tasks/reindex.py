@@ -570,25 +570,25 @@ async def _process_reindex_operation_impl(
                                     collection_name=staging_collection_name,
                                     model_name=model_name,
                                 )
-                                except DimensionMismatchError as exc:
-                                    if vector_dim and vector_dim == expected_dim:
-                                        logger.warning(
-                                            "Dimension mismatch during reindexing: %s. Adjusting embeddings from %s to %s dimensions.",
-                                            exc,
-                                            actual_dim,
-                                            expected_dim,
-                                            exc_info=True,
-                                        )
-                                        embeddings = adjust_embeddings_dimension(
-                                            embeddings, target_dimension=expected_dim, normalize=True
-                                        )
-                                    else:
-                                        error_msg = (
-                                            "Embedding dimension mismatch during reindexing: {}. Staging collection {} expects {}-dimensional vectors, "
-                                            "but model {} produced {}-dimensional vectors."
-                                        ).format(exc, staging_collection_name, expected_dim, model_name, actual_dim)
-                                        logger.error("%s", error_msg, exc_info=True)
-                                        raise ValueError(error_msg) from exc
+                            except DimensionMismatchError as exc:
+                                if vector_dim and vector_dim == expected_dim:
+                                    logger.warning(
+                                        "Dimension mismatch during reindexing: %s. Adjusting embeddings from %s to %s dimensions.",
+                                        exc,
+                                        actual_dim,
+                                        expected_dim,
+                                        exc_info=True,
+                                    )
+                                    embeddings = adjust_embeddings_dimension(
+                                        embeddings, target_dimension=expected_dim, normalize=True
+                                    )
+                                else:
+                                    error_msg = (
+                                        "Embedding dimension mismatch during reindexing: {}. Staging collection {} expects {}-dimensional vectors, "
+                                        "but model {} produced {}-dimensional vectors."
+                                    ).format(exc, staging_collection_name, expected_dim, model_name, actual_dim)
+                                    logger.error("%s", error_msg, exc_info=True)
+                                    raise ValueError(error_msg) from exc
 
                     points = []
                     for i, chunk in enumerate(all_chunks):
