@@ -5,6 +5,7 @@ for cross-instance communication.
 """
 
 import asyncio
+import contextlib
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -487,10 +488,8 @@ class TestScalableWebSocketManagerHeartbeat:
         heartbeat_task.cancel()
 
         # Wait for task to finish, ignoring CancelledError
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await heartbeat_task
-        except asyncio.CancelledError:
-            pass
 
         # Verify ping was sent
         mock_websocket.send_json.assert_called()
@@ -525,10 +524,8 @@ class TestScalableWebSocketManagerHeartbeat:
         heartbeat_task.cancel()
 
         # Wait for task to finish, ignoring CancelledError
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await heartbeat_task
-        except asyncio.CancelledError:
-            pass
 
         # Connection should be removed
         assert "conn-1" not in manager.local_connections
@@ -568,10 +565,8 @@ class TestScalableWebSocketManagerCleanup:
         cleanup_task.cancel()
 
         # Wait for task to finish, ignoring CancelledError
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await cleanup_task
-        except asyncio.CancelledError:
-            pass
 
         # Verify unregister was called
         manager.redis_client.eval.assert_called()
@@ -598,10 +593,8 @@ class TestScalableWebSocketManagerCleanup:
         cleanup_task.cancel()
 
         # Wait for task to finish, ignoring CancelledError
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await cleanup_task
-        except asyncio.CancelledError:
-            pass
 
 
 class TestScalableWebSocketManagerStats:

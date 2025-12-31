@@ -30,7 +30,6 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 import redis.asyncio as redis  # noqa: E402
 from dotenv import dotenv_values, load_dotenv  # noqa: E402
-from fastapi import WebSocket  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from httpx import AsyncClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
