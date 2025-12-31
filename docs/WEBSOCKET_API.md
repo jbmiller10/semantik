@@ -4,18 +4,27 @@ Real-time progress updates for operations and directory scans. Start work via RE
 
 ## Endpoints
 
-**Global operations:** `ws://localhost:8080/ws/operations?token=<jwt>`
+**Global operations:** `ws://localhost:8080/ws/operations`
 All operations for authenticated user.
 
-**Single operation:** `ws://localhost:8080/ws/operations/{operation_id}?token=<jwt>`
+**Single operation:** `ws://localhost:8080/ws/operations/{operation_id}`
 One operation's progress.
 
-**Directory scan:** `ws://localhost:8080/ws/directory-scan/{scan_id}?token=<jwt>`
+**Directory scan:** `ws://localhost:8080/ws/directory-scan/{scan_id}`
 Get `scan_id` from `POST /api/v2/directory-scan/preview`.
 
 ## Auth
 
-Pass JWT as query param: `?token=<jwt>`. Optional if `DISABLE_AUTH=true`.
+**Preferred (v7.1+):** Pass JWT via WebSocket subprotocol header:
+```javascript
+const ws = new WebSocket(url, [`access_token.${token}`]);
+```
+
+The server echoes back the accepted subprotocol on successful authentication. This approach is more secure as tokens don't appear in server logs, browser history, or referrer headers.
+
+**Deprecated:** Query parameter `?token=<jwt>` still works for backward compatibility but will be removed in a future version.
+
+Authentication is optional if `DISABLE_AUTH=true`.
 
 ## Message Formats
 
@@ -47,6 +56,13 @@ Send `{"type":"ping"}`, get `{"type":"pong"}`.
 ## Client Example
 
 ```js
-const ws = new WebSocket(`ws://localhost:8080/ws/operations/${id}?token=${token}`);
+// Preferred: subprotocol authentication (v7.1+)
+const ws = new WebSocket(
+  `ws://localhost:8080/ws/operations/${id}`,
+  [`access_token.${token}`]
+);
 ws.onmessage = (e) => console.log(JSON.parse(e.data));
+
+// Deprecated: query parameter authentication (still supported)
+// const ws = new WebSocket(`ws://localhost:8080/ws/operations/${id}?token=${token}`);
 ```

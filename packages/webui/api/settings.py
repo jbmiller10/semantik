@@ -52,21 +52,29 @@ async def reset_database_endpoint(
         collections = result.scalars().all()
 
         # Delete Qdrant collections for all collections
-        async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
-        for collection in collections:
-            collection_name = str(collection.vector_store_name)
-            try:
-                await async_client.delete_collection(collection_name)
-                logger.info(f"Deleted Qdrant collection: {collection_name}")
-            except Exception as e:
-                logger.warning(f"Failed to delete collection {collection_name}: {e}")
-
-        # Also delete the metadata collection
+        async_client: AsyncQdrantClient | None = None
         try:
-            await async_client.delete_collection("_collection_metadata")
-            logger.info("Deleted metadata collection")
-        except Exception as e:
-            logger.warning(f"Failed to delete metadata collection: {e}")
+            async_client = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+            for collection in collections:
+                collection_name = str(collection.vector_store_name)
+                try:
+                    await async_client.delete_collection(collection_name)
+                    logger.info(f"Deleted Qdrant collection: {collection_name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete collection {collection_name}: {e}")
+
+            # Also delete the metadata collection
+            try:
+                await async_client.delete_collection("_collection_metadata")
+                logger.info("Deleted metadata collection")
+            except Exception as e:
+                logger.warning(f"Failed to delete metadata collection: {e}")
+        finally:
+            try:
+                if async_client is not None:
+                    await async_client.close()
+            except Exception as e:
+                logger.warning("Failed to close Qdrant client: %s", e)
 
         # Delete all parquet files
         try:

@@ -651,6 +651,9 @@ class TestSearchReranking:
             metadata_filter=search_request.metadata_filter,
             use_reranker=True,
             include_content=search_request.include_content,
+            hybrid_alpha=0.7,
+            hybrid_mode="weighted",
+            keyword_mode="any",
         )
 
         assert response.reranking_used is True
@@ -707,6 +710,9 @@ class TestSingleCollectionSearch:
             metadata_filter=search_request.metadata_filter,
             use_reranker=search_request.use_reranker,
             include_content=search_request.include_content,
+            hybrid_alpha=0.7,
+            hybrid_mode="weighted",
+            keyword_mode="any",
         )
 
         assert isinstance(response, CollectionSearchResponse)

@@ -26,6 +26,8 @@ class TestOperationsWebSocket:
         mock.send_json = AsyncMock()
         mock.close = AsyncMock()
         mock.query_params = {"token": "valid-test-token"}
+        # Mock headers - no origin means same-origin (passes validation)
+        mock.headers = {}
         mock.received_messages = []
 
         # Store messages when send_json is called
@@ -113,8 +115,10 @@ class TestOperationsWebSocket:
                 assert mock_websocket_client.query_params.get("token") == "valid-test-token"
 
                 # Verify connection was established with correct parameter order
-                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id)
-                mock_ws_manager.connect.assert_called_once_with(mock_websocket_client, "1", "test-operation-id")
+                # ScalableWebSocketManager expects: connect(websocket, user_id, operation_id, subprotocol)
+                mock_ws_manager.connect.assert_called_once_with(
+                    mock_websocket_client, "1", "test-operation-id", subprotocol=None
+                )
 
                 # Verify disconnection was called with connection_id only
                 # ScalableWebSocketManager expects: disconnect(connection_id)

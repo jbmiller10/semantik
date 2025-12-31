@@ -9,12 +9,13 @@ export type SyncMode = 'one_time' | 'continuous';
 
 export type SyncRunStatus = 'running' | 'success' | 'failed' | 'partial';
 
-export type OperationType = 
+export type OperationType =
   | 'index'
   | 'append'
   | 'reindex'
   | 'remove_source'
-  | 'delete';
+  | 'delete'
+  | 'projection_build';
 
 export type OperationStatus = 
   | 'pending'

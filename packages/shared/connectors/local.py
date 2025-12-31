@@ -38,6 +38,10 @@ class LocalFileConnector(BaseConnector):
             async for doc in connector.load_documents():
                 print(doc.unique_id, doc.content_hash)
         ```
+
+    Security:
+        This connector validates that all file paths stay within the configured
+        base directory to prevent path traversal attacks via symlinks or relative paths.
     """
 
     def validate_config(self) -> None:
@@ -61,6 +65,31 @@ class LocalFileConnector(BaseConnector):
             raise ValueError(f"Path is not a directory: {path}")
         return True
 
+    def _is_safe_path(self, file_path: Path, base_path: Path) -> bool:
+        """Verify that a file path is safely within the base directory.
+
+        Protects against path traversal attacks by:
+        1. Resolving symlinks to get the canonical path
+        2. Verifying the resolved path is within the base directory
+
+        Args:
+            file_path: The file path to validate
+            base_path: The base directory that should contain the file
+
+        Returns:
+            True if the path is safe, False otherwise
+        """
+        try:
+            # Resolve both paths to their canonical form (resolves symlinks)
+            resolved_file = file_path.resolve()
+            resolved_base = base_path.resolve()
+            # Check if the resolved file path is within the base directory
+            return resolved_file.is_relative_to(resolved_base)
+        except (OSError, ValueError):
+            # OSError: permission denied, broken symlink, etc.
+            # ValueError: is_relative_to can raise on edge cases
+            return False
+
     async def load_documents(
         self,
         source_id: int | None = None,  # noqa: ARG002
@@ -73,13 +102,18 @@ class LocalFileConnector(BaseConnector):
         Yields:
             IngestedDocument for each supported file.
         """
-        source_path = self._config["path"]
+        source_path = Path(self._config["path"])
         recursive = self._config.get("recursive", True)
 
         if recursive:
-            for root, _, files in os.walk(source_path):
+            # Use followlinks=False to avoid following symlinks during traversal
+            for root, _, files in os.walk(source_path, followlinks=False):
                 for filename in files:
                     file_path = Path(root) / filename
+                    # Security: verify path stays within base directory
+                    if not self._is_safe_path(file_path, source_path):
+                        logger.warning(f"Skipping path outside base directory: {file_path}")
+                        continue
                     if not self._should_include_file(file_path):
                         continue
                     doc = await self._process_file(file_path)
@@ -87,8 +121,12 @@ class LocalFileConnector(BaseConnector):
                         yield doc
         else:
             for filename in os.listdir(source_path):
-                file_path = Path(source_path) / filename
+                file_path = source_path / filename
                 if file_path.is_file():
+                    # Security: verify path stays within base directory
+                    if not self._is_safe_path(file_path, source_path):
+                        logger.warning(f"Skipping path outside base directory: {file_path}")
+                        continue
                     if not self._should_include_file(file_path):
                         continue
                     doc = await self._process_file(file_path)
@@ -106,7 +144,7 @@ class LocalFileConnector(BaseConnector):
         if not source_path:
             return True
 
-        rel_path = os.path.relpath(str(file_path), start=source_path).replace(os.sep, "/")
+        rel_path = os.path.relpath(str(file_path), start=str(source_path)).replace(os.sep, "/")
         file_name = file_path.name
 
         if exclude_patterns and any(

@@ -8,13 +8,13 @@ import {
   renderWithErrorHandlers,
   mockWebSocket
 } from '../../tests/utils/errorTestUtils'
-import { operationsV2Api } from '../../services/api/v2/collections'
+import { operationsV2Api } from '../../services/api/v2/operations'
 // import type { Operation } from '../../types/collection'
 
 // Mock the hooks and APIs
 vi.mock('../../hooks/useOperationsSocket')
 vi.mock('../../hooks/useCollections')
-vi.mock('../../services/api/v2/collections', () => ({
+vi.mock('../../services/api/v2/operations', () => ({
   operationsV2Api: {
     list: vi.fn()
   }
@@ -140,7 +140,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
 
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+        operations: mockActiveOperations,
+        total: mockActiveOperations.length,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -169,7 +172,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         apiCallCount++
         return Promise.resolve({
-          data: mockActiveOperations
+          operations: mockActiveOperations,
+          total: mockActiveOperations.length,
+          page: 1,
+          per_page: 100,
         })
       })
 
@@ -196,7 +202,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
 
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+        operations: mockActiveOperations,
+        total: mockActiveOperations.length,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -220,7 +229,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
 
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+        operations: mockActiveOperations,
+        total: mockActiveOperations.length,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -247,8 +259,12 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       let callCount = 0
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         callCount++
+        const operations = callCount > 2 ? updatedOperations : mockActiveOperations
         return Promise.resolve({
-          data: callCount > 2 ? updatedOperations : mockActiveOperations
+          operations,
+          total: operations.length,
+          page: 1,
+          per_page: 100,
         })
       })
 
@@ -280,7 +296,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       vi.mocked(operationsV2Api.list).mockImplementation(() => {
         apiCallCount++
         return Promise.resolve({
-          data: mockActiveOperations
+          operations: mockActiveOperations,
+          total: mockActiveOperations.length,
+          page: 1,
+          per_page: 100,
         })
       })
 
@@ -302,7 +321,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
 
     it('should handle empty operations list gracefully', async () => {
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: []
+        operations: [],
+        total: 0,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -346,7 +368,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       }))
 
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: manyOperations
+        operations: manyOperations,
+        total: manyOperations.length,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
@@ -370,7 +395,10 @@ describe('ActiveOperationsTab - WebSocket Error Handling', () => {
       })
 
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: mockActiveOperations
+        operations: mockActiveOperations,
+        total: mockActiveOperations.length,
+        page: 1,
+        per_page: 100,
       })
 
       const { unmount } = renderWithErrorHandlers(<ActiveOperationsTab />, [])

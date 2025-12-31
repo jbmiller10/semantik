@@ -74,9 +74,12 @@ describe('useOperationProgress', () => {
       };
     });
 
-    // Mock operations API
-    vi.mocked(operationsV2Api.getWebSocketUrl).mockImplementation(
-      (opId) => `ws://localhost:8080/ws/operations/${opId}`
+    // Mock operations API - now returns connection info object with URL and protocols
+    vi.mocked(operationsV2Api.getWebSocketConnectionInfo).mockImplementation(
+      (opId) => ({
+        url: `ws://localhost:8080/ws/operations/${opId}`,
+        protocols: ['access_token.test-token'],
+      })
     );
   });
 
@@ -89,15 +92,17 @@ describe('useOperationProgress', () => {
   describe('WebSocket connection', () => {
     it('should establish WebSocket connection with operation ID', () => {
       const operationId = 'op-123';
-      
+
       renderHook(() => useOperationProgress(operationId), {
         wrapper: createWrapper(queryClient),
       });
 
-      expect(operationsV2Api.getWebSocketUrl).toHaveBeenCalledWith(operationId);
+      expect(operationsV2Api.getWebSocketConnectionInfo).toHaveBeenCalledWith(operationId);
       expect(useWebSocket).toHaveBeenCalledWith(
         `ws://localhost:8080/ws/operations/${operationId}`,
-        expect.any(Object)
+        expect.objectContaining({
+          protocols: ['access_token.test-token'],
+        })
       );
     });
 

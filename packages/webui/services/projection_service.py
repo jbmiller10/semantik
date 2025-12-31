@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
@@ -753,9 +754,15 @@ class ProjectionService:
                 projection_meta.get("original_ids") if isinstance(projection_meta.get("original_ids"), list) else None
             )
 
-        id_array = array("i")
-        with ids_path.open("rb") as buffer:
-            id_array.frombytes(buffer.read())
+        # Read IDs file using thread executor to avoid blocking async event loop
+        def read_ids_file() -> array:
+            id_arr = array("i")
+            with ids_path.open("rb") as buffer:
+                id_arr.frombytes(buffer.read())
+            return id_arr
+
+        loop = asyncio.get_event_loop()
+        id_array = await loop.run_in_executor(None, read_ids_file)
 
         requested_ids_set = set(ordered_ids)
         id_to_index: dict[int, int] = {}

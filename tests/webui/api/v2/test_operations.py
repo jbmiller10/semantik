@@ -59,9 +59,9 @@ async def test_list_operations_filters_by_status(
 
     assert response.status_code == 200, response.text
     payload = response.json()
-    identifiers = {item["id"] for item in payload}
+    identifiers = {item["id"] for item in payload["operations"]}
     assert completed.uuid in identifiers
-    assert all(item["status"] == "completed" for item in payload)
+    assert all(item["status"] == "completed" for item in payload["operations"])
 
 
 @pytest.mark.asyncio()

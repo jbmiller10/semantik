@@ -53,6 +53,9 @@ DB_POOL_PRE_PING=true        # Test connections before use
 QDRANT_HOST=qdrant           # Qdrant host (container name in Docker)
 QDRANT_PORT=6333             # Qdrant HTTP port
 DEFAULT_COLLECTION=work_docs  # Default collection name
+
+# Qdrant authentication (required in v7.1+)
+QDRANT_API_KEY=CHANGE_THIS   # Generate: openssl rand -hex 32
 ```
 
 ##### Redis (Message Broker)
@@ -61,6 +64,9 @@ DEFAULT_COLLECTION=work_docs  # Default collection name
 REDIS_URL=redis://redis:6379/0              # Redis connection URL
 CELERY_BROKER_URL=redis://redis:6379/0      # Celery broker URL
 CELERY_RESULT_BACKEND=redis://redis:6379/0  # Celery result backend
+
+# Redis authentication (required in v7.1+)
+REDIS_PASSWORD=CHANGE_THIS   # Generate: openssl rand -hex 32
 ```
 
 #### Authentication & Security
@@ -305,9 +311,15 @@ DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
    ```bash
    # JWT Secret
    export JWT_SECRET_KEY=$(uv run python scripts/generate_jwt_secret.py)
-   
+
    # Database Password
    export POSTGRES_PASSWORD=$(openssl rand -hex 32)
+
+   # Redis Password (required in v7.1+)
+   export REDIS_PASSWORD=$(openssl rand -hex 32)
+
+   # Qdrant API Key (required in v7.1+)
+   export QDRANT_API_KEY=$(openssl rand -hex 32)
    ```
 
 2. **Enable Security Features**

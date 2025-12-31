@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, CheckCircle, Info } from 'lucide-react';
 import { CHUNKING_STRATEGIES } from '../../types/chunking';
 import type { ChunkingStrategy, ChunkingStrategyType } from '../../types/chunking';
@@ -29,12 +29,12 @@ export function ChunkingStrategyGuide({
   const [selectedTab, setSelectedTab] = useState<'comparison' | 'examples'>('comparison');
 
   // Prevent body scroll when modal is open
-  useState(() => {
+  useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = '';
     };
-  });
+  }, []);
 
   const getFileTypeRecommendation = (strategy: ChunkingStrategyType): boolean => {
     if (!fileType) return false;

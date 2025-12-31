@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { queryClient } from '../services/queryClient';
 
 interface User {
   id: number;
@@ -16,6 +17,7 @@ interface AuthState {
   refreshToken: string | null;
   user: User | null;
   setAuth: (token: string, user: User, refreshToken?: string) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   logout: () => Promise<void>;
 }
 
@@ -25,8 +27,10 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       refreshToken: null,
       user: null,
-      setAuth: (token: string, user: User, refreshToken?: string) => 
+      setAuth: (token: string, user: User, refreshToken?: string) =>
         set({ token, user, refreshToken: refreshToken || null }),
+      setTokens: (accessToken: string, refreshToken: string) =>
+        set({ token: accessToken, refreshToken }),
       logout: async () => {
         try {
           // Call logout API endpoint
@@ -47,8 +51,13 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           // Always clear the state regardless of API call result
           set({ token: null, refreshToken: null, user: null });
-          // Explicitly clear localStorage to ensure no stale auth data persists
+
+          // Clear all possible storage keys
           localStorage.removeItem('auth-storage');
+          sessionStorage.clear();
+
+          // Invalidate all React Query caches to prevent stale data leakage
+          queryClient.clear();
         }
       },
     }),

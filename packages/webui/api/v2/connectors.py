@@ -150,13 +150,13 @@ async def preview_git(
             error=str(e),
         )
     except Exception as e:
-        logger.error(f"Git preview failed: {e}")
+        logger.error(f"Git preview failed: {e}", exc_info=True)
         return GitPreviewResponse(
             valid=False,
             repo_url=request.repo_url,
             ref=request.ref,
             refs_found=[],
-            error=f"Connection failed: {e}",
+            error="Connection failed. Check repository URL and credentials.",
         )
 
 
@@ -225,7 +225,7 @@ async def preview_imap(
                 conn.logout()
 
         # Run in thread pool to avoid blocking
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         mailboxes_found = await loop.run_in_executor(None, _connect_and_list)
 
         return ImapPreviewResponse(
@@ -237,27 +237,29 @@ async def preview_imap(
         )
 
     except imaplib.IMAP4.error as e:
+        logger.warning(f"IMAP authentication/protocol error: {e}")
         return ImapPreviewResponse(
             valid=False,
             host=request.host,
             username=request.username,
             mailboxes_found=[],
-            error=f"IMAP error: {e}",
+            error="IMAP authentication failed. Check username and password.",
         )
     except (OSError, TimeoutError) as e:
+        logger.warning(f"IMAP connection error: {e}")
         return ImapPreviewResponse(
             valid=False,
             host=request.host,
             username=request.username,
             mailboxes_found=[],
-            error=f"Connection failed: {e}",
+            error="Connection failed. Check host, port, and SSL settings.",
         )
     except Exception as e:
-        logger.error(f"IMAP preview failed: {e}")
+        logger.error(f"IMAP preview failed: {e}", exc_info=True)
         return ImapPreviewResponse(
             valid=False,
             host=request.host,
             username=request.username,
             mailboxes_found=[],
-            error=f"Unexpected error: {e}",
+            error="An unexpected error occurred. Please try again.",
         )

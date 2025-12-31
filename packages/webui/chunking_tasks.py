@@ -1195,7 +1195,15 @@ def retry_failed_documents(
         args=[retry_operation_id, correlation_id],
         task_id=retry_operation_id,
     )
-    return result.get()  # type: ignore[no-any-return]
+    try:
+        task_result: dict[str, Any] = result.get(timeout=300)  # 5 minute timeout
+        return task_result
+    except TimeoutError:
+        logger.error(
+            f"Retry task timed out after 300s for operation {retry_operation_id}",
+            extra={"operation_id": operation_id, "correlation_id": correlation_id},
+        )
+        return {"status": "timeout", "task_id": result.id}
 
 
 # Monitoring task for dead letter queue

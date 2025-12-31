@@ -297,7 +297,7 @@ class TestImapPreviewEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert data["valid"] is False
-            assert "IMAP error" in data["error"]
+            assert "IMAP authentication failed" in data["error"]
 
     def test_imap_preview_connection_failed(self, test_client):
         """Test IMAP preview when connection fails."""
@@ -369,4 +369,4 @@ class TestImapPreviewEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert data["valid"] is False
-            assert "Unexpected error" in data["error"]
+            assert "An unexpected error occurred" in data["error"]

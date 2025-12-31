@@ -9,6 +9,7 @@ import type {
   RemoveSourceRequest,
   ReindexRequest,
   CollectionListResponse,
+  OperationListResponse,
   CollectionSyncRun,
   SyncRunListResponse,
   PaginationParams,
@@ -83,8 +84,28 @@ export const operationsV2Api = {
   cancel: (uuid: string) => 
     apiClient.delete<void>(`/api/v2/operations/${uuid}`),
     
-  list: (params?: PaginationParams & { collection_id?: string; status?: string }) => 
-    apiClient.get<Operation[]>('/api/v2/operations', { params }),
+  list: (
+    params?: PaginationParams & {
+      status?: string;
+      operation_type?: string;
+      per_page?: number;
+      offset?: number;
+    }
+  ) => {
+    const { limit, offset, page, per_page, status, operation_type, sort_by, sort_order } = params || {};
+    const perPage = per_page ?? limit;
+    const resolvedPage = page ?? (offset !== undefined && limit ? Math.floor(offset / limit) + 1 : undefined);
+
+    const queryParams: Record<string, string | number> = {};
+    if (status) queryParams.status = status;
+    if (operation_type) queryParams.operation_type = operation_type;
+    if (resolvedPage) queryParams.page = resolvedPage;
+    if (perPage) queryParams.per_page = perPage;
+    if (sort_by) queryParams.sort_by = sort_by;
+    if (sort_order) queryParams.sort_order = sort_order;
+
+    return apiClient.get<OperationListResponse>('/api/v2/operations', { params: queryParams });
+  },
 };
 
 /**

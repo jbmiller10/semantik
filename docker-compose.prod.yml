@@ -12,7 +12,7 @@ services:
   # Production configuration for Qdrant
   qdrant:
     # Use specific version tag instead of latest for stability
-    image: qdrant/qdrant:v1.7.4
+    image: qdrant/qdrant:v1.12.1
     restart: always
     logging:
       driver: "json-file"
@@ -23,6 +23,7 @@ services:
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__LOG_LEVEL=WARN  # Reduce log verbosity
       - QDRANT__SERVICE__ENABLE_TLS=false  # TLS handled by reverse proxy
       # Performance tuning
@@ -40,6 +41,8 @@ services:
     environment:
       # Production environment
       - ENVIRONMENT=production
+      # Qdrant API key for authentication
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Production optimizations
       - PYTHONOPTIMIZE=2  # Remove docstrings and enable optimizations
       - MODEL_UNLOAD_AFTER_SECONDS=600  # Keep models loaded longer in production
@@ -70,7 +73,8 @@ services:
       # Increase workers for production load
       - WEBUI_WORKERS=4
       # Security headers (additional to reverse proxy)
-      - FORWARDED_ALLOW_IPS=*  # Configure based on your proxy
+      # Use Docker network subnet for nginx in same compose, or set specific proxy IPs
+      - FORWARDED_ALLOW_IPS=${FORWARDED_ALLOW_IPS:-172.25.0.0/16}
       # Rate limiting
       - RATE_LIMIT_PER_MINUTE=60
     # Remove port exposure - access through reverse proxy only

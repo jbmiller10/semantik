@@ -7,6 +7,7 @@ with configurable TTL. Thread-safe for async usage via simple dict + timestamps.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
 
@@ -21,8 +22,12 @@ MAX_CACHE_ENTRIES = 100
 # Cache structure: {collection_name: (timestamp, vector_dim, collection_info)}
 _collection_info_cache: dict[str, tuple[float, int, dict[str, Any] | None]] = {}
 
+_collection_info_lock = threading.Lock()
+
 # Cache structure: {collection_name: (timestamp, metadata_dict)}
 _collection_metadata_cache: dict[str, tuple[float, dict[str, Any] | None]] = {}
+
+_collection_metadata_lock = threading.Lock()
 
 
 def _is_expired(timestamp: float) -> bool:
@@ -43,7 +48,8 @@ def _evict_if_needed(cache: dict[str, Any]) -> None:
 
 def get_collection_info(name: str) -> tuple[int, dict[str, Any] | None] | None:
     """Return cached (vector_dim, info) or None if expired/missing."""
-    entry = _collection_info_cache.get(name)
+    with _collection_info_lock:
+        entry = _collection_info_cache.get(name)
     if entry is None:
         logger.debug("Cache miss for collection info: %s", name)
         return None
@@ -51,7 +57,8 @@ def get_collection_info(name: str) -> tuple[int, dict[str, Any] | None] | None:
     timestamp, vector_dim, info = entry
     if _is_expired(timestamp):
         logger.debug("Cache expired for collection info: %s", name)
-        del _collection_info_cache[name]
+        with _collection_info_lock:
+            _collection_info_cache.pop(name, None)
         return None
 
     logger.debug("Cache hit for collection info: %s", name)
@@ -60,8 +67,9 @@ def get_collection_info(name: str) -> tuple[int, dict[str, Any] | None] | None:
 
 def set_collection_info(name: str, dim: int, info: dict[str, Any] | None) -> None:
     """Cache collection info with TTL."""
-    _evict_if_needed(_collection_info_cache)
-    _collection_info_cache[name] = (time.monotonic(), dim, info)
+    with _collection_info_lock:
+        _evict_if_needed(_collection_info_cache)
+        _collection_info_cache[name] = (time.monotonic(), dim, info)
     logger.debug("Cached collection info for: %s (dim=%d)", name, dim)
 
 
@@ -72,7 +80,8 @@ def get_collection_metadata(name: str) -> dict[str, Any] | None:
     Note: A cached None value (collection has no metadata) is returned as-is,
     distinguishable from cache miss via the _METADATA_CACHE_MISS sentinel.
     """
-    entry = _collection_metadata_cache.get(name)
+    with _collection_metadata_lock:
+        entry = _collection_metadata_cache.get(name)
     if entry is None:
         logger.debug("Cache miss for collection metadata: %s", name)
         return _METADATA_CACHE_MISS
@@ -80,7 +89,8 @@ def get_collection_metadata(name: str) -> dict[str, Any] | None:
     timestamp, metadata = entry
     if _is_expired(timestamp):
         logger.debug("Cache expired for collection metadata: %s", name)
-        del _collection_metadata_cache[name]
+        with _collection_metadata_lock:
+            _collection_metadata_cache.pop(name, None)
         return _METADATA_CACHE_MISS
 
     logger.debug("Cache hit for collection metadata: %s", name)
@@ -98,15 +108,18 @@ def is_cache_miss(value: dict[str, Any] | None) -> bool:
 
 def set_collection_metadata(name: str, metadata: dict[str, Any] | None) -> None:
     """Cache metadata with TTL."""
-    _evict_if_needed(_collection_metadata_cache)
-    _collection_metadata_cache[name] = (time.monotonic(), metadata)
+    with _collection_metadata_lock:
+        _evict_if_needed(_collection_metadata_cache)
+        _collection_metadata_cache[name] = (time.monotonic(), metadata)
     logger.debug("Cached collection metadata for: %s", name)
 
 
 def clear_cache() -> None:
     """Clear all caches (for testing)."""
-    _collection_info_cache.clear()
-    _collection_metadata_cache.clear()
+    with _collection_info_lock:
+        _collection_info_cache.clear()
+    with _collection_metadata_lock:
+        _collection_metadata_cache.clear()
     logger.debug("Cleared all collection caches")
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import inspect
 import logging
 import time
@@ -68,16 +69,17 @@ def _get_patched_callable(name: str, default: Any) -> Any:
     if local is not None and local is not default:
         return local
 
-    # Then look for overrides on the public entrypoint module
-    try:
-        import vecpipe.search_api as search_api
+    # Then look for overrides on the public entrypoint module(s)
+    for module_name in ("vecpipe.search_api", "packages.vecpipe.search_api"):
+        try:
+            search_api = importlib.import_module(module_name)
 
-        candidate = getattr(search_api, name, None)
-        if candidate is not None and candidate is not default:
-            return candidate
-    except Exception:
-        # Best effort only; fall back to default when anything goes wrong
-        pass
+            candidate = getattr(search_api, name, None)
+            if candidate is not None and candidate is not default:
+                return candidate
+        except Exception:
+            # Best effort only; fall back to default when anything goes wrong
+            continue
 
     return default
 
@@ -401,7 +403,14 @@ async def _get_collection_info(collection_name: str) -> tuple[int, dict[str, Any
     created_client = False
 
     if client is None:
-        client = httpx.AsyncClient(base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}", timeout=httpx.Timeout(60.0))
+        headers = {}
+        if cfg.QDRANT_API_KEY:
+            headers["api-key"] = cfg.QDRANT_API_KEY
+        client = httpx.AsyncClient(
+            base_url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            timeout=httpx.Timeout(60.0),
+            headers=headers,
+        )
         created_client = True
 
     try:
@@ -451,7 +460,10 @@ async def _get_cached_collection_metadata(collection_name: str, cfg: Any) -> dic
         # Fallback: create ad-hoc client (rare - only when state not initialized)
         from qdrant_client import AsyncQdrantClient
 
-        async_client = AsyncQdrantClient(url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}")
+        async_client = AsyncQdrantClient(
+            url=f"http://{cfg.QDRANT_HOST}:{cfg.QDRANT_PORT}",
+            api_key=cfg.QDRANT_API_KEY,
+        )
         try:
             metadata = await get_collection_metadata_async(async_client, collection_name)
             set_collection_metadata(collection_name, metadata)
@@ -776,7 +788,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                     },
                 ) from e
             except Exception as e:  # pragma: no cover - safety path
-                logger.error(f"Reranking failed: {e}, falling back to vector search results")
+                logger.error(f"Reranking failed: {e}, falling back to vector search results", exc_info=True)
                 results = results[: request.k]
                 reranker_model_used = None
 
@@ -818,11 +830,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             status_code=503, detail=f"Embedding service error: {str(e)}. Check logs for details."
         ) from e
     except Exception as e:  # pragma: no cover - uncaught path
-        logger.error("Search error: %s", e)
+        logger.error("Search error: %s", e, exc_info=True)
         search_errors.labels(endpoint="/search", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
@@ -928,7 +937,8 @@ async def perform_hybrid_search(
         else:
             query_vector = generate_mock_embedding(query, vector_dim)
 
-        results = hybrid_engine.hybrid_search(
+        results = await asyncio.to_thread(
+            hybrid_engine.hybrid_search,
             query_vector=query_vector,
             query_text=query,
             limit=k,
@@ -964,15 +974,13 @@ async def perform_hybrid_search(
             search_mode=mode,
         )
     except Exception as e:  # pragma: no cover - failure path
-        logger.error("Hybrid search error: %s", e)
+        logger.error("Hybrid search error: %s", e, exc_info=True)
         search_errors.labels(endpoint="/hybrid_search", error_type="search_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Hybrid search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchResponse:
@@ -1101,7 +1109,7 @@ async def perform_keyword_search(
             mode,
         )
 
-        results = hybrid_engine.search_by_keywords(keywords=keywords, limit=k, mode=mode)
+        results = await asyncio.to_thread(hybrid_engine.search_by_keywords, keywords=keywords, limit=k, mode=mode)
 
         hybrid_results: list[HybridSearchResult] = []
         for r in results:
@@ -1126,14 +1134,12 @@ async def perform_keyword_search(
             search_mode="keywords_only",
         )
     except Exception as e:  # pragma: no cover - failure path
-        logger.error("Keyword search error: %s", e)
-        import traceback
-
-        traceback.print_exc()
+        logger.error("Keyword search error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Keyword search error: {str(e)}") from e
     finally:
         if "hybrid_engine" in locals():
-            hybrid_engine.close()
+            with suppress(Exception):
+                await asyncio.to_thread(hybrid_engine.close)
 
 
 async def embed_texts(request: EmbedRequest) -> EmbedResponse:
@@ -1204,11 +1210,8 @@ async def embed_texts(request: EmbedRequest) -> EmbedResponse:
         search_errors.labels(endpoint="/embed", error_type="runtime_error").inc()
         raise HTTPException(status_code=503, detail=f"Embedding service error: {str(e)}") from e
     except Exception as e:  # pragma: no cover - unexpected path
-        logger.error("Unexpected error in /embed: %s", e)
+        logger.error("Unexpected error in /embed: %s", e, exc_info=True)
         search_errors.labels(endpoint="/embed", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 
@@ -1332,11 +1335,8 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
 
         raise HTTPException(status_code=502, detail=detail_text) from e
     except Exception as e:  # pragma: no cover - unexpected
-        logger.error("Unexpected error in /upsert: %s", e)
+        logger.error("Unexpected error in /upsert: %s", e, exc_info=True)
         search_errors.labels(endpoint="/upsert", error_type="unknown_error").inc()
-        import traceback
-
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}") from e
 
 

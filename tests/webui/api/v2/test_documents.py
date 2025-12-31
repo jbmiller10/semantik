@@ -116,7 +116,8 @@ class TestGetDocumentContent:
         assert result.path == str(temp_file)
         assert result.media_type == "application/pdf"
         assert result.filename == temp_file.name
-        assert result.headers["Content-Disposition"] == f'inline; filename="{temp_file.name}"'
+        # RFC 5987 format for Content-Disposition
+        assert result.headers["Content-Disposition"] == f"inline; filename*=UTF-8''{temp_file.name}"
 
     @pytest.mark.asyncio()
     async def test_get_document_content_document_not_found(

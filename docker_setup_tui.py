@@ -1128,6 +1128,42 @@ class DockerSetupTUI:
                 return False
             self.config["JWT_SECRET_KEY"] = custom_jwt
 
+        # Redis Password
+        redis_choice = questionary.select(
+            "Redis Password:", choices=["Generate secure password automatically (Recommended)", "Enter custom password"]
+        ).ask()
+
+        if redis_choice is None:
+            return False
+
+        if "Generate" in redis_choice:
+            self.config["REDIS_PASSWORD"] = secrets.token_hex(32)
+            console.print("[green]Generated secure Redis password[/green]")
+        else:
+            custom_redis = questionary.password("Enter Redis password (min 16 chars):").ask()
+            if custom_redis is None or len(custom_redis) < 16:
+                console.print("[red]Redis password must be at least 16 characters[/red]")
+                return False
+            self.config["REDIS_PASSWORD"] = custom_redis
+
+        # Qdrant API Key
+        qdrant_choice = questionary.select(
+            "Qdrant API Key:", choices=["Generate secure key automatically (Recommended)", "Enter custom key"]
+        ).ask()
+
+        if qdrant_choice is None:
+            return False
+
+        if "Generate" in qdrant_choice:
+            self.config["QDRANT_API_KEY"] = secrets.token_hex(32)
+            console.print("[green]Generated secure Qdrant API key[/green]")
+        else:
+            custom_qdrant = questionary.password("Enter Qdrant API key (min 32 chars):").ask()
+            if custom_qdrant is None or len(custom_qdrant) < 32:
+                console.print("[red]Qdrant API key must be at least 32 characters[/red]")
+                return False
+            self.config["QDRANT_API_KEY"] = custom_qdrant
+
         # Connector Secrets Key (Fernet)
         connector_key_choice = questionary.select(
             "Connector Secrets Key (for encrypting passwords/tokens):",
@@ -1218,13 +1254,17 @@ class DockerSetupTUI:
 
         # Database settings
         table.add_row("Database", "PostgreSQL")
-        table.add_row("PostgreSQL Password", "***" + self.config["POSTGRES_PASSWORD"][-8:])
+        table.add_row("PostgreSQL Password", mask_secret(self.config["POSTGRES_PASSWORD"]))
+
+        # Infrastructure security
+        table.add_row("Redis Password", mask_secret(self.config["REDIS_PASSWORD"]))
+        table.add_row("Qdrant API Key", mask_secret(self.config["QDRANT_API_KEY"]))
 
         # Security settings
-        table.add_row("JWT Secret", "***" + self.config["JWT_SECRET_KEY"][-8:])
+        table.add_row("JWT Secret", mask_secret(self.config["JWT_SECRET_KEY"]))
         connector_key = self.config.get("CONNECTOR_SECRETS_KEY", "")
         if connector_key:
-            table.add_row("Connector Secrets Key", "***" + connector_key[-8:])
+            table.add_row("Connector Secrets Key", mask_secret(connector_key))
         else:
             table.add_row("Connector Secrets Key", "[dim]disabled[/dim]")
         table.add_row("Token Expiration", f"{self.config['ACCESS_TOKEN_EXPIRE_MINUTES']} minutes")
@@ -1302,6 +1342,8 @@ class DockerSetupTUI:
             "DOCUMENT_PATH=./documents": f"DOCUMENT_PATH={self.config['DOCUMENT_PATH']}",
             "WEBUI_WORKERS=1": "WEBUI_WORKERS=auto",
             "POSTGRES_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"POSTGRES_PASSWORD={self.config['POSTGRES_PASSWORD']}",
+            "REDIS_PASSWORD=CHANGE_THIS_TO_A_STRONG_PASSWORD": f"REDIS_PASSWORD={self.config['REDIS_PASSWORD']}",
+            "QDRANT_API_KEY=CHANGE_THIS_TO_A_STRONG_API_KEY": f"QDRANT_API_KEY={self.config['QDRANT_API_KEY']}",
             "LOG_LEVEL=INFO": f"LOG_LEVEL={self.config['LOG_LEVEL']}",
             "HF_CACHE_DIR=./models": f"HF_CACHE_DIR={self.config['HF_CACHE_DIR']}",
             "HF_HUB_OFFLINE=false": f"HF_HUB_OFFLINE={self.config['HF_HUB_OFFLINE']}",

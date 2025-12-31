@@ -20,6 +20,7 @@ class BaseConfig(BaseSettings):
     # Qdrant Configuration
     QDRANT_HOST: str = "localhost"
     QDRANT_PORT: int = 6333
+    QDRANT_API_KEY: str | None = None  # API key for Qdrant authentication
     DEFAULT_COLLECTION: str = "work_docs"
 
     # Internal API Configuration

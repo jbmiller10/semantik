@@ -42,3 +42,16 @@ async def test_clear_preview_by_id_removes_id_and_primary_keys(fake_redis_client
     assert deleted >= 1
     assert await fake_redis_client.exists(alias_key) == 0
     assert await fake_redis_client.exists(cache_key) == 0
+
+
+@pytest.mark.asyncio()
+async def test_delete_keys_accepts_string_count():
+    class DummyRedis:
+        async def delete(self, *keys):
+            return "2"
+
+    cache = ChunkingCache(redis_client=DummyRedis())
+
+    deleted = await cache._delete_keys(["alpha", "beta"])
+
+    assert deleted == 2

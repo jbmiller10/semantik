@@ -93,10 +93,18 @@ export function useProjectionTooltip(
 
   useEffect(() => {
     const controllers = controllersRef.current;
-    controllers.forEach((controller) => controller.abort());
+    const cancelled = cancelledTokens.current;
+    // Abort any existing controllers when projectionId changes
+    controllers.forEach((controller) => {
+      try {
+        controller.abort();
+      } catch {
+        // Ignore abort errors
+      }
+    });
     controllers.clear();
     cacheRef.current.clear();
-    cancelledTokens.current.clear();
+    cancelled.clear();
     inflightTokens.current = [];
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -104,8 +112,17 @@ export function useProjectionTooltip(
     }
     clearState();
     return () => {
-      controllers.forEach((controller) => controller.abort());
+      // Cleanup on unmount - abort all pending requests
+      controllers.forEach((controller) => {
+        try {
+          controller.abort();
+        } catch {
+          // Ignore abort errors
+        }
+      });
       controllers.clear();
+      cancelled.clear();
+      inflightTokens.current = [];
     };
   }, [projectionId, clearState]);
 

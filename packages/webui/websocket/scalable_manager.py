@@ -85,6 +85,11 @@ class ScalableWebSocketManager:
         self._startup_lock = asyncio.Lock()
         self._startup_complete = False
 
+        # Concurrency locks for shared state
+        self._connections_lock = asyncio.Lock()
+        self._metadata_lock = asyncio.Lock()
+        self._throttle_lock = asyncio.Lock()
+
         # Message throttling
         self._message_throttle: dict[str, datetime] = {}
         self._throttle_threshold = 0.05  # 50ms between messages per channel
@@ -138,6 +143,7 @@ class ScalableWebSocketManager:
                     return
 
                 except Exception as e:
+                    await self._close_redis_connections()
                     if attempt < max_retries - 1:
                         wait_time = retry_delay * (2**attempt)
                         logger.warning(f"Failed to start manager: {e}. Retrying in {wait_time:.1f}s...")
@@ -190,15 +196,17 @@ class ScalableWebSocketManager:
                 logger.error(f"Error cleaning up Redis state: {e}")
 
         # Close Redis connections
-        if self.pubsub:
-            await self.pubsub.aclose()
-        if self.redis_client:
-            await self.redis_client.close()
+        await self._close_redis_connections()
 
         logger.info(f"ScalableWebSocketManager instance {self.instance_id} shut down complete")
 
     async def connect(
-        self, websocket: WebSocket, user_id: str, operation_id: str | None = None, collection_id: str | None = None
+        self,
+        websocket: WebSocket,
+        user_id: str,
+        operation_id: str | None = None,
+        collection_id: str | None = None,
+        subprotocol: str | None = None,
     ) -> str:
         """Handle new WebSocket connection.
 
@@ -207,6 +215,7 @@ class ScalableWebSocketManager:
             user_id: User identifier
             operation_id: Optional operation ID to subscribe to
             collection_id: Optional collection ID to subscribe to
+            subprotocol: WebSocket subprotocol to echo back (required when client sends Sec-WebSocket-Protocol)
 
         Returns:
             Connection ID for this connection
@@ -215,34 +224,40 @@ class ScalableWebSocketManager:
         if not self._startup_complete:
             await self.startup()
 
-        # Check global connection limit
-        if len(self.local_connections) >= self.max_total_connections:
-            logger.error(f"Instance connection limit reached ({self.max_total_connections})")
-            await websocket.close(code=1008, reason="Server connection limit exceeded")
-            raise ConnectionError("Server connection limit exceeded")
+        # Check connection limits under lock
+        async with self._connections_lock:
+            if len(self.local_connections) >= self.max_total_connections:
+                logger.error(f"Instance connection limit reached ({self.max_total_connections})")
+                await websocket.close(code=1008, reason="Server connection limit exceeded")
+                raise ConnectionError("Server connection limit exceeded")
 
-        # Check user connection limit
-        user_conn_count = sum(1 for metadata in self.connection_metadata.values() if metadata.get("user_id") == user_id)
+        async with self._metadata_lock:
+            user_conn_count = sum(
+                1 for metadata in self.connection_metadata.values() if metadata.get("user_id") == user_id
+            )
 
         if user_conn_count >= self.max_connections_per_user:
             logger.warning(f"User {user_id} exceeded connection limit ({self.max_connections_per_user})")
             await websocket.close(code=1008, reason="User connection limit exceeded")
             raise ConnectionError("User connection limit exceeded")
 
-        # Accept connection
-        await websocket.accept()
+        # Accept connection with subprotocol if provided
+        # When client sends Sec-WebSocket-Protocol, server MUST echo back the accepted protocol
+        await websocket.accept(subprotocol=subprotocol)
 
         # Generate connection ID
         connection_id = str(uuid.uuid4())
 
-        # Store locally
-        self.local_connections[connection_id] = websocket
-        self.connection_metadata[connection_id] = {
-            "user_id": user_id,
-            "operation_id": operation_id,
-            "collection_id": collection_id,
-            "connected_at": time.time(),
-        }
+        # Store locally under locks
+        async with self._connections_lock:
+            self.local_connections[connection_id] = websocket
+        async with self._metadata_lock:
+            self.connection_metadata[connection_id] = {
+                "user_id": user_id,
+                "operation_id": operation_id,
+                "collection_id": collection_id,
+                "connected_at": time.time(),
+            }
 
         # Register in Redis if available
         if self.redis_client:
@@ -277,17 +292,20 @@ class ScalableWebSocketManager:
         Args:
             connection_id: The connection ID to disconnect
         """
-        if connection_id not in self.local_connections:
-            return
+        # Check if connection exists under lock
+        async with self._connections_lock:
+            if connection_id not in self.local_connections:
+                return
+            # Remove from connections
+            del self.local_connections[connection_id]
 
-        metadata = self.connection_metadata.get(connection_id, {})
+        # Get and remove metadata under lock
+        async with self._metadata_lock:
+            metadata = self.connection_metadata.pop(connection_id, {})
+
         user_id = metadata.get("user_id")
         operation_id = metadata.get("operation_id")
         collection_id = metadata.get("collection_id")
-
-        # Remove from local tracking
-        del self.local_connections[connection_id]
-        del self.connection_metadata[connection_id]
 
         # Remove from Redis registry only if Redis is available
         if self.redis_client:
@@ -303,7 +321,8 @@ class ScalableWebSocketManager:
                         await self.redis_client.delete(f"websocket:user:{user_id}")
 
                 # Check if user has any remaining connections on this instance
-                remaining_local = any(m.get("user_id") == user_id for m in self.connection_metadata.values())
+                async with self._metadata_lock:
+                    remaining_local = any(m.get("user_id") == user_id for m in self.connection_metadata.values())
 
                 # Handle pub/sub unsubscriptions only if pubsub is available
                 if self.pubsub and not remaining_local:
@@ -312,15 +331,19 @@ class ScalableWebSocketManager:
 
                 # Handle operation channel
                 if self.pubsub and operation_id:
-                    remaining_op = any(m.get("operation_id") == operation_id for m in self.connection_metadata.values())
+                    async with self._metadata_lock:
+                        remaining_op = any(
+                            m.get("operation_id") == operation_id for m in self.connection_metadata.values()
+                        )
                     if not remaining_op:
                         await self.pubsub.unsubscribe(f"operation:{operation_id}")
 
                 # Handle collection channel
                 if self.pubsub and collection_id:
-                    remaining_coll = any(
-                        m.get("collection_id") == collection_id for m in self.connection_metadata.values()
-                    )
+                    async with self._metadata_lock:
+                        remaining_coll = any(
+                            m.get("collection_id") == collection_id for m in self.connection_metadata.values()
+                        )
                     if not remaining_coll:
                         await self.pubsub.unsubscribe(f"collection:{collection_id}")
             except Exception as e:
@@ -459,6 +482,17 @@ class ScalableWebSocketManager:
             )
 
         logger.info(f"Registered instance {self.instance_id} in Redis")
+
+    async def _close_redis_connections(self) -> None:
+        """Close Redis client and pubsub connections safely."""
+        if self.pubsub:
+            with contextlib.suppress(Exception):
+                await self.pubsub.aclose()
+        if self.redis_client:
+            with contextlib.suppress(Exception):
+                await self.redis_client.close()
+        self.pubsub = None
+        self.redis_client = None
 
     async def _register_connection(
         self, connection_id: str, user_id: str, operation_id: str | None = None, collection_id: str | None = None

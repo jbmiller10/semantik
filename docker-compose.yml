@@ -4,16 +4,17 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.12.1
     container_name: semantik-qdrant
     ports:
-      - "6333:6333"
-      - "6334:6334" # gRPC port
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334" # gRPC port
     volumes:
       - qdrant_storage:/qdrant/storage
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__LOG_LEVEL=INFO
     security_opt:
       - no-new-privileges:true
@@ -41,11 +42,11 @@ services:
     image: postgres:16-alpine
     container_name: semantik-postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-semantik}
       - POSTGRES_USER=${POSTGRES_USER:-semantik}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.utf8 --lc-ctype=en_US.utf8
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
@@ -106,10 +107,10 @@ services:
     image: redis:7-alpine
     container_name: semantik-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
-    command: [ "redis-server", "--appendonly", "yes" ]
+    command: [ "redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD?REDIS_PASSWORD must be set}" ]
     security_opt:
       - no-new-privileges:true
     deploy:
@@ -121,7 +122,7 @@ services:
           memory: 256M
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -144,12 +145,13 @@ services:
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Model defaults
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
       - DEFAULT_EMBEDDING_MODEL=${DEFAULT_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-0.6B}
       - DEFAULT_QUANTIZATION=${DEFAULT_QUANTIZATION:-float16}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY?JWT_SECRET_KEY must be set}
       # GPU-specific settings
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       # Service configuration
@@ -159,14 +161,14 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
       # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       # PostgreSQL configuration
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-semantik}}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-semantik}
       - POSTGRES_USER=${POSTGRES_USER:-semantik}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}
     volumes:
       # Mount data directories
       - ./logs:/app/logs
@@ -221,8 +223,9 @@ services:
       - SEARCH_API_HOST=vecpipe
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Model defaults
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY?JWT_SECRET_KEY must be set}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
@@ -235,16 +238,16 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
       # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       # PostgreSQL configuration
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-semantik}}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-semantik}
       - POSTGRES_USER=${POSTGRES_USER:-semantik}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}
       # Connection pool settings
       - DB_POOL_SIZE=${DB_POOL_SIZE:-20}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-40}
@@ -302,12 +305,13 @@ services:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
       # Model defaults
       - DEFAULT_COLLECTION=${DEFAULT_COLLECTION:-work_docs}
       - USE_MOCK_EMBEDDINGS=${USE_MOCK_EMBEDDINGS:-false}
@@ -321,14 +325,14 @@ services:
       - HF_HOME=/app/.cache/huggingface
       - HF_HUB_OFFLINE=${HF_HUB_OFFLINE:-false}
       # Auth configuration
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY?JWT_SECRET_KEY must be set}
       # PostgreSQL configuration
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-semantik}}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-semantik}
       - POSTGRES_USER=${POSTGRES_USER:-semantik}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}
       # Connection pool settings
       - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
@@ -385,18 +389,18 @@ services:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # Redis configuration
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       # Auth configuration
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-CHANGE_THIS_TO_A_STRONG_SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY?JWT_SECRET_KEY must be set}
       # PostgreSQL configuration
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}@postgres:5432/${POSTGRES_DB:-semantik}}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-semantik}:${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-semantik}}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB:-semantik}
       - POSTGRES_USER=${POSTGRES_USER:-semantik}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE_THIS_TO_A_STRONG_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?POSTGRES_PASSWORD must be set}
       # Connection pool settings
       - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
@@ -451,8 +455,8 @@ services:
       # Python path
       - PYTHONPATH=/app/packages
       # Redis configuration
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
       # Flower configuration
       - FLOWER_PORT=5555
       - FLOWER_USERNAME=${FLOWER_USERNAME}

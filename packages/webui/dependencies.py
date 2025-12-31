@@ -214,6 +214,11 @@ async def get_current_user_optional(
 
     if credentials is None:
         if settings.DISABLE_AUTH:
+            if (settings.ENVIRONMENT or "").lower() == "production":
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="DISABLE_AUTH cannot be enabled in production.",
+                )
             now = datetime.now(UTC).isoformat()
             return {
                 "id": 0,

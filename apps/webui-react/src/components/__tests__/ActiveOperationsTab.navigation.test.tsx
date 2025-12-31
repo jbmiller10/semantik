@@ -4,14 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import ActiveOperationsTab from '../ActiveOperationsTab'
-import { operationsV2Api } from '../../services/api/v2/collections'
+import { operationsV2Api } from '../../services/api/v2/operations'
 import { useCollections } from '../../hooks/useCollections'
 import { useOperationProgress } from '../../hooks/useOperationProgress'
 import { useUIStore } from '../../stores/uiStore'
 import { createMockCollectionsQuery } from '../../tests/types/hook-mocks'
 import { createMockCollection } from '../../tests/types/test-types'
 
-vi.mock('../../services/api/v2/collections', () => ({
+vi.mock('../../services/api/v2/operations', () => ({
   operationsV2Api: {
     list: vi.fn(),
   },
@@ -86,17 +86,21 @@ describe('ActiveOperationsTab navigation', () => {
       }) as unknown as ReturnType<typeof useCollections>
     )
 
+    const operations = [
+      {
+        id: 'op-1',
+        collection_id: 'coll-1',
+        type: 'index',
+        status: 'processing',
+        config: {},
+        created_at: new Date().toISOString(),
+      },
+    ]
     vi.mocked(operationsV2Api.list).mockResolvedValue({
-      data: [
-        {
-          id: 'op-1',
-          collection_id: 'coll-1',
-          type: 'index',
-          status: 'processing',
-          config: {},
-          created_at: new Date().toISOString(),
-        },
-      ],
+      operations,
+      total: operations.length,
+      page: 1,
+      per_page: 100,
     })
   })
 

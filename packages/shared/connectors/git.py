@@ -288,7 +288,10 @@ class GitConnector(BaseConnector):
 
         # Create SSH wrapper script
         ssh_script = temp_dir / "ssh_wrapper.sh"
-        ssh_opts = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        settings.git_cache_dir.mkdir(parents=True, exist_ok=True)
+        known_hosts_file = settings.git_cache_dir / "known_hosts"
+        known_hosts_file.touch(exist_ok=True)
+        ssh_opts = f"-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile={known_hosts_file}"
 
         if self._ssh_passphrase:
             if shutil.which("sshpass") is None:

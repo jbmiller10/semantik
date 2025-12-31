@@ -12,6 +12,7 @@ The endpoint checks for artifacts first, then falls back to file serving.
 """
 
 import logging
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,24 @@ from webui.auth import get_current_user
 from webui.dependencies import create_document_repository, get_collection_for_user
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_filename_for_header(filename: str) -> str:
+    """Sanitize filename for use in Content-Disposition header.
+
+    Removes control characters and encodes special chars per RFC 5987.
+
+    Args:
+        filename: The original filename
+
+    Returns:
+        RFC 5987 encoded filename safe for Content-Disposition header
+    """
+    # Remove control characters (CR, LF, etc.) that could break header parsing
+    safe = filename.replace('"', "'").replace("\r", "").replace("\n", "").replace("\x00", "")
+    # URL-encode the filename per RFC 5987
+    return urllib.parse.quote(safe, safe="")
+
 
 router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
 
@@ -104,12 +123,14 @@ async def get_document_content(
             media_type_header = f"{mime_type}; charset={charset}" if charset else mime_type
 
             # Return artifact content as Response
+            # Use RFC 5987 encoding for filename to prevent header injection
+            safe_filename = sanitize_filename_for_header(str(document.file_name))
             if isinstance(content, str):
                 return Response(
                     content=content.encode(charset or "utf-8"),
                     media_type=media_type_header,
                     headers={
-                        "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
+                        "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
                         "Cache-Control": "private, max-age=3600",
                     },
                 )
@@ -117,7 +138,7 @@ async def get_document_content(
                 content=content,
                 media_type=media_type_header,
                 headers={
-                    "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
+                    "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
                     "Cache-Control": "private, max-age=3600",
                 },
             )
@@ -184,13 +205,14 @@ async def get_document_content(
         # Log successful document access for audit
         logger.info(f"User {current_user['id']} accessed document {document_uuid} from collection {collection_uuid}")
 
-        # Return the file
+        # Return the file with sanitized filename header
+        safe_filename = sanitize_filename_for_header(str(document.file_name))
         return FileResponse(
             path=str(file_path),
             media_type=str(media_type),
             filename=str(document.file_name),
             headers={
-                "Content-Disposition": f'inline; filename="{str(document.file_name)}"',
+                "Content-Disposition": f"inline; filename*=UTF-8''{safe_filename}",
                 "Cache-Control": "private, max-age=3600",  # Cache for 1 hour
             },
         )

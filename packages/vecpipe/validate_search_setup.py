@@ -111,9 +111,7 @@ def test_model_loading(model_name: str, quantization: str, has_gpu: bool) -> boo
 
     except Exception as e:
         print(f"   ✗ Error loading model: {e}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error loading model: {e}", exc_info=True)
         return False
 
 

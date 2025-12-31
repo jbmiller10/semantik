@@ -149,7 +149,7 @@ async def create_collection(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to create collection: {e}")
+        logger.error(f"Failed to create collection: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to create collection",
@@ -196,7 +196,7 @@ async def list_collections(
         )
 
     except Exception as e:
-        logger.error(f"Failed to list collections: {e}")
+        logger.error(f"Failed to list collections: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to list collections",
@@ -285,7 +285,7 @@ async def update_collection(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error(f"Failed to update collection: {e}")
+        logger.error(f"Failed to update collection: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to update collection",
@@ -340,7 +340,7 @@ async def delete_collection(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Failed to delete collection: {e}")
+        logger.error(f"Failed to delete collection: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to delete collection",

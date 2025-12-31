@@ -37,8 +37,8 @@ def _resolve_start_metrics_server() -> Any:
         patched = getattr(search_api, "start_metrics_server", None)
         if patched and patched is not _base_start_metrics_server:
             return patched
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to check for patched start_metrics_server: %s", e, exc_info=True)
 
     # 3) Fall back to the base implementation
     return _base_start_metrics_server
@@ -68,10 +68,20 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     start_metrics(settings.METRICS_PORT)
     logger.info("Metrics server started on port %s", settings.METRICS_PORT)
 
+    # Build Qdrant connection with optional API key authentication
+    qdrant_headers = {}
+    if settings.QDRANT_API_KEY:
+        qdrant_headers["api-key"] = settings.QDRANT_API_KEY
+
     qdrant = httpx.AsyncClient(
-        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}", timeout=httpx.Timeout(60.0)
+        base_url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        timeout=httpx.Timeout(60.0),
+        headers=qdrant_headers,
     )
-    qdrant_sdk = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
+    qdrant_sdk = AsyncQdrantClient(
+        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}",
+        api_key=settings.QDRANT_API_KEY,
+    )
     logger.info("Connected to Qdrant at %s:%s", settings.QDRANT_HOST, settings.QDRANT_PORT)
 
     unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS

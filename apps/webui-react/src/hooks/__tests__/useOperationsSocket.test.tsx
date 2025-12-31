@@ -43,7 +43,7 @@ describe('useOperationsSocket', () => {
     delete (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__;
   });
 
-  it('builds websocket URL from auth token and updates URL on token change', () => {
+  it('builds websocket URL and passes auth token via subprotocol', () => {
     (window as typeof window & { __API_BASE_URL__?: string }).__API_BASE_URL__ = 'https://api.example.com/prefix';
 
     // seed initial token
@@ -57,8 +57,10 @@ describe('useOperationsSocket', () => {
 
     const { rerender } = renderHook(() => useOperationsSocket(), { wrapper });
 
-    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-1');
-    // useWebSocket handles connection internally, no explicit reconnect call needed
+    // URL should NOT contain token (token is passed via subprotocol for security)
+    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations');
+    // Token should be in protocols array
+    expect(captured.opts?.protocols).toEqual(['access_token.token-1']);
 
     // change token
     act(() => {
@@ -67,7 +69,8 @@ describe('useOperationsSocket', () => {
 
     rerender();
 
-    // URL should be updated with new token - useWebSocket will reconnect automatically
-    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations?token=token-2');
+    // URL should remain the same, only protocols change
+    expect(captured.url).toBe('wss://api.example.com/prefix/ws/operations');
+    expect(captured.opts?.protocols).toEqual(['access_token.token-2']);
   });
 });

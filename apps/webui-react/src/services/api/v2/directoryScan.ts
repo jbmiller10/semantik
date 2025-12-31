@@ -21,10 +21,18 @@ export const directoryScanV2Api = {
   /**
    * Get the WebSocket URL for directory scan progress
    * @param scanId - The scan ID to track
-   * @returns WebSocket URL with authentication token
+   * @returns WebSocket URL (token passed via subprotocol, not URL)
    */
   getWebSocketUrl: (scanId: string): string | null => {
-    return buildWebSocketUrl(`/ws/directory-scan/${scanId}`, getAuthToken());
+    return buildWebSocketUrl(`/ws/directory-scan/${scanId}`);
+  },
+
+  /**
+   * Get authentication token for WebSocket subprotocol
+   * @returns The auth token to use as subprotocol
+   */
+  getAuthToken: (): string | null => {
+    return getAuthToken();
   },
 };
 

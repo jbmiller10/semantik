@@ -1,6 +1,12 @@
 import apiClient from './client';
-import type { Operation } from '../../../types/collection';
-import { buildWebSocketUrl, getAuthToken } from '../baseUrl';
+import type { Operation, OperationListResponse } from '../../../types/collection';
+import { buildWebSocketUrl, buildWebSocketProtocols, getAuthToken } from '../baseUrl';
+
+/** WebSocket connection info with URL and authentication protocols */
+export interface WebSocketConnectionInfo {
+  url: string;
+  protocols: string[];
+}
 
 export const operationsV2Api = {
   /**
@@ -15,19 +21,27 @@ export const operationsV2Api = {
    * List operations with optional filters
    */
   list: async (params?: {
-    collection_id?: string;
     status?: string;
+    operation_type?: string;
+    page?: number;
+    per_page?: number;
     limit?: number;
     offset?: number;
-  }): Promise<{ operations: Operation[]; total: number }> => {
+  }): Promise<OperationListResponse> => {
     const queryParams = new URLSearchParams();
-    if (params?.collection_id) queryParams.append('collection_id', params.collection_id);
     if (params?.status) queryParams.append('status', params.status);
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.offset) queryParams.append('offset', params.offset.toString());
+    if (params?.operation_type) queryParams.append('operation_type', params.operation_type);
+
+    const perPage = params?.per_page ?? params?.limit;
+    const page =
+      params?.page ??
+      (params?.offset !== undefined && params?.limit ? Math.floor(params.offset / params.limit) + 1 : undefined);
+
+    if (page) queryParams.append('page', page.toString());
+    if (perPage) queryParams.append('per_page', perPage.toString());
     
     const query = queryParams.toString();
-    const response = await apiClient.get<{ operations: Operation[]; total: number }>(
+    const response = await apiClient.get<OperationListResponse>(
       `/api/v2/operations${query ? `?${query}` : ''}`
     );
     return response.data;
@@ -42,18 +56,41 @@ export const operationsV2Api = {
   },
 
   /**
-   * Get the WebSocket URL for operation progress
+   * Get WebSocket connection info for operation progress
    * @param operationId - The operation ID to track
-   * @returns WebSocket URL with authentication token
+   * @param token - Optional auth token override (defaults to stored token)
+   * @returns WebSocket URL and authentication protocols
    */
-  getWebSocketUrl: (operationId: string, token?: string | null): string | null => {
-    return buildWebSocketUrl(`/ws/operations/${operationId}`, getAuthToken(token));
+  getWebSocketConnectionInfo: (operationId: string, token?: string | null): WebSocketConnectionInfo | null => {
+    const url = buildWebSocketUrl(`/ws/operations/${operationId}`);
+    if (!url) return null;
+    return {
+      url,
+      protocols: buildWebSocketProtocols(getAuthToken(token)),
+    };
   },
 
   /**
-   * Global operations feed (broadcast for all operations)
+   * Get WebSocket connection info for global operations feed
+   * @param token - Optional auth token override (defaults to stored token)
+   * @returns WebSocket URL and authentication protocols
    */
-  getGlobalWebSocketUrl: (token?: string | null): string | null => {
-    return buildWebSocketUrl('/ws/operations', getAuthToken(token));
+  getGlobalWebSocketConnectionInfo: (token?: string | null): WebSocketConnectionInfo | null => {
+    const url = buildWebSocketUrl('/ws/operations');
+    if (!url) return null;
+    return {
+      url,
+      protocols: buildWebSocketProtocols(getAuthToken(token)),
+    };
+  },
+
+  // Deprecated: Use getWebSocketConnectionInfo instead
+  getWebSocketUrl: (operationId: string): string | null => {
+    return buildWebSocketUrl(`/ws/operations/${operationId}`);
+  },
+
+  // Deprecated: Use getGlobalWebSocketConnectionInfo instead
+  getGlobalWebSocketUrl: (): string | null => {
+    return buildWebSocketUrl('/ws/operations');
   },
 };

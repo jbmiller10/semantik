@@ -31,7 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
   };
 
   public static getDerivedStateFromError(error: Error): Partial<State> {
-    const errorId = `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const errorId = `error-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     return { 
       hasError: true, 
       error,

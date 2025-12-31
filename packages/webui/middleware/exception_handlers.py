@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
-from starlette.status import HTTP_403_FORBIDDEN
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_500_INTERNAL_SERVER_ERROR
 
 from shared.database.exceptions import AccessDeniedError as PackagesAccessDeniedError
 
@@ -54,9 +55,56 @@ async def handle_access_denied_error(request: Request, exc: Exception) -> JSONRe
     return response
 
 
+async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all handler for unexpected exceptions.
+
+    Logs the full exception with stack trace server-side but returns
+    a sanitized error message to the client to prevent information leakage.
+    """
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not correlation_id:
+        correlation_id = get_or_generate_correlation_id(request)
+
+    # Log the full exception with stack trace for debugging
+    logger.error(
+        f"Unexpected error processing {request.method} {request.url.path}",
+        exc_info=True,
+        extra={
+            "correlation_id": correlation_id,
+            "path": request.url.path,
+            "method": request.method,
+            "exception_type": type(exc).__name__,
+        },
+    )
+
+    # In development, include more details; in production, keep it minimal
+    is_development = os.getenv("ENVIRONMENT", "production").lower() in ("development", "dev", "local")
+
+    content = {
+        "detail": "An unexpected error occurred. Please try again later.",
+        "correlation_id": correlation_id,
+    }
+
+    # Include exception type in development mode only
+    if is_development:
+        content["exception_type"] = type(exc).__name__
+        content["message"] = str(exc)
+
+    response = JSONResponse(
+        status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+        content=content,
+    )
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
 def register_global_exception_handlers(app: FastAPI) -> None:
     """Register global exception handlers on the FastAPI application."""
 
     app.add_exception_handler(PackagesAccessDeniedError, handle_access_denied_error)
     if SharedAccessDeniedError is not None and SharedAccessDeniedError is not PackagesAccessDeniedError:
         app.add_exception_handler(SharedAccessDeniedError, handle_access_denied_error)
+
+    # Catch-all for unexpected exceptions - must be registered last
+    # to ensure more specific handlers take precedence
+    app.add_exception_handler(Exception, handle_unexpected_exception)

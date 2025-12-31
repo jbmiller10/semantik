@@ -178,6 +178,10 @@ class SingleCollectionSearchRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
+    # Hybrid search parameters
+    hybrid_alpha: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for hybrid search (vector vs keyword)")
+    hybrid_mode: str = Field(default="weighted", description="Hybrid search mode: 'filter' or 'weighted'")
+    keyword_mode: str = Field(default="any", description="Keyword matching: 'any' or 'all'")
 
     model_config = ConfigDict(
         extra="forbid",

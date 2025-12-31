@@ -51,6 +51,7 @@ export function useCollection(id: string) {
       return response.data;
     },
     enabled: !!id,
+    staleTime: 5000, // Consider data stale after 5 seconds (same as useCollections)
   });
 }
 

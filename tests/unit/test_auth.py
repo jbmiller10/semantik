@@ -340,7 +340,7 @@ class TestGetCurrentUser:
 
         assert result["username"] == "dev_user"
         assert result["email"] == "dev@example.com"
-        assert result["is_superuser"] is True
+        assert result["is_superuser"] is False  # Dev user should NOT be superuser for security
 
     @pytest.mark.asyncio()
     @patch("webui.auth.settings")

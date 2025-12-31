@@ -9,7 +9,9 @@ provider for each model name, enabling support for third-party embedding plugins
 import asyncio
 import contextlib
 import gc
+import hashlib
 import logging
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
@@ -167,10 +169,16 @@ class ModelManager:
                 await self.unload_task
 
         async def unload_after_delay() -> None:
-            await asyncio.sleep(self.unload_after_seconds)
-            if time.time() - self.last_used >= self.unload_after_seconds:
-                logger.info(f"Unloading model after {self.unload_after_seconds}s of inactivity")
-                await self.unload_model_async()
+            try:
+                await asyncio.sleep(self.unload_after_seconds)
+                if time.time() - self.last_used >= self.unload_after_seconds:
+                    logger.info(f"Unloading model after {self.unload_after_seconds}s of inactivity")
+                    await self.unload_model_async()
+            except asyncio.CancelledError:
+                # Task was cancelled, this is expected behavior
+                raise
+            except Exception as e:
+                logger.error(f"Failed to unload model after inactivity: {e}", exc_info=True)
 
         self.unload_task = asyncio.create_task(unload_after_delay())
 
@@ -440,14 +448,15 @@ class ModelManager:
         # Perform reranking
         if self.is_mock_mode:
             # Mock reranking - just return indices with fake scores
-            import random
-
-            scores = [(i, random.random()) for i in range(len(documents))]
+            seed_source = f"{query}|{len(documents)}|{top_k}|{'|'.join(documents)}"
+            seed = int(hashlib.sha256(seed_source.encode()).hexdigest()[:8], 16)
+            rng = random.Random(seed)
+            scores = [(i, rng.random()) for i in range(len(documents))]
             scores.sort(key=lambda x: x[1], reverse=True)
             return scores[:top_k]
 
         # Use real reranker
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         assert self.reranker is not None  # Already checked in ensure_reranker_loaded
         return await loop.run_in_executor(
             self.executor,

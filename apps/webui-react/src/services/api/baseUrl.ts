@@ -39,10 +39,10 @@ export function getApiBaseUrl(): string {
 }
 
 /**
- * Build a websocket URL that respects the configured API base (host + optional path prefix)
- * and injects the auth token when provided.
+ * Build a websocket URL that respects the configured API base (host + optional path prefix).
+ * Note: Token is now passed via Sec-WebSocket-Protocol header for security.
  */
-export function buildWebSocketUrl(path: string, token?: string | null): string | null {
+export function buildWebSocketUrl(path: string): string | null {
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return null;
 
@@ -65,15 +65,21 @@ export function buildWebSocketUrl(path: string, token?: string | null): string |
     const basePath = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
     url.pathname = `${basePath}${normalizedPath}`.replace(/\/\//g, '/');
 
-    if (token) {
-      url.searchParams.set('token', token);
-    }
-
     return url.toString();
   } catch (error) {
     console.error('Failed to build WebSocket URL', error);
     return null;
   }
+}
+
+/**
+ * Build WebSocket protocols array with authentication token.
+ * Uses Sec-WebSocket-Protocol header which is more secure than query params.
+ */
+export function buildWebSocketProtocols(token?: string | null): string[] {
+  if (!token) return [];
+  // Format: access_token.<jwt_token>
+  return [`access_token.${token}`];
 }
 
 /**
