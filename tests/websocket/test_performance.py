@@ -22,9 +22,10 @@ class MockWebSocket:
         self.latency = latency  # Simulated network latency
         self.send_times: list[float] = []  # Track send times for latency measurement
 
-    async def accept(self) -> None:
+    async def accept(self, subprotocol: str | None = None) -> None:
         """Accept the WebSocket connection."""
         self.accepted = True
+        self.subprotocol = subprotocol
 
     async def close(self, code: int = 1000, reason: str = "") -> None:
         """Close the WebSocket connection."""
