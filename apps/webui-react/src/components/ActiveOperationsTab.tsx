@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { operationsV2Api } from '../services/api/v2/collections';
+import { operationsV2Api } from '../services/api/v2/operations';
 
 import type { Operation } from '../types/collection';
 import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
@@ -69,7 +69,7 @@ function ActiveOperationsTab() {
         page: 1,
         per_page: 100,
       });
-      return response.data.operations;
+      return response.operations;
     },
     refetchInterval: shouldPollActiveOperations ? 5000 : false,
   });

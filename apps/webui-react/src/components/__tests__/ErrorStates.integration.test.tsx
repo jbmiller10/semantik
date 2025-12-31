@@ -17,13 +17,13 @@ import type { Collection } from '../../types/collection'
 import ErrorBoundary from '../ErrorBoundary'
 import { useCollections } from '../../hooks/useCollections'
 // import { useNavigate } from 'react-router-dom'
-import { operationsV2Api } from '../../services/api/v2/collections'
+import { operationsV2Api } from '../../services/api/v2/operations'
 
 // Mock stores
 vi.mock('../../stores/searchStore')
 vi.mock('../../stores/uiStore')
 vi.mock('../../hooks/useCollections')
-vi.mock('../../services/api/v2/collections')
+vi.mock('../../services/api/v2/operations')
 
 // Mock react-router-dom
 vi.mock('react-router-dom', async () => {
@@ -214,12 +214,10 @@ describe('Error States - Integration Tests', () => {
     it('should show empty active operations state', async () => {
       // Mock the API to return empty operations
       vi.mocked(operationsV2Api.list).mockResolvedValue({
-        data: {
-          operations: [],
-          total: 0,
-          page: 1,
-          per_page: 100,
-        }
+        operations: [],
+        total: 0,
+        page: 1,
+        per_page: 100,
       })
 
       renderWithErrorHandlers(<ActiveOperationsTab />, [])
