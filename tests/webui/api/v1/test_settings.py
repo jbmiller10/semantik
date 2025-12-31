@@ -218,9 +218,7 @@ class TestResetDatabaseEndpoint:
         mock_qdrant.close = AsyncMock()
 
         with patch("webui.api.settings.AsyncQdrantClient", return_value=mock_qdrant):
-            result = await settings_module.reset_database_endpoint(
-                current_user={"is_superuser": True}, db=mock_db
-            )
+            result = await settings_module.reset_database_endpoint(current_user={"is_superuser": True}, db=mock_db)
 
         assert result["status"] == "success"
         assert "reset successfully" in result["message"]
@@ -253,9 +251,7 @@ class TestResetDatabaseEndpoint:
         mock_qdrant.close = AsyncMock()
 
         with patch("webui.api.settings.AsyncQdrantClient", return_value=mock_qdrant):
-            result = await settings_module.reset_database_endpoint(
-                current_user={"is_superuser": True}, db=mock_db
-            )
+            result = await settings_module.reset_database_endpoint(current_user={"is_superuser": True}, db=mock_db)
 
         # Should still succeed despite Qdrant errors
         assert result["status"] == "success"
@@ -287,9 +283,7 @@ class TestResetDatabaseEndpoint:
             patch("webui.api.settings.AsyncQdrantClient", return_value=mock_qdrant),
             pytest.raises(HTTPException) as exc_info,
         ):
-            await settings_module.reset_database_endpoint(
-                current_user={"is_superuser": True}, db=mock_db
-            )
+            await settings_module.reset_database_endpoint(current_user={"is_superuser": True}, db=mock_db)
 
         assert exc_info.value.status_code == 500
 
@@ -314,9 +308,7 @@ class TestResetDatabaseEndpoint:
         mock_qdrant.close = AsyncMock()
 
         with patch("webui.api.settings.AsyncQdrantClient", return_value=mock_qdrant):
-            await settings_module.reset_database_endpoint(
-                current_user={"is_superuser": True}, db=mock_db
-            )
+            await settings_module.reset_database_endpoint(current_user={"is_superuser": True}, db=mock_db)
 
         # Verify close was called
         mock_qdrant.close.assert_called_once()

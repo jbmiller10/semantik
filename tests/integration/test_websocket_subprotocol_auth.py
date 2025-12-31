@@ -6,14 +6,16 @@ as implemented in webui/api/v2/operations.py (lines 270-305).
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from starlette.websockets import WebSocket
 
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 
 class TestWebSocketSubprotocolAuth:
@@ -94,9 +96,7 @@ class TestWebSocketSubprotocolAuth:
                 "webui.api.v2.operations._validate_websocket_origin",
                 return_value=True,
             ),
-            patch(
-                "webui.api.v2.operations.get_current_user_websocket"
-            ) as mock_auth,
+            patch("webui.api.v2.operations.get_current_user_websocket") as mock_auth,
             patch("webui.api.v2.operations.OperationService") as mock_service_class,
             patch("webui.api.v2.operations.get_db") as mock_get_db,
             patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
@@ -111,9 +111,7 @@ class TestWebSocketSubprotocolAuth:
             mock_ws_manager.connect = AsyncMock(return_value="conn-id")
             mock_ws_manager.disconnect = AsyncMock()
 
-            mock_websocket_with_subprotocol.receive = AsyncMock(
-                side_effect=[{"type": "websocket.disconnect"}]
-            )
+            mock_websocket_with_subprotocol.receive = AsyncMock(side_effect=[{"type": "websocket.disconnect"}])
 
             await operation_websocket(mock_websocket_with_subprotocol, "test-op-id")
 
@@ -141,9 +139,7 @@ class TestWebSocketSubprotocolAuth:
                 "webui.api.v2.operations._validate_websocket_origin",
                 return_value=True,
             ),
-            patch(
-                "webui.api.v2.operations.get_current_user_websocket"
-            ) as mock_auth,
+            patch("webui.api.v2.operations.get_current_user_websocket") as mock_auth,
             patch("webui.api.v2.operations.OperationService") as mock_service_class,
             patch("webui.api.v2.operations.get_db") as mock_get_db,
             patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
@@ -159,13 +155,9 @@ class TestWebSocketSubprotocolAuth:
             mock_ws_manager.connect = AsyncMock(return_value="conn-id")
             mock_ws_manager.disconnect = AsyncMock()
 
-            mock_websocket_with_query_param_auth.receive = AsyncMock(
-                side_effect=[{"type": "websocket.disconnect"}]
-            )
+            mock_websocket_with_query_param_auth.receive = AsyncMock(side_effect=[{"type": "websocket.disconnect"}])
 
-            await operation_websocket(
-                mock_websocket_with_query_param_auth, "test-op-id"
-            )
+            await operation_websocket(mock_websocket_with_query_param_auth, "test-op-id")
 
             # Verify query param token was used
             mock_auth.assert_called_once_with("valid-jwt-token")
@@ -185,9 +177,7 @@ class TestWebSocketSubprotocolAuth:
 
     # Test 4: ValueError during authentication (lines 294-301)
     @pytest.mark.asyncio()
-    async def test_websocket_closes_on_auth_value_error(
-        self, mock_websocket_with_subprotocol: AsyncMock
-    ) -> None:
+    async def test_websocket_closes_on_auth_value_error(self, mock_websocket_with_subprotocol: AsyncMock) -> None:
         """WebSocket should close with 1008 on authentication ValueError."""
         from webui.api.v2.operations import operation_websocket
 
@@ -209,9 +199,7 @@ class TestWebSocketSubprotocolAuth:
 
     # Test 5: Generic exception during authentication (lines 302-305)
     @pytest.mark.asyncio()
-    async def test_websocket_closes_on_auth_generic_exception(
-        self, mock_websocket_with_subprotocol: AsyncMock
-    ) -> None:
+    async def test_websocket_closes_on_auth_generic_exception(self, mock_websocket_with_subprotocol: AsyncMock) -> None:
         """WebSocket should close with 1011 on unexpected auth error."""
         from webui.api.v2.operations import operation_websocket
 
@@ -228,16 +216,12 @@ class TestWebSocketSubprotocolAuth:
         ):
             await operation_websocket(mock_websocket_with_subprotocol, "test-op-id")
 
-            mock_websocket_with_subprotocol.close.assert_called_once_with(
-                code=1011, reason="Internal server error"
-            )
+            mock_websocket_with_subprotocol.close.assert_called_once_with(code=1011, reason="Internal server error")
             mock_logger.error.assert_called()
 
     # Test 6: Multiple subprotocols in header
     @pytest.mark.asyncio()
-    async def test_websocket_handles_multiple_subprotocols(
-        self, mock_user: dict[str, Any]
-    ) -> None:
+    async def test_websocket_handles_multiple_subprotocols(self, mock_user: dict[str, Any]) -> None:
         """WebSocket should find access_token protocol among multiple protocols."""
         from webui.api.v2.operations import operation_websocket
 
@@ -245,18 +229,14 @@ class TestWebSocketSubprotocolAuth:
         mock.accept = AsyncMock()
         mock.close = AsyncMock()
         mock.query_params = {}
-        mock.headers = {
-            "sec-websocket-protocol": "graphql-ws, access_token.jwt-token-here, json"
-        }
+        mock.headers = {"sec-websocket-protocol": "graphql-ws, access_token.jwt-token-here, json"}
 
         with (
             patch(
                 "webui.api.v2.operations._validate_websocket_origin",
                 return_value=True,
             ),
-            patch(
-                "webui.api.v2.operations.get_current_user_websocket"
-            ) as mock_auth,
+            patch("webui.api.v2.operations.get_current_user_websocket") as mock_auth,
             patch("webui.api.v2.operations.OperationService") as mock_service_class,
             patch("webui.api.v2.operations.get_db") as mock_get_db,
             patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
@@ -366,9 +346,7 @@ class TestGlobalWebSocketSubprotocolAuth:
         return mock
 
     @pytest.mark.asyncio()
-    async def test_global_websocket_subprotocol_auth(
-        self, mock_websocket_global: AsyncMock
-    ) -> None:
+    async def test_global_websocket_subprotocol_auth(self, mock_websocket_global: AsyncMock) -> None:
         """Global WebSocket should support subprotocol authentication."""
         from webui.api.v2.operations import operation_websocket_global
 
@@ -379,18 +357,14 @@ class TestGlobalWebSocketSubprotocolAuth:
                 "webui.api.v2.operations._validate_websocket_origin",
                 return_value=True,
             ),
-            patch(
-                "webui.api.v2.operations.get_current_user_websocket"
-            ) as mock_auth,
+            patch("webui.api.v2.operations.get_current_user_websocket") as mock_auth,
             patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
         ):
             mock_auth.return_value = mock_user
             mock_ws_manager.connect = AsyncMock(return_value="global-conn-id")
             mock_ws_manager.disconnect = AsyncMock()
 
-            mock_websocket_global.receive = AsyncMock(
-                side_effect=[{"type": "websocket.disconnect"}]
-            )
+            mock_websocket_global.receive = AsyncMock(side_effect=[{"type": "websocket.disconnect"}])
 
             await operation_websocket_global(mock_websocket_global)
 
@@ -437,9 +411,7 @@ class TestGlobalWebSocketSubprotocolAuth:
                 "webui.api.v2.operations._validate_websocket_origin",
                 return_value=True,
             ),
-            patch(
-                "webui.api.v2.operations.get_current_user_websocket"
-            ) as mock_auth,
+            patch("webui.api.v2.operations.get_current_user_websocket") as mock_auth,
             patch("webui.api.v2.operations.ws_manager") as mock_ws_manager,
             patch("webui.api.v2.operations.logger"),
         ):
