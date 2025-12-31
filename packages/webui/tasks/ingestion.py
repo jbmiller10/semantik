@@ -886,6 +886,7 @@ async def _process_append_operation_impl(
         scan_start = time.time()
         # Record sync start time for marking stale documents after processing
         sync_started_at = datetime.now(UTC)
+        pre_scan_cleanup_failed = False
 
         # Commit any pending changes from setup phase and ensure session is in clean state
         # This prevents idle-in-transaction timeouts during file scanning/parsing
@@ -903,6 +904,7 @@ async def _process_append_operation_impl(
                         rollback_exc,
                         exc_info=True,
                     )
+                    pre_scan_cleanup_failed = True
 
         # Create registry for document registration (with chunk_repo for sync updates)
         from shared.database.repositories.chunk_repository import ChunkRepository
@@ -1422,7 +1424,7 @@ async def _process_append_operation_impl(
             )
 
         scan_errors = scan_stats.get("errors", []) or []
-        success = failed_count == 0 and not scan_errors
+        success = failed_count == 0 and not scan_errors and not pre_scan_cleanup_failed
 
         # Mark documents not seen during this sync as stale (keep last-known behavior)
         # Only mark stale for this specific source
@@ -1469,6 +1471,8 @@ async def _process_append_operation_impl(
                 reasons.append(f"{len(scan_errors)} scan/registration error(s)")
             if failed_count > 0:
                 reasons.append(f"{failed_count} embedding/chunking failure(s)")
+            if pre_scan_cleanup_failed:
+                reasons.append("pre-scan transaction cleanup failure")
             logger.info(
                 "Skipping stale marking for source %s due to %s",
                 source_id,
