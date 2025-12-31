@@ -182,6 +182,25 @@ BATCH_RESTORE_THRESHOLD=5  # Batches before size increase
 ADAPTIVE_BATCH_SIZING=true # Enable adaptive batching
 ```
 
+#### Resource Limits & Cache
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| MAX_COLLECTIONS_PER_USER | 10 | Maximum number of collections per user |
+| MAX_STORAGE_GB_PER_USER | 50.0 | Maximum storage per user (GB) |
+| CACHE_DEFAULT_TTL_SECONDS | 300 | Default cache TTL (seconds) |
+
+#### Background Cleanup Circuit Breaker (Configurable)
+
+These control the Redis cleanup loop backoff and circuit breaker behavior:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| REDIS_CLEANUP_INTERVAL_SECONDS | 60 | Base cleanup interval in seconds |
+| REDIS_CLEANUP_MAX_CONSECUTIVE_FAILURES | 5 | Failures before opening the circuit |
+| REDIS_CLEANUP_BACKOFF_MULTIPLIER | 2.0 | Exponential backoff multiplier (>= 1.0) |
+| REDIS_CLEANUP_MAX_BACKOFF_SECONDS | 300 | Maximum backoff delay in seconds |
+
 #### Reranking Configuration
 ```bash
 # Reranking Settings

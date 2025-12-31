@@ -125,10 +125,10 @@ class CollectionRepository:
             return collection
 
         except IntegrityError as e:
-            logger.error(f"Integrity error creating collection: {e}")
+            logger.error("Integrity error creating collection: %s", e, exc_info=True)
             raise EntityAlreadyExistsError("collection", name) from e
         except Exception as e:
-            logger.error(f"Failed to create collection: {e}")
+            logger.error("Failed to create collection: %s", e, exc_info=True)
             raise DatabaseOperationError("create", "collection", str(e)) from e
 
     async def get_by_uuid(self, collection_uuid: str) -> Collection | None:
@@ -146,7 +146,7 @@ class CollectionRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get collection {collection_uuid}: {e}")
+            logger.error("Failed to get collection %s: %s", collection_uuid, e, exc_info=True)
             raise DatabaseOperationError("get", "collection", str(e)) from e
 
     async def get_by_name(self, name: str) -> Collection | None:
@@ -164,7 +164,7 @@ class CollectionRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get collection by name '{name}': {e}")
+            logger.error("Failed to get collection by name '%s': %s", name, e, exc_info=True)
             raise DatabaseOperationError("get", "collection", str(e)) from e
 
     async def get_by_uuid_with_permission_check(self, collection_uuid: str, user_id: int) -> Collection:
@@ -230,7 +230,7 @@ class CollectionRepository:
             return list(collections), total or 0
 
         except Exception as e:
-            logger.error(f"Failed to list collections for user {user_id}: {e}")
+            logger.error("Failed to list collections for user %s: %s", user_id, e, exc_info=True)
             raise DatabaseOperationError("list", "collections", str(e)) from e
 
     async def update_status(
@@ -269,7 +269,7 @@ class CollectionRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update collection status: {e}")
+            logger.error("Failed to update collection status: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def update_stats(
@@ -324,7 +324,7 @@ class CollectionRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update collection stats: {e}")
+            logger.error("Failed to update collection stats: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def rename(self, collection_uuid: str, new_name: str, user_id: int) -> Collection:
@@ -374,7 +374,7 @@ class CollectionRepository:
         except (EntityNotFoundError, AccessDeniedError, EntityAlreadyExistsError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to rename collection: {e}")
+            logger.error("Failed to rename collection: %s", e, exc_info=True)
             raise DatabaseOperationError("rename", "collection", str(e)) from e
 
     async def delete(self, collection_uuid: str, user_id: int) -> None:
@@ -409,7 +409,7 @@ class CollectionRepository:
         except (EntityNotFoundError, AccessDeniedError):
             raise
         except Exception as e:
-            logger.error(f"Failed to delete collection: {e}")
+            logger.error("Failed to delete collection: %s", e, exc_info=True)
             raise DatabaseOperationError("delete", "collection", str(e)) from e
 
     async def update(self, collection_uuid: str, updates: dict[str, Any]) -> Collection:
@@ -494,7 +494,7 @@ class CollectionRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to update collection: {e}")
+            logger.error("Failed to update collection: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def get_document_count(self, collection_uuid: str) -> int:
@@ -512,7 +512,7 @@ class CollectionRepository:
             )
             return result or 0
         except Exception as e:
-            logger.error(f"Failed to get document count: {e}")
+            logger.error("Failed to get document count: %s", e, exc_info=True)
             raise DatabaseOperationError("count", "documents", str(e)) from e
 
     # =========================================================================
@@ -552,7 +552,7 @@ class CollectionRepository:
             )
             return list(result.scalars().all())
         except Exception as e:
-            logger.error(f"Failed to get collections due for sync: {e}")
+            logger.error("Failed to get collections due for sync: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "collections", str(e)) from e
 
     async def update_sync_status(
@@ -605,7 +605,7 @@ class CollectionRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update sync status: {e}")
+            logger.error("Failed to update sync status: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def set_next_sync_run(
@@ -651,7 +651,7 @@ class CollectionRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to set next sync run: {e}")
+            logger.error("Failed to set next sync run: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def pause_sync(self, collection_uuid: str) -> Collection:
@@ -690,7 +690,7 @@ class CollectionRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to pause sync: {e}")
+            logger.error("Failed to pause sync: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e
 
     async def resume_sync(self, collection_uuid: str) -> Collection:
@@ -734,5 +734,5 @@ class CollectionRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to resume sync: {e}")
+            logger.error("Failed to resume sync: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection", str(e)) from e

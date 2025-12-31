@@ -67,9 +67,9 @@ class OperationService:
         if operation.task_id:
             try:
                 celery_app.control.revoke(operation.task_id, terminate=True)
-                logger.info(f"Revoked Celery task {operation.task_id} for operation {operation_uuid}")
+                logger.info("Revoked Celery task %s for operation %s", operation.task_id, operation_uuid)
             except Exception as e:
-                logger.warning(f"Failed to revoke Celery task {operation.task_id}: {e}")
+                logger.warning("Failed to revoke Celery task %s: %s", operation.task_id, e, exc_info=True)
                 # Continue even if Celery revoke fails
 
         # Commit the transaction

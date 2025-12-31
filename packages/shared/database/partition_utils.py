@@ -482,8 +482,12 @@ class ChunkPartitionHelper:
             if stats.avg_content_length is not None:
                 try:
                     avg_length = float(stats.avg_content_length)
-                except (ValueError, TypeError):
-                    logger.warning(f"Invalid avg_content_length value: {stats.avg_content_length}")
+                except (ValueError, TypeError) as e:
+                    logger.warning(
+                        "Invalid avg_content_length value: %s",
+                        stats.avg_content_length,
+                        exc_info=True,
+                    )
                     avg_length = 0.0
 
             return {
@@ -495,7 +499,12 @@ class ChunkPartitionHelper:
                 "newest_chunk": stats.newest_chunk,
             }
         except Exception as e:
-            logger.error(f"Error getting partition statistics for collection {validated_id}: {e}")
+            logger.error(
+                "Error getting partition statistics for collection %s: %s",
+                validated_id,
+                e,
+                exc_info=True,
+            )
             # Return safe defaults on error
             return {
                 "collection_id": validated_id,
@@ -566,7 +575,7 @@ class PartitionImplementationDetector:
                 return major, 0
 
         except Exception as e:
-            logger.warning(f"Could not determine PostgreSQL version: {e}")
+            logger.warning("Could not determine PostgreSQL version: %s", e, exc_info=True)
 
         # Default to assuming old version if detection fails
         return 11, 0
@@ -665,7 +674,7 @@ class PartitionImplementationDetector:
                 result["performance_impact"] = "Partitioning may not work correctly"
 
         except SQLAlchemyError as e:
-            logger.error(f"Error detecting partition implementation: {e}")
+            logger.error("Error detecting partition implementation: %s", e, exc_info=True)
             result["recommendation"] = f"Could not detect implementation: {e}"
 
         return result
@@ -729,7 +738,7 @@ class PartitionImplementationDetector:
                 logger.info(f"Partition key verification passed: all {verification['checked']} keys are correct")
 
         except SQLAlchemyError as e:
-            logger.error(f"Error verifying partition keys: {e}")
+            logger.error("Error verifying partition keys: %s", e, exc_info=True)
             verification["errors"].append({"error": str(e)})
 
         return verification
@@ -796,7 +805,7 @@ class PartitionImplementationDetector:
                 metrics["empty_partitions"] = 100 - len(used_partitions)
 
         except SQLAlchemyError as e:
-            logger.error(f"Error getting performance metrics: {e}")
+            logger.error("Error getting performance metrics: %s", e, exc_info=True)
 
         return metrics
 

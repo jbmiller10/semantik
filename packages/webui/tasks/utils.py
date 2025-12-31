@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 try:
     ensure_internal_api_key(settings)
 except RuntimeError as exc:
-    logger.error("Internal API key not configured: %s", exc)
+    logger.error("Internal API key not configured: %s", exc, exc_info=True)
     raise
 
 
@@ -331,7 +331,7 @@ async def _audit_log_operation(
             session.add(audit_log)
             await session.commit()
     except Exception as exc:
-        logger.warning("Failed to create audit log: %s", exc)
+        logger.warning("Failed to create audit log: %s", exc, exc_info=True)
 
 
 async def _record_operation_metrics(operation_repo: Any, operation_id: str, metrics: dict[str, Any]) -> None:
@@ -354,7 +354,7 @@ async def _record_operation_metrics(operation_repo: Any, operation_id: str, metr
                         session.add(metric)
                 await session.commit()
     except Exception as exc:
-        logger.warning("Failed to record operation metrics: %s", exc)
+        logger.warning("Failed to record operation metrics: %s", exc, exc_info=True)
 
 
 async def _update_collection_metrics(collection_id: str, documents: int, vectors: int, size_bytes: int) -> None:
@@ -364,7 +364,7 @@ async def _update_collection_metrics(collection_id: str, documents: int, vectors
         update_stats = getattr(tasks_module, "update_collection_stats", update_collection_stats)
         update_stats(collection_id, documents, vectors, size_bytes)
     except Exception as exc:
-        logger.warning("Failed to update collection metrics: %s", exc)
+        logger.warning("Failed to update collection metrics: %s", exc, exc_info=True)
 
 
 def _is_mock_like(obj: Any) -> bool:

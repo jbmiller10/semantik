@@ -94,7 +94,7 @@ class OperationRepository:
         except (EntityNotFoundError, AccessDeniedError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to create operation: {e}")
+            logger.error("Failed to create operation: %s", e, exc_info=True)
             raise DatabaseOperationError("create", "operation", str(e)) from e
 
     async def get_by_uuid(self, operation_uuid: str) -> Operation | None:
@@ -112,7 +112,7 @@ class OperationRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get operation {operation_uuid}: {e}")
+            logger.error("Failed to get operation %s: %s", operation_uuid, e, exc_info=True)
             raise DatabaseOperationError("get", "operation", str(e)) from e
 
     async def get_by_uuid_with_permission_check(self, operation_uuid: str, user_id: int) -> Operation:
@@ -182,7 +182,7 @@ class OperationRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to set task_id for operation: {e}")
+            logger.error("Failed to set task_id for operation: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "operation", str(e)) from e
 
     async def update_status(
@@ -239,7 +239,7 @@ class OperationRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update operation status: {e}")
+            logger.error("Failed to update operation status: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "operation", str(e)) from e
 
     async def list_for_collection(
@@ -301,7 +301,7 @@ class OperationRepository:
         except (EntityNotFoundError, AccessDeniedError):
             raise
         except Exception as e:
-            logger.error(f"Failed to list operations for collection: {e}")
+            logger.error("Failed to list operations for collection: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "operations", str(e)) from e
 
     async def list_for_user(
@@ -359,7 +359,7 @@ class OperationRepository:
             return list(operations), total or 0
 
         except Exception as e:
-            logger.error(f"Failed to list operations for user: {e}")
+            logger.error("Failed to list operations for user: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "operations", str(e)) from e
 
     async def cancel(self, operation_uuid: str, user_id: int) -> Operation:
@@ -396,7 +396,7 @@ class OperationRepository:
         except (EntityNotFoundError, AccessDeniedError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to cancel operation: {e}")
+            logger.error("Failed to cancel operation: %s", e, exc_info=True)
             raise DatabaseOperationError("cancel", "operation", str(e)) from e
 
     async def get_active_operations_count(self, collection_id: str) -> int:
@@ -417,7 +417,7 @@ class OperationRepository:
             )
             return result or 0
         except Exception as e:
-            logger.error(f"Failed to get active operations count: {e}")
+            logger.error("Failed to get active operations count: %s", e, exc_info=True)
             raise DatabaseOperationError("count", "operations", str(e)) from e
 
     async def get_active_operations(self, collection_id: str) -> list[Operation]:
@@ -437,5 +437,5 @@ class OperationRepository:
             result = await self.session.execute(stmt)
             return list(result.scalars().all())
         except Exception as e:
-            logger.error(f"Failed to get active operations: {e}")
+            logger.error("Failed to get active operations: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "operations", str(e)) from e

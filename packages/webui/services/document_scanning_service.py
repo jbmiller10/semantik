@@ -141,7 +141,7 @@ class DocumentScanningService:
                                 await progress_callback(documents_processed, stats["total_documents_found"])
 
                         except Exception as e:
-                            logger.error(f"Failed to register document {file_path}: {e}")
+                            logger.error("Failed to register document %s: %s", file_path, e, exc_info=True)
                             stats["errors"].append(
                                 {
                                     "document": str(file_path),
@@ -190,7 +190,7 @@ class DocumentScanningService:
                             await progress_callback(documents_processed, stats["total_documents_found"])
 
                     except Exception as e:
-                        logger.error(f"Failed to register document {file_path}: {e}")
+                        logger.error("Failed to register document %s: %s", file_path, e, exc_info=True)
                         stats["errors"].append(
                             {
                                 "document": str(file_path),
@@ -203,14 +203,15 @@ class DocumentScanningService:
                 await self.db_session.commit()
 
         except Exception as e:
-            logger.error(f"Error scanning directory {source_path}: {e}")
+            logger.error("Error scanning directory %s: %s", source_path, e, exc_info=True)
             raise
 
         logger.info(
-            f"Scan completed for {source_path}: "
-            f"{stats['total_documents_found']} documents found, "
-            f"{stats['new_documents_registered']} new, "
-            f"{stats['duplicate_documents_skipped']} duplicates"
+            "Scan completed for %s: %d documents found, %d new, %d duplicates",
+            source_path,
+            stats["total_documents_found"],
+            stats["new_documents_registered"],
+            stats["duplicate_documents_skipped"],
         )
 
         return stats

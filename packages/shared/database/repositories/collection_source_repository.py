@@ -85,12 +85,12 @@ class CollectionSourceRepository:
             return source
 
         except IntegrityError as e:
-            logger.error(f"Integrity error creating collection source: {e}")
+            logger.error("Integrity error creating collection source: %s", e, exc_info=True)
             raise EntityAlreadyExistsError("collection_source", source_path) from e
         except ValidationError:
             raise
         except Exception as e:
-            logger.error(f"Failed to create collection source: {e}")
+            logger.error("Failed to create collection source: %s", e, exc_info=True)
             raise DatabaseOperationError("create", "collection_source", str(e)) from e
 
     async def get_by_id(self, source_id: int) -> CollectionSource | None:
@@ -106,7 +106,7 @@ class CollectionSourceRepository:
             result = await self.session.execute(select(CollectionSource).where(CollectionSource.id == source_id))
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get collection source {source_id}: {e}")
+            logger.error("Failed to get collection source %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("get", "collection_source", str(e)) from e
 
     async def get_by_collection_and_path(
@@ -132,7 +132,13 @@ class CollectionSourceRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get collection source for collection {collection_id} with path {source_path}: {e}")
+            logger.error(
+                "Failed to get collection source for collection %s with path %s: %s",
+                collection_id,
+                source_path,
+                e,
+                exc_info=True,
+            )
             raise DatabaseOperationError("get", "collection_source", str(e)) from e
 
     async def get_or_create(
@@ -193,7 +199,7 @@ class CollectionSourceRepository:
         except (ValidationError, EntityAlreadyExistsError):
             raise
         except Exception as e:
-            logger.error(f"Failed to get_or_create collection source: {e}")
+            logger.error("Failed to get_or_create collection source: %s", e, exc_info=True)
             raise DatabaseOperationError("get_or_create", "collection_source", str(e)) from e
 
     async def list_by_collection(
@@ -228,7 +234,7 @@ class CollectionSourceRepository:
             return list(sources), total or 0
 
         except Exception as e:
-            logger.error(f"Failed to list sources for collection {collection_id}: {e}")
+            logger.error("Failed to list sources for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("list", "collection_source", str(e)) from e
 
     async def update_stats(
@@ -280,7 +286,7 @@ class CollectionSourceRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to update collection source stats: {e}")
+            logger.error("Failed to update collection source stats: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection_source", str(e)) from e
 
     async def delete(self, source_id: int) -> None:
@@ -305,7 +311,7 @@ class CollectionSourceRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to delete collection source: {e}")
+            logger.error("Failed to delete collection source: %s", e, exc_info=True)
             raise DatabaseOperationError("delete", "collection_source", str(e)) from e
 
     # -------------------------------------------------------------------------
@@ -355,7 +361,7 @@ class CollectionSourceRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update collection source: {e}")
+            logger.error("Failed to update collection source: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "collection_source", str(e)) from e
 
     async def update_sync_status(
@@ -410,5 +416,5 @@ class CollectionSourceRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to update sync status: {e}")
+            logger.error("Failed to update sync status: %s", e, exc_info=True)
             raise DatabaseOperationError("update_sync_status", "collection_source", str(e)) from e

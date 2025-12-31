@@ -400,8 +400,8 @@ function CollectionDetailsModal() {
                       <div className="mt-4 pt-4 border-t border-gray-200">
                         <div className="text-sm font-medium text-gray-700 mb-2">Strategy Parameters</div>
                         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {formatChunkingConfig(collection.chunking_config).map((item, index) => (
-                            <div key={index}>
+                          {formatChunkingConfig(collection.chunking_config).map((item) => (
+                            <div key={item.label}>
                               <dt className="text-xs font-medium text-gray-500">{item.label}</dt>
                               <dd className="mt-0.5 text-sm text-gray-900">{item.value}</dd>
                             </div>
@@ -446,8 +446,8 @@ function CollectionDetailsModal() {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Source Directories</h3>
                 {sourceDirs.length > 0 ? (
                   <ul className="space-y-2">
-                    {sourceDirs.map((source: SourceInfo, index: number) => (
-                      <li key={index} className="flex items-center justify-between text-sm text-gray-900">
+                    {sourceDirs.map((source: SourceInfo) => (
+                      <li key={source.path} className="flex items-center justify-between text-sm text-gray-900">
                         <div className="flex items-center">
                           <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -650,8 +650,8 @@ function CollectionDetailsModal() {
                           <div className="mt-4 pt-4 border-t border-gray-200">
                             <div className="text-sm font-medium text-gray-700 mb-2">Current Parameters</div>
                             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              {formatChunkingConfig(collection.chunking_config).map((item, index) => (
-                                <div key={index}>
+                              {formatChunkingConfig(collection.chunking_config).map((item) => (
+                                <div key={item.label}>
                                   <dt className="text-xs font-medium text-gray-500">{item.label}</dt>
                                   <dd className="mt-0.5 text-sm text-gray-900">{item.value}</dd>
                                 </div>

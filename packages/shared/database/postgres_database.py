@@ -87,7 +87,12 @@ class PostgresConnectionManager:
                 break
 
             except (OperationalError, DBAPIError) as e:
-                logger.warning(f"Database connection attempt {attempt + 1} failed: {e}")
+                logger.warning(
+                    "Database connection attempt %s failed: %s",
+                    attempt + 1,
+                    e,
+                    exc_info=True,
+                )
                 if attempt < self.config.DB_RETRY_LIMIT - 1:
                     await asyncio.sleep(self.config.DB_RETRY_INTERVAL * (2**attempt))  # Exponential backoff
                 else:
@@ -157,7 +162,7 @@ class PostgresConnectionManager:
                 return await session.execute(query, *args, **kwargs)
             except OperationalError as e:
                 if attempt < self.config.DB_RETRY_LIMIT - 1:
-                    logger.warning(f"Query failed (attempt {attempt + 1}): {e}")
+                    logger.warning("Query failed (attempt %s): %s", attempt + 1, e, exc_info=True)
                     await asyncio.sleep(self.config.DB_RETRY_INTERVAL)
                 else:
                     raise
@@ -194,7 +199,7 @@ async def get_postgres_db() -> AsyncGenerator[AsyncSession, None]:
         if not (testing_mode and session_not_initialized):
             raise
 
-        logger.warning("PostgreSQL session unavailable in testing mode; using async stub: %s", exc)
+        logger.warning("PostgreSQL session unavailable in testing mode; using async stub: %s", exc, exc_info=True)
 
         stub_session = cast(AsyncSession, AsyncMock(name="TestAsyncSession"))
         yield stub_session
@@ -211,5 +216,5 @@ async def check_postgres_connection() -> bool:
             result = await session.execute(text("SELECT 1"))
             return bool(result.scalar() == 1)
     except Exception as e:
-        logger.error(f"PostgreSQL connection check failed: {e}")
+        logger.error("PostgreSQL connection check failed: %s", e, exc_info=True)
         return False

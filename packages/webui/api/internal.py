@@ -177,6 +177,11 @@ async def complete_reindex(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to complete reindex for collection {request.collection_id}: {e}")
+        logger.error(
+            "Failed to complete reindex for collection %s: %s",
+            request.collection_id,
+            e,
+            exc_info=True,
+        )
         # Rollback happened automatically
         raise HTTPException(status_code=500, detail=f"Failed to complete reindex: {str(e)}") from e

@@ -3,6 +3,7 @@
 
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,8 @@ class RegexMetrics:
 class RegexPerformanceMonitor:
     """Monitor regex performance to detect issues."""
 
+    MAX_METRICS = 10_000
+
     def __init__(self, slow_threshold: float = 0.1, alert_threshold: int = 5):
         """Initialize the performance monitor.
 
@@ -30,7 +33,7 @@ class RegexPerformanceMonitor:
             slow_threshold: Time threshold (seconds) to consider a regex slow
             alert_threshold: Number of slow patterns before alerting
         """
-        self.metrics: list[RegexMetrics] = []
+        self.metrics: deque[RegexMetrics] = deque(maxlen=self.MAX_METRICS)
         self.slow_patterns: dict[str, int] = {}
         self.slow_threshold = slow_threshold
         self.alert_threshold = alert_threshold
@@ -83,10 +86,17 @@ class RegexPerformanceMonitor:
 
         # Log warnings for concerning metrics
         if timed_out:
-            logger.error(f"Regex timeout: pattern='{pattern[:50]}...', input_size={input_size}")
+            logger.error(
+                "Regex timeout: pattern='%s...', input_size=%d",
+                pattern[:50],
+                input_size,
+            )
         elif execution_time > 1.0:
             logger.warning(
-                f"Very slow regex: pattern='{pattern[:50]}...', time={execution_time:.2f}s, input_size={input_size}"
+                "Very slow regex: pattern='%s...', time=%.2fs, input_size=%d",
+                pattern[:50],
+                execution_time,
+                input_size,
             )
 
     def get_problematic_patterns(self) -> list[str]:
@@ -131,7 +141,9 @@ class RegexPerformanceMonitor:
         Returns:
             List of recent RegexMetrics
         """
-        return self.metrics[-count:]
+        if count <= 0:
+            return []
+        return list(self.metrics)[-count:]
 
     def clear_metrics(self) -> None:
         """Clear all collected metrics."""

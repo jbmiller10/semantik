@@ -131,7 +131,7 @@ async def scan_directory_preview(
             detail=f"Access denied to directory: {scan_request.path}",
         ) from e
     except Exception as e:
-        logger.error(f"Failed to scan directory: {e}")
+        logger.error("Failed to scan directory: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to scan directory",
@@ -170,7 +170,7 @@ async def directory_scan_websocket(websocket: WebSocket, scan_id: str) -> None:
         await websocket.close(code=1008, reason=str(e))
         return
     except Exception as e:
-        logger.error(f"WebSocket authentication error: {e}")
+        logger.error("WebSocket authentication error: %s", e, exc_info=True)
         await websocket.close(code=1011, reason="Internal server error")
         return
 

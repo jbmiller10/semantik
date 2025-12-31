@@ -8,6 +8,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from shared.database import check_postgres_connection
+from webui.background_tasks import redis_cleanup_task
 from webui.qdrant import qdrant_manager
 from webui.websocket.scalable_manager import scalable_ws_manager as ws_manager
 
@@ -20,9 +21,11 @@ HEALTH_CHECK_TIMEOUT = 5.0  # seconds
 
 
 @router.get("/")
-async def health_check() -> dict[str, str]:
+async def health_check() -> dict[str, Any]:
     """Basic health check endpoint."""
-    return {"status": "healthy"}
+    cleanup_status = redis_cleanup_task.get_health_status()
+    status = "healthy" if cleanup_status.get("healthy", True) else "degraded"
+    return {"status": status, "cleanup": cleanup_status}
 
 
 @router.get("/search-api")
@@ -48,7 +51,7 @@ async def search_api_health() -> dict[str, Any]:
     except httpx.TimeoutException:
         return {"status": "unhealthy", "error": "Search API connection timeout"}
     except Exception as e:
-        logger.error(f"Search API health check failed: {e}")
+        logger.error("Search API health check failed: %s", e, exc_info=True)
         return {"status": "unhealthy", "error": "Failed to access Search API", "details": str(e)}
 
 

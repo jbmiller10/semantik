@@ -28,5 +28,5 @@ def parse_user_id(user_id: str | int) -> int:
     try:
         return int(user_id)
     except ValueError:
-        logger.error(f"Invalid user_id format: '{user_id}' must be numeric")
+        logger.error("Invalid user_id format: '%s' must be numeric", user_id, exc_info=True)
         raise InvalidUserIdError(str(user_id)) from None

@@ -135,7 +135,7 @@ class PartitionMonitoringService:
             return health_data
 
         except Exception as e:
-            logger.error(f"Failed to get partition health summary: {e}")
+            logger.error("Failed to get partition health summary: %s", e, exc_info=True)
             raise
 
     async def analyze_partition_skew(self) -> list[SkewMetric]:
@@ -161,7 +161,7 @@ class PartitionMonitoringService:
             return metrics
 
         except Exception as e:
-            logger.error(f"Failed to analyze partition skew: {e}")
+            logger.error("Failed to analyze partition skew: %s", e, exc_info=True)
             raise
 
     async def check_partition_health(self) -> MonitoringResult:
@@ -243,16 +243,16 @@ class PartitionMonitoringService:
 
             # Log summary
             if unbalanced_count > 0:
-                logger.error(f"Partition health check: {unbalanced_count} unbalanced partitions detected")
+                logger.error("Partition health check: %d unbalanced partitions detected", unbalanced_count)
             elif warning_count > 0:
-                logger.warning(f"Partition health check: {warning_count} partitions with warnings")
+                logger.warning("Partition health check: %d partitions with warnings", warning_count)
             else:
                 logger.info("Partition health check: All partitions healthy")
 
         except Exception as e:
             monitoring_result.status = "failed"
             monitoring_result.error = str(e)
-            logger.error(f"Partition health check failed: {e}")
+            logger.error("Partition health check failed: %s", e, exc_info=True)
 
         return monitoring_result
 
@@ -327,7 +327,7 @@ class PartitionMonitoringService:
             }
 
         except Exception as e:
-            logger.error(f"Failed to get partition statistics: {e}")
+            logger.error("Failed to get partition statistics: %s", e, exc_info=True)
             raise
 
     async def get_rebalancing_recommendations(self) -> list[dict[str, Any]]:
@@ -355,5 +355,5 @@ class PartitionMonitoringService:
             return recommendations
 
         except Exception as e:
-            logger.error(f"Failed to get rebalancing recommendations: {e}")
+            logger.error("Failed to get rebalancing recommendations: %s", e, exc_info=True)
             raise

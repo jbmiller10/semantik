@@ -48,7 +48,7 @@ async def get_partition_health(
         }
 
     except Exception as e:
-        logger.error(f"Failed to get partition health: {e}")
+        logger.error("Failed to get partition health: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve partition health") from e
 
 
@@ -78,7 +78,7 @@ async def get_partition_statistics(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get partition statistics: {e}")
+        logger.error("Failed to get partition statistics: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve partition statistics") from e
 
 
@@ -101,7 +101,7 @@ async def get_rebalancing_recommendations(
         }
 
     except Exception as e:
-        logger.error(f"Failed to get rebalancing recommendations: {e}")
+        logger.error("Failed to get rebalancing recommendations: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve rebalancing recommendations") from e
 
 
@@ -142,5 +142,5 @@ async def get_partition_health_summary(
         }
 
     except Exception as e:
-        logger.error(f"Failed to get partition health summary: {e}")
+        logger.error("Failed to get partition health summary: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve partition health summary") from e

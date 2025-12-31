@@ -15,7 +15,7 @@ Get `scan_id` from `POST /api/v2/directory-scan/preview`.
 
 ## Auth
 
-**Preferred (v7.1+):** Pass JWT via WebSocket subprotocol header:
+**Preferred (v7.1+):** Pass JWT via WebSocket subprotocol header. This is the recommended approach and should be used for new clients:
 ```javascript
 const ws = new WebSocket(url, [`access_token.${token}`]);
 ```

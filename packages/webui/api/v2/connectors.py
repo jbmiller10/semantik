@@ -150,7 +150,7 @@ async def preview_git(
             error=str(e),
         )
     except Exception as e:
-        logger.error(f"Git preview failed: {e}", exc_info=True)
+        logger.error("Git preview failed: %s", e, exc_info=True)
         return GitPreviewResponse(
             valid=False,
             repo_url=request.repo_url,
@@ -237,7 +237,7 @@ async def preview_imap(
         )
 
     except imaplib.IMAP4.error as e:
-        logger.warning(f"IMAP authentication/protocol error: {e}")
+        logger.warning("IMAP authentication/protocol error: %s", e, exc_info=True)
         return ImapPreviewResponse(
             valid=False,
             host=request.host,
@@ -246,7 +246,7 @@ async def preview_imap(
             error="IMAP authentication failed. Check username and password.",
         )
     except (OSError, TimeoutError) as e:
-        logger.warning(f"IMAP connection error: {e}")
+        logger.warning("IMAP connection error: %s", e, exc_info=True)
         return ImapPreviewResponse(
             valid=False,
             host=request.host,
@@ -255,7 +255,7 @@ async def preview_imap(
             error="Connection failed. Check host, port, and SSL settings.",
         )
     except Exception as e:
-        logger.error(f"IMAP preview failed: {e}", exc_info=True)
+        logger.error("IMAP preview failed: %s", e, exc_info=True)
         return ImapPreviewResponse(
             valid=False,
             host=request.host,

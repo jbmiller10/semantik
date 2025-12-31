@@ -10,6 +10,7 @@ from shared.database.exceptions import (
     AccessDeniedError,
     EntityNotFoundError,
     InvalidStateError,
+    ValidationError,
 )
 from shared.database.models import CollectionSource, OperationType
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -18,6 +19,7 @@ from shared.database.repositories.connector_secret_repository import ConnectorSe
 from shared.database.repositories.operation_repository import OperationRepository
 from shared.utils.encryption import EncryptionNotConfiguredError
 from webui.celery_app import celery_app
+from webui.services.connector_factory import ConnectorFactory
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,16 @@ class SourceService:
             ValidationError: If validation fails
             EncryptionNotConfiguredError: If secrets provided but encryption not configured
         """
+        normalized_type = (source_type or "").strip().lower()
+        available_types = ConnectorFactory.list_available_types()
+        if not normalized_type or normalized_type not in available_types:
+            available = ", ".join(sorted(available_types)) if available_types else "none registered"
+            raise ValidationError(
+                f"Invalid source_type: '{source_type}'. Must be one of: {available}",
+                field="source_type",
+            )
+        source_type = normalized_type
+
         # Verify user has access to collection
         collection = await self.collection_repo.get_by_uuid(collection_id)
         if not collection:
@@ -123,8 +135,12 @@ class SourceService:
                 for secret_type, value in secrets_to_store.items():
                     await self.secret_repo.set_secret(source.id, secret_type, value)
                     secret_types.append(secret_type)
-            except EncryptionNotConfiguredError:
-                logger.warning(f"Secrets provided for source {source.id} but encryption not configured")
+            except EncryptionNotConfiguredError as e:
+                logger.warning(
+                    "Secrets provided for source %s but encryption not configured",
+                    source.id,
+                    exc_info=True,
+                )
                 raise
 
         logger.info(
@@ -172,7 +188,10 @@ class SourceService:
             raise AccessDeniedError(str(user_id), "collection_source", str(source_id))
 
         if secrets and not self.secret_repo:
-            logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+            logger.warning(
+                "Secrets update requested for source %s but encryption not configured",
+                source_id,
+            )
             raise EncryptionNotConfiguredError(
                 "Encryption not configured - set CONNECTOR_SECRETS_KEY environment variable"
             )
@@ -192,8 +211,12 @@ class SourceService:
                         await self.secret_repo.set_secret(source_id, secret_type, value)
                     else:  # Empty string: delete
                         await self.secret_repo.delete_secret(source_id, secret_type)
-            except EncryptionNotConfiguredError:
-                logger.warning(f"Secrets update requested for source {source_id} but encryption not configured")
+            except EncryptionNotConfiguredError as e:
+                logger.warning(
+                    "Secrets update requested for source %s but encryption not configured",
+                    source_id,
+                    exc_info=True,
+                )
                 raise
 
         # Get current secret types

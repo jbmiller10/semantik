@@ -137,6 +137,15 @@ class TestChunkingInputValidator:
 class TestRegexPerformanceMonitor:
     """Test regex performance monitoring."""
 
+    def test_metrics_bounded(self) -> None:
+        """Test that metrics storage is bounded."""
+        monitor = RegexPerformanceMonitor()
+
+        for i in range(RegexPerformanceMonitor.MAX_METRICS + 100):
+            monitor.record_execution(f"pattern_{i}", 0.001, 10, matched=True)
+
+        assert len(monitor.metrics) == RegexPerformanceMonitor.MAX_METRICS
+
     def test_metric_recording(self) -> None:
         """Test that metrics are recorded correctly."""
         monitor = RegexPerformanceMonitor()

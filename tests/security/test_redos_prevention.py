@@ -169,12 +169,16 @@ class TestSafeRegexClass:
 
     def test_pattern_caching(self, safe_regex):
         """Test that patterns are cached."""
+        safe_regex.clear_cache()
+
         # Compile the same pattern twice
         safe_regex.compile_safe(r"\d+")
         safe_regex.compile_safe(r"\d+")
 
         # Should have cached the pattern
-        assert len(safe_regex._pattern_cache) > 0
+        cache_info = safe_regex.cache_info()
+        assert cache_info.currsize == 1
+        assert cache_info.hits >= 1
 
     def test_dangerous_pattern_detection(self, safe_regex):
         """Test that dangerous patterns are detected."""

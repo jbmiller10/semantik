@@ -72,7 +72,7 @@ class CollectionSyncRunRepository:
             return sync_run
 
         except Exception as e:
-            logger.error(f"Failed to create sync run for collection {collection_id}: {e}")
+            logger.error("Failed to create sync run for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("create", "collection_sync_run", str(e)) from e
 
     async def get_by_id(self, run_id: int) -> CollectionSyncRun | None:
@@ -88,7 +88,7 @@ class CollectionSyncRunRepository:
             result = await self.session.execute(select(CollectionSyncRun).where(CollectionSyncRun.id == run_id))
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get sync run {run_id}: {e}")
+            logger.error("Failed to get sync run %s: %s", run_id, e, exc_info=True)
             raise DatabaseOperationError("get", "collection_sync_run", str(e)) from e
 
     async def get_active_run(self, collection_id: str) -> CollectionSyncRun | None:
@@ -109,7 +109,7 @@ class CollectionSyncRunRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get active sync run for collection {collection_id}: {e}")
+            logger.error("Failed to get active sync run for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("get", "collection_sync_run", str(e)) from e
 
     async def update_source_completion(
@@ -160,7 +160,7 @@ class CollectionSyncRunRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update source completion for sync run {run_id}: {e}")
+            logger.error("Failed to update source completion for sync run %s: %s", run_id, e, exc_info=True)
             raise DatabaseOperationError("update", "collection_sync_run", str(e)) from e
 
     async def complete_run(
@@ -217,7 +217,7 @@ class CollectionSyncRunRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to complete sync run {run_id}: {e}")
+            logger.error("Failed to complete sync run %s: %s", run_id, e, exc_info=True)
             raise DatabaseOperationError("update", "collection_sync_run", str(e)) from e
 
     async def list_for_collection(
@@ -259,7 +259,7 @@ class CollectionSyncRunRepository:
             return sync_runs, total
 
         except Exception as e:
-            logger.error(f"Failed to list sync runs for collection {collection_id}: {e}")
+            logger.error("Failed to list sync runs for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("list", "collection_sync_run", str(e)) from e
 
     async def get_latest_for_collection(self, collection_id: str) -> CollectionSyncRun | None:
@@ -280,5 +280,5 @@ class CollectionSyncRunRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get latest sync run for collection {collection_id}: {e}")
+            logger.error("Failed to get latest sync run for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("get", "collection_sync_run", str(e)) from e

@@ -64,7 +64,7 @@ class ChunkingCache:
                     data: dict[str, Any] = json.loads(cached_data)
                     return data
         except Exception as e:
-            logger.error("Error retrieving cached preview: %s", str(e))
+            logger.error("Error retrieving cached preview: %s", e, exc_info=True)
 
         return None
 
@@ -118,7 +118,7 @@ class ChunkingCache:
             logger.debug("Cached preview with key: %s (TTL: %ds)", cache_key, ttl)
             return cache_key
         except Exception as e:
-            logger.error("Error caching preview: %s", str(e))
+            logger.error("Error caching preview: %s", e, exc_info=True)
             return ""
 
     async def get_cached_by_id(self, cache_id: str) -> dict[str, Any] | None:
@@ -143,7 +143,7 @@ class ChunkingCache:
                     data: dict[str, Any] = json.loads(cached_data)
                     return data
         except Exception as e:
-            logger.error("Error retrieving cached data by ID: %s", str(e))
+            logger.error("Error retrieving cached data by ID: %s", e, exc_info=True)
 
         return None
 
@@ -181,7 +181,7 @@ class ChunkingCache:
                 )
             return cache_id
         except Exception as e:
-            logger.error("Error caching with ID: %s", str(e))
+            logger.error("Error caching with ID: %s", e, exc_info=True)
             return ""
 
     async def clear_cache(self, pattern: str | None = None) -> int:
@@ -209,7 +209,7 @@ class ChunkingCache:
                 logger.info("Cleared %d cache entries matching pattern: %s", deleted, pattern)
                 return deleted
         except Exception as e:
-            logger.error("Error clearing cache: %s", str(e))
+            logger.error("Error clearing cache: %s", e, exc_info=True)
 
         return 0
 
@@ -244,7 +244,7 @@ class ChunkingCache:
                 if isinstance(deleted_result, str) and deleted_result.isdigit():
                     return int(deleted_result)
         except Exception as e:
-            logger.error("Error deleting cache keys %s: %s", keys, str(e))
+            logger.error("Error deleting cache keys %s: %s", keys, e, exc_info=True)
 
         return 0
 
@@ -311,7 +311,7 @@ class ChunkingCache:
             logger.info("Cleared %d preview cache entries for id %s", deleted, preview_id)
             return deleted
         except Exception as e:
-            logger.error("Error clearing preview cache for %s: %s", preview_id, str(e))
+            logger.error("Error clearing preview cache for %s: %s", preview_id, e, exc_info=True)
 
         return 0
 
@@ -347,7 +347,7 @@ class ChunkingCache:
                 await self.redis.expire(metric_key, 604800)
                 await self.redis.expire(user_key, 604800)
         except Exception as e:
-            logger.error("Error tracking cache usage: %s", str(e))
+            logger.error("Error tracking cache usage: %s", e, exc_info=True)
 
     async def get_usage_metrics(self, strategy: str | None = None) -> dict[str, Any]:
         """
@@ -384,7 +384,7 @@ class ChunkingCache:
                                 "misses": int(data.get("misses", 0)),
                             }
         except Exception as e:
-            logger.error("Error getting usage metrics: %s", str(e))
+            logger.error("Error getting usage metrics: %s", e, exc_info=True)
 
         return metrics
 

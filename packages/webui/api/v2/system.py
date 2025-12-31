@@ -60,7 +60,7 @@ async def get_system_status(
             "cuda_device_name": f"GPU ({gpu_memory.get('total_mb', 0)}MB)" if gpu_available else None,
         }
     except httpx.RequestError as e:
-        logger.warning(f"Could not reach vecpipe service: {e}")
+        logger.warning("Could not reach vecpipe service: %s", e, exc_info=True)
         return {
             "gpu_available": False,
             "reranking_available": False,
@@ -69,7 +69,7 @@ async def get_system_status(
             "cuda_device_name": None,
         }
     except Exception as e:
-        logger.error(f"Error checking system status: {e}")
+        logger.error("Error checking system status: %s", e, exc_info=True)
         return {
             "gpu_available": False,
             "reranking_available": False,

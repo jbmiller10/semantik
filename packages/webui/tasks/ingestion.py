@@ -115,7 +115,7 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
             loop.run_until_complete(tasks_ns._process_collection_operation_async(operation_id, self)),
         )
     except Exception as exc:  # pragma: no cover - retry path
-        logger.error("Task failed for operation %s: %s", operation_id, exc)
+        logger.error("Task failed for operation %s: %s", operation_id, exc, exc_info=True)
         if isinstance(exc, ValueError | TypeError):
             raise
         raise self.retry(exc=exc, countdown=60) from exc
@@ -686,6 +686,7 @@ async def _process_index_operation(
                 "Failed to ensure metadata collection before creating %s: %s",
                 vector_store_name,
                 exc,
+                exc_info=True,
             )
 
         config = collection.get("config", {})
@@ -731,7 +732,7 @@ async def _process_index_operation(
                 ensure=False,
             )
         except Exception as exc:
-            logger.warning("Failed to store collection metadata: %s", exc)
+            logger.warning("Failed to store collection metadata: %s", exc, exc_info=True)
 
         try:
             collection_info = qdrant_client.get_collection(vector_store_name)
@@ -741,19 +742,29 @@ async def _process_index_operation(
                 collection_info.vectors_count,
             )
         except Exception as exc:
-            logger.error("Failed to verify collection %s after creation: %s", vector_store_name, exc)
+            logger.error(
+                "Failed to verify collection %s after creation: %s",
+                vector_store_name,
+                exc,
+                exc_info=True,
+            )
             raise Exception(f"Collection {vector_store_name} was not properly created in Qdrant") from exc
 
         try:
             await collection_repo.update(collection["id"], {"vector_store_name": vector_store_name})
             logger.info("Updated collection %s with vector_store_name: %s", collection["id"], vector_store_name)
         except Exception as exc:
-            logger.error("Failed to update collection in database: %s", exc)
+            logger.error("Failed to update collection in database: %s", exc, exc_info=True)
             try:
                 qdrant_client.delete_collection(vector_store_name)
                 logger.info("Cleaned up Qdrant collection %s after database update failure", vector_store_name)
             except Exception as cleanup_error:
-                logger.error("Failed to clean up Qdrant collection %s: %s", vector_store_name, cleanup_error)
+                logger.error(
+                    "Failed to clean up Qdrant collection %s: %s",
+                    vector_store_name,
+                    cleanup_error,
+                    exc_info=True,
+                )
             raise Exception(f"Failed to update collection {collection['id']} in database") from exc
 
         await _audit_log_operation(
@@ -769,7 +780,7 @@ async def _process_index_operation(
         return {"success": True, "qdrant_collection": vector_store_name, "vector_dim": vector_dim}
 
     except Exception as exc:
-        logger.error("Failed to create Qdrant collection: %s", exc)
+        logger.error("Failed to create Qdrant collection: %s", exc, exc_info=True)
         record_qdrant_operation("create_collection", "failed")
         raise
 
@@ -894,7 +905,11 @@ async def _process_append_operation_impl(
             try:
                 await session.commit()
             except Exception as commit_exc:
-                logger.warning("Failed to commit before document scan: %s, rolling back", commit_exc)
+                logger.warning(
+                    "Failed to commit before document scan: %s, rolling back",
+                    commit_exc,
+                    exc_info=True,
+                )
                 try:
                     await session.rollback()
                 except Exception as rollback_exc:
@@ -984,10 +999,15 @@ async def _process_append_operation_impl(
                 await session.commit()
 
             except Exception as e:
-                logger.error(f"Failed to register document {ingested_doc.unique_id}: {e}")
+                logger.error(
+                    "Failed to register document %s: %s",
+                    ingested_doc.unique_id,
+                    e,
+                    exc_info=True,
+                )
                 # If session is in invalid state (e.g., connection lost), try to recover
                 if "invalid transaction" in str(e).lower() or "pending" in str(e).lower():
-                    logger.warning("Session in invalid state, attempting rollback recovery")
+                    logger.warning("Session in invalid state, attempting rollback recovery", exc_info=True)
                     try:
                         await session.rollback()
                     except Exception as rollback_exc:
@@ -1009,7 +1029,7 @@ async def _process_append_operation_impl(
             try:
                 await session.commit()
             except Exception as commit_exc:
-                logger.warning("Failed to commit document registrations: %s", commit_exc)
+                logger.warning("Failed to commit document registrations: %s", commit_exc, exc_info=True)
                 try:
                     await session.rollback()
                 except Exception as rollback_exc:
@@ -1301,7 +1321,7 @@ async def _process_append_operation_impl(
                                         "but model {} produced {}-dimensional vectors. Please ensure you're using the same model that "
                                         "was used to create the collection."
                                     ).format(exc, qdrant_collection_name, expected_dim, embedding_model, actual_dim)
-                                    logger.error(error_msg)
+                                    logger.error("%s", error_msg, exc_info=True)
                                     raise ValueError(error_msg) from exc
 
                     # Ensure no open transaction lingers while we call external vector upserts
@@ -1370,7 +1390,7 @@ async def _process_append_operation_impl(
                     await session.commit()
 
                 except Exception as exc:
-                    logger.error("Failed to process document %s: %s", doc_identifier, exc)
+                    logger.error("Failed to process document %s: %s", doc_identifier, exc, exc_info=True)
                     try:
                         # Clear any pending transaction state so status updates use a fresh connection
                         await session.rollback()
@@ -1453,7 +1473,7 @@ async def _process_append_operation_impl(
                 scan_stats["documents_marked_stale"] = stale_count
                 await session.commit()
             except Exception as stale_exc:
-                logger.warning("Failed to mark stale documents: %s", stale_exc)
+                logger.warning("Failed to mark stale documents: %s", stale_exc, exc_info=True)
                 scan_stats["documents_marked_stale"] = 0
                 try:
                     await session.rollback()
@@ -1502,7 +1522,7 @@ async def _process_append_operation_impl(
                 )
                 await session.commit()
             except Exception as status_exc:
-                logger.warning("Failed to update source sync status: %s", status_exc)
+                logger.warning("Failed to update source sync status: %s", status_exc, exc_info=True)
                 try:
                     await session.rollback()
                 except Exception as rollback_exc:
@@ -1563,7 +1583,7 @@ async def _process_append_operation_impl(
 
                 await session.commit()
             except Exception as sync_run_exc:
-                logger.warning("Failed to update sync run completion: %s", sync_run_exc)
+                logger.warning("Failed to update sync run completion: %s", sync_run_exc, exc_info=True)
                 try:
                     await session.rollback()
                 except Exception as rollback_exc:
@@ -1590,7 +1610,7 @@ async def _process_append_operation_impl(
         }
 
     except Exception as exc:
-        logger.error("Failed to process %s source %s: %s", source_type, display_path, exc)
+        logger.error("Failed to process %s source %s: %s", source_type, display_path, exc, exc_info=True)
         # Update source sync status on failure
         if source_id is not None:
             try:
@@ -1773,7 +1793,7 @@ async def _process_remove_source_operation(
 
                 except Exception as exc:
                     error_msg = f"Failed to delete from collection {qdrant_collection}: {exc}"
-                    logger.error(error_msg)
+                    logger.error("%s", error_msg, exc_info=True)
                     deletion_errors.append(error_msg)
 
             removed_count += len(batch_ids)
@@ -1788,7 +1808,7 @@ async def _process_remove_source_operation(
                 },
             )
         except Exception as exc:
-            logger.error("Failed to remove vectors for batch: %s", exc)
+            logger.error("Failed to remove vectors for batch: %s", exc, exc_info=True)
             deletion_errors.append(f"Batch {i//batch_size + 1} error: {str(exc)}")
 
     session_factory = pg_connection_manager.sessionmaker or await ensure_async_sessionmaker()
@@ -1865,7 +1885,7 @@ def _handle_task_failure(
     try:
         asyncio.run(_handle_task_failure_async(operation_id, exc, task_id))
     except Exception as failure_error:  # pragma: no cover - defensive logging
-        logger.error("Failed to handle task failure for operation %s: %s", operation_id, failure_error)
+        logger.error("Failed to handle task failure for operation %s: %s", operation_id, failure_error, exc_info=True)
 
 
 async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id: str) -> None:
@@ -1977,7 +1997,7 @@ async def _handle_task_failure_async(operation_id: str, exc: Exception, task_id:
                 collection_id if collection_id else "unknown",
             )
         except Exception as post_cleanup_error:  # pragma: no cover - defensive logging
-            logger.error("Error in post-cleanup for operation %s: %s", operation_id, post_cleanup_error)
+            logger.error("Error in post-cleanup for operation %s: %s", operation_id, post_cleanup_error, exc_info=True)
 
         await db.commit()
 

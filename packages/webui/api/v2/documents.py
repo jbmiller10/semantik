@@ -150,7 +150,7 @@ async def get_document_content(
             # Convert to Path object and resolve to absolute path
             file_path = Path(document.file_path).resolve()
         except Exception as e:
-            logger.error(f"Error resolving document path: {e}")
+            logger.error("Error resolving document path: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=500,
                 detail="Error accessing document",
@@ -226,7 +226,7 @@ async def get_document_content(
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"Failed to serve document content: {e}")
+        logger.error("Failed to serve document content: %s", e, exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="Failed to retrieve document content",

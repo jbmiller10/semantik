@@ -296,6 +296,8 @@ This endpoint starts an `append` operation and (re)uses a `collection_sources` r
 - `git` (remote Git repository)
 - `imap` (IMAP mailbox)
 
+Note: this list is extensible via connector plugins. Use `GET /api/v2/connectors` to discover the connector types available in your deployment.
+
 **Example (Git repo, public or auth configured separately):**
 ```json
 {
@@ -366,7 +368,7 @@ This endpoint starts an `append` operation and (re)uses a `collection_sources` r
 **Connector credentials (secrets):**
 - Passwords/tokens/SSH keys are encrypted and stored in the database (never returned in API responses).
 - Set `CONNECTOR_SECRETS_KEY` in your environment (see `.env.docker.example` and `docs/CONFIGURATION.md`).
-- After the source exists, update secrets via `PATCH /api/v2/collections/{collection_id}/sources/{source_id}` and then trigger a run via `POST /api/v2/collections/{collection_id}/sources/{source_id}/run`.
+- After the source exists, update secrets via `PATCH /api/v2/collections/{collection_id}/sources/{source_id}` and then trigger a run via `POST /api/v2/collections/{collection_id}/sync/run`.
 
 ##### Manage Sources (recommended for scheduling + secrets)
 
@@ -393,16 +395,39 @@ Content-Type: application/json
 }
 ```
 
-Trigger a run immediately (creates an `append` operation for that source):
+Trigger a collection sync run (fans out `append` operations for all sources):
 ```http
-POST /api/v2/collections/{collection_id}/sources/{source_id}/run
+POST /api/v2/collections/{collection_id}/sync/run
 Authorization: Bearer {token}
 ```
 
-Pause/resume continuous sync:
+**Response (202 Accepted):**
+```json
+{
+  "id": 42,
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "triggered_by": "manual",
+  "started_at": "2025-01-01T00:00:00Z",
+  "completed_at": null,
+  "status": "running",
+  "expected_sources": 3,
+  "completed_sources": 0,
+  "failed_sources": 0,
+  "partial_sources": 0,
+  "error_summary": null
+}
+```
+
+Pause/resume continuous sync (collection-level):
 ```http
-POST /api/v2/collections/{collection_id}/sources/{source_id}/pause
-POST /api/v2/collections/{collection_id}/sources/{source_id}/resume
+POST /api/v2/collections/{collection_id}/sync/pause
+POST /api/v2/collections/{collection_id}/sync/resume
+Authorization: Bearer {token}
+```
+
+List sync runs:
+```http
+GET /api/v2/collections/{collection_id}/sync/runs?offset=0&limit=50
 Authorization: Bearer {token}
 ```
 ##### Remove Source from Collection
@@ -752,7 +777,7 @@ Content-Type: application/json
 
 #### Chunking API
 
-Multiple strategies, real-time processing, quality analysis. See [CHUNKING_API.md](/docs/api/CHUNKING_API.md) for full docs.
+Multiple strategies, real-time processing, quality analysis. Strategy IDs are extensible via plugins; use `GET /api/v2/chunking/strategies` to see what is enabled. See [CHUNKING_API.md](/docs/api/CHUNKING_API.md) for full docs.
 
 **Key endpoints**: strategies, preview (10/min), compare (5/min), collection processing, metrics, quality scores, configs
 

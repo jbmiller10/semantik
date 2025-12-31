@@ -76,6 +76,7 @@ def with_db_retry(
                         attempt + 1,
                         retries + 1,
                         e,
+                        exc_info=True,
                     )
 
                     await asyncio.sleep(current_delay)
@@ -104,6 +105,7 @@ def with_db_retry(
                         attempt + 1,
                         retries + 1,
                         e,
+                        exc_info=True,
                     )
 
                     import time

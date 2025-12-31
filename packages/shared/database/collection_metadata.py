@@ -35,7 +35,7 @@ def ensure_metadata_collection(qdrant: QdrantClient) -> None:
             )
             logger.info(f"Created metadata collection: {METADATA_COLLECTION}")
     except Exception as e:
-        logger.error(f"Failed to ensure metadata collection: {e}")
+        logger.error("Failed to ensure metadata collection: %s", e, exc_info=True)
 
 
 def store_collection_metadata(
@@ -85,7 +85,7 @@ def store_collection_metadata(
         )
         logger.info(f"Stored metadata for collection {collection_name}: {metadata}")
     except Exception as e:
-        logger.error(f"Failed to store collection metadata: {e}")
+        logger.error("Failed to store collection metadata: %s", e, exc_info=True)
 
 
 def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict[str, Any] | None:
@@ -111,7 +111,7 @@ def get_collection_metadata(qdrant: QdrantClient, collection_name: str) -> dict[
         if points:
             return dict(points[0].payload) if points[0].payload else {}
     except Exception as e:
-        logger.warning(f"Failed to get metadata for collection {collection_name}: {e}")
+        logger.warning("Failed to get metadata for collection %s: %s", collection_name, e, exc_info=True)
     return None
 
 
@@ -141,5 +141,5 @@ async def get_collection_metadata_async(
         if points:
             return dict(points[0].payload) if points[0].payload else {}
     except Exception as e:
-        logger.warning(f"Failed to get metadata for collection {collection_name}: {e}")
+        logger.warning("Failed to get metadata for collection %s: %s", collection_name, e, exc_info=True)
     return None

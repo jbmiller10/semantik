@@ -246,7 +246,7 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
 
             except Exception as exc:
                 error_msg = f"Failed to delete collection {collection_name}: {str(exc)}"
-                logger.error(error_msg)
+                logger.error("Failed to delete collection %s: %s", collection_name, exc, exc_info=True)
                 stats["collections_failed"] += 1
                 stats["errors"].append(error_msg)
 
@@ -263,7 +263,7 @@ def cleanup_old_collections(old_collection_names: list[str], collection_id: str)
         return stats
 
     except Exception as exc:
-        logger.error("Cleanup task failed for collection %s: %s", collection_id, exc)
+        logger.error("Cleanup task failed for collection %s: %s", collection_id, exc, exc_info=True)
         stats["errors"].append(str(exc))
         record_metric_safe("collection_cleanup_total", {"status": "failed"})
         return stats

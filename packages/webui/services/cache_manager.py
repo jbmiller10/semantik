@@ -14,6 +14,8 @@ from typing import Any
 
 import redis.asyncio as aioredis
 
+from shared.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +29,7 @@ class CacheManager:
             redis_client: Redis client for cache operations
         """
         self.redis = redis_client
-        self.default_ttl = 300  # 5 minutes
+        self.default_ttl = settings.CACHE_DEFAULT_TTL_SECONDS
 
         # Cache statistics
         self.hits = 0
@@ -68,7 +70,7 @@ class CacheManager:
             self.hits += 1
             return deserializer(value)
         except Exception as e:
-            logger.warning(f"Cache get error for key {key}: {e}")
+            logger.warning("Cache get error for key %s: %s", key, e, exc_info=True)
             self.misses += 1
             return None
 
@@ -86,7 +88,7 @@ class CacheManager:
             serialized = serializer(value)
             await self.redis.setex(key, ttl, serialized)
         except Exception as e:
-            logger.warning(f"Cache set error for key {key}: {e}")
+            logger.warning("Cache set error for key %s: %s", key, e, exc_info=True)
 
     async def delete(self, pattern: str) -> None:
         """Delete keys matching pattern.
@@ -105,7 +107,7 @@ class CacheManager:
                 if cursor == 0:
                     break
         except Exception as e:
-            logger.warning(f"Cache delete error for pattern {pattern}: {e}")
+            logger.warning("Cache delete error for pattern %s: %s", pattern, e, exc_info=True)
 
     async def invalidate_collection(self, collection_id: str) -> None:
         """Invalidate all cache entries for a collection.
@@ -175,7 +177,7 @@ class CacheManager:
             await self.delete("cache:*")
             logger.info("Cleared all cache entries")
         except Exception as e:
-            logger.error(f"Failed to clear cache: {e}")
+            logger.error("Failed to clear cache: %s", e, exc_info=True)
 
     async def warmup_collection_cache(self, collection_id: str, service: Any) -> None:
         """Pre-populate cache for a collection.
@@ -191,7 +193,7 @@ class CacheManager:
 
             logger.info(f"Warmed up cache for collection {collection_id}")
         except Exception as e:
-            logger.warning(f"Cache warmup failed for collection {collection_id}: {e}")
+            logger.warning("Cache warmup failed for collection %s: %s", collection_id, e, exc_info=True)
 
 
 class QueryMonitor:

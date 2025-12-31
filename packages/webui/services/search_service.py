@@ -80,7 +80,7 @@ class SearchService:
                 )
                 collections.append(collection)
             except (EntityNotFoundError, AccessDeniedError) as e:
-                logger.error(f"Error accessing collection {uuid}: {e}", exc_info=True)
+                logger.error("Error accessing collection %s: %s", uuid, e, exc_info=True)
                 raise AccessDeniedError(str(user_id), "collection", uuid) from e
 
         return collections
@@ -144,9 +144,9 @@ class SearchService:
             result = response.json()
             return (collection, result.get("results", []), None)
 
-        except httpx.ReadTimeout:
+        except httpx.ReadTimeout as e:
             # Retry with longer timeout
-            logger.warning(f"Search timeout for collection {collection.name}, retrying...")
+            logger.warning("Search timeout for collection %s, retrying...", collection.name, exc_info=True)
             # Calculate extended timeout by multiplying current timeout values
             # Calculate a general timeout based on the maximum of individual timeouts
             # Cap the retry timeout to a reasonable limit (e.g., 60s) to prevent excessive hangs
@@ -185,7 +185,7 @@ class SearchService:
             return (collection, None, f"Network error searching collection '{collection.name}': {str(e)}")
 
         except Exception as e:
-            logger.error(f"Unexpected error searching collection {collection.name}: {e}", exc_info=True)
+            logger.error("Unexpected error searching collection %s: %s", collection.name, e, exc_info=True)
             return (collection, None, f"Unexpected error searching collection '{collection.name}': {str(e)}")
 
     def _handle_http_error(
@@ -441,9 +441,14 @@ class SearchService:
                 raise EntityNotFoundError("collection", collection_uuid) from e
             if e.response.status_code == 403:
                 raise AccessDeniedError(str(user_id), "collection", collection_uuid) from e
-            logger.error(f"Search failed with status {e.response.status_code}: {e}", exc_info=True)
+            logger.error(
+                "Search failed with status %s: %s",
+                e.response.status_code,
+                e,
+                exc_info=True,
+            )
             raise
 
         except Exception as e:
-            logger.error(f"Search failed: {e}", exc_info=True)
+            logger.error("Search failed: %s", e, exc_info=True)
             raise

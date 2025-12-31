@@ -846,7 +846,7 @@ class ChunkingErrorHandler:
 
         except Exception as e:
             cleanup_errors.append(f"Unexpected error during cleanup: {str(e)}")
-            logger.error(f"Cleanup failed for operation {operation_id}", exc_info=e)
+            logger.error("Cleanup failed for operation %s: %s", operation_id, e, exc_info=True)
 
         return CleanupResult(
             cleaned=len(cleanup_errors) == 0,
@@ -1007,7 +1007,7 @@ class ChunkingErrorHandler:
             return state
 
         except Exception as e:
-            logger.error(f"Failed to save operation state: {str(e)}", exc_info=e)
+            logger.error("Failed to save operation state: %s", e, exc_info=True)
             return None
 
     async def _check_resource_availability(
@@ -1038,7 +1038,7 @@ class ChunkingErrorHandler:
                     "estimated_available": 50,  # Placeholder
                 }
         except Exception as e:
-            logger.error(f"Failed to check resource availability: {str(e)}")
+            logger.error("Failed to check resource availability: %s", e, exc_info=True)
 
         return availability
 
@@ -1067,7 +1067,7 @@ class ChunkingErrorHandler:
             return int(position) if position is not None else None
 
         except Exception as e:
-            logger.error(f"Failed to queue operation: {str(e)}")
+            logger.error("Failed to queue operation: %s", e, exc_info=True)
             return None
 
     def _calculate_adaptive_batch_size(
@@ -1127,7 +1127,7 @@ class ChunkingErrorHandler:
                 },
             }
         except Exception as e:
-            logger.error(f"Failed to get resource usage: {str(e)}")
+            logger.error("Failed to get resource usage: %s", e, exc_info=True)
             return {}
 
     def _generate_recommendations(
@@ -1200,14 +1200,17 @@ class ChunkingErrorHandler:
             )
             return True
 
-        except TimeoutError:
+        except TimeoutError as e:
             logger.warning(
-                f"Failed to acquire resource lock for {resource_type.value} within {timeout}s",
+                "Failed to acquire resource lock for %s within %ss",
+                resource_type.value,
+                timeout,
                 extra={
                     "operation_id": operation_id,
                     "resource_type": resource_type.value,
                     "correlation_id": get_correlation_id(),
                 },
+                exc_info=True,
             )
             return False
 
@@ -1255,7 +1258,7 @@ class ChunkingErrorHandler:
                 return state_dict
 
         except Exception as e:
-            logger.error(f"Failed to retrieve operation state: {str(e)}", exc_info=e)
+            logger.error("Failed to retrieve operation state: %s", e, exc_info=True)
 
         return None
 

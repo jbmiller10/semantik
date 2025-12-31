@@ -122,7 +122,7 @@ class DocumentRepository:
 
         except IntegrityError as e:
             # Handle race condition where another process created the same document
-            logger.warning(f"Integrity error creating document, checking for existing: {e}")
+            logger.warning("Integrity error creating document, checking for existing: %s", e, exc_info=True)
             existing_doc = await self.get_by_content_hash(collection_id, content_hash)
             if existing_doc:
                 return existing_doc
@@ -130,7 +130,7 @@ class DocumentRepository:
         except (EntityNotFoundError, ValidationError):
             raise
         except Exception as e:
-            logger.error(f"Failed to create document: {e}")
+            logger.error("Failed to create document: %s", e, exc_info=True)
             raise DatabaseOperationError("create", "document", str(e)) from e
 
     async def get_by_id(self, document_id: str) -> Document | None:
@@ -150,7 +150,7 @@ class DocumentRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get document {document_id}: {e}")
+            logger.error("Failed to get document %s: %s", document_id, e, exc_info=True)
             raise DatabaseOperationError("get", "document", str(e)) from e
 
     async def get_by_content_hash(self, collection_id: str, content_hash: str) -> Document | None:
@@ -174,7 +174,13 @@ class DocumentRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get document by content_hash {content_hash} in collection {collection_id}: {e}")
+            logger.error(
+                "Failed to get document by content_hash %s in collection %s: %s",
+                content_hash,
+                collection_id,
+                e,
+                exc_info=True,
+            )
             raise DatabaseOperationError("get", "document", str(e)) from e
 
     async def get_by_uri(self, collection_id: str, uri: str) -> Document | None:
@@ -198,7 +204,13 @@ class DocumentRepository:
             )
             return result.scalar_one_or_none()
         except Exception as e:
-            logger.error(f"Failed to get document by uri {uri} in collection {collection_id}: {e}")
+            logger.error(
+                "Failed to get document by uri %s in collection %s: %s",
+                uri,
+                collection_id,
+                e,
+                exc_info=True,
+            )
             raise DatabaseOperationError("get", "document", str(e)) from e
 
     async def list_by_collection(
@@ -239,7 +251,7 @@ class DocumentRepository:
             return list(documents), total or 0
 
         except Exception as e:
-            logger.error(f"Failed to list documents for collection {collection_id}: {e}")
+            logger.error("Failed to list documents for collection %s: %s", collection_id, e, exc_info=True)
             raise DatabaseOperationError("list", "documents", str(e)) from e
 
     async def list_by_source_id(
@@ -272,7 +284,7 @@ class DocumentRepository:
             result = await self.session.execute(query)
             return list(result.scalars().all())
         except Exception as e:
-            logger.error(f"Failed to list documents by source_id {source_id}: {e}")
+            logger.error("Failed to list documents by source_id %s: %s", source_id, e, exc_info=True)
             raise DatabaseOperationError("list", "documents", str(e)) from e
 
     async def list_duplicates(self, collection_id: str) -> list[tuple[str, int, list[Document]]]:
@@ -323,7 +335,7 @@ class DocumentRepository:
             return [(content_hash, len(docs), docs) for content_hash, docs in duplicates.items()]
 
         except Exception as e:
-            logger.error(f"Failed to list duplicate documents: {e}")
+            logger.error("Failed to list duplicate documents: %s", e, exc_info=True)
             raise DatabaseOperationError("list", "duplicate documents", str(e)) from e
 
     async def update_status(
@@ -366,7 +378,7 @@ class DocumentRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update document status: {e}")
+            logger.error("Failed to update document status: %s", e, exc_info=True)
             raise DatabaseOperationError("update", "document", str(e)) from e
 
     async def bulk_update_status(
@@ -406,7 +418,7 @@ class DocumentRepository:
             return count
 
         except Exception as e:
-            logger.error(f"Failed to bulk update document status: {e}")
+            logger.error("Failed to bulk update document status: %s", e, exc_info=True)
             raise DatabaseOperationError("bulk update", "documents", str(e)) from e
 
     async def delete(self, document_id: str) -> None:
@@ -432,7 +444,7 @@ class DocumentRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to delete document: {e}")
+            logger.error("Failed to delete document: %s", e, exc_info=True)
             raise DatabaseOperationError("delete", "document", str(e)) from e
 
     async def delete_duplicates(self, collection_id: str, keep_oldest: bool = True) -> int:
@@ -470,7 +482,7 @@ class DocumentRepository:
             return deleted_count
 
         except Exception as e:
-            logger.error(f"Failed to delete duplicate documents: {e}")
+            logger.error("Failed to delete duplicate documents: %s", e, exc_info=True)
             raise DatabaseOperationError("delete", "duplicate documents", str(e)) from e
 
     async def get_stats_by_collection(self, collection_id: str) -> dict[str, Any]:
@@ -524,7 +536,7 @@ class DocumentRepository:
             return stats
 
         except Exception as e:
-            logger.error(f"Failed to get document stats: {e}")
+            logger.error("Failed to get document stats: %s", e, exc_info=True)
             raise DatabaseOperationError("get stats", "documents", str(e)) from e
 
     # -------------------------------------------------------------------------
@@ -562,7 +574,7 @@ class DocumentRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update last_seen_at: {e}")
+            logger.error("Failed to update last_seen_at: %s", e, exc_info=True)
             raise DatabaseOperationError("update_last_seen", "document", str(e)) from e
 
     async def update_content(
@@ -628,7 +640,7 @@ class DocumentRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to update document content: {e}")
+            logger.error("Failed to update document content: %s", e, exc_info=True)
             raise DatabaseOperationError("update_content", "document", str(e)) from e
 
     async def mark_unseen_as_stale(
@@ -676,7 +688,7 @@ class DocumentRepository:
             return count
 
         except Exception as e:
-            logger.error(f"Failed to mark documents as stale: {e}")
+            logger.error("Failed to mark documents as stale: %s", e, exc_info=True)
             raise DatabaseOperationError("mark_unseen_as_stale", "documents", str(e)) from e
 
     async def get_stale_documents(
@@ -721,7 +733,7 @@ class DocumentRepository:
             return list(documents), total or 0
 
         except Exception as e:
-            logger.error(f"Failed to get stale documents: {e}")
+            logger.error("Failed to get stale documents: %s", e, exc_info=True)
             raise DatabaseOperationError("get_stale_documents", "documents", str(e)) from e
 
     async def clear_stale_flag(
@@ -755,5 +767,5 @@ class DocumentRepository:
         except EntityNotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Failed to clear stale flag: {e}")
+            logger.error("Failed to clear stale flag: %s", e, exc_info=True)
             raise DatabaseOperationError("clear_stale_flag", "document", str(e)) from e

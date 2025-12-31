@@ -149,7 +149,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
                 stats["sources_dispatched"] += len(sources)
 
             except Exception as e:
-                logger.error(f"Error dispatching sync for collection {collection.id}: {e}")
+                logger.error("Error dispatching sync for collection %s: %s", collection.id, e, exc_info=True)
                 stats["errors"].append(
                     {
                         "collection_id": collection.id,
@@ -199,5 +199,5 @@ def dispatch_due_syncs(self: Any) -> dict[str, Any]:  # noqa: ARG001
         return result
 
     except Exception as e:
-        logger.error(f"Sync dispatcher task failed: {e}")
+        logger.error("Sync dispatcher task failed: %s", e, exc_info=True)
         raise

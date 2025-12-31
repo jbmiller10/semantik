@@ -13,6 +13,7 @@ from typing import Any
 import psutil
 
 from shared.managers import QdrantCollectionNotFoundError
+from shared.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,13 +62,12 @@ class ResourceManager:
             collections, _ = await self.collection_repo.list_for_user(user_id)
             active_collections = [c for c in collections if c.status != "deleted"]
 
-            # TODO: Get user's collection limit from user settings/subscription
-            max_collections = 10  # Default limit
+            max_collections = settings.MAX_COLLECTIONS_PER_USER
 
             return len(active_collections) < max_collections
 
         except Exception as e:
-            logger.error(f"Failed to check collection creation limit: {e}")
+            logger.error("Failed to check collection creation limit: %s", e, exc_info=True)
             return False
 
     async def can_allocate(self, user_id: int, resources: ResourceEstimate) -> bool:
@@ -96,8 +96,7 @@ class ResourceManager:
             # Check user quotas
             user_usage = await self._get_user_resource_usage(user_id)
 
-            # TODO: Get user's resource limits from settings/subscription
-            max_storage_gb = 50.0  # Default 50GB per user
+            max_storage_gb = settings.MAX_STORAGE_GB_PER_USER
             # max_operations_per_hour = 10  # Not enforced - rate limiting disabled
 
             if user_usage["storage_gb"] + resources.storage_gb > max_storage_gb:
@@ -113,7 +112,7 @@ class ResourceManager:
             return True
 
         except Exception as e:
-            logger.error(f"Failed to check resource allocation: {e}")
+            logger.error("Failed to check resource allocation: %s", e, exc_info=True)
             return False
 
     async def estimate_resources(self, source_path: str, model_name: str) -> ResourceEstimate:
@@ -167,7 +166,7 @@ class ResourceManager:
             )
 
         except Exception as e:
-            logger.error(f"Failed to estimate resources: {e}")
+            logger.error("Failed to estimate resources: %s", e, exc_info=True)
             # Return conservative estimate
             return ResourceEstimate(memory_mb=2000, storage_gb=1.0, cpu_cores=1.0)
 
@@ -196,7 +195,7 @@ class ResourceManager:
                 return True
 
             except Exception as e:
-                logger.error(f"Failed to reserve resources for reindex: {e}")
+                logger.error("Failed to reserve resources for reindex: %s", e, exc_info=True)
                 return False
 
     async def release_reindex_reservation(self, collection_id: str) -> None:
@@ -245,6 +244,7 @@ class ResourceManager:
                         "Failed to retrieve Qdrant metrics for %s: %s -- using repository statistics",
                         qdrant_collection_name,
                         exc,
+                        exc_info=True,
                     )
 
             fallback = self._normalize_usage({}, collection)
@@ -261,7 +261,7 @@ class ResourceManager:
             return fallback
 
         except Exception as e:
-            logger.error(f"Failed to get resource usage: {e}")
+            logger.error("Failed to get resource usage: %s", e, exc_info=True)
             return {}
 
     async def _get_user_resource_usage(self, user_id: int) -> dict[str, Any]:
@@ -288,7 +288,7 @@ class ResourceManager:
             return totals
 
         except Exception as e:
-            logger.error(f"Failed to get user resource usage: {e}")
+            logger.error("Failed to get user resource usage: %s", e, exc_info=True)
             return {"collections": 0, "storage_bytes": 0, "storage_gb": 0}
 
     async def _get_recent_operations_count(self, user_id: int, hours: int = 1) -> int:
@@ -299,7 +299,7 @@ class ResourceManager:
             return len(operations)
 
         except Exception as e:
-            logger.error(f"Failed to get recent operations count: {e}")
+            logger.error("Failed to get recent operations count: %s", e, exc_info=True)
             return 0
 
     @staticmethod
@@ -367,7 +367,7 @@ class ResourceManager:
             )
 
         except Exception as e:
-            logger.error(f"Failed to check system resources: {e}")
+            logger.error("Failed to check system resources: %s", e, exc_info=True)
             return False
 
     def _is_gpu_model(self, model_name: str) -> bool:  # noqa: ARG002

@@ -31,7 +31,9 @@ class TestWebuiHealthEndpoints:
         """Test basic health check endpoint"""
         response = test_client.get("/api/health/")
         assert response.status_code == 200
-        assert response.json() == {"status": "healthy"}
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "cleanup" in data
 
     def test_search_api_health_healthy(self, test_client) -> None:
         """Test search API health when service is healthy"""

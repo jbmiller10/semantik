@@ -6,6 +6,7 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_500_INTERNAL_SERVER_ERROR
 
@@ -98,12 +99,26 @@ async def handle_unexpected_exception(request: Request, exc: Exception) -> JSONR
     return response
 
 
+async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    """Handle HTTP exceptions and attach correlation reference."""
+    correlation_id = getattr(request.state, "correlation_id", None)
+    if not correlation_id:
+        correlation_id = get_or_generate_correlation_id(request)
+
+    content = {"detail": exc.detail, "reference": f"ERR-{correlation_id}"}
+    response = JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
 def register_global_exception_handlers(app: FastAPI) -> None:
     """Register global exception handlers on the FastAPI application."""
 
     app.add_exception_handler(PackagesAccessDeniedError, handle_access_denied_error)
     if SharedAccessDeniedError is not None and SharedAccessDeniedError is not PackagesAccessDeniedError:
         app.add_exception_handler(SharedAccessDeniedError, handle_access_denied_error)
+
+    app.add_exception_handler(HTTPException, handle_http_exception)
 
     # Catch-all for unexpected exceptions - must be registered last
     # to ensure more specific handlers take precedence
