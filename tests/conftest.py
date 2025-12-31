@@ -1,5 +1,6 @@
 """Shared test configuration and fixtures."""
 
+import asyncio
 import contextlib
 import os
 import sys
@@ -892,3 +893,63 @@ def test_documents_fixture() -> Path:
             return docker_path
         pytest.skip(f"Test data directory not found at {test_data_path}")
     return test_data_path
+
+
+@pytest.fixture()
+def mock_scalable_ws_manager(mock_redis_client):
+    """Create ScalableWebSocketManager with mocked Redis for testing."""
+    from webui.websocket.scalable_manager import ScalableWebSocketManager
+
+    manager = ScalableWebSocketManager()
+    manager.redis_client = mock_redis_client
+    manager.pubsub = AsyncMock()
+    manager.pubsub.subscribe = AsyncMock()
+    manager.pubsub.unsubscribe = AsyncMock()
+    manager._startup_complete = True
+    manager.running = True
+    return manager
+
+
+@pytest.fixture()
+def mock_chunking_orchestrator():
+    """Mock ChunkingOrchestrator for API tests."""
+    orchestrator = AsyncMock()
+    orchestrator.preview_chunks = AsyncMock(return_value={"chunks": [], "preview_id": "test-id"})
+    orchestrator.get_cached_preview_by_id = AsyncMock(return_value=None)
+    orchestrator.get_strategy_details = AsyncMock(return_value={"name": "recursive", "description": "Test"})
+    orchestrator.list_strategies = AsyncMock(return_value=[{"name": "recursive"}, {"name": "semantic"}])
+    orchestrator.clear_preview_cache = AsyncMock(return_value=True)
+    return orchestrator
+
+
+@pytest.fixture()
+def mock_collection_service():
+    """Mock CollectionService for API tests."""
+    service = AsyncMock()
+    service.create_collection = AsyncMock(return_value=MagicMock(id="col-123", name="Test"))
+    service.get_collection = AsyncMock(return_value=MagicMock(id="col-123", name="Test"))
+    service.create_operation = AsyncMock(return_value=MagicMock(uuid="op-123", status="pending"))
+    service.add_source = AsyncMock()
+    service.delete_collection = AsyncMock()
+    service.reindex_collection = AsyncMock()
+    return service
+
+
+@pytest.fixture()
+def mock_celery_app():
+    """Mock Celery app for task dispatch tests."""
+    app = MagicMock()
+    app.send_task = MagicMock(return_value=MagicMock(id="task-123"))
+    return app
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_pending_tasks():
+    """Clean up any pending asyncio tasks after each test."""
+    yield
+    # Cancel any remaining tasks
+    pending = [t for t in asyncio.all_tasks() if not t.done() and t != asyncio.current_task()]
+    for task in pending:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
