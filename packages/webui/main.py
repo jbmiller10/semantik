@@ -148,15 +148,11 @@ def _validate_cors_origins(origins: list[str]) -> list[str]:
     for origin in origins:
         # Check for wildcards or null
         if origin in ["*", "null"]:
-            logger.warning(
-                f"Wildcard or null origin detected in CORS configuration: '{origin}' - "
-                f"this is insecure in production!"
+            logger.error(
+                "SECURITY: Rejecting insecure origin '%s' from CORS_ORIGINS. "
+                "Use explicit origins like 'http://localhost:5173' instead.",
+                origin,
             )
-            if shared_settings.ENVIRONMENT == "production":
-                logger.error(f"Rejecting insecure origin '{origin}' in production environment")
-                continue
-            # In development, allow wildcards
-            valid_origins.append(origin)
             continue
 
         # Validate URL format

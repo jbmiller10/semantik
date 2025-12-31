@@ -229,7 +229,10 @@ class QdrantManager:
             collection_name: Name of the collection to check
 
         Returns:
-            bool: True if collection exists, False otherwise
+            bool: True if collection exists, False if it does not (404)
+
+        Raises:
+            RuntimeError: If existence cannot be determined due to other errors
         """
         try:
             self.client.get_collection(collection_name)
@@ -237,11 +240,26 @@ class QdrantManager:
         except UnexpectedResponse as e:
             if e.status_code == 404:
                 return False
-            logger.error(f"Unexpected error checking collection {collection_name}: {str(e)}")
-            return False
+            logger.error(
+                "Qdrant API error checking collection '%s': status=%s, message=%s",
+                collection_name,
+                e.status_code,
+                str(e),
+                exc_info=True,
+            )
+            raise RuntimeError(
+                f"Cannot determine if collection '{collection_name}' exists: {e}"
+            ) from e
         except Exception as e:
-            logger.error(f"Error checking collection existence: {str(e)}")
-            return False
+            logger.error(
+                "Unexpected error checking collection '%s' existence: %s",
+                collection_name,
+                e,
+                exc_info=True,
+            )
+            raise RuntimeError(
+                f"Cannot determine if collection '{collection_name}' exists: {e}"
+            ) from e
 
     async def get_collection_usage(self, collection_name: str) -> dict[str, int]:
         """Return document, vector, and storage usage metrics for a collection.

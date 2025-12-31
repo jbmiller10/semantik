@@ -30,7 +30,7 @@
 ### Requirements
 
 - Docker 20.10+ with Compose 2.0+
-- Python 3.12+ (local dev)
+- Python 3.11+ (local dev)
 - Node.js 20.0+ (frontend dev)
 - 16GB+ RAM (32GB recommended)
 - SSD with 100GB+ free

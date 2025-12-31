@@ -583,7 +583,7 @@ Qdrant collections can be rebuilt from source documents if snapshots are unavail
 
 ## Security
 
-- **Auth**: Argon2 password hashing, JWT tokens, API keys
+- **Auth**: bcrypt password hashing, JWT tokens, API keys
 - **Data**: Input validation, ORM prevents SQL injection
 - **Audit**: All collection modifications logged with user/IP tracking
 

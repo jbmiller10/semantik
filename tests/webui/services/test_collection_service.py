@@ -1298,6 +1298,7 @@ class TestRenameCollectionWithQdrantSync:
             {"name": new_name, "vector_store_name": expected_vector_store},
         )
         mock_db_session.commit.assert_called_once()
+        mock_db_session.rollback.assert_not_called()
         collection_service.qdrant_manager.rename_collection.assert_awaited_once_with(
             old_name=mock_collection.vector_store_name,
             new_name=expected_vector_store,
@@ -1312,11 +1313,22 @@ class TestRenameCollectionWithQdrantSync:
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
     ) -> None:
-        """If Qdrant rename fails, the DB transaction should roll back."""
+        """If Qdrant rename fails, the DB state should be reverted."""
 
         mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
-        mock_collection_repo.update.return_value = mock_collection
+
+        updated_collection = MagicMock()
+        updated_collection.name = "Renamed"
+        updated_collection.vector_store_name = CollectionService._build_vector_store_name(
+            str(mock_collection.id), "Renamed"
+        )
+
+        reverted_collection = MagicMock()
+        reverted_collection.name = mock_collection.name
+        reverted_collection.vector_store_name = mock_collection.vector_store_name
+
+        mock_collection_repo.update.side_effect = [updated_collection, reverted_collection]
 
         expected_vector_store = CollectionService._build_vector_store_name(str(mock_collection.id), "Renamed")
         collection_service.qdrant_manager.rename_collection.side_effect = RuntimeError("Qdrant rename failed")
@@ -1328,16 +1340,19 @@ class TestRenameCollectionWithQdrantSync:
                 updates={"name": "Renamed"},
             )
 
-        mock_collection_repo.update.assert_called_once_with(
-            str(mock_collection.id),
-            {"name": "Renamed", "vector_store_name": expected_vector_store},
-        )
+        assert mock_collection_repo.update.await_args_list == [
+            call(str(mock_collection.id), {"name": "Renamed", "vector_store_name": expected_vector_store}),
+            call(
+                str(mock_collection.id),
+                {"name": mock_collection.name, "vector_store_name": mock_collection.vector_store_name},
+            ),
+        ]
         collection_service.qdrant_manager.rename_collection.assert_awaited_once_with(
             old_name=mock_collection.vector_store_name,
             new_name=expected_vector_store,
         )
-        mock_db_session.rollback.assert_called_once()
-        mock_db_session.commit.assert_not_called()
+        assert mock_db_session.commit.await_count == 2
+        mock_db_session.rollback.assert_not_called()
 
     @pytest.mark.asyncio()
     async def test_rename_collection_commit_failure_reverts_qdrant(
@@ -1347,7 +1362,7 @@ class TestRenameCollectionWithQdrantSync:
         mock_db_session: AsyncMock,
         mock_collection: MagicMock,
     ) -> None:
-        """If the DB commit fails, revert the Qdrant rename to keep state consistent."""
+        """If the DB commit fails, skip Qdrant rename and roll back the DB change."""
 
         mock_collection.vector_store_name = "col_123e4567_e89b_12d3_a456_426614174000"
         mock_collection_repo.get_by_uuid_with_permission_check.return_value = mock_collection
@@ -1372,10 +1387,7 @@ class TestRenameCollectionWithQdrantSync:
             str(mock_collection.id),
             {"name": new_name, "vector_store_name": expected_vector_store},
         )
-        assert collection_service.qdrant_manager.rename_collection.await_args_list == [
-            call(old_name=mock_collection.vector_store_name, new_name=expected_vector_store),
-            call(old_name=expected_vector_store, new_name=mock_collection.vector_store_name),
-        ]
+        collection_service.qdrant_manager.rename_collection.assert_not_called()
         mock_db_session.rollback.assert_called_once()
         mock_db_session.commit.assert_called_once()
 

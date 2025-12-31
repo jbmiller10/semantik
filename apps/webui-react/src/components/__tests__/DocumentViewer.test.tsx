@@ -193,6 +193,35 @@ describe('DocumentViewer', () => {
     });
   });
 
+  it('should refuse to render HTML when DOMPurify is unavailable', async () => {
+    const mockUrl = 'http://api.test/document';
+    const mockHeaders = { Authorization: 'Bearer test-token' };
+
+    vi.mocked(documentsV2Api.getContent).mockReturnValue({
+      url: mockUrl,
+      headers: mockHeaders
+    });
+
+    (window as Record<string, unknown>).DOMPurify = undefined;
+
+    const htmlContent = '<h1>Unsafe</h1>';
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'text/html' }),
+      text: () => Promise.resolve(htmlContent)
+    });
+
+    render(<DocumentViewer {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Unable to display HTML content safely. Please refresh the page or contact support.'
+        )
+      ).toBeInTheDocument();
+    });
+  });
+
   it('should handle binary content with blob URLs', async () => {
     const mockUrl = 'http://api.test/document';
     const mockHeaders = { Authorization: 'Bearer test-token' };

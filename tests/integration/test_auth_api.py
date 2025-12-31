@@ -175,6 +175,7 @@ def test_user_registration_success(client) -> None:
     # Password should not be returned
     assert "password" not in data
     assert "hashed_password" not in data
+    assert "password_hash" not in data
 
 
 def test_user_registration_duplicate(client) -> None:
@@ -327,3 +328,6 @@ def test_get_me_protected(client, monkeypatch, mock_repositories) -> None:  # no
     assert "created_at" in data
     assert "is_active" in data
     assert data["is_active"] is True
+    assert "password" not in data
+    assert "hashed_password" not in data
+    assert "password_hash" not in data

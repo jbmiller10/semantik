@@ -16,7 +16,7 @@ REM Check if Python is available
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo Error: Python 3 is required but not found
-    echo Please install Python 3.12 or higher from https://www.python.org/downloads/
+    echo Please install Python 3.11 or higher from https://www.python.org/downloads/
     exit /b 1
 )
 

@@ -22,6 +22,7 @@ ENVIRONMENT=development        # Options: development, staging, production
 LOG_LEVEL=INFO                # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # CORS Configuration
+# SECURITY: Wildcards ('*') and 'null' origins are rejected in all environments.
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173  # Comma-separated list
 ```
 
@@ -332,7 +333,7 @@ DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 3. **Network Security**
    ```bash
-   # Restrict CORS origins
+   # Restrict CORS origins (no wildcards)
    CORS_ORIGINS=https://yourdomain.com
    
    # Use internal networks

@@ -10,7 +10,6 @@ tests. The implementation leans on utilities consolidated in
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import time
 import uuid
@@ -376,8 +375,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
             except Exception as exc:
                 logger.error("Operation %s failed: %s", operation_id, exc, exc_info=True)
 
-                with contextlib.suppress(Exception):
+                try:
                     await db.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback transaction after operation %s failure: %s",
+                        operation_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
 
                 try:
                     if operation:
@@ -431,8 +437,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                             await db.commit()
                 except Exception as final_error:  # pragma: no cover - defensive logging
                     logger.error("Failed to finalize operation status: %s", final_error)
-                    with contextlib.suppress(Exception):
+                    try:
                         await db.rollback()
+                    except Exception as rollback_exc:
+                        logger.warning(
+                            "Failed to rollback while finalizing operation %s: %s",
+                            operation_id,
+                            rollback_exc,
+                            exc_info=True,
+                        )
     finally:
         pass
 
@@ -507,6 +520,8 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
     from shared.database.models import DocumentStatus
 
     for doc in docs:
+        doc_id = _get(doc, "id", "unknown")
+        doc_path = _get(doc, "file_path", "unknown")
         status = getattr(doc, "status", None)
         status_value = getattr(status, "value", status)
         existing_chunks = getattr(doc, "chunk_count", 0) or 0
@@ -529,9 +544,17 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     metadata.update(m)
 
             if not text or not blocks:
-                with contextlib.suppress(Exception):
+                try:
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
+                except Exception as status_exc:
+                    logger.warning(
+                        "Failed to update document status for %s (%s): %s",
+                        doc_id,
+                        doc_path,
+                        status_exc,
+                        exc_info=True,
+                    )
                 skipped += 1
                 continue
 
@@ -552,24 +575,55 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                     await client.post("http://vecpipe:8000/embed", json=embed_req)
                     await client.post("http://vecpipe:8000/upsert", json=upsert_req)
 
-                with contextlib.suppress(Exception):
+                try:
                     doc.chunk_count = len(chunks)
                     doc.status = DocumentStatus.COMPLETED
+                except Exception as status_exc:
+                    logger.warning(
+                        "Failed to update document status for %s (%s): %s",
+                        doc_id,
+                        doc_path,
+                        status_exc,
+                        exc_info=True,
+                    )
                 processed += 1
             else:
-                with contextlib.suppress(Exception):
+                try:
                     doc.chunk_count = 0
                     doc.status = DocumentStatus.COMPLETED
+                except Exception as status_exc:
+                    logger.warning(
+                        "Failed to update document status for %s (%s): %s",
+                        doc_id,
+                        doc_path,
+                        status_exc,
+                        exc_info=True,
+                    )
                 skipped += 1
 
-        except Exception:
-            with contextlib.suppress(Exception):
+        except Exception as exc:
+            logger.error(
+                "Failed to process document %s (%s): %s",
+                doc_id,
+                doc_path,
+                exc,
+                exc_info=True,
+            )
+            try:
                 doc.status = DocumentStatus.FAILED
+            except Exception as status_exc:
+                logger.warning(
+                    "Failed to mark document %s (%s) as failed: %s",
+                    doc_id,
+                    doc_path,
+                    status_exc,
+                    exc_info=True,
+                )
             failed += 1
             if doc == docs[-1]:
                 raise
 
-    with contextlib.suppress(Exception):
+    try:
         await updater.send_update(
             "append_completed",
             {
@@ -578,6 +632,13 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 "failed": failed,
                 "operation_id": _get(op, "id"),
             },
+        )
+    except Exception as update_exc:
+        logger.warning(
+            "Failed to send append completion update for operation %s: %s",
+            _get(op, "id"),
+            update_exc,
+            exc_info=True,
         )
 
     # Mark legacy wrapper successes explicitly so orchestration logic can
@@ -833,8 +894,15 @@ async def _process_append_operation_impl(
                 await session.commit()
             except Exception as commit_exc:
                 logger.warning("Failed to commit before document scan: %s, rolling back", commit_exc)
-                with contextlib.suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback after pre-scan commit error (source_id=%s): %s",
+                        source_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
 
         # Create registry for document registration (with chunk_repo for sync updates)
         from shared.database.repositories.chunk_repository import ChunkRepository
@@ -918,8 +986,15 @@ async def _process_append_operation_impl(
                 # If session is in invalid state (e.g., connection lost), try to recover
                 if "invalid transaction" in str(e).lower() or "pending" in str(e).lower():
                     logger.warning("Session in invalid state, attempting rollback recovery")
-                    with contextlib.suppress(Exception):
+                    try:
                         await session.rollback()
+                    except Exception as rollback_exc:
+                        logger.warning(
+                            "Failed to rollback after registration error for document %s: %s",
+                            ingested_doc.unique_id,
+                            rollback_exc,
+                            exc_info=True,
+                        )
                 scan_stats["errors"].append(
                     {
                         "document": ingested_doc.unique_id,
@@ -933,8 +1008,15 @@ async def _process_append_operation_impl(
                 await session.commit()
             except Exception as commit_exc:
                 logger.warning("Failed to commit document registrations: %s", commit_exc)
-                with contextlib.suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback after registration commit error (source_id=%s): %s",
+                        source_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
 
         scan_duration = time.time() - scan_start
         document_processing_duration.labels(operation_type="append").observe(scan_duration)
@@ -1287,9 +1369,16 @@ async def _process_append_operation_impl(
 
                 except Exception as exc:
                     logger.error("Failed to process document %s: %s", doc_identifier, exc)
-                    with contextlib.suppress(Exception):
+                    try:
                         # Clear any pending transaction state so status updates use a fresh connection
                         await session.rollback()
+                    except Exception as rollback_exc:
+                        logger.warning(
+                            "Failed to rollback after processing error for document %s: %s",
+                            doc_identifier,
+                            rollback_exc,
+                            exc_info=True,
+                        )
                     await document_repo.update_status(
                         doc.id,
                         DocumentStatus.FAILED,
@@ -1364,8 +1453,15 @@ async def _process_append_operation_impl(
             except Exception as stale_exc:
                 logger.warning("Failed to mark stale documents: %s", stale_exc)
                 scan_stats["documents_marked_stale"] = 0
-                with contextlib.suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback after stale-marking failure (source_id=%s): %s",
+                        source_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
         elif source_id is not None:
             scan_stats["documents_marked_stale"] = 0
             reasons: list[str] = []
@@ -1403,8 +1499,15 @@ async def _process_append_operation_impl(
                 await session.commit()
             except Exception as status_exc:
                 logger.warning("Failed to update source sync status: %s", status_exc)
-                with contextlib.suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback after sync status update failure (source_id=%s): %s",
+                        source_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
 
         # Sync run completion aggregation hook
         # If this operation was part of a sync run, update the run's counters
@@ -1457,8 +1560,15 @@ async def _process_append_operation_impl(
                 await session.commit()
             except Exception as sync_run_exc:
                 logger.warning("Failed to update sync run completion: %s", sync_run_exc)
-                with contextlib.suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:
+                    logger.warning(
+                        "Failed to rollback after sync run completion failure (sync_run_id=%s): %s",
+                        sync_run_id,
+                        rollback_exc,
+                        exc_info=True,
+                    )
 
         return {
             "success": success,
@@ -1492,8 +1602,13 @@ async def _process_append_operation_impl(
                     completed_at=datetime.now(UTC),
                 )
                 await session.commit()
-            except Exception:
-                pass  # Don't mask the original exception
+            except Exception as status_exc:
+                logger.error(
+                    "Failed to update source sync status after failure (source_id=%s): %s",
+                    source_id,
+                    status_exc,
+                    exc_info=True,
+                )
 
         # Sync run completion aggregation hook (failure path)
         sync_run_id = op_config.get("sync_run_id")
@@ -1537,8 +1652,13 @@ async def _process_append_operation_impl(
                             )
 
                 await session.commit()
-            except Exception:
-                pass  # Don't mask the original exception
+            except Exception as sync_run_update_exc:
+                logger.error(
+                    "Failed to update sync run completion after failure (sync_run_id=%s): %s",
+                    sync_run_id,
+                    sync_run_update_exc,
+                    exc_info=True,
+                )
 
         raise
 

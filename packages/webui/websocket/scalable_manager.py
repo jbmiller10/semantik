@@ -35,6 +35,49 @@ except Exception:  # pragma: no cover - fallback if websockets not available
 
 logger = logging.getLogger(__name__)
 
+_REGISTER_CONNECTION_LUA = """
+local connections_hash = KEYS[1]
+local user_set = KEYS[2]
+local heartbeat_key = KEYS[3]
+local conn_id = ARGV[1]
+local conn_payload = ARGV[2]
+local max_connections = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+local heartbeat_ts = ARGV[5]
+
+local count = redis.call('SCARD', user_set)
+if count >= max_connections then
+  return 0
+end
+
+redis.call('HSET', connections_hash, conn_id, conn_payload)
+redis.call('SADD', user_set, conn_id)
+redis.call('EXPIRE', user_set, ttl)
+redis.call('SETEX', heartbeat_key, ttl, heartbeat_ts)
+return 1
+"""
+
+_UNREGISTER_CONNECTION_LUA = """
+local connections_hash = KEYS[1]
+local user_set = KEYS[2]
+local heartbeat_key = KEYS[3]
+local conn_id = ARGV[1]
+
+redis.call('HDEL', connections_hash, conn_id)
+redis.call('DEL', heartbeat_key)
+if user_set ~= '' then
+  redis.call('SREM', user_set, conn_id)
+  if redis.call('SCARD', user_set) == 0 then
+    redis.call('DEL', user_set)
+  end
+end
+return 1
+"""
+
+
+class TooManyConnectionsError(Exception):
+    """Raised when a user exceeds the allowed WebSocket connection limit."""
+
 
 class ScalableWebSocketManager:
     """Horizontally scalable WebSocket manager with Redis Pub/Sub backend.
@@ -93,6 +136,12 @@ class ScalableWebSocketManager:
         # Message throttling
         self._message_throttle: dict[str, datetime] = {}
         self._throttle_threshold = 0.05  # 50ms between messages per channel
+
+        # Connection TTL/heartbeat settings
+        self.connection_ttl_seconds = 120
+        self.heartbeat_interval_seconds = 30
+        self.cleanup_interval_seconds = 60
+        self._connections_hash_key = "websocket:connections"
 
     async def startup(self) -> None:
         """Initialize Redis connections and start background tasks."""
@@ -186,11 +235,14 @@ class ScalableWebSocketManager:
                 await self.redis_client.delete(f"websocket:instance:{self.instance_id}")
 
                 # Remove instance connections from registry
-                connections = await self.redis_client.hgetall("websocket:connections")
+                connections = await self.redis_client.hgetall(self._connections_hash_key)
                 for conn_id, conn_data in connections.items():
-                    data = json.loads(conn_data)
+                    try:
+                        data = json.loads(conn_data)
+                    except json.JSONDecodeError:
+                        continue
                     if data.get("instance_id") == self.instance_id:
-                        await self.redis_client.hdel("websocket:connections", conn_id)
+                        await self._unregister_connection(conn_id, data.get("user_id"))
 
             except Exception as e:
                 logger.error(f"Error cleaning up Redis state: {e}")
@@ -247,6 +299,17 @@ class ScalableWebSocketManager:
 
         # Generate connection ID
         connection_id = str(uuid.uuid4())
+        last_heartbeat = time.time()
+
+        # Register in Redis if available (atomic)
+        if self.redis_client:
+            try:
+                await self._register_connection(connection_id, user_id, operation_id, collection_id, last_heartbeat)
+            except TooManyConnectionsError as exc:
+                await websocket.close(code=1008, reason="User connection limit exceeded")
+                raise ConnectionError("User connection limit exceeded") from exc
+            except Exception as exc:
+                logger.warning("Failed to register connection in Redis: %s", exc, exc_info=True)
 
         # Store locally under locks
         async with self._connections_lock:
@@ -256,12 +319,9 @@ class ScalableWebSocketManager:
                 "user_id": user_id,
                 "operation_id": operation_id,
                 "collection_id": collection_id,
-                "connected_at": time.time(),
+                "connected_at": last_heartbeat,
+                "last_heartbeat": last_heartbeat,
             }
-
-        # Register in Redis if available
-        if self.redis_client:
-            await self._register_connection(connection_id, user_id, operation_id, collection_id)
 
         # Subscribe to relevant channels if pub/sub is available
         if self.pubsub:
@@ -310,15 +370,7 @@ class ScalableWebSocketManager:
         # Remove from Redis registry only if Redis is available
         if self.redis_client:
             try:
-                await self.redis_client.hdel("websocket:connections", connection_id)
-
-                # Remove from user set
-                if user_id:
-                    await self.redis_client.srem(f"websocket:user:{user_id}", connection_id)
-                    # Clean up empty user set
-                    remaining = await self.redis_client.scard(f"websocket:user:{user_id}")
-                    if remaining == 0:
-                        await self.redis_client.delete(f"websocket:user:{user_id}")
+                await self._unregister_connection(connection_id, user_id)
 
                 # Check if user has any remaining connections on this instance
                 async with self._metadata_lock:
@@ -365,19 +417,39 @@ class ScalableWebSocketManager:
         # If user has connections on other instances, publish to Redis
         if self.redis_client:
             # Check if user has connections on other instances
-            all_connections = await self.redis_client.smembers(f"websocket:user:{user_id}")
+            user_key = self._user_connections_key(user_id)
+            all_connections = await self.redis_client.smembers(user_key)
 
             # Filter out local connections and verify remote connections actually exist
             remote_connections = []
             for conn_id in all_connections:
                 if conn_id not in self.local_connections:
+                    heartbeat_key = self._heartbeat_key(conn_id)
+                    if not await self.redis_client.exists(heartbeat_key):
+                        try:
+                            await self._unregister_connection(conn_id, user_id)
+                        except Exception as cleanup_exc:
+                            logger.warning("Failed to cleanup stale connection %s: %s", conn_id, cleanup_exc)
+                        continue
                     # Verify this connection still exists in the registry
-                    conn_data = await self.redis_client.hget("websocket:connections", conn_id)
+                    conn_data = await self.redis_client.hget(self._connections_hash_key, conn_id)
                     if conn_data:
-                        data = json.loads(conn_data)
+                        try:
+                            data = json.loads(conn_data)
+                        except json.JSONDecodeError:
+                            try:
+                                await self._unregister_connection(conn_id, user_id)
+                            except Exception as cleanup_exc:
+                                logger.warning("Failed to cleanup malformed connection %s: %s", conn_id, cleanup_exc)
+                            continue
                         # Only count as remote if it's from a different instance
                         if data.get("instance_id") != self.instance_id:
                             remote_connections.append(conn_id)
+                    else:
+                        try:
+                            await self._unregister_connection(conn_id, user_id)
+                        except Exception as cleanup_exc:
+                            logger.warning("Failed to cleanup missing connection %s: %s", conn_id, cleanup_exc)
 
             if remote_connections:
                 # Publish to Redis for other instances
@@ -494,28 +566,77 @@ class ScalableWebSocketManager:
         self.pubsub = None
         self.redis_client = None
 
+    def _user_connections_key(self, user_id: str) -> str:
+        return f"websocket:user:{user_id}"
+
+    def _heartbeat_key(self, connection_id: str) -> str:
+        return f"websocket:connection:heartbeat:{connection_id}"
+
     async def _register_connection(
-        self, connection_id: str, user_id: str, operation_id: str | None = None, collection_id: str | None = None
+        self,
+        connection_id: str,
+        user_id: str,
+        operation_id: str | None,
+        collection_id: str | None,
+        last_heartbeat: float,
     ) -> None:
-        """Register connection in Redis registry."""
+        """Register connection in Redis registry atomically."""
+        if not self.redis_client:
+            return
+
         connection_data = {
             "connection_id": connection_id,
             "user_id": user_id,
             "instance_id": self.instance_id,
             "operation_id": operation_id,
             "collection_id": collection_id,
-            "connected_at": time.time(),
+            "connected_at": last_heartbeat,
+            "last_heartbeat": last_heartbeat,
         }
 
-        if self.redis_client:
-            # Store in connections hash
-            await self.redis_client.hset("websocket:connections", connection_id, json.dumps(connection_data))
+        result = await self.redis_client.eval(
+            _REGISTER_CONNECTION_LUA,
+            3,
+            self._connections_hash_key,
+            self._user_connections_key(user_id),
+            self._heartbeat_key(connection_id),
+            connection_id,
+            json.dumps(connection_data),
+            self.max_connections_per_user,
+            self.connection_ttl_seconds,
+            str(last_heartbeat),
+        )
 
-            # Add to user set
-            await self.redis_client.sadd(f"websocket:user:{user_id}", connection_id)
+        result_int: int
+        if isinstance(result, (bytes, str)):
+            try:
+                result_int = int(result)
+            except (TypeError, ValueError):
+                result_int = 1 if result else 0
+        elif isinstance(result, bool):
+            result_int = 1 if result else 0
+        elif isinstance(result, int):
+            result_int = result
+        else:
+            result_int = 1 if result else 0
 
-            # Set TTL on user set (refresh on activity)
-            await self.redis_client.expire(f"websocket:user:{user_id}", 3600)  # 1 hour
+        if result_int != 1:
+            raise TooManyConnectionsError(f"User {user_id} has too many connections")
+
+    async def _unregister_connection(self, connection_id: str, user_id: str | None) -> None:
+        """Remove connection from Redis registry atomically."""
+        if not self.redis_client:
+            return
+
+        user_key = self._user_connections_key(user_id) if user_id else "websocket:user:unknown"
+        await self.redis_client.eval(
+            _UNREGISTER_CONNECTION_LUA,
+            3,
+            self._connections_hash_key,
+            user_key,
+            self._heartbeat_key(connection_id),
+            connection_id,
+        )
 
     async def _listen_for_messages(self) -> None:
         """Listen for Redis pub/sub messages and route to local connections."""
@@ -641,7 +762,7 @@ class ScalableWebSocketManager:
         """Keep instance registration alive and clean up dead connections."""
         try:
             while True:
-                await asyncio.sleep(30)  # Run every 30 seconds
+                await asyncio.sleep(self.heartbeat_interval_seconds)  # Run every 30 seconds
 
                 # Refresh instance TTL
                 if self.redis_client:
@@ -654,6 +775,20 @@ class ScalableWebSocketManager:
                         "updated_at": time.time(),
                     }
                     await self.redis_client.hset("websocket:instances:stats", self.instance_id, json.dumps(stats))
+
+                # Refresh heartbeats for active connections
+                if self.redis_client and self.connection_metadata:
+                    now = time.time()
+                    async with self.redis_client.pipeline(transaction=False) as pipe:
+                        for conn_id, metadata in list(self.connection_metadata.items()):
+                            metadata["last_heartbeat"] = now
+                            pipe.setex(self._heartbeat_key(conn_id), self.connection_ttl_seconds, str(now))
+
+                        active_users = {m.get("user_id") for m in self.connection_metadata.values() if m.get("user_id")}
+                        for user_id in active_users:
+                            pipe.expire(self._user_connections_key(str(user_id)), self.connection_ttl_seconds)
+
+                        await pipe.execute()
 
                 # Ping all local connections
                 dead_connections = []
@@ -680,34 +815,54 @@ class ScalableWebSocketManager:
         """Periodically clean up dead connections from Redis registry."""
         try:
             while True:
-                await asyncio.sleep(60)  # Run every minute
+                await asyncio.sleep(self.cleanup_interval_seconds)  # Run every minute
 
                 if not self.redis_client:
                     continue
 
                 # Get all registered connections
-                connections = await self.redis_client.hgetall("websocket:connections")
+                connections = await self.redis_client.hgetall(self._connections_hash_key)
 
                 for conn_id, conn_data in connections.items():
                     try:
                         data = json.loads(conn_data)
                         instance_id = data.get("instance_id")
+                        user_id = data.get("user_id")
+                        heartbeat_key = self._heartbeat_key(conn_id)
+
+                        # Remove stale connections with expired heartbeats
+                        if not await self.redis_client.exists(heartbeat_key):
+                            logger.info("Removing stale connection %s (heartbeat expired)", conn_id)
+                            await self._unregister_connection(conn_id, user_id)
+                            continue
 
                         # Check if instance is still alive
                         instance_key = f"websocket:instance:{instance_id}"
                         if not await self.redis_client.exists(instance_key):
                             # Instance is dead, remove connection
                             logger.info(f"Removing connection {conn_id} from dead instance {instance_id}")
-
-                            await self.redis_client.hdel("websocket:connections", conn_id)
-
-                            # Remove from user set
-                            user_id = data.get("user_id")
-                            if user_id:
-                                await self.redis_client.srem(f"websocket:user:{user_id}", conn_id)
+                            await self._unregister_connection(conn_id, user_id)
 
                     except Exception as e:
                         logger.warning(f"Error cleaning up connection {conn_id}: {e}")
+
+                # Sweep user sets for leaked connection IDs
+                async for user_key in self.redis_client.scan_iter(match="websocket:user:*"):
+                    try:
+                        members = await self.redis_client.smembers(user_key)
+                        stale_members = []
+                        for conn_id in members:
+                            if not await self.redis_client.hexists(self._connections_hash_key, conn_id):
+                                stale_members.append(conn_id)
+                                continue
+                            if not await self.redis_client.exists(self._heartbeat_key(conn_id)):
+                                stale_members.append(conn_id)
+                        if stale_members:
+                            await self.redis_client.srem(user_key, *stale_members)
+                        if await self.redis_client.scard(user_key) == 0:
+                            await self.redis_client.delete(user_key)
+                    except Exception as e:
+                        logger.warning(f"Error sweeping user set {user_key}: {e}")
 
                 logger.debug("Dead connection cleanup completed")
 
@@ -796,7 +951,7 @@ class ScalableWebSocketManager:
         if self.redis_client:
             try:
                 # Count total connections across all instances
-                total_connections = await self.redis_client.hlen("websocket:connections")
+                total_connections = await self.redis_client.hlen(self._connections_hash_key)
 
                 # Count active instances
                 instance_keys = await self.redis_client.keys("websocket:instance:*")

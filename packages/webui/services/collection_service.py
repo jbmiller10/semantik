@@ -786,38 +786,50 @@ class CollectionService:
             new_vector_store_name = self._build_vector_store_name(str(collection.id), updates["name"])
             updates["vector_store_name"] = new_vector_store_name
 
-        qdrant_rename_performed = False
+        original_values: dict[str, Any] | None = None
+        if requires_qdrant_sync:
+            original_values = {key: getattr(collection, key, None) for key in updates.keys()}
 
         try:
             updated_collection = await self.collection_repo.update(str(collection.id), updates)
+            await self.db_session.commit()
+        except Exception as exc:  # pragma: no cover - covered via explicit tests
+            await self.db_session.rollback()
+            raise exc
 
-            if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
+        if requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
+            try:
                 assert qdrant_manager_for_rename is not None  # mypy assurance
                 await qdrant_manager_for_rename.rename_collection(
                     old_name=old_vector_store_name,
                     new_name=new_vector_store_name,
                 )
-                qdrant_rename_performed = True
+            except Exception as qdrant_exc:  # pragma: no cover - covered via explicit tests
+                logger.error(
+                    "Qdrant rename failed for collection %s (old=%s new=%s): %s",
+                    collection_id,
+                    old_vector_store_name,
+                    new_vector_store_name,
+                    qdrant_exc,
+                    exc_info=True,
+                )
+                if original_values is not None:
+                    try:
+                        await self.collection_repo.update(str(collection.id), original_values)
+                        await self.db_session.commit()
+                        logger.info("Successfully reverted collection %s after Qdrant rename failure", collection_id)
+                    except Exception as revert_exc:  # pragma: no cover - defensive logging
+                        logger.critical(
+                            "CRITICAL: Failed to revert DB after Qdrant rename failure. "
+                            "Collection ID: %s, DB has: %s, Qdrant has: %s, Revert error: %s",
+                            collection_id,
+                            new_vector_store_name,
+                            old_vector_store_name,
+                            revert_exc,
+                        )
+                raise qdrant_exc
 
-            await self.db_session.commit()
-            return cast(Collection, updated_collection)
-        except Exception as exc:  # pragma: no cover - covered via explicit tests
-            await self.db_session.rollback()
-            if qdrant_rename_performed and requires_qdrant_sync and new_vector_store_name and old_vector_store_name:
-                try:
-                    assert qdrant_manager_for_rename is not None  # mypy assurance
-                    await qdrant_manager_for_rename.rename_collection(
-                        old_name=new_vector_store_name,
-                        new_name=old_vector_store_name,
-                    )
-                except Exception as revert_exc:  # best effort rollback; log and continue raising
-                    logger.error(
-                        "Failed to revert Qdrant rename from %s back to %s after DB rollback: %s",
-                        new_vector_store_name,
-                        old_vector_store_name,
-                        revert_exc,
-                    )
-            raise exc
+        return cast(Collection, updated_collection)
 
     @staticmethod
     def _build_vector_store_name(collection_id: str, new_name: str) -> str:

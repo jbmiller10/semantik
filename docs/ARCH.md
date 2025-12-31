@@ -365,7 +365,7 @@ For detailed documentation, see [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md)
 ## Infrastructure & DevOps
 
 ### Development Environment
-- Python 3.12+ with Poetry
+- Python 3.11+ with Poetry
 - Make commands for common tasks
 - Comprehensive test suite with pytest
 - Mock mode for GPU-less testing
@@ -428,7 +428,7 @@ For detailed documentation, see [INFRASTRUCTURE.md](./INFRASTRUCTURE.md)
 ## Deployment Guide
 
 ### System Requirements
-- Python 3.12+
+- Python 3.11+
 - CUDA-capable GPU (optional)
 - 8GB+ RAM recommended
 - Qdrant instance

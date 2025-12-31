@@ -39,7 +39,7 @@ class TestCORSOriginValidation:
         assert "ftp://example.com" in result
 
     def test_wildcard_origin_development(self) -> None:
-        """Test wildcard origin handling in development."""
+        """Test wildcard origin rejection in development."""
         origins = ["*", "http://localhost:3000"]
 
         # Patch both the module-level import and the function's access
@@ -49,10 +49,11 @@ class TestCORSOriginValidation:
         ):
             result = _validate_cors_origins(origins)
 
-            # In development, wildcard should be allowed but warned
-            assert len(result) == 2
-            assert "*" in result
-            mock_logger.warning.assert_called()
+            # Wildcards should be rejected in all environments
+            assert len(result) == 1
+            assert "*" not in result
+            assert "http://localhost:3000" in result
+            mock_logger.error.assert_called()
 
     @patch("webui.main.logger")
     def test_wildcard_origin_production(self, mock_logger) -> None:

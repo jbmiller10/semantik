@@ -79,6 +79,14 @@ class User(BaseModel):
     last_login: str | None = None
 
 
+SENSITIVE_USER_FIELDS = {"hashed_password", "password", "password_hash"}
+
+
+def sanitize_user_dict(user: dict[str, Any]) -> dict[str, Any]:
+    """Remove sensitive fields from a user dict before returning it to clients."""
+    return {key: value for key, value in user.items() if key not in SENSITIVE_USER_FIELDS}
+
+
 # Password hashing functions
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
@@ -143,7 +151,7 @@ async def authenticate_user(username: str, password: str) -> dict[str, Any] | No
         await auth_repo.update_user_last_login(str(user["id"]))
 
         # Type cast to satisfy mypy - we've verified user is not None
-        return cast(dict[str, Any], user)
+        return sanitize_user_dict(cast(dict[str, Any], user))
     return None
 
 
@@ -201,7 +209,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials | None = De
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
         # Type cast to satisfy mypy - we know user is not None here
-        return cast(dict[str, Any], user)
+        return sanitize_user_dict(cast(dict[str, Any], user))
 
     # This should never be reached, but satisfies the type checker
     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database connection failed")
@@ -256,7 +264,7 @@ async def get_current_user_websocket(token: str | None) -> dict[str, Any]:
         if not user.get("is_active", True):
             raise ValueError("User account is inactive")
 
-        return cast(dict[str, Any], user)
+        return sanitize_user_dict(cast(dict[str, Any], user))
 
     # This should never be reached, but satisfies the type checker
     raise ValueError("Database connection failed")

@@ -137,9 +137,26 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
         setIsPdf(false);
         updateBlobUrl(null);
 
-        if (contentRef.current) {
-          contentRef.current.innerHTML = '';
-        }
+        const clearContent = () => {
+          if (contentRef.current) {
+            contentRef.current.innerHTML = '';
+          }
+        };
+
+        const renderSafeMessage = (message: string) => {
+          if (contentRef.current) {
+            contentRef.current.textContent = message;
+          }
+        };
+
+        const replaceContentWith = (node: HTMLElement) => {
+          if (contentRef.current) {
+            contentRef.current.innerHTML = '';
+            contentRef.current.appendChild(node);
+          }
+        };
+
+        clearContent();
 
         // Get the document content URL and headers
         const { url, headers } = documentsV2Api.getContent(collectionId, docId);
@@ -174,21 +191,38 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
             // Display text content directly
             if (contentType.includes('text/html')) {
               // Sanitize HTML content for security
-              contentRef.current.innerHTML = window.DOMPurify ? 
-                window.DOMPurify.sanitize(text) : text;
+              if (!window.DOMPurify) {
+                renderSafeMessage(
+                  'Unable to display HTML content safely. Please refresh the page or contact support.'
+                );
+                console.error('DOMPurify not available - refusing to render potentially unsafe HTML');
+              } else {
+                contentRef.current.innerHTML = window.DOMPurify.sanitize(text);
+              }
             } else if (contentType.includes('text/markdown')) {
               // Parse markdown if marked.js is available
-              const html = window.marked ? window.marked.parse(text) : `<pre>${text}</pre>`;
-              contentRef.current.innerHTML = window.DOMPurify ? 
-                window.DOMPurify.sanitize(html) : html;
+              if (!window.marked) {
+                const pre = document.createElement('pre');
+                pre.style.whiteSpace = 'pre-wrap';
+                pre.style.wordWrap = 'break-word';
+                pre.textContent = text;
+                replaceContentWith(pre);
+              } else if (!window.DOMPurify) {
+                renderSafeMessage(
+                  'Unable to display HTML content safely. Please refresh the page or contact support.'
+                );
+                console.error('DOMPurify not available - refusing to render potentially unsafe HTML');
+              } else {
+                const html = window.marked.parse(text);
+                contentRef.current.innerHTML = window.DOMPurify.sanitize(html);
+              }
             } else {
               // Display plain text or JSON - use textContent to prevent XSS
               const pre = document.createElement('pre');
               pre.style.whiteSpace = 'pre-wrap';
               pre.style.wordWrap = 'break-word';
               pre.textContent = text;
-              contentRef.current.innerHTML = '';
-              contentRef.current.appendChild(pre);
+              replaceContentWith(pre);
             }
           }
         } else if (contentType.includes('image/')) {
@@ -198,11 +232,17 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
           updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
-            contentRef.current.innerHTML = `
-              <div style="text-align: center;">
-                <img src="${objectUrl}" alt="Document" style="max-width: 100%; height: auto;" />
-              </div>
-            `;
+            const container = document.createElement('div');
+            container.style.textAlign = 'center';
+
+            const img = document.createElement('img');
+            img.src = objectUrl;
+            img.alt = 'Document';
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+
+            container.appendChild(img);
+            replaceContentWith(container);
           }
         } else if (contentType.includes('application/pdf')) {
           // PDFs - create blob URL for PDF.js or fallback display
@@ -224,7 +264,7 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
               await loadScript(SCRIPT_CONFIGS.docxPreview);
               
               // Clear container and create a wrapper div for docx content
-              contentRef.current.innerHTML = '';
+              clearContent();
               const docxContainer = document.createElement('div');
               docxContainer.className = 'docx-wrapper';
               contentRef.current.appendChild(docxContainer);
@@ -240,14 +280,24 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
               // Fallback to download
               const objectUrl = URL.createObjectURL(blob);
               updateBlobUrl(objectUrl);
-              contentRef.current.innerHTML = `
-                <div style="text-align: center; padding: 2rem;">
-                  <p style="margin-bottom: 1rem;">Unable to preview this Word document.</p>
-                  <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                    Download Document
-                  </a>
-                </div>
-              `;
+              const container = document.createElement('div');
+              container.style.textAlign = 'center';
+              container.style.padding = '2rem';
+
+              const message = document.createElement('p');
+              message.style.marginBottom = '1rem';
+              message.textContent = 'Unable to preview this Word document.';
+
+              const link = document.createElement('a');
+              link.href = objectUrl;
+              link.download = '';
+              link.className =
+                'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700';
+              link.textContent = 'Download Document';
+
+              container.appendChild(message);
+              container.appendChild(link);
+              replaceContentWith(container);
             }
           }
         } else {
@@ -257,14 +307,24 @@ function DocumentViewer({ collectionId, docId, chunkId, onClose }: DocumentViewe
           updateBlobUrl(objectUrl);
           
           if (contentRef.current) {
-            contentRef.current.innerHTML = `
-              <div style="text-align: center; padding: 2rem;">
-                <p style="margin-bottom: 1rem;">This file type cannot be displayed directly.</p>
-                <a href="${objectUrl}" download class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                  Download File
-                </a>
-              </div>
-            `;
+            const container = document.createElement('div');
+            container.style.textAlign = 'center';
+            container.style.padding = '2rem';
+
+            const message = document.createElement('p');
+            message.style.marginBottom = '1rem';
+            message.textContent = 'This file type cannot be displayed directly.';
+
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = '';
+            link.className =
+              'inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700';
+            link.textContent = 'Download File';
+
+            container.appendChild(message);
+            container.appendChild(link);
+            replaceContentWith(container);
           }
         }
 
