@@ -99,10 +99,27 @@ class TestPluginProtocol:
 
     def test_protocol_is_runtime_checkable(self):
         """Test that PluginProtocol is runtime_checkable."""
+        # Check that the protocol can be used with isinstance()
+        # This is the reliable way to verify it's runtime checkable
 
-        # The protocol should have the __protocol_attrs__ attribute
-        # indicating it's runtime checkable
-        assert hasattr(PluginProtocol, "__protocol_attrs__")
+        class ValidPlugin:
+            PLUGIN_TYPE: ClassVar[str] = "test"
+            PLUGIN_ID: ClassVar[str] = "test-plugin"
+            PLUGIN_VERSION: ClassVar[str] = "1.0.0"
+
+            @classmethod
+            def get_manifest(cls) -> PluginManifest:
+                return PluginManifest(
+                    id=cls.PLUGIN_ID,
+                    type=cls.PLUGIN_TYPE,
+                    version=cls.PLUGIN_VERSION,
+                    display_name="Test",
+                    description="",
+                )
+
+        instance = ValidPlugin()
+        # If the protocol is runtime checkable, isinstance() should work
+        assert isinstance(instance, PluginProtocol)
 
     def test_subclass_of_protocol(self):
         """Test that a class explicitly subclassing Protocol works."""
