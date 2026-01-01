@@ -104,6 +104,16 @@ class CollectionBase(BaseModel):
     is_public: bool = False
     metadata: dict[str, Any] | None = None
 
+    # Reranker and extraction configuration (Phase 2 plugin extensibility)
+    default_reranker_id: str | None = Field(
+        default=None,
+        description="Default reranker plugin ID for search operations",
+    )
+    extraction_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Extraction configuration: {enabled, extractor_ids, types, options}",
+    )
+
     @field_validator("chunk_size")
     @classmethod
     def validate_chunk_size(cls, v: int | None) -> int | None:
@@ -162,6 +172,16 @@ class CollectionUpdate(BaseModel):
     description: str | None = None
     is_public: bool | None = None
     metadata: dict[str, Any] | None = None
+
+    # Reranker and extraction configuration (Phase 2 plugin extensibility)
+    default_reranker_id: str | None = Field(
+        default=None,
+        description="Default reranker plugin ID for search operations",
+    )
+    extraction_config: dict[str, Any] | None = Field(
+        default=None,
+        description="Extraction configuration: {enabled, extractor_ids, types, options}",
+    )
 
     # Sync policy fields
     sync_mode: SyncModeEnum | None = Field(
@@ -298,6 +318,9 @@ class CollectionResponse(CollectionBase):
             chunking_config=chunking_config,
             is_public=collection.is_public,
             metadata=collection.meta,
+            # Reranker and extraction config (Phase 2 plugin extensibility)
+            default_reranker_id=getattr(collection, "default_reranker_id", None),
+            extraction_config=getattr(collection, "extraction_config", None),
             created_at=collection.created_at,
             updated_at=collection.updated_at,
             document_count=collection.document_count,

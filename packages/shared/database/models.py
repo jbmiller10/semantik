@@ -231,6 +231,10 @@ class Collection(Base):
     sync_last_run_status = Column(String(20), nullable=True)  # 'running', 'success', 'failed', 'partial'
     sync_last_error = Column(Text, nullable=True)  # Error summary from last failed sync
 
+    # Reranker and extraction config (Phase 2 plugin extensibility)
+    default_reranker_id = Column(String, nullable=True)  # Default reranker plugin ID
+    extraction_config = Column(JSON, nullable=True)  # {"enabled": bool, "extractor_ids": [], "types": [], "options": {}}
+
     # Relationships
     owner = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")

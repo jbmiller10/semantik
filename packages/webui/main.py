@@ -47,10 +47,12 @@ from .api.v2 import (
     directory_scan as v2_directory_scan,
     documents as v2_documents,
     embedding as v2_embedding,
+    extractors as v2_extractors,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
     plugins as v2_plugins,
     projections as v2_projections,
+    rerankers as v2_rerankers,
     search as v2_search,
     sources as v2_sources,
     system as v2_system,
@@ -332,10 +334,12 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_directory_scan.router)
     app.include_router(v2_documents.router)
     app.include_router(v2_embedding.router)
+    app.include_router(v2_extractors.router)
     app.include_router(v2_operations.router)
     app.include_router(v2_plugins.router)
     app.include_router(v2_projections.router)
     app.include_router(v2_partition_monitoring.router)
+    app.include_router(v2_rerankers.router)
     app.include_router(v2_search.router)
     app.include_router(v2_sources.router)
     app.include_router(v2_system.router)

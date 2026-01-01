@@ -13,6 +13,8 @@ from .adapters import (
     manifest_from_chunking_plugin,
     manifest_from_connector_plugin,
     manifest_from_embedding_plugin,
+    manifest_from_extractor_plugin,
+    manifest_from_reranker_plugin,
 )
 from .base import SemanticPlugin
 from .registry import PluginRecord, PluginSource, plugin_registry
@@ -32,9 +34,11 @@ _ENV_FLAG_BY_TYPE = {
     "embedding": "SEMANTIK_ENABLE_EMBEDDING_PLUGINS",
     "chunking": "SEMANTIK_ENABLE_CHUNKING_PLUGINS",
     "connector": "SEMANTIK_ENABLE_CONNECTOR_PLUGINS",
+    "reranker": "SEMANTIK_ENABLE_RERANKER_PLUGINS",
+    "extractor": "SEMANTIK_ENABLE_EXTRACTOR_PLUGINS",
 }
 
-_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector"}
+_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}
 
 _PLUGIN_LOAD_LOCK = Lock()
 
@@ -111,6 +115,10 @@ def _load_builtin_plugins(plugin_types: set[str]) -> None:
         _register_builtin_chunking_plugins()
     if "connector" in plugin_types:
         _register_builtin_connector_plugins()
+    if "reranker" in plugin_types:
+        _register_builtin_reranker_plugins()
+    if "extractor" in plugin_types:
+        _register_builtin_extractor_plugins()
 
 
 def _register_builtin_embedding_plugins() -> None:
@@ -186,6 +194,42 @@ def _register_builtin_connector_plugins() -> None:
             manifest=manifest,
             source=PluginSource.BUILTIN,
         )
+
+
+def _register_builtin_reranker_plugins() -> None:
+    """Register built-in reranker plugins."""
+    try:
+        from shared.plugins.builtins.qwen3_reranker import Qwen3RerankerPlugin
+
+        plugin_id = Qwen3RerankerPlugin.PLUGIN_ID
+        manifest = manifest_from_reranker_plugin(Qwen3RerankerPlugin, plugin_id)
+        _register_plugin_record(
+            plugin_type="reranker",
+            plugin_id=plugin_id,
+            plugin_cls=Qwen3RerankerPlugin,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+    except ImportError:
+        logger.debug("Qwen3 reranker plugin not available (vecpipe not installed)")
+
+
+def _register_builtin_extractor_plugins() -> None:
+    """Register built-in extractor plugins."""
+    try:
+        from shared.plugins.builtins.keyword_extractor import KeywordExtractorPlugin
+
+        plugin_id = KeywordExtractorPlugin.PLUGIN_ID
+        manifest = manifest_from_extractor_plugin(KeywordExtractorPlugin, plugin_id)
+        _register_plugin_record(
+            plugin_type="extractor",
+            plugin_id=plugin_id,
+            plugin_cls=KeywordExtractorPlugin,
+            manifest=manifest,
+            source=PluginSource.BUILTIN,
+        )
+    except ImportError:
+        logger.debug("Keyword extractor plugin not available")
 
 
 def _load_external_plugins(
@@ -286,6 +330,10 @@ def _register_plugin_class(
         _register_chunking_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     elif plugin_type == "connector":
         _register_connector_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
+    elif plugin_type == "reranker":
+        _register_reranker_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
+    elif plugin_type == "extractor":
+        _register_extractor_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     else:
         if issubclass(plugin_cls, SemanticPlugin):
             manifest = plugin_cls.get_manifest()
@@ -464,6 +512,70 @@ def _register_connector_plugin(
         return
 
     # Connector activation uses plugin registry; no extra registration required.
+
+
+def _register_reranker_plugin(
+    plugin_cls: type,
+    source: PluginSource,
+    entry_point: str | None,
+    disabled_plugin_ids: set[str] | None,
+) -> None:
+    """Register a reranker plugin."""
+    plugin_id = getattr(plugin_cls, "PLUGIN_ID", None) or ""
+    if not plugin_id:
+        logger.warning("Skipping reranker without PLUGIN_ID: %s", plugin_cls)
+        return
+
+    manifest = manifest_from_reranker_plugin(plugin_cls, plugin_id)
+    record_registered = _register_plugin_record(
+        plugin_type="reranker",
+        plugin_id=plugin_id,
+        plugin_cls=plugin_cls,
+        manifest=manifest,
+        source=source,
+        entry_point=entry_point,
+    )
+
+    if not record_registered:
+        return
+
+    if source == PluginSource.EXTERNAL and disabled_plugin_ids and plugin_id in disabled_plugin_ids:
+        logger.info("Reranker plugin '%s' disabled; skipping activation", plugin_id)
+        return
+
+    # Reranker activation uses plugin registry; no extra registration required.
+
+
+def _register_extractor_plugin(
+    plugin_cls: type,
+    source: PluginSource,
+    entry_point: str | None,
+    disabled_plugin_ids: set[str] | None,
+) -> None:
+    """Register an extractor plugin."""
+    plugin_id = getattr(plugin_cls, "PLUGIN_ID", None) or ""
+    if not plugin_id:
+        logger.warning("Skipping extractor without PLUGIN_ID: %s", plugin_cls)
+        return
+
+    manifest = manifest_from_extractor_plugin(plugin_cls, plugin_id)
+    record_registered = _register_plugin_record(
+        plugin_type="extractor",
+        plugin_id=plugin_id,
+        plugin_cls=plugin_cls,
+        manifest=manifest,
+        source=source,
+        entry_point=entry_point,
+    )
+
+    if not record_registered:
+        return
+
+    if source == PluginSource.EXTERNAL and disabled_plugin_ids and plugin_id in disabled_plugin_ids:
+        logger.info("Extractor plugin '%s' disabled; skipping activation", plugin_id)
+        return
+
+    # Extractor activation uses plugin registry; no extra registration required.
 
 
 def _register_plugin_record(
