@@ -6,12 +6,17 @@ API endpoints, and factories can share a single source of truth.
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from functools import lru_cache
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .plugin_base import EmbeddingProviderDefinition
+
+logger = logging.getLogger(__name__)
+_REGISTRY_LOCK = Lock()
 
 # Registry storage - maps api_id to definition
 _PROVIDERS: dict[str, EmbeddingProviderDefinition] = {}
@@ -26,8 +31,12 @@ def register_provider_definition(definition: EmbeddingProviderDefinition) -> Non
     Args:
         definition: The provider definition to register
     """
-    _PROVIDERS[definition.api_id] = definition
-    _clear_caches()
+    with _REGISTRY_LOCK:
+        if definition.api_id in _PROVIDERS:
+            logger.warning("Embedding provider '%s' already registered, skipping", definition.api_id)
+            return
+        _PROVIDERS[definition.api_id] = definition
+        _clear_caches()
 
 
 def unregister_provider_definition(api_id: str) -> None:
@@ -38,9 +47,10 @@ def unregister_provider_definition(api_id: str) -> None:
     Args:
         api_id: The API identifier of the provider to remove
     """
-    if api_id in _PROVIDERS:
-        del _PROVIDERS[api_id]
-        _clear_caches()
+    with _REGISTRY_LOCK:
+        if api_id in _PROVIDERS:
+            del _PROVIDERS[api_id]
+            _clear_caches()
 
 
 def _clear_caches() -> None:
@@ -58,7 +68,8 @@ def list_provider_definitions() -> tuple[EmbeddingProviderDefinition, ...]:
     Returns:
         Tuple of all registered EmbeddingProviderDefinition objects
     """
-    return tuple(_PROVIDERS.values())
+    with _REGISTRY_LOCK:
+        return tuple(_PROVIDERS.values())
 
 
 @lru_cache(maxsize=1)
@@ -68,7 +79,8 @@ def get_api_to_internal_map() -> dict[str, str]:
     Returns:
         Dict mapping api_id -> internal_id
     """
-    return {k: v.internal_id for k, v in _PROVIDERS.items()}
+    with _REGISTRY_LOCK:
+        return {k: v.internal_id for k, v in _PROVIDERS.items()}
 
 
 @lru_cache(maxsize=1)
@@ -80,10 +92,11 @@ def get_internal_to_api_map() -> dict[str, str]:
     Returns:
         Dict mapping internal_id -> api_id
     """
-    mapping: dict[str, str] = {}
-    for api_id, defn in _PROVIDERS.items():
-        mapping.setdefault(defn.internal_id, api_id)
-    return mapping
+    with _REGISTRY_LOCK:
+        mapping: dict[str, str] = {}
+        for api_id, defn in _PROVIDERS.items():
+            mapping.setdefault(defn.internal_id, api_id)
+        return mapping
 
 
 def get_provider_definition(identifier: str) -> EmbeddingProviderDefinition | None:
@@ -96,13 +109,14 @@ def get_provider_definition(identifier: str) -> EmbeddingProviderDefinition | No
         The provider definition if found, None otherwise
     """
     # Try direct API ID lookup first
-    if identifier in _PROVIDERS:
-        return _PROVIDERS[identifier]
+    with _REGISTRY_LOCK:
+        if identifier in _PROVIDERS:
+            return _PROVIDERS[identifier]
 
-    # Try internal ID lookup
-    for defn in _PROVIDERS.values():
-        if defn.internal_id == identifier:
-            return defn
+        # Try internal ID lookup
+        for defn in _PROVIDERS.values():
+            if defn.internal_id == identifier:
+                return defn
 
     return None
 
@@ -173,4 +187,5 @@ def get_registered_provider_ids() -> list[str]:
     Returns:
         List of api_id strings
     """
-    return list(_PROVIDERS.keys())
+    with _REGISTRY_LOCK:
+        return list(_PROVIDERS.keys())

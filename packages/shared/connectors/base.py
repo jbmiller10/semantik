@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.dtos.ingestion import IngestedDocument
 
@@ -28,6 +28,10 @@ class BaseConnector(ABC):
         ```
     """
 
+    PLUGIN_ID: ClassVar[str] = ""
+    PLUGIN_TYPE: ClassVar[str] = "connector"
+    METADATA: ClassVar[dict[str, Any]] = {}
+
     def __init__(self, config: dict[str, Any]) -> None:
         """Initialize the connector with configuration.
 
@@ -51,6 +55,16 @@ class BaseConnector(ABC):
 
         Default implementation does nothing (all configs valid).
         """
+
+    @classmethod
+    def get_config_fields(cls) -> list[dict[str, Any]]:
+        """Return list of config field definitions for UI consumption."""
+        return []
+
+    @classmethod
+    def get_secret_fields(cls) -> list[dict[str, Any]]:
+        """Return list of secret field definitions for UI consumption."""
+        return []
 
     @abstractmethod
     async def authenticate(self) -> bool:

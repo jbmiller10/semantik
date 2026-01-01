@@ -13,7 +13,7 @@ import re
 import ssl
 from datetime import UTC, datetime
 from email.header import decode_header
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -193,6 +193,15 @@ class ImapConnector(BaseConnector):
         ```
     """
 
+    PLUGIN_ID: ClassVar[str] = "imap"
+    PLUGIN_TYPE: ClassVar[str] = "connector"
+    METADATA: ClassVar[dict[str, Any]] = {
+        "name": "Email (IMAP)",
+        "description": "Connect to an IMAP mailbox and index emails",
+        "icon": "mail",
+        "supports_sync": True,
+    }
+
     def __init__(self, config: dict[str, Any]) -> None:
         """Initialize the IMAP connector."""
         self._password: str | None = None
@@ -206,6 +215,79 @@ class ImapConnector(BaseConnector):
             raise ValueError("ImapConnector requires 'host' in config")
         if "username" not in self._config:
             raise ValueError("ImapConnector requires 'username' in config")
+
+    @classmethod
+    def get_config_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "host",
+                "type": "text",
+                "label": "IMAP Server",
+                "description": "IMAP server hostname",
+                "required": True,
+                "placeholder": "imap.gmail.com",
+            },
+            {
+                "name": "port",
+                "type": "number",
+                "label": "Port",
+                "description": "IMAP server port",
+                "default": 993,
+                "min": 1,
+                "max": 65535,
+            },
+            {
+                "name": "use_ssl",
+                "type": "boolean",
+                "label": "Use SSL",
+                "description": "Connect using SSL/TLS",
+                "default": True,
+            },
+            {
+                "name": "username",
+                "type": "text",
+                "label": "Username",
+                "description": "IMAP username or email address",
+                "required": True,
+                "placeholder": "user@example.com",
+            },
+            {
+                "name": "mailboxes",
+                "type": "multiselect",
+                "label": "Mailboxes",
+                "description": "Mailboxes to sync (leave empty for INBOX only)",
+                "placeholder": "INBOX, Sent",
+            },
+            {
+                "name": "since_days",
+                "type": "number",
+                "label": "Initial Days",
+                "description": "Days to look back for initial sync",
+                "default": 30,
+                "min": 1,
+                "max": 365,
+            },
+            {
+                "name": "max_messages",
+                "type": "number",
+                "label": "Max Messages",
+                "description": "Maximum messages per sync",
+                "default": 1000,
+                "min": 10,
+                "max": 10000,
+            },
+        ]
+
+    @classmethod
+    def get_secret_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "password",
+                "label": "Password",
+                "description": "IMAP password or app password",
+                "required": True,
+            },
+        ]
 
     def set_credentials(self, password: str | None = None) -> None:
         """Set authentication credentials.
