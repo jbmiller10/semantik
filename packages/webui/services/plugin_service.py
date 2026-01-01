@@ -67,9 +67,7 @@ def _validate_string_constraints(value: str, schema: dict[str, Any], path: str) 
     return errors
 
 
-def _validate_number_constraints(
-    value: int | float, schema: dict[str, Any], path: str
-) -> list[str]:
+def _validate_number_constraints(value: int | float, schema: dict[str, Any], path: str) -> list[str]:
     """Validate number-specific constraints: minimum, maximum, exclusiveMinimum, exclusiveMaximum."""
     errors: list[str] = []
 
