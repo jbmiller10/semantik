@@ -12,7 +12,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:

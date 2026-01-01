@@ -13,7 +13,7 @@ import re
 import ssl
 from datetime import UTC, datetime
 from email.header import decode_header
-from typing import Any, ClassVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
