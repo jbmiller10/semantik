@@ -6,7 +6,7 @@ import logging
 import os
 from importlib import metadata
 from threading import Lock
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from .adapters import (
     get_config_schema,
@@ -15,8 +15,13 @@ from .adapters import (
     manifest_from_embedding_plugin,
 )
 from .base import SemanticPlugin
-from .manifest import PluginManifest
 from .registry import PluginRecord, PluginSource, plugin_registry
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from .manifest import PluginManifest
+    from .registry import PluginRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +114,14 @@ def _load_builtin_plugins(plugin_types: set[str]) -> None:
 
 
 def _register_builtin_embedding_plugins() -> None:
+    from shared.embedding import providers as provider_module
     from shared.embedding.factory import EmbeddingProviderFactory
     from shared.embedding.provider_registry import list_provider_definitions
 
-    # Importing providers triggers built-in registration
-    from shared.embedding import providers as _  # noqa: F401
+    if (not list_provider_definitions() or not EmbeddingProviderFactory.list_available_providers()) and hasattr(
+        provider_module, "_register_builtin_providers"
+    ):
+        provider_module._register_builtin_providers()
 
     for definition in list_provider_definitions():
         if definition.is_plugin:
@@ -237,25 +245,25 @@ def _load_external_plugins(
 
 def _resolve_plugin_type(plugin_cls: type) -> str | None:
     try:
-        from shared.embedding.plugin_base import BaseEmbeddingPlugin
+        import shared.embedding.plugin_base as embedding_plugin_base
     except Exception:
-        BaseEmbeddingPlugin = None  # type: ignore[assignment]
+        embedding_plugin_base = None
 
     try:
-        from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+        import shared.chunking.domain.services.chunking_strategies.base as chunking_strategy_base
     except Exception:
-        ChunkingStrategy = None  # type: ignore[assignment]
+        chunking_strategy_base = None
 
     try:
-        from shared.connectors.base import BaseConnector
+        import shared.connectors.base as connector_base
     except Exception:
-        BaseConnector = None  # type: ignore[assignment]
+        connector_base = None
 
-    if BaseEmbeddingPlugin is not None and issubclass(plugin_cls, BaseEmbeddingPlugin):
+    if embedding_plugin_base is not None and issubclass(plugin_cls, embedding_plugin_base.BaseEmbeddingPlugin):
         return "embedding"
-    if ChunkingStrategy is not None and issubclass(plugin_cls, ChunkingStrategy):
+    if chunking_strategy_base is not None and issubclass(plugin_cls, chunking_strategy_base.ChunkingStrategy):
         return "chunking"
-    if BaseConnector is not None and issubclass(plugin_cls, BaseConnector):
+    if connector_base is not None and issubclass(plugin_cls, connector_base.BaseConnector):
         return "connector"
 
     if issubclass(plugin_cls, SemanticPlugin):
@@ -301,7 +309,7 @@ def _register_embedding_plugin(
     from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
     from shared.embedding.provider_registry import register_provider_definition
 
-    if not hasattr(plugin_cls, "get_definition") or not callable(getattr(plugin_cls, "get_definition")):
+    if not hasattr(plugin_cls, "get_definition") or not callable(plugin_cls.get_definition):
         logger.warning("Embedding plugin missing get_definition(): %s", plugin_cls)
         return
 

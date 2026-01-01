@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database.db_retry import with_db_retry
 from shared.database.exceptions import DatabaseOperationError
 from shared.database.models import PluginConfig
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

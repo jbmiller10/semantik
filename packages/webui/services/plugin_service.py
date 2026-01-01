@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from typing import Any, Iterable
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from shared.database.repositories.plugin_config_repository import PluginConfigRepository
 from shared.plugins.adapters import get_config_schema
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ def _coerce_type(value: Any, schema_type: str) -> bool:
     if schema_type == "integer":
         return isinstance(value, int) and not isinstance(value, bool)
     if schema_type == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
+        return isinstance(value, int | float) and not isinstance(value, bool)
     if schema_type == "boolean":
         return isinstance(value, bool)
     if schema_type == "object":
@@ -230,13 +233,12 @@ class PluginService:
     async def _check_and_update_health(self, record: PluginRecord) -> Any | None:
         status, error = await self._run_health_check(record)
         try:
-            updated = await self.repo.update_health(
+            return await self.repo.update_health(
                 plugin_id=record.plugin_id,
                 plugin_type=record.plugin_type,
                 status=status,
                 error_message=error,
             )
-            return updated
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to update health for %s: %s", record.plugin_id, exc)
             return None

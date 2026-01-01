@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from shared.dtos.ingestion import IngestedDocument
+from shared.plugins.base import SemanticPlugin
 
-from ..base import SemanticPlugin
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from shared.dtos.ingestion import IngestedDocument
 
 
 class ConnectorPlugin(SemanticPlugin, ABC):
@@ -25,12 +27,15 @@ class ConnectorPlugin(SemanticPlugin, ABC):
         """Authenticate with the data source."""
 
     @abstractmethod
-    async def load_documents(self, source_id: str | None = None) -> AsyncIterator[IngestedDocument]:
+    async def load_documents(
+        self,
+        source_id: str | None = None,
+    ) -> AsyncIterator[IngestedDocument]:
         """Load documents from the data source."""
 
     def validate_config(self) -> None:  # noqa: B027
         """Validate configuration. Override to add custom validation."""
-        return None
+        return
 
     @classmethod
     @abstractmethod

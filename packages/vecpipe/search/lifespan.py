@@ -14,9 +14,9 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from shared.config import settings
+from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
-from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources

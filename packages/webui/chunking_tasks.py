@@ -28,8 +28,8 @@ from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 from prometheus_client import Counter, Gauge, Histogram
 from redis import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.chunking.exceptions import (
     ChunkingDependencyError,
@@ -38,16 +38,15 @@ from shared.chunking.exceptions import (
     ChunkingStrategyError,
     ChunkingTimeoutError,
 )
-from shared.plugins.loader import load_plugins
-from shared.plugins.registry import PluginSource
 from shared.database import pg_connection_manager
 from shared.database.database import AsyncSessionLocal
-from shared.database.models import PluginConfig
-from shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType
+from shared.database.models import CollectionStatus, DocumentStatus, OperationStatus, OperationType, PluginConfig
 from shared.database.repositories.chunk_repository import ChunkRepository
 from shared.database.repositories.collection_repository import CollectionRepository
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.database.repositories.operation_repository import OperationRepository
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import PluginSource
 from webui.celery_app import celery_app
 from webui.middleware.correlation import get_or_generate_correlation_id
 from webui.services.chunking.container import build_chunking_operation_manager, resolve_celery_chunking_orchestrator
@@ -61,9 +60,11 @@ from webui.utils.error_classifier import get_default_chunking_error_classifier
 
 logger = logging.getLogger(__name__)
 
+
 # Load any external chunking plugins when the worker imports this module
 def _load_disabled_plugin_ids_sync() -> set[str] | None:
     try:
+
         async def _fetch() -> set[str]:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(select(PluginConfig.id).where(PluginConfig.enabled.is_(False)))

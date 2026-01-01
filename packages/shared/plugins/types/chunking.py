@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from shared.chunking.domain.entities.chunk import Chunk
-from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+from shared.plugins.base import SemanticPlugin
 
-from ..base import SemanticPlugin
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shared.chunking.domain.entities.chunk import Chunk
+    from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
 
 
 class ChunkingPlugin(SemanticPlugin, ABC):

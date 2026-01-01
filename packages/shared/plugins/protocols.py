@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
-from .manifest import PluginManifest
+if TYPE_CHECKING:
+    from .manifest import PluginManifest
 
 
 @runtime_checkable
@@ -16,5 +17,4 @@ class PluginProtocol(Protocol):
     PLUGIN_VERSION: ClassVar[str]
 
     @classmethod
-    def get_manifest(cls) -> PluginManifest:
-        ...
+    def get_manifest(cls) -> PluginManifest: ...

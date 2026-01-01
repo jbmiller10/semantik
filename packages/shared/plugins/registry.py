@@ -6,9 +6,12 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from threading import RLock
-from typing import Iterable
+from typing import TYPE_CHECKING
 
-from .manifest import PluginManifest
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from .manifest import PluginManifest
 
 logger = logging.getLogger(__name__)
 

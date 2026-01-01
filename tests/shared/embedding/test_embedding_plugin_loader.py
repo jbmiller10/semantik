@@ -6,7 +6,6 @@ from importlib import metadata
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import pytest
 
 from shared.embedding.factory import _PROVIDER_CLASSES
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
@@ -15,6 +14,7 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource, plugin_registry
 
 if TYPE_CHECKING:
+    import pytest
     from numpy.typing import NDArray
 
 

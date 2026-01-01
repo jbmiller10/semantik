@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 from shared.config import settings
 from shared.embedding.factory import EmbeddingProviderFactory
-from shared.plugins.loader import load_plugins
 from shared.embedding.types import EmbeddingMode
+from shared.plugins.loader import load_plugins
 
 from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
 from .reranker import CrossEncoderReranker

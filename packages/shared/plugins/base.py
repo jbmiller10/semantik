@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-from .manifest import PluginManifest
+if TYPE_CHECKING:
+    from .manifest import PluginManifest
 
 
 class SemanticPlugin(ABC):
@@ -35,8 +36,8 @@ class SemanticPlugin(ABC):
 
     async def initialize(self, config: dict[str, Any] | None = None) -> None:  # noqa: ARG002
         """Initialize plugin resources with optional configuration."""
-        return None
+        return
 
     async def cleanup(self) -> None:
         """Clean up plugin resources."""
-        return None
+        return

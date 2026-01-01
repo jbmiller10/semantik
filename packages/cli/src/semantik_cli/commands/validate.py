@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,25 +18,25 @@ def _load_pyproject(path: Path) -> dict[str, Any]:
 
 def _resolve_plugin_type(plugin_cls: type) -> str | None:
     try:
-        from shared.embedding.plugin_base import BaseEmbeddingPlugin
+        import shared.embedding.plugin_base as embedding_plugin_base
     except Exception:
-        BaseEmbeddingPlugin = None  # type: ignore[assignment]
+        embedding_plugin_base = None
 
     try:
-        from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+        import shared.chunking.domain.services.chunking_strategies.base as chunking_strategy_base
     except Exception:
-        ChunkingStrategy = None  # type: ignore[assignment]
+        chunking_strategy_base = None
 
     try:
-        from shared.connectors.base import BaseConnector
+        import shared.connectors.base as connector_base
     except Exception:
-        BaseConnector = None  # type: ignore[assignment]
+        connector_base = None
 
-    if BaseEmbeddingPlugin is not None and issubclass(plugin_cls, BaseEmbeddingPlugin):
+    if embedding_plugin_base is not None and issubclass(plugin_cls, embedding_plugin_base.BaseEmbeddingPlugin):
         return "embedding"
-    if ChunkingStrategy is not None and issubclass(plugin_cls, ChunkingStrategy):
+    if chunking_strategy_base is not None and issubclass(plugin_cls, chunking_strategy_base.ChunkingStrategy):
         return "chunking"
-    if BaseConnector is not None and issubclass(plugin_cls, BaseConnector):
+    if connector_base is not None and issubclass(plugin_cls, connector_base.BaseConnector):
         return "connector"
     return None
 
@@ -115,11 +114,7 @@ def validate(path: str) -> None:
         raise SystemExit(1)
 
     data = _load_pyproject(pyproject_path)
-    entry_points = (
-        data.get("project", {})
-        .get("entry-points", {})
-        .get("semantik.plugins", {})
-    )
+    entry_points = data.get("project", {}).get("entry-points", {}).get("semantik.plugins", {})
 
     if not entry_points:
         click.echo("No [project.entry-points.'semantik.plugins'] found", err=True)

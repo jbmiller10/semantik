@@ -5,17 +5,18 @@ from pathlib import Path
 import pytest
 
 from shared.connectors.local import LocalFileConnector
-from webui.services.connector_factory import ConnectorFactory, register_connector
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import plugin_registry
+from webui.services.connector_factory import ConnectorFactory
 
 
 @pytest.fixture(autouse=True)
-def _ensure_directory_registered() -> None:
-    """Ensure 'directory' connector is registered before each test.
-
-    This is needed because test_connector_factory.py clears the registry
-    with an autouse fixture.
-    """
-    register_connector("directory", LocalFileConnector)
+def _ensure_directory_registered():
+    """Ensure 'directory' connector is registered before each test."""
+    plugin_registry.reset()
+    load_plugins(plugin_types={"connector"}, include_external=False)
+    yield
+    plugin_registry.reset()
 
 
 class TestConnectorFactoryIntegration:

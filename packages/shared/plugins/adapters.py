@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any
 
 from .manifest import PluginManifest
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 def _metadata_value(metadata: Mapping[str, Any] | None, key: str, default: Any = None) -> Any:

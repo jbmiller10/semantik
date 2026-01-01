@@ -58,8 +58,8 @@ def _build_definition(connector_cls: type) -> ConnectorDefinition:
         "name": metadata.get("name") or metadata.get("display_name") or connector_cls.__name__,
         "description": metadata.get("description", ""),
         "icon": metadata.get("icon", "plug"),
-        "fields": list(getattr(connector_cls, "get_config_fields")()),
-        "secrets": list(getattr(connector_cls, "get_secret_fields")()),
+        "fields": list(connector_cls.get_config_fields()),
+        "secrets": list(connector_cls.get_secret_fields()),
         "supports_sync": metadata.get("supports_sync", True),
         "preview_endpoint": metadata.get("preview_endpoint", ""),
     }

@@ -8,6 +8,7 @@ from shared.chunking.domain.services.chunking_strategies import (
     _restore_strategy_registry,
     _snapshot_strategy_registry,
 )
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource, plugin_registry
 from webui.services.chunking import strategy_registry
@@ -17,7 +18,7 @@ def test_plugin_loader_registers_strategy(monkeypatch):
     """Ensure plugin loader registers strategy, metadata, and factory defaults."""
     plugin_registry.reset()
 
-    class DummyStrategy:
+    class DummyStrategy(ChunkingStrategy):
         INTERNAL_NAME = "my_plugin"
         API_ID = "my_plugin"
         METADATA = {
@@ -30,6 +31,18 @@ def test_plugin_loader_registers_strategy(monkeypatch):
                 "caption": "Example chunks rendered by My Plugin",
             },
         }
+
+        def __init__(self) -> None:
+            super().__init__(self.INTERNAL_NAME)
+
+        def chunk(self, content, config, progress_callback=None):
+            return []
+
+        def validate_content(self, content):
+            return True, None
+
+        def estimate_chunks(self, content_length, config):
+            return 1
 
     class DummyEntryPoint:
         name = "my_plugin"
@@ -70,7 +83,7 @@ def test_plugin_loader_is_idempotent(monkeypatch):
     plugin_registry.reset()
     call_count = {"count": 0}
 
-    class DummyStrategy:
+    class DummyStrategy(ChunkingStrategy):
         INTERNAL_NAME = "my_plugin"
         API_ID = "my_plugin"
         METADATA = {
@@ -83,6 +96,18 @@ def test_plugin_loader_is_idempotent(monkeypatch):
                 "caption": "Example chunks rendered by My Plugin",
             },
         }
+
+        def __init__(self) -> None:
+            super().__init__(self.INTERNAL_NAME)
+
+        def chunk(self, content, config, progress_callback=None):
+            return []
+
+        def validate_content(self, content):
+            return True, None
+
+        def estimate_chunks(self, content_length, config):
+            return 1
 
     class DummyEntryPoint:
         name = "my_plugin"

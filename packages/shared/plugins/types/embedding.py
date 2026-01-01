@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from shared.embedding.plugin_base import EmbeddingProviderDefinition
+from shared.plugins.base import SemanticPlugin
 
-from ..base import SemanticPlugin
+if TYPE_CHECKING:
+    from shared.embedding.plugin_base import EmbeddingProviderDefinition
 
 
 class EmbeddingPlugin(SemanticPlugin, ABC):
