@@ -154,6 +154,103 @@ class TestValidateValue:
         assert len(errors) == 1
         assert "config.nested.value" in errors[0]
 
+    def test_string_min_length(self):
+        schema = {"type": "string", "minLength": 5}
+        errors = _validate_value("abc", schema, "config.field")
+        assert len(errors) == 1
+        assert "less than minimum 5" in errors[0]
+
+    def test_string_max_length(self):
+        schema = {"type": "string", "maxLength": 3}
+        errors = _validate_value("toolong", schema, "config.field")
+        assert len(errors) == 1
+        assert "exceeds maximum 3" in errors[0]
+
+    def test_string_pattern_valid(self):
+        schema = {"type": "string", "pattern": r"^[a-z]+$"}
+        errors = _validate_value("hello", schema, "config.field")
+        assert len(errors) == 0
+
+    def test_string_pattern_invalid(self):
+        schema = {"type": "string", "pattern": r"^[a-z]+$"}
+        errors = _validate_value("Hello123", schema, "config.field")
+        assert len(errors) == 1
+        assert "does not match pattern" in errors[0]
+
+    def test_number_minimum(self):
+        schema = {"type": "number", "minimum": 10}
+        errors = _validate_value(5, schema, "config.field")
+        assert len(errors) == 1
+        assert "less than minimum 10" in errors[0]
+
+    def test_number_maximum(self):
+        schema = {"type": "number", "maximum": 100}
+        errors = _validate_value(150, schema, "config.field")
+        assert len(errors) == 1
+        assert "exceeds maximum 100" in errors[0]
+
+    def test_number_exclusive_minimum(self):
+        schema = {"type": "number", "exclusiveMinimum": 10}
+        errors = _validate_value(10, schema, "config.field")
+        assert len(errors) == 1
+        assert "must be greater than 10" in errors[0]
+
+    def test_number_exclusive_maximum(self):
+        schema = {"type": "number", "exclusiveMaximum": 100}
+        errors = _validate_value(100, schema, "config.field")
+        assert len(errors) == 1
+        assert "must be less than 100" in errors[0]
+
+    def test_number_constraints_valid(self):
+        schema = {"type": "number", "minimum": 0, "maximum": 100}
+        errors = _validate_value(50, schema, "config.field")
+        assert len(errors) == 0
+
+    def test_array_min_items(self):
+        schema = {"type": "array", "minItems": 3}
+        errors = _validate_value(["a", "b"], schema, "config.field")
+        assert len(errors) == 1
+        assert "minimum is 3" in errors[0]
+
+    def test_array_max_items(self):
+        schema = {"type": "array", "maxItems": 2}
+        errors = _validate_value(["a", "b", "c"], schema, "config.field")
+        assert len(errors) == 1
+        assert "maximum is 2" in errors[0]
+
+    def test_array_unique_items_valid(self):
+        schema = {"type": "array", "uniqueItems": True}
+        errors = _validate_value(["a", "b", "c"], schema, "config.field")
+        assert len(errors) == 0
+
+    def test_array_unique_items_invalid(self):
+        schema = {"type": "array", "uniqueItems": True}
+        errors = _validate_value(["a", "b", "a"], schema, "config.field")
+        assert len(errors) == 1
+        assert "duplicate item not allowed" in errors[0]
+
+    def test_const_valid(self):
+        schema = {"const": "fixed-value"}
+        errors = _validate_value("fixed-value", schema, "config.field")
+        assert len(errors) == 0
+
+    def test_const_invalid(self):
+        schema = {"const": "fixed-value"}
+        errors = _validate_value("wrong-value", schema, "config.field")
+        assert len(errors) == 1
+        assert "value must be 'fixed-value'" in errors[0]
+
+    def test_null_type(self):
+        schema = {"type": "null"}
+        errors = _validate_value(None, schema, "config.field")
+        assert len(errors) == 0
+
+    def test_null_type_invalid(self):
+        schema = {"type": "null"}
+        errors = _validate_value("not-null", schema, "config.field")
+        assert len(errors) == 1
+        assert "expected null" in errors[0]
+
 
 class TestValidateConfigSchema:
     """Tests for validate_config_schema."""
@@ -561,7 +658,31 @@ class TestPluginService:
 
         status, error = await service._run_health_check(record)
         assert status == "unknown"
-        assert error is None
+        assert error is not None
+        assert "health_check() call failed" in error
+
+    @pytest.mark.asyncio()
+    async def test_run_health_check_instance_method(self, service):
+        """Test _run_health_check rejects instance methods."""
+
+        class InstanceMethodPlugin:
+            def health_check(self):  # Instance method, not classmethod
+                return True
+
+        manifest = _make_manifest("instance-plugin", "embedding")
+        record = PluginRecord(
+            plugin_type="embedding",
+            plugin_id="instance-plugin",
+            plugin_version="1.0.0",
+            manifest=manifest,
+            plugin_class=InstanceMethodPlugin,
+            source=PluginSource.EXTERNAL,
+        )
+
+        status, error = await service._run_health_check(record)
+        assert status == "unknown"
+        assert error is not None
+        assert "@classmethod or @staticmethod" in error
 
     @pytest.mark.asyncio()
     async def test_run_health_check_async_exception(self, service):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from shared.database.repositories.plugin_config_repository import PluginConfigRepository
@@ -35,42 +36,176 @@ def _coerce_type(value: Any, schema_type: str) -> bool:
         return isinstance(value, dict)
     if schema_type == "array":
         return isinstance(value, list)
+    if schema_type == "null":
+        return value is None
     return True
 
 
+def _validate_string_constraints(value: str, schema: dict[str, Any], path: str) -> list[str]:
+    """Validate string-specific constraints: minLength, maxLength, pattern."""
+    errors: list[str] = []
+
+    if "minLength" in schema:
+        min_len = schema["minLength"]
+        if len(value) < min_len:
+            errors.append(f"{path}: string length {len(value)} is less than minimum {min_len}")
+
+    if "maxLength" in schema:
+        max_len = schema["maxLength"]
+        if len(value) > max_len:
+            errors.append(f"{path}: string length {len(value)} exceeds maximum {max_len}")
+
+    if "pattern" in schema:
+        pattern = schema["pattern"]
+        try:
+            if not re.search(pattern, value):
+                errors.append(f"{path}: string does not match pattern '{pattern}'")
+        except re.error as e:
+            # Invalid regex pattern in schema - log but don't fail validation
+            logger.warning("Invalid regex pattern '%s' in schema at %s: %s", pattern, path, e)
+
+    return errors
+
+
+def _validate_number_constraints(
+    value: int | float, schema: dict[str, Any], path: str
+) -> list[str]:
+    """Validate number-specific constraints: minimum, maximum, exclusiveMinimum, exclusiveMaximum."""
+    errors: list[str] = []
+
+    if "minimum" in schema:
+        minimum = schema["minimum"]
+        if value < minimum:
+            errors.append(f"{path}: value {value} is less than minimum {minimum}")
+
+    if "maximum" in schema:
+        maximum = schema["maximum"]
+        if value > maximum:
+            errors.append(f"{path}: value {value} exceeds maximum {maximum}")
+
+    if "exclusiveMinimum" in schema:
+        exc_min = schema["exclusiveMinimum"]
+        if value <= exc_min:
+            errors.append(f"{path}: value {value} must be greater than {exc_min}")
+
+    if "exclusiveMaximum" in schema:
+        exc_max = schema["exclusiveMaximum"]
+        if value >= exc_max:
+            errors.append(f"{path}: value {value} must be less than {exc_max}")
+
+    return errors
+
+
+def _validate_array_constraints(value: list, schema: dict[str, Any], path: str) -> list[str]:
+    """Validate array-specific constraints: minItems, maxItems, uniqueItems, items."""
+    errors: list[str] = []
+
+    if "minItems" in schema:
+        min_items = schema["minItems"]
+        if len(value) < min_items:
+            errors.append(f"{path}: array has {len(value)} items, minimum is {min_items}")
+
+    if "maxItems" in schema:
+        max_items = schema["maxItems"]
+        if len(value) > max_items:
+            errors.append(f"{path}: array has {len(value)} items, maximum is {max_items}")
+
+    if schema.get("uniqueItems"):
+        # Check for duplicates (works for hashable items)
+        try:
+            seen = set()
+            for idx, item in enumerate(value):
+                # Convert to tuple for hashability if it's a list
+                hashable = tuple(item) if isinstance(item, list) else item
+                if hashable in seen:
+                    errors.append(f"{path}[{idx}]: duplicate item not allowed")
+                    break
+                seen.add(hashable)
+        except TypeError:
+            # Item not hashable (e.g., dict), skip uniqueness check
+            pass
+
+    # Validate items against items schema
+    item_schema = schema.get("items")
+    if isinstance(item_schema, dict):
+        for idx, item in enumerate(value):
+            errors.extend(_validate_value(item, item_schema, f"{path}[{idx}]"))
+
+    return errors
+
+
 def _validate_value(value: Any, schema: dict[str, Any], path: str) -> list[str]:
+    """Validate a value against a JSON Schema definition.
+
+    Supports a substantial subset of JSON Schema draft-07:
+    - type validation (string, integer, number, boolean, object, array, null)
+    - enum validation
+    - string constraints: minLength, maxLength, pattern
+    - number constraints: minimum, maximum, exclusiveMinimum, exclusiveMaximum
+    - array constraints: minItems, maxItems, uniqueItems, items
+    - object constraints: properties, required, additionalProperties
+    - nested validation
+    """
     errors: list[str] = []
     schema_type = schema.get("type")
+
+    # Type validation
     if schema_type and not _coerce_type(value, schema_type):
         errors.append(f"{path}: expected {schema_type}")
         return errors
 
+    # Enum validation
     if "enum" in schema and value not in schema["enum"]:
         errors.append(f"{path}: value must be one of {schema['enum']}")
         return errors
 
-    if schema_type == "array":
-        item_schema = schema.get("items")
-        if isinstance(item_schema, dict):
-            for idx, item in enumerate(value):
-                errors.extend(_validate_value(item, item_schema, f"{path}[{idx}]"))
+    # Const validation (exact value match)
+    if "const" in schema and value != schema["const"]:
+        errors.append(f"{path}: value must be {schema['const']!r}")
+        return errors
 
-    if schema_type == "object" and isinstance(value, dict):
+    # Type-specific constraint validation
+    if schema_type == "string" and isinstance(value, str):
+        errors.extend(_validate_string_constraints(value, schema, path))
+
+    elif schema_type in ("integer", "number") and isinstance(value, int | float):
+        errors.extend(_validate_number_constraints(value, schema, path))
+
+    elif schema_type == "array" and isinstance(value, list):
+        errors.extend(_validate_array_constraints(value, schema, path))
+
+    elif schema_type == "object" and isinstance(value, dict):
         props = schema.get("properties", {})
         required = schema.get("required", [])
+
+        # Check required fields
         for key in required:
             if key not in value:
                 errors.append(f"{path}.{key}: field is required")
+
+        # Validate properties
         for key, val in value.items():
             if key in props and isinstance(props[key], dict):
                 errors.extend(_validate_value(val, props[key], f"{path}.{key}"))
             elif props and schema.get("additionalProperties") is False:
                 errors.append(f"{path}.{key}: additional properties are not allowed")
+
     return errors
 
 
 def validate_config_schema(config: dict[str, Any], schema: dict[str, Any] | None) -> list[str]:
-    """Validate config against a JSON Schema (subset)."""
+    """Validate config against a JSON Schema (substantial subset of draft-07).
+
+    Supported features:
+    - type: string, integer, number, boolean, object, array, null
+    - enum, const
+    - String: minLength, maxLength, pattern
+    - Number: minimum, maximum, exclusiveMinimum, exclusiveMaximum
+    - Array: minItems, maxItems, uniqueItems, items
+    - Object: properties, required, additionalProperties
+
+    Not supported: allOf, anyOf, oneOf, not, $ref, format, dependencies
+    """
     if schema is None:
         return []
     if not isinstance(config, dict):
@@ -245,12 +380,30 @@ class PluginService:
 
     async def _run_health_check(self, record: PluginRecord) -> tuple[str, str | None]:
         health_fn = getattr(record.plugin_class, "health_check", None)
+        if health_fn is None:
+            return "unknown", "Plugin does not define health_check method"
         if not callable(health_fn):
-            return "unknown", None
+            return "unknown", "health_check is not callable"
+
+        # Check if the method can be called without an instance
+        # (must be classmethod or staticmethod, not instance method)
+        try:
+            sig = inspect.signature(health_fn)
+            # For classmethods, the first parameter is automatically bound
+            # For staticmethods, there are no required parameters
+            # For instance methods, there's an unbound 'self' parameter
+            params = list(sig.parameters.values())
+            if params and params[0].name == "self" and params[0].default is inspect.Parameter.empty:
+                return "unknown", "health_check must be @classmethod or @staticmethod, not instance method"
+        except (ValueError, TypeError):
+            # signature() can fail for some built-in types, proceed anyway
+            pass
+
         try:
             result = health_fn()
-        except TypeError:
-            return "unknown", None
+        except TypeError as exc:
+            # Could be signature mismatch or other type error
+            return "unknown", f"health_check() call failed: {exc}"
         except Exception as exc:
             return "unhealthy", str(exc)
 
