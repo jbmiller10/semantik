@@ -206,12 +206,12 @@ def sample_chunk_config() -> dict:
 
 
 @pytest.fixture()
-def env_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def _env_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set up environment with a test API key."""
     monkeypatch.setenv("TEST_API_KEY", "test-key-12345")
 
 
 @pytest.fixture()
-def env_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def _env_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Set up environment without API key (for testing missing config)."""
     monkeypatch.delenv("TEST_API_KEY", raising=False)

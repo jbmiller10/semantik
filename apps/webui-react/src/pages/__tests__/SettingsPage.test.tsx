@@ -44,7 +44,7 @@ describe('SettingsPage', () => {
     renderWithProviders(<SettingsPage />)
     
     expect(screen.getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByText('Manage your database and system settings')).toBeInTheDocument()
+    expect(screen.getByText('Manage your database, plugins, and system settings')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /back to home/i })).toBeInTheDocument()
   })
 

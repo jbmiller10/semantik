@@ -112,6 +112,5 @@ def verify_migration_file() -> bool:
 
 
 if __name__ == "__main__":
-
     success = verify_migration_file()
     sys.exit(0 if success else 1)

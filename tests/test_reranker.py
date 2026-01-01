@@ -39,7 +39,6 @@ def mock_transformers() -> Generator[tuple[MagicMock, MagicMock, MagicMock, Magi
         patch("vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
         patch("vecpipe.reranker.AutoTokenizer") as mock_tokenizer_class,
     ):
-
         # Mock model instance
         mock_model = MagicMock()
         mock_model_class.from_pretrained.return_value = mock_model
@@ -54,9 +53,7 @@ def mock_transformers() -> Generator[tuple[MagicMock, MagicMock, MagicMock, Magi
             "No": [NO_TOKEN_ID],
             "yes": [YES_TOKEN_ID],
             "no": [NO_TOKEN_ID],
-        }.get(
-            text, [1, 2, 3]
-        )  # Default tokens for other text
+        }.get(text, [1, 2, 3])  # Default tokens for other text
 
         yield mock_model_class, mock_tokenizer_class, mock_model, mock_tokenizer
 
@@ -695,9 +692,7 @@ class TestPerformance:
 
     @patch("torch.cuda.empty_cache")
     @patch("torch.cuda.is_available", return_value=False)
-    def test_no_memory_cleanup_on_cpu(
-        self, mock_cuda_available: MagicMock, mock_empty_cache: MagicMock
-    ) -> None:  # noqa: ARG002
+    def test_no_memory_cleanup_on_cpu(self, mock_cuda_available: MagicMock, mock_empty_cache: MagicMock) -> None:  # noqa: ARG002
         """Test no GPU cleanup when on CPU"""
         reranker = CrossEncoderReranker(device="cpu")
         with patch("vecpipe.reranker.AutoModelForCausalLM"), patch("vecpipe.reranker.AutoTokenizer"):

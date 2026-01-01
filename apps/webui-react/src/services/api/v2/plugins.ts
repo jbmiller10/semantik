@@ -10,16 +10,6 @@ import type {
 } from '../../../types/plugin';
 
 /**
- * Response wrapper for single plugin
- */
-interface PluginDetailResponse extends PluginInfo {}
-
-/**
- * Response wrapper for plugin manifest
- */
-interface PluginManifestResponse extends PluginManifest {}
-
-/**
  * V2 Plugins API client
  * Provides plugin management endpoints for discovery, configuration, and health
  */
@@ -36,14 +26,14 @@ export const pluginsApi = {
    * @param pluginId The plugin identifier
    */
   get: (pluginId: string) =>
-    apiClient.get<PluginDetailResponse>(`/api/v2/plugins/${pluginId}`),
+    apiClient.get<PluginInfo>(`/api/v2/plugins/${pluginId}`),
 
   /**
    * Get the manifest for a plugin
    * @param pluginId The plugin identifier
    */
   getManifest: (pluginId: string) =>
-    apiClient.get<PluginManifestResponse>(`/api/v2/plugins/${pluginId}/manifest`),
+    apiClient.get<PluginManifest>(`/api/v2/plugins/${pluginId}/manifest`),
 
   /**
    * Get JSON Schema for plugin configuration

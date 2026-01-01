@@ -130,9 +130,7 @@ class ExtractionResult:
         # Use first non-None values for scalars
         merged_language = self.language or other.language
         merged_lang_conf = self.language_confidence or other.language_confidence
-        merged_sentiment = (
-            self.sentiment if self.sentiment is not None else other.sentiment
-        )
+        merged_sentiment = self.sentiment if self.sentiment is not None else other.sentiment
         merged_summary = self.summary or other.summary
 
         # Merge custom dicts
@@ -216,6 +214,4 @@ class ExtractorPlugin(SemanticPlugin, ABC):
         Returns:
             List of ExtractionResult, one per input text.
         """
-        return [
-            await self.extract(text, extraction_types, options) for text in texts
-        ]
+        return [await self.extract(text, extraction_types, options) for text in texts]

@@ -1091,7 +1091,9 @@ class TestUpdate:
 
         with pytest.raises(AccessDeniedError) as exc_info:
             await collection_service.update(
-                collection_id=str(mock_collection.uuid), user_id=2, updates={"name": "New Name"}  # Different user
+                collection_id=str(mock_collection.uuid),
+                user_id=2,
+                updates={"name": "New Name"},  # Different user
             )
 
         assert "does not have access to Collection" in str(exc_info.value)

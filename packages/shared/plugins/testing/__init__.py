@@ -98,8 +98,8 @@ from .contracts import (
     RerankerPluginContractTest,
 )
 from .fixtures import (
-    env_with_api_key,
-    env_without_api_key,
+    _env_with_api_key,
+    _env_without_api_key,
     mock_chunker,
     mock_chunker_large,
     mock_embedding_service,
@@ -163,6 +163,6 @@ __all__ = [
     "sample_extractor_config",
     "sample_chunk_config",
     # Environment fixtures
-    "env_with_api_key",
-    "env_without_api_key",
+    "_env_with_api_key",
+    "_env_without_api_key",
 ]

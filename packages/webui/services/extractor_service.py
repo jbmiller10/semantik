@@ -69,9 +69,7 @@ class ExtractorService:
             Initialized ExtractorPlugin instance or None if not found.
         """
         # Check cache first - use JSON for stable hashing of nested structures
-        config_hash = hashlib.md5(
-            json.dumps(config or {}, sort_keys=True, default=str).encode()
-        ).hexdigest()[:16]
+        config_hash = hashlib.md5(json.dumps(config or {}, sort_keys=True, default=str).encode()).hexdigest()[:16]
         cache_key = f"{extractor_id}:{config_hash}"
         if cache_key in self._extractor_instances:
             return self._extractor_instances[cache_key]

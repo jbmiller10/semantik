@@ -58,7 +58,9 @@ class MockEmbeddingService:
         return self._generate_embedding(text)
 
     async def embed_texts(
-        self, texts: list[str], batch_size: int = 32  # noqa: ARG002
+        self,
+        texts: list[str],
+        batch_size: int = 32,  # noqa: ARG002
     ) -> list[list[float]]:
         """Embed multiple texts.
 

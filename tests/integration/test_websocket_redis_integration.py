@@ -211,7 +211,6 @@ class TestWebSocketRedisIntegration:
 
             # Mock operation repository
             with patch("shared.database.factory.create_operation_repository") as mock_create_repo:
-
                 # Create mock operation object
                 class MockStatus(Enum):
                     PROCESSING = "processing"

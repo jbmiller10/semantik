@@ -64,7 +64,9 @@ class TestConnectorSecretRepository:
     @pytest.mark.asyncio()
     async def test_set_secret_success(self, repo, session):
         """Test successful secret storage."""
-        with (patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc,):
+        with (
+            patch("shared.database.repositories.connector_secret_repository.SecretEncryption") as mock_enc,
+        ):
             mock_enc.encrypt.return_value = b"encrypted_data"
             mock_enc.get_key_id.return_value = "key123"
 

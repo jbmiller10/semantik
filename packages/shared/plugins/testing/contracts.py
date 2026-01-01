@@ -75,25 +75,25 @@ class PluginContractTest(ABC):
 
     def test_has_plugin_type(self) -> None:
         """Plugin must have PLUGIN_TYPE class attribute."""
-        assert hasattr(self.plugin_class, "PLUGIN_TYPE"), (
-            f"{self.plugin_class.__name__} must have PLUGIN_TYPE class attribute"
-        )
+        assert hasattr(
+            self.plugin_class, "PLUGIN_TYPE"
+        ), f"{self.plugin_class.__name__} must have PLUGIN_TYPE class attribute"
         assert isinstance(self.plugin_class.PLUGIN_TYPE, str)
         assert len(self.plugin_class.PLUGIN_TYPE) > 0
 
     def test_has_plugin_id(self) -> None:
         """Plugin must have PLUGIN_ID class attribute."""
-        assert hasattr(self.plugin_class, "PLUGIN_ID"), (
-            f"{self.plugin_class.__name__} must have PLUGIN_ID class attribute"
-        )
+        assert hasattr(
+            self.plugin_class, "PLUGIN_ID"
+        ), f"{self.plugin_class.__name__} must have PLUGIN_ID class attribute"
         assert isinstance(self.plugin_class.PLUGIN_ID, str)
         assert len(self.plugin_class.PLUGIN_ID) > 0
 
     def test_has_plugin_version(self) -> None:
         """Plugin must have PLUGIN_VERSION class attribute."""
-        assert hasattr(self.plugin_class, "PLUGIN_VERSION"), (
-            f"{self.plugin_class.__name__} must have PLUGIN_VERSION class attribute"
-        )
+        assert hasattr(
+            self.plugin_class, "PLUGIN_VERSION"
+        ), f"{self.plugin_class.__name__} must have PLUGIN_VERSION class attribute"
         assert isinstance(self.plugin_class.PLUGIN_VERSION, str)
         # Version should follow semver pattern (at least x.y.z)
         parts = self.plugin_class.PLUGIN_VERSION.split(".")
@@ -109,19 +109,17 @@ class PluginContractTest(ABC):
 
         manifest = self.plugin_class.get_manifest()
 
-        assert isinstance(manifest, PluginManifest), (
-            f"get_manifest() must return PluginManifest, got {type(manifest)}"
-        )
+        assert isinstance(manifest, PluginManifest), f"get_manifest() must return PluginManifest, got {type(manifest)}"
 
         # Manifest ID should match class PLUGIN_ID
-        assert manifest.id == self.plugin_class.PLUGIN_ID, (
-            f"Manifest id '{manifest.id}' must match PLUGIN_ID '{self.plugin_class.PLUGIN_ID}'"
-        )
+        assert (
+            manifest.id == self.plugin_class.PLUGIN_ID
+        ), f"Manifest id '{manifest.id}' must match PLUGIN_ID '{self.plugin_class.PLUGIN_ID}'"
 
         # Manifest type should match class PLUGIN_TYPE
-        assert manifest.type == self.plugin_class.PLUGIN_TYPE, (
-            f"Manifest type '{manifest.type}' must match PLUGIN_TYPE '{self.plugin_class.PLUGIN_TYPE}'"
-        )
+        assert (
+            manifest.type == self.plugin_class.PLUGIN_TYPE
+        ), f"Manifest type '{manifest.type}' must match PLUGIN_TYPE '{self.plugin_class.PLUGIN_TYPE}'"
 
         # Required fields
         assert manifest.display_name, "Manifest must have display_name"
@@ -154,9 +152,7 @@ class PluginContractTest(ABC):
     # =========================================================================
 
     @pytest.mark.asyncio()
-    async def test_initialize_and_cleanup(
-        self, plugin_instance: SemanticPlugin
-    ) -> None:
+    async def test_initialize_and_cleanup(self, plugin_instance: SemanticPlugin) -> None:
         """Plugin must support initialize() and cleanup() lifecycle."""
         # Initialize should not raise
         await plugin_instance.initialize()
@@ -164,9 +160,7 @@ class PluginContractTest(ABC):
         # Cleanup should not raise
         await plugin_instance.cleanup()
 
-    def test_config_property(
-        self, plugin_instance: SemanticPlugin, plugin_config: dict[str, Any] | None
-    ) -> None:
+    def test_config_property(self, plugin_instance: SemanticPlugin, plugin_config: dict[str, Any] | None) -> None:
         """Plugin must have config property."""
         config = plugin_instance.config
         assert isinstance(config, dict)
@@ -302,9 +296,9 @@ class RerankerPluginContractTest(PluginContractTest):
 
         caps = self.plugin_class.get_capabilities()
 
-        assert isinstance(caps, RerankerCapabilities), (
-            f"get_capabilities() must return RerankerCapabilities, got {type(caps)}"
-        )
+        assert isinstance(
+            caps, RerankerCapabilities
+        ), f"get_capabilities() must return RerankerCapabilities, got {type(caps)}"
         assert caps.max_documents > 0, "max_documents must be positive"
         assert caps.max_query_length > 0, "max_query_length must be positive"
         assert caps.max_doc_length > 0, "max_doc_length must be positive"
@@ -336,9 +330,7 @@ class ExtractorPluginContractTest(PluginContractTest):
         assert len(extractions) > 0, "Plugin must support at least one extraction type"
 
         for ext in extractions:
-            assert isinstance(ext, ExtractionType), (
-                f"Each extraction must be ExtractionType, got {type(ext)}"
-            )
+            assert isinstance(ext, ExtractionType), f"Each extraction must be ExtractionType, got {type(ext)}"
 
     def test_has_extract_method(self) -> None:
         """Plugin must have extract method."""
@@ -346,9 +338,7 @@ class ExtractorPluginContractTest(PluginContractTest):
         assert callable(self.plugin_class.extract)
 
     @pytest.mark.asyncio()
-    async def test_extract_returns_extraction_result(
-        self, plugin_instance: SemanticPlugin
-    ) -> None:
+    async def test_extract_returns_extraction_result(self, plugin_instance: SemanticPlugin) -> None:
         """extract() must return ExtractionResult."""
         from shared.plugins.types.extractor import ExtractionResult
 
@@ -357,8 +347,6 @@ class ExtractorPluginContractTest(PluginContractTest):
         try:
             result = await plugin_instance.extract("Test text for extraction.")  # type: ignore[attr-defined]
 
-            assert isinstance(result, ExtractionResult), (
-                f"extract() must return ExtractionResult, got {type(result)}"
-            )
+            assert isinstance(result, ExtractionResult), f"extract() must return ExtractionResult, got {type(result)}"
         finally:
             await plugin_instance.cleanup()

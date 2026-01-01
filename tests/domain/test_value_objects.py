@@ -181,7 +181,10 @@ class TestChunkConfig:
         config1 = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
         config2 = ChunkConfig(strategy_name="character", min_tokens=10, max_tokens=100, overlap_tokens=5)
         config3 = ChunkConfig(
-            strategy_name="character", min_tokens=10, max_tokens=200, overlap_tokens=5  # Different max_tokens
+            strategy_name="character",
+            min_tokens=10,
+            max_tokens=200,
+            overlap_tokens=5,  # Different max_tokens
         )
 
         # Assert

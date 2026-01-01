@@ -295,7 +295,9 @@ def _sanitize_audit_details(details: dict[str, Any] | None, _seen: set[int] | No
                 (
                     _sanitize_error_message(item)
                     if isinstance(item, str)
-                    else _sanitize_audit_details(item, _seen) if isinstance(item, dict) else item
+                    else _sanitize_audit_details(item, _seen)
+                    if isinstance(item, dict)
+                    else item
                 )
                 for item in value
             ]

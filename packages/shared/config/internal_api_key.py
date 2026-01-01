@@ -21,7 +21,8 @@ class _ConfigProtocol(Protocol):
     INTERNAL_API_KEY: str | None
 
     @property
-    def data_dir(self) -> Path: ...
+    def data_dir(self) -> Path:
+        ...
 
 
 def ensure_internal_api_key(
