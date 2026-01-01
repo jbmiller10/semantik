@@ -94,11 +94,15 @@ class ChunkingStrategyFactory:
             # Get strategy from shared registry
             strategy = get_strategy(strategy_key)
 
+            # Resolve API ID for plugin config lookup (configs stored by API ID, not internal name)
+            api_enum = cls._internal_to_api_enum.get(strategy_key)
+            plugin_id = api_enum.value if api_enum else strategy_key
+
             # Load plugin config from state file and configure if supported
-            plugin_config = get_plugin_config(strategy_key, resolve_secrets=True)
+            plugin_config = get_plugin_config(plugin_id, resolve_secrets=True)
             if plugin_config and hasattr(strategy, "configure"):
                 strategy.configure(plugin_config)
-                logger.debug("Applied plugin config to chunking strategy '%s'", strategy_key)
+                logger.debug("Applied plugin config to chunking strategy '%s' (plugin_id: %s)", strategy_key, plugin_id)
 
             return strategy
 
