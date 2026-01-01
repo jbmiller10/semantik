@@ -245,9 +245,9 @@ class ChunkingResourceLimitError(ChunkingError):
         result["current_usage"] = self.current_usage
         result["limit"] = self.limit
         if self.resource_type:
-            result[
-                "recovery_hint"
-            ] = f"Wait for other operations to complete or increase {self.resource_type.value} limit"
+            result["recovery_hint"] = (
+                f"Wait for other operations to complete or increase {self.resource_type.value} limit"
+            )
         return result
 
 
