@@ -156,7 +156,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["ARG002"]  # Allow unused fixture arguments in tests
+"tests/**/*.py" = ["ARG002", "ARG005", "SIM117"]  # Allow unused fixture/lambda args, nested with statements in tests
 
 [tool.ruff.lint.isort]
 known-first-party = ["shared", "webui", "vecpipe", "packages"]

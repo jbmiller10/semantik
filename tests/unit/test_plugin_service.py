@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -184,7 +183,7 @@ class TestValidateConfigSchema:
 class TestPluginService:
     """Tests for PluginService."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_session(self):
         """Create a mock database session."""
         session = AsyncMock()
@@ -192,12 +191,12 @@ class TestPluginService:
         session.flush = AsyncMock()
         return session
 
-    @pytest.fixture
+    @pytest.fixture()
     def service(self, mock_session):
         """Create a PluginService with mocked dependencies."""
         return PluginService(mock_session)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_empty_registry(self, service):
         """Test list_plugins with no external plugins."""
         with patch.object(service.repo, "list_configs", new=AsyncMock(return_value=[])):
@@ -205,7 +204,7 @@ class TestPluginService:
                 result = await service.list_plugins()
                 assert result == []
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_with_external_plugins(self, service):
         """Test list_plugins returns external plugins."""
         record = _make_record("ext-plugin", "embedding", PluginSource.EXTERNAL)
@@ -217,7 +216,7 @@ class TestPluginService:
                 assert len(result) == 1
                 assert result[0]["id"] == "ext-plugin"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_excludes_builtin(self, service):
         """Test list_plugins excludes builtin plugins."""
         builtin = _make_record("builtin-plugin", "embedding", PluginSource.BUILTIN)
@@ -231,7 +230,7 @@ class TestPluginService:
                 assert len(result) == 1
                 assert result[0]["id"] == "ext-plugin"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_filter_by_type(self, service):
         """Test list_plugins filters by plugin type."""
         embedding = _make_record("embedding-plugin", "embedding", PluginSource.EXTERNAL)
@@ -245,7 +244,7 @@ class TestPluginService:
                 assert len(result) == 1
                 assert result[0]["type"] == "embedding"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_filter_by_enabled(self, service):
         """Test list_plugins filters by enabled status."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -267,7 +266,7 @@ class TestPluginService:
                 result = await service.list_plugins(enabled=False)
                 assert len(result) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_plugin_found(self, service):
         """Test get_plugin returns plugin when found."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -279,14 +278,14 @@ class TestPluginService:
                 assert result is not None
                 assert result["id"] == "test-plugin"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_plugin_not_found(self, service):
         """Test get_plugin returns None when not found."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.get_plugin("nonexistent")
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_plugin_excludes_builtin(self, service):
         """Test get_plugin excludes builtin plugins."""
         record = _make_record("builtin-plugin", "embedding", PluginSource.BUILTIN)
@@ -296,7 +295,7 @@ class TestPluginService:
             result = await service.get_plugin("builtin-plugin")
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_config_valid(self, service):
         """Test update_config with valid config."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -317,7 +316,7 @@ class TestPluginService:
                     assert result is not None
                     assert result["config"]["key"] == "value"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_config_invalid(self, service):
         """Test update_config with invalid config raises ValueError."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -334,14 +333,14 @@ class TestPluginService:
                 with pytest.raises(ValueError, match="field is required"):
                     await service.update_config("test-plugin", {})
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_config_not_found(self, service):
         """Test update_config returns None for unknown plugin."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.update_config("nonexistent", {})
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_set_enabled(self, service):
         """Test set_enabled updates enabled status."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -362,14 +361,14 @@ class TestPluginService:
                 assert result["enabled"] is False
                 assert result["requires_restart"] is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_set_enabled_not_found(self, service):
         """Test set_enabled returns None for unknown plugin."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.set_enabled("nonexistent", True)
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_manifest(self, service):
         """Test get_manifest returns manifest dict."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -381,14 +380,14 @@ class TestPluginService:
             assert result["id"] == "test-plugin"
             assert result["type"] == "embedding"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_manifest_not_found(self, service):
         """Test get_manifest returns None for unknown plugin."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.get_manifest("nonexistent")
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_config_schema(self, service):
         """Test get_config_schema returns schema."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -401,14 +400,14 @@ class TestPluginService:
                 result = await service.get_config_schema("test-plugin")
                 assert result == schema
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_config_schema_not_found(self, service):
         """Test get_config_schema returns None for unknown plugin."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.get_config_schema("nonexistent")
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_check_health_healthy(self, service):
         """Test check_health with healthy plugin."""
 
@@ -440,7 +439,7 @@ class TestPluginService:
                 assert result is not None
                 assert result["health_status"] == "healthy"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_check_health_unhealthy_exception(self, service):
         """Test check_health with exception from health_check."""
 
@@ -472,7 +471,7 @@ class TestPluginService:
                 assert result is not None
                 assert result["health_status"] == "unhealthy"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_check_health_async(self, service):
         """Test check_health with async health_check method."""
 
@@ -504,7 +503,7 @@ class TestPluginService:
                 assert result is not None
                 assert result["health_status"] == "healthy"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_check_health_no_health_check_method(self, service):
         """Test check_health when plugin has no health_check method."""
 
@@ -534,14 +533,14 @@ class TestPluginService:
                 assert result is not None
                 assert result["health_status"] == "unknown"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_check_health_not_found(self, service):
         """Test check_health returns None for unknown plugin."""
         with patch("webui.services.plugin_service.load_plugins"):
             result = await service.check_health("nonexistent")
             assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_health_check_type_error(self, service):
         """Test _run_health_check handles TypeError gracefully."""
 
@@ -564,7 +563,7 @@ class TestPluginService:
         assert status == "unknown"
         assert error is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_health_check_async_exception(self, service):
         """Test _run_health_check handles async exception."""
 
@@ -587,7 +586,7 @@ class TestPluginService:
         assert status == "unhealthy"
         assert "Async failure" in error
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_run_health_check_returns_false(self, service):
         """Test _run_health_check marks unhealthy when returning False."""
 
@@ -610,7 +609,7 @@ class TestPluginService:
         assert status == "unhealthy"
         assert error is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_plugins_with_health_refresh(self, service):
         """Test list_plugins with include_health=True."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -630,7 +629,7 @@ class TestPluginService:
                     result = await service.list_plugins(include_health=True)
                     assert len(result) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_refresh_health_skips_disabled(self, service, mock_session):
         """Test _refresh_health skips disabled plugins."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
@@ -646,13 +645,13 @@ class TestPluginService:
             await service._refresh_health([record], config_map)
             mock_check.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_refresh_health_empty_tasks(self, service, mock_session):
         """Test _refresh_health with no enabled plugins."""
         await service._refresh_health([], {})
         # Should complete without error
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_build_plugin_payload_no_config(self, service):
         """Test _build_plugin_payload with no config row."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)

@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from importlib import metadata
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from shared.plugins.loader import (
-    ENTRYPOINT_GROUP,
     _coerce_class,
     _find_external_plugin,
     _flag_enabled,

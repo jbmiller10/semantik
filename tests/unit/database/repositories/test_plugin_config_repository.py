@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,7 +14,7 @@ from shared.database.repositories.plugin_config_repository import PluginConfigRe
 class TestPluginConfigRepository:
     """Tests for PluginConfigRepository."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def mock_session(self):
         """Create a mock database session."""
         session = AsyncMock()
@@ -23,12 +22,12 @@ class TestPluginConfigRepository:
         session.add = MagicMock()
         return session
 
-    @pytest.fixture
+    @pytest.fixture()
     def repo(self, mock_session):
         """Create a repository with mocked session."""
         return PluginConfigRepository(mock_session)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_configs_no_filters(self, repo, mock_session):
         """Test list_configs without filters."""
         mock_config = MagicMock(spec=PluginConfig)
@@ -44,7 +43,7 @@ class TestPluginConfigRepository:
         assert len(result) == 1
         assert result[0].id == "test-plugin"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_configs_filter_by_type(self, repo, mock_session):
         """Test list_configs with type filter."""
         mock_config = MagicMock(spec=PluginConfig)
@@ -59,7 +58,7 @@ class TestPluginConfigRepository:
         assert len(result) == 1
         mock_session.execute.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_configs_filter_by_enabled(self, repo, mock_session):
         """Test list_configs with enabled filter."""
         mock_config = MagicMock(spec=PluginConfig)
@@ -73,7 +72,7 @@ class TestPluginConfigRepository:
         result = await repo.list_configs(enabled=True)
         assert len(result) == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_configs_exception(self, repo, mock_session):
         """Test list_configs raises DatabaseOperationError on exception."""
         mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
@@ -84,7 +83,7 @@ class TestPluginConfigRepository:
         assert "list" in str(exc_info.value)
         assert "PluginConfig" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_config_found(self, repo, mock_session):
         """Test get_config returns config when found."""
         mock_config = MagicMock(spec=PluginConfig)
@@ -98,7 +97,7 @@ class TestPluginConfigRepository:
         assert result is not None
         assert result.id == "test-plugin"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_config_not_found(self, repo, mock_session):
         """Test get_config returns None when not found."""
         mock_result = MagicMock()
@@ -108,7 +107,7 @@ class TestPluginConfigRepository:
         result = await repo.get_config("nonexistent")
         assert result is None
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_get_config_exception(self, repo, mock_session):
         """Test get_config raises DatabaseOperationError on exception."""
         mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
@@ -118,7 +117,7 @@ class TestPluginConfigRepository:
 
         assert "get" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_upsert_config_create_new(self, repo, mock_session):
         """Test upsert_config creates new record when not found."""
         # Mock get_config to return None (not found)
@@ -140,7 +139,7 @@ class TestPluginConfigRepository:
         mock_session.add.assert_called_once()
         mock_session.flush.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_upsert_config_update_existing(self, repo, mock_session):
         """Test upsert_config updates existing record."""
         existing = MagicMock(spec=PluginConfig)
@@ -164,7 +163,7 @@ class TestPluginConfigRepository:
         assert result.config == {"updated": True}
         mock_session.flush.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_upsert_config_update_type(self, repo, mock_session):
         """Test upsert_config updates type if different."""
         existing = MagicMock(spec=PluginConfig)
@@ -184,7 +183,7 @@ class TestPluginConfigRepository:
 
         assert result.type == "new-type"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_upsert_config_defaults(self, repo, mock_session):
         """Test upsert_config uses defaults for optional params."""
         mock_result = MagicMock()
@@ -199,7 +198,7 @@ class TestPluginConfigRepository:
         assert result.enabled is True
         assert result.config == {}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_upsert_config_exception(self, repo, mock_session):
         """Test upsert_config raises DatabaseOperationError on exception."""
         mock_session.execute = AsyncMock(side_effect=Exception("DB error"))
@@ -209,7 +208,7 @@ class TestPluginConfigRepository:
 
         assert "upsert" in str(exc_info.value)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_health(self, repo, mock_session):
         """Test update_health updates health status."""
         existing = MagicMock(spec=PluginConfig)
@@ -235,7 +234,7 @@ class TestPluginConfigRepository:
         # last_health_check is set to func.now() which is a SQLAlchemy expression
         mock_session.flush.assert_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_update_health_with_error(self, repo, mock_session):
         """Test update_health with error message."""
         existing = MagicMock(spec=PluginConfig)
@@ -259,7 +258,7 @@ class TestPluginConfigRepository:
         assert result.health_status == "unhealthy"
         assert result.error_message == "Connection failed"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_disabled_ids_no_filter(self, repo, mock_session):
         """Test list_disabled_ids without type filter."""
         mock_result = MagicMock()
@@ -270,7 +269,7 @@ class TestPluginConfigRepository:
 
         assert result == {"plugin1", "plugin2"}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_disabled_ids_with_types(self, repo, mock_session):
         """Test list_disabled_ids with type filter."""
         mock_result = MagicMock()
@@ -282,7 +281,7 @@ class TestPluginConfigRepository:
         assert result == {"plugin1"}
         mock_session.execute.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_disabled_ids_empty(self, repo, mock_session):
         """Test list_disabled_ids returns empty set."""
         mock_result = MagicMock()
@@ -293,7 +292,7 @@ class TestPluginConfigRepository:
 
         assert result == set()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_list_disabled_ids_exception(self, repo, mock_session):
         """Test list_disabled_ids raises DatabaseOperationError on exception."""
         mock_session.execute = AsyncMock(side_effect=Exception("DB error"))

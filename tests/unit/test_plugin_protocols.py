@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-import pytest
-
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.protocols import PluginProtocol
 
@@ -101,7 +99,6 @@ class TestPluginProtocol:
 
     def test_protocol_is_runtime_checkable(self):
         """Test that PluginProtocol is runtime_checkable."""
-        from typing import runtime_checkable
 
         # The protocol should have the __protocol_attrs__ attribute
         # indicating it's runtime checkable

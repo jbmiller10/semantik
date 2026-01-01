@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
 from shared.connectors.base import BaseConnector
-from shared.dtos.ingestion import IngestedDocument
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from webui.services.connector_registry import (
-    ConnectorDefinition,
     _build_definition,
     get_connector_catalog,
     get_connector_definition,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    from shared.dtos.ingestion import IngestedDocument
 
 
 class DummyConnector(BaseConnector):

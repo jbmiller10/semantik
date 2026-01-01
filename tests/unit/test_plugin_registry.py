@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock
 
@@ -43,7 +42,7 @@ def _make_record(
 class TestPluginRegistry:
     """Tests for PluginRegistry."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def registry(self):
         """Create a fresh registry for each test."""
         return PluginRegistry()
