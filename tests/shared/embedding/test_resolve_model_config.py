@@ -14,7 +14,7 @@ import pytest
 from shared.embedding.factory import EmbeddingProviderFactory, resolve_model_config
 from shared.embedding.models import MODEL_CONFIGS, ModelConfig
 from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
-from shared.embedding.plugin_loader import ensure_providers_registered
+from shared.plugins.loader import load_plugins
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -130,7 +130,7 @@ class TestResolveModelConfigBuiltIn:
     def test_resolve_mock_model_via_provider(self, empty_registry: None) -> None:
         """Test resolving the mock provider's model config via providers."""
         # Ensure mock provider is registered
-        ensure_providers_registered()
+        load_plugins(plugin_types={"embedding"})
 
         config = resolve_model_config("mock")
 

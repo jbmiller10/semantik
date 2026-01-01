@@ -25,7 +25,7 @@ These exist for backward compatibility and may map to modern implementations:
 
 ## Plugins & Extensibility
 
-Chunking strategies can be extended via the plugin system (`semantik.chunking_strategies` entry points). Plugins register their own IDs and metadata at startup. See `docs/CHUNKING_PLUGINS.md` for packaging and metadata requirements.
+Chunking strategies can be extended via the unified plugin system (`semantik.plugins` entry points). Plugins register their own IDs and metadata at startup. See `docs/CHUNKING_PLUGINS.md` for packaging and metadata requirements.
 
 ## Practical Selection Tips
 

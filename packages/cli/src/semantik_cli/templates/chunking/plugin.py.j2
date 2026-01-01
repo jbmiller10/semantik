@@ -1,0 +1,39 @@
+"""Chunking plugin scaffold for {{ name }}."""
+
+from __future__ import annotations
+
+from shared.chunking.domain.entities.chunk import Chunk
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
+
+
+class {{ class_name }}ChunkingPlugin(ChunkingStrategy):
+    INTERNAL_NAME = "{{ module_name }}"
+    API_ID = "{{ module_name }}"
+    METADATA = {
+        "display_name": "{{ name }}",
+        "description": "Custom chunking strategy",
+        "visual_example": {
+            "url": "https://example.com/{{ module_name }}.png",
+            "caption": "Example chunking output",
+        },
+    }
+
+    def __init__(self) -> None:
+        super().__init__(self.INTERNAL_NAME)
+
+    def chunk(
+        self,
+        content: str,
+        config: ChunkConfig,
+        progress_callback=None,
+    ) -> list[Chunk]:
+        raise NotImplementedError
+
+    def validate_content(self, content: str) -> tuple[bool, str | None]:
+        if not content:
+            return False, "empty content"
+        return True, None
+
+    def estimate_chunks(self, content_length: int, config: ChunkConfig) -> int:  # noqa: ARG002
+        return max(1, content_length // 1000)

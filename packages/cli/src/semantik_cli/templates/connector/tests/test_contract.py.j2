@@ -1,0 +1,8 @@
+"""Basic contract tests for {{ name }} connector plugin."""
+
+from {{ module_name }}.plugin import {{ class_name }}Connector
+
+
+def test_connector_contract():
+    assert {{ class_name }}Connector.PLUGIN_ID
+    assert callable({{ class_name }}Connector.get_config_fields)

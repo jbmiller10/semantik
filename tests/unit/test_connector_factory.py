@@ -7,10 +7,31 @@ import pytest
 
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
-from webui.services.connector_factory import (
-    _CONNECTOR_REGISTRY,
-    ConnectorFactory,
-)
+from shared.plugins.manifest import PluginManifest
+from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
+from webui.services.connector_factory import ConnectorFactory
+
+
+def _register_connector(connector_type: str, connector_cls: type[BaseConnector]) -> None:
+    plugin_id = connector_type.strip().lower()
+    connector_cls.PLUGIN_ID = plugin_id  # type: ignore[assignment]
+    manifest = PluginManifest(
+        id=plugin_id,
+        type="connector",
+        version=getattr(connector_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=plugin_id,
+        description="",
+    )
+    plugin_registry.register(
+        PluginRecord(
+            plugin_type="connector",
+            plugin_id=plugin_id,
+            plugin_version=getattr(connector_cls, "PLUGIN_VERSION", "0.0.0"),
+            manifest=manifest,
+            plugin_class=connector_cls,
+            source=PluginSource.EXTERNAL,
+        )
+    )
 
 
 class DummyConnector(BaseConnector):
@@ -38,9 +59,9 @@ class AnotherConnector(BaseConnector):
 @pytest.fixture(autouse=True)
 def _clear_registry() -> None:
     """Clear registry before and after each test."""
-    _CONNECTOR_REGISTRY.clear()
+    plugin_registry.reset()
     yield
-    _CONNECTOR_REGISTRY.clear()
+    plugin_registry.reset()
 
 
 class TestConnectorFactory:
@@ -48,7 +69,7 @@ class TestConnectorFactory:
 
     def test_register_and_get_connector(self) -> None:
         """Test registering and retrieving a connector."""
-        ConnectorFactory.register_connector("dummy", DummyConnector)
+        _register_connector("dummy", DummyConnector)
 
         connector = ConnectorFactory.get_connector("dummy", {"key": "value"})
 
@@ -60,14 +81,18 @@ class TestConnectorFactory:
         with pytest.raises(ValueError, match="Unknown source type: 'unknown'"):
             ConnectorFactory.get_connector("unknown", {})
 
-    def test_get_connector_unknown_type_shows_none_registered(self) -> None:
-        """Test error message shows 'none registered' when registry is empty."""
-        with pytest.raises(ValueError, match="none registered"):
+    def test_get_connector_unknown_type_shows_available_types(self) -> None:
+        """Test error message includes available types."""
+        with pytest.raises(ValueError, match="Available types") as excinfo:
             ConnectorFactory.get_connector("unknown", {})
+
+        message = str(excinfo.value)
+        assert "Available types" in message
+        assert "directory" in message
 
     def test_source_type_normalized_lowercase(self) -> None:
         """Test source_type is case-insensitive."""
-        ConnectorFactory.register_connector("MyType", DummyConnector)
+        _register_connector("MyType", DummyConnector)
 
         # Should find with different cases
         connector1 = ConnectorFactory.get_connector("mytype", {})
@@ -80,42 +105,47 @@ class TestConnectorFactory:
 
     def test_source_type_normalized_stripped(self) -> None:
         """Test source_type is stripped of whitespace."""
-        ConnectorFactory.register_connector("test", DummyConnector)
+        _register_connector("test", DummyConnector)
 
         connector = ConnectorFactory.get_connector("  test  ", {})
         assert isinstance(connector, DummyConnector)
 
-    def test_list_available_types_empty(self) -> None:
-        """Test listing returns empty when no types registered."""
-        assert ConnectorFactory.list_available_types() == []
+    def test_list_available_types_includes_builtins(self) -> None:
+        """Test listing includes built-in connector types."""
+        types = ConnectorFactory.list_available_types()
+        assert {"directory", "git", "imap"}.issubset(set(types))
 
     def test_list_available_types_multiple(self) -> None:
         """Test listing registered types."""
-        ConnectorFactory.register_connector("type1", DummyConnector)
-        ConnectorFactory.register_connector("type2", AnotherConnector)
+        _register_connector("type1", DummyConnector)
+        _register_connector("type2", AnotherConnector)
 
         types = ConnectorFactory.list_available_types()
-        assert set(types) == {"type1", "type2"}
+        assert {"type1", "type2"}.issubset(set(types))
 
     def test_error_message_includes_available_types(self) -> None:
         """Test error message shows available types."""
-        ConnectorFactory.register_connector("directory", DummyConnector)
-        ConnectorFactory.register_connector("web", AnotherConnector)
+        _register_connector("web", AnotherConnector)
+        _register_connector("repo", DummyConnector)
 
-        with pytest.raises(ValueError, match="Unknown source type"):
+        with pytest.raises(ValueError, match="Unknown source type") as excinfo:
             ConnectorFactory.get_connector("slack", {})
 
-    def test_register_overwrites_existing(self) -> None:
-        """Test registering same type overwrites previous connector."""
-        ConnectorFactory.register_connector("test", DummyConnector)
-        ConnectorFactory.register_connector("test", AnotherConnector)
+        message = str(excinfo.value)
+        assert "Unknown source type" in message
+        assert "web" in message
+
+    def test_register_skips_duplicate(self) -> None:
+        """Test registering same type keeps the first connector."""
+        _register_connector("test", DummyConnector)
+        _register_connector("test", AnotherConnector)
 
         connector = ConnectorFactory.get_connector("test", {})
-        assert isinstance(connector, AnotherConnector)
+        assert isinstance(connector, DummyConnector)
 
     def test_config_passed_to_connector(self) -> None:
         """Test config dictionary is passed to connector constructor."""
-        ConnectorFactory.register_connector("test", DummyConnector)
+        _register_connector("test", DummyConnector)
 
         config: dict[str, Any] = {"source_path": "/data", "recursive": True, "count": 42}
         connector = ConnectorFactory.get_connector("test", config)
@@ -127,8 +157,8 @@ class TestConnectorFactory:
 
     def test_register_connector_normalizes_type(self) -> None:
         """Test register_connector normalizes type to lowercase."""
-        ConnectorFactory.register_connector("UPPERCASE", DummyConnector)
+        _register_connector("UPPERCASE", DummyConnector)
 
         # Should be stored as lowercase
-        assert "uppercase" in _CONNECTOR_REGISTRY
-        assert "UPPERCASE" not in _CONNECTOR_REGISTRY
+        assert plugin_registry.get("connector", "uppercase") is not None
+        assert plugin_registry.get("connector", "UPPERCASE") is None

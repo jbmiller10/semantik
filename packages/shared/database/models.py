@@ -519,6 +519,22 @@ class ConnectorSecret(Base):
     __table_args__ = (UniqueConstraint("collection_source_id", "secret_type", name="uq_source_secret_type"),)
 
 
+class PluginConfig(Base):
+    """Configuration and status for external plugins."""
+
+    __tablename__ = "plugin_configs"
+
+    id = Column(String, primary_key=True)  # plugin_id
+    type = Column(String, nullable=False, index=True)  # embedding, chunking, connector, etc.
+    enabled = Column(Boolean, nullable=False, default=True)
+    config = Column(JSON, nullable=False, default=dict)
+    last_health_check = Column(DateTime(timezone=True), nullable=True)
+    health_status = Column(String(20), nullable=True)  # healthy, unhealthy, unknown
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+
 class CollectionSyncRun(Base):
     """Tracks a single sync run across all sources in a collection.
 

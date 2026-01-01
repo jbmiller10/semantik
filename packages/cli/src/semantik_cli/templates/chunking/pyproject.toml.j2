@@ -1,0 +1,13 @@
+[project]
+name = "{{ module_name }}"
+version = "0.1.0"
+description = "Semantik chunking plugin: {{ name }}"
+requires-python = ">=3.11,<3.13"
+dependencies = ["semantik>=2.0.0"]
+
+[project.entry-points."semantik.plugins"]
+{{ module_name }} = "{{ module_name }}.plugin:{{ class_name }}ChunkingPlugin"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

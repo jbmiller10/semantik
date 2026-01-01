@@ -8,8 +8,8 @@ Semantik ingests documents via *connectors*: per-source implementations that kno
 - `git`: Clone and index files from a remote Git repository.
 - `imap`: Connect to an IMAP mailbox and index emails as markdown documents.
 
-The connector catalog exposed by the API is the source of truth for supported fields/secrets and UI metadata.
-Connector plugins can add additional `source_type` values; use `GET /api/v2/connectors` to discover what is enabled.
+Connector metadata is derived directly from connector classes (`get_config_fields()` / `get_secret_fields()` and `METADATA`).
+Connector plugins register via the unified `semantik.plugins` entry point group; use `GET /api/v2/connectors` to discover what is enabled.
 
 ## Connector Secrets Encryption (`CONNECTOR_SECRETS_KEY`)
 

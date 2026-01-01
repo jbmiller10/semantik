@@ -39,7 +39,6 @@ from .models import (
     list_available_models,
 )
 from .plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
-from .plugin_loader import ensure_providers_registered, load_embedding_plugins
 from .provider_registry import (
     get_provider_definition,
     get_provider_metadata,
@@ -79,9 +78,6 @@ __all__ = [
     "EmbeddingProviderFactory",
     # Types
     "EmbeddingMode",
-    # Plugin loading
-    "load_embedding_plugins",
-    "ensure_providers_registered",
     # Provider registry
     "register_provider_definition",
     "get_provider_definition",

@@ -6,17 +6,21 @@ Add custom embedding providers without touching core code.
 
 - Auto-detect provider by model name
 - Built-in: sentence-transformers, Qwen, mock
-- External: Load via Python entry points
+- External: Load via unified `semantik.plugins` entry points
 - REST API for discovery
 
 ## Architecture
 
 ```
+packages/shared/plugins/
+├── loader.py               # Unified entry point discovery + registry
+├── registry.py             # Plugin registry (type + id lookup)
+└── manifest.py             # PluginManifest metadata
+
 packages/shared/embedding/
 ├── plugin_base.py          # BaseEmbeddingPlugin + EmbeddingProviderDefinition
 ├── provider_registry.py    # Provider metadata registry
 ├── factory.py              # EmbeddingProviderFactory with auto-detection
-├── plugin_loader.py        # Entry point discovery
 ├── providers/              # Built-in provider implementations
 │   ├── __init__.py         # Auto-registers built-ins on import
 │   ├── dense_local.py      # DenseLocalEmbeddingProvider
@@ -104,7 +108,7 @@ Set `is_asymmetric=True` and prefixes in `ModelConfig` for custom models.
 4. **Register** entry point in `pyproject.toml`:
 
 ```toml
-[project.entry-points."semantik.embedding_providers"]
+[project.entry-points."semantik.plugins"]
 my_provider = "my_package.embedding:MyProvider"
 ```
 
@@ -120,7 +124,7 @@ See EMBEDDING_PLUGINS.md source for full example (removed to save space).
 
 ## Configuration
 
-Toggle via `SEMANTIK_ENABLE_EMBEDDING_PLUGINS` (default `true`).
+Toggle via `SEMANTIK_ENABLE_EMBEDDING_PLUGINS` (default `true`, gated by `SEMANTIK_ENABLE_PLUGINS`).
 
 Loaded at startup in webui and vecpipe services. Built-ins first, then external plugins via entry points.
 

@@ -1,0 +1,43 @@
+"""Connector plugin scaffold for {{ name }}."""
+
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from typing import Any, ClassVar
+
+from shared.connectors.base import BaseConnector
+from shared.dtos.ingestion import IngestedDocument
+
+
+class {{ class_name }}Connector(BaseConnector):
+    PLUGIN_ID: ClassVar[str] = "{{ module_name }}"
+    PLUGIN_TYPE: ClassVar[str] = "connector"
+    METADATA: ClassVar[dict[str, Any]] = {
+        "name": "{{ name }}",
+        "description": "Custom connector",
+        "icon": "plug",
+        "supports_sync": True,
+    }
+
+    @classmethod
+    def get_config_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "endpoint",
+                "type": "text",
+                "label": "Endpoint",
+                "required": True,
+            }
+        ]
+
+    @classmethod
+    def get_secret_fields(cls) -> list[dict[str, Any]]:
+        return []
+
+    async def authenticate(self) -> bool:
+        return True
+
+    async def load_documents(self, source_id: int | None = None) -> AsyncIterator[IngestedDocument]:
+        if False and source_id is None:  # pragma: no cover - placeholder
+            yield None  # type: ignore[misc]
+        raise NotImplementedError

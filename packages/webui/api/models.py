@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 
 from shared.embedding import embedding_service
 from shared.embedding.factory import get_all_supported_models
-from shared.embedding.plugin_loader import ensure_providers_registered
+from shared.plugins.loader import load_plugins
 from webui.auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["models"])
@@ -31,7 +31,7 @@ async def get_models(current_user: dict[str, Any] = Depends(get_current_user)) -
             - using_real_embeddings: Always True with unified service
     """
     # Ensure built-in providers and plugins are registered before querying
-    ensure_providers_registered()
+    load_plugins(plugin_types={"embedding"})
 
     all_models = get_all_supported_models()
 

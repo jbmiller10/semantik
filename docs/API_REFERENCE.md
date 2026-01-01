@@ -859,6 +859,62 @@ Content-Type: application/json
 }
 ```
 
+#### Plugin Management Endpoints
+
+These endpoints manage **external** plugins only. Built-ins are not listed or managed here.
+
+##### List Plugins
+```http
+GET /api/v2/plugins?type=embedding&enabled=true&include_health=false
+Authorization: Bearer {token}
+```
+
+##### Get Plugin Details
+```http
+GET /api/v2/plugins/{plugin_id}
+Authorization: Bearer {token}
+```
+
+##### Get Plugin Manifest
+```http
+GET /api/v2/plugins/{plugin_id}/manifest
+Authorization: Bearer {token}
+```
+
+##### Get Plugin Config Schema
+```http
+GET /api/v2/plugins/{plugin_id}/config-schema
+Authorization: Bearer {token}
+```
+
+##### Update Plugin Config
+```http
+PUT /api/v2/plugins/{plugin_id}/config
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "config": {
+    "example_key": "value"
+  }
+}
+```
+
+##### Enable / Disable Plugin
+```http
+POST /api/v2/plugins/{plugin_id}/enable
+POST /api/v2/plugins/{plugin_id}/disable
+Authorization: Bearer {token}
+```
+
+##### Health Check
+```http
+GET /api/v2/plugins/{plugin_id}/health
+Authorization: Bearer {token}
+```
+
+**Note:** enable/disable/config updates require a service restart to fully apply.
+
 #### Directory Scanning Endpoints
 
 ##### Scan Directory

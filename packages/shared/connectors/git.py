@@ -113,6 +113,7 @@ class GitConnector(BaseConnector):
         "description": "Clone and index files from a remote Git repository",
         "icon": "git-branch",
         "supports_sync": True,
+        "preview_endpoint": "/api/v2/connectors/preview/git",
     }
 
     def __init__(self, config: dict[str, Any]) -> None:

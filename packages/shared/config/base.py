@@ -67,6 +67,24 @@ class BaseConfig(BaseSettings):
         """Directory for caching cloned Git repositories."""
         return self.data_dir / "git_cache"
 
+    # Plugin State Configuration
+    PLUGIN_STATE_FILE: Path | None = None  # If None, uses default /data/plugin_state.json
+
+    @property
+    def plugin_state_file(self) -> Path:
+        """Path to the shared plugin state file.
+
+        This file is written by WebUI and read by VecPipe to communicate
+        plugin enable/disable state and configuration.
+        """
+        if self.PLUGIN_STATE_FILE:
+            return self.PLUGIN_STATE_FILE
+        # Default: use shared volume path, fallback to data_dir
+        docker_path = Path("/data/plugin_state.json")
+        if docker_path.parent.exists():
+            return docker_path
+        return self.data_dir / "plugin_state.json"
+
     @property
     def manifest_file(self) -> Path:
         return self.data_dir / "filelist.null"

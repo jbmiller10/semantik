@@ -2,6 +2,11 @@
 
 This module provides the central dispatch point for obtaining embedding providers.
 The factory auto-detects the appropriate provider based on model name.
+
+Plugin Configuration:
+    When creating providers, the factory checks the shared plugin state file
+    for plugin-specific configuration. This allows external plugins to receive
+    configuration (e.g., API keys, model settings) set via WebUI.
 """
 
 from __future__ import annotations
@@ -9,6 +14,8 @@ from __future__ import annotations
 import logging
 from threading import Lock
 from typing import TYPE_CHECKING, Any
+
+from shared.plugins.state import get_plugin_config
 
 if TYPE_CHECKING:
     from shared.config.vecpipe import VecpipeConfig
@@ -88,10 +95,16 @@ class EmbeddingProviderFactory:
         Auto-detects the appropriate provider based on model name using
         each provider's supports_model() class method.
 
+        Plugin Configuration:
+            If no plugin_config is provided in kwargs, the factory will
+            check the shared plugin state file for configuration. This
+            allows plugins to receive settings (API keys, etc.) from WebUI.
+
         Args:
             model_name: HuggingFace model name or other model identifier
             config: Optional VecpipeConfig for provider configuration
-            **kwargs: Additional kwargs passed to provider constructor
+            **kwargs: Additional kwargs passed to provider constructor.
+                      May include 'plugin_config' for plugin-specific settings.
 
         Returns:
             An uninitialized provider instance
@@ -109,6 +122,14 @@ class EmbeddingProviderFactory:
                     provider_cls.__name__,
                     model_name,
                 )
+                # Load plugin config from state file if not explicitly provided
+                if "plugin_config" not in kwargs:
+                    plugin_id = getattr(provider_cls, "API_ID", None) or internal_name
+                    state_config = get_plugin_config(plugin_id, resolve_secrets=True)
+                    if state_config:
+                        kwargs["plugin_config"] = state_config
+                        logger.debug("Loaded config for plugin '%s' from state file", plugin_id)
+
                 return provider_cls(config=config, **kwargs)
 
         with _PROVIDER_CLASSES_LOCK:
@@ -130,7 +151,8 @@ class EmbeddingProviderFactory:
         Args:
             provider_name: Internal name of the provider
             config: Optional VecpipeConfig for provider configuration
-            **kwargs: Additional kwargs passed to provider constructor
+            **kwargs: Additional kwargs passed to provider constructor.
+                      May include 'plugin_config' for plugin-specific settings.
 
         Returns:
             An uninitialized provider instance
@@ -144,6 +166,15 @@ class EmbeddingProviderFactory:
                 raise ValueError(f"Unknown provider: {provider_name}. Available: {available}")
 
             provider_cls = _PROVIDER_CLASSES[provider_name]
+
+        # Load plugin config from state file if not explicitly provided
+        if "plugin_config" not in kwargs:
+            plugin_id = getattr(provider_cls, "API_ID", None) or provider_name
+            state_config = get_plugin_config(plugin_id, resolve_secrets=True)
+            if state_config:
+                kwargs["plugin_config"] = state_config
+                logger.debug("Loaded config for plugin '%s' from state file", plugin_id)
+
         logger.info("Creating provider by name: %s (%s)", provider_name, provider_cls.__name__)
         return provider_cls(config=config, **kwargs)
 

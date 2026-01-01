@@ -3,20 +3,22 @@
 
 from importlib import metadata
 
-from shared.chunking import plugin_loader
 from shared.chunking.domain.services.chunking_strategies import (
     STRATEGY_REGISTRY,
     _restore_strategy_registry,
     _snapshot_strategy_registry,
 )
+from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import PluginSource, plugin_registry
 from webui.services.chunking import strategy_registry
 
 
 def test_plugin_loader_registers_strategy(monkeypatch):
     """Ensure plugin loader registers strategy, metadata, and factory defaults."""
-    plugin_loader._reset_plugin_loader_state()
+    plugin_registry.reset()
 
-    class DummyStrategy:
+    class DummyStrategy(ChunkingStrategy):
         INTERNAL_NAME = "my_plugin"
         API_ID = "my_plugin"
         METADATA = {
@@ -30,6 +32,18 @@ def test_plugin_loader_registers_strategy(monkeypatch):
             },
         }
 
+        def __init__(self) -> None:
+            super().__init__(self.INTERNAL_NAME)
+
+        def chunk(self, content, config, progress_callback=None):
+            return []
+
+        def validate_content(self, content):
+            return True, None
+
+        def estimate_chunks(self, content_length, config):
+            return 1
+
     class DummyEntryPoint:
         name = "my_plugin"
 
@@ -38,22 +52,19 @@ def test_plugin_loader_registers_strategy(monkeypatch):
 
     class DummyEntryPoints:
         def select(self, group):
-            assert group == plugin_loader.ENTRYPOINT_GROUP
+            assert group == "semantik.plugins"
             return [DummyEntryPoint()]
 
-    # Ensure plugins are enabled
-    monkeypatch.setenv(plugin_loader.ENV_FLAG, "true")
-    # Monkeypatch entry_points to return our dummy plugin
+    monkeypatch.setenv("SEMANTIK_ENABLE_PLUGINS", "true")
+    monkeypatch.setenv("SEMANTIK_ENABLE_CHUNKING_PLUGINS", "true")
     monkeypatch.setattr(metadata, "entry_points", lambda: DummyEntryPoints())
 
-    # Snapshot existing registries for cleanup
     original_strategies, original_factory_defaults = strategy_registry._snapshot_registry_state()
     original_domain_registry = _snapshot_strategy_registry()
 
     try:
-        registered = plugin_loader.load_chunking_plugins()
-
-        assert "my_plugin" in registered
+        registry = load_plugins(plugin_types={"chunking"}, include_builtins=False)
+        assert "my_plugin" in registry.list_ids(plugin_type="chunking", source=PluginSource.EXTERNAL)
 
         definition = strategy_registry.get_strategy_definition("my_plugin")
         assert definition is not None
@@ -63,18 +74,16 @@ def test_plugin_loader_registers_strategy(monkeypatch):
 
         assert "my_plugin" in STRATEGY_REGISTRY
     finally:
-        # Restore registries to avoid cross-test pollution
         strategy_registry._restore_registry_state(original_strategies, original_factory_defaults)
         _restore_strategy_registry(original_domain_registry)
-        plugin_loader._reset_plugin_loader_state()
+        plugin_registry.reset()
 
 
 def test_plugin_loader_is_idempotent(monkeypatch):
-    plugin_loader._reset_plugin_loader_state()
-
+    plugin_registry.reset()
     call_count = {"count": 0}
 
-    class DummyStrategy:
+    class DummyStrategy(ChunkingStrategy):
         INTERNAL_NAME = "my_plugin"
         API_ID = "my_plugin"
         METADATA = {
@@ -88,6 +97,18 @@ def test_plugin_loader_is_idempotent(monkeypatch):
             },
         }
 
+        def __init__(self) -> None:
+            super().__init__(self.INTERNAL_NAME)
+
+        def chunk(self, content, config, progress_callback=None):
+            return []
+
+        def validate_content(self, content):
+            return True, None
+
+        def estimate_chunks(self, content_length, config):
+            return 1
+
     class DummyEntryPoint:
         name = "my_plugin"
 
@@ -96,24 +117,25 @@ def test_plugin_loader_is_idempotent(monkeypatch):
 
     class DummyEntryPoints:
         def select(self, group):
-            assert group == plugin_loader.ENTRYPOINT_GROUP
+            assert group == "semantik.plugins"
             call_count["count"] += 1
             return [DummyEntryPoint()]
 
-    monkeypatch.setenv(plugin_loader.ENV_FLAG, "true")
+    monkeypatch.setenv("SEMANTIK_ENABLE_PLUGINS", "true")
+    monkeypatch.setenv("SEMANTIK_ENABLE_CHUNKING_PLUGINS", "true")
     monkeypatch.setattr(metadata, "entry_points", lambda: DummyEntryPoints())
 
     original_strategies, original_factory_defaults = strategy_registry._snapshot_registry_state()
     original_domain_registry = _snapshot_strategy_registry()
 
     try:
-        first = plugin_loader.load_chunking_plugins()
-        second = plugin_loader.load_chunking_plugins()
+        first_registry = load_plugins(plugin_types={"chunking"}, include_builtins=False)
+        second_registry = load_plugins(plugin_types={"chunking"}, include_builtins=False)
 
-        assert first == ["my_plugin"]
-        assert second == ["my_plugin"]
+        assert "my_plugin" in first_registry.list_ids(plugin_type="chunking", source=PluginSource.EXTERNAL)
+        assert "my_plugin" in second_registry.list_ids(plugin_type="chunking", source=PluginSource.EXTERNAL)
         assert call_count["count"] == 1
     finally:
         strategy_registry._restore_registry_state(original_strategies, original_factory_defaults)
         _restore_strategy_registry(original_domain_registry)
-        plugin_loader._reset_plugin_loader_state()
+        plugin_registry.reset()
