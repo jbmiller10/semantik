@@ -6,7 +6,7 @@ import mimetypes
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
@@ -43,6 +43,53 @@ class LocalFileConnector(BaseConnector):
         This connector validates that all file paths stay within the configured
         base directory to prevent path traversal attacks via symlinks or relative paths.
     """
+
+    PLUGIN_ID: ClassVar[str] = "directory"
+    PLUGIN_TYPE: ClassVar[str] = "connector"
+    METADATA: ClassVar[dict[str, Any]] = {
+        "name": "Local Directory",
+        "description": "Index files from a local directory on the server",
+        "icon": "folder",
+        "supports_sync": True,
+    }
+
+    @classmethod
+    def get_config_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "path",
+                "type": "text",
+                "label": "Directory Path",
+                "description": "Absolute path to the directory to index",
+                "required": True,
+                "placeholder": "/path/to/documents",
+            },
+            {
+                "name": "recursive",
+                "type": "boolean",
+                "label": "Recursive",
+                "description": "Include files from subdirectories",
+                "default": True,
+            },
+            {
+                "name": "include_patterns",
+                "type": "glob_list",
+                "label": "Include Patterns",
+                "description": "Glob patterns to include (e.g., *.md, *.py)",
+                "placeholder": "*.md, *.txt",
+            },
+            {
+                "name": "exclude_patterns",
+                "type": "glob_list",
+                "label": "Exclude Patterns",
+                "description": "Glob patterns to exclude",
+                "placeholder": "*.log, __pycache__/**",
+            },
+        ]
+
+    @classmethod
+    def get_secret_fields(cls) -> list[dict[str, Any]]:
+        return []
 
     def validate_config(self) -> None:
         """Validate required config keys."""

@@ -5,9 +5,11 @@ This module provides a centralized factory for instantiating chunking strategies
 removing the direct dependency and logic from routers.
 """
 
+import logging
+from threading import Lock
 from typing import Any
 
-from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy
+from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy, register_strategy
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from shared.chunking.types import ChunkingStrategy as ChunkingStrategyEnum
 from webui.services.chunking.strategy_registry import (
@@ -17,6 +19,9 @@ from webui.services.chunking.strategy_registry import (
     resolve_api_identifier,
     resolve_internal_strategy_name,
 )
+
+logger = logging.getLogger(__name__)
+_REGISTRY_LOCK = Lock()
 
 
 class ChunkingStrategyFactory:
@@ -116,12 +121,31 @@ class ChunkingStrategyFactory:
             api_enum: Optional API enum to map to
         """
         # Register in shared registry
-        STRATEGY_REGISTRY[name] = strategy_class
+        registered = register_strategy(name, strategy_class)
+        if not registered:
+            return
 
         # Update mappings if API enum provided
         if api_enum:
-            cls._api_to_internal[api_enum.value] = name
-            cls._internal_to_api_enum[name] = api_enum
+            with _REGISTRY_LOCK:
+                if api_enum.value in cls._api_to_internal and cls._api_to_internal[api_enum.value] != name:
+                    logger.warning(
+                        "Chunking strategy API id '%s' already mapped to '%s', skipping '%s'",
+                        api_enum.value,
+                        cls._api_to_internal[api_enum.value],
+                        name,
+                    )
+                    return
+                if name in cls._internal_to_api_enum and cls._internal_to_api_enum[name] != api_enum:
+                    logger.warning(
+                        "Chunking strategy '%s' already mapped to API id '%s', skipping '%s'",
+                        name,
+                        cls._internal_to_api_enum[name].value,
+                        api_enum.value,
+                    )
+                    return
+                cls._api_to_internal[api_enum.value] = name
+                cls._internal_to_api_enum[name] = api_enum
 
     @classmethod
     def normalize_strategy_name(cls, name: str) -> str:

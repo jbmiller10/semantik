@@ -7,10 +7,12 @@ utilities, and factories can share a single source of truth.
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -19,6 +21,9 @@ if TYPE_CHECKING:
 from shared.chunking.types import ChunkingStrategy
 
 DefaultContext = Literal["manager", "builder", "factory"]
+
+logger = logging.getLogger(__name__)
+_REGISTRY_LOCK = RLock()
 
 
 def _copy_mapping(mapping: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -101,30 +106,41 @@ def register_strategy_definition(
     new strategy is immediately discoverable across the service layer.
     """
 
-    definition = StrategyDefinition(
-        api_id=str(api_id),
-        internal_id=str(internal_id),
-        display_name=display_name,
-        description=description,
-        best_for=tuple(best_for or ()),
-        pros=tuple(pros or ()),
-        cons=tuple(cons or ()),
-        performance_characteristics=_copy_mapping(performance_characteristics),
-        manager_defaults=_copy_mapping(manager_defaults) if manager_defaults is not None else {},
-        builder_defaults=_copy_mapping(builder_defaults) if builder_defaults is not None else None,
-        supported_file_types=tuple(supported_file_types or ()),
-        aliases=tuple(aliases or ()),
-        is_plugin=is_plugin,
-        visual_example=_copy_mapping(visual_example),
-    )
+    with _REGISTRY_LOCK:
+        if str(api_id) in _STRATEGIES:
+            logger.warning("Chunking strategy '%s' already registered, skipping", api_id)
+            return _STRATEGIES[str(api_id)]
 
-    _STRATEGIES[definition.api_id] = definition
+        definition = StrategyDefinition(
+            api_id=str(api_id),
+            internal_id=str(internal_id),
+            display_name=display_name,
+            description=description,
+            best_for=tuple(best_for or ()),
+            pros=tuple(pros or ()),
+            cons=tuple(cons or ()),
+            performance_characteristics=_copy_mapping(performance_characteristics),
+            manager_defaults=_copy_mapping(manager_defaults) if manager_defaults is not None else {},
+            builder_defaults=_copy_mapping(builder_defaults) if builder_defaults is not None else None,
+            supported_file_types=tuple(supported_file_types or ()),
+            aliases=tuple(aliases or ()),
+            is_plugin=is_plugin,
+            visual_example=_copy_mapping(visual_example),
+        )
 
-    if factory_defaults is not None:
-        _FACTORY_DEFAULTS[definition.internal_id] = _copy_mapping(factory_defaults)
+        _STRATEGIES[definition.api_id] = definition
 
-    _clear_caches()
-    return definition
+        if factory_defaults is not None:
+            if definition.internal_id in _FACTORY_DEFAULTS:
+                logger.warning(
+                    "Factory defaults for strategy '%s' already registered, skipping",
+                    definition.internal_id,
+                )
+            else:
+                _FACTORY_DEFAULTS[definition.internal_id] = _copy_mapping(factory_defaults)
+
+        _clear_caches()
+        return definition
 
 
 def _strategy_definition_data() -> dict[str, StrategyDefinition]:
@@ -393,36 +409,55 @@ def _clear_caches() -> None:
     build_metadata_by_enum.cache_clear()
 
 
+def _snapshot_registry_state() -> tuple[dict[str, StrategyDefinition], dict[str, dict[str, Any]]]:
+    """Return snapshots of registry state (testing only)."""
+    with _REGISTRY_LOCK:
+        return dict(_STRATEGIES), dict(_FACTORY_DEFAULTS)
+
+
+def _restore_registry_state(
+    strategies: dict[str, StrategyDefinition],
+    factory_defaults: dict[str, dict[str, Any]],
+) -> None:
+    """Restore registry state from snapshots (testing only)."""
+    with _REGISTRY_LOCK:
+        _STRATEGIES.clear()
+        _STRATEGIES.update(strategies)
+        _FACTORY_DEFAULTS.clear()
+        _FACTORY_DEFAULTS.update(factory_defaults)
+        _clear_caches()
+
+
 @lru_cache(maxsize=1)
 def get_api_to_internal_map() -> dict[str, str]:
     """Return mapping from API strategy identifiers to internal strategy names."""
-
-    return {key: definition.internal_id for key, definition in _STRATEGIES.items()}
+    with _REGISTRY_LOCK:
+        return {key: definition.internal_id for key, definition in _STRATEGIES.items()}
 
 
 @lru_cache(maxsize=1)
 def get_internal_to_primary_api_map() -> dict[str, str]:
     """Return mapping from internal strategy name to canonical API identifier."""
-
-    mapping: dict[str, str] = {}
-    for api_id, definition in _STRATEGIES.items():
-        mapping.setdefault(definition.internal_id, api_id)
-    return mapping
+    with _REGISTRY_LOCK:
+        mapping: dict[str, str] = {}
+        for api_id, definition in _STRATEGIES.items():
+            mapping.setdefault(definition.internal_id, api_id)
+        return mapping
 
 
 @lru_cache(maxsize=1)
 def get_alias_to_api_map() -> dict[str, str]:
     """Return mapping for resolving user-provided aliases to API identifiers."""
-
-    alias_map: dict[str, str] = {}
-    for api_id, definition in _STRATEGIES.items():
-        alias_map[api_id] = api_id
-        alias_map[definition.api_id.lower()] = api_id
-        for alias in definition.aliases:
-            alias_map[alias.lower()] = api_id
-        # Allow lookup by internal strategy name as a convenience
-        alias_map.setdefault(definition.internal_id.lower(), api_id)
-    return alias_map
+    with _REGISTRY_LOCK:
+        alias_map: dict[str, str] = {}
+        for api_id, definition in _STRATEGIES.items():
+            alias_map[api_id] = api_id
+            alias_map[definition.api_id.lower()] = api_id
+            for alias in definition.aliases:
+                alias_map[alias.lower()] = api_id
+            # Allow lookup by internal strategy name as a convenience
+            alias_map.setdefault(definition.internal_id.lower(), api_id)
+        return alias_map
 
 
 def _normalize_identifier(identifier: str | Enum | ChunkingStrategy) -> str:
@@ -455,7 +490,8 @@ def _resolve_strategy_definition(identifier: str | Enum | ChunkingStrategy) -> S
     if api_id is None:
         return None
 
-    return _STRATEGIES.get(api_id)
+    with _REGISTRY_LOCK:
+        return _STRATEGIES.get(api_id)
 
 
 def get_strategy_definition(identifier: str | Enum | ChunkingStrategy) -> StrategyDefinition | None:
@@ -468,7 +504,8 @@ def get_strategy_definition(identifier: str | Enum | ChunkingStrategy) -> Strate
 def list_strategy_definitions() -> Iterable[StrategyDefinition]:
     """Iterate over all canonical strategy definitions."""
 
-    return tuple(_STRATEGIES.values())
+    with _REGISTRY_LOCK:
+        return tuple(_STRATEGIES.values())
 
 
 @lru_cache(maxsize=1)
@@ -493,7 +530,8 @@ def get_strategy_defaults(identifier: str | Enum | ChunkingStrategy, *, context:
         internal_name = resolve_internal_strategy_name(identifier)
         if not internal_name:
             return {}
-        return _copy_mapping(_FACTORY_DEFAULTS.get(internal_name))
+        with _REGISTRY_LOCK:
+            return _copy_mapping(_FACTORY_DEFAULTS.get(internal_name))
 
     definition = _resolve_strategy_definition(identifier)
     if not definition:
@@ -513,8 +551,9 @@ def resolve_internal_strategy_name(identifier: str | Enum | ChunkingStrategy) ->
         return definition.internal_id
 
     normalized = _normalize_identifier(identifier)
-    if normalized in _FACTORY_DEFAULTS:
-        return normalized
+    with _REGISTRY_LOCK:
+        if normalized in _FACTORY_DEFAULTS:
+            return normalized
 
     return None
 
@@ -549,9 +588,10 @@ def get_internal_strategy_aliases() -> dict[str, set[str]]:
 
     grouped: dict[str, set[str]] = {}
     alias_map = get_alias_to_api_map()
-    for alias, api_id in alias_map.items():
-        internal = _STRATEGIES[api_id].internal_id
-        grouped.setdefault(internal, set()).add(alias)
+    with _REGISTRY_LOCK:
+        for alias, api_id in alias_map.items():
+            internal = _STRATEGIES[api_id].internal_id
+            grouped.setdefault(internal, set()).add(alias)
     return grouped
 
 
@@ -590,7 +630,8 @@ def recommend_strategy(file_types: Sequence[str] | None) -> ChunkingStrategy:
 def get_factory_default_map() -> dict[str, dict[str, Any]]:
     """Expose a defensive copy of factory defaults keyed by internal strategy name."""
 
-    return {key: _copy_mapping(value) for key, value in _FACTORY_DEFAULTS.items()}
+    with _REGISTRY_LOCK:
+        return {key: _copy_mapping(value) for key, value in _FACTORY_DEFAULTS.items()}
 
 
 @lru_cache(maxsize=1)

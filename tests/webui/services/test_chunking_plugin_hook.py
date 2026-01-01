@@ -3,7 +3,7 @@
 import pytest
 
 import webui.services.chunking.strategy_registry as strategy_registry
-from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY
+from shared.chunking.domain.services.chunking_strategies import unregister_strategy
 from shared.chunking.domain.services.chunking_strategies.base import ChunkingStrategy
 from webui.services.chunking import (
     ChunkingCache,
@@ -38,6 +38,8 @@ class DemoPluginStrategy(ChunkingStrategy):
 
 @pytest.mark.asyncio()
 async def test_plugin_strategy_runs_through_orchestrator():
+    original_strategies, original_factory_defaults = strategy_registry._snapshot_registry_state()
+
     # Register plugin definition and implementation
     register_strategy_definition(
         api_id="demo_plugin",
@@ -70,6 +72,5 @@ async def test_plugin_strategy_runs_through_orchestrator():
         )
         assert chunks[0]["content"] == "PLUGIN DEMO"
     finally:
-        STRATEGY_REGISTRY.pop("demo_plugin", None)
-        strategy_registry._STRATEGIES.pop("demo_plugin", None)
-        strategy_registry._clear_caches()
+        unregister_strategy("demo_plugin")
+        strategy_registry._restore_registry_state(original_strategies, original_factory_defaults)

@@ -12,7 +12,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any, ClassVar, TYPE_CHECKING
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -106,6 +106,15 @@ class GitConnector(BaseConnector):
         ```
     """
 
+    PLUGIN_ID: ClassVar[str] = "git"
+    PLUGIN_TYPE: ClassVar[str] = "connector"
+    METADATA: ClassVar[dict[str, Any]] = {
+        "name": "Git Repository",
+        "description": "Clone and index files from a remote Git repository",
+        "icon": "git-branch",
+        "supports_sync": True,
+    }
+
     def __init__(self, config: dict[str, Any]) -> None:
         """Initialize the Git connector."""
         self._token: str | None = None
@@ -131,6 +140,95 @@ class GitConnector(BaseConnector):
 
         if auth_method == "https_token" and not url.startswith(("http://", "https://")):
             raise ValueError("auth_method=https_token requires an HTTP(S) repo_url")
+
+    @classmethod
+    def get_config_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "repo_url",
+                "type": "text",
+                "label": "Repository URL",
+                "description": "HTTPS or SSH URL of the Git repository",
+                "required": True,
+                "placeholder": "https://github.com/user/repo.git",
+            },
+            {
+                "name": "ref",
+                "type": "text",
+                "label": "Branch/Tag",
+                "description": "Branch, tag, or commit to checkout",
+                "default": "main",
+                "placeholder": "main",
+            },
+            {
+                "name": "auth_method",
+                "type": "select",
+                "label": "Authentication",
+                "description": "How to authenticate with the repository",
+                "default": "none",
+                "options": [
+                    {"value": "none", "label": "None (Public)"},
+                    {"value": "https_token", "label": "HTTPS Token"},
+                    {"value": "ssh_key", "label": "SSH Key"},
+                ],
+            },
+            {
+                "name": "include_globs",
+                "type": "glob_list",
+                "label": "Include Patterns",
+                "description": "Glob patterns for files to include",
+                "placeholder": "*.md, docs/**",
+            },
+            {
+                "name": "exclude_globs",
+                "type": "glob_list",
+                "label": "Exclude Patterns",
+                "description": "Glob patterns for files to exclude",
+                "placeholder": "*.min.js, node_modules/**",
+            },
+            {
+                "name": "max_file_size_mb",
+                "type": "number",
+                "label": "Max File Size (MB)",
+                "description": "Maximum file size to index",
+                "default": 10,
+                "min": 1,
+                "max": 100,
+            },
+            {
+                "name": "shallow_depth",
+                "type": "number",
+                "label": "Clone Depth",
+                "description": "Shallow clone depth (0 for full history)",
+                "default": 1,
+                "min": 0,
+                "max": 100,
+            },
+        ]
+
+    @classmethod
+    def get_secret_fields(cls) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": "token",
+                "label": "Personal Access Token",
+                "description": "GitHub/GitLab personal access token",
+                "show_when": {"field": "auth_method", "equals": "https_token"},
+            },
+            {
+                "name": "ssh_key",
+                "label": "SSH Private Key",
+                "description": "SSH private key content",
+                "is_multiline": True,
+                "show_when": {"field": "auth_method", "equals": "ssh_key"},
+            },
+            {
+                "name": "ssh_passphrase",
+                "label": "SSH Key Passphrase",
+                "description": "Passphrase for the SSH key (if encrypted)",
+                "show_when": {"field": "auth_method", "equals": "ssh_key"},
+            },
+        ]
 
     def set_credentials(
         self,

@@ -7,6 +7,7 @@ The factory auto-detects the appropriate provider based on model name.
 from __future__ import annotations
 
 import logging
+from threading import Lock
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Registry of provider classes - maps internal_name to provider class
 _PROVIDER_CLASSES: dict[str, type[BaseEmbeddingPlugin]] = {}
+_PROVIDER_CLASSES_LOCK = Lock()
 
 
 class EmbeddingProviderFactory:
@@ -53,7 +55,11 @@ class EmbeddingProviderFactory:
             internal_name: Internal identifier for the provider
             provider_class: The provider class to register
         """
-        _PROVIDER_CLASSES[internal_name] = provider_class
+        with _PROVIDER_CLASSES_LOCK:
+            if internal_name in _PROVIDER_CLASSES:
+                logger.warning("Embedding provider '%s' already registered, skipping", internal_name)
+                return
+            _PROVIDER_CLASSES[internal_name] = provider_class
         logger.debug("Registered embedding provider: %s -> %s", internal_name, provider_class.__name__)
 
     @classmethod
@@ -65,9 +71,10 @@ class EmbeddingProviderFactory:
         Args:
             internal_name: Internal identifier of the provider to remove
         """
-        if internal_name in _PROVIDER_CLASSES:
-            del _PROVIDER_CLASSES[internal_name]
-            logger.debug("Unregistered embedding provider: %s", internal_name)
+        with _PROVIDER_CLASSES_LOCK:
+            if internal_name in _PROVIDER_CLASSES:
+                del _PROVIDER_CLASSES[internal_name]
+                logger.debug("Unregistered embedding provider: %s", internal_name)
 
     @classmethod
     def create_provider(
@@ -92,7 +99,9 @@ class EmbeddingProviderFactory:
         Raises:
             ValueError: If no provider supports the model
         """
-        for internal_name, provider_cls in _PROVIDER_CLASSES.items():
+        with _PROVIDER_CLASSES_LOCK:
+            providers = list(_PROVIDER_CLASSES.items())
+        for internal_name, provider_cls in providers:
             if provider_cls.supports_model(model_name):
                 logger.info(
                     "Creating provider '%s' (%s) for model '%s'",
@@ -102,7 +111,8 @@ class EmbeddingProviderFactory:
                 )
                 return provider_cls(config=config, **kwargs)
 
-        available = list(_PROVIDER_CLASSES.keys())
+        with _PROVIDER_CLASSES_LOCK:
+            available = list(_PROVIDER_CLASSES.keys())
         raise ValueError(f"No provider found for model: {model_name}. Available providers: {available}")
 
     @classmethod
@@ -128,11 +138,12 @@ class EmbeddingProviderFactory:
         Raises:
             ValueError: If provider name is not registered
         """
-        if provider_name not in _PROVIDER_CLASSES:
-            available = list(_PROVIDER_CLASSES.keys())
-            raise ValueError(f"Unknown provider: {provider_name}. Available: {available}")
+        with _PROVIDER_CLASSES_LOCK:
+            if provider_name not in _PROVIDER_CLASSES:
+                available = list(_PROVIDER_CLASSES.keys())
+                raise ValueError(f"Unknown provider: {provider_name}. Available: {available}")
 
-        provider_cls = _PROVIDER_CLASSES[provider_name]
+            provider_cls = _PROVIDER_CLASSES[provider_name]
         logger.info("Creating provider by name: %s (%s)", provider_name, provider_cls.__name__)
         return provider_cls(config=config, **kwargs)
 
@@ -146,7 +157,9 @@ class EmbeddingProviderFactory:
         Returns:
             Internal provider name if found, None otherwise
         """
-        for internal_name, provider_cls in _PROVIDER_CLASSES.items():
+        with _PROVIDER_CLASSES_LOCK:
+            providers = list(_PROVIDER_CLASSES.items())
+        for internal_name, provider_cls in providers:
             if provider_cls.supports_model(model_name):
                 return internal_name
         return None
@@ -170,7 +183,8 @@ class EmbeddingProviderFactory:
         Returns:
             List of internal provider names
         """
-        return list(_PROVIDER_CLASSES.keys())
+        with _PROVIDER_CLASSES_LOCK:
+            return list(_PROVIDER_CLASSES.keys())
 
     @classmethod
     def get_provider_class(cls, internal_name: str) -> type[BaseEmbeddingPlugin] | None:
@@ -182,7 +196,8 @@ class EmbeddingProviderFactory:
         Returns:
             Provider class if found, None otherwise
         """
-        return _PROVIDER_CLASSES.get(internal_name)
+        with _PROVIDER_CLASSES_LOCK:
+            return _PROVIDER_CLASSES.get(internal_name)
 
     @classmethod
     def clear_providers(cls) -> None:
@@ -190,7 +205,8 @@ class EmbeddingProviderFactory:
 
         Primarily used for testing to reset state.
         """
-        _PROVIDER_CLASSES.clear()
+        with _PROVIDER_CLASSES_LOCK:
+            _PROVIDER_CLASSES.clear()
         logger.debug("Cleared all embedding providers")
 
 
@@ -204,7 +220,9 @@ def get_all_supported_models() -> list[dict[str, Any]]:
     """
     models: list[dict[str, Any]] = []
 
-    for internal_name, provider_cls in _PROVIDER_CLASSES.items():
+    with _PROVIDER_CLASSES_LOCK:
+        providers = list(_PROVIDER_CLASSES.items())
+    for internal_name, provider_cls in providers:
         try:
             provider_models = provider_cls.list_supported_models()
             for model_config in provider_models:
@@ -227,7 +245,9 @@ def get_model_config_from_providers(model_name: str) -> Any:
     Returns:
         ModelConfig if found by any provider, None otherwise
     """
-    for provider_cls in _PROVIDER_CLASSES.values():
+    with _PROVIDER_CLASSES_LOCK:
+        providers = list(_PROVIDER_CLASSES.values())
+    for provider_cls in providers:
         if provider_cls.supports_model(model_name):
             config = provider_cls.get_model_config(model_name)
             if config is not None:
