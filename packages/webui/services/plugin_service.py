@@ -6,12 +6,14 @@ import asyncio
 import inspect
 import logging
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from shared.database.repositories.plugin_config_repository import PluginConfigRepository
 from shared.plugins.adapters import get_config_schema
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
+from shared.plugins.state import PluginState, PluginStateConfig, resolve_env_vars, write_state
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -272,6 +274,10 @@ class PluginService:
             config=config,
         )
         await self.db_session.commit()
+
+        # Sync state file for VecPipe
+        await self._sync_state_file()
+
         return self._build_plugin_payload(record, config_row)
 
     async def set_enabled(self, plugin_id: str, enabled: bool) -> dict[str, Any] | None:
@@ -284,6 +290,10 @@ class PluginService:
             enabled=enabled,
         )
         await self.db_session.commit()
+
+        # Sync state file for VecPipe
+        await self._sync_state_file()
+
         payload = self._build_plugin_payload(record, config_row)
         payload["requires_restart"] = True
         return payload
@@ -341,6 +351,45 @@ class PluginService:
             "error_message": error_message,
         }
 
+    async def _sync_state_file(self) -> None:
+        """Synchronize plugin state to shared file for VecPipe.
+
+        Writes a JSON state file containing:
+        - List of disabled plugin IDs
+        - Plugin configurations (with env var references, not secrets)
+
+        This file is read by VecPipe at startup to determine which plugins
+        to load and how to configure them.
+        """
+        try:
+            # Get all plugin configs from database
+            configs = await self.repo.list_configs()
+
+            # Build disabled IDs list
+            disabled_ids = [c.id for c in configs if not c.enabled]
+
+            # Build config map
+            config_map: dict[str, PluginStateConfig] = {}
+            for c in configs:
+                config_map[c.id] = PluginStateConfig(
+                    enabled=c.enabled,
+                    config=dict(c.config) if c.config else {},
+                )
+
+            # Write state file atomically
+            state = PluginState(
+                version=1,
+                updated_at=datetime.now(UTC).isoformat(),
+                disabled_ids=disabled_ids,
+                configs=config_map,
+            )
+            write_state(state)
+            logger.debug("Plugin state file synced with %d configs", len(config_map))
+
+        except Exception as exc:
+            # Log but don't fail the operation - state file is a best-effort feature
+            logger.warning("Failed to sync plugin state file: %s", exc)
+
     async def _refresh_health(
         self,
         records: Iterable[PluginRecord],
@@ -352,7 +401,9 @@ class PluginService:
             enabled = config_row.enabled if config_row else True
             if not enabled:
                 continue
-            tasks.append(self._check_and_update_health(record))
+            # Pass config to health check
+            plugin_config = dict(config_row.config) if config_row and config_row.config else {}
+            tasks.append(self._check_and_update_health(record, plugin_config))
 
         if not tasks:
             return
@@ -363,8 +414,12 @@ class PluginService:
                 config_map[updated.id] = updated
         await self.db_session.commit()
 
-    async def _check_and_update_health(self, record: PluginRecord) -> Any | None:
-        status, error = await self._run_health_check(record)
+    async def _check_and_update_health(
+        self,
+        record: PluginRecord,
+        plugin_config: dict[str, Any] | None = None,
+    ) -> Any | None:
+        status, error = await self._run_health_check(record, plugin_config)
         try:
             return await self.repo.update_health(
                 plugin_id=record.plugin_id,
@@ -376,7 +431,11 @@ class PluginService:
             logger.warning("Failed to update health for %s: %s", record.plugin_id, exc)
             return None
 
-    async def _run_health_check(self, record: PluginRecord) -> tuple[str, str | None]:
+    async def _run_health_check(
+        self,
+        record: PluginRecord,
+        plugin_config: dict[str, Any] | None = None,
+    ) -> tuple[str, str | None]:
         health_fn = getattr(record.plugin_class, "health_check", None)
         if health_fn is None:
             return "unknown", "Plugin does not define health_check method"
@@ -395,10 +454,22 @@ class PluginService:
                 return "unknown", "health_check must be @classmethod or @staticmethod, not instance method"
         except (ValueError, TypeError):
             # signature() can fail for some built-in types, proceed anyway
-            pass
+            sig = None
+
+        # Resolve env var references in config for health check
+        resolved_config = resolve_env_vars(plugin_config) if plugin_config else None
+
+        # Check if health_check accepts config parameter (backward compatibility)
+        accepts_config = False
+        if sig is not None:
+            try:
+                param_names = [p.name for p in sig.parameters.values()]
+                accepts_config = "config" in param_names
+            except (ValueError, TypeError):
+                pass
 
         try:
-            result = health_fn()
+            result = health_fn(config=resolved_config) if accepts_config else health_fn()
         except TypeError as exc:
             # Could be signature mismatch or other type error
             return "unknown", f"health_check() call failed: {exc}"

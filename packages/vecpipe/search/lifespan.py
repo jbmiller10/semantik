@@ -17,6 +17,7 @@ from shared.config import settings
 from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
+from shared.plugins.state import get_disabled_plugin_ids
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources
@@ -55,11 +56,23 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
 
     ModelManager now handles embedding provider lifecycle internally using the
     plugin-aware provider system. No separate embedding service initialization needed.
+
+    Plugin state (enabled/disabled) is read from a shared state file written by WebUI.
+    This allows VecPipe to respect plugin enable/disable without database access.
     """
-    registry = load_plugins(plugin_types={"embedding"})
-    embedded_plugins = registry.list_ids(plugin_type="embedding", source=PluginSource.EXTERNAL)
-    if embedded_plugins:
-        logger.info("Loaded embedding plugins: %s", ", ".join(embedded_plugins))
+    # Read disabled plugins from state file (written by WebUI)
+    disabled_ids = get_disabled_plugin_ids()
+    if disabled_ids:
+        logger.info("Disabled plugins (from state file): %s", ", ".join(sorted(disabled_ids)))
+
+    # Load plugins, excluding disabled ones
+    registry = load_plugins(
+        plugin_types={"embedding"},
+        disabled_plugin_ids=disabled_ids if disabled_ids else None,
+    )
+    external_plugins = registry.list_ids(plugin_type="embedding", source=PluginSource.EXTERNAL)
+    if external_plugins:
+        logger.info("Loaded embedding plugins: %s", ", ".join(external_plugins))
 
     start_metrics = _resolve_start_metrics_server()
     start_metrics(settings.METRICS_PORT)

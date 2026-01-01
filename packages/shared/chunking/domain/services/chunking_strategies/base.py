@@ -8,6 +8,7 @@ ensuring consistency across different chunking approaches.
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from typing import Any
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -19,6 +20,11 @@ class ChunkingStrategy(ABC):
 
     Each strategy implements a specific approach to breaking text into chunks,
     such as character-based, semantic, or structural chunking.
+
+    Plugin Configuration:
+        External chunking plugins can receive global configuration via the
+        `configure()` method. This is called by the factory with settings
+        from the plugin state file (e.g., API keys, model settings).
     """
 
     def __init__(self, name: str) -> None:
@@ -29,6 +35,28 @@ class ChunkingStrategy(ABC):
             name: The name of the strategy
         """
         self._name = name
+        self._plugin_config: dict[str, Any] = {}
+
+    def configure(self, config: dict[str, Any]) -> None:
+        """
+        Configure the strategy with plugin-level settings.
+
+        This method is called by the factory when creating strategies from
+        external plugins. It allows plugins to receive configuration from
+        the shared plugin state file (e.g., API keys, default settings).
+
+        Note: This is different from ChunkConfig passed to chunk() which
+        contains per-operation settings like chunk_size and overlap.
+
+        Args:
+            config: Plugin configuration dictionary (secrets already resolved)
+        """
+        self._plugin_config = config
+
+    @property
+    def plugin_config(self) -> dict[str, Any]:
+        """Get the plugin configuration."""
+        return self._plugin_config
 
     @property
     def name(self) -> str:

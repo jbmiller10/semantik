@@ -3,6 +3,11 @@ Factory for creating chunking strategy instances.
 
 This module provides a centralized factory for instantiating chunking strategies,
 removing the direct dependency and logic from routers.
+
+Plugin Configuration:
+    External chunking plugins can receive configuration from the shared plugin
+    state file. The factory loads plugin config and calls configure() on
+    strategies that support it.
 """
 
 import logging
@@ -12,6 +17,7 @@ from typing import Any
 from shared.chunking.domain.services.chunking_strategies import STRATEGY_REGISTRY, get_strategy, register_strategy
 from shared.chunking.infrastructure.exceptions import ChunkingStrategyError
 from shared.chunking.types import ChunkingStrategy as ChunkingStrategyEnum
+from shared.plugins.state import get_plugin_config
 from webui.services.chunking.strategy_registry import (
     get_api_to_internal_map,
     get_internal_to_primary_api_map,
@@ -38,7 +44,7 @@ class ChunkingStrategyFactory:
     def create_strategy(
         cls,
         strategy_name: str | ChunkingStrategyEnum,
-        config: dict[str, Any],  # noqa: ARG003
+        config: dict[str, Any],  # noqa: ARG003 - Per-operation config, used in chunk() method
         correlation_id: str | None = None,
     ) -> Any:
         """
@@ -46,7 +52,7 @@ class ChunkingStrategyFactory:
 
         Args:
             strategy_name: Name of the strategy (string or enum)
-            config: Configuration for the strategy
+            config: Per-operation configuration (passed to chunk() method)
             correlation_id: Optional correlation ID for error tracking
 
         Returns:
@@ -54,6 +60,11 @@ class ChunkingStrategyFactory:
 
         Raises:
             ChunkingStrategyError: If strategy is unknown or initialization fails
+
+        Note:
+            Plugin configuration (API keys, global settings) is loaded from the
+            shared plugin state file and applied via the strategy's configure()
+            method if available. Per-operation config is passed to chunk().
         """
         # Convert enum to internal name if needed
         if isinstance(strategy_name, ChunkingStrategyEnum):
@@ -81,10 +92,15 @@ class ChunkingStrategyFactory:
 
         try:
             # Get strategy from shared registry
-            return get_strategy(strategy_key)
+            strategy = get_strategy(strategy_key)
 
-            # Note: The shared strategies don't take config in constructor,
-            # they use it in the chunk() method. So we just return the strategy.
+            # Load plugin config from state file and configure if supported
+            plugin_config = get_plugin_config(strategy_key, resolve_secrets=True)
+            if plugin_config and hasattr(strategy, "configure"):
+                strategy.configure(plugin_config)
+                logger.debug("Applied plugin config to chunking strategy '%s'", strategy_key)
+
+            return strategy
 
         except Exception as e:
             raise ChunkingStrategyError(
