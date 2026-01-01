@@ -6,11 +6,14 @@ such as ensuring default data exists.
 
 import logging
 
+from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.chunking.plugin_loader import load_chunking_plugins
 from shared.database.database import get_db
-from shared.embedding.plugin_loader import ensure_providers_registered, load_embedding_plugins
+from shared.database.models import PluginConfig
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import PluginSource
 from webui.services.chunking_strategy_service import ChunkingStrategyService
 
 logger = logging.getLogger(__name__)
@@ -23,23 +26,46 @@ async def ensure_default_data() -> None:
     """
     logger.info("Running startup tasks to ensure default data...")
 
-    # Ensure built-in embedding providers are registered
-    ensure_providers_registered()
-    logger.info("Built-in embedding providers registered")
-
-    # Load any external embedding provider plugins
-    registered_embedding_plugins = load_embedding_plugins()
-    if registered_embedding_plugins:
-        logger.info("Loaded embedding plugins: %s", ", ".join(registered_embedding_plugins))
-
-    # Load any external chunking strategy plugins before interacting with metadata or DB.
-    registered_plugins = load_chunking_plugins()
-    if registered_plugins:
-        logger.info("Loaded chunking plugins: %s", ", ".join(registered_plugins))
-
     session_gen = get_db()
+    disabled_plugin_ids: set[str] | None = None
     try:
         session = await anext(session_gen)
+        try:
+            result = await session.execute(select(PluginConfig.id).where(PluginConfig.enabled.is_(False)))
+            disabled_plugin_ids = {row[0] for row in result.all()}
+        except SQLAlchemyError as exc:
+            logger.info("Plugin configs not available yet; loading all plugins (%s)", exc)
+
+        registry = load_plugins(
+            plugin_types={"embedding", "chunking", "connector"},
+            disabled_plugin_ids=disabled_plugin_ids,
+        )
+
+        disabled_ids = disabled_plugin_ids or set()
+        embedding_plugins = [
+            plugin_id
+            for plugin_id in registry.list_ids(plugin_type="embedding", source=PluginSource.EXTERNAL)
+            if plugin_id not in disabled_ids
+        ]
+        if embedding_plugins:
+            logger.info("Loaded embedding plugins: %s", ", ".join(embedding_plugins))
+
+        chunking_plugins = [
+            plugin_id
+            for plugin_id in registry.list_ids(plugin_type="chunking", source=PluginSource.EXTERNAL)
+            if plugin_id not in disabled_ids
+        ]
+        if chunking_plugins:
+            logger.info("Loaded chunking plugins: %s", ", ".join(chunking_plugins))
+
+        connector_plugins = [
+            plugin_id
+            for plugin_id in registry.list_ids(plugin_type="connector", source=PluginSource.EXTERNAL)
+            if plugin_id not in disabled_ids
+        ]
+        if connector_plugins:
+            logger.info("Loaded connector plugins: %s", ", ".join(connector_plugins))
+
         await ensure_default_chunking_strategies(session)
     finally:
         await session_gen.aclose()

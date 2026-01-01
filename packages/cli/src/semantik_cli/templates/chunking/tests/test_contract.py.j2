@@ -1,0 +1,9 @@
+"""Basic contract tests for {{ name }} chunking plugin."""
+
+from {{ module_name }}.plugin import {{ class_name }}ChunkingPlugin
+
+
+def test_chunking_plugin_contract():
+    plugin = {{ class_name }}ChunkingPlugin()
+    ok, _ = plugin.validate_content("test")
+    assert ok

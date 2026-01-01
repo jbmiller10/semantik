@@ -6,6 +6,7 @@ from .collection_repository import CollectionRepository
 from .collection_sync_run_repository import CollectionSyncRunRepository
 from .document_repository import DocumentRepository
 from .operation_repository import OperationRepository
+from .plugin_config_repository import PluginConfigRepository
 from .projection_run_repository import ProjectionRunRepository
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "CollectionSyncRunRepository",
     "DocumentRepository",
     "OperationRepository",
+    "PluginConfigRepository",
     "ProjectionRunRepository",
 ]

@@ -101,6 +101,17 @@ USE_MOCK_EMBEDDINGS=false                          # Use mock embeddings for tes
 # - sentence-transformers/all-MiniLM-L6-v2 (384 dims)
 ```
 
+#### Plugin Loading
+```bash
+# Global toggle for external plugins (entry points: semantik.plugins)
+SEMANTIK_ENABLE_PLUGINS=true
+
+# Per-type toggles (external plugins only; built-ins always load)
+SEMANTIK_ENABLE_EMBEDDING_PLUGINS=true
+SEMANTIK_ENABLE_CHUNKING_PLUGINS=true
+SEMANTIK_ENABLE_CONNECTOR_PLUGINS=true
+```
+
 #### Quantization & Performance
 ```bash
 # Quantization modes

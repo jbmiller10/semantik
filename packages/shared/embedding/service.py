@@ -30,13 +30,9 @@ _current_model_name: str | None = None
 
 def _ensure_providers_registered() -> None:
     """Ensure all providers (built-in and plugins) are registered before use."""
-    # Import triggers registration in providers/__init__.py (built-ins first)
-    from . import providers as _  # noqa: F401
+    from shared.plugins.loader import load_plugins
 
-    # Load plugins if enabled (idempotent - only runs once)
-    from .plugin_loader import load_embedding_plugins
-
-    load_embedding_plugins()
+    load_plugins(plugin_types={"embedding"})
 
 
 async def get_embedding_service(

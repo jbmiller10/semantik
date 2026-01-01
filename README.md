@@ -111,12 +111,13 @@ Full list + tuning notes: `docs/CONFIGURATION.md`.
 
 ## Extensibility
 Semantik is meant to be a sandbox for trying retrieval ideas:
-- **Embedding providers** load from Python entry points `semantik.embedding_providers`  
-  (toggle with `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`).
-- **Chunking strategies** load from `semantik.chunking_strategies`
-  (toggle with `SEMANTIK_ENABLE_CHUNKING_PLUGINS`).
+- **Plugins** (embedding providers, chunking strategies, connectors) load from Python entry points
+  `semantik.plugins`.
+- **Toggles**: `SEMANTIK_ENABLE_PLUGINS` (global), plus per-type flags
+  `SEMANTIK_ENABLE_EMBEDDING_PLUGINS`, `SEMANTIK_ENABLE_CHUNKING_PLUGINS`,
+  `SEMANTIK_ENABLE_CONNECTOR_PLUGINS`.
 
-Both systems are idempotent and safe to run without plugins installed.
+Plugin loading is idempotent and safe to run without plugins installed.
 
 ## Dev Notes
 Backend:

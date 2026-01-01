@@ -115,6 +115,10 @@ dmypy.json
 CLAUDE.md
 GEMINI.md
 
+# Planning and roadmap docs (not for version control)
+PLUGIN_EXTENSIBILITY_ROADMAP.md
+ROADMAP_REVIEW_SYNTHESIS.md
+
 # IDE
 .vscode/
 .idea/

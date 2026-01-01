@@ -1,0 +1,8 @@
+"""Basic contract tests for {{ name }} embedding plugin."""
+
+from {{ module_name }}.plugin import {{ class_name }}EmbeddingPlugin
+
+
+def test_embedding_plugin_contract():
+    valid, error = {{ class_name }}EmbeddingPlugin.validate_plugin_contract()
+    assert valid, error

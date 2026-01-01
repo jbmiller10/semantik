@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from shared.config import settings
-from shared.embedding.plugin_loader import ensure_providers_registered, load_embedding_plugins
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import PluginSource
 from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
@@ -55,14 +56,10 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     ModelManager now handles embedding provider lifecycle internally using the
     plugin-aware provider system. No separate embedding service initialization needed.
     """
-    # Ensure embedding providers are registered before use
-    ensure_providers_registered()
-    logger.info("Built-in embedding providers registered")
-
-    # Load any external embedding plugins
-    registered_plugins = load_embedding_plugins()
-    if registered_plugins:
-        logger.info("Loaded embedding plugins: %s", ", ".join(registered_plugins))
+    registry = load_plugins(plugin_types={"embedding"})
+    embedded_plugins = registry.list_ids(plugin_type="embedding", source=PluginSource.EXTERNAL)
+    if embedded_plugins:
+        logger.info("Loaded embedding plugins: %s", ", ".join(embedded_plugins))
 
     start_metrics = _resolve_start_metrics_server()
     start_metrics(settings.METRICS_PORT)

@@ -13,11 +13,15 @@ packages/shared/embedding/
 ├── plugin_base.py       # BaseEmbeddingPlugin abstract class
 ├── provider_registry.py # Provider metadata registry
 ├── factory.py           # EmbeddingProviderFactory
-├── plugin_loader.py     # Entry point discovery
-├── types.py             # EmbeddingMode enum
 └── providers/
     ├── dense_local.py   # Local transformer models
     └── mock.py          # Testing mock provider
+
+packages/shared/plugins/
+├── loader.py            # Unified entry point discovery
+├── registry.py          # Plugin registry
+├── types.py             # EmbeddingMode enum
+└── manifest.py          # PluginManifest metadata
 ```
 
 ## Core Components
@@ -307,20 +311,11 @@ class EmbeddingProviderFactory:
 ## Plugin Loading
 
 ```python
-def load_embedding_plugins() -> None:
-    """Discover and load embedding plugins via entry points."""
-    # Load built-in providers
-    EmbeddingProviderFactory.register_plugin(DenseLocalEmbeddingProvider)
-    EmbeddingProviderFactory.register_plugin(MockEmbeddingProvider)
+from shared.plugins.loader import load_plugins
 
-    # Load external plugins via entry points
-    for entry_point in entry_points(group="semantik.embedding_providers"):
-        try:
-            plugin_class = entry_point.load()
-            EmbeddingProviderFactory.register_plugin(plugin_class)
-            logger.info(f"Loaded embedding plugin: {entry_point.name}")
-        except Exception as e:
-            logger.warning(f"Failed to load plugin {entry_point.name}: {e}")
+def load_embedding_plugins() -> None:
+    """Discover and load embedding plugins via the unified loader."""
+    load_plugins(plugin_types={"embedding"})
 ```
 
 ## Model Configuration
@@ -428,7 +423,7 @@ dimension = await provider.get_dimension("Qwen/Qwen3-Embedding-0.6B")
 ### Adding External Plugin
 ```python
 # In your package's pyproject.toml
-[project.entry-points."semantik.embedding_providers"]
+[project.entry-points."semantik.plugins"]
 my_provider = "my_package.embedding:MyEmbeddingProvider"
 
 # Your provider class

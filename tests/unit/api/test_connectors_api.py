@@ -40,18 +40,16 @@ class TestListConnectorsEndpoint:
     def test_list_connectors_success(self, test_client):
         """Test successful connector catalog listing."""
         with patch("webui.api.v2.connectors.get_connector_catalog") as mock_catalog:
-            mock_catalog.return_value = [
-                {
-                    "type": "directory",
+            mock_catalog.return_value = {
+                "directory": {
                     "name": "Local Directory",
                     "icon": "folder",
                 },
-                {
-                    "type": "git",
+                "git": {
                     "name": "Git Repository",
                     "icon": "git-branch",
                 },
-            ]
+            }
 
             response = test_client.get("/api/v2/connectors")
 
@@ -59,7 +57,7 @@ class TestListConnectorsEndpoint:
             data = response.json()
             assert "connectors" in data
             assert len(data["connectors"]) == 2
-            assert data["connectors"][0]["type"] == "directory"
+            assert "directory" in data["connectors"]
 
 
 class TestGetConnectorEndpoint:

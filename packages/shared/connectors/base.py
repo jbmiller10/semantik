@@ -30,6 +30,7 @@ class BaseConnector(ABC):
 
     PLUGIN_ID: ClassVar[str] = ""
     PLUGIN_TYPE: ClassVar[str] = "connector"
+    PLUGIN_VERSION: ClassVar[str] = "0.0.0"
     METADATA: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, config: dict[str, Any]) -> None:

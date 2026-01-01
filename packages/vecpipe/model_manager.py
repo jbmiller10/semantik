@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from shared.config import settings
 from shared.embedding.factory import EmbeddingProviderFactory
-from shared.embedding.plugin_loader import ensure_providers_registered, load_embedding_plugins
+from shared.plugins.loader import load_plugins
 from shared.embedding.types import EmbeddingMode
 
 from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
@@ -36,7 +36,7 @@ class ModelManager:
 
     This class uses the plugin-aware embedding provider system to enable:
     - Built-in providers (DenseLocalEmbeddingProvider, MockEmbeddingProvider)
-    - Third-party plugins registered via semantik.embedding_providers entry points
+    - Third-party plugins registered via semantik.plugins entry points
 
     The provider is auto-detected based on model name via EmbeddingProviderFactory.
     """
@@ -113,8 +113,7 @@ class ModelManager:
             return self._provider
 
         # Ensure providers are registered (idempotent)
-        ensure_providers_registered()
-        load_embedding_plugins()
+        load_plugins(plugin_types={"embedding"})
 
         # Mock mode handling - use MockEmbeddingProvider
         if self.is_mock_mode:

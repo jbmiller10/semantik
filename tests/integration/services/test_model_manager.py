@@ -22,11 +22,11 @@ def model_manager(monkeypatch):
     importlib.reload(shared_config)
     shared_config.settings.USE_MOCK_EMBEDDINGS = True
 
-    # Reset plugin loader state to ensure fresh provider registration
-    from shared.embedding.plugin_loader import _reset_plugin_loader_state, ensure_providers_registered
+    from shared.plugins.loader import load_plugins
+    from shared.plugins.registry import plugin_registry
 
-    _reset_plugin_loader_state()
-    ensure_providers_registered()
+    plugin_registry.reset()
+    load_plugins(plugin_types={"embedding"})
 
     from vecpipe import model_manager as model_manager_module
 
@@ -149,13 +149,11 @@ def _mock_dummy_plugin():
     but registers directly to avoid the full entry point discovery process.
     """
     from shared.embedding.factory import EmbeddingProviderFactory
-    from shared.embedding.plugin_loader import _reset_plugin_loader_state, ensure_providers_registered
+    from shared.plugins.loader import load_plugins
+    from shared.plugins.registry import plugin_registry
 
-    # Reset plugin loader state
-    _reset_plugin_loader_state()
-
-    # Ensure built-in providers are registered first
-    ensure_providers_registered()
+    plugin_registry.reset()
+    load_plugins(plugin_types={"embedding"})
 
     # Register the dummy provider directly with the factory
     EmbeddingProviderFactory.register_provider("dummy_test", DummyPluginProvider)
@@ -164,7 +162,7 @@ def _mock_dummy_plugin():
 
     # Cleanup: unregister the dummy provider and reset state
     EmbeddingProviderFactory.unregister_provider("dummy_test")
-    _reset_plugin_loader_state()
+    plugin_registry.reset()
 
 
 @pytest.mark.usefixtures("_mock_dummy_plugin")

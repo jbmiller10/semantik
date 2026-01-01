@@ -216,7 +216,7 @@ async def cancel_operation(
 @router.get("/connectors")
 async def get_connector_catalog() -> ConnectorCatalogResponse:
     """Return all available connector types with field definitions."""
-    return ConnectorCatalogResponse(connectors=CONNECTOR_DEFINITIONS)
+    return ConnectorCatalogResponse(connectors=get_connector_catalog())
 ```
 
 **POST /api/v2/connectors/git/preview**

@@ -57,6 +57,28 @@ dependencies = [
     "packages>=0.1.0",
 ]
 
+[project.optional-dependencies]
+cli = [
+    "click>=8.1.0,<9",
+    "jinja2>=3.1.0,<4",
+]
+
+[project.scripts]
+semantik-plugin = "semantik_cli.main:main"
+
+[project.entry-points."semantik.plugins"]
+embedding-dense-local = "shared.embedding.providers.dense_local:DenseLocalEmbeddingProvider"
+embedding-mock = "shared.embedding.providers.mock:MockEmbeddingProvider"
+chunking-character = "shared.chunking.domain.services.chunking_strategies.character:CharacterChunkingStrategy"
+chunking-recursive = "shared.chunking.domain.services.chunking_strategies.recursive:RecursiveChunkingStrategy"
+chunking-semantic = "shared.chunking.domain.services.chunking_strategies.semantic:SemanticChunkingStrategy"
+chunking-markdown = "shared.chunking.domain.services.chunking_strategies.markdown:MarkdownChunkingStrategy"
+chunking-hierarchical = "shared.chunking.domain.services.chunking_strategies.hierarchical:HierarchicalChunkingStrategy"
+chunking-hybrid = "shared.chunking.domain.services.chunking_strategies.hybrid:HybridChunkingStrategy"
+connector-directory = "shared.connectors.local:LocalFileConnector"
+connector-git = "shared.connectors.git:GitConnector"
+connector-imap = "shared.connectors.imap:ImapConnector"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0,<9",
@@ -80,6 +102,7 @@ include = [
     "packages/vecpipe",
     "packages/webui",
     "packages/shared",
+    "packages/cli",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -87,12 +110,14 @@ include = [
     "packages/vecpipe",
     "packages/webui",
     "packages/shared",
+    "packages/cli",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
 "packages/vecpipe" = "vecpipe"
 "packages/webui" = "webui"
 "packages/shared" = "shared"
+"packages/cli" = "semantik_cli"
 
 [build-system]
 requires = ["hatchling"]

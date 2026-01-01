@@ -457,7 +457,7 @@ Semantik uses a plugin-based architecture for embedding providers, allowing both
 | `EmbeddingProviderFactory` | `packages/shared/embedding/factory.py` | Central dispatch for creating providers |
 | `BaseEmbeddingPlugin` | `packages/shared/embedding/plugin_base.py` | Abstract base class for all providers |
 | `EmbeddingProviderDefinition` | `packages/shared/embedding/plugin_base.py` | Provider metadata definition |
-| `plugin_loader.py` | `packages/shared/embedding/plugin_loader.py` | Entry point discovery |
+| `plugins/loader.py` | `packages/shared/plugins/loader.py` | Unified entry point discovery |
 
 #### Factory Pattern
 
@@ -489,7 +489,7 @@ providers = EmbeddingProviderFactory.list_available_providers()
 Plugins are discovered via Python entry points in `pyproject.toml`:
 
 ```toml
-[project.entry-points."semantik.embedding_providers"]
+[project.entry-points."semantik.plugins"]
 my_provider = "my_package.embedding:MyEmbeddingProvider"
 ```
 

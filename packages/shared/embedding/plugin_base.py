@@ -115,6 +115,7 @@ class BaseEmbeddingPlugin(BaseEmbeddingService):
     INTERNAL_NAME: ClassVar[str] = ""  # Internal identifier
     API_ID: ClassVar[str] = ""  # API-facing identifier
     PROVIDER_TYPE: ClassVar[str] = "local"  # "local", "remote", or "hybrid"
+    PLUGIN_VERSION: ClassVar[str] = "0.0.0"
 
     # Optional metadata for UI/API exposure
     METADATA: ClassVar[dict[str, Any]] = {}

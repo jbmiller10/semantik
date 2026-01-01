@@ -7,7 +7,7 @@ Load external chunking strategies at runtime without forking core.
 1) Publish a Python package that exposes an entry point:
 
 ```toml
-[project.entry-points."semantik.chunking_strategies"]
+[project.entry-points."semantik.plugins"]
 my_fancy = "my_plugin.module:MyFancyChunker"
 ```
 
@@ -61,9 +61,9 @@ Plugins without valid `visual_example.url` are skipped. Keep images lightweight,
 
 ## Runtime
 
-**Loader**: `packages/shared/chunking/plugin_loader.py`
-**Entry point**: `semantik.chunking_strategies`
-**Toggle**: `SEMANTIK_ENABLE_CHUNKING_PLUGINS` (default `true`)
+**Loader**: `packages/shared/plugins/loader.py`
+**Entry point**: `semantik.plugins`
+**Toggle**: `SEMANTIK_ENABLE_CHUNKING_PLUGINS` (default `true`, gated by `SEMANTIK_ENABLE_PLUGINS`)
 **Loaded in**: webui startup + Celery workers
 
 ## API Visibility

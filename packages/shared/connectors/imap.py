@@ -200,6 +200,7 @@ class ImapConnector(BaseConnector):
         "description": "Connect to an IMAP mailbox and index emails",
         "icon": "mail",
         "supports_sync": True,
+        "preview_endpoint": "/api/v2/connectors/preview/imap",
     }
 
     def __init__(self, config: dict[str, Any]) -> None:
