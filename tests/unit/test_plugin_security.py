@@ -190,64 +190,76 @@ class TestSanitizeAuditDetails:
 
     def test_removes_password_keys(self):
         """Should remove keys containing password."""
-        result = _sanitize_audit_details({
-            "db_password": "secret",
-            "username": "admin",
-        })
+        result = _sanitize_audit_details(
+            {
+                "db_password": "secret",
+                "username": "admin",
+            }
+        )
 
         assert "db_password" not in result
         assert result["username"] == "admin"
 
     def test_removes_secret_keys(self):
         """Should remove keys containing secret."""
-        result = _sanitize_audit_details({
-            "jwt_secret": "abc123",
-            "value": "normal",
-        })
+        result = _sanitize_audit_details(
+            {
+                "jwt_secret": "abc123",
+                "value": "normal",
+            }
+        )
 
         assert "jwt_secret" not in result
         assert result["value"] == "normal"
 
     def test_removes_token_keys(self):
         """Should remove keys containing token."""
-        result = _sanitize_audit_details({
-            "access_token": "xyz",
-            "name": "test",
-        })
+        result = _sanitize_audit_details(
+            {
+                "access_token": "xyz",
+                "name": "test",
+            }
+        )
 
         assert "access_token" not in result
         assert result["name"] == "test"
 
     def test_removes_api_key_keys(self):
         """Should remove keys containing api_key."""
-        result = _sanitize_audit_details({
-            "openai_api_key": "sk-xxx",
-            "model": "gpt-4",
-        })
+        result = _sanitize_audit_details(
+            {
+                "openai_api_key": "sk-xxx",
+                "model": "gpt-4",
+            }
+        )
 
         assert "openai_api_key" not in result
         assert result["model"] == "gpt-4"
 
     def test_sanitizes_nested_dicts(self):
         """Should sanitize nested dictionaries."""
-        result = _sanitize_audit_details({
-            "outer": {
-                "api_key": "secret",
-                "name": "test",
+        result = _sanitize_audit_details(
+            {
+                "outer": {
+                    "api_key": "secret",
+                    "name": "test",
+                }
             }
-        })
+        )
 
         assert "api_key" not in result["outer"]
         assert result["outer"]["name"] == "test"
 
     def test_sanitizes_lists(self):
         """Should sanitize dicts in lists."""
-        result = _sanitize_audit_details({
-            "items": [
-                {"token": "secret", "id": 1},
-                {"token": "secret2", "id": 2},
-            ]
-        })
+        result = _sanitize_audit_details(
+            {
+                "items": [
+                    {"token": "secret", "id": 1},
+                    {"token": "secret2", "id": 2},
+                ]
+            }
+        )
 
         for item in result["items"]:
             assert "token" not in item
@@ -278,11 +290,13 @@ class TestSanitizeAuditDetails:
 
     def test_handles_non_string_keys(self):
         """Should handle dictionaries gracefully."""
-        result = _sanitize_audit_details({
-            "count": 42,
-            "enabled": True,
-            "items": [1, 2, 3],
-        })
+        result = _sanitize_audit_details(
+            {
+                "count": 42,
+                "enabled": True,
+                "items": [1, 2, 3],
+            }
+        )
 
         assert result["count"] == 42
         assert result["enabled"] is True
@@ -290,16 +304,18 @@ class TestSanitizeAuditDetails:
 
     def test_deeply_nested(self):
         """Should handle deeply nested structures."""
-        result = _sanitize_audit_details({
-            "level1": {
-                "level2": {
-                    "level3": {
-                        "password": "secret",
-                        "value": "ok",
+        result = _sanitize_audit_details(
+            {
+                "level1": {
+                    "level2": {
+                        "level3": {
+                            "password": "secret",
+                            "value": "ok",
+                        }
                     }
                 }
             }
-        })
+        )
 
         assert "password" not in result["level1"]["level2"]["level3"]
         assert result["level1"]["level2"]["level3"]["value"] == "ok"

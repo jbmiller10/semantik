@@ -19,16 +19,18 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Patterns that indicate sensitive environment variables
-SENSITIVE_ENV_PATTERNS = frozenset({
-    "PASSWORD",
-    "SECRET",
-    "KEY",
-    "TOKEN",
-    "CREDENTIAL",
-    "API_KEY",
-    "PRIVATE",
-    "AUTH",
-})
+SENSITIVE_ENV_PATTERNS = frozenset(
+    {
+        "PASSWORD",
+        "SECRET",
+        "KEY",
+        "TOKEN",
+        "CREDENTIAL",
+        "API_KEY",
+        "PRIVATE",
+        "AUTH",
+    }
+)
 
 
 def get_sanitized_environment() -> dict[str, str]:
@@ -137,8 +139,7 @@ def _sanitize_audit_details(
                 sanitized[key] = sanitized_value
         elif isinstance(value, list):
             sanitized[key] = [
-                _sanitize_audit_details(item, _seen) if isinstance(item, dict) else item
-                for item in value
+                _sanitize_audit_details(item, _seen) if isinstance(item, dict) else item for item in value
             ]
         else:
             sanitized[key] = value
