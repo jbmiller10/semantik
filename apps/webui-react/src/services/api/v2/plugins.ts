@@ -7,6 +7,8 @@ import type {
   PluginStatusResponse,
   PluginHealthResponse,
   PluginConfigSchema,
+  PluginInstallRequest,
+  PluginInstallResponse,
   AvailablePluginsListResponse,
   AvailablePluginFilters,
 } from '../../../types/plugin';
@@ -91,4 +93,20 @@ export const pluginsApi = {
    */
   refreshAvailable: () =>
     apiClient.post<AvailablePluginsListResponse>('/api/v2/plugins/available/refresh'),
+
+  // --- Plugin Installation ---
+
+  /**
+   * Install a plugin from the registry (admin only)
+   * @param request The install request with plugin_id and optional version
+   */
+  install: (request: PluginInstallRequest) =>
+    apiClient.post<PluginInstallResponse>('/api/v2/plugins/install', request),
+
+  /**
+   * Uninstall an installed plugin (admin only)
+   * @param pluginId The plugin identifier
+   */
+  uninstall: (pluginId: string) =>
+    apiClient.delete<PluginInstallResponse>(`/api/v2/plugins/${pluginId}/uninstall`),
 };

@@ -191,14 +191,32 @@ export interface AvailablePlugin {
   description: string;
   author: string;
   repository: string;
-  pypi: string;
+  pypi?: string | null;
   verified: boolean;
   min_semantik_version?: string | null;
   tags: string[];
   is_compatible: boolean;
   compatibility_message?: string | null;
   is_installed: boolean;
+  pending_restart: boolean;
   install_command: string;
+}
+
+/**
+ * Request to install a plugin
+ */
+export interface PluginInstallRequest {
+  plugin_id: string;
+  version?: string | null;
+}
+
+/**
+ * Response from install/uninstall operations
+ */
+export interface PluginInstallResponse {
+  success: boolean;
+  message: string;
+  restart_required: boolean;
 }
 
 /**

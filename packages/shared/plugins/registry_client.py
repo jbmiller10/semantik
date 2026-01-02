@@ -38,7 +38,8 @@ class RegistryPlugin(BaseModel):
     description: str
     author: str
     repository: str
-    pypi: str
+    pypi: str | None = None  # PyPI package name (legacy, optional)
+    install_command: str | None = None  # pip install command (e.g., git+https://...)
     verified: bool = False
     min_semantik_version: str | None = None
     tags: list[str] = Field(default_factory=list)
