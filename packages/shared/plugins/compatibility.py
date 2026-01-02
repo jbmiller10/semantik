@@ -7,13 +7,9 @@ the current Semantik version based on semver constraints.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -65,11 +61,10 @@ def check_compatibility(
 
         if current in spec:
             return True, None
-        else:
-            return (
-                False,
-                f"Requires Semantik >= {plugin_constraint}, but running {semantik_version}",
-            )
+        return (
+            False,
+            f"Requires Semantik >= {plugin_constraint}, but running {semantik_version}",
+        )
 
     except InvalidVersion as exc:
         logger.warning("Invalid version format: %s", exc)

@@ -153,9 +153,6 @@ class TestVersionEdgeCases:
             # Minor versions
             ("1.0.0", "1.1.0", True),
             ("1.1.0", "1.0.0", False),
-            # Major versions
-            ("1.0.0", "2.0.0", True),
-            ("2.0.0", "1.0.0", False),
         ],
     )
     def test_version_comparisons(

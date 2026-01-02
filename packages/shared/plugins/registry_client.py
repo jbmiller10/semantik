@@ -11,14 +11,11 @@ import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +100,7 @@ def load_bundled_registry() -> PluginRegistry:
         ValidationError: If bundled registry is malformed.
     """
     logger.debug("Loading bundled registry from %s", BUNDLED_REGISTRY_PATH)
-    with open(BUNDLED_REGISTRY_PATH) as f:
+    with BUNDLED_REGISTRY_PATH.open() as f:
         content = yaml.safe_load(f)
     return PluginRegistry.model_validate(content)
 

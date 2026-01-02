@@ -11,8 +11,8 @@ import pytest
 import yaml
 
 from shared.plugins.registry_client import (
-    DEFAULT_REGISTRY_URL,
     BUNDLED_REGISTRY_PATH,
+    DEFAULT_REGISTRY_URL,
     PluginRegistry,
     RegistryCache,
     RegistryPlugin,

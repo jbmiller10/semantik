@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@/tests/utils/test-utils';
+import { render, screen } from '@/tests/utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import AvailablePluginCard from '../AvailablePluginCard';
 import type { AvailablePlugin, PluginType } from '@/types/plugin';

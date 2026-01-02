@@ -3,7 +3,7 @@ import {
   useAvailablePlugins,
   useRefreshAvailablePlugins,
 } from '../../hooks/usePlugins';
-import type { PluginType, AvailablePlugin } from '../../types/plugin';
+import type { PluginType } from '../../types/plugin';
 import {
   PLUGIN_TYPE_LABELS,
   PLUGIN_TYPE_ORDER,
