@@ -158,7 +158,7 @@ describe('PluginsSettings', () => {
       expect(screen.getByText('No plugins installed')).toBeInTheDocument();
       expect(
         screen.getByText(
-          'External plugins can be installed via pip and will appear here.'
+          'Check the Available tab for plugins you can install.'
         )
       ).toBeInTheDocument();
     });
