@@ -15,7 +15,6 @@ import logging
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -64,10 +63,9 @@ def install_plugin(
     logger.info("Installing plugin: %s -> %s", install_command, plugins_dir)
 
     try:
+        # Use system pip directly (venv doesn't have pip, uses uv)
         result = subprocess.run(
             [
-                sys.executable,
-                "-m",
                 "pip",
                 "install",
                 "--target",
