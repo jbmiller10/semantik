@@ -402,7 +402,7 @@ describe('usePlugins hooks', () => {
         pluginKeys.detail('test-plugin'),
         updatedPlugin
       );
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: pluginKeys.list() });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [...pluginKeys.all, 'list'] });
     });
 
     it('handles update error', async () => {
@@ -449,7 +449,7 @@ describe('usePlugins hooks', () => {
         mockHealthResponse
       );
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: pluginKeys.detail('test-plugin') });
-      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: pluginKeys.list() });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: [...pluginKeys.all, 'list'] });
     });
   });
 });

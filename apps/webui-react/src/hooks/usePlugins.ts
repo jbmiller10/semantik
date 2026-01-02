@@ -160,8 +160,8 @@ export function useUpdatePluginConfig() {
     onSuccess: (data, { pluginId }) => {
       // Update the cache with the returned plugin info
       queryClient.setQueryData(pluginKeys.detail(pluginId), data);
-      // Also invalidate the list to ensure it's fresh
-      queryClient.invalidateQueries({ queryKey: pluginKeys.list() });
+      // Invalidate all list queries regardless of filters
+      queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
     },
   });
 }
@@ -182,7 +182,8 @@ export function useRefreshPluginHealth() {
       queryClient.setQueryData(pluginKeys.health(pluginId), data);
       // Also invalidate the detail to get updated health_status
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
-      queryClient.invalidateQueries({ queryKey: pluginKeys.list() });
+      // Invalidate all list queries regardless of filters (e.g., include_health)
+      queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
     },
   });
 }
