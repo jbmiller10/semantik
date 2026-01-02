@@ -247,6 +247,9 @@ class PluginService:
 
         if include_health and results:
             await self._refresh_health(records, config_map)
+            # Re-fetch configs after health refresh commit to avoid expired ORM objects
+            configs = await self.repo.list_configs(plugin_type=plugin_type)
+            config_map = {config.id: config for config in configs}
             results = [self._build_plugin_payload(r, config_map.get(r.plugin_id)) for r in records]
             if enabled is not None:
                 results = [payload for payload in results if payload["enabled"] is enabled]

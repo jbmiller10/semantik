@@ -9,6 +9,8 @@ import type {
   PluginHealthResponse,
   AvailablePluginsListResponse,
   AvailablePluginFilters,
+  PluginInstallRequest,
+  PluginInstallResponse,
 } from '../types/plugin';
 
 /**
@@ -228,6 +230,48 @@ export function useRefreshAvailablePlugins() {
       queryClient.invalidateQueries({
         queryKey: [...pluginKeys.all, 'available'],
       });
+    },
+  });
+}
+
+// --- Plugin Installation ---
+
+/**
+ * Hook to install a plugin from the registry
+ * Invalidates available plugins query on success to update install state
+ */
+export function usePluginInstall() {
+  const queryClient = useQueryClient();
+
+  return useMutation<PluginInstallResponse, Error, PluginInstallRequest>({
+    mutationFn: async (request: PluginInstallRequest) => {
+      const response = await pluginsApi.install(request);
+      return response.data;
+    },
+    onSuccess: () => {
+      // Invalidate available plugins to update is_installed and pending_restart state
+      queryClient.invalidateQueries({
+        queryKey: [...pluginKeys.all, 'available'],
+      });
+    },
+  });
+}
+
+/**
+ * Hook to uninstall an installed plugin
+ * Invalidates both available and installed plugins queries on success
+ */
+export function usePluginUninstall() {
+  const queryClient = useQueryClient();
+
+  return useMutation<PluginInstallResponse, Error, string>({
+    mutationFn: async (pluginId: string) => {
+      const response = await pluginsApi.uninstall(pluginId);
+      return response.data;
+    },
+    onSuccess: () => {
+      // Invalidate all plugin queries
+      queryClient.invalidateQueries({ queryKey: pluginKeys.all });
     },
   });
 }

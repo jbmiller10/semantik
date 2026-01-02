@@ -156,6 +156,11 @@ RUN mkdir -p \
 RUN mkdir -p /app/.cache/huggingface/hub && \
     chown -R appuser:appuser /app/.cache
 
+# Create plugins directory with correct ownership for named volume
+# When a Docker volume is mounted, it inherits the directory's ownership
+RUN mkdir -p /app/plugins && \
+    chown -R appuser:appuser /app/plugins
+
 # Create symbolic links for CUDA libraries if needed
 RUN ln -sf /usr/local/cuda/lib64/libcudart.so.12 /usr/local/cuda/lib64/libcudart.so || true && \
     ln -sf /usr/lib/x86_64-linux-gnu/libcusparse.so.11 /usr/local/cuda/lib64/libcusparse.so.11 || true && \

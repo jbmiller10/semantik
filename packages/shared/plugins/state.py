@@ -25,7 +25,8 @@ from pydantic import BaseModel, Field, ValidationError
 logger = logging.getLogger(__name__)
 
 # Default state file path (on shared volume in Docker)
-DEFAULT_STATE_FILE_PATH = Path("/data/plugin_state.json")
+# The Docker volumes mount ./data to /app/data
+DEFAULT_STATE_FILE_PATH = Path("/app/data/plugin_state.json")
 
 # Current schema version - bump when making breaking changes
 SCHEMA_VERSION = 1

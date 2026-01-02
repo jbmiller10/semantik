@@ -34,6 +34,7 @@ function LoginPage() {
             username: username,
             email: '',
             is_active: true,
+            is_superuser: false,
             created_at: new Date().toISOString()
           }, response.data.refresh_token);
           

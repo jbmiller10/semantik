@@ -19,6 +19,13 @@ for path in (PACKAGES_DIR, REPO_ROOT):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
+# Add plugins directory to sys.path AFTER site-packages so app packages take precedence
+import os
+
+_plugins_dir = os.environ.get("SEMANTIK_PLUGINS_DIR", "/app/plugins")
+if Path(_plugins_dir).is_dir() and _plugins_dir not in sys.path:
+    sys.path.append(_plugins_dir)
+
 # When executed directly (not via -m), set __package__ so relative imports work.
 # Preserve interpreter-provided values like "packages.webui" when running
 # with ``python -m packages.webui.main`` to avoid breaking absolute imports.

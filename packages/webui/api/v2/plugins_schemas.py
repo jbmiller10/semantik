@@ -80,14 +80,34 @@ class AvailablePluginInfo(BaseModel):
     description: str
     author: str
     repository: str
-    pypi: str
+    pypi: str | None = None
     verified: bool
     min_semantik_version: str | None = None
     tags: list[str] = Field(default_factory=list)
     is_compatible: bool = True
     compatibility_message: str | None = None
     is_installed: bool = False
+    pending_restart: bool = False  # True if installed in plugins dir but not yet loaded
     install_command: str = ""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PluginInstallRequest(BaseModel):
+    """Request to install a plugin from the registry."""
+
+    plugin_id: str  # Registry plugin ID, e.g., "openai-embeddings"
+    version: str | None = None  # Optional git tag/branch, e.g., "v1.0.0"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PluginInstallResponse(BaseModel):
+    """Response from install/uninstall operations."""
+
+    success: bool
+    message: str
+    restart_required: bool = True
 
     model_config = ConfigDict(extra="forbid")
 

@@ -377,7 +377,23 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
   };
 
   const handleChange = (field: keyof CreateCollectionRequest, value: string | number | boolean | undefined) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+
+      // When embedding model changes, adjust quantization based on model capabilities
+      if (field === 'embedding_model' && typeof value === 'string' && modelsData?.models) {
+        const modelConfig = modelsData.models[value];
+        if (modelConfig?.supports_quantization === false) {
+          // Model doesn't support quantization - clear the field
+          updated.quantization = undefined;
+        } else if (!prev.quantization) {
+          // Model supports quantization but none selected - use default or recommended
+          updated.quantization = modelConfig?.recommended_quantization || DEFAULT_QUANTIZATION;
+        }
+      }
+
+      return updated;
+    });
     // Clear error when field is modified
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -568,25 +584,27 @@ function CreateCollectionModal({ onClose, onSuccess }: CreateCollectionModalProp
               </p>
             </div>
 
-            {/* Quantization */}
-            <div>
-              <label htmlFor="quantization" className="block text-sm font-medium text-gray-700">
-                Model Quantization
-              </label>
-              <select
-                id="quantization"
-                value={formData.quantization}
-                onChange={(e) => handleChange('quantization', e.target.value)}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
-              >
-                <option value="float32">float32 (Highest Precision)</option>
-                <option value="float16">float16 (Balanced - Default)</option>
-                <option value="int8">int8 (Lowest Memory Usage)</option>
-              </select>
-              <p className="mt-1 text-sm text-gray-500">
-                Choose the precision level for the embedding model. Lower precision uses less memory but may affect accuracy
-              </p>
-            </div>
+            {/* Quantization - only show for models that support it */}
+            {formData.embedding_model && modelsData?.models?.[formData.embedding_model]?.supports_quantization !== false && (
+              <div>
+                <label htmlFor="quantization" className="block text-sm font-medium text-gray-700">
+                  Model Quantization
+                </label>
+                <select
+                  id="quantization"
+                  value={formData.quantization}
+                  onChange={(e) => handleChange('quantization', e.target.value)}
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                >
+                  <option value="float32">float32 (Highest Precision)</option>
+                  <option value="float16">float16 (Balanced - Default)</option>
+                  <option value="int8">int8 (Lowest Memory Usage)</option>
+                </select>
+                <p className="mt-1 text-sm text-gray-500">
+                  Choose the precision level for the embedding model. Lower precision uses less memory but may affect accuracy
+                </p>
+              </div>
+            )}
 
             {/* Chunking Strategy */}
             <ErrorBoundary

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from shared.database import get_db
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.plugins_schemas import (
     AvailablePluginInfo,
@@ -14,6 +18,8 @@ from webui.api.v2.plugins_schemas import (
     PluginConfigUpdateRequest,
     PluginHealthResponse,
     PluginInfo,
+    PluginInstallRequest,
+    PluginInstallResponse,
     PluginListResponse,
     PluginManifestSchema,
     PluginStatusResponse,
@@ -24,7 +30,7 @@ from webui.services.plugin_service import PluginService
 router = APIRouter(prefix="/api/v2/plugins", tags=["plugins-v2"])
 
 
-async def _get_plugin_service(db=Depends(get_db)) -> PluginService:
+async def _get_plugin_service(db: AsyncSession = Depends(get_db)) -> PluginService:
     return PluginService(db)
 
 
@@ -67,13 +73,17 @@ async def list_available_plugins(
     """
     from shared.plugins.compatibility import check_compatibility, get_semantik_version
     from shared.plugins.registry_client import fetch_registry, get_registry_source
+    from webui.services.plugin_installer import list_installed_packages
 
     # Get current Semantik version
     semantik_version = get_semantik_version()
 
-    # Get installed plugin IDs
+    # Get installed plugin IDs (plugins that are loaded and active)
     installed_plugins = await service.list_plugins()
     installed_ids = {p["id"] for p in installed_plugins}
+
+    # Get packages in plugins directory (may include pending-restart plugins)
+    pending_packages = set(list_installed_packages())
 
     # Fetch registry
     registry = await fetch_registry(force_refresh=force_refresh)
@@ -93,6 +103,23 @@ async def list_available_plugins(
             semantik_version,
         )
 
+        # Determine if plugin is installed and loaded
+        is_installed = p.id in installed_ids
+
+        # Check if package is in plugins dir but not loaded (pending restart)
+        # Derive package name from pypi field or plugin ID
+        package_name = p.pypi or f"semantik-plugin-{p.id}"
+        pkg_dir_name = package_name.replace("-", "_")
+        is_pending = pkg_dir_name in pending_packages and not is_installed
+
+        # Build install command from install_command field or pypi field
+        if p.install_command:
+            install_cmd = p.install_command
+        elif p.pypi:
+            install_cmd = f"pip install {p.pypi}"
+        else:
+            install_cmd = ""
+
         result_plugins.append(
             AvailablePluginInfo(
                 id=p.id,
@@ -107,8 +134,9 @@ async def list_available_plugins(
                 tags=p.tags,
                 is_compatible=is_compatible,
                 compatibility_message=compat_msg,
-                is_installed=p.id in installed_ids,
-                install_command=f"pip install {p.pypi}",
+                is_installed=is_installed,
+                pending_restart=is_pending,
+                install_command=install_cmd,
             )
         )
 
@@ -200,7 +228,8 @@ async def get_plugin_config_schema(
     plugin = await service.get_plugin(plugin_id)
     if plugin is None:
         raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
-    return await service.get_config_schema(plugin_id)
+    schema: dict[str, Any] | None = await service.get_config_schema(plugin_id)
+    return schema
 
 
 @router.post(
@@ -288,3 +317,160 @@ async def check_plugin_health(
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
     return PluginHealthResponse(**payload)
+
+
+# --- Plugin Installation ---
+
+
+@router.post(
+    "/install",
+    response_model=PluginInstallResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Admin access required"},
+        404: {"model": ErrorResponse, "description": "Plugin not found in registry"},
+    },
+)
+async def install_plugin_endpoint(
+    request: PluginInstallRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> PluginInstallResponse:
+    """Install a plugin from the registry (admin only).
+
+    Installs the plugin to a persistent directory. A container restart
+    is required to activate the plugin.
+    """
+    from shared.plugins.registry_client import fetch_registry
+    from shared.plugins.security import audit_log
+    from webui.services.plugin_installer import install_plugin
+
+    # Check admin permission
+    if not current_user.get("is_superuser", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required to install plugins",
+        )
+
+    # Look up plugin in registry
+    registry = await fetch_registry()
+    registry_entry = next(
+        (p for p in registry.plugins if p.id == request.plugin_id),
+        None,
+    )
+    if not registry_entry:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plugin {request.plugin_id} not found in registry",
+        )
+
+    # Build install command
+    install_cmd: str | None = None
+    if registry_entry.install_command:
+        install_cmd = registry_entry.install_command
+        # Strip "pip install " prefix if present (registry may contain full command)
+        if install_cmd.startswith("pip install "):
+            install_cmd = install_cmd[len("pip install ") :]
+        if request.version:
+            # Append version to git URL (e.g., git+https://...git -> git+https://...git@v1.0.0)
+            if ".git" in install_cmd:
+                install_cmd = install_cmd.replace(".git", f".git@{request.version}")
+            else:
+                install_cmd = f"{install_cmd}@{request.version}"
+    elif registry_entry.pypi:
+        install_cmd = registry_entry.pypi
+        if request.version:
+            install_cmd = f"{install_cmd}=={request.version}"
+
+    if not install_cmd:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plugin {request.plugin_id} has no install command",
+        )
+
+    # Audit log
+    audit_log(
+        request.plugin_id,
+        "plugin.install.started",
+        {"user_id": current_user["id"], "version": request.version},
+    )
+
+    # Install (blocking)
+    success, message = install_plugin(install_cmd)
+
+    audit_log(
+        request.plugin_id,
+        "plugin.install.completed" if success else "plugin.install.failed",
+        {"success": success, "message": message[:200]},  # Truncate long error messages
+    )
+
+    return PluginInstallResponse(
+        success=success,
+        message=message,
+        restart_required=success,
+    )
+
+
+@router.delete(
+    "/{plugin_id}/uninstall",
+    response_model=PluginInstallResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Admin access required"},
+        404: {"model": ErrorResponse, "description": "Plugin not found"},
+    },
+)
+async def uninstall_plugin_endpoint(
+    plugin_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> PluginInstallResponse:
+    """Uninstall an installed plugin (admin only).
+
+    Removes the plugin from the persistent directory. A container restart
+    is required to fully unload the plugin.
+    """
+    from shared.plugins.registry_client import fetch_registry
+    from shared.plugins.security import audit_log
+    from webui.services.plugin_installer import uninstall_plugin
+
+    # Check admin permission
+    if not current_user.get("is_superuser", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Admin access required to uninstall plugins",
+        )
+
+    # Look up plugin in registry to get package name
+    registry = await fetch_registry()
+    registry_entry = next(
+        (p for p in registry.plugins if p.id == plugin_id),
+        None,
+    )
+    if not registry_entry:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Plugin {plugin_id} not found in registry",
+        )
+
+    # Derive package name from pypi field or plugin ID
+    package_name = registry_entry.pypi or f"semantik-plugin-{plugin_id}"
+
+    audit_log(
+        plugin_id,
+        "plugin.uninstall.started",
+        {"user_id": current_user["id"]},
+    )
+
+    success, message = uninstall_plugin(package_name)
+
+    audit_log(
+        plugin_id,
+        "plugin.uninstall.completed" if success else "plugin.uninstall.failed",
+        {"success": success, "message": message},
+    )
+
+    return PluginInstallResponse(
+        success=success,
+        message=message,
+        restart_required=success,
+    )

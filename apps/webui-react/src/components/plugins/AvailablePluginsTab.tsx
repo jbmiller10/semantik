@@ -63,6 +63,11 @@ function AvailablePluginsTab() {
     return groupAvailablePluginsByType(filteredPlugins);
   }, [filteredPlugins]);
 
+  // Check if any plugins have pending restart
+  const hasPendingRestart = useMemo(() => {
+    return data?.plugins.some((p) => p.pending_restart) ?? false;
+  }, [data?.plugins]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -130,6 +135,41 @@ function AvailablePluginsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Restart required banner */}
+      {hasPendingRestart && (
+        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+          <div className="flex">
+            <svg
+              className="h-5 w-5 text-orange-400 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-orange-800">
+                Restart Required
+              </h3>
+              <p className="mt-1 text-sm text-orange-700">
+                One or more plugins have been installed or modified. Restart the
+                Semantik services to activate the changes.
+              </p>
+              <div className="mt-2">
+                <code className="text-xs bg-orange-100 px-2 py-1 rounded font-mono text-orange-800">
+                  docker compose restart webui worker vecpipe
+                </code>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with search and filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Search */}

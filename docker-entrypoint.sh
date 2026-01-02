@@ -53,7 +53,21 @@ case "$SERVICE" in
     webui)
         run_strict_env_validation "webui" false
         echo "Starting WebUI service..."
-        
+
+        # Ensure plugins directory is writable for in-app plugin installation
+        PLUGINS_DIR="${SEMANTIK_PLUGINS_DIR:-/app/plugins}"
+        if [ -d "$PLUGINS_DIR" ]; then
+            if ! touch "$PLUGINS_DIR/.write_test" 2>/dev/null; then
+                echo "WARNING: Plugins directory $PLUGINS_DIR is not writable."
+                echo "In-app plugin installation will not work."
+                echo "Fix: Run 'docker compose down -v && docker compose up -d' to recreate volumes with correct permissions."
+            else
+                rm -f "$PLUGINS_DIR/.write_test"
+            fi
+        else
+            mkdir -p "$PLUGINS_DIR" 2>/dev/null || echo "WARNING: Cannot create plugins directory $PLUGINS_DIR"
+        fi
+
         # Wait for Search API to be ready
         if [ "${WAIT_FOR_SEARCH_API:-true}" = "true" ]; then
             # Use Docker service name if available, otherwise fallback to localhost

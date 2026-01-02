@@ -142,6 +142,9 @@ services:
     environment:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Plugin installation directory
+      - SEMANTIK_PLUGINS_DIR=/app/plugins
+      - PYTHONPATH=/app/packages
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
@@ -174,6 +177,8 @@ services:
       - ./logs:/app/logs
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
+      # Persistent plugin installation directory
+      - semantik_plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -218,6 +223,9 @@ services:
     environment:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Plugin installation directory
+      - SEMANTIK_PLUGINS_DIR=/app/plugins
+      - PYTHONPATH=/app/packages
       # Service URLs for inter-container communication
       - SEARCH_API_URL=http://vecpipe:8000
       - SEARCH_API_HOST=vecpipe
@@ -263,6 +271,8 @@ services:
       - ${DOCUMENT_PATH:-./documents}:/mnt/docs:ro
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
+      # Persistent plugin installation directory
+      - semantik_plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -300,8 +310,10 @@ services:
     container_name: semantik-worker
     command: [ "worker" ]
     environment:
-      # Python path
+      # Python path (includes plugins directory)
       - PYTHONPATH=/app/packages
+      # Plugin installation directory
+      - SEMANTIK_PLUGINS_DIR=/app/plugins
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # Redis configuration
@@ -347,6 +359,8 @@ services:
       - ${DOCUMENT_PATH:-./documents}:/mnt/docs:ro
       # Mount HuggingFace cache for persistent model storage
       - ${HF_CACHE_DIR:-./models}:/app/.cache/huggingface
+      # Persistent plugin installation directory
+      - semantik_plugins:/app/plugins
     depends_on:
       postgres:
         condition: service_healthy
@@ -495,6 +509,9 @@ volumes:
     driver: local
   # Named volume for Redis data persistence
   redis_data:
+    driver: local
+  # Named volume for plugin installations (persists across container restarts)
+  semantik_plugins:
     driver: local
 
 networks:
