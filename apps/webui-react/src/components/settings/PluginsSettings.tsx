@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { ReactElement } from 'react';
 import {
   usePlugins,
   useEnablePlugin,
@@ -13,7 +14,7 @@ import PluginConfigModal from '../plugins/PluginConfigModal';
 /**
  * Get icon for plugin type
  */
-function getPluginTypeIcon(type: PluginType): JSX.Element {
+function getPluginTypeIcon(type: PluginType): ReactElement {
   switch (type) {
     case 'embedding':
       return (

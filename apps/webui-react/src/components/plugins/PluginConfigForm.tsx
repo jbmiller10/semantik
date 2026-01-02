@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import type { PluginConfigSchema, JsonSchemaProperty } from '../../types/plugin';
 import { getInputClassName } from '../../utils/formStyles';
 
@@ -20,7 +21,7 @@ function renderField(
   error?: string,
   required?: boolean,
   disabled?: boolean
-): JSX.Element {
+): ReactElement {
   const inputClassName = getInputClassName(!!error, !!disabled);
   const label = property.title || name;
   const description = property.description;
