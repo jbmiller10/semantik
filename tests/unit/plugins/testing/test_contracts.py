@@ -19,7 +19,6 @@ from shared.plugins.testing.contracts import (
 from shared.plugins.types.extractor import ExtractionResult, ExtractionType
 from shared.plugins.types.reranker import RerankerCapabilities
 
-
 # =============================================================================
 # Mock Plugin Base Classes
 # =============================================================================
@@ -59,7 +58,7 @@ class MockBasePlugin:
         }
 
     @classmethod
-    async def health_check(cls, config: dict[str, Any] | None = None) -> bool:
+    async def health_check(cls, config: dict[str, Any] | None = None) -> bool:  # noqa: ARG003
         return True
 
     async def initialize(self) -> None:
@@ -179,9 +178,7 @@ class MockRerankerPlugin(MockBasePlugin):
             capabilities={},
         )
 
-    async def rerank(
-        self, query: str, documents: list, top_k: int | None = None, metadata: dict | None = None
-    ) -> list:
+    async def rerank(self, query: str, documents: list, top_k: int | None = None, metadata: dict | None = None) -> list:
         return []
 
     @classmethod

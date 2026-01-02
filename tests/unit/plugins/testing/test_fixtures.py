@@ -1,29 +1,13 @@
-"""Tests for plugin testing fixtures."""
+"""Tests for plugin testing fixtures.
+
+Note: Fixtures are loaded via conftest.py which uses pytest_plugins to load
+shared.plugins.testing.fixtures. We only import the mock types for type hints.
+"""
 
 from __future__ import annotations
 
 import pytest
 
-from shared.plugins.testing.fixtures import (
-    mock_chunker,
-    mock_chunker_large,
-    mock_embedding_service,
-    mock_embedding_service_768,
-    mock_extractor,
-    mock_reranker,
-    sample_chunk_config,
-    sample_documents,
-    sample_embedding_config,
-    sample_extractor_config,
-    sample_long_document,
-    sample_metadata,
-    sample_mock_document,
-    sample_plugin_config,
-    sample_query,
-    sample_reranker_config,
-    sample_short_text,
-    sample_text,
-)
 from shared.plugins.testing.mocks import (
     MockChunker,
     MockDocument,
@@ -94,21 +78,15 @@ class TestSampleDataFixtures:
 class TestMockDocumentFixture:
     """Tests for sample_mock_document fixture."""
 
-    def test_sample_mock_document_type(
-        self, sample_mock_document: MockDocument
-    ) -> None:
+    def test_sample_mock_document_type(self, sample_mock_document: MockDocument) -> None:
         """sample_mock_document should be a MockDocument instance."""
         assert isinstance(sample_mock_document, MockDocument)
 
-    def test_sample_mock_document_has_content(
-        self, sample_mock_document: MockDocument, sample_text: str
-    ) -> None:
+    def test_sample_mock_document_has_content(self, sample_mock_document: MockDocument, sample_text: str) -> None:
         """sample_mock_document should have sample_text content."""
         assert sample_mock_document.content == sample_text
 
-    def test_sample_mock_document_has_metadata(
-        self, sample_mock_document: MockDocument, sample_metadata: dict
-    ) -> None:
+    def test_sample_mock_document_has_metadata(self, sample_mock_document: MockDocument, sample_metadata: dict) -> None:
         """sample_mock_document should have sample_metadata."""
         assert sample_mock_document.metadata == sample_metadata
 
@@ -116,21 +94,15 @@ class TestMockDocumentFixture:
 class TestMockServiceFixtures:
     """Tests for mock service fixtures."""
 
-    def test_mock_embedding_service_type(
-        self, mock_embedding_service: MockEmbeddingService
-    ) -> None:
+    def test_mock_embedding_service_type(self, mock_embedding_service: MockEmbeddingService) -> None:
         """mock_embedding_service should be a MockEmbeddingService instance."""
         assert isinstance(mock_embedding_service, MockEmbeddingService)
 
-    def test_mock_embedding_service_dimension(
-        self, mock_embedding_service: MockEmbeddingService
-    ) -> None:
+    def test_mock_embedding_service_dimension(self, mock_embedding_service: MockEmbeddingService) -> None:
         """mock_embedding_service should have 384 dimension."""
         assert mock_embedding_service.dimension == 384
 
-    def test_mock_embedding_service_768_dimension(
-        self, mock_embedding_service_768: MockEmbeddingService
-    ) -> None:
+    def test_mock_embedding_service_768_dimension(self, mock_embedding_service_768: MockEmbeddingService) -> None:
         """mock_embedding_service_768 should have 768 dimension."""
         assert mock_embedding_service_768.dimension == 768
 
@@ -164,42 +136,30 @@ class TestConfigurationFixtures:
         """sample_plugin_config should be a dictionary."""
         assert isinstance(sample_plugin_config, dict)
 
-    def test_sample_plugin_config_has_common_fields(
-        self, sample_plugin_config: dict
-    ) -> None:
+    def test_sample_plugin_config_has_common_fields(self, sample_plugin_config: dict) -> None:
         """sample_plugin_config should have common plugin config fields."""
         assert "api_key_env" in sample_plugin_config
         assert "model" in sample_plugin_config
 
-    def test_sample_embedding_config_has_model(
-        self, sample_embedding_config: dict
-    ) -> None:
+    def test_sample_embedding_config_has_model(self, sample_embedding_config: dict) -> None:
         """sample_embedding_config should have model_name."""
         assert "model_name" in sample_embedding_config
         assert isinstance(sample_embedding_config["model_name"], str)
 
-    def test_sample_embedding_config_has_device(
-        self, sample_embedding_config: dict
-    ) -> None:
+    def test_sample_embedding_config_has_device(self, sample_embedding_config: dict) -> None:
         """sample_embedding_config should have device setting."""
         assert "device" in sample_embedding_config
 
-    def test_sample_reranker_config_has_model(
-        self, sample_reranker_config: dict
-    ) -> None:
+    def test_sample_reranker_config_has_model(self, sample_reranker_config: dict) -> None:
         """sample_reranker_config should have model_name."""
         assert "model_name" in sample_reranker_config
 
-    def test_sample_reranker_config_has_max_documents(
-        self, sample_reranker_config: dict
-    ) -> None:
+    def test_sample_reranker_config_has_max_documents(self, sample_reranker_config: dict) -> None:
         """sample_reranker_config should have max_documents."""
         assert "max_documents" in sample_reranker_config
         assert sample_reranker_config["max_documents"] > 0
 
-    def test_sample_extractor_config_has_model(
-        self, sample_extractor_config: dict
-    ) -> None:
+    def test_sample_extractor_config_has_model(self, sample_extractor_config: dict) -> None:
         """sample_extractor_config should have model_name."""
         assert "model_name" in sample_extractor_config
 

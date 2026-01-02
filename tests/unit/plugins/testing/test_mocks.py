@@ -166,7 +166,9 @@ class TestMockReranker:
 
         # Results are (index, score, doc)
         # First result should be the doc with "machine learning"
-        assert "machine" in results[0][2].lower() and "learning" in results[0][2].lower()
+        first_doc = results[0][2].lower()
+        assert "machine" in first_doc
+        assert "learning" in first_doc
 
     @pytest.mark.asyncio()
     async def test_rerank_tracks_calls(self) -> None:
