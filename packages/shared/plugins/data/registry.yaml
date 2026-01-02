@@ -2,8 +2,8 @@
 # This is the bundled default registry that works offline.
 # Remote updates can be fetched from SEMANTIK_PLUGIN_REGISTRY_URL.
 
-registry_version: "1.0"
-last_updated: "2026-01-01T00:00:00Z"
+registry_version: "1.1"
+last_updated: "2026-01-02T00:00:00Z"
 
 plugins:
   # Embedding Providers
@@ -12,10 +12,10 @@ plugins:
     name: "OpenAI Embeddings"
     description: "text-embedding-3-small and text-embedding-3-large via OpenAI API"
     author: "semantik"
-    repository: "https://github.com/semantik-plugins/openai-embeddings"
-    pypi: "semantik-plugin-openai"
+    repository: "https://github.com/jbmiller10/semantik-plugin-openai"
+    install_command: "pip install git+https://github.com/jbmiller10/semantik-plugin-openai.git"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["api", "openai", "cloud"]
 
   - id: voyage-embeddings
