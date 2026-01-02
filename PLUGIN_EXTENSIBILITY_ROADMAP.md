@@ -836,6 +836,7 @@ Each template includes:
 | ~~**Phase 3: Experience**~~ | ~~Plugin UI, testing fixtures~~ | ~~P1~~ | ~~2-3 weeks~~ | ✅ **COMPLETE** |
 | ~~**Phase 4: Registry**~~ | ~~Slim YAML registry + browse UI~~ | ~~P2~~ | ~~1 week~~ | ✅ **COMPLETE** |
 | **Phase 5: Security** | Audit logging (env filtering is cooperative only) | P1 | 1 week | Planned (simplified) |
+| **Phase 6: Example Plugins** | Real, published plugins for the registry | P2 | 2-3 weeks | Planned |
 
 > **Scope Decisions (2026-01-01):**
 > - **Phase 1.6 added**: Runtime contract fixes needed before UI/new types work correctly
@@ -2452,6 +2453,137 @@ def audit_log(plugin_id: str, action: str, details: dict | None = None) -> None:
 - Signing and attestation
 
 </details>
+
+---
+
+### Phase 6: Example Plugins (P2)
+
+**Goal:** Create real, published plugins that users can actually install, demonstrating the plugin system works end-to-end.
+
+> **Rationale:** The registry currently contains placeholder entries. Publishing actual plugins:
+> - Validates the plugin authoring experience
+> - Provides working examples for community contributors
+> - Makes the "Available Plugins" UI immediately useful
+> - Proves the system works beyond built-in plugins
+
+#### 6.1 Priority Plugins
+
+| Plugin | Type | Priority | Notes |
+|--------|------|----------|-------|
+| **OpenAI Embeddings** | embedding | P0 | Most requested; `text-embedding-3-small/large` |
+| **Cohere Reranker** | reranker | P1 | Popular reranking API |
+| **Voyage AI Embeddings** | embedding | P2 | High-quality embeddings API |
+| **S3 Connector** | connector | P2 | Common enterprise use case |
+
+#### 6.2 Plugin Package Structure
+
+Each plugin will be a separate repository following the standard structure:
+
+```
+semantik-plugin-openai/
+├── pyproject.toml           # Package metadata, entry points
+├── README.md                # Installation and usage docs
+├── LICENSE                  # MIT
+├── src/
+│   └── semantik_plugin_openai/
+│       ├── __init__.py
+│       ├── provider.py      # Main plugin implementation
+│       └── config.py        # Configuration schema
+└── tests/
+    └── test_provider.py     # Plugin tests
+```
+
+**Entry point registration:**
+```toml
+[project.entry-points."semantik.plugins"]
+openai-embeddings = "semantik_plugin_openai:OpenAIEmbeddingPlugin"
+```
+
+#### 6.3 Tasks
+
+| Task | Description | Deliverables |
+|------|-------------|--------------|
+| Create plugin template repo | GitHub template for new plugins | `github.com/semantik-plugins/plugin-template` |
+| Implement OpenAI embeddings | Full embedding plugin with config | `semantik-plugin-openai` on PyPI |
+| Implement Cohere reranker | Reranker plugin with API key config | `semantik-plugin-cohere-reranker` on PyPI |
+| Implement Voyage embeddings | Embedding plugin | `semantik-plugin-voyage` on PyPI |
+| Implement S3 connector | Connector with AWS credential config | `semantik-plugin-s3` on PyPI |
+| Update registry | Replace placeholders with real entries | `packages/shared/plugins/data/registry.yaml` |
+| Document plugin authoring | End-to-end guide with real examples | `docs/WRITING_PLUGINS.md` |
+
+#### 6.4 OpenAI Embeddings Plugin (Reference Implementation)
+
+```python
+# src/semantik_plugin_openai/provider.py
+from typing import ClassVar
+import openai
+from shared.plugins.base import SemanticPlugin
+from shared.plugins.manifest import PluginManifest
+from shared.plugins.types.embedding import EmbeddingPluginProtocol
+
+class OpenAIEmbeddingPlugin(SemanticPlugin, EmbeddingPluginProtocol):
+    PLUGIN_TYPE: ClassVar[str] = "embedding"
+    PLUGIN_ID: ClassVar[str] = "openai-embeddings"
+    PLUGIN_VERSION: ClassVar[str] = "1.0.0"
+
+    SUPPORTED_MODELS = {
+        "text-embedding-3-small": 1536,
+        "text-embedding-3-large": 3072,
+        "text-embedding-ada-002": 1536,
+    }
+
+    @classmethod
+    def get_manifest(cls) -> PluginManifest:
+        return PluginManifest(
+            id=cls.PLUGIN_ID,
+            version=cls.PLUGIN_VERSION,
+            type=cls.PLUGIN_TYPE,
+            display_name="OpenAI Embeddings",
+            description="Generate embeddings using OpenAI's text-embedding models",
+            author="semantik",
+            homepage="https://github.com/semantik-plugins/openai-embeddings",
+            config_schema={
+                "api_key": {"type": "string", "secret": True, "required": True},
+                "model": {"type": "string", "default": "text-embedding-3-small"},
+                "organization": {"type": "string", "required": False},
+            },
+        )
+
+    @classmethod
+    def supports_model(cls, model_name: str) -> bool:
+        return model_name in cls.SUPPORTED_MODELS
+
+    async def embed_texts(self, texts: list[str], **kwargs) -> list[list[float]]:
+        client = openai.AsyncOpenAI(
+            api_key=self.config.get("api_key"),
+            organization=self.config.get("organization"),
+        )
+        response = await client.embeddings.create(
+            model=self.config.get("model", "text-embedding-3-small"),
+            input=texts,
+        )
+        return [item.embedding for item in response.data]
+
+    def get_dimension(self) -> int:
+        model = self.config.get("model", "text-embedding-3-small")
+        return self.SUPPORTED_MODELS.get(model, 1536)
+```
+
+#### 6.5 Publishing Workflow
+
+1. Create GitHub repository under `semantik-plugins` org
+2. Implement plugin following the template
+3. Write tests with mocked API responses
+4. Publish to PyPI: `uv build && uv publish`
+5. Update bundled registry with real package info
+6. Test installation: `pip install semantik-plugin-openai`
+7. Verify plugin appears in UI and works
+
+**Acceptance Criteria:**
+- [ ] At least 2 plugins published to PyPI and installable
+- [ ] Plugins appear in "Available" UI with working install commands
+- [ ] Plugin template repository available for contributors
+- [ ] End-to-end documentation for writing and publishing plugins
 
 ---
 
