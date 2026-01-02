@@ -5,9 +5,15 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 
 from shared.database import get_db
+from shared.plugins.validation import (
+    PLUGIN_ID_MAX_LENGTH,
+    PLUGIN_ID_REGEX,
+    validate_package_name,
+    validate_pip_install_target,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -181,7 +187,7 @@ async def refresh_available_plugins(
     },
 )
 async def get_plugin(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginInfo:
@@ -201,7 +207,7 @@ async def get_plugin(
     },
 )
 async def get_plugin_manifest(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginManifestSchema:
@@ -221,7 +227,7 @@ async def get_plugin_manifest(
     },
 )
 async def get_plugin_config_schema(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> dict[str, Any] | None:
@@ -242,7 +248,7 @@ async def get_plugin_config_schema(
     },
 )
 async def enable_plugin(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginStatusResponse:
@@ -262,7 +268,7 @@ async def enable_plugin(
     },
 )
 async def disable_plugin(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginStatusResponse:
@@ -283,8 +289,8 @@ async def disable_plugin(
     },
 )
 async def update_plugin_config(
-    plugin_id: str,
     request: PluginConfigUpdateRequest,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginInfo:
@@ -309,7 +315,7 @@ async def update_plugin_config(
     },
 )
 async def check_plugin_health(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
 ) -> PluginHealthResponse:
@@ -389,6 +395,11 @@ async def install_plugin_endpoint(
             detail=f"Plugin {request.plugin_id} has no install command",
         )
 
+    try:
+        validate_pip_install_target(install_cmd)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     # Audit log
     audit_log(
         request.plugin_id,
@@ -422,7 +433,7 @@ async def install_plugin_endpoint(
     },
 )
 async def uninstall_plugin_endpoint(
-    plugin_id: str,
+    plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PluginInstallResponse:
     """Uninstall an installed plugin (admin only).
@@ -455,6 +466,11 @@ async def uninstall_plugin_endpoint(
 
     # Derive package name from pypi field or plugin ID
     package_name = registry_entry.pypi or f"semantik-plugin-{plugin_id}"
+
+    try:
+        validate_package_name(package_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     audit_log(
         plugin_id,

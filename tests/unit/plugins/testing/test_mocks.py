@@ -11,6 +11,7 @@ from shared.plugins.testing.mocks import (
     MockExtractor,
     MockReranker,
 )
+from shared.plugins.types.extractor import ExtractionResult
 
 
 class TestMockDocument:
@@ -138,7 +139,7 @@ class TestMockReranker:
         results = await reranker.rerank("query", docs)
 
         assert len(results) == 3
-        returned_docs = [r[2] for r in results]
+        returned_docs = [r.document for r in results]
         assert set(returned_docs) == set(docs)
 
     @pytest.mark.asyncio()
@@ -164,9 +165,8 @@ class TestMockReranker:
 
         results = await reranker.rerank(query, docs)
 
-        # Results are (index, score, doc)
         # First result should be the doc with "machine learning"
-        first_doc = results[0][2].lower()
+        first_doc = results[0].document.lower()
         assert "machine" in first_doc
         assert "learning" in first_doc
 
@@ -190,7 +190,7 @@ class TestMockReranker:
 
         results = await reranker.rerank("query", docs)
 
-        indices = [r[0] for r in results]
+        indices = [r.index for r in results]
         assert set(indices) == {0, 1, 2}
 
 
@@ -203,13 +203,13 @@ class TestMockExtractor:
         assert extractor.extract_calls == []
 
     @pytest.mark.asyncio()
-    async def test_extract_returns_dict(self) -> None:
-        """extract should return a dictionary."""
+    async def test_extract_returns_extraction_result(self) -> None:
+        """extract should return an ExtractionResult."""
         extractor = MockExtractor()
 
         result = await extractor.extract("Test text for extraction")
 
-        assert isinstance(result, dict)
+        assert isinstance(result, ExtractionResult)
 
     @pytest.mark.asyncio()
     async def test_extract_includes_entities(self) -> None:
@@ -218,8 +218,7 @@ class TestMockExtractor:
 
         result = await extractor.extract("Apple Inc headquartered in Cupertino")
 
-        assert "entities" in result
-        assert len(result["entities"]) <= 3
+        assert len(result.entities) <= 3
 
     @pytest.mark.asyncio()
     async def test_extract_includes_keywords(self) -> None:
@@ -228,8 +227,7 @@ class TestMockExtractor:
 
         result = await extractor.extract("machine learning artificial intelligence")
 
-        assert "keywords" in result
-        assert len(result["keywords"]) <= 5
+        assert len(result.keywords) <= 5
 
     @pytest.mark.asyncio()
     async def test_extract_includes_language(self) -> None:
@@ -238,8 +236,8 @@ class TestMockExtractor:
 
         result = await extractor.extract("Some text")
 
-        assert result["language"] == "en"
-        assert result["language_confidence"] == 0.95
+        assert result.language == "en"
+        assert result.language_confidence == 0.95
 
     @pytest.mark.asyncio()
     async def test_extract_tracks_calls(self) -> None:

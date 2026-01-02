@@ -207,6 +207,14 @@ class TestGetPlugin:
         data = response.json()
         assert "not found" in data["detail"].lower()
 
+    @pytest.mark.asyncio()
+    async def test_get_plugin_rejects_invalid_plugin_id(self, api_client_with_plugin):
+        """Invalid plugin_id path params should be rejected by validation."""
+        client, _ = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/Invalid")
+        assert response.status_code == 422
+
 
 class TestGetPluginManifest:
     """Tests for GET /api/v2/plugins/{plugin_id}/manifest."""
@@ -881,6 +889,17 @@ class TestInstallPlugin:
         assert len(captured_cmd) == 1
         assert captured_cmd[0] == "git+https://github.com/test/test-plugin.git"
         assert not captured_cmd[0].startswith("pip install ")
+
+    @pytest.mark.asyncio()
+    async def test_install_rejects_invalid_version(self, admin_client_with_plugin):
+        """install should reject versions/refs with whitespace."""
+        client, _ = admin_client_with_plugin
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin", "version": "bad ref"},
+        )
+        assert response.status_code == 422
 
 
 class TestUninstallPlugin:

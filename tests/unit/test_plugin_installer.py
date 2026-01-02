@@ -120,6 +120,15 @@ class TestInstallPlugin:
 
         assert plugins_dir.exists()
 
+    def test_install_rejects_whitespace_target(self, temp_plugins_dir: Path) -> None:
+        """install_plugin should reject targets with whitespace (option-injection defense)."""
+        with patch("subprocess.run") as mock_run:
+            success, message = plugin_installer.install_plugin("git+https://example.com/repo.git @v1")
+
+        assert success is False
+        assert "whitespace" in message.lower()
+        mock_run.assert_not_called()
+
 
 class TestUninstallPlugin:
     """Tests for uninstall_plugin function."""
@@ -203,6 +212,13 @@ class TestUninstallPlugin:
 
             # Should still succeed because package dir was removed
             assert success is True
+
+    def test_uninstall_rejects_path_traversal(self, temp_plugins_dir: Path) -> None:
+        """uninstall_plugin should reject path traversal attempts."""
+        success, message = plugin_installer.uninstall_plugin("../etc")
+
+        assert success is False
+        assert "path" in message.lower()
 
 
 class TestListInstalledPackages:

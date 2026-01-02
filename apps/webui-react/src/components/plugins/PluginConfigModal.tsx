@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { usePluginConfigSchema, useUpdatePluginConfig } from '../../hooks/usePlugins';
 import type { PluginInfo, PluginConfigSchema } from '../../types/plugin';
 import PluginConfigForm from './PluginConfigForm';
@@ -90,6 +90,9 @@ function validateConfig(
 }
 
 function PluginConfigModal({ plugin, onClose }: PluginConfigModalProps) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [values, setValues] = useState<Record<string, unknown>>(plugin.config || {});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -110,6 +113,15 @@ function PluginConfigModal({ plugin, onClose }: PluginConfigModalProps) {
     setErrors({});
     setSaveError(null);
   }, [plugin.id, plugin.config]);
+
+  // Basic focus management: focus close button on open, restore focus on close
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    closeButtonRef.current?.focus();
+    return () => {
+      previousFocus?.focus();
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +151,30 @@ function PluginConfigModal({ plugin, onClose }: PluginConfigModalProps) {
     if (e.key === 'Escape') {
       onClose();
     }
+    if (e.key === 'Tab') {
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.hasAttribute('disabled') && !el.getAttribute('aria-hidden'));
+
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
   };
 
   return (
@@ -146,19 +182,27 @@ function PluginConfigModal({ plugin, onClose }: PluginConfigModalProps) {
       className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
       onKeyDown={handleKeyDown}
     >
-      <div className="relative mx-auto w-full max-w-lg shadow-lg rounded-lg bg-white">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative mx-auto w-full max-w-lg shadow-lg rounded-lg bg-white"
+      >
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-medium text-gray-900">
+              <h3 id={titleId} className="text-lg font-medium text-gray-900">
                 Configure {plugin.manifest.display_name}
               </h3>
               <p className="mt-1 text-sm text-gray-500">v{plugin.version}</p>
             </div>
             <button
+              ref={closeButtonRef}
               onClick={onClose}
               className="text-gray-400 hover:text-gray-500 focus:outline-none"
+              aria-label="Close"
             >
               <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path

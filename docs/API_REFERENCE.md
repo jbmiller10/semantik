@@ -865,7 +865,19 @@ These endpoints manage **external** plugins only. Built-ins are not listed or ma
 
 ##### List Plugins
 ```http
-GET /api/v2/plugins?type=embedding&enabled=true&include_health=false
+GET /api/v2/plugins?plugin_type=embedding&enabled=true&include_health=false
+Authorization: Bearer {token}
+```
+
+##### List Available Plugins (Registry)
+```http
+GET /api/v2/plugins/available?plugin_type=embedding&verified_only=true&force_refresh=false
+Authorization: Bearer {token}
+```
+
+##### Refresh Available Plugins Registry
+```http
+POST /api/v2/plugins/available/refresh
 Authorization: Bearer {token}
 ```
 
@@ -910,6 +922,24 @@ Authorization: Bearer {token}
 ##### Health Check
 ```http
 GET /api/v2/plugins/{plugin_id}/health
+Authorization: Bearer {token}
+```
+
+##### Install Plugin (Admin)
+```http
+POST /api/v2/plugins/install
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "plugin_id": "openai-embeddings",
+  "version": "v1.0.0"
+}
+```
+
+##### Uninstall Plugin (Admin)
+```http
+DELETE /api/v2/plugins/{plugin_id}/uninstall
 Authorization: Bearer {token}
 ```
 

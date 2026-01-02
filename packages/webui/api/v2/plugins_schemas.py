@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TCH003 - Required at runtime for Pydantic
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from shared.plugins.validation import (
+    PLUGIN_ID_MAX_LENGTH,
+    PLUGIN_ID_REGEX,
+    validate_git_ref,
+    validate_plugin_id,
+)
 
 
 class PluginManifestSchema(BaseModel):
@@ -96,10 +103,27 @@ class AvailablePluginInfo(BaseModel):
 class PluginInstallRequest(BaseModel):
     """Request to install a plugin from the registry."""
 
-    plugin_id: str  # Registry plugin ID, e.g., "openai-embeddings"
-    version: str | None = None  # Optional git tag/branch, e.g., "v1.0.0"
+    plugin_id: str = Field(..., max_length=PLUGIN_ID_MAX_LENGTH, pattern=PLUGIN_ID_REGEX)
+    """Registry plugin ID, e.g., "openai-embeddings"."""
+
+    version: str | None = Field(default=None, max_length=128)
+    """Optional git tag/branch or package version, e.g., "v1.0.0"."""
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("plugin_id")
+    @classmethod
+    def _validate_plugin_id(cls, value: str) -> str:
+        validate_plugin_id(value)
+        return value
+
+    @field_validator("version")
+    @classmethod
+    def _validate_version(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        validate_git_ref(value)
+        return value
 
 
 class PluginInstallResponse(BaseModel):

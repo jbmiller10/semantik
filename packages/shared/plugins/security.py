@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 # Patterns that indicate sensitive environment variables
 SENSITIVE_ENV_PATTERNS = frozenset(
     {
+        "ACCESS",  # e.g., AWS_ACCESS_KEY_ID
+        "DATABASE_URL",
+        "DSN",
         "PASSWORD",
+        "PASS",
+        "PWD",
+        "REDIS_URL",
         "SECRET",
         "KEY",
         "TOKEN",

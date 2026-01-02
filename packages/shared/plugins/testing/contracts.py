@@ -1,72 +1,51 @@
 """Contract test base classes for plugin testing.
 
 These classes provide automatic contract verification for plugin implementations.
-Plugin authors can inherit from these classes to ensure their plugins meet
-the required interface contracts.
+The contracts reflect the interfaces Semantik actually loads at runtime:
 
-Example usage:
+- Embedding providers: `shared.embedding.plugin_base.BaseEmbeddingPlugin`
+- Chunking strategies: classes registered via `ChunkingStrategyFactory`
+  (must be instantiable with no required args and implement `chunk()` methods)
+- Connectors: `shared.connectors.base.BaseConnector`
+- Rerankers/Extractors: `shared.plugins.base.SemanticPlugin`
 
-    from shared.plugins.testing import EmbeddingPluginContractTest
-    from my_plugin import MyEmbeddingPlugin
-
-    class TestMyEmbeddingPlugin(EmbeddingPluginContractTest):
-        plugin_class = MyEmbeddingPlugin
-
-        # Optional: provide custom config for tests
-        @pytest.fixture
-        def plugin_config(self):
-            return {"model_name": "my-model"}
-
-        # Contract tests run automatically:
-        # - test_has_required_class_attributes
-        # - test_get_manifest_returns_valid_manifest
-        # - etc.
-
-        # Add custom tests below
-        def test_my_custom_feature(self):
-            ...
+Plugin authors can inherit from these classes to ensure their plugins match the
+expected contracts.
 """
 
 from __future__ import annotations
 
+import inspect
 from abc import ABC
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
 if TYPE_CHECKING:
+    from shared.connectors.base import BaseConnector
+    from shared.embedding.plugin_base import BaseEmbeddingPlugin
     from shared.plugins.base import SemanticPlugin
 
 
-class PluginContractTest(ABC):
-    """Base contract tests for all Semantik plugins.
+# =============================================================================
+# SemanticPlugin-based contracts (rerankers, extractors, etc.)
+# =============================================================================
 
-    Subclasses must set the `plugin_class` attribute to the plugin class
-    being tested.
-    """
+
+class PluginContractTest(ABC):
+    """Contract tests for SemanticPlugin-based plugins."""
 
     plugin_class: ClassVar[type[SemanticPlugin]]
     """The plugin class to test. Must be set by subclasses."""
 
     @pytest.fixture()
     def plugin_config(self) -> dict[str, Any] | None:
-        """Override to provide configuration for plugin tests.
-
-        Returns:
-            Plugin configuration dict, or None for no config.
-        """
+        """Override to provide configuration for plugin tests."""
         return None
 
     @pytest.fixture()
     def plugin_instance(self, plugin_config: dict[str, Any] | None) -> SemanticPlugin:
-        """Create a plugin instance for testing.
-
-        Args:
-            plugin_config: Configuration from plugin_config fixture.
-
-        Returns:
-            Instantiated plugin.
-        """
+        """Instantiate the plugin class with optional config."""
         return self.plugin_class(config=plugin_config)
 
     # =========================================================================
@@ -74,28 +53,18 @@ class PluginContractTest(ABC):
     # =========================================================================
 
     def test_has_plugin_type(self) -> None:
-        """Plugin must have PLUGIN_TYPE class attribute."""
-        assert hasattr(
-            self.plugin_class, "PLUGIN_TYPE"
-        ), f"{self.plugin_class.__name__} must have PLUGIN_TYPE class attribute"
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE"), f"{self.plugin_class.__name__} missing PLUGIN_TYPE"
         assert isinstance(self.plugin_class.PLUGIN_TYPE, str)
-        assert len(self.plugin_class.PLUGIN_TYPE) > 0
+        assert self.plugin_class.PLUGIN_TYPE
 
     def test_has_plugin_id(self) -> None:
-        """Plugin must have PLUGIN_ID class attribute."""
-        assert hasattr(
-            self.plugin_class, "PLUGIN_ID"
-        ), f"{self.plugin_class.__name__} must have PLUGIN_ID class attribute"
+        assert hasattr(self.plugin_class, "PLUGIN_ID"), f"{self.plugin_class.__name__} missing PLUGIN_ID"
         assert isinstance(self.plugin_class.PLUGIN_ID, str)
-        assert len(self.plugin_class.PLUGIN_ID) > 0
+        assert self.plugin_class.PLUGIN_ID
 
     def test_has_plugin_version(self) -> None:
-        """Plugin must have PLUGIN_VERSION class attribute."""
-        assert hasattr(
-            self.plugin_class, "PLUGIN_VERSION"
-        ), f"{self.plugin_class.__name__} must have PLUGIN_VERSION class attribute"
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION"), f"{self.plugin_class.__name__} missing PLUGIN_VERSION"
         assert isinstance(self.plugin_class.PLUGIN_VERSION, str)
-        # Version should follow semver pattern (at least x.y.z)
         parts = self.plugin_class.PLUGIN_VERSION.split(".")
         assert len(parts) >= 2, "Version should have at least major.minor format"
 
@@ -104,35 +73,21 @@ class PluginContractTest(ABC):
     # =========================================================================
 
     def test_get_manifest_returns_valid_manifest(self) -> None:
-        """get_manifest() must return a valid PluginManifest."""
         from shared.plugins.manifest import PluginManifest
 
         manifest = self.plugin_class.get_manifest()
-
         assert isinstance(manifest, PluginManifest), f"get_manifest() must return PluginManifest, got {type(manifest)}"
-
-        # Manifest ID should match class PLUGIN_ID
-        assert (
-            manifest.id == self.plugin_class.PLUGIN_ID
-        ), f"Manifest id '{manifest.id}' must match PLUGIN_ID '{self.plugin_class.PLUGIN_ID}'"
-
-        # Manifest type should match class PLUGIN_TYPE
-        assert (
-            manifest.type == self.plugin_class.PLUGIN_TYPE
-        ), f"Manifest type '{manifest.type}' must match PLUGIN_TYPE '{self.plugin_class.PLUGIN_TYPE}'"
-
-        # Required fields
-        assert manifest.display_name, "Manifest must have display_name"
-        assert manifest.description, "Manifest must have description"
+        assert manifest.id == self.plugin_class.PLUGIN_ID
+        assert manifest.type == self.plugin_class.PLUGIN_TYPE
+        assert manifest.display_name
+        assert manifest.description
 
     # =========================================================================
     # Configuration Schema
     # =========================================================================
 
     def test_get_config_schema_returns_valid_schema_or_none(self) -> None:
-        """get_config_schema() must return valid JSON Schema or None."""
         schema = self.plugin_class.get_config_schema()
-
         if schema is not None:
             assert isinstance(schema, dict), "Config schema must be a dict"
             assert schema.get("type") == "object", "Config schema must have type: object"
@@ -143,8 +98,17 @@ class PluginContractTest(ABC):
 
     @pytest.mark.asyncio()
     async def test_health_check_returns_bool(self, plugin_config: dict[str, Any] | None) -> None:
-        """health_check() must return a boolean."""
-        result = await self.plugin_class.health_check(config=plugin_config)
+        health_fn = getattr(self.plugin_class, "health_check", None)
+        assert callable(health_fn), "Plugin must define health_check()"
+
+        try:
+            result = health_fn(config=plugin_config)
+        except TypeError:
+            # Allow legacy signatures without `config` parameter.
+            result = health_fn()
+
+        if inspect.isawaitable(result):
+            result = await result
         assert isinstance(result, bool), f"health_check must return bool, got {type(result)}"
 
     # =========================================================================
@@ -153,115 +117,163 @@ class PluginContractTest(ABC):
 
     @pytest.mark.asyncio()
     async def test_initialize_and_cleanup(self, plugin_instance: SemanticPlugin) -> None:
-        """Plugin must support initialize() and cleanup() lifecycle."""
-        # Initialize should not raise
         await plugin_instance.initialize()
-
-        # Cleanup should not raise
         await plugin_instance.cleanup()
 
     def test_config_property(self, plugin_instance: SemanticPlugin, plugin_config: dict[str, Any] | None) -> None:
-        """Plugin must have config property."""
         config = plugin_instance.config
         assert isinstance(config, dict)
-
         if plugin_config:
-            # Config should contain provided values
             for key, value in plugin_config.items():
                 assert config.get(key) == value
 
 
-class EmbeddingPluginContractTest(PluginContractTest):
-    """Contract tests for embedding plugins.
-
-    Embedding plugins must implement:
-    - embed_single(text) -> list[float]
-    - embed_texts(texts) -> list[list[float]]
-    - get_dimension() -> int
-    """
-
-    def test_plugin_type_is_embedding(self) -> None:
-        """Embedding plugin must have PLUGIN_TYPE = 'embedding'."""
-        assert self.plugin_class.PLUGIN_TYPE == "embedding"
-
-    def test_has_embed_single_method(self) -> None:
-        """Plugin must have embed_single method."""
-        assert hasattr(self.plugin_class, "embed_single")
-        assert callable(self.plugin_class.embed_single)
-
-    def test_has_embed_texts_method(self) -> None:
-        """Plugin must have embed_texts method."""
-        assert hasattr(self.plugin_class, "embed_texts")
-        assert callable(self.plugin_class.embed_texts)
-
-    def test_has_get_dimension_method(self) -> None:
-        """Plugin must have get_dimension method."""
-        assert hasattr(self.plugin_class, "get_dimension")
-        assert callable(self.plugin_class.get_dimension)
+# =============================================================================
+# Embedding providers
+# =============================================================================
 
 
-class ChunkingPluginContractTest(PluginContractTest):
-    """Contract tests for chunking strategy plugins.
+class EmbeddingPluginContractTest(ABC):
+    """Contract tests for embedding provider plugins."""
 
-    Chunking plugins must implement:
-    - chunk(content, config) -> list[Chunk]
-    - validate_content(content) -> tuple[bool, str | None]
-    - estimate_chunks(content_length, config) -> int
-    """
+    plugin_class: ClassVar[type[BaseEmbeddingPlugin]]
 
-    def test_plugin_type_is_chunking(self) -> None:
-        """Chunking plugin must have PLUGIN_TYPE = 'chunking'."""
-        assert self.plugin_class.PLUGIN_TYPE == "chunking"
+    @pytest.fixture()
+    def plugin_config(self) -> dict[str, Any] | None:
+        """Override to provide provider config passed to the constructor."""
+        return None
 
-    def test_has_chunk_method(self) -> None:
-        """Plugin must have chunk method."""
-        assert hasattr(self.plugin_class, "chunk")
-        assert callable(self.plugin_class.chunk)
+    @pytest.fixture()
+    def plugin_instance(self, plugin_config: dict[str, Any] | None) -> BaseEmbeddingPlugin:
+        return self.plugin_class(config=plugin_config)
 
-    def test_has_validate_content_method(self) -> None:
-        """Plugin must have validate_content method."""
-        assert hasattr(self.plugin_class, "validate_content")
-        assert callable(self.plugin_class.validate_content)
+    def test_is_base_embedding_plugin(self) -> None:
+        from shared.embedding.plugin_base import BaseEmbeddingPlugin as _BaseEmbeddingPlugin
 
-    def test_has_estimate_chunks_method(self) -> None:
-        """Plugin must have estimate_chunks method."""
-        assert hasattr(self.plugin_class, "estimate_chunks")
-        assert callable(self.plugin_class.estimate_chunks)
+        assert issubclass(self.plugin_class, _BaseEmbeddingPlugin)
+
+    def test_has_required_class_attributes(self) -> None:
+        assert isinstance(getattr(self.plugin_class, "INTERNAL_NAME", None), str)
+        assert self.plugin_class.INTERNAL_NAME
+        assert isinstance(getattr(self.plugin_class, "API_ID", None), str)
+        assert self.plugin_class.API_ID
+        assert getattr(self.plugin_class, "PROVIDER_TYPE", None) in {"local", "remote", "hybrid"}
+
+    def test_has_required_classmethods(self) -> None:
+        assert hasattr(self.plugin_class, "get_definition")
+        assert callable(self.plugin_class.get_definition)
+        assert hasattr(self.plugin_class, "supports_model")
+        assert callable(self.plugin_class.supports_model)
+
+    def test_get_definition_returns_valid_definition(self) -> None:
+        from shared.embedding.plugin_base import EmbeddingProviderDefinition
+
+        definition = self.plugin_class.get_definition()
+        assert isinstance(definition, EmbeddingProviderDefinition)
+        assert definition.api_id == self.plugin_class.API_ID
+        assert definition.internal_id == self.plugin_class.INTERNAL_NAME
+        assert definition.provider_type == self.plugin_class.PROVIDER_TYPE
+
+    def test_supports_model_returns_bool(self) -> None:
+        result = self.plugin_class.supports_model("test-model")
+        assert isinstance(result, bool)
+
+    def test_has_required_instance_methods(self, plugin_instance: BaseEmbeddingPlugin) -> None:
+        for name in ("initialize", "embed_single", "embed_texts", "get_dimension", "get_model_info", "cleanup"):
+            assert hasattr(plugin_instance, name), f"Missing method: {name}"
+            assert callable(getattr(plugin_instance, name))
+
+        assert hasattr(plugin_instance, "is_initialized"), "Missing is_initialized property"
 
 
-class ConnectorPluginContractTest(PluginContractTest):
-    """Contract tests for connector plugins.
+# =============================================================================
+# Chunking strategies
+# =============================================================================
 
-    Connector plugins must implement:
-    - authenticate() -> bool
-    - load_documents(source_id) -> AsyncIterator[IngestedDocument]
-    - get_config_fields() -> list[dict]
-    """
 
-    def test_plugin_type_is_connector(self) -> None:
-        """Connector plugin must have PLUGIN_TYPE = 'connector'."""
-        assert self.plugin_class.PLUGIN_TYPE == "connector"
+class ChunkingPluginContractTest(ABC):
+    """Contract tests for chunking strategy plugins."""
+
+    plugin_class: ClassVar[type[Any]]
+
+    @pytest.fixture()
+    def plugin_instance(self) -> Any:
+        return self.plugin_class()
+
+    def test_has_internal_name(self) -> None:
+        internal_name = (
+            getattr(self.plugin_class, "INTERNAL_NAME", None)
+            or getattr(self.plugin_class, "name", None)
+            or getattr(self.plugin_class, "__name__", "")
+        )
+        assert isinstance(internal_name, str)
+        assert internal_name
+
+    def test_metadata_has_visual_example(self) -> None:
+        metadata = getattr(self.plugin_class, "METADATA", None)
+        assert isinstance(metadata, dict), "Chunking plugin must define METADATA dict"
+        visual_example = metadata.get("visual_example")
+        assert isinstance(visual_example, dict), "METADATA.visual_example must be a dict"
+        url = visual_example.get("url")
+        assert isinstance(url, str)
+        assert url.startswith("https://"), "visual_example.url must be https://"
+
+    def test_has_chunk_method(self, plugin_instance: Any) -> None:
+        assert hasattr(plugin_instance, "chunk")
+        assert callable(plugin_instance.chunk)
+
+    def test_has_validate_content_method(self, plugin_instance: Any) -> None:
+        assert hasattr(plugin_instance, "validate_content")
+        assert callable(plugin_instance.validate_content)
+
+    def test_has_estimate_chunks_method(self, plugin_instance: Any) -> None:
+        assert hasattr(plugin_instance, "estimate_chunks")
+        assert callable(plugin_instance.estimate_chunks)
+
+
+# =============================================================================
+# Connectors
+# =============================================================================
+
+
+class ConnectorPluginContractTest(ABC):
+    """Contract tests for connector plugins."""
+
+    plugin_class: ClassVar[type[BaseConnector]]
+
+    @pytest.fixture()
+    def connector_config(self) -> dict[str, Any]:
+        """Override to provide a valid connector config."""
+        return {}
+
+    @pytest.fixture()
+    def connector_instance(self, connector_config: dict[str, Any]) -> BaseConnector:
+        return self.plugin_class(connector_config)
+
+    def test_is_base_connector(self) -> None:
+        from shared.connectors.base import BaseConnector as _BaseConnector
+
+        assert issubclass(self.plugin_class, _BaseConnector)
+
+    def test_has_plugin_id(self) -> None:
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert self.plugin_class.PLUGIN_ID
 
     def test_has_authenticate_method(self) -> None:
-        """Plugin must have authenticate method."""
         assert hasattr(self.plugin_class, "authenticate")
         assert callable(self.plugin_class.authenticate)
 
     def test_has_load_documents_method(self) -> None:
-        """Plugin must have load_documents method."""
         assert hasattr(self.plugin_class, "load_documents")
         assert callable(self.plugin_class.load_documents)
 
     def test_has_get_config_fields_classmethod(self) -> None:
-        """Plugin must have get_config_fields classmethod."""
         assert hasattr(self.plugin_class, "get_config_fields")
         fields = self.plugin_class.get_config_fields()
         assert isinstance(fields, list)
 
     def test_get_config_fields_returns_valid_fields(self) -> None:
-        """get_config_fields must return valid field definitions."""
         fields = self.plugin_class.get_config_fields()
-
         for field in fields:
             assert isinstance(field, dict), "Each field must be a dict"
             assert "name" in field, "Field must have 'name'"
@@ -269,84 +281,63 @@ class ConnectorPluginContractTest(PluginContractTest):
             assert "label" in field, "Field must have 'label'"
 
 
-class RerankerPluginContractTest(PluginContractTest):
-    """Contract tests for reranker plugins.
+# =============================================================================
+# SemanticPlugin specializations
+# =============================================================================
 
-    Reranker plugins must implement:
-    - rerank(query, documents, top_k, metadata) -> list[RerankResult]
-    - get_capabilities() -> RerankerCapabilities
-    """
+
+class RerankerPluginContractTest(PluginContractTest):
+    """Contract tests for reranker plugins."""
 
     def test_plugin_type_is_reranker(self) -> None:
-        """Reranker plugin must have PLUGIN_TYPE = 'reranker'."""
         assert self.plugin_class.PLUGIN_TYPE == "reranker"
 
     def test_has_rerank_method(self) -> None:
-        """Plugin must have rerank method."""
         assert hasattr(self.plugin_class, "rerank")
         assert callable(self.plugin_class.rerank)
 
     def test_has_get_capabilities_classmethod(self) -> None:
-        """Plugin must have get_capabilities classmethod."""
         assert hasattr(self.plugin_class, "get_capabilities")
 
     def test_get_capabilities_returns_valid_capabilities(self) -> None:
-        """get_capabilities must return valid RerankerCapabilities."""
         from shared.plugins.types.reranker import RerankerCapabilities
 
         caps = self.plugin_class.get_capabilities()
-
-        assert isinstance(
-            caps, RerankerCapabilities
-        ), f"get_capabilities() must return RerankerCapabilities, got {type(caps)}"
-        assert caps.max_documents > 0, "max_documents must be positive"
-        assert caps.max_query_length > 0, "max_query_length must be positive"
-        assert caps.max_doc_length > 0, "max_doc_length must be positive"
+        assert isinstance(caps, RerankerCapabilities)
+        assert caps.max_documents > 0
+        assert caps.max_query_length > 0
+        assert caps.max_doc_length > 0
 
 
 class ExtractorPluginContractTest(PluginContractTest):
-    """Contract tests for extractor plugins.
-
-    Extractor plugins must implement:
-    - supported_extractions() -> list[ExtractionType]
-    - extract(text, extraction_types, options) -> ExtractionResult
-    """
+    """Contract tests for extractor plugins."""
 
     def test_plugin_type_is_extractor(self) -> None:
-        """Extractor plugin must have PLUGIN_TYPE = 'extractor'."""
         assert self.plugin_class.PLUGIN_TYPE == "extractor"
 
     def test_has_supported_extractions_classmethod(self) -> None:
-        """Plugin must have supported_extractions classmethod."""
         assert hasattr(self.plugin_class, "supported_extractions")
 
     def test_supported_extractions_returns_list(self) -> None:
-        """supported_extractions must return a list of ExtractionType."""
         from shared.plugins.types.extractor import ExtractionType
 
         extractions = self.plugin_class.supported_extractions()
-
-        assert isinstance(extractions, list), "supported_extractions must return a list"
-        assert len(extractions) > 0, "Plugin must support at least one extraction type"
-
+        assert isinstance(extractions, list)
+        assert len(extractions) > 0
         for ext in extractions:
-            assert isinstance(ext, ExtractionType), f"Each extraction must be ExtractionType, got {type(ext)}"
+            assert isinstance(ext, ExtractionType)
 
     def test_has_extract_method(self) -> None:
-        """Plugin must have extract method."""
         assert hasattr(self.plugin_class, "extract")
         assert callable(self.plugin_class.extract)
 
     @pytest.mark.asyncio()
     async def test_extract_returns_extraction_result(self, plugin_instance: SemanticPlugin) -> None:
-        """extract() must return ExtractionResult."""
         from shared.plugins.types.extractor import ExtractionResult
 
         await plugin_instance.initialize()
-
         try:
             result = await plugin_instance.extract("Test text for extraction.")  # type: ignore[attr-defined]
-
-            assert isinstance(result, ExtractionResult), f"extract() must return ExtractionResult, got {type(result)}"
+            assert isinstance(result, ExtractionResult)
         finally:
             await plugin_instance.cleanup()

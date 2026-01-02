@@ -194,6 +194,7 @@ function AvailablePluginsTab() {
             placeholder="Search plugins..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search plugins"
             className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
           />
         </div>
@@ -202,6 +203,7 @@ function AvailablePluginsTab() {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value as PluginType | 'all')}
+          aria-label="Filter by plugin type"
           className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
         >
           <option value="all">All Types</option>

@@ -211,8 +211,8 @@ class TestIntegration:
         """MockExtractor should work with sample_text."""
         result = await mock_extractor.extract(sample_text)
 
-        assert "entities" in result
-        assert "keywords" in result
+        assert result.entities
+        assert result.keywords
 
     def test_chunker_with_long_document(
         self,

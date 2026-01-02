@@ -199,8 +199,7 @@ describe('PluginConfigModal', () => {
         <PluginConfigModal plugin={createMockPlugin()} onClose={mockOnClose} />
       );
 
-      // Find the close button by looking for the SVG's parent button
-      const closeButton = screen.getByRole('button', { name: '' });
+      const closeButton = screen.getByRole('button', { name: /close/i });
       await user.click(closeButton);
 
       expect(mockOnClose).toHaveBeenCalled();

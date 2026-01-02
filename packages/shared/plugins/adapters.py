@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from .manifest import PluginManifest
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+logger = logging.getLogger(__name__)
 
 
 def _metadata_value(metadata: Mapping[str, Any] | None, key: str, default: Any = None) -> Any:
@@ -128,8 +131,8 @@ def manifest_from_reranker_plugin(plugin_cls: type, plugin_id: str) -> PluginMan
                 "supports_batching": caps.supports_batching,
                 "models": list(caps.models),
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to get capabilities for reranker plugin '%s': %s", plugin_id, exc)
 
     return PluginManifest(
         id=plugin_id,
@@ -158,8 +161,8 @@ def manifest_from_extractor_plugin(plugin_cls: type, plugin_id: str) -> PluginMa
         try:
             types = plugin_cls.supported_extractions()
             supported_types = [t.value if hasattr(t, "value") else str(t) for t in types]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to get supported extractions for extractor plugin '%s': %s", plugin_id, exc)
 
     return PluginManifest(
         id=plugin_id,

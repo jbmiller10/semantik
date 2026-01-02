@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -357,6 +358,25 @@ class TestFetchRegistry:
 
         assert registry.registry_version == "2.0"
         assert get_registry_source() == "remote"
+
+    @pytest.mark.asyncio()
+    async def test_concurrent_fetch_is_single_flight(self) -> None:
+        """Concurrent calls should share a single in-flight fetch."""
+        remote_registry = PluginRegistry(
+            registry_version="2.0",
+            last_updated="2026-01-01T00:00:00Z",
+            plugins=[],
+        )
+
+        async def slow_fetch(_url: str, _timeout: float = 10.0) -> PluginRegistry:
+            await asyncio.sleep(0.01)
+            return remote_registry
+
+        with patch("shared.plugins.registry_client._fetch_remote_registry", side_effect=slow_fetch) as mock_fetch:
+            results = await asyncio.gather(*(fetch_registry(force_refresh=True) for _ in range(10)))
+
+        assert all(r.registry_version == "2.0" for r in results)
+        assert mock_fetch.call_count == 1
 
 
 class TestCacheHelpers:

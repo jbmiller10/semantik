@@ -6,6 +6,7 @@ from a remote source, with fallback to a bundled registry for offline use.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass, field
@@ -77,6 +78,8 @@ class RegistryCache:
 
 # Global cache instance
 _registry_cache = RegistryCache()
+_cache_lock = asyncio.Lock()
+_inflight_fetch: asyncio.Task[PluginRegistry] | None = None
 
 
 def get_registry_url() -> str:
@@ -165,36 +168,49 @@ async def fetch_registry(
     Returns:
         PluginRegistry from cache, remote, or bundled fallback.
     """
-    global _registry_cache
+    global _inflight_fetch
 
-    # Return cached if valid and not forcing refresh
-    if not force_refresh and _registry_cache.is_valid():
-        logger.debug("Returning cached registry (source: %s)", _registry_cache.source)
-        return _registry_cache.registry  # type: ignore[return-value]
+    async def _fetch_and_update_cache() -> PluginRegistry:
+        """Fetch registry from remote (or bundled fallback) and update cache."""
+        url = get_registry_url()
+        registry = await _fetch_remote_registry(url, timeout)
+        source = "remote"
 
-    # Try remote first
-    url = get_registry_url()
-    registry = await _fetch_remote_registry(url, timeout)
+        if registry is None:
+            logger.info("Using bundled registry as fallback")
+            try:
+                registry = load_bundled_registry()
+                source = "bundled"
+            except Exception as exc:
+                # This should never happen if the bundled file exists
+                logger.error("Failed to load bundled registry: %s", exc)
+                raise
 
-    if registry is not None:
-        # Update cache with remote registry
-        _registry_cache.registry = registry
-        _registry_cache.fetched_at = datetime.now(UTC)
-        _registry_cache.source = "remote"
+        # Update cache under lock
+        async with _cache_lock:
+            _registry_cache.registry = registry
+            _registry_cache.fetched_at = datetime.now(UTC)
+            _registry_cache.source = source
         return registry
 
-    # Fall back to bundled registry
-    logger.info("Using bundled registry as fallback")
+    # Single-flight: ensure only one fetch runs at a time
+    async with _cache_lock:
+        if not force_refresh and _registry_cache.is_valid():
+            logger.debug("Returning cached registry (source: %s)", _registry_cache.source)
+            return _registry_cache.registry  # type: ignore[return-value]
+
+        if _inflight_fetch is not None and not _inflight_fetch.done():
+            task = _inflight_fetch
+        else:
+            task = asyncio.create_task(_fetch_and_update_cache())
+            _inflight_fetch = task
+
     try:
-        registry = load_bundled_registry()
-        _registry_cache.registry = registry
-        _registry_cache.fetched_at = datetime.now(UTC)
-        _registry_cache.source = "bundled"
-        return registry
-    except Exception as exc:
-        # This should never happen if the bundled file exists
-        logger.error("Failed to load bundled registry: %s", exc)
-        raise
+        return await task
+    finally:
+        async with _cache_lock:
+            if _inflight_fetch is task and task.done():
+                _inflight_fetch = None
 
 
 def get_cached_registry() -> PluginRegistry | None:
@@ -221,7 +237,9 @@ def get_registry_source() -> str | None:
 
 def invalidate_registry_cache() -> None:
     """Invalidate the registry cache."""
+    global _inflight_fetch
     _registry_cache.invalidate()
+    _inflight_fetch = None
 
 
 async def list_available_plugins(

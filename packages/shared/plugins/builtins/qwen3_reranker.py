@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from typing import Any, ClassVar
 
 from shared.plugins.manifest import PluginManifest
@@ -57,6 +58,7 @@ class Qwen3RerankerPlugin(RerankerPlugin):
         """
         super().__init__(config)
         self._reranker = None
+        self._model_lock = threading.Lock()
         self._model_name = self._config.get("model_name", DEFAULT_MODEL)
         self._quantization = self._config.get("quantization", DEFAULT_QUANTIZATION)
         self._device = self._config.get("device", "cuda")
@@ -169,7 +171,13 @@ class Qwen3RerankerPlugin(RerankerPlugin):
 
     def _ensure_model_loaded(self) -> None:
         """Ensure the underlying reranker model is loaded (blocking)."""
-        if self._reranker is None:
+        if self._reranker is not None:
+            return
+
+        with self._model_lock:
+            if self._reranker is not None:
+                return
+
             try:
                 from vecpipe.reranker import CrossEncoderReranker
 
@@ -224,7 +232,8 @@ class Qwen3RerankerPlugin(RerankerPlugin):
 
         # Use the underlying reranker
         # rerank() returns list of (index, score) tuples
-        reranked = self._reranker.rerank(
+        reranked = await asyncio.to_thread(
+            self._reranker.rerank,
             query=query,
             documents=documents,
             top_k=effective_top_k,

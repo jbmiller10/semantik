@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from shared.plugins.types.extractor import Entity, ExtractionResult, ExtractionType
+from shared.plugins.types.reranker import RerankResult
+
 
 @dataclass
 class MockDocument:
@@ -94,16 +97,18 @@ class MockReranker:
         query: str,
         documents: list[str],
         top_k: int | None = None,
-    ) -> list[tuple[int, float, str]]:
+        metadata: list[dict[str, Any]] | None = None,
+    ) -> list[RerankResult]:
         """Rerank documents by simulated relevance.
 
         Args:
             query: Search query.
             documents: Documents to rerank.
             top_k: Number of results to return.
+            metadata: Optional metadata for each document.
 
         Returns:
-            List of (original_index, score, document) tuples.
+            List of RerankResult objects.
         """
         self.rerank_calls.append((query, documents))
 
@@ -121,7 +126,11 @@ class MockReranker:
         if top_k is not None:
             scored = scored[:top_k]
 
-        return scored
+        results: list[RerankResult] = []
+        for index, score, doc in scored:
+            doc_metadata = metadata[index] if metadata and index < len(metadata) else {}
+            results.append(RerankResult(index=index, score=score, document=doc, metadata=doc_metadata))
+        return results
 
 
 class MockExtractor:
@@ -137,13 +146,15 @@ class MockExtractor:
     async def extract(
         self,
         text: str,
-        extraction_types: list[str] | None = None,  # noqa: ARG002
-    ) -> dict[str, Any]:
+        extraction_types: list[ExtractionType] | None = None,  # noqa: ARG002
+        options: dict[str, Any] | None = None,  # noqa: ARG002
+    ) -> ExtractionResult:
         """Extract mock metadata from text.
 
         Args:
             text: Text to extract from.
             extraction_types: Types of extraction to perform (ignored in mock).
+            options: Plugin-specific options (ignored in mock).
 
         Returns:
             Mock extraction result.
@@ -152,12 +163,23 @@ class MockExtractor:
 
         # Simple mock extraction
         words = text.split()
-        return {
-            "entities": [{"text": w, "type": "MOCK"} for w in words[:3]],
-            "keywords": words[:5],
-            "language": "en",
-            "language_confidence": 0.95,
-        }
+        entities: list[Entity] = []
+        cursor = 0
+        for word in words[:3]:
+            start = text.find(word, cursor)
+            if start == -1:
+                start = cursor
+            end = start + len(word)
+            cursor = end
+            entities.append(Entity(text=word, type="MOCK", start=start, end=end, confidence=0.9))
+
+        return ExtractionResult(
+            entities=entities,
+            keywords=words[:5],
+            language="en",
+            language_confidence=0.95,
+            custom={"options": options or {}},
+        )
 
 
 class MockChunker:

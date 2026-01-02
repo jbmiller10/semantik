@@ -17,6 +17,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from shared.plugins.validation import validate_package_name, validate_pip_install_target
+
 logger = logging.getLogger(__name__)
 
 # Default plugins directory (can be overridden via environment)
@@ -61,6 +63,12 @@ def install_plugin(
     plugins_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("Installing plugin: %s -> %s", install_command, plugins_dir)
+
+    try:
+        validate_pip_install_target(install_command)
+    except ValueError as exc:
+        logger.warning("Rejected unsafe install target: %s (%s)", install_command, exc)
+        return False, str(exc)
 
     try:
         # Use system pip directly (venv doesn't have pip, uses uv)
@@ -113,9 +121,18 @@ def uninstall_plugin(package_name: str) -> tuple[bool, str]:
     """
     plugins_dir = get_plugins_dir()
 
+    try:
+        validate_package_name(package_name)
+    except ValueError as exc:
+        logger.warning("Rejected unsafe package name for uninstall: %s (%s)", package_name, exc)
+        return False, str(exc)
+
     # Convert package name to directory name (replace hyphens with underscores)
     dir_name = package_name.replace("-", "_")
-    plugin_path = plugins_dir / dir_name
+    plugins_dir_resolved = plugins_dir.resolve()
+    plugin_path = (plugins_dir / dir_name).resolve()
+    if not plugin_path.is_relative_to(plugins_dir_resolved):
+        return False, "Invalid package name"
 
     logger.info("Uninstalling plugin: %s from %s", package_name, plugins_dir)
 
@@ -133,10 +150,14 @@ def uninstall_plugin(package_name: str) -> tuple[bool, str]:
 
     # Remove .dist-info directories
     for dist_info in plugins_dir.glob(f"{dir_name}-*.dist-info"):
+        dist_info_path = dist_info.resolve()
+        if not dist_info_path.is_relative_to(plugins_dir_resolved):
+            logger.warning("Skipping unexpected dist-info path outside plugins dir: %s", dist_info_path)
+            continue
         try:
-            shutil.rmtree(dist_info)
+            shutil.rmtree(dist_info_path)
             removed_any = True
-            logger.info("Removed dist-info: %s", dist_info)
+            logger.info("Removed dist-info: %s", dist_info_path)
         except Exception as exc:
             logger.warning("Failed to remove dist-info %s: %s", dist_info, exc)
 
