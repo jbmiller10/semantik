@@ -2461,9 +2461,26 @@ def audit_log(plugin_id: str, action: str, details: dict | None = None) -> None:
 
 ### Phase 6: Example Plugins (P2)
 
-**Goal:** Create real, published plugins that users can actually install, demonstrating the plugin system works end-to-end.
+**Goal:** Create real, installable plugins that demonstrate the plugin system works end-to-end.
 
-> **Rationale:** The registry currently contains placeholder entries. Publishing actual plugins:
+> **Distribution Decision:** Use **git-based installation** instead of PyPI.
+>
+> ```bash
+> # Users install like this:
+> pip install git+https://github.com/jbmiller10/semantik-plugin-openai.git
+>
+> # Or pin to a version:
+> pip install git+https://github.com/jbmiller10/semantik-plugin-openai.git@v1.0.0
+> ```
+>
+> **Rationale:** PyPI is overkill for a self-hosted tool where the primary plugin author is the developer themselves. Git-based install:
+> - Still uses standard entry points (no code changes needed)
+> - No PyPI account/publishing overhead
+> - Easy to iterate during development
+> - Users can pin to tags for stability
+> - Can always publish to PyPI later if demand grows
+
+> **Benefits of real plugins:**
 > - Validates the plugin authoring experience
 > - Provides working examples for community contributors
 > - Makes the "Available Plugins" UI immediately useful
@@ -2506,12 +2523,12 @@ openai-embeddings = "semantik_plugin_openai:OpenAIEmbeddingPlugin"
 
 | Task | Description | Deliverables |
 |------|-------------|--------------|
-| Create plugin template repo | GitHub template for new plugins | `github.com/semantik-plugins/plugin-template` |
-| Implement OpenAI embeddings | Full embedding plugin with config | `semantik-plugin-openai` on PyPI |
-| Implement Cohere reranker | Reranker plugin with API key config | `semantik-plugin-cohere-reranker` on PyPI |
-| Implement Voyage embeddings | Embedding plugin | `semantik-plugin-voyage` on PyPI |
-| Implement S3 connector | Connector with AWS credential config | `semantik-plugin-s3` on PyPI |
-| Update registry | Replace placeholders with real entries | `packages/shared/plugins/data/registry.yaml` |
+| Create plugin template repo | GitHub template for new plugins | `jbmiller10/semantik-plugin-template` |
+| Implement OpenAI embeddings | Full embedding plugin with config | `jbmiller10/semantik-plugin-openai` |
+| Implement Cohere reranker | Reranker plugin with API key config | `jbmiller10/semantik-plugin-cohere-reranker` |
+| Implement Voyage embeddings | Embedding plugin | `jbmiller10/semantik-plugin-voyage` |
+| Implement S3 connector | Connector with AWS credential config | `jbmiller10/semantik-plugin-s3` |
+| Update registry | Point to GitHub repos instead of placeholders | `packages/shared/plugins/data/registry.yaml` |
 | Document plugin authoring | End-to-end guide with real examples | `docs/WRITING_PLUGINS.md` |
 
 #### 6.4 OpenAI Embeddings Plugin (Reference Implementation)
@@ -2544,7 +2561,7 @@ class OpenAIEmbeddingPlugin(SemanticPlugin, EmbeddingPluginProtocol):
             display_name="OpenAI Embeddings",
             description="Generate embeddings using OpenAI's text-embedding models",
             author="semantik",
-            homepage="https://github.com/semantik-plugins/openai-embeddings",
+            homepage="https://github.com/jbmiller10/semantik-plugin-openai",
             config_schema={
                 "api_key": {"type": "string", "secret": True, "required": True},
                 "model": {"type": "string", "default": "text-embedding-3-small"},
@@ -2752,7 +2769,7 @@ volumes:
 ```python
 class PluginInstallRequest(BaseModel):
     plugin_id: str  # Registry plugin ID, e.g., "openai-embeddings"
-    version: str | None = None  # Optional version constraint
+    version: str | None = None  # Optional git tag/branch, e.g., "v1.0.0"
 
 class PluginInstallResponse(BaseModel):
     success: bool
@@ -2769,15 +2786,23 @@ from pathlib import Path
 
 PLUGINS_DIR = Path(os.environ.get("SEMANTIK_PLUGINS_DIR", "/app/plugins"))
 
-def install_plugin(package_name: str, version: str | None = None) -> tuple[bool, str]:
-    """Install a plugin package to the plugins directory.
+def install_plugin(git_url: str, version: str | None = None) -> tuple[bool, str]:
+    """Install a plugin from a git repository to the plugins directory.
 
     This is a synchronous operation that blocks until pip completes.
     Returns (success, message).
+
+    Args:
+        git_url: GitHub repo URL, e.g., "https://github.com/jbmiller10/semantik-plugin-openai"
+        version: Optional git tag/branch, e.g., "v1.0.0" or "main"
     """
     PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
 
-    target = f"{package_name}=={version}" if version else package_name
+    # Build git+https URL with optional version
+    if version:
+        target = f"git+{git_url}.git@{version}"
+    else:
+        target = f"git+{git_url}.git"
 
     result = subprocess.run(
         [
@@ -2792,7 +2817,7 @@ def install_plugin(package_name: str, version: str | None = None) -> tuple[bool,
     )
 
     if result.returncode == 0:
-        return True, f"Successfully installed {package_name}. Restart required to activate."
+        return True, f"Successfully installed from {git_url}. Restart required to activate."
     else:
         return False, f"Installation failed:\n{result.stderr}"
 
