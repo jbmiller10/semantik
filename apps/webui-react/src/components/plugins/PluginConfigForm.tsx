@@ -67,7 +67,7 @@ function renderField(
           id={name}
           name={name}
           value={(value as string) ?? property.default ?? ''}
-          onChange={(e) => onChange(name, e.target.value)}
+          onChange={(e) => onChange(name, e.target.value || undefined)}
           disabled={disabled}
           className={inputClassName}
         >
