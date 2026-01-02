@@ -7,6 +7,8 @@ import type {
   PluginConfigSchema,
   PluginStatusResponse,
   PluginHealthResponse,
+  AvailablePluginsListResponse,
+  AvailablePluginFilters,
 } from '../types/plugin';
 
 /**
@@ -19,6 +21,8 @@ export const pluginKeys = {
   manifest: (pluginId: string) => [...pluginKeys.all, 'manifest', pluginId] as const,
   configSchema: (pluginId: string) => [...pluginKeys.all, 'config-schema', pluginId] as const,
   health: (pluginId: string) => [...pluginKeys.all, 'health', pluginId] as const,
+  available: (filters?: AvailablePluginFilters) =>
+    [...pluginKeys.all, 'available', filters] as const,
 };
 
 /**
@@ -184,6 +188,46 @@ export function useRefreshPluginHealth() {
       queryClient.invalidateQueries({ queryKey: pluginKeys.detail(pluginId) });
       // Invalidate all list queries regardless of filters (e.g., include_health)
       queryClient.invalidateQueries({ queryKey: [...pluginKeys.all, 'list'] });
+    },
+  });
+}
+
+// --- Available Plugins (from registry) ---
+
+/**
+ * Hook to fetch available plugins from the remote registry
+ * @param filters Optional filters for type and verified status
+ */
+export function useAvailablePlugins(filters?: AvailablePluginFilters) {
+  return useQuery({
+    queryKey: pluginKeys.available(filters),
+    queryFn: async (): Promise<AvailablePluginsListResponse> => {
+      const response = await pluginsApi.listAvailable(filters);
+      return response.data;
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes (registry data)
+    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+  });
+}
+
+/**
+ * Hook to force refresh the available plugins registry
+ */
+export function useRefreshAvailablePlugins() {
+  const queryClient = useQueryClient();
+
+  return useMutation<AvailablePluginsListResponse, Error, void>({
+    mutationFn: async () => {
+      const response = await pluginsApi.refreshAvailable();
+      return response.data;
+    },
+    onSuccess: (data) => {
+      // Update the cache with fresh data
+      queryClient.setQueryData(pluginKeys.available(undefined), data);
+      // Invalidate filtered queries
+      queryClient.invalidateQueries({
+        queryKey: [...pluginKeys.all, 'available'],
+      });
     },
   });
 }

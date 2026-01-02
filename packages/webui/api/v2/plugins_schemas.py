@@ -66,3 +66,39 @@ class PluginHealthResponse(BaseModel):
     error_message: str | None
 
     model_config = ConfigDict(extra="forbid")
+
+
+# --- Available Plugins (from registry) ---
+
+
+class AvailablePluginInfo(BaseModel):
+    """Information about an available (not installed) plugin from the registry."""
+
+    id: str
+    type: str
+    name: str
+    description: str
+    author: str
+    repository: str
+    pypi: str
+    verified: bool
+    min_semantik_version: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    is_compatible: bool = True
+    compatibility_message: str | None = None
+    is_installed: bool = False
+    install_command: str = ""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class AvailablePluginsListResponse(BaseModel):
+    """Response for listing available plugins from the registry."""
+
+    plugins: list[AvailablePluginInfo]
+    registry_version: str | None = None
+    last_updated: str | None = None
+    registry_source: str | None = None  # "remote" or "bundled"
+    semantik_version: str
+
+    model_config = ConfigDict(extra="forbid")

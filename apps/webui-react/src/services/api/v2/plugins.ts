@@ -7,6 +7,8 @@ import type {
   PluginStatusResponse,
   PluginHealthResponse,
   PluginConfigSchema,
+  AvailablePluginsListResponse,
+  AvailablePluginFilters,
 } from '../../../types/plugin';
 
 /**
@@ -72,4 +74,21 @@ export const pluginsApi = {
    */
   checkHealth: (pluginId: string) =>
     apiClient.get<PluginHealthResponse>(`/api/v2/plugins/${pluginId}/health`),
+
+  // --- Available Plugins (from registry) ---
+
+  /**
+   * List available plugins from the remote registry
+   * @param filters Optional filters for type and verified status
+   */
+  listAvailable: (filters?: AvailablePluginFilters) =>
+    apiClient.get<AvailablePluginsListResponse>('/api/v2/plugins/available', {
+      params: filters,
+    }),
+
+  /**
+   * Force refresh the available plugins registry cache
+   */
+  refreshAvailable: () =>
+    apiClient.post<AvailablePluginsListResponse>('/api/v2/plugins/available/refresh'),
 };

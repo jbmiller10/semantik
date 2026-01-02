@@ -141,6 +141,7 @@ Thumbs.db
 *.db
 logs/
 data/
+!packages/shared/plugins/data/
 images/
 models/
 repomixpy-output.txt
