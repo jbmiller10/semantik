@@ -129,7 +129,7 @@ class BaseConnector(ABC):
 | **No hot-reload** | Requires restart to load new plugins | Low | Future |
 | **Limited testing utilities** | Plugin authors must build their own test harness | Medium | Phase 3.2 |
 
-> **⚠️ CRITICAL SECURITY FINDING:** Current plugins have access to all environment variables (including `JWT_SECRET_KEY`, `POSTGRES_PASSWORD`), unrestricted network access, full container filesystem, and GPU resources. A malicious plugin could exfiltrate all data and credentials. Phase 5 (Security) priority elevated.
+> **⚠️ SECURITY NOTE:** Plugins run in-process with full privileges. Phase 5 added audit logging and cooperative env filtering, but true isolation requires out-of-process execution (deferred). See `docs/PLUGIN_SECURITY.md` for the trust model and best practices.
 
 ### Current Loading Sequence
 
@@ -835,7 +835,7 @@ Each template includes:
 | ~~**Phase 2.3: Preprocessors**~~ | ~~PDF/HTML preprocessing~~ | - | - | **DEFERRED** |
 | ~~**Phase 3: Experience**~~ | ~~Plugin UI, testing fixtures~~ | ~~P1~~ | ~~2-3 weeks~~ | ✅ **COMPLETE** |
 | ~~**Phase 4: Registry**~~ | ~~Slim YAML registry + browse UI~~ | ~~P2~~ | ~~1 week~~ | ✅ **COMPLETE** |
-| **Phase 5: Security** | Audit logging (env filtering is cooperative only) | P1 | 1 week | Planned (simplified) |
+| ~~**Phase 5: Security**~~ | ~~Audit logging (env filtering is cooperative only)~~ | ~~P1~~ | ~~1 week~~ | ✅ **COMPLETE** |
 | **Phase 6: Example Plugins** | Real, published plugins for the registry | P2 | 2-3 weeks | Planned |
 | **Phase 7: In-App Installation** | Install plugins from UI (sync install, restart required) | P3 | 1 week | Planned |
 
@@ -2356,11 +2356,13 @@ No compatibility matrix, no upgrade notifications, no migration tooling.
 
 ---
 
-### Phase 5: Security (P1) — SIMPLIFIED
+### Phase 5: Security (P1) — SIMPLIFIED ✅ COMPLETE
 
 > **Context:** Current plugins run with full process privileges (access to env vars, network, filesystem). This is acceptable when the primary plugin author is trusted (yourself), but worth addressing for good hygiene.
 
 **Goal:** Basic security hardening without complex sandboxing infrastructure.
+
+**Status:** Completed in PR #274 (commit `ad77737e`)
 
 > **Scope reduction (2026-01-01):**
 > - 5.0 Security hardening: **Keep** (env filtering, audit logging)
@@ -2421,9 +2423,9 @@ def audit_log(plugin_id: str, action: str, details: dict | None = None) -> None:
 ```
 
 **Acceptance Criteria:**
-- [ ] Plugin operations logged with structured data
-- [ ] Security documentation published
-- [ ] Env filtering utility available (cooperative)
+- [x] Plugin operations logged with structured data
+- [x] Security documentation published
+- [x] Env filtering utility available (cooperative)
 
 ---
 
