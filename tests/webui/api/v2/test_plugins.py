@@ -483,9 +483,7 @@ class TestListAvailablePlugins:
         """Test list_available_plugins filters by type."""
         client, mock_service = api_client_with_plugin
 
-        response = await client.get(
-            "/api/v2/plugins/available", params={"plugin_type": "embedding"}
-        )
+        response = await client.get("/api/v2/plugins/available", params={"plugin_type": "embedding"})
         assert response.status_code == 200
         data = response.json()
 
@@ -498,9 +496,7 @@ class TestListAvailablePlugins:
         """Test list_available_plugins filters by verified status."""
         client, mock_service = api_client_with_plugin
 
-        response = await client.get(
-            "/api/v2/plugins/available", params={"verified_only": True}
-        )
+        response = await client.get("/api/v2/plugins/available", params={"verified_only": True})
         assert response.status_code == 200
         data = response.json()
 

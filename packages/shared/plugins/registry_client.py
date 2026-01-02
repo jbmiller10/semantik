@@ -20,9 +20,7 @@ from pydantic import BaseModel, Field, ValidationError
 logger = logging.getLogger(__name__)
 
 # Default registry URL (GitHub raw content)
-DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/semantik/plugin-registry/main/registry.yaml"
-)
+DEFAULT_REGISTRY_URL = "https://raw.githubusercontent.com/semantik/plugin-registry/main/registry.yaml"
 
 # Cache duration (1 hour default)
 DEFAULT_CACHE_DURATION_SECONDS = 3600
@@ -61,9 +59,7 @@ class RegistryCache:
     registry: PluginRegistry | None = None
     fetched_at: datetime | None = None
     source: str | None = None  # "remote" or "bundled"
-    cache_duration: timedelta = field(
-        default_factory=lambda: timedelta(seconds=DEFAULT_CACHE_DURATION_SECONDS)
-    )
+    cache_duration: timedelta = field(default_factory=lambda: timedelta(seconds=DEFAULT_CACHE_DURATION_SECONDS))
 
     def is_valid(self) -> bool:
         """Return True if cache is still valid."""

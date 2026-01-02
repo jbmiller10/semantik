@@ -155,9 +155,7 @@ class TestVersionEdgeCases:
             ("1.1.0", "1.0.0", False),
         ],
     )
-    def test_version_comparisons(
-        self, constraint: str, running: str, expected: bool
-    ) -> None:
+    def test_version_comparisons(self, constraint: str, running: str, expected: bool) -> None:
         """Test various version comparisons."""
         result = is_compatible(constraint, running)
         assert result is expected

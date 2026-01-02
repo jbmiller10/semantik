@@ -17,4 +17,5 @@ class PluginProtocol(Protocol):
     PLUGIN_VERSION: ClassVar[str]
 
     @classmethod
-    def get_manifest(cls) -> PluginManifest: ...
+    def get_manifest(cls) -> PluginManifest:
+        ...

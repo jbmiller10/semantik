@@ -108,19 +108,13 @@ class TestRegistryCache:
 
     def test_cache_with_no_timestamp_is_invalid(self) -> None:
         """Cache with registry but no timestamp should be invalid."""
-        cache = RegistryCache(
-            registry=PluginRegistry(
-                registry_version="1.0", last_updated="2026-01-01T00:00:00Z"
-            )
-        )
+        cache = RegistryCache(registry=PluginRegistry(registry_version="1.0", last_updated="2026-01-01T00:00:00Z"))
         assert cache.is_valid() is False
 
     def test_fresh_cache_is_valid(self) -> None:
         """Recently fetched cache should be valid."""
         cache = RegistryCache(
-            registry=PluginRegistry(
-                registry_version="1.0", last_updated="2026-01-01T00:00:00Z"
-            ),
+            registry=PluginRegistry(registry_version="1.0", last_updated="2026-01-01T00:00:00Z"),
             fetched_at=datetime.now(UTC),
         )
         assert cache.is_valid() is True
@@ -128,9 +122,7 @@ class TestRegistryCache:
     def test_expired_cache_is_invalid(self) -> None:
         """Cache older than duration should be invalid."""
         cache = RegistryCache(
-            registry=PluginRegistry(
-                registry_version="1.0", last_updated="2026-01-01T00:00:00Z"
-            ),
+            registry=PluginRegistry(registry_version="1.0", last_updated="2026-01-01T00:00:00Z"),
             fetched_at=datetime.now(UTC) - timedelta(hours=2),
             cache_duration=timedelta(hours=1),
         )
@@ -139,9 +131,7 @@ class TestRegistryCache:
     def test_invalidate_clears_cache(self) -> None:
         """Invalidate should clear all cache data."""
         cache = RegistryCache(
-            registry=PluginRegistry(
-                registry_version="1.0", last_updated="2026-01-01T00:00:00Z"
-            ),
+            registry=PluginRegistry(registry_version="1.0", last_updated="2026-01-01T00:00:00Z"),
             fetched_at=datetime.now(UTC),
             source="remote",
         )
@@ -321,9 +311,7 @@ class TestFetchRegistry:
         registry1 = await fetch_registry()
 
         # Second fetch should use cache (no remote call)
-        with patch(
-            "shared.plugins.registry_client._fetch_remote_registry"
-        ) as mock_fetch:
+        with patch("shared.plugins.registry_client._fetch_remote_registry") as mock_fetch:
             registry2 = await fetch_registry()
 
         mock_fetch.assert_not_called()
@@ -336,9 +324,7 @@ class TestFetchRegistry:
         await fetch_registry()
 
         # Force refresh should call remote
-        with patch(
-            "shared.plugins.registry_client._fetch_remote_registry"
-        ) as mock_fetch:
+        with patch("shared.plugins.registry_client._fetch_remote_registry") as mock_fetch:
             mock_fetch.return_value = None  # Will fall back to bundled
             await fetch_registry(force_refresh=True)
 
@@ -347,9 +333,7 @@ class TestFetchRegistry:
     @pytest.mark.asyncio()
     async def test_falls_back_to_bundled(self) -> None:
         """Should fall back to bundled when remote fails."""
-        with patch(
-            "shared.plugins.registry_client._fetch_remote_registry"
-        ) as mock_fetch:
+        with patch("shared.plugins.registry_client._fetch_remote_registry") as mock_fetch:
             mock_fetch.return_value = None  # Remote failed
 
             registry = await fetch_registry()
@@ -366,9 +350,7 @@ class TestFetchRegistry:
             plugins=[],
         )
 
-        with patch(
-            "shared.plugins.registry_client._fetch_remote_registry"
-        ) as mock_fetch:
+        with patch("shared.plugins.registry_client._fetch_remote_registry") as mock_fetch:
             mock_fetch.return_value = remote_registry
 
             registry = await fetch_registry(force_refresh=True)
@@ -457,9 +439,7 @@ class TestListAvailablePlugins:
     @pytest.mark.asyncio()
     async def test_combined_filters(self) -> None:
         """Should apply multiple filters."""
-        plugins = await list_available_plugins(
-            plugin_type="embedding", verified_only=True
-        )
+        plugins = await list_available_plugins(plugin_type="embedding", verified_only=True)
         assert all(p.type == "embedding" and p.verified for p in plugins)
 
 
