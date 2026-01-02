@@ -13,6 +13,7 @@ from shared.database.repositories.plugin_config_repository import PluginConfigRe
 from shared.plugins.adapters import get_config_schema
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
+from shared.plugins.security import audit_log
 from shared.plugins.state import PluginState, PluginStateConfig, resolve_env_vars, write_state
 
 if TYPE_CHECKING:
@@ -275,6 +276,12 @@ class PluginService:
         )
         await self.db_session.commit()
 
+        audit_log(
+            plugin_id,
+            "plugin.config.updated",
+            {"plugin_type": record.plugin_type, "config_keys": list(config.keys())},
+        )
+
         # Sync state file for VecPipe
         await self._sync_state_file()
 
@@ -290,6 +297,12 @@ class PluginService:
             enabled=enabled,
         )
         await self.db_session.commit()
+
+        audit_log(
+            plugin_id,
+            "plugin.enabled" if enabled else "plugin.disabled",
+            {"plugin_type": record.plugin_type},
+        )
 
         # Sync state file for VecPipe
         await self._sync_state_file()
@@ -316,9 +329,17 @@ class PluginService:
             return None
         config_row = await self._check_and_update_health(record)
         await self.db_session.commit()
+
+        health_status = config_row.health_status if config_row else "unknown"
+        audit_log(
+            plugin_id,
+            "plugin.health_check",
+            {"plugin_type": record.plugin_type, "status": health_status},
+        )
+
         return {
             "plugin_id": record.plugin_id,
-            "health_status": config_row.health_status if config_row else "unknown",
+            "health_status": health_status,
             "last_health_check": config_row.last_health_check if config_row else None,
             "error_message": config_row.error_message if config_row else None,
         }

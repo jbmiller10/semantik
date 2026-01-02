@@ -18,6 +18,7 @@ from .adapters import (
 )
 from .base import SemanticPlugin
 from .registry import PluginRecord, PluginSource, plugin_registry
+from .security import audit_log
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -284,6 +285,12 @@ def _load_external_plugins(
             )
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to load plugin entry point %s: %s", ep_name, exc)
+            audit_log(
+                ep_name,
+                "plugin.load.failed",
+                {"entry_point": ep_name, "error": str(exc)},
+                level=logging.WARNING,
+            )
             continue
 
 
@@ -596,7 +603,20 @@ def _register_plugin_record(
         source=source,
         entry_point=entry_point,
     )
-    return plugin_registry.register(record)
+    registered = plugin_registry.register(record)
+
+    if registered:
+        audit_log(
+            plugin_id,
+            f"plugin.registered.{source.value}",
+            {
+                "plugin_type": plugin_type,
+                "version": record.plugin_version,
+                "entry_point": entry_point,
+            },
+        )
+
+    return registered
 
 
 def get_plugin_config_schema(plugin_id: str) -> dict[str, Any] | None:
