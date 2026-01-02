@@ -27,7 +27,7 @@ plugins:
     repository: "https://github.com/semantik-plugins/voyage-embeddings"
     pypi: "semantik-plugin-voyage"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["api", "voyage", "cloud"]
 
   # Rerankers
@@ -39,7 +39,7 @@ plugins:
     repository: "https://github.com/semantik-plugins/cohere-reranker"
     pypi: "semantik-plugin-cohere-reranker"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["api", "cohere", "reranking"]
 
   - id: bge-reranker
@@ -50,7 +50,7 @@ plugins:
     repository: "https://github.com/semantik-plugins/bge-reranker"
     pypi: "semantik-plugin-bge-reranker"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["local", "bge", "reranking"]
 
   # Connectors
@@ -62,7 +62,7 @@ plugins:
     repository: "https://github.com/semantik-plugins/s3-connector"
     pypi: "semantik-plugin-s3"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["cloud", "aws", "storage"]
 
   - id: gdrive-connector
@@ -73,7 +73,7 @@ plugins:
     repository: "https://github.com/semantik-plugins/gdrive-connector"
     pypi: "semantik-plugin-gdrive"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["cloud", "google", "storage"]
 
   - id: notion-connector
@@ -84,7 +84,7 @@ plugins:
     repository: "https://github.com/example/semantik-notion"
     pypi: "semantik-plugin-notion"
     verified: false
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["cloud", "notion", "productivity"]
 
   # Extractors
@@ -96,5 +96,5 @@ plugins:
     repository: "https://github.com/semantik-plugins/spacy-extractor"
     pypi: "semantik-plugin-spacy"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags: ["nlp", "ner", "spacy"]

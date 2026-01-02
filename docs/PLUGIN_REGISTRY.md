@@ -29,11 +29,11 @@ The bundled registry is located at:
 packages/shared/plugins/data/registry.yaml
 ```
 
-## Registry Schema (v1.0)
+## Registry Schema (v1.1)
 
 ```yaml
-registry_version: "1.0"
-last_updated: "2026-01-01T00:00:00Z"
+registry_version: "1.1"
+last_updated: "2026-01-02T00:00:00Z"
 plugins:
   - id: plugin-unique-id
     type: embedding | chunking | connector | reranker | extractor
@@ -41,9 +41,10 @@ plugins:
     description: "Brief description of what the plugin does"
     author: "author-name"
     repository: "https://github.com/owner/repo"
+    install_command: "pip install git+https://github.com/owner/repo.git"  # Optional
     pypi: "package-name-on-pypi"
     verified: true | false
-    min_semantik_version: "2.0.0"  # Optional
+    min_semantik_version: "0.7.5"  # Optional
     tags:
       - api
       - local
@@ -60,6 +61,7 @@ plugins:
 | `description` | Yes | Brief description (1-2 sentences) |
 | `author` | Yes | Author or organization name |
 | `repository` | Yes | GitHub repository URL |
+| `install_command` | No | Full `pip install ...` command (e.g., `pip install git+https://...`) |
 | `pypi` | Yes | PyPI package name for installation |
 | `verified` | No | Whether the plugin is verified (default: `false`) |
 | `min_semantik_version` | No | Minimum Semantik version required (semver) |
@@ -75,9 +77,10 @@ plugins:
     description: "text-embedding-3-small and text-embedding-3-large models via OpenAI API"
     author: "semantik"
     repository: "https://github.com/semantik-plugins/openai-embeddings"
+    install_command: "pip install semantik-plugin-openai"
     pypi: "semantik-plugin-openai"
     verified: true
-    min_semantik_version: "2.0.0"
+    min_semantik_version: "0.7.5"
     tags:
       - api
       - openai
@@ -148,10 +151,10 @@ Response:
 ```json
 {
   "plugins": [...],
-  "registry_version": "1.0",
-  "last_updated": "2026-01-01T00:00:00Z",
+  "registry_version": "1.1",
+  "last_updated": "2026-01-02T00:00:00Z",
   "registry_source": "remote" | "bundled",
-  "semantik_version": "2.0.0"
+  "semantik_version": "0.7.5"
 }
 ```
 

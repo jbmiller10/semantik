@@ -28,7 +28,7 @@ def get_semantik_version() -> str:
         return version("semantik")
     except Exception:
         # Fallback if running in development without proper installation
-        return "2.0.0"
+        return "0.7.5"
 
 
 def check_compatibility(
@@ -38,7 +38,7 @@ def check_compatibility(
     """Check if a plugin is compatible with the current Semantik version.
 
     Args:
-        plugin_constraint: Minimum Semantik version required (e.g., "2.0.0").
+        plugin_constraint: Minimum Semantik version required (e.g., "0.7.5").
             If None or empty, the plugin is considered compatible.
         semantik_version: Semantik version to check against. If None,
             uses the current running version.

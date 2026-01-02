@@ -17,7 +17,7 @@ const mockAvailablePlugins: AvailablePlugin[] = [
     repository: 'https://github.com/semantik-plugins/openai-embeddings',
     pypi: 'semantik-plugin-openai',
     verified: true,
-    min_semantik_version: '2.0.0',
+    min_semantik_version: '0.7.5',
     tags: ['api', 'openai', 'cloud'],
     is_compatible: true,
     compatibility_message: null,
@@ -34,7 +34,7 @@ const mockAvailablePlugins: AvailablePlugin[] = [
     repository: 'https://github.com/semantik-plugins/cohere-reranker',
     pypi: 'semantik-plugin-cohere-reranker',
     verified: true,
-    min_semantik_version: '2.0.0',
+    min_semantik_version: '0.7.5',
     tags: ['api', 'cohere', 'reranking'],
     is_compatible: true,
     compatibility_message: null,
@@ -66,7 +66,7 @@ const mockResponse: AvailablePluginsListResponse = {
   registry_version: '1.0',
   last_updated: '2026-01-01T00:00:00Z',
   registry_source: 'bundled',
-  semantik_version: '2.0.0',
+  semantik_version: '0.7.5',
 };
 
 describe('AvailablePluginsTab', () => {
@@ -115,7 +115,7 @@ describe('AvailablePluginsTab', () => {
         expect(screen.getByText('Registry v1.0')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Semantik v2.0.0')).toBeInTheDocument();
+      expect(screen.getByText('Semantik v0.7.5')).toBeInTheDocument();
       expect(screen.getByText('(bundled)')).toBeInTheDocument();
     });
 

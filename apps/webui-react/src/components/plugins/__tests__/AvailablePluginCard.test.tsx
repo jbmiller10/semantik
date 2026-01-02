@@ -34,7 +34,7 @@ const createMockAvailablePlugin = (
   repository: 'https://github.com/test/test-plugin',
   pypi: 'semantik-plugin-test',
   verified: true,
-  min_semantik_version: '2.0.0',
+  min_semantik_version: '0.7.5',
   tags: ['api', 'cloud'],
   is_compatible: true,
   compatibility_message: null,

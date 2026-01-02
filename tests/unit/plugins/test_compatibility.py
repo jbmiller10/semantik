@@ -27,7 +27,7 @@ class TestGetSemantikVersion:
         # When package metadata isn't available, should return fallback
         with patch("importlib.metadata.version", side_effect=Exception):
             version = get_semantik_version()
-            assert version == "2.0.0"
+            assert version == "0.7.5"
 
 
 class TestCheckCompatibility:
