@@ -3,6 +3,24 @@ import { render, screen } from '@/tests/utils/test-utils';
 import userEvent from '@testing-library/user-event';
 import AvailablePluginCard from '../AvailablePluginCard';
 import type { AvailablePlugin, PluginType } from '@/types/plugin';
+import { useAuthStore } from '@/stores/authStore';
+
+// Mock the auth store
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: vi.fn(),
+}));
+
+// Mock the plugin hooks
+vi.mock('@/hooks/usePlugins', () => ({
+  usePluginInstall: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({ success: true, message: 'Installed' }),
+    isPending: false,
+  }),
+  usePluginUninstall: () => ({
+    mutateAsync: vi.fn().mockResolvedValue({ success: true, message: 'Uninstalled' }),
+    isPending: false,
+  }),
+}));
 
 // Helper to create mock available plugin
 const createMockAvailablePlugin = (
@@ -21,13 +39,39 @@ const createMockAvailablePlugin = (
   is_compatible: true,
   compatibility_message: null,
   is_installed: false,
+  pending_restart: false,
   install_command: 'pip install semantik-plugin-test',
   ...overrides,
 });
 
+// Mock admin user
+const mockAdminUser = {
+  id: 1,
+  username: 'admin',
+  email: 'admin@test.com',
+  is_active: true,
+  is_superuser: true,
+  created_at: new Date().toISOString(),
+};
+
+// Mock regular user
+const mockRegularUser = {
+  id: 2,
+  username: 'user',
+  email: 'user@test.com',
+  is_active: true,
+  is_superuser: false,
+  created_at: new Date().toISOString(),
+};
+
 describe('AvailablePluginCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to admin user
+    vi.mocked(useAuthStore).mockImplementation((selector) => {
+      const state = { user: mockAdminUser };
+      return selector(state as ReturnType<typeof useAuthStore.getState>);
+    });
   });
 
   describe('rendering', () => {
@@ -43,7 +87,7 @@ describe('AvailablePluginCard', () => {
     it('renders author information', () => {
       render(<AvailablePluginCard plugin={createMockAvailablePlugin()} />);
 
-      expect(screen.getByText('by Test Author')).toBeInTheDocument();
+      expect(screen.getByText(/by Test Author/)).toBeInTheDocument();
     });
 
     it('renders GitHub link', () => {
@@ -103,13 +147,27 @@ describe('AvailablePluginCard', () => {
       expect(screen.queryByText('Installed')).not.toBeInTheDocument();
     });
 
-    it('hides install command when plugin is installed', () => {
+    it('shows Uninstall button when plugin is installed', () => {
       const plugin = createMockAvailablePlugin({ is_installed: true });
       render(<AvailablePluginCard plugin={plugin} />);
 
-      expect(
-        screen.queryByText('pip install semantik-plugin-test')
-      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /uninstall/i })).toBeInTheDocument();
+    });
+  });
+
+  describe('pending restart', () => {
+    it('shows Restart Required badge when pending restart', () => {
+      const plugin = createMockAvailablePlugin({ pending_restart: true });
+      render(<AvailablePluginCard plugin={plugin} />);
+
+      expect(screen.getByText('Restart Required')).toBeInTheDocument();
+    });
+
+    it('shows Uninstall button when pending restart', () => {
+      const plugin = createMockAvailablePlugin({ pending_restart: true });
+      render(<AvailablePluginCard plugin={plugin} />);
+
+      expect(screen.getByRole('button', { name: /uninstall/i })).toBeInTheDocument();
     });
   });
 
@@ -136,13 +194,11 @@ describe('AvailablePluginCard', () => {
       ).toBeInTheDocument();
     });
 
-    it('hides install command when incompatible', () => {
+    it('hides install button when incompatible', () => {
       const plugin = createMockAvailablePlugin({ is_compatible: false });
       render(<AvailablePluginCard plugin={plugin} />);
 
-      expect(
-        screen.queryByText('pip install semantik-plugin-test')
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /install/i })).not.toBeInTheDocument();
     });
 
     it('does not show Incompatible badge when compatible', () => {
@@ -153,43 +209,55 @@ describe('AvailablePluginCard', () => {
     });
   });
 
-  describe('install command', () => {
-    it('renders install command when compatible and not installed', () => {
+  describe('install button', () => {
+    it('shows Install button when compatible, not installed, and user is admin', () => {
       const plugin = createMockAvailablePlugin({
         is_compatible: true,
         is_installed: false,
       });
       render(<AvailablePluginCard plugin={plugin} />);
 
-      expect(
-        screen.getByText('pip install semantik-plugin-test')
-      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /install/i })).toBeInTheDocument();
     });
 
-    it('renders copy button for install command', () => {
+    it('shows admin access required message for non-admin users', () => {
+      vi.mocked(useAuthStore).mockImplementation((selector) => {
+        const state = { user: mockRegularUser };
+        return selector(state as ReturnType<typeof useAuthStore.getState>);
+      });
+
       const plugin = createMockAvailablePlugin();
       render(<AvailablePluginCard plugin={plugin} />);
 
-      expect(screen.getByTitle('Copy to clipboard')).toBeInTheDocument();
+      expect(screen.getByText('Admin access required to install plugins')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /install/i })).not.toBeInTheDocument();
     });
 
-    it('copy button can be clicked', async () => {
+    it('Install button can be clicked by admin', async () => {
       const user = userEvent.setup();
       const plugin = createMockAvailablePlugin();
       render(<AvailablePluginCard plugin={plugin} />);
 
-      const copyButton = screen.getByTitle('Copy to clipboard');
-      // Click should not throw
-      await user.click(copyButton);
+      const installButton = screen.getByRole('button', { name: /install/i });
+      await user.click(installButton);
 
       // Just verify the button is interactive
-      expect(copyButton).toBeInTheDocument();
+      expect(installButton).toBeInTheDocument();
     });
   });
 
   describe('styling', () => {
     it('applies installed styling when plugin is installed', () => {
       const plugin = createMockAvailablePlugin({ is_installed: true });
+      const { container } = render(<AvailablePluginCard plugin={plugin} />);
+
+      const card = container.firstChild;
+      expect(card).toHaveClass('border-green-200');
+      expect(card).toHaveClass('bg-green-50');
+    });
+
+    it('applies pending restart styling', () => {
+      const plugin = createMockAvailablePlugin({ pending_restart: true });
       const { container } = render(<AvailablePluginCard plugin={plugin} />);
 
       const card = container.firstChild;
