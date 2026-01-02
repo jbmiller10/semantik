@@ -178,3 +178,73 @@ export function groupPluginsByType(
 
   return grouped;
 }
+
+// --- Available Plugins (from registry) ---
+
+/**
+ * Available plugin from the remote registry (not installed)
+ */
+export interface AvailablePlugin {
+  id: string;
+  type: PluginType;
+  name: string;
+  description: string;
+  author: string;
+  repository: string;
+  pypi: string;
+  verified: boolean;
+  min_semantik_version?: string | null;
+  tags: string[];
+  is_compatible: boolean;
+  compatibility_message?: string | null;
+  is_installed: boolean;
+  install_command: string;
+}
+
+/**
+ * Response from listing available plugins
+ */
+export interface AvailablePluginsListResponse {
+  plugins: AvailablePlugin[];
+  registry_version?: string | null;
+  last_updated?: string | null;
+  registry_source?: string | null;
+  semantik_version: string;
+}
+
+/**
+ * Filters for listing available plugins
+ */
+export interface AvailablePluginFilters {
+  plugin_type?: PluginType;
+  verified_only?: boolean;
+  force_refresh?: boolean;
+}
+
+/**
+ * Group available plugins by their type
+ */
+export function groupAvailablePluginsByType(
+  plugins: AvailablePlugin[]
+): Record<PluginType, AvailablePlugin[]> {
+  const grouped: Record<PluginType, AvailablePlugin[]> = {
+    embedding: [],
+    chunking: [],
+    connector: [],
+    reranker: [],
+    extractor: [],
+  };
+
+  for (const plugin of plugins) {
+    if (plugin.type in grouped) {
+      grouped[plugin.type].push(plugin);
+    }
+  }
+
+  // Sort plugins within each type by name
+  for (const type of Object.keys(grouped) as PluginType[]) {
+    grouped[type].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return grouped;
+}

@@ -1,0 +1,99 @@
+# Semantik Plugin Registry
+# This is the bundled default registry that works offline.
+# Remote updates can be fetched from SEMANTIK_PLUGIN_REGISTRY_URL.
+
+registry_version: "1.0"
+last_updated: "2026-01-01T00:00:00Z"
+
+plugins:
+  # Embedding Providers
+  - id: openai-embeddings
+    type: embedding
+    name: "OpenAI Embeddings"
+    description: "text-embedding-3-small and text-embedding-3-large via OpenAI API"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/openai-embeddings"
+    pypi: "semantik-plugin-openai"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["api", "openai", "cloud"]
+
+  - id: voyage-embeddings
+    type: embedding
+    name: "Voyage AI Embeddings"
+    description: "voyage-large-2 and voyage-code-2 via Voyage AI API"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/voyage-embeddings"
+    pypi: "semantik-plugin-voyage"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["api", "voyage", "cloud"]
+
+  # Rerankers
+  - id: cohere-reranker
+    type: reranker
+    name: "Cohere Reranker"
+    description: "rerank-english-v3 and rerank-multilingual-v3 via Cohere API"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/cohere-reranker"
+    pypi: "semantik-plugin-cohere-reranker"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["api", "cohere", "reranking"]
+
+  - id: bge-reranker
+    type: reranker
+    name: "BGE Reranker"
+    description: "BAAI/bge-reranker-large local cross-encoder model"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/bge-reranker"
+    pypi: "semantik-plugin-bge-reranker"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["local", "bge", "reranking"]
+
+  # Connectors
+  - id: s3-connector
+    type: connector
+    name: "S3 Bucket Connector"
+    description: "Index files from Amazon S3 buckets"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/s3-connector"
+    pypi: "semantik-plugin-s3"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["cloud", "aws", "storage"]
+
+  - id: gdrive-connector
+    type: connector
+    name: "Google Drive Connector"
+    description: "Index files from Google Drive"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/gdrive-connector"
+    pypi: "semantik-plugin-gdrive"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["cloud", "google", "storage"]
+
+  - id: notion-connector
+    type: connector
+    name: "Notion Connector"
+    description: "Index pages and databases from Notion"
+    author: "community"
+    repository: "https://github.com/example/semantik-notion"
+    pypi: "semantik-plugin-notion"
+    verified: false
+    min_semantik_version: "2.0.0"
+    tags: ["cloud", "notion", "productivity"]
+
+  # Extractors
+  - id: spacy-extractor
+    type: extractor
+    name: "spaCy NER Extractor"
+    description: "Named entity recognition using spaCy models"
+    author: "semantik"
+    repository: "https://github.com/semantik-plugins/spacy-extractor"
+    pypi: "semantik-plugin-spacy"
+    verified: true
+    min_semantik_version: "2.0.0"
+    tags: ["nlp", "ner", "spacy"]

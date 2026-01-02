@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from shared.database import get_db
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.plugins_schemas import (
+    AvailablePluginInfo,
+    AvailablePluginsListResponse,
     PluginConfigUpdateRequest,
     PluginHealthResponse,
     PluginInfo,
@@ -41,6 +43,104 @@ async def list_plugins(
     """List all installed external plugins."""
     plugins = await service.list_plugins(plugin_type=plugin_type, enabled=enabled, include_health=include_health)
     return PluginListResponse(plugins=[PluginInfo(**plugin) for plugin in plugins])
+
+
+# --- Available Plugins (from registry) ---
+
+
+@router.get(
+    "/available",
+    response_model=AvailablePluginsListResponse,
+    responses={401: {"model": ErrorResponse, "description": "Unauthorized"}},
+)
+async def list_available_plugins(
+    plugin_type: str | None = None,
+    verified_only: bool = False,
+    force_refresh: bool = False,
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: PluginService = Depends(_get_plugin_service),
+) -> AvailablePluginsListResponse:
+    """List available plugins from the remote registry.
+
+    Returns plugins that can be installed, with compatibility information
+    and install commands.
+    """
+    from shared.plugins.compatibility import check_compatibility, get_semantik_version
+    from shared.plugins.registry_client import fetch_registry, get_registry_source
+
+    # Get current Semantik version
+    semantik_version = get_semantik_version()
+
+    # Get installed plugin IDs
+    installed_plugins = await service.list_plugins()
+    installed_ids = {p["id"] for p in installed_plugins}
+
+    # Fetch registry
+    registry = await fetch_registry(force_refresh=force_refresh)
+
+    # Filter plugins
+    plugins = registry.plugins
+    if plugin_type:
+        plugins = [p for p in plugins if p.type == plugin_type]
+    if verified_only:
+        plugins = [p for p in plugins if p.verified]
+
+    # Build response with compatibility info
+    result_plugins = []
+    for p in plugins:
+        is_compatible, compat_msg = check_compatibility(
+            p.min_semantik_version,
+            semantik_version,
+        )
+
+        result_plugins.append(
+            AvailablePluginInfo(
+                id=p.id,
+                type=p.type,
+                name=p.name,
+                description=p.description,
+                author=p.author,
+                repository=p.repository,
+                pypi=p.pypi,
+                verified=p.verified,
+                min_semantik_version=p.min_semantik_version,
+                tags=p.tags,
+                is_compatible=is_compatible,
+                compatibility_message=compat_msg,
+                is_installed=p.id in installed_ids,
+                install_command=f"pip install {p.pypi}",
+            )
+        )
+
+    return AvailablePluginsListResponse(
+        plugins=result_plugins,
+        registry_version=registry.registry_version,
+        last_updated=registry.last_updated,
+        registry_source=get_registry_source(),
+        semantik_version=semantik_version,
+    )
+
+
+@router.post(
+    "/available/refresh",
+    response_model=AvailablePluginsListResponse,
+    responses={401: {"model": ErrorResponse, "description": "Unauthorized"}},
+)
+async def refresh_available_plugins(
+    current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
+    service: PluginService = Depends(_get_plugin_service),
+) -> AvailablePluginsListResponse:
+    """Force refresh the available plugins registry cache."""
+    return await list_available_plugins(
+        plugin_type=None,
+        verified_only=False,
+        force_refresh=True,
+        current_user=current_user,
+        service=service,
+    )
+
+
+# --- Installed Plugin Operations ---
 
 
 @router.get(

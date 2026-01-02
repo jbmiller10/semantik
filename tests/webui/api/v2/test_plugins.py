@@ -448,3 +448,116 @@ class TestPluginAuthRequired:
         """Test enable_plugin requires authentication."""
         response = await unauthenticated_client.post("/api/v2/plugins/test/enable")
         assert response.status_code == 401
+
+    @pytest.mark.asyncio()
+    async def test_list_available_requires_auth(self, unauthenticated_client):
+        """Test list_available_plugins requires authentication."""
+        response = await unauthenticated_client.get("/api/v2/plugins/available")
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio()
+    async def test_refresh_available_requires_auth(self, unauthenticated_client):
+        """Test refresh_available_plugins requires authentication."""
+        response = await unauthenticated_client.post("/api/v2/plugins/available/refresh")
+        assert response.status_code == 401
+
+
+class TestListAvailablePlugins:
+    """Tests for GET /api/v2/plugins/available."""
+
+    @pytest.mark.asyncio()
+    async def test_list_available_returns_plugins(self, api_client_with_plugin):
+        """Test list_available_plugins returns available plugins from registry."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/available")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "plugins" in data
+        assert "semantik_version" in data
+        assert isinstance(data["plugins"], list)
+
+    @pytest.mark.asyncio()
+    async def test_list_available_filter_by_type(self, api_client_with_plugin):
+        """Test list_available_plugins filters by type."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/available", params={"plugin_type": "embedding"})
+        assert response.status_code == 200
+        data = response.json()
+
+        # All returned plugins should be of the requested type
+        for plugin in data["plugins"]:
+            assert plugin["type"] == "embedding"
+
+    @pytest.mark.asyncio()
+    async def test_list_available_verified_only(self, api_client_with_plugin):
+        """Test list_available_plugins filters by verified status."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/available", params={"verified_only": True})
+        assert response.status_code == 200
+        data = response.json()
+
+        # All returned plugins should be verified
+        for plugin in data["plugins"]:
+            assert plugin["verified"] is True
+
+    @pytest.mark.asyncio()
+    async def test_list_available_includes_compatibility(self, api_client_with_plugin):
+        """Test list_available_plugins includes compatibility info."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/available")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Each plugin should have compatibility fields
+        for plugin in data["plugins"]:
+            assert "is_compatible" in plugin
+            assert "install_command" in plugin
+
+    @pytest.mark.asyncio()
+    async def test_list_available_includes_installed_status(self, api_client_with_plugin):
+        """Test list_available_plugins marks installed plugins."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.get("/api/v2/plugins/available")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Each plugin should have is_installed field
+        for plugin in data["plugins"]:
+            assert "is_installed" in plugin
+            assert isinstance(plugin["is_installed"], bool)
+
+
+class TestRefreshAvailablePlugins:
+    """Tests for POST /api/v2/plugins/available/refresh."""
+
+    @pytest.mark.asyncio()
+    async def test_refresh_returns_plugins(self, api_client_with_plugin):
+        """Test refresh_available_plugins returns fresh plugin list."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.post("/api/v2/plugins/available/refresh")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "plugins" in data
+        assert "semantik_version" in data
+        assert isinstance(data["plugins"], list)
+
+    @pytest.mark.asyncio()
+    async def test_refresh_includes_metadata(self, api_client_with_plugin):
+        """Test refresh includes registry metadata."""
+        client, mock_service = api_client_with_plugin
+
+        response = await client.post("/api/v2/plugins/available/refresh")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should include registry metadata
+        assert "registry_version" in data
+        assert "registry_source" in data
