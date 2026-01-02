@@ -561,3 +561,402 @@ class TestRefreshAvailablePlugins:
         # Should include registry metadata
         assert "registry_version" in data
         assert "registry_source" in data
+
+
+# --- Plugin Installation Tests ---
+
+
+@pytest_asyncio.fixture
+async def admin_client_with_plugin(mock_plugin_service):
+    """Provide an AsyncClient with admin user for install/uninstall tests."""
+    from webui.auth import get_current_user
+
+    mock_admin_user = {
+        "id": 1,
+        "username": "admin",
+        "email": "admin@example.com",
+        "full_name": "Admin User",
+        "is_superuser": True,
+    }
+
+    async def override_get_current_user() -> dict[str, Any]:
+        return mock_admin_user
+
+    async def override_get_plugin_service() -> PluginService:
+        return mock_plugin_service
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[_get_plugin_service] = override_get_plugin_service
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, mock_plugin_service
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def non_admin_client_with_plugin(mock_plugin_service):
+    """Provide an AsyncClient with non-admin user for install/uninstall tests."""
+    from webui.auth import get_current_user
+
+    mock_regular_user = {
+        "id": 2,
+        "username": "user",
+        "email": "user@example.com",
+        "full_name": "Regular User",
+        "is_superuser": False,
+    }
+
+    async def override_get_current_user() -> dict[str, Any]:
+        return mock_regular_user
+
+    async def override_get_plugin_service() -> PluginService:
+        return mock_plugin_service
+
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[_get_plugin_service] = override_get_plugin_service
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, mock_plugin_service
+
+    app.dependency_overrides.clear()
+
+
+class TestInstallPlugin:
+    """Tests for POST /api/v2/plugins/install."""
+
+    @pytest.mark.asyncio()
+    async def test_install_requires_admin(self, non_admin_client_with_plugin):
+        """Test install_plugin requires admin access."""
+        client, _ = non_admin_client_with_plugin
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin"},
+        )
+        assert response.status_code == 403
+        data = response.json()
+        assert "admin" in data["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_install_plugin_not_in_registry(self, admin_client_with_plugin, monkeypatch):
+        """Test install returns 404 for plugin not in registry."""
+        client, _ = admin_client_with_plugin
+
+        # Mock fetch_registry to return empty registry
+        from shared.plugins import registry_client
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "nonexistent-plugin"},
+        )
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found in registry" in data["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_install_plugin_success(self, admin_client_with_plugin, monkeypatch):
+        """Test successful plugin installation."""
+        client, _ = admin_client_with_plugin
+
+        # Mock registry to return a plugin
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            install_command="git+https://github.com/test/test-plugin.git",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock install_plugin to succeed
+        from webui.services import plugin_installer
+
+        def mock_install_plugin(_install_cmd: str, _timeout: int = 300):
+            return True, "Successfully installed. Restart required."
+
+        monkeypatch.setattr(plugin_installer, "install_plugin", mock_install_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["restart_required"] is True
+
+    @pytest.mark.asyncio()
+    async def test_install_plugin_failure(self, admin_client_with_plugin, monkeypatch):
+        """Test plugin installation failure."""
+        client, _ = admin_client_with_plugin
+
+        # Mock registry
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            install_command="git+https://github.com/test/test-plugin.git",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock install_plugin to fail
+        from webui.services import plugin_installer
+
+        def mock_install_plugin(_install_cmd: str, _timeout: int = 300):
+            return False, "Installation failed: pip error"
+
+        monkeypatch.setattr(plugin_installer, "install_plugin", mock_install_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "failed" in data["message"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_install_plugin_with_version(self, admin_client_with_plugin, monkeypatch):
+        """Test plugin installation with specific version."""
+        client, _ = admin_client_with_plugin
+        captured_cmd = []
+
+        # Mock registry
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            install_command="git+https://github.com/test/test-plugin.git",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock install_plugin to capture command
+        from webui.services import plugin_installer
+
+        def mock_install_plugin(install_cmd: str, _timeout: int = 300):
+            captured_cmd.append(install_cmd)
+            return True, "Successfully installed."
+
+        monkeypatch.setattr(plugin_installer, "install_plugin", mock_install_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin", "version": "v1.0.0"},
+        )
+        assert response.status_code == 200
+        # Verify version was appended to install command
+        assert len(captured_cmd) == 1
+        assert "v1.0.0" in captured_cmd[0]
+
+
+class TestUninstallPlugin:
+    """Tests for DELETE /api/v2/plugins/{plugin_id}/uninstall."""
+
+    @pytest.mark.asyncio()
+    async def test_uninstall_requires_admin(self, non_admin_client_with_plugin):
+        """Test uninstall_plugin requires admin access."""
+        client, _ = non_admin_client_with_plugin
+
+        response = await client.delete("/api/v2/plugins/test-plugin/uninstall")
+        assert response.status_code == 403
+        data = response.json()
+        assert "admin" in data["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_uninstall_plugin_not_in_registry(self, admin_client_with_plugin, monkeypatch):
+        """Test uninstall returns 404 for plugin not in registry."""
+        client, _ = admin_client_with_plugin
+
+        # Mock fetch_registry to return empty registry
+        from shared.plugins import registry_client
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        response = await client.delete("/api/v2/plugins/nonexistent-plugin/uninstall")
+        assert response.status_code == 404
+        data = response.json()
+        assert "not found in registry" in data["detail"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_uninstall_plugin_success(self, admin_client_with_plugin, monkeypatch):
+        """Test successful plugin uninstallation."""
+        client, _ = admin_client_with_plugin
+
+        # Mock registry
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            pypi="semantik-plugin-test",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock uninstall_plugin to succeed
+        from webui.services import plugin_installer
+
+        def mock_uninstall_plugin(_package_name: str):
+            return True, "Uninstalled successfully. Restart required."
+
+        monkeypatch.setattr(plugin_installer, "uninstall_plugin", mock_uninstall_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.delete("/api/v2/plugins/test-plugin/uninstall")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["restart_required"] is True
+
+    @pytest.mark.asyncio()
+    async def test_uninstall_plugin_failure(self, admin_client_with_plugin, monkeypatch):
+        """Test plugin uninstallation failure."""
+        client, _ = admin_client_with_plugin
+
+        # Mock registry
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            pypi="semantik-plugin-test",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock uninstall_plugin to fail
+        from webui.services import plugin_installer
+
+        def mock_uninstall_plugin(_package_name: str):
+            return False, "Plugin not found in plugins directory"
+
+        monkeypatch.setattr(plugin_installer, "uninstall_plugin", mock_uninstall_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.delete("/api/v2/plugins/test-plugin/uninstall")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False

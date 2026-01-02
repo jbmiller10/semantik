@@ -22,6 +22,7 @@ const mockAvailablePlugins: AvailablePlugin[] = [
     is_compatible: true,
     compatibility_message: null,
     is_installed: false,
+    pending_restart: false,
     install_command: 'pip install semantik-plugin-openai',
   },
   {
@@ -38,6 +39,7 @@ const mockAvailablePlugins: AvailablePlugin[] = [
     is_compatible: true,
     compatibility_message: null,
     is_installed: false,
+    pending_restart: false,
     install_command: 'pip install semantik-plugin-cohere-reranker',
   },
   {
@@ -54,6 +56,7 @@ const mockAvailablePlugins: AvailablePlugin[] = [
     is_compatible: true,
     compatibility_message: null,
     is_installed: false,
+    pending_restart: false,
     install_command: 'pip install semantik-community-extractor',
   },
 ];
@@ -275,6 +278,51 @@ describe('AvailablePluginsTab', () => {
       await waitFor(() => {
         expect(refreshCalled).toBe(true);
       });
+    });
+  });
+
+  describe('restart banner', () => {
+    it('shows restart banner when a plugin has pending_restart', async () => {
+      const pluginsWithPending = mockAvailablePlugins.map((p, i) => ({
+        ...p,
+        pending_restart: i === 0, // First plugin has pending restart
+      }));
+
+      server.use(
+        http.get('/api/v2/plugins/available', () => {
+          return HttpResponse.json({
+            ...mockResponse,
+            plugins: pluginsWithPending,
+          });
+        })
+      );
+
+      render(<AvailablePluginsTab />);
+
+      // Wait for data to load
+      await waitFor(() => {
+        expect(screen.getByText('OpenAI Embeddings')).toBeInTheDocument();
+      });
+
+      // Check for the restart banner specifically (in the orange banner div)
+      expect(
+        screen.getByText(
+          /One or more plugins have been installed or modified/
+        )
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('docker compose restart webui worker vecpipe')
+      ).toBeInTheDocument();
+    });
+
+    it('does not show restart banner when no plugins have pending_restart', async () => {
+      render(<AvailablePluginsTab />);
+
+      await waitFor(() => {
+        expect(screen.getByText('OpenAI Embeddings')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByText('Restart Required')).not.toBeInTheDocument();
     });
   });
 
