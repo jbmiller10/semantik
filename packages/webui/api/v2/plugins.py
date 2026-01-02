@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -395,8 +396,8 @@ async def install_plugin_endpoint(
         {"user_id": current_user["id"], "version": request.version},
     )
 
-    # Install (blocking)
-    success, message = install_plugin(install_cmd)
+    # Install (run in thread to avoid blocking event loop)
+    success, message = await asyncio.to_thread(install_plugin, install_cmd)
 
     audit_log(
         request.plugin_id,
@@ -461,7 +462,7 @@ async def uninstall_plugin_endpoint(
         {"user_id": current_user["id"]},
     )
 
-    success, message = uninstall_plugin(package_name)
+    success, message = await asyncio.to_thread(uninstall_plugin, package_name)
 
     audit_log(
         plugin_id,

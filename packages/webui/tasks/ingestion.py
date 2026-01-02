@@ -239,6 +239,8 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
                         "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
                         "vector_count": getattr(collection_obj, "vector_count", 0),
+                        "extraction_config": getattr(collection_obj, "extraction_config", None),
+                        "default_reranker_id": getattr(collection_obj, "default_reranker_id", None),
                     }
 
                     vector_collection_id = getattr(collection_obj, "vector_collection_id", None)

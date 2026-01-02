@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, ClassVar
 
@@ -167,7 +168,7 @@ class Qwen3RerankerPlugin(RerankerPlugin):
         )
 
     def _ensure_model_loaded(self) -> None:
-        """Ensure the underlying reranker model is loaded."""
+        """Ensure the underlying reranker model is loaded (blocking)."""
         if self._reranker is None:
             try:
                 from vecpipe.reranker import CrossEncoderReranker
@@ -182,6 +183,15 @@ class Qwen3RerankerPlugin(RerankerPlugin):
                 self._reranker = reranker
             except ImportError as e:
                 raise RuntimeError("VecPipe not available. Qwen3 reranker requires vecpipe package.") from e
+
+    async def _ensure_model_loaded_async(self) -> None:
+        """Ensure the underlying reranker model is loaded (async-safe).
+
+        Runs the blocking model loading in a thread pool to avoid blocking
+        the async event loop during model initialization.
+        """
+        if self._reranker is None:
+            await asyncio.to_thread(self._ensure_model_loaded)
 
     async def rerank(
         self,
@@ -204,8 +214,8 @@ class Qwen3RerankerPlugin(RerankerPlugin):
         if not documents:
             return []
 
-        # Ensure model is loaded
-        self._ensure_model_loaded()
+        # Ensure model is loaded (async-safe to avoid blocking event loop)
+        await self._ensure_model_loaded_async()
         assert self._reranker is not None  # Type narrowing
 
         # Determine top_k
