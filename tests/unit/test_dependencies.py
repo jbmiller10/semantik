@@ -59,7 +59,8 @@ class TestGetCollectionForUser:
             assert result == mock_collection
             mock_repo.assert_called_once_with(mock_db)
             mock_repo_instance.get_by_uuid_with_permission_check.assert_called_once_with(
-                collection_uuid="collection-456", user_id=123  # Now expects int, not string
+                collection_uuid="collection-456",
+                user_id=123,  # Now expects int, not string
             )
 
     async def test_get_collection_for_user_not_found(self, mock_db: AsyncMock, mock_user: dict[str, Any]) -> None:
@@ -119,5 +120,6 @@ class TestGetCollectionForUser:
             # Assert
             assert result == mock_collection
             mock_repo_instance.get_by_uuid_with_permission_check.assert_called_once_with(
-                collection_uuid="collection-456", user_id=456  # Should be converted to int
+                collection_uuid="collection-456",
+                user_id=456,  # Should be converted to int
             )

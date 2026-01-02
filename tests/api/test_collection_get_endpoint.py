@@ -50,6 +50,8 @@ class TestCollectionGetEndpoint:
         mock_collection.sync_last_run_completed_at = None
         mock_collection.sync_last_run_status = None
         mock_collection.sync_last_error = None
+        mock_collection.default_reranker_id = None
+        mock_collection.extraction_config = {}
 
         async def override_get_collection_for_user(collection_uuid: str) -> Collection:  # type: ignore[override]
             mock_collection.id = collection_uuid

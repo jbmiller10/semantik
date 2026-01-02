@@ -233,7 +233,9 @@ class Collection(Base):
 
     # Reranker and extraction config (Phase 2 plugin extensibility)
     default_reranker_id = Column(String, nullable=True)  # Default reranker plugin ID
-    extraction_config = Column(JSON, nullable=True)  # {"enabled": bool, "extractor_ids": [], "types": [], "options": {}}
+    extraction_config = Column(
+        JSON, nullable=True
+    )  # {"enabled": bool, "extractor_ids": [], "types": [], "options": {}}
 
     # Relationships
     owner = relationship("User", back_populates="collections")

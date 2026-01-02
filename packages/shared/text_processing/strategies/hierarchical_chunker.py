@@ -765,7 +765,6 @@ class HierarchicalChunker:
 
             # First, check if we have child nodes - prefer to estimate from children if available
             if (node_map or existing_offsets) and hasattr(node, "relationships"):
-
                 relationships = node.relationships
                 child_rel = relationships.get(NodeRelationship.CHILD) if isinstance(relationships, dict) else None
 

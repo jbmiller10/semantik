@@ -272,7 +272,6 @@ class TestGetActiveCollections:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.repositories.collection_repository.CollectionRepository", return_value=mock_repo),
         ):
-
             # Run function
             active_collections = await _get_active_collections()
 
@@ -309,7 +308,6 @@ class TestAuditCollectionDeletion:
             patch("shared.database.database.AsyncSessionLocal", mock_session_maker),
             patch("shared.database.models.CollectionAuditLog", mock_audit_log_class),
         ):
-
             # Run function
             deletions = [("test_collection_1", 1000), ("test_collection_2", 2000)]
             await _audit_collection_deletions_batch(deletions)
@@ -324,7 +322,6 @@ class TestAuditCollectionDeletion:
         mock_session_maker = MagicMock()
 
         with patch("shared.database.database.AsyncSessionLocal", mock_session_maker):
-
             # Run function with empty list
             await _audit_collection_deletions_batch([])
 

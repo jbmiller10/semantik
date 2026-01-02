@@ -196,6 +196,8 @@ class TestCollectionDeletionIntegration:
         mock_collection.sync_last_run_completed_at = None
         mock_collection.sync_last_run_status = None
         mock_collection.sync_last_error = None
+        mock_collection.default_reranker_id = None
+        mock_collection.extraction_config = {}
 
         mock_service.list_for_user = AsyncMock(return_value=([mock_collection], 1))
         mock_service.delete_collection = AsyncMock()

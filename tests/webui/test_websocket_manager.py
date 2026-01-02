@@ -24,7 +24,6 @@ ws_manager2 = ws_manager
 
 # Clean up the global singleton before tests start to prevent interference
 try:
-
     # Force cleanup of any existing state
     for _task_id, task in list(_global_ws_manager.consumer_tasks.items()):
         if not task.done():

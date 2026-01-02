@@ -181,9 +181,7 @@ class Qwen3RerankerPlugin(RerankerPlugin):
                 reranker.load_model()
                 self._reranker = reranker
             except ImportError as e:
-                raise RuntimeError(
-                    "VecPipe not available. Qwen3 reranker requires vecpipe package."
-                ) from e
+                raise RuntimeError("VecPipe not available. Qwen3 reranker requires vecpipe package.") from e
 
     async def rerank(
         self,

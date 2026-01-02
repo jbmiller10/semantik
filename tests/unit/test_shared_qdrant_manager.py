@@ -270,7 +270,9 @@ class TestQdrantManager:
 
     def test_get_collection_info_not_found(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test getting info for non-existent collection"""
-        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
+        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(
+            status_code=404, reason_phrase="Not Found", content=b"", headers={}
+        )  # type: ignore
 
         with pytest.raises(ValueError, match="Collection test_collection not found"):
             qdrant_manager.get_collection_info("test_collection")
@@ -286,7 +288,9 @@ class TestQdrantManager:
 
     def test_collection_exists_false(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test checking if collection exists - negative case"""
-        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
+        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(
+            status_code=404, reason_phrase="Not Found", content=b"", headers={}
+        )  # type: ignore
 
         result = qdrant_manager.collection_exists("non_existent_collection")
 
@@ -347,7 +351,9 @@ class TestQdrantManager:
 
     def test_validate_collection_health_not_found(self, qdrant_manager, mock_qdrant_client) -> None:
         """Test validating health of non-existent collection"""
-        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(status_code=404, reason_phrase="Not Found", content=b"", headers={})  # type: ignore
+        mock_qdrant_client.get_collection.side_effect = UnexpectedResponse(
+            status_code=404, reason_phrase="Not Found", content=b"", headers={}
+        )  # type: ignore
 
         result = qdrant_manager.validate_collection_health("missing_collection")
 

@@ -56,7 +56,9 @@ def test_client_with_document_mocks(
     mock_collection.user_id = test_user["id"]
 
     async def override_get_collection_for_user(
-        collection_uuid: str, current_user=None, db=None  # noqa: ARG001
+        collection_uuid: str,  # noqa: ARG001
+        current_user=None,  # noqa: ARG001
+        db=None,  # noqa: ARG001
     ) -> None:
         return mock_collection
 
