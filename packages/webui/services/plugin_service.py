@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector"}
+_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}
 
 
 def _coerce_type(value: Any, schema_type: str) -> bool:
