@@ -837,6 +837,7 @@ Each template includes:
 | ~~**Phase 4: Registry**~~ | ~~Slim YAML registry + browse UI~~ | ~~P2~~ | ~~1 week~~ | ✅ **COMPLETE** |
 | **Phase 5: Security** | Audit logging (env filtering is cooperative only) | P1 | 1 week | Planned (simplified) |
 | **Phase 6: Example Plugins** | Real, published plugins for the registry | P2 | 2-3 weeks | Planned |
+| **Phase 7: In-App Installation** | Install plugins from UI with Docker persistence | P3 | 2-3 weeks | Planned |
 
 > **Scope Decisions (2026-01-01):**
 > - **Phase 1.6 added**: Runtime contract fixes needed before UI/new types work correctly
@@ -2584,6 +2585,239 @@ class OpenAIEmbeddingPlugin(SemanticPlugin, EmbeddingPluginProtocol):
 - [ ] Plugins appear in "Available" UI with working install commands
 - [ ] Plugin template repository available for contributors
 - [ ] End-to-end documentation for writing and publishing plugins
+
+---
+
+### Phase 7: In-App Plugin Installation (P3)
+
+**Goal:** Allow users to install plugins directly from the UI without manual Docker/pip commands.
+
+> **Context:** Semantik is Docker-first. Telling users to `pip install` doesn't work because:
+> - Users don't have shell access to the container
+> - Installs are lost on container restart
+> - Manual Dockerfile customization is too technical for most users
+>
+> **Solution:** Persistent volume + in-app installation with hot-reload.
+
+#### 7.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Docker Host                              │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │                  Semantik Container                      ││
+│  │                                                          ││
+│  │  ┌──────────────┐    pip install     ┌───────────────┐  ││
+│  │  │   Web UI     │ ───────────────────▶│  /app/plugins │  ││
+│  │  │  "Install"   │    --target         │   (volume)    │  ││
+│  │  └──────────────┘                     └───────────────┘  ││
+│  │         │                                    │           ││
+│  │         │ WebSocket                          │ PYTHONPATH││
+│  │         ▼                                    ▼           ││
+│  │  ┌──────────────┐                    ┌───────────────┐  ││
+│  │  │   Progress   │                    │ Plugin Loader │  ││
+│  │  │   Updates    │                    │  (hot reload) │  ││
+│  │  └──────────────┘                    └───────────────┘  ││
+│  └─────────────────────────────────────────────────────────┘│
+│                              │                               │
+│                    ┌─────────▼─────────┐                    │
+│                    │  semantik_plugins │ ◀── Docker Volume  │
+│                    │     (persistent)  │     (survives      │
+│                    └───────────────────┘      restarts)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 7.2 Docker Configuration
+
+```yaml
+# docker-compose.yml
+services:
+  webui:
+    image: semantik:latest
+    volumes:
+      - semantik_plugins:/app/plugins
+    environment:
+      SEMANTIK_PLUGINS_DIR: /app/plugins
+      PYTHONPATH: /app/plugins
+
+volumes:
+  semantik_plugins:
+```
+
+#### 7.3 Backend Implementation
+
+**API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v2/plugins/install` | POST | Install plugin from PyPI |
+| `/api/v2/plugins/{id}/uninstall` | DELETE | Uninstall plugin |
+| `/api/v2/plugins/install/status/{job_id}` | GET | Poll installation status |
+| `/ws/plugins/install/{job_id}` | WebSocket | Stream installation progress |
+
+**Install Request:**
+```python
+class PluginInstallRequest(BaseModel):
+    package_name: str  # e.g., "semantik-plugin-openai"
+    version: str | None = None  # e.g., "1.0.0" or None for latest
+
+class PluginInstallResponse(BaseModel):
+    job_id: str
+    status: Literal["queued", "installing", "success", "failed"]
+    message: str | None = None
+```
+
+**Installation Service:**
+```python
+# packages/webui/services/plugin_installer.py
+import asyncio
+import subprocess
+from pathlib import Path
+
+PLUGINS_DIR = Path(os.environ.get("SEMANTIK_PLUGINS_DIR", "/app/plugins"))
+
+async def install_plugin(
+    package_name: str,
+    version: str | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+) -> tuple[bool, str]:
+    """Install a plugin package to the plugins directory.
+
+    Returns (success, message).
+    """
+    target = f"{package_name}=={version}" if version else package_name
+
+    cmd = [
+        "pip", "install",
+        "--target", str(PLUGINS_DIR),
+        "--upgrade",
+        "--no-deps",  # Deps handled separately to avoid conflicts
+        target,
+    ]
+
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    output_lines = []
+    async for line in process.stdout:
+        line_str = line.decode().strip()
+        output_lines.append(line_str)
+        if progress_callback:
+            progress_callback(line_str)
+
+    await process.wait()
+
+    if process.returncode == 0:
+        # Reload entry points to pick up new plugin
+        await reload_plugins()
+        return True, f"Successfully installed {package_name}"
+    else:
+        return False, "\n".join(output_lines)
+
+async def uninstall_plugin(package_name: str) -> tuple[bool, str]:
+    """Uninstall a plugin from the plugins directory."""
+    # Find and remove package directory
+    ...
+
+async def reload_plugins() -> None:
+    """Hot-reload plugin entry points without restart."""
+    import importlib
+    from importlib.metadata import distributions
+
+    # Clear cached distributions
+    importlib.invalidate_caches()
+
+    # Re-scan entry points
+    # ... trigger plugin loader refresh
+```
+
+#### 7.4 Frontend Implementation
+
+**UI Flow:**
+```
+Available Plugins Tab
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  OpenAI Embeddings                    ✓ Verified            │
+│  text-embedding-3-small/large via OpenAI API               │
+│                                                             │
+│  [Install]  ←── Click to install                           │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  OpenAI Embeddings                    ✓ Verified            │
+│  text-embedding-3-small/large via OpenAI API               │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ Installing...                                        │   │
+│  │ ████████████░░░░░░░░░░░░░░░░░░░░░░░░░  35%          │   │
+│  │ Downloading semantik-plugin-openai...               │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  OpenAI Embeddings                    ✓ Verified  ✓ Installed│
+│  text-embedding-3-small/large via OpenAI API               │
+│                                                             │
+│  [Configure]  [Uninstall]                                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Components:**
+- `PluginInstallButton` - Triggers install, shows progress
+- `PluginInstallProgress` - WebSocket-connected progress display
+- `usePluginInstall` hook - Manages install state and WebSocket
+
+#### 7.5 Tasks
+
+| Task | Description | Files Changed |
+|------|-------------|---------------|
+| Add plugins volume | Docker Compose config for persistent plugins | `docker-compose.yml`, `docker-compose.dev.yml` |
+| Create installer service | pip subprocess with progress streaming | `webui/services/plugin_installer.py` |
+| Add install endpoints | REST + WebSocket for installation | `webui/api/v2/plugins.py` |
+| Add uninstall support | Remove plugin packages | `webui/services/plugin_installer.py` |
+| Implement hot-reload | Reload entry points after install | `shared/plugins/loader.py` |
+| Frontend install button | Replace "copy command" with "Install" | `AvailablePluginCard.tsx` |
+| Frontend progress UI | WebSocket progress display | `PluginInstallProgress.tsx` |
+| Handle errors gracefully | Dependency conflicts, network errors | Throughout |
+| Add install permissions | Only admins can install plugins | `webui/api/v2/plugins.py` |
+| Update documentation | Docker volume setup instructions | `docs/PLUGIN_INSTALLATION.md` |
+
+#### 7.6 Security Considerations
+
+| Risk | Mitigation |
+|------|------------|
+| Arbitrary code execution | Only install from registry (allowlist) |
+| Dependency conflicts | Use `--no-deps`, install deps separately with conflict check |
+| Admin-only | Require admin role for install/uninstall |
+| Audit trail | Log all install/uninstall operations |
+| Malicious packages | Only allow "verified" plugins by default, warn for unverified |
+
+#### 7.7 Limitations
+
+- **No automatic updates** - Users must manually update plugins
+- **No rollback** - If install breaks something, manual intervention needed
+- **Single version** - Can't have multiple versions of same plugin
+- **Restart may still be needed** - Some plugins may require container restart for full initialization
+
+**Acceptance Criteria:**
+- [ ] Plugins can be installed from UI with one click
+- [ ] Installation progress shown in real-time
+- [ ] Installed plugins persist across container restarts
+- [ ] Plugins can be uninstalled from UI
+- [ ] Hot-reload works for most plugin types (or clear "restart required" messaging)
+- [ ] Only admins can install/uninstall
+- [ ] Docker Compose includes plugins volume by default
 
 ---
 
