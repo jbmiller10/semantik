@@ -826,6 +826,62 @@ class TestInstallPlugin:
         assert len(captured_cmd) == 1
         assert "v1.0.0" in captured_cmd[0]
 
+    @pytest.mark.asyncio()
+    async def test_install_strips_pip_install_prefix(self, admin_client_with_plugin, monkeypatch):
+        """Test that 'pip install ' prefix is stripped from install_command."""
+        client, _ = admin_client_with_plugin
+        captured_cmd = []
+
+        # Mock registry with install_command that has "pip install " prefix
+        from shared.plugins import registry_client
+
+        mock_plugin = registry_client.RegistryPlugin(
+            id="test-plugin",
+            type="embedding",
+            name="Test Plugin",
+            description="A test plugin",
+            author="Test Author",
+            repository="https://github.com/test/test-plugin",
+            install_command="pip install git+https://github.com/test/test-plugin.git",
+            verified=True,
+        )
+
+        async def mock_fetch_registry(_force_refresh: bool = False):
+            return registry_client.PluginRegistry(
+                registry_version="1.0.0",
+                last_updated="2025-01-01",
+                plugins=[mock_plugin],
+            )
+
+        monkeypatch.setattr(registry_client, "fetch_registry", mock_fetch_registry)
+
+        # Mock install_plugin to capture command
+        from webui.services import plugin_installer
+
+        def mock_install_plugin(install_cmd: str, _timeout: int = 300):
+            captured_cmd.append(install_cmd)
+            return True, "Successfully installed."
+
+        monkeypatch.setattr(plugin_installer, "install_plugin", mock_install_plugin)
+
+        # Mock audit_log
+        from shared.plugins import security
+
+        def mock_audit_log(_plugin_id: str, _action: str, _details: dict):
+            pass
+
+        monkeypatch.setattr(security, "audit_log", mock_audit_log)
+
+        response = await client.post(
+            "/api/v2/plugins/install",
+            json={"plugin_id": "test-plugin"},
+        )
+        assert response.status_code == 200
+        # Verify "pip install " prefix was stripped
+        assert len(captured_cmd) == 1
+        assert captured_cmd[0] == "git+https://github.com/test/test-plugin.git"
+        assert not captured_cmd[0].startswith("pip install ")
+
 
 class TestUninstallPlugin:
     """Tests for DELETE /api/v2/plugins/{plugin_id}/uninstall."""

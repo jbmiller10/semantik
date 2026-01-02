@@ -368,6 +368,9 @@ async def install_plugin_endpoint(
     install_cmd: str | None = None
     if registry_entry.install_command:
         install_cmd = registry_entry.install_command
+        # Strip "pip install " prefix if present (registry may contain full command)
+        if install_cmd.startswith("pip install "):
+            install_cmd = install_cmd[len("pip install ") :]
         if request.version:
             # Append version to git URL (e.g., git+https://...git -> git+https://...git@v1.0.0)
             if ".git" in install_cmd:
