@@ -144,7 +144,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # Plugin installation directory
       - SEMANTIK_PLUGINS_DIR=/app/plugins
-      - PYTHONPATH=/app/packages:/app/plugins
+      - PYTHONPATH=/app/packages
       # Qdrant configuration
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
@@ -225,7 +225,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # Plugin installation directory
       - SEMANTIK_PLUGINS_DIR=/app/plugins
-      - PYTHONPATH=/app/packages:/app/plugins
+      - PYTHONPATH=/app/packages
       # Service URLs for inter-container communication
       - SEARCH_API_URL=http://vecpipe:8000
       - SEARCH_API_HOST=vecpipe
@@ -311,7 +311,7 @@ services:
     command: [ "worker" ]
     environment:
       # Python path (includes plugins directory)
-      - PYTHONPATH=/app/packages:/app/plugins
+      - PYTHONPATH=/app/packages
       # Plugin installation directory
       - SEMANTIK_PLUGINS_DIR=/app/plugins
       # General configuration
