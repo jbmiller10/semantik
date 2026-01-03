@@ -148,3 +148,62 @@ class AvailablePluginsListResponse(BaseModel):
     semantik_version: str
 
     model_config = ConfigDict(extra="forbid")
+
+
+# --- Error Response Models ---
+
+
+class PluginErrorDetail(BaseModel):
+    """Detailed error information for a specific field or issue."""
+
+    field: str | None = None
+    """Field path where the error occurred (e.g., 'config.api_key')."""
+
+    message: str
+    """Human-readable error message."""
+
+    suggestion: str | None = None
+    """Optional suggestion for how to fix the error."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PluginErrorResponse(BaseModel):
+    """Structured error response for plugin API endpoints.
+
+    This model provides machine-parseable error information with:
+    - A standardized error code from PluginErrorCode enum
+    - Human-readable detail message
+    - Optional list of field-specific errors
+    - Plugin ID for context when applicable
+    """
+
+    detail: str
+    """Human-readable error summary."""
+
+    code: str
+    """Error code from PluginErrorCode enum."""
+
+    errors: list[PluginErrorDetail] = Field(default_factory=list)
+    """List of detailed errors (useful for validation failures)."""
+
+    plugin_id: str | None = None
+    """Plugin ID if the error is related to a specific plugin."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "detail": "Plugin configuration validation failed",
+                "code": "PLUGIN_CONFIG_INVALID",
+                "errors": [
+                    {
+                        "field": "config.api_key",
+                        "message": "field is required",
+                        "suggestion": "Add 'api_key' to the config object",
+                    }
+                ],
+                "plugin_id": "openai-embeddings",
+            }
+        },
+    )

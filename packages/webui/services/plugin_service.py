@@ -6,11 +6,13 @@ import asyncio
 import inspect
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from shared.database.repositories.plugin_config_repository import PluginConfigRepository
 from shared.plugins.adapters import get_config_schema
+from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from shared.plugins.security import audit_log
@@ -27,6 +29,107 @@ _DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extr
 
 # Timeout for individual plugin health checks (seconds)
 HEALTH_CHECK_TIMEOUT_SECONDS = 10.0
+
+
+@dataclass
+class ValidationError:
+    """Structured validation error with field path and suggestion."""
+
+    field_path: str
+    message: str
+    expected_type: str | None = None
+    suggestion: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API response."""
+        result: dict[str, Any] = {
+            "field": self.field_path,
+            "message": self.message,
+        }
+        if self.suggestion:
+            result["suggestion"] = self.suggestion
+        return result
+
+
+@dataclass
+class ConfigValidationResult:
+    """Result of configuration validation with structured errors."""
+
+    errors: list[ValidationError] = field(default_factory=list)
+
+    def is_valid(self) -> bool:
+        """Return True if validation passed."""
+        return len(self.errors) == 0
+
+    def to_error_details(self) -> list[dict[str, Any]]:
+        """Convert errors to list of dicts for API response."""
+        return [error.to_dict() for error in self.errors]
+
+    def to_string(self) -> str:
+        """Convert to legacy string format for backwards compatibility."""
+        return "; ".join(error.message for error in self.errors)
+
+
+def _generate_suggestion(error_type: str, schema: dict[str, Any], path: str) -> str | None:
+    """Generate helpful suggestions for common validation errors."""
+    if error_type == "type_mismatch":
+        schema_type = schema.get("type", "unknown")
+        if schema_type == "string":
+            return "Wrap the value in quotes, e.g., \"value\""
+        if schema_type == "integer":
+            return "Remove decimal places and quotes, e.g., 42"
+        if schema_type == "number":
+            return "Use a numeric value without quotes, e.g., 3.14"
+        if schema_type == "boolean":
+            return "Use true or false (without quotes)"
+        if schema_type == "array":
+            return "Provide a list of values, e.g., [\"item1\", \"item2\"]"
+        if schema_type == "object":
+            return "Provide a JSON object, e.g., {\"key\": \"value\"}"
+        return None
+
+    if error_type == "enum_mismatch":
+        enum_values = schema.get("enum", [])
+        if enum_values:
+            options = ", ".join(repr(v) for v in enum_values[:5])
+            if len(enum_values) > 5:
+                options += f", ... ({len(enum_values) - 5} more)"
+            return f"Valid options: {options}"
+        return None
+
+    if error_type == "required_missing":
+        return f"Add the required field '{path.split('.')[-1]}' to your configuration"
+
+    if error_type == "pattern_mismatch":
+        pattern = schema.get("pattern")
+        # Provide human-readable descriptions for common patterns
+        common_patterns = {
+            r"^[a-zA-Z_][a-zA-Z0-9_]*$": "Use only letters, numbers, and underscores (start with letter)",
+            r"^https?://": "URL must start with http:// or https://",
+            r"^\d{4}-\d{2}-\d{2}$": "Use date format YYYY-MM-DD",
+            r"^[a-z0-9-]+$": "Use only lowercase letters, numbers, and hyphens",
+        }
+        if pattern in common_patterns:
+            return common_patterns[pattern]
+        return f"Value must match pattern: {pattern}"
+
+    if error_type == "min_length":
+        min_len = schema.get("minLength", 0)
+        return f"Value must be at least {min_len} characters long"
+
+    if error_type == "max_length":
+        max_len = schema.get("maxLength", 0)
+        return f"Value must be at most {max_len} characters long"
+
+    if error_type == "minimum":
+        minimum = schema.get("minimum")
+        return f"Value must be at least {minimum}"
+
+    if error_type == "maximum":
+        maximum = schema.get("maximum")
+        return f"Value must be at most {maximum}"
+
+    return None
 
 
 def _coerce_type(value: Any, schema_type: str) -> bool:
@@ -219,6 +322,122 @@ def validate_config_schema(config: dict[str, Any], schema: dict[str, Any] | None
     return _validate_value(config, schema, "config")
 
 
+def _parse_error_type(message: str) -> str:
+    """Parse error message to determine error type for suggestion generation."""
+    if "expected " in message and "got " not in message:
+        return "type_mismatch"
+    if "must be one of" in message:
+        return "enum_mismatch"
+    if "field is required" in message:
+        return "required_missing"
+    if "does not match pattern" in message:
+        return "pattern_mismatch"
+    if "less than minimum" in message:
+        return "minimum"
+    if "exceeds maximum" in message:
+        return "maximum"
+    if "string length" in message and "less than" in message:
+        return "min_length"
+    if "string length" in message and "exceeds" in message:
+        return "max_length"
+    return "unknown"
+
+
+def _get_schema_at_path(schema: dict[str, Any], path: str) -> dict[str, Any]:
+    """Get the schema definition for a given field path."""
+    if path == "config" or not path.startswith("config."):
+        return schema
+
+    parts = path.split(".")[1:]  # Skip "config" prefix
+    current = schema
+
+    for part in parts:
+        # Handle array indices
+        if part.startswith("[") and part.endswith("]"):
+            items_schema = current.get("items")
+            if isinstance(items_schema, dict):
+                current = items_schema
+            continue
+
+        props = current.get("properties", {})
+        if part in props and isinstance(props[part], dict):
+            current = props[part]
+        else:
+            break
+
+    return current
+
+
+def validate_config_schema_structured(
+    config: dict[str, Any],
+    schema: dict[str, Any] | None,
+) -> ConfigValidationResult:
+    """Validate config and return structured errors with suggestions.
+
+    This function wraps validate_config_schema and enhances the errors with:
+    - Parsed field paths
+    - Expected types from schema
+    - Helpful suggestions for fixing common errors
+    """
+    result = ConfigValidationResult()
+
+    if schema is None:
+        return result
+
+    if not isinstance(config, dict):
+        result.errors.append(
+            ValidationError(
+                field_path="config",
+                message="config must be an object",
+                expected_type="object",
+                suggestion="Provide a JSON object, e.g., {\"key\": \"value\"}",
+            )
+        )
+        return result
+
+    if schema.get("type") and schema.get("type") != "object":
+        result.errors.append(
+            ValidationError(
+                field_path="config",
+                message="schema type must be 'object'",
+            )
+        )
+        return result
+
+    # Get string errors from existing validation
+    string_errors = _validate_value(config, schema, "config")
+
+    # Convert to structured errors with suggestions
+    for error_msg in string_errors:
+        # Parse field path from error message (format: "path: message")
+        if ": " in error_msg:
+            field_path, message = error_msg.split(": ", 1)
+        else:
+            field_path = "config"
+            message = error_msg
+
+        # Determine error type and get schema for this field
+        error_type = _parse_error_type(message)
+        field_schema = _get_schema_at_path(schema, field_path)
+
+        # Generate suggestion based on error type
+        suggestion = _generate_suggestion(error_type, field_schema, field_path)
+
+        # Get expected type if available
+        expected_type = field_schema.get("type") if isinstance(field_schema, dict) else None
+
+        result.errors.append(
+            ValidationError(
+                field_path=field_path,
+                message=message,
+                expected_type=expected_type,
+                suggestion=suggestion,
+            )
+        )
+
+    return result
+
+
 class PluginService:
     """Service for plugin management operations."""
 
@@ -271,9 +490,13 @@ class PluginService:
         if record is None:
             return None
         schema = get_config_schema(record.plugin_class)
-        errors = validate_config_schema(config, schema)
-        if errors:
-            raise ValueError("; ".join(errors))
+        validation_result = validate_config_schema_structured(config, schema)
+        if not validation_result.is_valid():
+            raise PluginConfigValidationError(
+                message=validation_result.to_string(),
+                plugin_id=plugin_id,
+                errors=validation_result.to_error_details(),
+            )
 
         config_row = await self.repo.upsert_config(
             plugin_id=plugin_id,

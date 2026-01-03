@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from webui.services.plugin_service import (
@@ -415,7 +416,7 @@ class TestPluginService:
 
     @pytest.mark.asyncio()
     async def test_update_config_invalid(self, service):
-        """Test update_config with invalid config raises ValueError."""
+        """Test update_config with invalid config raises PluginConfigValidationError."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
         plugin_registry.register(record)
 
@@ -427,8 +428,12 @@ class TestPluginService:
 
         with patch("webui.services.plugin_service.load_plugins"):
             with patch("webui.services.plugin_service.get_config_schema", return_value=schema):
-                with pytest.raises(ValueError, match="field is required"):
+                with pytest.raises(PluginConfigValidationError, match="field is required") as exc_info:
                     await service.update_config("test-plugin", {})
+                # Verify structured errors are populated
+                assert exc_info.value.plugin_id == "test-plugin"
+                assert len(exc_info.value.errors) > 0
+                assert any("count" in e.get("field", "") for e in exc_info.value.errors)
 
     @pytest.mark.asyncio()
     async def test_update_config_not_found(self, service):

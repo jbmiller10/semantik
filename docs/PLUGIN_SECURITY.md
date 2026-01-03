@@ -35,6 +35,42 @@ Semantik is designed for **experimentation** by trusted developers (primarily yo
 
 For the target use case (self-hosted semantic search with self-authored plugins), the complexity isn't justified.
 
+## API Rate Limiting
+
+Plugin API endpoints are rate-limited to prevent resource exhaustion and abuse.
+
+### Rate Limits
+
+| Endpoint | Default Limit | Environment Variable |
+|----------|---------------|---------------------|
+| `POST /api/v2/plugins/install` | 2/minute | `PLUGIN_INSTALL_RATE_LIMIT` |
+| `DELETE /api/v2/plugins/{id}/uninstall` | 5/minute | `PLUGIN_UNINSTALL_RATE_LIMIT` |
+| `GET /api/v2/plugins/{id}/health` | 30/minute | `PLUGIN_HEALTH_RATE_LIMIT` |
+| `GET /api/v2/plugins` | 60/minute | `PLUGIN_LIST_RATE_LIMIT` |
+
+### Configuring Rate Limits
+
+Set environment variables to customize limits:
+
+```bash
+# Example: Allow 5 installs per minute
+PLUGIN_INSTALL_RATE_LIMIT=5
+
+# Example: Allow 100 health checks per minute
+PLUGIN_HEALTH_RATE_LIMIT=100
+```
+
+### Rate Limit Responses
+
+When rate limits are exceeded, the API returns HTTP 429 with a `Retry-After` header:
+
+```json
+{
+  "detail": "Rate limit exceeded: 2 per 1 minute",
+  "code": "RATE_LIMIT_EXCEEDED"
+}
+```
+
 ## Audit Logging
 
 All plugin operations are logged for security auditing.

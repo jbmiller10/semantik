@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from shared.plugins.exceptions import PluginDuplicateError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginRegistry, PluginSource
 
@@ -64,20 +65,26 @@ class TestPluginRegistry:
         assert registry.register(record2) is False
 
     def test_register_duplicate_different_class(self, registry):
-        """Test registering same ID with different class returns False."""
+        """Test registering same ID with different class raises PluginDuplicateError."""
         record1 = _make_record("test-plugin", "embedding", plugin_class=type("ClassA", (), {}))
         record2 = _make_record("test-plugin", "embedding", plugin_class=type("ClassB", (), {}))
 
         assert registry.register(record1) is True
-        assert registry.register(record2) is False
+        with pytest.raises(PluginDuplicateError) as exc_info:
+            registry.register(record2)
+        assert exc_info.value.error_code == "PLUGIN_CLASS_CONFLICT"
+        assert exc_info.value.plugin_id == "test-plugin"
 
     def test_register_cross_type_conflict(self, registry):
-        """Test registering same ID across types returns False."""
+        """Test registering same ID across types raises PluginDuplicateError."""
         record1 = _make_record("shared-id", "embedding")
         record2 = _make_record("shared-id", "chunking")
 
         assert registry.register(record1) is True
-        assert registry.register(record2) is False
+        with pytest.raises(PluginDuplicateError) as exc_info:
+            registry.register(record2)
+        assert exc_info.value.error_code == "PLUGIN_ID_CONFLICT"
+        assert exc_info.value.plugin_id == "shared-id"
 
     def test_get_existing_plugin(self, registry):
         """Test getting an existing plugin."""

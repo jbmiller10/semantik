@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 
 from shared.database import get_db
 from shared.plugins.validation import (
@@ -18,11 +18,15 @@ from shared.plugins.validation import (
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.plugins.error_codes import PluginErrorCode
+from shared.plugins.exceptions import PluginConfigValidationError
 from webui.api.schemas import ErrorResponse
 from webui.api.v2.plugins_schemas import (
     AvailablePluginInfo,
     AvailablePluginsListResponse,
     PluginConfigUpdateRequest,
+    PluginErrorDetail,
+    PluginErrorResponse,
     PluginHealthResponse,
     PluginInfo,
     PluginInstallRequest,
@@ -32,9 +36,28 @@ from webui.api.v2.plugins_schemas import (
     PluginStatusResponse,
 )
 from webui.auth import get_current_user
+from webui.config.rate_limits import RateLimitConfig
+from webui.rate_limiter import create_rate_limit_decorator, rate_limit_dependency
 from webui.services.plugin_service import PluginService
 
 router = APIRouter(prefix="/api/v2/plugins", tags=["plugins-v2"])
+
+
+def _plugin_error(
+    status_code: int,
+    code: PluginErrorCode,
+    detail: str,
+    plugin_id: str | None = None,
+) -> HTTPException:
+    """Create an HTTPException with structured plugin error response."""
+    return HTTPException(
+        status_code=status_code,
+        detail=PluginErrorResponse(
+            detail=detail,
+            code=code,
+            plugin_id=plugin_id,
+        ).model_dump(),
+    )
 
 
 async def _get_plugin_service(db: AsyncSession = Depends(get_db)) -> PluginService:
@@ -194,7 +217,7 @@ async def get_plugin(
     """Get detailed info for a plugin."""
     plugin = await service.get_plugin(plugin_id)
     if plugin is None:
-        raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
+        raise _plugin_error(404, PluginErrorCode.PLUGIN_NOT_FOUND, f"Plugin not found: {plugin_id}", plugin_id)
     return PluginInfo(**plugin)
 
 
@@ -214,7 +237,7 @@ async def get_plugin_manifest(
     """Get the manifest for a plugin."""
     manifest = await service.get_manifest(plugin_id)
     if manifest is None:
-        raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
+        raise _plugin_error(404, PluginErrorCode.PLUGIN_NOT_FOUND, f"Plugin not found: {plugin_id}", plugin_id)
     return PluginManifestSchema(**manifest)
 
 
@@ -307,11 +330,28 @@ async def update_plugin_config(
     """Update plugin configuration (validated against schema if present)."""
     try:
         payload = await service.update_config(plugin_id, request.config)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except PluginConfigValidationError as exc:
+        # Return structured validation errors with suggestions
+        errors = [
+            PluginErrorDetail(
+                field=e.get("field"),
+                message=e.get("message", "Validation error"),
+                suggestion=e.get("suggestion"),
+            )
+            for e in exc.errors
+        ]
+        raise HTTPException(
+            status_code=400,
+            detail=PluginErrorResponse(
+                detail=str(exc),
+                code=PluginErrorCode.PLUGIN_CONFIG_INVALID,
+                plugin_id=plugin_id,
+                errors=errors,
+            ).model_dump(),
+        ) from exc
 
     if payload is None:
-        raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
+        raise _plugin_error(404, PluginErrorCode.PLUGIN_NOT_FOUND, f"Plugin not found: {plugin_id}", plugin_id)
     payload["requires_restart"] = True
     return PluginInfo(**payload)
 
@@ -322,9 +362,13 @@ async def update_plugin_config(
     responses={
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         404: {"model": ErrorResponse, "description": "Plugin not found"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_HEALTH_RATE))],
 )
+@create_rate_limit_decorator(RateLimitConfig.PLUGIN_HEALTH_RATE)
 async def check_plugin_health(
+    http_request: Request,  # noqa: ARG001 - Required for rate limiting
     plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
@@ -332,7 +376,7 @@ async def check_plugin_health(
     """Run a health check for a plugin."""
     payload = await service.check_health(plugin_id)
     if payload is None:
-        raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
+        raise _plugin_error(404, PluginErrorCode.PLUGIN_NOT_FOUND, f"Plugin not found: {plugin_id}", plugin_id)
     return PluginHealthResponse(**payload)
 
 
@@ -347,10 +391,14 @@ async def check_plugin_health(
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         403: {"model": ErrorResponse, "description": "Admin access required"},
         404: {"model": ErrorResponse, "description": "Plugin not found in registry"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_INSTALL_RATE))],
 )
+@create_rate_limit_decorator(RateLimitConfig.PLUGIN_INSTALL_RATE)
 async def install_plugin_endpoint(
-    request: PluginInstallRequest,
+    http_request: Request,  # noqa: ARG001 - Required for rate limiting
+    install_request: PluginInstallRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PluginInstallResponse:
     """Install a plugin from the registry (admin only).
@@ -364,64 +412,77 @@ async def install_plugin_endpoint(
 
     # Check admin permission
     if not current_user.get("is_superuser", False):
-        raise HTTPException(
-            status_code=403,
-            detail="Admin access required to install plugins",
+        raise _plugin_error(
+            403,
+            PluginErrorCode.PLUGIN_INSTALL_FAILED,
+            "Admin access required to install plugins",
+            install_request.plugin_id,
         )
 
     # Look up plugin in registry
     registry = await fetch_registry()
     registry_entry = next(
-        (p for p in registry.plugins if p.id == request.plugin_id),
+        (p for p in registry.plugins if p.id == install_request.plugin_id),
         None,
     )
     if not registry_entry:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Plugin {request.plugin_id} not found in registry",
+        raise _plugin_error(
+            404,
+            PluginErrorCode.PLUGIN_NOT_IN_REGISTRY,
+            f"Plugin {install_request.plugin_id} not found in registry",
+            install_request.plugin_id,
         )
 
     # Build install command
     install_cmd: str | None = None
     if registry_entry.install_command:
+        from shared.plugins.git_url import append_version_to_git_url, is_git_url
+
         install_cmd = registry_entry.install_command
         # Strip "pip install " prefix if present (registry may contain full command)
         if install_cmd.startswith("pip install "):
             install_cmd = install_cmd[len("pip install ") :]
-        if request.version:
-            # Append version to git URL (e.g., git+https://...git -> git+https://...git@v1.0.0)
-            if ".git" in install_cmd:
-                install_cmd = install_cmd.replace(".git", f".git@{request.version}")
+        if install_request.version:
+            # Append version using proper URL parsing
+            if is_git_url(install_cmd):
+                install_cmd = append_version_to_git_url(install_cmd, install_request.version)
             else:
-                install_cmd = f"{install_cmd}@{request.version}"
+                install_cmd = f"{install_cmd}@{install_request.version}"
     elif registry_entry.pypi:
         install_cmd = registry_entry.pypi
-        if request.version:
-            install_cmd = f"{install_cmd}=={request.version}"
+        if install_request.version:
+            install_cmd = f"{install_cmd}=={install_request.version}"
 
     if not install_cmd:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Plugin {request.plugin_id} has no install command",
+        raise _plugin_error(
+            400,
+            PluginErrorCode.PLUGIN_NO_INSTALL_COMMAND,
+            f"Plugin {install_request.plugin_id} has no install command",
+            install_request.plugin_id,
         )
 
     try:
         validate_pip_install_target(install_cmd)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _plugin_error(
+            400,
+            PluginErrorCode.PLUGIN_VERSION_INVALID,
+            str(exc),
+            install_request.plugin_id,
+        ) from exc
 
     # Audit log
     audit_log(
-        request.plugin_id,
+        install_request.plugin_id,
         "plugin.install.started",
-        {"user_id": current_user["id"], "version": request.version},
+        {"user_id": current_user["id"], "version": install_request.version},
     )
 
     # Install (run in thread to avoid blocking event loop)
     success, message = await asyncio.to_thread(install_plugin, install_cmd)
 
     audit_log(
-        request.plugin_id,
+        install_request.plugin_id,
         "plugin.install.completed" if success else "plugin.install.failed",
         {"success": success, "message": message[:200]},  # Truncate long error messages
     )
@@ -441,9 +502,13 @@ async def install_plugin_endpoint(
         403: {"model": ErrorResponse, "description": "Admin access required"},
         404: {"model": ErrorResponse, "description": "Plugin not found"},
         409: {"model": ErrorResponse, "description": "Multiple matching packages installed"},
+        429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
+    dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_UNINSTALL_RATE))],
 )
+@create_rate_limit_decorator(RateLimitConfig.PLUGIN_UNINSTALL_RATE)
 async def uninstall_plugin_endpoint(
+    http_request: Request,  # noqa: ARG001 - Required for rate limiting
     plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PluginInstallResponse:
@@ -458,9 +523,11 @@ async def uninstall_plugin_endpoint(
 
     # Check admin permission
     if not current_user.get("is_superuser", False):
-        raise HTTPException(
-            status_code=403,
-            detail="Admin access required to uninstall plugins",
+        raise _plugin_error(
+            403,
+            PluginErrorCode.PLUGIN_UNINSTALL_FAILED,
+            "Admin access required to uninstall plugins",
+            plugin_id,
         )
 
     def _resolve_installed_package(
