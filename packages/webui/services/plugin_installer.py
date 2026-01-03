@@ -11,18 +11,67 @@ but cannot override existing app packages.
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import os
 import shutil
 import subprocess
+import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shared.plugins.validation import validate_package_name, validate_pip_install_target
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 logger = logging.getLogger(__name__)
 
 # Default plugins directory (can be overridden via environment)
 PLUGINS_DIR = Path(os.environ.get("SEMANTIK_PLUGINS_DIR", "/app/plugins"))
+
+# Timeout for acquiring the installation lock (seconds)
+INSTALL_LOCK_TIMEOUT = 60
+
+
+@contextmanager
+def _plugin_install_lock(timeout: int = INSTALL_LOCK_TIMEOUT) -> Generator[None, None, None]:
+    """Acquire exclusive lock for plugin installation/uninstallation.
+
+    Uses fcntl file locking to prevent concurrent pip operations from
+    corrupting the plugins directory. The lock is automatically released
+    when the context manager exits or if the process dies.
+
+    Args:
+        timeout: Maximum seconds to wait for lock acquisition.
+
+    Raises:
+        TimeoutError: If lock cannot be acquired within timeout.
+    """
+    lock_path = get_plugins_dir() / ".plugin_install.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lock_file = lock_path.open("w")  # noqa: SIM115 - need file handle for fcntl
+    start = time.time()
+    try:
+        while True:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                logger.debug("Acquired plugin installation lock")
+                break
+            except OSError:
+                if time.time() - start > timeout:
+                    lock_file.close()
+                    raise TimeoutError(
+                        "Could not acquire plugin lock. Another installation may be in progress."
+                    ) from None
+                time.sleep(0.5)
+        yield
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
+        logger.debug("Released plugin installation lock")
 
 
 def get_plugins_dir() -> Path:
@@ -71,30 +120,35 @@ def install_plugin(
         return False, str(exc)
 
     try:
-        # Use system pip directly (venv doesn't have pip, uses uv)
-        result = subprocess.run(
-            [
-                "pip",
-                "install",
-                "--target",
-                str(plugins_dir),
-                "--upgrade",
-                "--no-cache-dir",
-                install_command,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        # Acquire exclusive lock to prevent concurrent installations
+        with _plugin_install_lock():
+            # Use system pip directly (venv doesn't have pip, uses uv)
+            result = subprocess.run(
+                [
+                    "pip",
+                    "install",
+                    "--target",
+                    str(plugins_dir),
+                    "--upgrade",
+                    "--no-cache-dir",
+                    install_command,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
 
-        if result.returncode == 0:
-            logger.info("Plugin installed successfully: %s", install_command)
-            return True, "Successfully installed. Restart required to activate."
+            if result.returncode == 0:
+                logger.info("Plugin installed successfully: %s", install_command)
+                return True, "Successfully installed. Restart required to activate."
 
-        error_msg = result.stderr.strip() or result.stdout.strip()
-        logger.error("Plugin installation failed: %s\n%s", install_command, error_msg)
-        return False, f"Installation failed:\n{error_msg}"
+            error_msg = result.stderr.strip() or result.stdout.strip()
+            logger.error("Plugin installation failed: %s\n%s", install_command, error_msg)
+            return False, f"Installation failed:\n{error_msg}"
 
+    except TimeoutError as exc:
+        logger.error("Plugin installation lock timeout: %s", exc)
+        return False, str(exc)
     except subprocess.TimeoutExpired:
         logger.error("Plugin installation timed out: %s", install_command)
         return False, f"Installation timed out after {timeout} seconds"
@@ -136,35 +190,42 @@ def uninstall_plugin(package_name: str) -> tuple[bool, str]:
 
     logger.info("Uninstalling plugin: %s from %s", package_name, plugins_dir)
 
-    removed_any = False
+    try:
+        # Acquire exclusive lock to prevent concurrent uninstall/install operations
+        with _plugin_install_lock():
+            removed_any = False
 
-    # Remove the package directory
-    if plugin_path.exists():
-        try:
-            shutil.rmtree(plugin_path)
-            removed_any = True
-            logger.info("Removed package directory: %s", plugin_path)
-        except Exception as exc:
-            logger.error("Failed to remove package directory: %s", exc)
-            return False, f"Failed to remove package: {exc}"
+            # Remove the package directory
+            if plugin_path.exists():
+                try:
+                    shutil.rmtree(plugin_path)
+                    removed_any = True
+                    logger.info("Removed package directory: %s", plugin_path)
+                except Exception as exc:
+                    logger.error("Failed to remove package directory: %s", exc)
+                    return False, f"Failed to remove package: {exc}"
 
-    # Remove .dist-info directories
-    for dist_info in plugins_dir.glob(f"{dir_name}-*.dist-info"):
-        dist_info_path = dist_info.resolve()
-        if not dist_info_path.is_relative_to(plugins_dir_resolved):
-            logger.warning("Skipping unexpected dist-info path outside plugins dir: %s", dist_info_path)
-            continue
-        try:
-            shutil.rmtree(dist_info_path)
-            removed_any = True
-            logger.info("Removed dist-info: %s", dist_info_path)
-        except Exception as exc:
-            logger.warning("Failed to remove dist-info %s: %s", dist_info, exc)
+            # Remove .dist-info directories
+            for dist_info in plugins_dir.glob(f"{dir_name}-*.dist-info"):
+                dist_info_path = dist_info.resolve()
+                if not dist_info_path.is_relative_to(plugins_dir_resolved):
+                    logger.warning("Skipping unexpected dist-info path outside plugins dir: %s", dist_info_path)
+                    continue
+                try:
+                    shutil.rmtree(dist_info_path)
+                    removed_any = True
+                    logger.info("Removed dist-info: %s", dist_info_path)
+                except Exception as exc:
+                    logger.warning("Failed to remove dist-info %s: %s", dist_info, exc)
 
-    if removed_any:
-        return True, f"Uninstalled {package_name}. Restart required."
+            if removed_any:
+                return True, f"Uninstalled {package_name}. Restart required."
 
-    return False, f"Plugin {package_name} not found in {plugins_dir}"
+            return False, f"Plugin {package_name} not found in {plugins_dir}"
+
+    except TimeoutError as exc:
+        logger.error("Plugin uninstall lock timeout: %s", exc)
+        return False, str(exc)
 
 
 def list_installed_packages() -> list[str]:

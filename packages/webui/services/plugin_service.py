@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}
 
+# Timeout for individual plugin health checks (seconds)
+HEALTH_CHECK_TIMEOUT_SECONDS = 10.0
+
 
 def _coerce_type(value: Any, schema_type: str) -> bool:
     if schema_type == "string":
@@ -432,8 +435,23 @@ class PluginService:
         if not tasks:
             return
 
-        results = await asyncio.gather(*tasks)
+        # Calculate batch timeout based on number of tasks plus buffer
+        batch_timeout = HEALTH_CHECK_TIMEOUT_SECONDS * len(tasks) + 5.0
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=batch_timeout,
+            )
+        except TimeoutError:
+            logger.warning("Batch health refresh timed out after %.1fs", batch_timeout)
+            return
+
         for updated in results:
+            # Skip exceptions returned by gather(return_exceptions=True)
+            if isinstance(updated, BaseException):
+                logger.warning("Health check task failed: %s", updated)
+                continue
             if updated is not None:
                 config_map[updated.id] = updated
         await self.db_session.commit()
@@ -502,7 +520,12 @@ class PluginService:
 
         if inspect.isawaitable(result):
             try:
-                result = await result
+                result = await asyncio.wait_for(
+                    result,
+                    timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                return "unhealthy", f"Health check timed out after {HEALTH_CHECK_TIMEOUT_SECONDS}s"
             except Exception as exc:
                 return "unhealthy", str(exc)
 
