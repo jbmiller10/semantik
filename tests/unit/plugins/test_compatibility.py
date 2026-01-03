@@ -24,10 +24,21 @@ class TestGetSemantikVersion:
 
     def test_fallback_version_format(self) -> None:
         """Fallback version should be valid semver."""
-        # When package metadata isn't available, should return fallback
+        import re
+
+        from shared.version import get_version
+
+        # Clear the lru_cache to ensure fresh execution
+        get_version.cache_clear()
+
+        # When package metadata isn't available, should return fallback from VERSION file
         with patch("importlib.metadata.version", side_effect=Exception):
             version = get_semantik_version()
-            assert version == "0.7.7"
+            # Should be a valid semver format (x.y.z)
+            assert re.match(r"^\d+\.\d+\.\d+", version), f"Invalid version format: {version}"
+
+        # Clear cache again to not affect other tests
+        get_version.cache_clear()
 
 
 class TestCheckCompatibility:
