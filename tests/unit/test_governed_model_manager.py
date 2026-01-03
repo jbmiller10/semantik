@@ -171,7 +171,7 @@ class TestModelRestoreErrorStateMismatch:
     @pytest.mark.asyncio()
     async def test_restore_raises_error_on_state_mismatch_embedding(self, governed_manager):
         """ModelRestoreError raised when governor thinks model is offloaded but offloader doesn't have it."""
-        from vecpipe.memory_utils import ModelRestoreError
+        from packages.vecpipe.memory_utils import ModelRestoreError
 
         # Mock provider to exist (so we don't get the "provider is None" error)
         governed_manager._provider = type("MockProvider", (), {"model": object()})()
@@ -191,7 +191,7 @@ class TestModelRestoreErrorStateMismatch:
     @pytest.mark.asyncio()
     async def test_restore_raises_error_on_state_mismatch_reranker(self, governed_manager):
         """ModelRestoreError raised for reranker when state diverges."""
-        from vecpipe.memory_utils import ModelRestoreError
+        from packages.vecpipe.memory_utils import ModelRestoreError
 
         # Mock reranker to exist
         governed_manager.reranker = type("MockReranker", (), {"model": object()})()

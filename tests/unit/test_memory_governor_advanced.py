@@ -129,6 +129,20 @@ class TestConcurrentMemoryRequests:
     @pytest.mark.asyncio()
     async def test_concurrent_eviction_pressure(self, governor):
         """Test that concurrent eviction requests don't cause double eviction."""
+        # Register mock unload callback BEFORE making memory requests
+        # (required because request_memory may trigger eviction)
+        unload_count = 0
+
+        async def mock_unload(_name, _quant):
+            nonlocal unload_count
+            unload_count += 1
+            await asyncio.sleep(0.01)  # Simulate work
+
+        governor.register_callbacks(
+            ModelType.EMBEDDING,
+            unload_fn=mock_unload,
+        )
+
         # Load multiple models to fill memory
         for i in range(3):
             await governor.request_memory(
@@ -142,19 +156,6 @@ class TestConcurrentMemoryRequests:
                 model_type=ModelType.EMBEDDING,
                 quantization="float16",
             )
-
-        # Register mock unload callback
-        unload_count = 0
-
-        async def mock_unload(_name, _quant):
-            nonlocal unload_count
-            unload_count += 1
-            await asyncio.sleep(0.01)  # Simulate work
-
-        governor.register_callbacks(
-            ModelType.EMBEDDING,
-            unload_fn=mock_unload,
-        )
 
         # Request more memory than available - should trigger eviction
         async def request_large_model():

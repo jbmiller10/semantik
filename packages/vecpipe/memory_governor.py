@@ -334,8 +334,8 @@ class GPUMemoryGovernor:
 
         This method:
         1. Checks if model is already loaded/offloaded
-        2. Checks available budget
-        3. Evicts/offloads other models if needed
+        2. Checks both tracked AND actual GPU memory availability
+        3. Evicts/offloads other models if needed (force=True for explicit requests)
         4. Returns True if allocation can proceed
 
         Args:
@@ -368,30 +368,48 @@ class GPUMemoryGovernor:
                     # Model is offloaded, need to restore
                     return await self._restore_from_cpu(model_key, required_mb)
 
-            # Case 2: Need to allocate new memory
-            # Note: required_mb already includes overhead from get_model_memory_requirement
+            # Case 2: Check if we need to make room
+            # Use BOTH tracked estimates AND actual GPU memory to catch discrepancies
             current_gpu_usage = self._get_gpu_usage()
+            actual_free_mb = self._get_actual_free_gpu_mb()
 
-            if current_gpu_usage + required_mb <= self._budget.usable_gpu_mb:
-                # Fits within budget
+            # Check tracked budget first
+            tracked_fits = current_gpu_usage + required_mb <= self._budget.usable_gpu_mb
+            # Also check actual GPU memory (the ground truth)
+            actual_fits = actual_free_mb >= required_mb
+
+            if tracked_fits and actual_fits:
+                # Both checks pass - memory is available
                 logger.debug(
-                    "Memory request approved: %s needs %dMB, current=%dMB, budget=%dMB",
+                    "Memory request approved: %s needs %dMB, tracked=%dMB, actual_free=%dMB, budget=%dMB",
                     model_key,
                     required_mb,
                     current_gpu_usage,
+                    actual_free_mb,
                     self._budget.usable_gpu_mb,
                 )
                 return True
 
             # Case 3: Need to make room
-            needed_mb = (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb
+            # Calculate how much we need to free based on the tighter constraint
+            needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
+            needed_from_actual = max(0, required_mb - actual_free_mb)
+            needed_mb = max(needed_from_tracked, needed_from_actual)
+
             logger.info(
-                "Memory request requires eviction: %s needs %dMB, must free %dMB",
+                "Memory request requires eviction: %s needs %dMB, must free %dMB "
+                "(tracked_usage=%dMB, actual_free=%dMB, budget=%dMB)",
                 model_key,
                 required_mb,
                 needed_mb,
+                current_gpu_usage,
+                actual_free_mb,
+                self._budget.usable_gpu_mb,
             )
-            freed_mb = await self._make_room(needed_mb, exclude_key=model_key)
+            # Use force=True for explicit allocation requests - this bypasses
+            # the 5-second grace period since we're not doing background eviction,
+            # we're responding to an explicit request that needs memory NOW
+            freed_mb = await self._make_room(needed_mb, exclude_key=model_key, force=True)
 
             return freed_mb >= needed_mb
 
@@ -458,6 +476,7 @@ class GPUMemoryGovernor:
         self,
         needed_mb: int,
         exclude_key: str | None = None,
+        force: bool = False,
     ) -> int:
         """
         Free memory by offloading/unloading models.
@@ -466,6 +485,15 @@ class GPUMemoryGovernor:
         1. Offload idle models to CPU first (preserves warm state)
         2. Unload if CPU offload disabled or CPU is full
         3. Evict LRU models first
+
+        Args:
+            needed_mb: Amount of memory to free
+            exclude_key: Model key to exclude from eviction (the one we're making room for)
+            force: If True, bypass the 5-second grace period. Use this for explicit
+                   allocation requests where we need memory NOW. The grace period is
+                   meant to protect models during active inference, but in a sequential
+                   pipeline (embed query -> load reranker), the embedding model has
+                   finished its work and can be safely evicted.
 
         Returns:
             Amount of memory freed in MB
@@ -479,10 +507,19 @@ class GPUMemoryGovernor:
             if freed_mb >= needed_mb:
                 break
 
-            # Skip models in active use (recently touched)
-            if tracked.idle_seconds < 5:  # 5 second grace period
+            # Skip models in active use (recently touched) - unless force=True
+            # The grace period protects models during active inference, but for
+            # explicit allocation requests, we need the memory NOW
+            if not force and tracked.idle_seconds < 5:  # 5 second grace period
                 logger.debug("Skipping %s - recently used (%.1fs ago)", tracked.model_key, tracked.idle_seconds)
                 continue
+
+            if force and tracked.idle_seconds < 5:
+                logger.info(
+                    "Force evicting %s (idle %.1fs) - explicit allocation request",
+                    tracked.model_key,
+                    tracked.idle_seconds,
+                )
 
             # Try CPU offload first if enabled and there's room
             if (
@@ -648,20 +685,27 @@ class GPUMemoryGovernor:
             return False
 
         # Ensure we have room on GPU
-        # Note: required_mb already includes overhead from get_model_memory_requirement
+        # Check both tracked budget AND actual GPU memory
         current_gpu_usage = self._get_gpu_usage()
+        actual_free_mb = self._get_actual_free_gpu_mb()
 
-        if current_gpu_usage + required_mb > self._budget.usable_gpu_mb:
-            needed = (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb
-            freed = await self._make_room(needed, exclude_key=model_key)
+        # Calculate needed memory from both perspectives
+        needed_from_tracked = max(0, (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb)
+        needed_from_actual = max(0, required_mb - actual_free_mb)
+        needed = max(needed_from_tracked, needed_from_actual)
+
+        if needed > 0:
+            # Use force=True since this is an explicit restore request
+            freed = await self._make_room(needed, exclude_key=model_key, force=True)
             if freed < needed:
                 logger.warning(
                     "Cannot restore %s: insufficient GPU memory after eviction "
-                    "(needed=%dMB, freed=%dMB, current=%dMB, usable=%dMB)",
+                    "(needed=%dMB, freed=%dMB, tracked_usage=%dMB, actual_free=%dMB, usable=%dMB)",
                     model_key,
                     needed,
                     freed,
                     current_gpu_usage,
+                    actual_free_mb,
                     self._budget.usable_gpu_mb,
                 )
                 return False
@@ -1024,6 +1068,32 @@ class GPUMemoryGovernor:
     def _get_cpu_usage(self) -> int:
         """Get current CPU memory usage for offloaded models."""
         return sum(m.memory_mb for m in self._models.values() if m.location == ModelLocation.CPU)
+
+    def _get_actual_free_gpu_mb(self) -> int:
+        """Get actual free GPU memory from CUDA, not tracked estimates.
+
+        This catches discrepancies between our tracked memory and actual GPU usage,
+        which can occur due to:
+        - CUDA context overhead
+        - Activation memory from inference
+        - PyTorch memory fragmentation/caching
+        - Gradient storage (if not properly disabled)
+
+        Returns:
+            Actual free GPU memory in MB, or usable_gpu_mb if CUDA unavailable
+        """
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                # Fall back to budget-based estimate
+                return self._budget.usable_gpu_mb - self._get_gpu_usage()
+
+            free_bytes, _ = torch.cuda.mem_get_info()
+            return free_bytes // (1024 * 1024)
+        except Exception as e:
+            logger.warning("Failed to get actual GPU memory: %s, using tracked estimate", e)
+            return self._budget.usable_gpu_mb - self._get_gpu_usage()
 
     def _get_usage_percent(self) -> float:
         """Get GPU usage as percentage of usable budget."""

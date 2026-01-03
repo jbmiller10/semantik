@@ -804,8 +804,28 @@ class TestRestoreFromCPUFailures:
             enable_cpu_offload=True,
         )
 
+        # Register callbacks - unload raises exception to simulate failure to free memory
+        async def failing_unload(_model_name: str, _quantization: str) -> None:
+            raise RuntimeError("Unload failed")  # Simulates failure
+
+        async def noop_offload(_model_name: str, _quantization: str, _target_device: str) -> None:
+            pass  # Offload does nothing (used for restore callback)
+
+        async def noop_unload(_model_name: str, _quantization: str) -> None:
+            pass
+
+        governor.register_callbacks(
+            ModelType.RERANKER,
+            unload_fn=failing_unload,
+        )
+        governor.register_callbacks(
+            ModelType.EMBEDDING,
+            unload_fn=noop_unload,
+            offload_fn=noop_offload,  # Required for restore
+        )
+
         try:
-            # Fill GPU with a model that can't be evicted (exclude_key protects it)
+            # Fill GPU with a model
             with patch.object(governor, "_get_model_memory", return_value=6000):
                 await governor.mark_loaded("blocker-model", ModelType.RERANKER, "float16")
 
@@ -821,10 +841,10 @@ class TestRestoreFromCPUFailures:
             governor._models[model_key] = tracked
 
             # Try to restore - should fail because 6000 + 3000 > 7200 usable
-            # and blocker-model can't free enough (or has grace period)
+            # and blocker-model's unload callback returns False (fails to free)
             blocker_key = governor._make_key("blocker-model", ModelType.RERANKER, "float16")
-            # Give blocker model grace period protection
-            governor._models[blocker_key].last_used = time.time()
+            # Make the blocker old enough to be evicted
+            governor._models[blocker_key].last_used = time.time() - 120
 
             result = await governor._restore_from_cpu(model_key, required_mb=3000)
             assert result is False
