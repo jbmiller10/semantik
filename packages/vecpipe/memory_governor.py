@@ -664,9 +664,7 @@ class GPUMemoryGovernor:
         # Restore via callback
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
-            logger.error(
-                "Cannot restore %s: no offload callback registered for %s", model_key, tracked.model_type.name
-            )
+            logger.error("Cannot restore %s: no offload callback registered for %s", model_key, tracked.model_type.name)
             return False
 
         try:
