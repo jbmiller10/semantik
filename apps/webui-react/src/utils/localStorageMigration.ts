@@ -163,6 +163,7 @@ export const _internal = {
   clearLocalStorage,
   shouldClearKey,
   performMigration,
+  compareVersions,
   STORAGE_VERSION_KEY,
   CURRENT_VERSION,
 };
