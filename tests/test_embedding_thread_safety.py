@@ -210,7 +210,6 @@ class TestAsyncConcurrency(unittest.TestCase):
         """Test concurrent async embedding generation."""
 
         async def run_test() -> None:
-
             # Initialize service
             await initialize_embedding_service("test-model", mock_mode=True)
             service = await get_embedding_service()
@@ -240,7 +239,6 @@ class TestAsyncConcurrency(unittest.TestCase):
         """Test that exceptions in one request don't affect others."""
 
         async def run_test() -> None:
-
             # Create a custom service that sometimes fails
             class FailingService:
                 def __init__(self, service: Any) -> None:

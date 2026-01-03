@@ -13,8 +13,40 @@ from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mod
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
 from shared.database.repositories.collection_repository import CollectionRepository
+from shared.plugins.loader import load_plugins
+from shared.plugins.registry import plugin_registry
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_reranker_id_to_model(reranker_id: str | None) -> str | None:
+    """Resolve a reranker plugin ID to its model name.
+
+    Args:
+        reranker_id: The plugin ID (e.g., "qwen3-reranker")
+
+    Returns:
+        The reranker model name from the plugin, or None if not found.
+    """
+    if not reranker_id:
+        return None
+
+    # Ensure reranker plugins are loaded
+    load_plugins(plugin_types={"reranker"})
+
+    record = plugin_registry.get("reranker", reranker_id)
+    if record is None:
+        logger.warning("Reranker plugin not found: %s", reranker_id)
+        return None
+
+    # Get the model name from capabilities
+    capabilities = record.manifest.capabilities
+    models = capabilities.get("models", [])
+    if models:
+        return models[0]  # Return the first (primary) model
+
+    logger.warning("Reranker plugin %s has no models defined", reranker_id)
+    return None
 
 
 class SearchService:
@@ -235,6 +267,7 @@ class SearchService:
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
+        reranker_id: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_mode: str = "weighted",
         keyword_mode: str = "any",
@@ -250,7 +283,8 @@ class SearchService:
             score_threshold: Minimum score threshold for results
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use reranking
-            rerank_model: Optional reranker model
+            rerank_model: Optional reranker model name
+            reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
             hybrid_alpha: Weight for hybrid search
             hybrid_mode: Mode for hybrid search
             keyword_mode: Keyword matching mode when using hybrid search
@@ -267,13 +301,20 @@ class SearchService:
         hybrid_mode = normalize_hybrid_mode(hybrid_mode)
         keyword_mode = normalize_keyword_mode(keyword_mode)
 
+        # Resolve reranker_id to model name if provided (takes precedence)
+        effective_rerank_model = rerank_model
+        if reranker_id:
+            resolved_model = _resolve_reranker_id_to_model(reranker_id)
+            if resolved_model:
+                effective_rerank_model = resolved_model
+
         # Build common search parameters
         search_params = {
             "search_type": search_type,
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
-            "rerank_model": rerank_model,
+            "rerank_model": effective_rerank_model,
         }
 
         # Add hybrid search parameters if applicable
@@ -362,6 +403,7 @@ class SearchService:
         metadata_filter: dict[str, Any] | None = None,
         use_reranker: bool = True,
         rerank_model: str | None = None,
+        reranker_id: str | None = None,
         hybrid_alpha: float = 0.7,
         hybrid_mode: str = "weighted",
         keyword_mode: str = "any",
@@ -378,7 +420,8 @@ class SearchService:
             score_threshold: Minimum score threshold
             metadata_filter: Optional metadata filters
             use_reranker: Whether to use re-ranking
-            rerank_model: Optional reranker model
+            rerank_model: Optional reranker model name
+            reranker_id: Optional reranker plugin ID (takes precedence over rerank_model)
             hybrid_alpha: Weight for hybrid search
             hybrid_mode: Mode for hybrid search
             keyword_mode: Keyword matching mode when using hybrid search
@@ -395,6 +438,13 @@ class SearchService:
         hybrid_mode = normalize_hybrid_mode(hybrid_mode)
         keyword_mode = normalize_keyword_mode(keyword_mode)
 
+        # Resolve reranker_id to model name if provided (takes precedence)
+        effective_rerank_model = rerank_model
+        if reranker_id:
+            resolved_model = _resolve_reranker_id_to_model(reranker_id)
+            if resolved_model:
+                effective_rerank_model = resolved_model
+
         search_params = {
             "query": query,
             "k": k,
@@ -405,7 +455,7 @@ class SearchService:
             "score_threshold": score_threshold,
             "filters": metadata_filter,
             "use_reranker": use_reranker,
-            "rerank_model": rerank_model,
+            "rerank_model": effective_rerank_model,
             "include_content": include_content,
         }
 

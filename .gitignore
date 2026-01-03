@@ -116,8 +116,9 @@ CLAUDE.md
 GEMINI.md
 
 # Planning and roadmap docs (not for version control)
-PLUGIN_EXTENSIBILITY_ROADMAP.md
+archive/
 ROADMAP_REVIEW_SYNTHESIS.md
+docs/plugin-system-remediation-plan.md
 
 # IDE
 .vscode/
@@ -141,6 +142,7 @@ Thumbs.db
 *.db
 logs/
 data/
+!packages/shared/plugins/data/
 images/
 models/
 repomixpy-output.txt

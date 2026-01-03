@@ -93,7 +93,6 @@ class TestEmbeddingIntegration(unittest.TestCase):
         mock_cuda.return_value = False
 
         async def async_test() -> None:
-
             # Get service
             service1 = await get_embedding_service()
             service2 = await get_embedding_service()

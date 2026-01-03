@@ -71,6 +71,8 @@ def mock_collection():
     mock.sync_last_run_completed_at = None
     mock.sync_last_run_status = None
     mock.sync_last_error = None
+    mock.default_reranker_id = None
+    mock.extraction_config = {}
     mock.created_at = datetime.now(UTC)
     mock.updated_at = datetime.now(UTC)
     return mock

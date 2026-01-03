@@ -25,7 +25,8 @@ from pydantic import BaseModel, Field, ValidationError
 logger = logging.getLogger(__name__)
 
 # Default state file path (on shared volume in Docker)
-DEFAULT_STATE_FILE_PATH = Path("/data/plugin_state.json")
+# The Docker volumes mount ./data to /app/data
+DEFAULT_STATE_FILE_PATH = Path("/app/data/plugin_state.json")
 
 # Current schema version - bump when making breaking changes
 SCHEMA_VERSION = 1
@@ -98,8 +99,19 @@ def write_state(state: PluginState) -> None:
         with os.fdopen(fd, "w") as f:
             json.dump(state.model_dump(), f, indent=2)
 
+        # Enforce restrictive permissions on the temp file before rename (best-effort).
+        try:
+            tmp_path_obj.chmod(0o600)
+        except OSError as exc:  # pragma: no cover - best-effort hardening
+            logger.debug("Failed to set permissions on temp plugin state file %s: %s", tmp_path_obj, exc)
+
         # Atomic rename (same filesystem)
         tmp_path_obj.rename(path)
+        # Enforce restrictive permissions on final file (best-effort).
+        try:
+            path.chmod(0o600)
+        except OSError as exc:  # pragma: no cover - best-effort hardening
+            logger.debug("Failed to set permissions on plugin state file %s: %s", path, exc)
         logger.debug("Plugin state written to %s", path)
 
     except Exception:

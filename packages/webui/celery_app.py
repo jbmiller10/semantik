@@ -1,8 +1,16 @@
 """Celery application configuration."""
 
+# ruff: noqa: E402
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Any
+
+# Add plugins directory to sys.path AFTER site-packages so app packages take precedence
+_plugins_dir = os.environ.get("SEMANTIK_PLUGINS_DIR", "/app/plugins")
+if Path(_plugins_dir).is_dir() and _plugins_dir not in sys.path:
+    sys.path.append(_plugins_dir)
 
 from celery import Celery
 from celery.signals import worker_process_init

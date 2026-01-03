@@ -95,7 +95,8 @@ class TestHybridChunkerReDoSProtection:
         assert matches == []
 
     @pytest.mark.skipif(
-        True, reason="ReDoS test is time-dependent and may be flaky"  # Skip by default as it's time-dependent
+        True,
+        reason="ReDoS test is time-dependent and may be flaky",  # Skip by default as it's time-dependent
     )
     def test_safe_regex_findall_timeout(self) -> None:
         """Test that regex execution times out for malicious patterns."""

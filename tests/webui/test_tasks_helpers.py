@@ -639,7 +639,6 @@ class TestConcurrentOperations:
             return mock_redis
 
         with patch("redis.asyncio.from_url", side_effect=async_from_url):
-
             # Send updates sequentially
             updates_sent = 0
             for i, updater in enumerate(updaters):
@@ -792,7 +791,6 @@ class TestPerformance:
             return mock_redis
 
         with patch("redis.asyncio.from_url", side_effect=async_from_url):
-
             # Send many updates
             async with updater:
                 for i in range(100):

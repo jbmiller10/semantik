@@ -239,6 +239,8 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
                         "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
                         "vector_count": getattr(collection_obj, "vector_count", 0),
+                        "extraction_config": getattr(collection_obj, "extraction_config", None),
+                        "default_reranker_id": getattr(collection_obj, "default_reranker_id", None),
                     }
 
                     vector_collection_id = getattr(collection_obj, "vector_collection_id", None)
@@ -1206,6 +1208,32 @@ async def _process_append_operation_impl(
                         )
                         processed_count += 1
                         continue
+
+                    # Run extractors if configured on the collection
+                    extraction_config = collection.get("extraction_config")
+                    if extraction_config and extraction_config.get("enabled"):
+                        try:
+                            from webui.services.extractor_service import get_extractor_service
+
+                            extractor_service = get_extractor_service()
+                            extracted = await extractor_service.extract_for_collection(
+                                combined_text,
+                                extraction_config,
+                            )
+                            if extracted:
+                                combined_metadata["extraction"] = extracted
+                                logger.info(
+                                    "Extracted metadata for %s: %s keywords, %s entity types",
+                                    doc_identifier,
+                                    len(extracted.get("keywords", [])),
+                                    len(extracted.get("entity_types", [])),
+                                )
+                        except Exception as extract_exc:
+                            logger.warning(
+                                "Extraction failed for %s: %s (continuing without extraction)",
+                                doc_identifier,
+                                extract_exc,
+                            )
 
                     # End any open transaction before long external calls to avoid
                     # idle_in_transaction_session_timeout disconnects from Postgres.

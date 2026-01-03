@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from .manifest import PluginManifest
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+logger = logging.getLogger(__name__)
 
 
 def _metadata_value(metadata: Mapping[str, Any] | None, key: str, default: Any = None) -> Any:
@@ -106,6 +109,74 @@ def manifest_from_connector_plugin(plugin_cls: type, plugin_id: str) -> PluginMa
             "icon": _metadata_value(metadata, "icon"),
             "supports_sync": _metadata_value(metadata, "supports_sync"),
             "preview_endpoint": _metadata_value(metadata, "preview_endpoint"),
+        },
+    )
+
+
+def manifest_from_reranker_plugin(plugin_cls: type, plugin_id: str) -> PluginManifest:
+    """Build a plugin manifest for a reranker."""
+    metadata = getattr(plugin_cls, "METADATA", {}) or {}
+    display_name = _metadata_value(metadata, "display_name", plugin_id.replace("_", " ").title())
+    description = _metadata_value(metadata, "description", "")
+
+    # Get capabilities from the class method if available
+    capabilities_data: dict[str, Any] = {}
+    if hasattr(plugin_cls, "get_capabilities") and callable(plugin_cls.get_capabilities):
+        try:
+            caps = plugin_cls.get_capabilities()
+            capabilities_data = {
+                "max_documents": caps.max_documents,
+                "max_query_length": caps.max_query_length,
+                "max_doc_length": caps.max_doc_length,
+                "supports_batching": caps.supports_batching,
+                "models": list(caps.models),
+            }
+        except Exception as exc:
+            logger.warning("Failed to get capabilities for reranker plugin '%s': %s", plugin_id, exc)
+
+    return PluginManifest(
+        id=plugin_id,
+        type="reranker",
+        version=getattr(plugin_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=str(display_name),
+        description=str(description),
+        author=_metadata_value(metadata, "author"),
+        license=_metadata_value(metadata, "license"),
+        homepage=_metadata_value(metadata, "homepage"),
+        requires=list(_metadata_value(metadata, "requires", [])),
+        semantik_version=_metadata_value(metadata, "semantik_version"),
+        capabilities=capabilities_data,
+    )
+
+
+def manifest_from_extractor_plugin(plugin_cls: type, plugin_id: str) -> PluginManifest:
+    """Build a plugin manifest for an extractor."""
+    metadata = getattr(plugin_cls, "METADATA", {}) or {}
+    display_name = _metadata_value(metadata, "display_name", plugin_id.replace("_", " ").title())
+    description = _metadata_value(metadata, "description", "")
+
+    # Get supported extractions from class method if available
+    supported_types: list[str] = []
+    if hasattr(plugin_cls, "supported_extractions") and callable(plugin_cls.supported_extractions):
+        try:
+            types = plugin_cls.supported_extractions()
+            supported_types = [t.value if hasattr(t, "value") else str(t) for t in types]
+        except Exception as exc:
+            logger.warning("Failed to get supported extractions for extractor plugin '%s': %s", plugin_id, exc)
+
+    return PluginManifest(
+        id=plugin_id,
+        type="extractor",
+        version=getattr(plugin_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=str(display_name),
+        description=str(description),
+        author=_metadata_value(metadata, "author"),
+        license=_metadata_value(metadata, "license"),
+        homepage=_metadata_value(metadata, "homepage"),
+        requires=list(_metadata_value(metadata, "requires", [])),
+        semantik_version=_metadata_value(metadata, "semantik_version"),
+        capabilities={
+            "supported_extractions": supported_types,
         },
     )
 

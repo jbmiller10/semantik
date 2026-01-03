@@ -320,7 +320,6 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
             and os.getenv("TESTING", "false").lower() == "true"
             and pg_connection_manager.sessionmaker is None
         ):
-
             placeholder = _placeholder_limit(
                 limit,
                 "Rate limit enforced while database is unavailable",
@@ -343,7 +342,6 @@ def rate_limit_dependency(limit: str) -> Callable[[Request], Any]:
             raise
         except AttributeError as exc:  # Handle improperly constructed exceptions in tests
             if isinstance(limit_callable, mock.Mock):
-
                 placeholder = _placeholder_limit(limit, "Rate limit exceeded")
                 raise RateLimitExceeded(placeholder) from exc
             raise

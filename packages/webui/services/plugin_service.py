@@ -13,6 +13,7 @@ from shared.database.repositories.plugin_config_repository import PluginConfigRe
 from shared.plugins.adapters import get_config_schema
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
+from shared.plugins.security import audit_log
 from shared.plugins.state import PluginState, PluginStateConfig, resolve_env_vars, write_state
 
 if TYPE_CHECKING:
@@ -22,7 +23,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector"}
+_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}
+
+# Timeout for individual plugin health checks (seconds)
+HEALTH_CHECK_TIMEOUT_SECONDS = 10.0
 
 
 def _coerce_type(value: Any, schema_type: str) -> bool:
@@ -246,6 +250,9 @@ class PluginService:
 
         if include_health and results:
             await self._refresh_health(records, config_map)
+            # Re-fetch configs after health refresh commit to avoid expired ORM objects
+            configs = await self.repo.list_configs(plugin_type=plugin_type)
+            config_map = {config.id: config for config in configs}
             results = [self._build_plugin_payload(r, config_map.get(r.plugin_id)) for r in records]
             if enabled is not None:
                 results = [payload for payload in results if payload["enabled"] is enabled]
@@ -275,6 +282,12 @@ class PluginService:
         )
         await self.db_session.commit()
 
+        audit_log(
+            plugin_id,
+            "plugin.config.updated",
+            {"plugin_type": record.plugin_type, "config_keys": list(config.keys())},
+        )
+
         # Sync state file for VecPipe
         await self._sync_state_file()
 
@@ -290,6 +303,12 @@ class PluginService:
             enabled=enabled,
         )
         await self.db_session.commit()
+
+        audit_log(
+            plugin_id,
+            "plugin.enabled" if enabled else "plugin.disabled",
+            {"plugin_type": record.plugin_type},
+        )
 
         # Sync state file for VecPipe
         await self._sync_state_file()
@@ -316,9 +335,17 @@ class PluginService:
             return None
         config_row = await self._check_and_update_health(record)
         await self.db_session.commit()
+
+        health_status = config_row.health_status if config_row else "unknown"
+        audit_log(
+            plugin_id,
+            "plugin.health_check",
+            {"plugin_type": record.plugin_type, "status": health_status},
+        )
+
         return {
             "plugin_id": record.plugin_id,
-            "health_status": config_row.health_status if config_row else "unknown",
+            "health_status": health_status,
             "last_health_check": config_row.last_health_check if config_row else None,
             "error_message": config_row.error_message if config_row else None,
         }
@@ -408,8 +435,23 @@ class PluginService:
         if not tasks:
             return
 
-        results = await asyncio.gather(*tasks)
+        # Calculate batch timeout based on number of tasks plus buffer
+        batch_timeout = HEALTH_CHECK_TIMEOUT_SECONDS * len(tasks) + 5.0
+
+        try:
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=batch_timeout,
+            )
+        except TimeoutError:
+            logger.warning("Batch health refresh timed out after %.1fs", batch_timeout)
+            return
+
         for updated in results:
+            # Skip exceptions returned by gather(return_exceptions=True)
+            if isinstance(updated, BaseException):
+                logger.warning("Health check task failed: %s", updated)
+                continue
             if updated is not None:
                 config_map[updated.id] = updated
         await self.db_session.commit()
@@ -478,7 +520,12 @@ class PluginService:
 
         if inspect.isawaitable(result):
             try:
-                result = await result
+                result = await asyncio.wait_for(
+                    result,
+                    timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                return "unhealthy", f"Health check timed out after {HEALTH_CHECK_TIMEOUT_SECONDS}s"
             except Exception as exc:
                 return "unhealthy", str(exc)
 

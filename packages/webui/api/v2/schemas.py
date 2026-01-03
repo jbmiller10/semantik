@@ -25,6 +25,10 @@ class CollectionSearchRequest(BaseModel):
     search_type: str = Field(default="semantic", description="Type of search: semantic, question, code, hybrid")
     use_reranker: bool = Field(default=True, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
+    reranker_id: str | None = Field(
+        None,
+        description="Reranker plugin ID (alternative to rerank_model). If both set, reranker_id takes precedence.",
+    )
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")
@@ -175,6 +179,11 @@ class SingleCollectionSearchRequest(BaseModel):
     k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
     search_type: str = Field(default="semantic", description="Type of search: semantic, question, code, hybrid")
     use_reranker: bool = Field(default=False, description="Enable cross-encoder reranking")
+    rerank_model: str | None = Field(None, description="Override reranker model")
+    reranker_id: str | None = Field(
+        None,
+        description="Reranker plugin ID (alternative to rerank_model). If both set, reranker_id takes precedence.",
+    )
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum score threshold")
     metadata_filter: dict[str, Any] | None = Field(None, description="Metadata filters for search")
     include_content: bool = Field(default=True, description="Include chunk content in results")

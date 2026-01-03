@@ -10,7 +10,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Document Vector Search API",
         description="Unified search API with vector similarity, hybrid search, and Qwen3 support",
-        version="2.0.0",
+        version="0.7.5",
         lifespan=lifespan,
     )
     app.include_router(router)

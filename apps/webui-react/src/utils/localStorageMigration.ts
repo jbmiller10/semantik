@@ -4,7 +4,7 @@
  */
 
 const STORAGE_VERSION_KEY = 'semantik_storage_version';
-const CURRENT_VERSION = '2.0.0';
+const CURRENT_VERSION = '0.7.5';
 
 // Keys that should be preserved across migrations
 const PRESERVED_KEYS: string[] = [
@@ -76,18 +76,29 @@ export function checkAndMigrateLocalStorage(): void {
  * Perform the actual migration based on the old version
  */
 function performMigration(oldVersion: string | null): void {
-  // For now, we're doing a complete clear for the v2.0.0 migration
-  // In the future, we can add version-specific migrations here
+  // For now, we do a complete clear on any version mismatch.
+  // This is the safest default when the persisted state shape is not guaranteed
+  // to be forward/backward compatible.
+  //
+  // In the future, add version-specific migrations here instead of clearing.
+  // If you add migrations, prefer:
+  // - explicit oldVersion checks
+  // - a "best effort" migration path
+  // - a final fallback to clear on unknown/invalid versions
 
-  if (!oldVersion || compareVersions(oldVersion, '2.0.0') < 0) {
-    // Complete clear for pre-2.0 or unknown versions
+  if (!oldVersion) {
+    clearLocalStorage();
+    return;
+  }
+
+  if (oldVersion !== CURRENT_VERSION) {
     clearLocalStorage();
   }
   
   // Future migrations can be added here
   // Example:
-  // if (oldVersion === '2.0.0' && CURRENT_VERSION === '2.1.0') {
-  //   migrateFrom2_0To2_1();
+  // if (oldVersion === '0.7.5' && CURRENT_VERSION === '0.7.6') {
+  //   migrateFrom0_7_5To0_7_6();
   // }
 }
 
@@ -152,6 +163,7 @@ export const _internal = {
   clearLocalStorage,
   shouldClearKey,
   performMigration,
+  compareVersions,
   STORAGE_VERSION_KEY,
   CURRENT_VERSION,
 };

@@ -126,11 +126,11 @@ describe('localStorageMigration', () => {
   });
 
   describe('performMigration', () => {
-    it('should clear all data for pre-2.0 versions', () => {
+    it('should clear all data for pre-0.7.5 versions', () => {
       localStorage.setItem('auth-storage', 'old-data');
       localStorage.setItem('jobs-data', 'old-jobs');
 
-      performMigration('1.5.0');
+      performMigration('0.7.4');
 
       expect(localStorage.getItem('auth-storage')).toBeNull();
       expect(localStorage.getItem('jobs-data')).toBeNull();
@@ -147,8 +147,8 @@ describe('localStorageMigration', () => {
 
   describe('getCurrentStorageVersion', () => {
     it('should return current version if set', () => {
-      localStorage.setItem(STORAGE_VERSION_KEY, '2.0.0');
-      expect(getCurrentStorageVersion()).toBe('2.0.0');
+      localStorage.setItem(STORAGE_VERSION_KEY, CURRENT_VERSION);
+      expect(getCurrentStorageVersion()).toBe(CURRENT_VERSION);
     });
 
     it('should return null if not set', () => {

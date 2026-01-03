@@ -99,6 +99,12 @@ async def create_collection(
         if create_request.metadata is not None:
             cfg["metadata"] = create_request.metadata
 
+        # Reranker and extraction config (Phase 2 plugin extensibility)
+        if create_request.default_reranker_id is not None:
+            cfg["default_reranker_id"] = create_request.default_reranker_id
+        if create_request.extraction_config is not None:
+            cfg["extraction_config"] = create_request.extraction_config
+
         collection, operation = await service.create_collection(
             user_id=int(current_user["id"]),
             name=create_request.name,
@@ -121,6 +127,9 @@ async def create_collection(
             chunking_config=collection.get("chunking_config"),
             is_public=collection["is_public"],
             metadata=collection["metadata"],
+            # Reranker and extraction config (Phase 2 plugin extensibility)
+            default_reranker_id=collection.get("default_reranker_id"),
+            extraction_config=collection.get("extraction_config"),
             created_at=collection["created_at"],
             updated_at=collection["updated_at"],
             document_count=collection["document_count"],
@@ -257,6 +266,11 @@ async def update_collection(
             updates["sync_mode"] = request.sync_mode.value
         if request.sync_interval_minutes is not None:
             updates["sync_interval_minutes"] = request.sync_interval_minutes
+        # Reranker and extraction config (Phase 2 plugin extensibility)
+        if request.default_reranker_id is not None:
+            updates["default_reranker_id"] = request.default_reranker_id
+        if request.extraction_config is not None:
+            updates["extraction_config"] = request.extraction_config
 
         # Perform update through service
         updated_collection = await service.update(

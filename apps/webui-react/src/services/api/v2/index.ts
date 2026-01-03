@@ -7,6 +7,7 @@ export * from './documents';
 export * from './system';
 export * from './chunking';
 export * from './models';
+export * from './plugins';
 
 // Re-export the unified v2Api object as default
 import { v2Api } from './collections';

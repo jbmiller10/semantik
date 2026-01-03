@@ -1,6 +1,6 @@
 [project]
 name = "semantik"
-version = "2.0.0"
+version = "0.7.5"
 description = "Private, self-hosted semantic search for your documents."
 authors = [{ name = "John Miller" }]
 requires-python = ">=3.11,<3.13"
@@ -63,9 +63,6 @@ cli = [
     "jinja2>=3.1.0,<4",
 ]
 
-[project.scripts]
-semantik-plugin = "semantik_cli.main:main"
-
 [project.entry-points."semantik.plugins"]
 embedding-dense-local = "shared.embedding.providers.dense_local:DenseLocalEmbeddingProvider"
 embedding-mock = "shared.embedding.providers.mock:MockEmbeddingProvider"
@@ -102,7 +99,6 @@ include = [
     "packages/vecpipe",
     "packages/webui",
     "packages/shared",
-    "packages/cli",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -110,14 +106,12 @@ include = [
     "packages/vecpipe",
     "packages/webui",
     "packages/shared",
-    "packages/cli",
 ]
 
 [tool.hatch.build.targets.wheel.sources]
 "packages/vecpipe" = "vecpipe"
 "packages/webui" = "webui"
 "packages/shared" = "shared"
-"packages/cli" = "semantik_cli"
 
 [build-system]
 requires = ["hatchling"]

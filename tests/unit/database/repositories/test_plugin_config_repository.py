@@ -120,9 +120,15 @@ class TestPluginConfigRepository:
     @pytest.mark.asyncio()
     async def test_upsert_config_create_new(self, repo, mock_session):
         """Test upsert_config creates new record when not found."""
-        # Mock get_config to return None (not found)
+        # Mock the RETURNING clause result
+        new_config = MagicMock(spec=PluginConfig)
+        new_config.id = "new-plugin"
+        new_config.type = "embedding"
+        new_config.enabled = True
+        new_config.config = {"key": "value"}
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalar_one.return_value = new_config
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.upsert_config(
@@ -136,20 +142,21 @@ class TestPluginConfigRepository:
         assert result.id == "new-plugin"
         assert result.type == "embedding"
         assert result.enabled is True
-        mock_session.add.assert_called_once()
+        mock_session.execute.assert_called_once()
         mock_session.flush.assert_called_once()
 
     @pytest.mark.asyncio()
     async def test_upsert_config_update_existing(self, repo, mock_session):
-        """Test upsert_config updates existing record."""
-        existing = MagicMock(spec=PluginConfig)
-        existing.id = "existing-plugin"
-        existing.type = "embedding"
-        existing.enabled = True
-        existing.config = {}
+        """Test upsert_config updates existing record via ON CONFLICT."""
+        # Mock the RETURNING clause result (updated values)
+        updated_config = MagicMock(spec=PluginConfig)
+        updated_config.id = "existing-plugin"
+        updated_config.type = "embedding"
+        updated_config.enabled = False
+        updated_config.config = {"updated": True}
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
+        mock_result.scalar_one.return_value = updated_config
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.upsert_config(
@@ -165,15 +172,16 @@ class TestPluginConfigRepository:
 
     @pytest.mark.asyncio()
     async def test_upsert_config_update_type(self, repo, mock_session):
-        """Test upsert_config updates type if different."""
-        existing = MagicMock(spec=PluginConfig)
-        existing.id = "plugin"
-        existing.type = "old-type"
-        existing.enabled = True
-        existing.config = {}
+        """Test upsert_config updates type via ON CONFLICT."""
+        # Mock the RETURNING clause result (with updated type)
+        updated_config = MagicMock(spec=PluginConfig)
+        updated_config.id = "plugin"
+        updated_config.type = "new-type"
+        updated_config.enabled = True
+        updated_config.config = {}
 
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
+        mock_result.scalar_one.return_value = updated_config
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.upsert_config(
@@ -186,8 +194,15 @@ class TestPluginConfigRepository:
     @pytest.mark.asyncio()
     async def test_upsert_config_defaults(self, repo, mock_session):
         """Test upsert_config uses defaults for optional params."""
+        # Mock the RETURNING clause result with default values
+        new_config = MagicMock(spec=PluginConfig)
+        new_config.id = "plugin"
+        new_config.type = "embedding"
+        new_config.enabled = True  # default
+        new_config.config = {}  # default
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalar_one.return_value = new_config
         mock_session.execute = AsyncMock(return_value=mock_result)
 
         result = await repo.upsert_config(

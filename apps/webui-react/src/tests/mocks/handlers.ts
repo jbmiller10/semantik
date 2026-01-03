@@ -177,7 +177,7 @@ export const handlers = [
   http.get('/api/v2/system/status', () => {
     return HttpResponse.json({
       healthy: true,
-      version: '2.0.0',
+      version: '0.7.5',
       services: {
         database: 'healthy',
         redis: 'healthy',

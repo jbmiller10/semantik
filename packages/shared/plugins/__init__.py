@@ -5,6 +5,11 @@ from .base import SemanticPlugin
 from .loader import ENTRYPOINT_GROUP, load_plugins
 from .manifest import PluginManifest
 from .registry import PluginRecord, PluginRegistry, PluginSource, plugin_registry
+from .security import (
+    SENSITIVE_ENV_PATTERNS,
+    audit_log,
+    get_sanitized_environment,
+)
 from .state import (
     PluginState,
     PluginStateConfig,
@@ -39,4 +44,8 @@ __all__ = [
     "resolve_env_vars",
     "get_plugin_config",
     "get_disabled_plugin_ids",
+    # Security utilities
+    "SENSITIVE_ENV_PATTERNS",
+    "audit_log",
+    "get_sanitized_environment",
 ]

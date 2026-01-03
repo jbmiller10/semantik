@@ -39,7 +39,6 @@ def mock_transformers() -> Generator[tuple[MagicMock, MagicMock, MagicMock, Magi
         patch("vecpipe.reranker.AutoModelForCausalLM") as mock_model_class,
         patch("vecpipe.reranker.AutoTokenizer") as mock_tokenizer_class,
     ):
-
         # Mock model instance
         mock_model = MagicMock()
         mock_model_class.from_pretrained.return_value = mock_model
