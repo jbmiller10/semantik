@@ -215,27 +215,27 @@ class GovernedModelManager(ModelManager):
                 result = super().ensure_reranker_loaded(model_name, quantization)
 
                 if result:
-                    # Mark as loaded (sync workaround)
+                    # Mark as loaded in governor (handles both async and sync contexts)
+                    mark_loaded_coro = self._governor.mark_loaded(
+                        model_name, ModelType.RERANKER, quantization,
+                        model_ref=self.reranker.model if self.reranker else None,
+                    )
                     if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            self._governor.mark_loaded(
-                                model_name, ModelType.RERANKER, quantization,
-                                model_ref=self.reranker.model if self.reranker else None,
-                            ),
-                            loop,
-                        )
+                        asyncio.run_coroutine_threadsafe(mark_loaded_coro, loop)
+                    else:
+                        loop.run_until_complete(mark_loaded_coro)
 
                 return result
 
             except Exception:
                 # Remove from governor tracking on failure
+                mark_unloaded_coro = self._governor.mark_unloaded(
+                    model_name, ModelType.RERANKER, quantization
+                )
                 if loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        self._governor.mark_unloaded(
-                            model_name, ModelType.RERANKER, quantization
-                        ),
-                        loop,
-                    )
+                    asyncio.run_coroutine_threadsafe(mark_unloaded_coro, loop)
+                else:
+                    loop.run_until_complete(mark_unloaded_coro)
                 raise
 
     def unload_reranker(self) -> None:
@@ -244,16 +244,16 @@ class GovernedModelManager(ModelManager):
             parts = self.current_reranker_key.rsplit("_", 1)
             if len(parts) == 2:
                 model_name, quantization = parts
-                # Sync workaround
+                # Notify governor (handles both async and sync contexts)
                 try:
                     loop = asyncio.get_event_loop()
+                    mark_unloaded_coro = self._governor.mark_unloaded(
+                        model_name, ModelType.RERANKER, quantization
+                    )
                     if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            self._governor.mark_unloaded(
-                                model_name, ModelType.RERANKER, quantization
-                            ),
-                            loop,
-                        )
+                        asyncio.run_coroutine_threadsafe(mark_unloaded_coro, loop)
+                    else:
+                        loop.run_until_complete(mark_unloaded_coro)
                 except Exception:
                     pass
 
