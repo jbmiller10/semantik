@@ -80,17 +80,11 @@ class GitUrl:
 
 
 # Regex patterns for git URL detection
-_HTTPS_GIT_PATTERN = re.compile(
-    r"^(git\+)?(https?)://([^/]+)/(.+?)(?:\.git)?(?:@([^@/]+))?$"
-)
+_HTTPS_GIT_PATTERN = re.compile(r"^(git\+)?(https?)://([^/]+)/(.+?)(?:\.git)?(?:@([^@/]+))?$")
 
-_SSH_SHORTHAND_PATTERN = re.compile(
-    r"^git@([^:]+):(.+?)(?:\.git)?(?:@([^@]+))?$"
-)
+_SSH_SHORTHAND_PATTERN = re.compile(r"^git@([^:]+):(.+?)(?:\.git)?(?:@([^@]+))?$")
 
-_GIT_SSH_PATTERN = re.compile(
-    r"^git\+ssh://([^/]+)/(.+?)(?:\.git)?(?:@([^@/]+))?$"
-)
+_GIT_SSH_PATTERN = re.compile(r"^git\+ssh://([^/]+)/(.+?)(?:\.git)?(?:@([^@/]+))?$")
 
 
 def parse_git_url(url: str) -> GitUrl | None:
