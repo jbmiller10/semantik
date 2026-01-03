@@ -17,11 +17,13 @@ from .adapters import (
     manifest_from_reranker_plugin,
 )
 from .base import SemanticPlugin
+from .manifest import PluginDependency
+from .metrics import record_dependency_warning, record_plugin_load, timed_operation
 from .registry import PluginRecord, PluginSource, plugin_registry
 from .security import audit_log
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     from .manifest import PluginManifest
     from .registry import PluginRegistry
@@ -295,30 +297,42 @@ def _load_external_plugins(
 
 
 def _resolve_plugin_type(plugin_cls: type) -> str | None:
+    """Resolve the plugin type for a given class.
+
+    This function checks class hierarchies to determine plugin type.
+    The unified approach checks SemanticPlugin.PLUGIN_TYPE first, then
+    falls back to legacy base class detection for compatibility.
+    """
+    # Unified check: All plugins should inherit from SemanticPlugin and define PLUGIN_TYPE
+    if issubclass(plugin_cls, SemanticPlugin):
+        plugin_type = getattr(plugin_cls, "PLUGIN_TYPE", None)
+        if plugin_type:
+            return plugin_type
+
+    # Legacy fallback checks for classes that may not have PLUGIN_TYPE set
     try:
         import shared.embedding.plugin_base as embedding_plugin_base
+
+        if issubclass(plugin_cls, embedding_plugin_base.BaseEmbeddingPlugin):
+            return "embedding"
     except Exception:
-        embedding_plugin_base = None
+        pass
 
     try:
         import shared.chunking.domain.services.chunking_strategies.base as chunking_strategy_base
+
+        if issubclass(plugin_cls, chunking_strategy_base.ChunkingStrategy):
+            return "chunking"
     except Exception:
-        chunking_strategy_base = None
+        pass
 
     try:
         import shared.connectors.base as connector_base
+
+        if issubclass(plugin_cls, connector_base.BaseConnector):
+            return "connector"
     except Exception:
-        connector_base = None
-
-    if embedding_plugin_base is not None and issubclass(plugin_cls, embedding_plugin_base.BaseEmbeddingPlugin):
-        return "embedding"
-    if chunking_strategy_base is not None and issubclass(plugin_cls, chunking_strategy_base.ChunkingStrategy):
-        return "chunking"
-    if connector_base is not None and issubclass(plugin_cls, connector_base.BaseConnector):
-        return "connector"
-
-    if issubclass(plugin_cls, SemanticPlugin):
-        return getattr(plugin_cls, "PLUGIN_TYPE", None)
+        pass
 
     return None
 
@@ -585,6 +599,93 @@ def _register_extractor_plugin(
     # Extractor activation uses plugin registry; no extra registration required.
 
 
+def _parse_dependency(dep: str | dict[str, Any] | PluginDependency) -> PluginDependency:
+    """Parse a dependency specification into a PluginDependency.
+
+    Args:
+        dep: Either a plugin_id string, a dict with dependency fields,
+             or an existing PluginDependency.
+
+    Returns:
+        PluginDependency instance.
+    """
+    if isinstance(dep, PluginDependency):
+        return dep
+    if isinstance(dep, str):
+        return PluginDependency(plugin_id=dep)
+    if isinstance(dep, dict):
+        return PluginDependency.from_dict(dep)
+    raise ValueError(f"Invalid dependency format: {dep}")
+
+
+def _validate_dependencies(
+    plugin_id: str,
+    requires: Sequence[str | dict[str, Any] | PluginDependency],
+) -> list[str]:
+    """Validate plugin dependencies are met.
+
+    This function checks if dependencies are registered and if their
+    versions satisfy constraints. It does NOT block plugin registration
+    but returns warnings for logging purposes.
+
+    Args:
+        plugin_id: The plugin being validated.
+        requires: List of dependency specifications.
+
+    Returns:
+        List of warning messages (empty if all required deps are satisfied).
+    """
+    warnings = []
+
+    for raw_dep in requires:
+        try:
+            dep = _parse_dependency(raw_dep)
+        except ValueError as e:
+            warnings.append(f"Invalid dependency format: {e}")
+            continue
+
+        # Find dependency in registry (search all types)
+        dep_record = plugin_registry.find_by_id(dep.plugin_id)
+
+        if dep_record is None:
+            if dep.optional:
+                logger.debug(
+                    "Plugin '%s': optional dependency '%s' not found",
+                    plugin_id,
+                    dep.plugin_id,
+                )
+            else:
+                warnings.append(f"missing required dependency: {dep.plugin_id}")
+            continue
+
+        # Check version constraints if specified
+        if dep.min_version or dep.max_version:
+            satisfied, error = dep.check_version(dep_record.plugin_version)
+            if not satisfied:
+                if dep.optional:
+                    logger.debug(
+                        "Plugin '%s': optional dependency '%s' %s",
+                        plugin_id,
+                        dep.plugin_id,
+                        error,
+                    )
+                else:
+                    warnings.append(f"{dep.plugin_id}: {error}")
+
+        # Check if dependency is disabled
+        if plugin_registry.is_disabled(dep.plugin_id):
+            if dep.optional:
+                logger.debug(
+                    "Plugin '%s': optional dependency '%s' is disabled",
+                    plugin_id,
+                    dep.plugin_id,
+                )
+            else:
+                warnings.append(f"dependency '{dep.plugin_id}' is disabled")
+
+    return warnings
+
+
 def _register_plugin_record(
     *,
     plugin_type: str,
@@ -594,16 +695,26 @@ def _register_plugin_record(
     source: PluginSource,
     entry_point: str | None = None,
 ) -> bool:
-    record = PluginRecord(
+    with timed_operation() as timing:
+        record = PluginRecord(
+            plugin_type=plugin_type,
+            plugin_id=plugin_id,
+            plugin_version=getattr(plugin_cls, "PLUGIN_VERSION", getattr(manifest, "version", "0.0.0")),
+            manifest=manifest,
+            plugin_class=plugin_cls,
+            source=source,
+            entry_point=entry_point,
+        )
+        registered = plugin_registry.register(record)
+
+    # Record metrics
+    record_plugin_load(
         plugin_type=plugin_type,
         plugin_id=plugin_id,
-        plugin_version=getattr(plugin_cls, "PLUGIN_VERSION", getattr(manifest, "version", "0.0.0")),
-        manifest=manifest,
-        plugin_class=plugin_cls,
-        source=source,
-        entry_point=entry_point,
+        source=source.value,
+        success=registered,
+        duration=timing["duration"],
     )
-    registered = plugin_registry.register(record)
 
     if registered:
         audit_log(
@@ -615,6 +726,30 @@ def _register_plugin_record(
                 "entry_point": entry_point,
             },
         )
+
+        # Validate dependencies after successful registration (warning-only)
+        if manifest.requires:
+            dep_warnings = _validate_dependencies(plugin_id, manifest.requires)
+            if dep_warnings:
+                logger.warning(
+                    "Plugin '%s' has unmet dependencies: %s",
+                    plugin_id,
+                    "; ".join(dep_warnings),
+                )
+                audit_log(
+                    plugin_id,
+                    "plugin.dependency.warnings",
+                    {"warnings": dep_warnings},
+                    level=logging.WARNING,
+                )
+                # Record dependency warning metrics
+                for warning in dep_warnings:
+                    if "missing" in warning.lower():
+                        record_dependency_warning(plugin_id, "missing")
+                    elif "disabled" in warning.lower():
+                        record_dependency_warning(plugin_id, "disabled")
+                    else:
+                        record_dependency_warning(plugin_id, "version")
 
     return registered
 

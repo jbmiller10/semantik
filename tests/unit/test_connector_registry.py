@@ -14,6 +14,7 @@ from webui.services.connector_registry import (
     _build_definition,
     get_connector_catalog,
     get_connector_definition,
+    invalidate_connector_cache,
 )
 
 if TYPE_CHECKING:
@@ -73,10 +74,12 @@ class MinimalConnector(BaseConnector):
 
 @pytest.fixture(autouse=True)
 def _clear_registry():
-    """Clear plugin registry before and after each test."""
+    """Clear plugin registry and connector cache before and after each test."""
     plugin_registry.reset()
+    invalidate_connector_cache()
     yield
     plugin_registry.reset()
+    invalidate_connector_cache()
 
 
 def _register_connector(connector_cls: type[BaseConnector], source: PluginSource = PluginSource.EXTERNAL):

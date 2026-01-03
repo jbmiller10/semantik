@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from shared.plugins.validation import validate_package_name, validate_pip_install_target
+from webui.services.connector_registry import invalidate_connector_cache
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -140,6 +141,8 @@ def install_plugin(
 
             if result.returncode == 0:
                 logger.info("Plugin installed successfully: %s", install_command)
+                # Invalidate connector cache so new connectors are discovered
+                invalidate_connector_cache()
                 return True, "Successfully installed. Restart required to activate."
 
             error_msg = result.stderr.strip() or result.stdout.strip()
@@ -219,6 +222,8 @@ def uninstall_plugin(package_name: str) -> tuple[bool, str]:
                     logger.warning("Failed to remove dist-info %s: %s", dist_info, exc)
 
             if removed_any:
+                # Invalidate connector cache so removed connectors are no longer listed
+                invalidate_connector_cache()
                 return True, f"Uninstalled {package_name}. Restart required."
 
             return False, f"Plugin {package_name} not found in {plugins_dir}"

@@ -148,7 +148,8 @@ class TestProviderInstantiation:
         """Test creating provider instance without config."""
         provider = DenseLocalEmbeddingProvider()
 
-        assert provider.config is None
+        # Config property returns empty dict when no config provided
+        assert provider.config == {}
         assert provider.is_initialized is False
 
     def test_instantiate_with_config(self) -> None:
@@ -163,7 +164,10 @@ class TestProviderInstantiation:
 
         provider = DenseLocalEmbeddingProvider(config=config)
 
-        assert provider.config == config
+        # Config property returns dict representation of the config object
+        assert provider.config["MIN_BATCH_SIZE"] == 1
+        assert provider.config["BATCH_SIZE_INCREASE_THRESHOLD"] == 10
+        assert provider.config["ENABLE_ADAPTIVE_BATCH_SIZE"] is True
 
     def test_default_device_detection(self) -> None:
         """Test default device detection."""

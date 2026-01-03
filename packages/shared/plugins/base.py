@@ -31,11 +31,38 @@ class SemanticPlugin(ABC):
                     secrets from environment variables.
         """
         self._config: dict[str, Any] = config or {}
+        self._initialized: bool = False
+
+    @property
+    def is_initialized(self) -> bool:
+        """Check if plugin has been initialized via initialize()."""
+        return self._initialized
 
     @property
     def config(self) -> dict[str, Any]:
         """Return the plugin configuration."""
         return self._config
+
+    @config.setter
+    def config(self, value: Any) -> None:
+        """Set the plugin configuration.
+
+        Accepts dict or objects with __dict__. Objects are converted to dict.
+        This setter enables compatibility with embedding plugins that store
+        VecpipeConfig objects.
+
+        Args:
+            value: Configuration dict or object with __dict__
+        """
+        if value is None:
+            self._config = {}
+        elif isinstance(value, dict):
+            self._config = value
+        elif hasattr(value, "__dict__"):
+            # Convert config objects (like VecpipeConfig) to dict
+            self._config = {k: v for k, v in vars(value).items() if not k.startswith("_")}
+        else:
+            self._config = {}
 
     @classmethod
     @abstractmethod
@@ -71,7 +98,8 @@ class SemanticPlugin(ABC):
         if config:
             # Merge with constructor config (constructor takes precedence)
             self._config = {**config, **self._config}
+        self._initialized = True
 
     async def cleanup(self) -> None:
         """Clean up plugin resources."""
-        return
+        self._initialized = False

@@ -14,9 +14,11 @@ from shared.database.repositories.plugin_config_repository import PluginConfigRe
 from shared.plugins.adapters import get_config_schema
 from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.loader import load_plugins
+from shared.plugins.metrics import record_health_check, timed_operation
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from shared.plugins.security import audit_log
 from shared.plugins.state import PluginState, PluginStateConfig, resolve_env_vars, write_state
+from webui.services.connector_registry import invalidate_connector_cache
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -536,6 +538,10 @@ class PluginService:
             {"plugin_type": record.plugin_type},
         )
 
+        # Invalidate connector cache if this is a connector plugin
+        if record.plugin_type == "connector":
+            invalidate_connector_cache()
+
         # Sync state file for VecPipe
         sync_success = await self._sync_state_file()
 
@@ -694,7 +700,27 @@ class PluginService:
         record: PluginRecord,
         plugin_config: dict[str, Any] | None = None,
     ) -> Any | None:
-        status, error = await self._run_health_check(record, plugin_config)
+        # Time the health check for metrics
+        with timed_operation() as timing:
+            status, error = await self._run_health_check(record, plugin_config)
+
+        # Determine result type for metrics
+        if status == "healthy":
+            result = "healthy"
+        elif error and "timed out" in error.lower():
+            result = "timeout"
+        elif status == "unknown":
+            result = "error"
+        else:
+            result = "unhealthy"
+
+        # Record health check metrics
+        record_health_check(
+            plugin_id=record.plugin_id,
+            result=result,
+            duration=timing["duration"],
+        )
+
         try:
             return await self.repo.update_health(
                 plugin_id=record.plugin_id,
