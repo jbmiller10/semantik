@@ -6,6 +6,7 @@ model lifecycle, and memory pressure.
 """
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -105,8 +106,14 @@ class PreloadRequest(BaseModel):
 
 
 class PreloadResponse(BaseModel):
-    """Response from preload request."""
-    results: dict[str, bool]
+    """Response from preload request.
+
+    results maps model keys to either:
+    - True: successfully loaded
+    - False: failed with no specific error
+    - str: error message describing the failure
+    """
+    results: dict[str, bool | str]
 
 
 @router.get("/stats", response_model=MemoryStatsResponse)
@@ -171,29 +178,32 @@ async def get_loaded_models() -> list[dict[str, Any]]:
 
     # Fallback for non-governed manager
     models = []
+    now = time.time()
     if model_mgr.current_model_key:
         parts = model_mgr.current_model_key.rsplit("_", 1)
         if len(parts) == 2:
+            last_used = getattr(model_mgr, "last_used", now)
             models.append({
                 "model_name": parts[0],
                 "model_type": "embedding",
                 "quantization": parts[1],
                 "location": "gpu",
                 "memory_mb": 0,
-                "idle_seconds": model_mgr.last_used,
+                "idle_seconds": now - last_used,
                 "use_count": 0,
             })
 
     if model_mgr.current_reranker_key:
         parts = model_mgr.current_reranker_key.rsplit("_", 1)
         if len(parts) == 2:
+            last_reranker_used = getattr(model_mgr, "last_reranker_used", now)
             models.append({
                 "model_name": parts[0],
                 "model_type": "reranker",
                 "quantization": parts[1],
                 "location": "gpu",
                 "memory_mb": 0,
-                "idle_seconds": model_mgr.last_reranker_used,
+                "idle_seconds": now - last_reranker_used,
                 "use_count": 0,
             })
 

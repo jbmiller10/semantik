@@ -39,6 +39,21 @@ def clear_resources() -> None:
     executor = None
 
 
+def get_resources() -> dict[str, Any]:
+    """Get all runtime resources as a dictionary.
+
+    Returns:
+        Dictionary with keys: qdrant, model_mgr, embed_service, pool, qdrant_sdk
+    """
+    return {
+        "qdrant": qdrant_client,
+        "model_mgr": model_manager,
+        "embed_service": embedding_service,
+        "pool": executor,
+        "qdrant_sdk": sdk_client,
+    }
+
+
 __all__ = [
     "qdrant_client",
     "sdk_client",
@@ -47,4 +62,5 @@ __all__ = [
     "executor",
     "set_resources",
     "clear_resources",
+    "get_resources",
 ]
