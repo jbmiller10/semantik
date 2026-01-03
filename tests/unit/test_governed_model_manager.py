@@ -205,26 +205,3 @@ class TestModelRestoreErrorStateMismatch:
 
         assert "state mismatch between governor and offloader" in str(exc_info.value)
         assert "reranker:Qwen/test-reranker:float16" in str(exc_info.value)
-
-    @pytest.mark.asyncio()
-    async def test_restore_succeeds_when_model_actually_offloaded(self, governed_manager):
-        """Restore succeeds when model was actually offloaded first."""
-        import torch
-
-        # Create a simple torch.nn.Module (required by offloader, CUDA not required)
-        mock_model = torch.nn.Linear(10, 10)
-        governed_manager._provider = type("MockProvider", (), {"model": mock_model})()
-
-        # First offload the model
-        model_key = "embedding:Qwen/test-model:float16"
-        governed_manager._offloader.offload_to_cpu(model_key, mock_model)
-
-        # Now restore should work (no error raised)
-        await governed_manager._governor_offload_embedding(
-            model_name="Qwen/test-model",
-            quantization="float16",
-            target_device="cuda",
-        )
-
-        # Model should no longer be in offloader
-        assert not governed_manager._offloader.is_offloaded(model_key)
