@@ -10,6 +10,9 @@ from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from shared.plugins.base import SemanticPlugin
+from shared.plugins.manifest import PluginManifest
+
 from .base import BaseEmbeddingService
 
 if TYPE_CHECKING:
@@ -80,16 +83,19 @@ class EmbeddingProviderDefinition:
         }
 
 
-class BaseEmbeddingPlugin(BaseEmbeddingService):
+class BaseEmbeddingPlugin(SemanticPlugin, BaseEmbeddingService):
     """Abstract base class for embedding model plugins.
 
-    This extends BaseEmbeddingService with plugin-specific metadata and discovery methods.
-    Plugins must define class attributes and implement abstract methods.
+    This extends both SemanticPlugin (for unified plugin system integration) and
+    BaseEmbeddingService (for embedding operations). The dual inheritance enables
+    embedding plugins to work with both the plugin registry and embedding factory.
 
     Class Attributes:
+        PLUGIN_TYPE: Always "embedding" for this base class
         INTERNAL_NAME: Internal identifier for factory registration (required)
-        API_ID: API-facing identifier (required)
+        API_ID: API-facing identifier, also serves as PLUGIN_ID (required)
         PROVIDER_TYPE: Provider type - "local", "remote", or "hybrid" (required)
+        PLUGIN_VERSION: Semantic version string (default "0.0.0")
         METADATA: Additional metadata dict (optional)
 
     Example:
@@ -111,14 +117,25 @@ class BaseEmbeddingPlugin(BaseEmbeddingService):
                 return model_name in ("my-model-1", "my-model-2")
     """
 
+    # Plugin type - always "embedding" for embedding plugins
+    PLUGIN_TYPE: ClassVar[str] = "embedding"
+
     # Required class attributes - subclasses must override these
     INTERNAL_NAME: ClassVar[str] = ""  # Internal identifier
-    API_ID: ClassVar[str] = ""  # API-facing identifier
+    API_ID: ClassVar[str] = ""  # API-facing identifier (also serves as PLUGIN_ID)
     PROVIDER_TYPE: ClassVar[str] = "local"  # "local", "remote", or "hybrid"
     PLUGIN_VERSION: ClassVar[str] = "0.0.0"
 
     # Optional metadata for UI/API exposure
     METADATA: ClassVar[dict[str, Any]] = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Set PLUGIN_ID from API_ID when subclass is defined."""
+        super().__init_subclass__(**kwargs)
+        # Bridge API_ID to PLUGIN_ID at class level for SemanticPlugin compatibility
+        if cls.API_ID and not getattr(cls, "_plugin_id_set", False):
+            cls.PLUGIN_ID = cls.API_ID
+            cls._plugin_id_set = True
 
     def __init__(self, config: Any | None = None, **_kwargs: Any) -> None:
         """Initialize the plugin with optional configuration.
@@ -127,7 +144,48 @@ class BaseEmbeddingPlugin(BaseEmbeddingService):
             config: Optional configuration object (VecpipeConfig or similar)
             **_kwargs: Additional initialization options (unused in base class)
         """
-        self.config = config
+        # Convert config to dict for SemanticPlugin base class
+        if config is not None and hasattr(config, "__dict__"):
+            config_dict = {k: v for k, v in vars(config).items() if not k.startswith("_")}
+        elif isinstance(config, dict):
+            config_dict = config
+        else:
+            config_dict = {}
+
+        SemanticPlugin.__init__(self, config_dict)
+        self.config = config  # Keep original config for backwards compatibility
+
+    @classmethod
+    def get_manifest(cls) -> PluginManifest:
+        """Generate plugin manifest from get_definition().
+
+        This method bridges the embedding-specific get_definition() to the
+        unified plugin manifest system.
+
+        Returns:
+            PluginManifest with provider metadata
+        """
+        definition = cls.get_definition()
+        metadata = cls.METADATA or {}
+        return PluginManifest(
+            id=definition.api_id,
+            type=cls.PLUGIN_TYPE,
+            version=cls.PLUGIN_VERSION,
+            display_name=definition.display_name,
+            description=definition.description,
+            author=metadata.get("author"),
+            license=metadata.get("license"),
+            homepage=metadata.get("homepage"),
+            capabilities={
+                "internal_id": definition.internal_id,
+                "provider_type": definition.provider_type,
+                "supports_quantization": definition.supports_quantization,
+                "supports_instruction": definition.supports_instruction,
+                "supports_batch_processing": definition.supports_batch_processing,
+                "supports_asymmetric": definition.supports_asymmetric,
+                "supported_models": list(definition.supported_models),
+            },
+        )
 
     @classmethod
     @abstractmethod

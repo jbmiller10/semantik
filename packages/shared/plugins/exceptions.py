@@ -91,3 +91,53 @@ class PluginConfigValidationError(PluginError):
             "plugin_id": self.plugin_id,
             "errors": self.errors,
         }
+
+
+class PluginDependencyError(PluginError):
+    """Raised when plugin dependencies are not satisfied.
+
+    This exception is used for warning purposes during plugin loading.
+    Dependencies are validated but do not block plugin registration.
+    """
+
+    def __init__(
+        self,
+        plugin_id: str,
+        missing: list[str] | None = None,
+        version_errors: dict[str, str] | None = None,
+        disabled: list[str] | None = None,
+    ) -> None:
+        """Initialize dependency error.
+
+        Args:
+            plugin_id: The plugin with unmet dependencies.
+            missing: List of missing required plugin IDs.
+            version_errors: Dict mapping plugin_id to version error message.
+            disabled: List of disabled dependency plugin IDs.
+        """
+        self.plugin_id = plugin_id
+        self.missing = missing or []
+        self.version_errors = version_errors or {}
+        self.disabled = disabled or []
+
+        # Build human-readable message
+        parts = []
+        if self.missing:
+            parts.append(f"missing: {', '.join(self.missing)}")
+        if self.version_errors:
+            for dep_id, error in self.version_errors.items():
+                parts.append(f"{dep_id}: {error}")
+        if self.disabled:
+            parts.append(f"disabled: {', '.join(self.disabled)}")
+
+        message = f"Plugin '{plugin_id}' has unmet dependencies: {'; '.join(parts)}"
+        super().__init__(message)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable representation."""
+        return {
+            "plugin_id": self.plugin_id,
+            "missing": self.missing,
+            "version_errors": self.version_errors,
+            "disabled": self.disabled,
+        }
