@@ -379,9 +379,7 @@ class TestPluginProtocolCompliance:
             ("extractor", ExtractorPlugin),
         ],
     )
-    def test_all_plugin_types_have_base_class(
-        self, plugin_type: str, base_class: type
-    ):
+    def test_all_plugin_types_have_base_class(self, plugin_type: str, base_class: type):
         """Each plugin type has a corresponding base class."""
         assert plugin_type in VALID_PLUGIN_TYPES
         assert hasattr(base_class, "PLUGIN_TYPE") or issubclass(base_class, SemanticPlugin)
