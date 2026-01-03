@@ -269,6 +269,14 @@ class GPUMemoryGovernor:
             True if memory can be allocated, False otherwise
         """
         async with self._lock:
+            # CPU-only mode: no GPU budget to enforce, always allow
+            if self._budget.total_gpu_mb == 0:
+                logger.debug(
+                    "CPU-only mode: allowing %s load without GPU budget check",
+                    model_name,
+                )
+                return True
+
             model_key = self._make_key(model_name, model_type, quantization)
 
             # Case 1: Model already on GPU
