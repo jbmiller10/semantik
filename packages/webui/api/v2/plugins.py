@@ -430,6 +430,7 @@ async def install_plugin_endpoint(
         401: {"model": ErrorResponse, "description": "Unauthorized"},
         403: {"model": ErrorResponse, "description": "Admin access required"},
         404: {"model": ErrorResponse, "description": "Plugin not found"},
+        409: {"model": ErrorResponse, "description": "Multiple matching packages installed"},
     },
 )
 async def uninstall_plugin_endpoint(
@@ -443,7 +444,7 @@ async def uninstall_plugin_endpoint(
     """
     from shared.plugins.registry_client import fetch_registry
     from shared.plugins.security import audit_log
-    from webui.services.plugin_installer import uninstall_plugin
+    from webui.services.plugin_installer import is_plugin_installed, list_installed_packages, uninstall_plugin
 
     # Check admin permission
     if not current_user.get("is_superuser", False):
@@ -452,20 +453,71 @@ async def uninstall_plugin_endpoint(
             detail="Admin access required to uninstall plugins",
         )
 
-    # Look up plugin in registry to get package name
-    registry = await fetch_registry()
-    registry_entry = next(
-        (p for p in registry.plugins if p.id == plugin_id),
-        None,
-    )
-    if not registry_entry:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Plugin {plugin_id} not found in registry",
-        )
+    def _resolve_installed_package(
+        installed_packages: list[str],
+        plugin_id: str,
+        default_package: str,
+    ) -> str | None:
+        """Resolve package name for uninstall using installed package hints."""
+        normalized = {pkg: pkg.replace("_", "-") for pkg in installed_packages}
+        exact_default = [pkg for pkg, norm in normalized.items() if norm == default_package]
+        if exact_default:
+            return exact_default[0]
+        exact_id = [pkg for pkg, norm in normalized.items() if norm == plugin_id]
+        if exact_id:
+            return exact_id[0]
+        suffix_matches = [pkg for pkg, norm in normalized.items() if norm.endswith(f"-{plugin_id}")]
+        if len(suffix_matches) == 1:
+            return suffix_matches[0]
+        if len(suffix_matches) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Multiple installed packages match plugin {plugin_id}: "
+                    f"{', '.join(sorted(suffix_matches))}"
+                ),
+            )
+        if is_plugin_installed(default_package):
+            return default_package
+        if is_plugin_installed(plugin_id):
+            return plugin_id
+        return None
 
-    # Derive package name from pypi field or plugin ID
-    package_name = registry_entry.pypi or f"semantik-plugin-{plugin_id}"
+    # Look up plugin in registry to get package name
+    registry_entry = None
+    try:
+        registry = await fetch_registry()
+        registry_entry = next(
+            (p for p in registry.plugins if p.id == plugin_id),
+            None,
+        )
+    except Exception:
+        registry_entry = None
+
+    default_package_name = f"semantik-plugin-{plugin_id}"
+    installed_packages = list_installed_packages()
+
+    if registry_entry:
+        # Derive package name from pypi field or plugin ID
+        package_name = registry_entry.pypi or default_package_name
+        # If registry points to a package that's not installed, try local hints
+        if installed_packages and package_name not in installed_packages:
+            package_name = _resolve_installed_package(
+                installed_packages,
+                plugin_id,
+                default_package_name,
+            ) or package_name
+    else:
+        package_name = _resolve_installed_package(
+            installed_packages,
+            plugin_id,
+            default_package_name,
+        )
+        if not package_name:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Plugin {plugin_id} not found in registry or installed packages",
+            )
 
     try:
         validate_package_name(package_name)
