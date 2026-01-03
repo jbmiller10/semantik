@@ -206,3 +206,49 @@ class TestGetOffloader:
         offloader1 = get_offloader()
         offloader2 = get_offloader()
         assert offloader1 is offloader2
+
+
+class TestModelOffloaderDiscard:
+    """Tests for ModelOffloader.discard() method."""
+
+    def test_discard_removes_offloaded_model(self, offloader: ModelOffloader, simple_model):
+        """Discard removes model from offloaded dict."""
+        # First offload the model
+        offloader.offload_to_cpu("test_model", simple_model)
+        assert offloader.is_offloaded("test_model")
+
+        # Now discard it
+        result = offloader.discard("test_model")
+
+        assert result is True
+        assert not offloader.is_offloaded("test_model")
+
+    def test_discard_returns_false_for_unknown_model(self, offloader: ModelOffloader):
+        """Discard returns False when model not found."""
+        result = offloader.discard("nonexistent_model")
+
+        assert result is False
+
+    def test_discard_after_already_discarded(self, offloader: ModelOffloader, simple_model):
+        """Discarding a model twice returns False on second attempt."""
+        offloader.offload_to_cpu("test_model", simple_model)
+
+        # First discard succeeds
+        assert offloader.discard("test_model") is True
+
+        # Second discard returns False (already discarded)
+        assert offloader.discard("test_model") is False
+
+    def test_discard_does_not_affect_other_models(self, offloader: ModelOffloader, simple_model):
+        """Discarding one model doesn't affect others."""
+        model2 = SimpleModel(size=50)
+
+        offloader.offload_to_cpu("model1", simple_model)
+        offloader.offload_to_cpu("model2", model2)
+
+        # Discard model1
+        offloader.discard("model1")
+
+        # model2 should still be offloaded
+        assert not offloader.is_offloaded("model1")
+        assert offloader.is_offloaded("model2")

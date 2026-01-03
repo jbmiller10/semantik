@@ -240,10 +240,9 @@ class TestMemoryStatsEndpoint:
         """Test stats endpoint when model manager not initialized."""
         response = test_client_no_manager.get("/memory/stats")
 
-        assert response.status_code == 200
+        assert response.status_code == 503
         result = response.json()
-        # Response model adds default values, but cuda_available should be False
-        assert result["cuda_available"] is False
+        assert result["detail"] == "Model manager not initialized. Service may be starting up."
 
 
 # =============================================================================

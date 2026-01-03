@@ -282,7 +282,7 @@ class GPUMemoryGovernor:
             ModelType.RERANKER: {},
         }
 
-        # Thread safety
+        # Async coordination - prevents concurrent coroutine access to shared state
         self._lock = asyncio.Lock()
 
         # Background monitor task
@@ -534,15 +534,16 @@ class GPUMemoryGovernor:
         Args:
             tracked: Model to offload
             retries: Number of retry attempts for transient failures
+
+        Raises:
+            RuntimeError: If no offload callback is registered for the model type
         """
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
-            logger.error(
-                "No offload callback registered for %s - model %s cannot be offloaded",
-                tracked.model_type.name,
-                tracked.model_key,
+            raise RuntimeError(
+                f"No offload callback registered for {tracked.model_type.name}. "
+                f"Call register_callbacks() before memory operations."
             )
-            return False
 
         last_error: Exception | None = None
         for attempt in range(retries + 1):
@@ -580,15 +581,16 @@ class GPUMemoryGovernor:
         Args:
             tracked: Model to unload
             retries: Number of retry attempts for transient failures
+
+        Raises:
+            RuntimeError: If no unload callback is registered for the model type
         """
         callback = self._callbacks.get(tracked.model_type, {}).get("unload")
         if not callback:
-            logger.error(
-                "No unload callback registered for %s - model %s cannot be unloaded",
-                tracked.model_type.name,
-                tracked.model_key,
+            raise RuntimeError(
+                f"No unload callback registered for {tracked.model_type.name}. "
+                f"Call register_callbacks() before memory operations."
             )
-            return False
 
         last_error: Exception | None = None
         for attempt in range(retries + 1):
@@ -633,6 +635,9 @@ class GPUMemoryGovernor:
 
         Returns:
             True if restored successfully, False with logged error details otherwise
+
+        Raises:
+            RuntimeError: If no offload callback is registered for the model type
         """
         tracked = self._models.get(model_key)
         if not tracked:
@@ -664,8 +669,10 @@ class GPUMemoryGovernor:
         # Restore via callback
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
-            logger.error("Cannot restore %s: no offload callback registered for %s", model_key, tracked.model_type.name)
-            return False
+            raise RuntimeError(
+                f"No offload callback registered for {tracked.model_type.name}. "
+                f"Call register_callbacks() before memory operations."
+            )
 
         try:
             await callback(tracked.model_name, tracked.quantization, "cuda")

@@ -135,7 +135,10 @@ async def get_memory_stats() -> dict[str, Any]:
     model_mgr = resources.get("model_mgr")
 
     if model_mgr is None:
-        return {"cuda_available": False}
+        raise HTTPException(
+            status_code=503,
+            detail="Model manager not initialized. Service may be starting up.",
+        )
 
     # Check if using governed manager
     if hasattr(model_mgr, "_governor"):

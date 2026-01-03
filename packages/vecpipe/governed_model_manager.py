@@ -197,7 +197,7 @@ class GovernedModelManager(ModelManager):
                     logger.error("Critical governor coroutine failed: %s - %s", description, e)
                     self._record_critical_failure(description, e)
                 else:
-                    logger.warning("Scheduled governor coroutine failed: %s", e)
+                    logger.warning("Scheduled governor coroutine failed: %s - %s", description or "unnamed", e)
 
         try:
             try:
@@ -214,13 +214,13 @@ class GovernedModelManager(ModelManager):
                         logger.error("Critical governor coroutine failed: %s - %s", description, e)
                         self._record_critical_failure(description, e)
                         raise  # Propagate critical failures
-                    logger.warning("Scheduled governor coroutine failed: %s", e)
+                    logger.warning("Scheduled governor coroutine failed: %s - %s", description or "unnamed", e)
         except Exception as e:
             if critical:
                 logger.error("Failed to schedule critical governor coroutine: %s - %s", description, e)
                 self._record_critical_failure(description, e)
                 raise  # Propagate critical scheduling failures
-            logger.warning("Failed to schedule governor coroutine: %s", e)
+            logger.warning("Failed to schedule governor coroutine: %s - %s", description or "unnamed", e)
 
     async def _ensure_provider_initialized(
         self,

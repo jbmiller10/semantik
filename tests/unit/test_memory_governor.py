@@ -834,7 +834,7 @@ class TestRestoreFromCPUFailures:
 
     @pytest.mark.asyncio()
     async def test_restore_missing_callback(self, governor: GPUMemoryGovernor) -> None:
-        """Restore returns False if offload callback not registered."""
+        """Restore raises RuntimeError if offload callback not registered."""
         # Clear any existing callbacks
         governor._callbacks.clear()
 
@@ -849,8 +849,8 @@ class TestRestoreFromCPUFailures:
         model_key = tracked.model_key
         governor._models[model_key] = tracked
 
-        result = await governor._restore_from_cpu(model_key, required_mb=2000)
-        assert result is False
+        with pytest.raises(RuntimeError, match="No offload callback registered"):
+            await governor._restore_from_cpu(model_key, required_mb=2000)
 
     @pytest.mark.asyncio()
     async def test_restore_callback_exception(self, governor: GPUMemoryGovernor) -> None:
@@ -895,3 +895,106 @@ class TestRestoreFromCPUFailures:
 
         result = await governor._restore_from_cpu(model_key, required_mb=2000)
         assert result is False
+
+
+# =============================================================================
+# _get_model_memory RuntimeError Tests
+# =============================================================================
+
+
+class TestGetModelMemoryRuntimeError:
+    """Tests for _get_model_memory RuntimeError when import fails."""
+
+    def test_get_model_memory_docstring_documents_runtime_error(self, memory_budget: MemoryBudget) -> None:
+        """Verify the method docstring documents RuntimeError for import failures."""
+        governor = GPUMemoryGovernor(memory_budget)
+        docstring = governor._get_model_memory.__doc__
+
+        # Verify docstring documents the RuntimeError
+        assert "RuntimeError" in docstring
+        assert "memory_utils" in docstring
+
+    def test_get_model_memory_returns_valid_int_for_known_model(self, memory_budget: MemoryBudget) -> None:
+        """Test _get_model_memory returns valid memory value when working correctly."""
+        governor = GPUMemoryGovernor(memory_budget)
+
+        # This should work and return an int
+        result = governor._get_model_memory("Qwen/Qwen3-Embedding-0.6B", "int8")
+
+        assert isinstance(result, int)
+        assert result > 0
+
+
+# =============================================================================
+# CPU-Only Mode Tests (total_gpu_mb=0)
+# =============================================================================
+
+
+class TestCPUOnlyMode:
+    """Tests for CPU-only mode when total_gpu_mb=0."""
+
+    @pytest.fixture()
+    def cpu_only_budget(self) -> MemoryBudget:
+        """Create a budget with no GPU memory (CPU-only mode)."""
+        return MemoryBudget(
+            total_gpu_mb=0,  # CPU-only mode
+            gpu_reserve_percent=0.10,
+            gpu_max_percent=0.90,
+            total_cpu_mb=32000,
+            cpu_reserve_percent=0.20,
+            cpu_max_percent=0.50,
+        )
+
+    @pytest_asyncio.fixture
+    async def cpu_only_governor(self, cpu_only_budget: MemoryBudget) -> AsyncGenerator[GPUMemoryGovernor, None]:
+        """Create a CPU-only governor for testing."""
+        governor = GPUMemoryGovernor(cpu_only_budget)
+        yield governor
+        await governor.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_request_memory_succeeds_without_budget_check(self, cpu_only_governor: GPUMemoryGovernor) -> None:
+        """Memory requests always succeed in CPU-only mode."""
+        # Register a callback to avoid RuntimeError
+        cpu_only_governor.register_callbacks(
+            model_type=ModelType.EMBEDDING,
+            unload_fn=AsyncMock(),
+        )
+
+        # CPU-only mode should always return True without needing to calculate memory
+        result = await cpu_only_governor.request_memory(
+            model_name="any-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            required_mb=2000,  # required_mb is a parameter
+        )
+
+        # Should succeed even without GPU budget
+        assert result is True
+
+    @pytest.mark.asyncio()
+    async def test_cpu_only_mode_logs_debug_message(self, cpu_only_governor: GPUMemoryGovernor) -> None:
+        """CPU-only mode logs debug message about bypassing GPU budget check."""
+        cpu_only_governor.register_callbacks(
+            model_type=ModelType.EMBEDDING,
+            unload_fn=AsyncMock(),
+        )
+
+        with patch("vecpipe.memory_governor.logger") as mock_logger:
+            await cpu_only_governor.request_memory(
+                model_name="test-model",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                required_mb=2000,
+            )
+
+            # Verify debug log was called
+            mock_logger.debug.assert_any_call(
+                "CPU-only mode: allowing %s load without GPU budget check",
+                "test-model",
+            )
+
+    def test_cpu_only_budget_has_zero_usable_gpu(self, cpu_only_budget: MemoryBudget) -> None:
+        """Verify CPU-only budget reports zero usable GPU memory."""
+        assert cpu_only_budget.usable_gpu_mb == 0
+        assert cpu_only_budget.total_gpu_mb == 0

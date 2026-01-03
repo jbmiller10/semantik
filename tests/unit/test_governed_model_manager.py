@@ -163,3 +163,68 @@ class TestGovernedModelManagerModelKeyParsing:
         """Test that quantization with underscore is rejected."""
         with pytest.raises(ValueError, match="cannot contain underscore"):
             governed_manager._get_model_key("model", "float_16")
+
+
+class TestModelRestoreErrorStateMismatch:
+    """Tests for ModelRestoreError when governor and offloader state diverges."""
+
+    @pytest.mark.asyncio()
+    async def test_restore_raises_error_on_state_mismatch_embedding(self, governed_manager):
+        """ModelRestoreError raised when governor thinks model is offloaded but offloader doesn't have it."""
+        from vecpipe.memory_utils import ModelRestoreError
+
+        # Mock provider to exist (so we don't get the "provider is None" error)
+        governed_manager._provider = type("MockProvider", (), {"model": object()})()
+
+        # Call the offload callback with target_device="cuda" without actually offloading first
+        # This simulates state mismatch where governor thinks model is offloaded but offloader doesn't have it
+        with pytest.raises(ModelRestoreError) as exc_info:
+            await governed_manager._governor_offload_embedding(
+                model_name="Qwen/test-model",
+                quantization="float16",
+                target_device="cuda",
+            )
+
+        assert "state mismatch between governor and offloader" in str(exc_info.value)
+        assert "embedding:Qwen/test-model:float16" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_restore_raises_error_on_state_mismatch_reranker(self, governed_manager):
+        """ModelRestoreError raised for reranker when state diverges."""
+        from vecpipe.memory_utils import ModelRestoreError
+
+        # Mock reranker to exist
+        governed_manager.reranker = type("MockReranker", (), {"model": object()})()
+
+        with pytest.raises(ModelRestoreError) as exc_info:
+            await governed_manager._governor_offload_reranker(
+                model_name="Qwen/test-reranker",
+                quantization="float16",
+                target_device="cuda",
+            )
+
+        assert "state mismatch between governor and offloader" in str(exc_info.value)
+        assert "reranker:Qwen/test-reranker:float16" in str(exc_info.value)
+
+    @pytest.mark.asyncio()
+    async def test_restore_succeeds_when_model_actually_offloaded(self, governed_manager):
+        """Restore succeeds when model was actually offloaded first."""
+        import torch
+
+        # Create a simple mock model
+        mock_model = torch.nn.Linear(10, 10) if torch.cuda.is_available() else type("MockModel", (), {})()
+        governed_manager._provider = type("MockProvider", (), {"model": mock_model})()
+
+        # First offload the model
+        model_key = "embedding:Qwen/test-model:float16"
+        governed_manager._offloader.offload_to_cpu(model_key, mock_model)
+
+        # Now restore should work (no error raised)
+        await governed_manager._governor_offload_embedding(
+            model_name="Qwen/test-model",
+            quantization="float16",
+            target_device="cuda",
+        )
+
+        # Model should no longer be in offloader
+        assert not governed_manager._offloader.is_offloaded(model_key)
