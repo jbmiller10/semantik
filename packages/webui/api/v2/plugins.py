@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path
 
 from shared.database import get_db
 from shared.plugins.validation import (
@@ -37,7 +37,7 @@ from webui.api.v2.plugins_schemas import (
 )
 from webui.auth import get_current_user
 from webui.config.rate_limits import RateLimitConfig
-from webui.rate_limiter import create_rate_limit_decorator, rate_limit_dependency
+from webui.rate_limiter import rate_limit_dependency
 from webui.services.plugin_service import PluginService
 
 router = APIRouter(prefix="/api/v2/plugins", tags=["plugins-v2"])

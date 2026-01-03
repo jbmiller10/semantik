@@ -75,7 +75,7 @@ def _generate_suggestion(error_type: str, schema: dict[str, Any], path: str) -> 
     if error_type == "type_mismatch":
         schema_type = schema.get("type", "unknown")
         if schema_type == "string":
-            return "Wrap the value in quotes, e.g., \"value\""
+            return 'Wrap the value in quotes, e.g., "value"'
         if schema_type == "integer":
             return "Remove decimal places and quotes, e.g., 42"
         if schema_type == "number":
@@ -83,9 +83,9 @@ def _generate_suggestion(error_type: str, schema: dict[str, Any], path: str) -> 
         if schema_type == "boolean":
             return "Use true or false (without quotes)"
         if schema_type == "array":
-            return "Provide a list of values, e.g., [\"item1\", \"item2\"]"
+            return 'Provide a list of values, e.g., ["item1", "item2"]'
         if schema_type == "object":
-            return "Provide a JSON object, e.g., {\"key\": \"value\"}"
+            return 'Provide a JSON object, e.g., {"key": "value"}'
         return None
 
     if error_type == "enum_mismatch":
@@ -390,7 +390,7 @@ def validate_config_schema_structured(
                 field_path="config",
                 message="config must be an object",
                 expected_type="object",
-                suggestion="Provide a JSON object, e.g., {\"key\": \"value\"}",
+                suggestion='Provide a JSON object, e.g., {"key": "value"}',
             )
         )
         return result
