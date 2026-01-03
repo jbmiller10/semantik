@@ -64,8 +64,8 @@ class PressureLevel(Enum):
 class MemoryBudget:
     """Memory budget configuration for GPU and CPU."""
 
-    # GPU limits
-    total_gpu_mb: int
+    # GPU limits (auto-detected if 0)
+    total_gpu_mb: int = 0
     gpu_reserve_percent: float = 0.10  # Always keep 10% VRAM free
     gpu_max_percent: float = 0.90  # Never use more than 90% of VRAM
 
@@ -75,7 +75,19 @@ class MemoryBudget:
     cpu_max_percent: float = 0.50  # Never use more than 50% for warm models
 
     def __post_init__(self) -> None:
-        """Auto-detect CPU memory if not provided."""
+        """Auto-detect GPU and CPU memory if not provided."""
+        # Auto-detect GPU memory
+        if self.total_gpu_mb == 0:
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    _, total_bytes = torch.cuda.mem_get_info()
+                    self.total_gpu_mb = total_bytes // (1024 * 1024)
+            except ImportError:
+                pass  # No torch, leave at 0 (CPU-only mode)
+
+        # Auto-detect CPU memory
         if self.total_cpu_mb == 0:
             self.total_cpu_mb = psutil.virtual_memory().total // (1024 * 1024)
 
