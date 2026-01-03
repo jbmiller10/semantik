@@ -170,7 +170,10 @@ async def get_loaded_models() -> list[dict[str, Any]]:
     model_mgr = resources.get("model_mgr")
 
     if model_mgr is None:
-        return []
+        raise HTTPException(
+            status_code=503,
+            detail="Model manager not initialized. Service may be starting up.",
+        )
 
     # Check if using governed manager
     if hasattr(model_mgr, "_governor"):
@@ -216,11 +219,19 @@ async def get_eviction_history() -> list[dict[str, Any]]:
     Get recent model eviction history.
 
     Useful for understanding memory pressure patterns and model lifecycle.
+    Returns empty list if using non-governed ModelManager (no eviction tracking).
     """
     resources = get_resources()
     model_mgr = resources.get("model_mgr")
 
-    if model_mgr is None or not hasattr(model_mgr, "_governor"):
+    if model_mgr is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Model manager not initialized. Service may be starting up.",
+        )
+
+    # Non-governed manager has no eviction history - return empty (not an error)
+    if not hasattr(model_mgr, "_governor"):
         return []
 
     return model_mgr._governor.get_eviction_history()

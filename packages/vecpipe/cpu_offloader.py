@@ -124,7 +124,8 @@ class ModelOffloader:
                     param.data = param.data.pin_memory()
                 except RuntimeError as e:
                     # Some tensors can't be pinned (e.g., sparse tensors, certain dtypes)
-                    logger.debug("Could not pin tensor: %s", e)
+                    # Log at INFO so it's visible in production - may affect restore speed
+                    logger.info("Could not pin tensor for faster restore: %s", e)
 
         # Clear GPU cache
         if torch.cuda.is_available():
@@ -152,7 +153,7 @@ class ModelOffloader:
         self,
         model_key: str,
         device: str | torch.device = "cuda",
-    ) -> nn.Module | None:
+    ) -> nn.Module:
         """
         Restore model from CPU to GPU.
 
@@ -161,14 +162,17 @@ class ModelOffloader:
             device: Target GPU device
 
         Returns:
-            Restored model or None if not found
+            Restored model
 
         Raises:
+            KeyError: If model_key not found in offloaded models
             RuntimeError: If GPU transfer fails (model remains on CPU in offloaded state)
         """
         if model_key not in self._offloaded_models:
-            logger.warning("Model %s not found in offloaded models", model_key)
-            return None
+            raise KeyError(
+                f"Model {model_key} not found in offloaded models. "
+                f"Available: {list(self._offloaded_models.keys())}"
+            )
 
         metadata = self._offloaded_models[model_key]
         model = metadata.model_ref

@@ -122,9 +122,9 @@ class TestModelOffloader:
         assert before_time <= info["offload_time"] <= after_time
 
     def test_restore_to_gpu_not_found(self, offloader):
-        """Test restore returns None for non-existent model."""
-        result = offloader.restore_to_gpu("nonexistent")
-        assert result is None
+        """Test restore raises KeyError for non-existent model."""
+        with pytest.raises(KeyError, match="nonexistent"):
+            offloader.restore_to_gpu("nonexistent")
 
     def test_restore_to_cpu_removes_from_tracking(self, offloader, simple_model):
         """Test that restore removes model from offloaded tracking."""

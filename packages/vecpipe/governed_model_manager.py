@@ -160,14 +160,22 @@ class GovernedModelManager(ModelManager):
                 future.add_done_callback(_handle_future_error)
             except RuntimeError:
                 # No running loop - run synchronously
-                asyncio.run(coro)
+                try:
+                    asyncio.run(coro)
+                except Exception as e:
+                    if critical:
+                        logger.error(
+                            "Critical governor coroutine failed: %s", e
+                        )
+                        raise  # Propagate critical failures
+                    logger.warning("Scheduled governor coroutine failed: %s", e)
         except Exception as e:
             if critical:
                 logger.error(
                     "Failed to schedule critical governor coroutine (state drift risk): %s", e
                 )
-            else:
-                logger.warning("Failed to schedule governor coroutine: %s", e)
+                raise  # Propagate critical scheduling failures
+            logger.warning("Failed to schedule governor coroutine: %s", e)
 
     async def _ensure_provider_initialized(
         self,
@@ -529,15 +537,25 @@ class GovernedModelManager(ModelManager):
         For async contexts (FastAPI lifespan, etc.), use shutdown_async() instead
         to avoid deadlocks.
         """
+        import concurrent.futures
+
+        def _handle_shutdown_error(future: concurrent.futures.Future[None]) -> None:
+            """Log errors from async shutdown."""
+            try:
+                future.result()
+            except Exception as e:
+                logger.error("Governor shutdown failed: %s", e)
+
         try:
             # Check if there's a running loop
             try:
                 loop = asyncio.get_running_loop()
                 # We're inside a running loop - schedule without blocking
-                asyncio.run_coroutine_threadsafe(
+                future = asyncio.run_coroutine_threadsafe(
                     self._governor.shutdown(),
                     loop,
                 )
+                future.add_done_callback(_handle_shutdown_error)
                 logger.warning(
                     "shutdown() called from running event loop - "
                     "governor shutdown scheduled but not awaited. "

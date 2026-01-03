@@ -969,20 +969,22 @@ class GPUMemoryGovernor:
         return (gpu_usage / self._budget.usable_gpu_mb * 100) if self._budget.usable_gpu_mb > 0 else 0
 
     def _get_model_memory(self, model_name: str, quantization: str) -> int:
-        """Get memory requirement for a model."""
+        """Get memory requirement for a model.
+
+        Raises:
+            RuntimeError: If memory_utils cannot be imported (installation issue)
+        """
         try:
             from .memory_utils import get_model_memory_requirement
 
             return get_model_memory_requirement(model_name, quantization)
-        except ImportError:
-            # Fallback estimate - this should never happen in normal operation
-            logger.warning(
-                "Could not import memory_utils for model %s:%s. "
-                "Using fallback estimate of 2000MB which may cause OOM or underutilization. "
-                "Check that vecpipe.memory_utils is properly installed.",
-                model_name, quantization
-            )
-            return 2000  # 2GB default - conservative estimate
+        except ImportError as e:
+            # Don't use fallback - unknown model sizes can cause OOM
+            raise RuntimeError(
+                f"Cannot determine memory for model {model_name}:{quantization}. "
+                f"memory_utils import failed: {e}. "
+                f"Check that vecpipe.memory_utils is properly installed."
+            ) from e
 
     def _record_eviction(
         self, tracked: TrackedModel, reason: str, action: EvictionAction
