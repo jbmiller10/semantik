@@ -704,10 +704,20 @@ class GPUMemoryGovernor:
         logger.info("GPUMemoryGovernor shutdown complete")
 
     async def _monitor_loop(self) -> None:
-        """Background loop for memory pressure monitoring."""
+        """Background loop for memory pressure monitoring.
+
+        Uses exponential backoff for circuit breaker:
+        - After max_consecutive_failures, pause for base_backoff_seconds
+        - Each subsequent trigger doubles the backoff (up to max_backoff_seconds)
+        - Backoff resets after successful_iterations_to_reset successful cycles
+        """
         consecutive_failures = 0
         max_consecutive_failures = 5
-        backoff_seconds = 60  # Pause for 1 minute after repeated failures
+        base_backoff_seconds = 30  # Initial backoff: 30 seconds
+        max_backoff_seconds = 300  # Cap at 5 minutes
+        current_backoff = base_backoff_seconds
+        successful_iterations = 0
+        successful_iterations_to_reset = 10  # Reset backoff after 10 successes
 
         while not self._shutdown_event.is_set():
             try:
@@ -738,22 +748,38 @@ class GPUMemoryGovernor:
 
                 # Reset failure counter on success
                 consecutive_failures = 0
+                successful_iterations += 1
+
+                # Reset exponential backoff after sustained success
+                if successful_iterations >= successful_iterations_to_reset:
+                    if current_backoff > base_backoff_seconds:
+                        logger.info(
+                            "Memory monitor stable for %d iterations, "
+                            "resetting backoff from %ds to %ds",
+                            successful_iterations, current_backoff, base_backoff_seconds
+                        )
+                    current_backoff = base_backoff_seconds
+                    successful_iterations = 0
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 consecutive_failures += 1
+                successful_iterations = 0  # Reset success counter on failure
                 logger.exception("Error in memory monitor (failure %d/%d): %s",
                                consecutive_failures, max_consecutive_failures, e)
 
                 if consecutive_failures >= max_consecutive_failures:
                     logger.error(
                         "Memory monitor circuit breaker triggered after %d failures. "
-                        "Pausing for %ds before resuming.",
-                        consecutive_failures, backoff_seconds
+                        "Pausing for %ds before resuming (exponential backoff).",
+                        consecutive_failures, current_backoff
                     )
-                    await asyncio.sleep(backoff_seconds)
-                    consecutive_failures = 0  # Reset after backoff
+                    await asyncio.sleep(current_backoff)
+                    consecutive_failures = 0
+
+                    # Exponential backoff for next trigger
+                    current_backoff = min(current_backoff * 2, max_backoff_seconds)
 
     def _calculate_pressure_level(self) -> PressureLevel:
         """Calculate current memory pressure level."""
