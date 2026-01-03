@@ -111,7 +111,7 @@ def main() -> int:
             updated_count += 1
 
     print(f"\nUpdated {updated_count} file(s)")
-    print(f"\nNext steps:")
+    print("\nNext steps:")
     print(f"  git add -u && git commit -m 'chore: bump version to {new_version}'")
 
     return 0
