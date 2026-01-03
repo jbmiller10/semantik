@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from webui.services.plugin_service import (
@@ -415,7 +416,7 @@ class TestPluginService:
 
     @pytest.mark.asyncio()
     async def test_update_config_invalid(self, service):
-        """Test update_config with invalid config raises ValueError."""
+        """Test update_config with invalid config raises PluginConfigValidationError."""
         record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
         plugin_registry.register(record)
 
@@ -427,8 +428,12 @@ class TestPluginService:
 
         with patch("webui.services.plugin_service.load_plugins"):
             with patch("webui.services.plugin_service.get_config_schema", return_value=schema):
-                with pytest.raises(ValueError, match="field is required"):
+                with pytest.raises(PluginConfigValidationError, match="field is required") as exc_info:
                     await service.update_config("test-plugin", {})
+                # Verify structured errors are populated
+                assert exc_info.value.plugin_id == "test-plugin"
+                assert len(exc_info.value.errors) > 0
+                assert any("count" in e.get("field", "") for e in exc_info.value.errors)
 
     @pytest.mark.asyncio()
     async def test_update_config_not_found(self, service):
@@ -781,3 +786,113 @@ class TestPluginService:
         assert payload["enabled"] is True
         assert payload["config"] == {}
         assert payload["health_status"] == "unknown"
+
+    # --- Tests for sync_warning propagation (Phase 1.2) ---
+
+    @pytest.mark.asyncio()
+    async def test_sync_state_file_returns_true_on_success(self, service):
+        """Test _sync_state_file returns True on successful sync."""
+        with patch.object(service.repo, "list_configs", new=AsyncMock(return_value=[])):
+            with patch("webui.services.plugin_service.write_state") as mock_write:
+                result = await service._sync_state_file()
+                assert result is True
+                mock_write.assert_called_once()
+
+    @pytest.mark.asyncio()
+    async def test_sync_state_file_returns_false_on_failure(self, service):
+        """Test _sync_state_file returns False on sync failure."""
+        with patch.object(service.repo, "list_configs", new=AsyncMock(return_value=[])):
+            with patch(
+                "webui.services.plugin_service.write_state",
+                side_effect=OSError("Disk full"),
+            ):
+                result = await service._sync_state_file()
+                assert result is False
+
+    @pytest.mark.asyncio()
+    async def test_update_config_includes_sync_warning_on_failure(self, service):
+        """Test update_config includes sync_warning when sync fails."""
+        record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
+        plugin_registry.register(record)
+
+        mock_config = MagicMock()
+        mock_config.id = "test-plugin"
+        mock_config.enabled = True
+        mock_config.config = {"key": "value"}
+        mock_config.health_status = "unknown"
+        mock_config.last_health_check = None
+        mock_config.error_message = None
+
+        with patch.object(service.repo, "upsert_config", new=AsyncMock(return_value=mock_config)):
+            with patch("webui.services.plugin_service.load_plugins"):
+                with patch("webui.services.plugin_service.get_config_schema", return_value=None):
+                    with patch.object(service, "_sync_state_file", new=AsyncMock(return_value=False)):
+                        result = await service.update_config("test-plugin", {"key": "value"})
+                        assert result is not None
+                        assert "sync_warning" in result
+                        assert "sync failed" in result["sync_warning"].lower()
+
+    @pytest.mark.asyncio()
+    async def test_update_config_no_sync_warning_on_success(self, service):
+        """Test update_config has no sync_warning when sync succeeds."""
+        record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
+        plugin_registry.register(record)
+
+        mock_config = MagicMock()
+        mock_config.id = "test-plugin"
+        mock_config.enabled = True
+        mock_config.config = {"key": "value"}
+        mock_config.health_status = "unknown"
+        mock_config.last_health_check = None
+        mock_config.error_message = None
+
+        with patch.object(service.repo, "upsert_config", new=AsyncMock(return_value=mock_config)):
+            with patch("webui.services.plugin_service.load_plugins"):
+                with patch("webui.services.plugin_service.get_config_schema", return_value=None):
+                    with patch.object(service, "_sync_state_file", new=AsyncMock(return_value=True)):
+                        result = await service.update_config("test-plugin", {"key": "value"})
+                        assert result is not None
+                        assert result.get("sync_warning") is None
+
+    @pytest.mark.asyncio()
+    async def test_set_enabled_includes_sync_warning_on_failure(self, service):
+        """Test set_enabled includes sync_warning when sync fails."""
+        record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
+        plugin_registry.register(record)
+
+        mock_config = MagicMock()
+        mock_config.id = "test-plugin"
+        mock_config.enabled = False
+        mock_config.config = {}
+        mock_config.health_status = "unknown"
+        mock_config.last_health_check = None
+        mock_config.error_message = None
+
+        with patch.object(service.repo, "upsert_config", new=AsyncMock(return_value=mock_config)):
+            with patch("webui.services.plugin_service.load_plugins"):
+                with patch.object(service, "_sync_state_file", new=AsyncMock(return_value=False)):
+                    result = await service.set_enabled("test-plugin", False)
+                    assert result is not None
+                    assert "sync_warning" in result
+                    assert result["requires_restart"] is True
+
+    @pytest.mark.asyncio()
+    async def test_set_enabled_no_sync_warning_on_success(self, service):
+        """Test set_enabled has no sync_warning when sync succeeds."""
+        record = _make_record("test-plugin", "embedding", PluginSource.EXTERNAL)
+        plugin_registry.register(record)
+
+        mock_config = MagicMock()
+        mock_config.id = "test-plugin"
+        mock_config.enabled = True
+        mock_config.config = {}
+        mock_config.health_status = "unknown"
+        mock_config.last_health_check = None
+        mock_config.error_message = None
+
+        with patch.object(service.repo, "upsert_config", new=AsyncMock(return_value=mock_config)):
+            with patch("webui.services.plugin_service.load_plugins"):
+                with patch.object(service, "_sync_state_file", new=AsyncMock(return_value=True)):
+                    result = await service.set_enabled("test-plugin", True)
+                    assert result is not None
+                    assert result.get("sync_warning") is None

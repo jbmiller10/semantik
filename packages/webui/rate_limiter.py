@@ -252,7 +252,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
         request_arg_index: int | None = None
 
         for idx, parameter in enumerate(sig.parameters.values()):
-            if parameter.name in {"request", "websocket"}:
+            if parameter.name in {"request", "http_request", "websocket"}:
                 request_arg_index = idx
                 break
 
@@ -266,7 +266,7 @@ def create_rate_limit_decorator(limit: str) -> Callable:
                 return await func(*args, **kwargs)
 
             # Check circuit breaker first
-            request = kwargs.get("request")
+            request = kwargs.get("request") or kwargs.get("http_request")
             if request is None and request_arg_index is not None and len(args) > request_arg_index:
                 candidate = args[request_arg_index]
                 if isinstance(candidate, Request):

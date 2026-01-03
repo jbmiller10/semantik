@@ -48,43 +48,54 @@ class PluginRegistry:
     def register(self, record: PluginRecord) -> bool:
         """Register a plugin record.
 
-        Returns True if newly registered, False if skipped.
+        Returns True if newly registered, False if skipped (same class already registered).
+
+        Raises:
+            PluginDuplicateError: If plugin ID conflicts with another type or class.
         """
+        from .exceptions import PluginDuplicateError
+
         with self._lock:
             plugin_type = record.plugin_type
             plugin_id = record.plugin_id
 
-            # Ensure plugin_id is globally unique
+            # Ensure plugin_id is globally unique across all types
             for existing_type, records in self._plugins.items():
                 if existing_type == plugin_type:
                     continue
                 if plugin_id in records:
-                    logger.warning(
-                        "Plugin id '%s' already registered for type '%s', skipping '%s'",
-                        plugin_id,
-                        existing_type,
-                        plugin_type,
+                    raise PluginDuplicateError(
+                        f"Plugin id '{plugin_id}' already registered for type '{existing_type}', "
+                        f"cannot register for type '{plugin_type}'",
+                        plugin_id=plugin_id,
+                        plugin_type=plugin_type,
+                        error_code="PLUGIN_ID_CONFLICT",
+                        details={"existing_type": existing_type},
                     )
-                    return False
 
             bucket = self._plugins.setdefault(plugin_type, {})
             existing = bucket.get(plugin_id)
             if existing:
                 if existing.plugin_class is record.plugin_class:
+                    # Same class re-registered = idempotent, not an error
                     logger.debug(
                         "Plugin '%s/%s' already registered, skipping duplicate",
                         plugin_type,
                         plugin_id,
                     )
                     return False
-                logger.warning(
-                    "Plugin conflict: '%s/%s' already registered (%s), skipping %s",
-                    plugin_type,
-                    plugin_id,
-                    existing.plugin_class,
-                    record.plugin_class,
+                # Different class with same ID = conflict error
+                raise PluginDuplicateError(
+                    f"Plugin conflict: '{plugin_type}/{plugin_id}' already registered with "
+                    f"class {existing.plugin_class.__name__}, cannot register {record.plugin_class.__name__}",
+                    plugin_id=plugin_id,
+                    plugin_type=plugin_type,
+                    error_code="PLUGIN_CLASS_CONFLICT",
+                    details={
+                        "existing_class": existing.plugin_class.__name__,
+                        "new_class": record.plugin_class.__name__,
+                    },
                 )
-                return False
 
             bucket[plugin_id] = record
             logger.info("Registered plugin: %s/%s", plugin_type, plugin_id)

@@ -7,6 +7,7 @@ import pytest
 
 from shared.connectors.base import BaseConnector
 from shared.dtos.ingestion import IngestedDocument
+from shared.plugins.exceptions import PluginDuplicateError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from webui.services.connector_factory import ConnectorFactory
@@ -135,11 +136,15 @@ class TestConnectorFactory:
         assert "Unknown source type" in message
         assert "web" in message
 
-    def test_register_skips_duplicate(self) -> None:
-        """Test registering same type keeps the first connector."""
+    def test_register_duplicate_raises_error(self) -> None:
+        """Test registering different class with same ID raises PluginDuplicateError."""
         _register_connector("test", DummyConnector)
-        _register_connector("test", AnotherConnector)
+        with pytest.raises(PluginDuplicateError) as exc_info:
+            _register_connector("test", AnotherConnector)
+        assert exc_info.value.error_code == "PLUGIN_CLASS_CONFLICT"
+        assert exc_info.value.plugin_id == "test"
 
+        # First connector should still be available
         connector = ConnectorFactory.get_connector("test", {})
         assert isinstance(connector, DummyConnector)
 

@@ -1,8 +1,8 @@
 """
-Rate limiting configuration for chunking API endpoints.
+Rate limiting configuration for API endpoints.
 
 This module provides centralized configuration for rate limiting across
-the chunking API, including per-operation limits and circuit breaker settings.
+the API, including per-operation limits and circuit breaker settings.
 """
 
 import os
@@ -31,12 +31,24 @@ class RateLimitConfig:
     CIRCUIT_BREAKER_FAILURES = int(os.getenv("CIRCUIT_BREAKER_FAILURES", "5"))
     CIRCUIT_BREAKER_TIMEOUT = int(os.getenv("CIRCUIT_BREAKER_TIMEOUT", "60"))
 
-    # Rate limit strings for slowapi
+    # Rate limit strings for slowapi (chunking)
     PREVIEW_RATE = f"{PREVIEW_LIMIT}/minute"
     COMPARE_RATE = f"{COMPARE_LIMIT}/minute"
     PROCESS_RATE = f"{PROCESS_LIMIT}/hour"
     READ_RATE = f"{READ_LIMIT}/minute"
     ANALYTICS_RATE = f"{ANALYTICS_LIMIT}/minute"
+
+    # Plugin management rate limits
+    PLUGIN_INSTALL_LIMIT = int(os.getenv("PLUGIN_INSTALL_RATE_LIMIT", "2"))
+    PLUGIN_UNINSTALL_LIMIT = int(os.getenv("PLUGIN_UNINSTALL_RATE_LIMIT", "5"))
+    PLUGIN_HEALTH_LIMIT = int(os.getenv("PLUGIN_HEALTH_RATE_LIMIT", "30"))
+    PLUGIN_LIST_LIMIT = int(os.getenv("PLUGIN_LIST_RATE_LIMIT", "60"))
+
+    # Rate limit strings for slowapi (plugins)
+    PLUGIN_INSTALL_RATE = f"{PLUGIN_INSTALL_LIMIT}/minute"
+    PLUGIN_UNINSTALL_RATE = f"{PLUGIN_UNINSTALL_LIMIT}/minute"
+    PLUGIN_HEALTH_RATE = f"{PLUGIN_HEALTH_LIMIT}/minute"
+    PLUGIN_LIST_RATE = f"{PLUGIN_LIST_LIMIT}/minute"
 
     # Default global limit
     DEFAULT_LIMIT = "1000/hour"

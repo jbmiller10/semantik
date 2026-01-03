@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from shared.plugins.exceptions import PluginConfigValidationError
 from shared.plugins.manifest import PluginManifest
 from shared.plugins.registry import PluginRecord, PluginSource, plugin_registry
 from webui.api.v2.plugins import _get_plugin_service
@@ -205,7 +206,9 @@ class TestGetPlugin:
         response = await client.get("/api/v2/plugins/nonexistent")
         assert response.status_code == 404
         data = response.json()
-        assert "not found" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "not found" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_get_plugin_rejects_invalid_plugin_id(self, api_client_with_plugin):
@@ -365,7 +368,11 @@ class TestUpdatePluginConfig:
     async def test_update_config_invalid(self, api_client_with_plugin):
         """Test update_config with invalid config returns 400."""
         client, mock_service = api_client_with_plugin
-        mock_service.update_config.side_effect = ValueError("'count' is a required property")
+        mock_service.update_config.side_effect = PluginConfigValidationError(
+            message="field is required",
+            plugin_id="test-plugin",
+            errors=[{"field": "config.count", "message": "field is required"}],
+        )
 
         response = await client.put(
             "/api/v2/plugins/test-plugin/config",
@@ -373,7 +380,9 @@ class TestUpdatePluginConfig:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "required" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "required" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_update_config_not_found(self, api_client_with_plugin):
@@ -646,7 +655,9 @@ class TestInstallPlugin:
         )
         assert response.status_code == 403
         data = response.json()
-        assert "admin" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "admin" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_install_plugin_not_in_registry(self, admin_client_with_plugin, monkeypatch):
@@ -671,7 +682,9 @@ class TestInstallPlugin:
         )
         assert response.status_code == 404
         data = response.json()
-        assert "not found in registry" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "not found in registry" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_install_plugin_success(self, admin_client_with_plugin, monkeypatch):
@@ -913,7 +926,9 @@ class TestUninstallPlugin:
         response = await client.delete("/api/v2/plugins/test-plugin/uninstall")
         assert response.status_code == 403
         data = response.json()
-        assert "admin" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "admin" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_uninstall_plugin_not_in_registry(self, admin_client_with_plugin, monkeypatch):
@@ -935,7 +950,9 @@ class TestUninstallPlugin:
         response = await client.delete("/api/v2/plugins/nonexistent-plugin/uninstall")
         assert response.status_code == 404
         data = response.json()
-        assert "not found in registry" in data["detail"].lower()
+        # Structured error response: detail is a dict with a "detail" key
+        detail_msg = data["detail"]["detail"] if isinstance(data["detail"], dict) else data["detail"]
+        assert "not found in registry" in detail_msg.lower()
 
     @pytest.mark.asyncio()
     async def test_uninstall_plugin_success(self, admin_client_with_plugin, monkeypatch):
