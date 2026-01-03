@@ -38,6 +38,7 @@ def mock_settings() -> None:
     mock = Mock()
     mock.QDRANT_HOST = "localhost"
     mock.QDRANT_PORT = 6333
+    mock.QDRANT_API_KEY = None
     mock.DEFAULT_COLLECTION = "test_collection"
     mock.USE_MOCK_EMBEDDINGS = False
     mock.DEFAULT_EMBEDDING_MODEL = "test-model"
@@ -45,6 +46,7 @@ def mock_settings() -> None:
     mock.MODEL_UNLOAD_AFTER_SECONDS = 300
     mock.SEARCH_API_PORT = 8088
     mock.METRICS_PORT = 9090
+    mock.ENABLE_MEMORY_GOVERNOR = False  # Use regular ModelManager in tests
     return mock
 
 
@@ -61,8 +63,24 @@ def mock_qdrant_client() -> None:
 
 @pytest.fixture()
 def mock_model_manager() -> None:
-    """Mock model manager."""
-    manager = Mock()
+    """Mock model manager.
+
+    Uses spec to limit attributes - excludes shutdown_async to simulate ModelManager
+    (not GovernedModelManager which has async shutdown).
+    """
+    # Use spec to prevent Mock from auto-creating shutdown_async attribute
+    manager = Mock(
+        spec=[
+            "generate_embedding",
+            "generate_embedding_async",
+            "generate_embeddings_batch_async",
+            "rerank_async",
+            "get_status",
+            "shutdown",
+            "current_model_key",
+            "current_reranker_key",
+        ]
+    )
     manager.generate_embedding_async = AsyncMock(return_value=[0.1] * 1024)
 
     # Make generate_embeddings_batch_async return the correct number of embeddings
@@ -279,14 +297,20 @@ class TestSearchAPI:
         Note: ModelManager now handles embedding providers internally,
         so there's no separate embedding service initialization in lifespan.
         """
+        # Create mock for Qdrant SDK client
+        mock_qdrant_sdk = AsyncMock()
+        mock_qdrant_sdk.close = AsyncMock()
+
         # Test that lifespan context manager starts and cleans up properly
         with (
             patch("vecpipe.search.lifespan.settings", mock_settings),
             patch("vecpipe.search.lifespan.httpx.AsyncClient") as mock_httpx,
+            patch("vecpipe.search.lifespan.AsyncQdrantClient") as mock_qdrant_sdk_class,
             patch("vecpipe.search.lifespan.start_metrics_server") as mock_start_metrics,
             patch("vecpipe.search.lifespan.ModelManager") as mock_mm_class,
         ):
             mock_httpx.return_value = mock_qdrant_client
+            mock_qdrant_sdk_class.return_value = mock_qdrant_sdk
             mock_mm_class.return_value = mock_model_manager
 
             # Test startup and shutdown
@@ -296,10 +320,12 @@ class TestSearchAPI:
                 # Verify initialization
                 mock_start_metrics.assert_called_once()
                 mock_httpx.assert_called_once()
+                mock_qdrant_sdk_class.assert_called_once()
                 mock_mm_class.assert_called_once()
 
             # Verify cleanup
             mock_qdrant_client.aclose.assert_called_once()
+            mock_qdrant_sdk.close.assert_called_once()
             mock_model_manager.shutdown.assert_called_once()
 
     def test_model_status(self, mock_model_manager, test_client_for_search_api) -> None:
