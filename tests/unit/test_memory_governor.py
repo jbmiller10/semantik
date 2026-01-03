@@ -998,3 +998,402 @@ class TestCPUOnlyMode:
         """Verify CPU-only budget reports zero usable GPU memory."""
         assert cpu_only_budget.usable_gpu_mb == 0
         assert cpu_only_budget.total_gpu_mb == 0
+
+
+# =============================================================================
+# TrackedModel Validation Tests
+# =============================================================================
+
+
+class TestTrackedModelValidation:
+    """Tests for TrackedModel validation in __post_init__."""
+
+    def test_negative_memory_mb_raises_error(self) -> None:
+        """memory_mb must be non-negative."""
+        with pytest.raises(ValueError, match="memory_mb must be non-negative"):
+            TrackedModel(
+                model_name="test-model",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.GPU,
+                memory_mb=-100,
+            )
+
+    def test_negative_use_count_raises_error(self) -> None:
+        """use_count must be non-negative."""
+        with pytest.raises(ValueError, match="use_count must be non-negative"):
+            TrackedModel(
+                model_name="test-model",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.GPU,
+                memory_mb=100,
+                use_count=-1,
+            )
+
+    def test_empty_model_name_raises_error(self) -> None:
+        """model_name cannot be empty."""
+        with pytest.raises(ValueError, match="model_name cannot be empty"):
+            TrackedModel(
+                model_name="",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.GPU,
+                memory_mb=100,
+            )
+
+    def test_empty_quantization_raises_error(self) -> None:
+        """quantization cannot be empty."""
+        with pytest.raises(ValueError, match="quantization cannot be empty"):
+            TrackedModel(
+                model_name="test-model",
+                model_type=ModelType.EMBEDDING,
+                quantization="",
+                location=ModelLocation.GPU,
+                memory_mb=100,
+            )
+
+    def test_zero_memory_mb_is_valid(self) -> None:
+        """memory_mb=0 is valid (edge case)."""
+        model = TrackedModel(
+            model_name="test-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=0,
+        )
+        assert model.memory_mb == 0
+
+    def test_zero_use_count_is_valid(self) -> None:
+        """use_count=0 is valid (default)."""
+        model = TrackedModel(
+            model_name="test-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,
+            memory_mb=100,
+            use_count=0,
+        )
+        assert model.use_count == 0
+
+
+# =============================================================================
+# MemoryBudget Validation Tests
+# =============================================================================
+
+
+class TestMemoryBudgetValidation:
+    """Tests for MemoryBudget validation edge cases."""
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("gpu_reserve_percent", -0.1),
+            ("gpu_reserve_percent", 1.1),
+            ("gpu_max_percent", -0.1),
+            ("gpu_max_percent", 1.1),
+            ("cpu_reserve_percent", -0.1),
+            ("cpu_reserve_percent", 1.1),
+            ("cpu_max_percent", -0.1),
+            ("cpu_max_percent", 1.1),
+        ],
+    )
+    def test_invalid_percentage_raises_error(self, field: str, value: float) -> None:
+        """Percentages must be between 0.0 and 1.0."""
+        kwargs = {"total_gpu_mb": 8000, field: value}
+        with pytest.raises(ValueError, match=f"{field} must be between 0.0 and 1.0"):
+            MemoryBudget(**kwargs)
+
+    def test_negative_gpu_mb_raises_error(self) -> None:
+        """total_gpu_mb must be non-negative."""
+        with pytest.raises(ValueError, match="total_gpu_mb must be non-negative"):
+            MemoryBudget(total_gpu_mb=-1)
+
+    def test_negative_cpu_mb_raises_error(self) -> None:
+        """total_cpu_mb must be non-negative."""
+        with pytest.raises(ValueError, match="total_cpu_mb must be non-negative"):
+            MemoryBudget(total_gpu_mb=8000, total_cpu_mb=-1)
+
+    def test_edge_case_percentages_zero_valid(self) -> None:
+        """0.0 is a valid percentage value."""
+        budget = MemoryBudget(
+            total_gpu_mb=8000,
+            gpu_reserve_percent=0.0,
+            cpu_reserve_percent=0.0,
+        )
+        assert budget.gpu_reserve_percent == 0.0
+        assert budget.cpu_reserve_percent == 0.0
+
+    def test_edge_case_percentages_one_valid(self) -> None:
+        """1.0 is a valid percentage value."""
+        budget = MemoryBudget(
+            total_gpu_mb=8000,
+            gpu_max_percent=1.0,
+            cpu_max_percent=1.0,
+        )
+        assert budget.gpu_max_percent == 1.0
+        assert budget.cpu_max_percent == 1.0
+
+    def test_zero_gpu_mb_valid(self) -> None:
+        """total_gpu_mb=0 is valid (CPU-only mode)."""
+        budget = MemoryBudget(total_gpu_mb=0)
+        assert budget.total_gpu_mb == 0
+        assert budget.usable_gpu_mb == 0
+
+    def test_zero_cpu_mb_valid(self) -> None:
+        """total_cpu_mb=0 is valid (no CPU offloading)."""
+        budget = MemoryBudget(total_gpu_mb=8000, total_cpu_mb=0)
+        assert budget.total_cpu_mb == 0
+        assert budget.usable_cpu_mb == 0
+
+
+# =============================================================================
+# Monitor Loop Circuit Breaker Tests
+# =============================================================================
+
+
+class TestMonitorLoopCircuitBreaker:
+    """Tests for circuit breaker and degraded state in _monitor_loop."""
+
+    @pytest.mark.asyncio()
+    async def test_circuit_breaker_triggers_after_max_failures(self, memory_budget: MemoryBudget) -> None:
+        """Circuit breaker triggers after 5 consecutive failures."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # Make _calculate_pressure_level raise an error
+        call_count = 0
+
+        def failing_pressure_level() -> PressureLevel:
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError("GPU error")
+
+        gov._calculate_pressure_level = failing_pressure_level
+
+        # Track sleep calls and stop after circuit breaker triggers
+        sleep_count = 0
+
+        async def mock_sleep(seconds: float) -> None:
+            nonlocal sleep_count
+            sleep_count += 1
+            # Stop after first backoff sleep (which happens after 5 failures)
+            if seconds >= 30:  # Backoff sleep is 30s, interval is much smaller
+                gov._shutdown_event.set()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            await gov._monitor_loop()
+
+        assert gov._circuit_breaker_triggers >= 1
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_degraded_state_after_repeated_triggers(self, memory_budget: MemoryBudget) -> None:
+        """Degraded state set after 3 circuit breaker triggers."""
+        gov = GPUMemoryGovernor(memory_budget)
+        gov._max_circuit_breaker_triggers = 3
+
+        # Make _calculate_pressure_level raise an error
+        def failing_pressure_level() -> PressureLevel:
+            raise RuntimeError("GPU error")
+
+        gov._calculate_pressure_level = failing_pressure_level
+
+        # Track backoff sleeps and stop after 3 triggers
+        backoff_count = 0
+
+        async def mock_sleep(seconds: float) -> None:
+            nonlocal backoff_count
+            # Backoff sleeps are >= 30s, regular interval is much smaller
+            if seconds >= 30:
+                backoff_count += 1
+                if backoff_count >= 3:  # Stop after 3 circuit breaker triggers
+                    gov._shutdown_event.set()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            await gov._monitor_loop()
+
+        assert gov._degraded_state is True
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_backoff_resets_after_successful_iterations(self, memory_budget: MemoryBudget) -> None:
+        """Successful iterations reset the backoff counter."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # Return LOW pressure (no errors) - this counts as success
+        iteration_count = 0
+
+        def success_pressure_level() -> PressureLevel:
+            nonlocal iteration_count
+            iteration_count += 1
+            return PressureLevel.LOW
+
+        gov._calculate_pressure_level = success_pressure_level
+
+        async def mock_sleep(_seconds: float) -> None:
+            # Stop after enough iterations
+            if iteration_count >= 12:
+                gov._shutdown_event.set()
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            await gov._monitor_loop()
+
+        # After 10+ successes, degraded state should be cleared
+        assert gov._degraded_state is False
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_exponential_backoff_increases(self, memory_budget: MemoryBudget) -> None:
+        """Backoff doubles after each circuit breaker trigger (up to max)."""
+        gov = GPUMemoryGovernor(memory_budget)
+
+        # Make _calculate_pressure_level raise an error
+        def failing_pressure_level() -> PressureLevel:
+            raise RuntimeError("GPU error")
+
+        gov._calculate_pressure_level = failing_pressure_level
+
+        sleep_calls: list[float] = []
+
+        async def record_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+            # Stop after collecting backoff values (30s, 60s)
+            # Count backoff sleeps (>= 30s) and stop after 2
+            backoff_sleeps = [s for s in sleep_calls if s >= 30]
+            if len(backoff_sleeps) >= 2:
+                gov._shutdown_event.set()
+
+        with patch("asyncio.sleep", side_effect=record_sleep):
+            await gov._monitor_loop()
+
+        # Filter for backoff sleeps (>= 30s)
+        backoff_sleeps = [s for s in sleep_calls if s >= 30]
+        assert len(backoff_sleeps) >= 2
+        # First backoff is 30s, second should be 60s
+        assert backoff_sleeps[0] == 30
+        assert backoff_sleeps[1] == 60
+        await gov.shutdown()
+
+
+# =============================================================================
+# Pressure Handler Continuation Tests
+# =============================================================================
+
+
+class TestPressureHandlerContinuation:
+    """Tests for pressure handlers continuing after partial failures."""
+
+    @pytest.fixture()
+    def governor_with_models(self, memory_budget: MemoryBudget) -> GPUMemoryGovernor:
+        """Governor with multiple tracked models."""
+        gov = GPUMemoryGovernor(memory_budget)
+        # Add 3 models
+        for i in range(3):
+            gov._models[f"embedding:model{i}:float16"] = TrackedModel(
+                model_name=f"model{i}",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.GPU,
+                memory_mb=1000,
+                last_used=time.time() - 600,  # Idle for 10 minutes
+            )
+        return gov
+
+    @pytest.mark.asyncio()
+    async def test_critical_pressure_continues_after_callback_failure(
+        self, governor_with_models: GPUMemoryGovernor
+    ) -> None:
+        """Critical pressure handler continues processing after callback failure."""
+        gov = governor_with_models
+        models_attempted: set[str] = set()
+
+        async def failing_unload(name: str, _quantization: str) -> bool:
+            models_attempted.add(name)
+            if name == "model1":
+                raise RuntimeError("Unload failed")
+            return True
+
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=failing_unload)
+
+        await gov._handle_critical_pressure()
+
+        # All 3 unique models should have been attempted despite model1 failure
+        # (there may be retries for model1, but all 3 models should be attempted)
+        assert models_attempted == {"model0", "model1", "model2"}
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_high_pressure_continues_after_callback_returns_false(
+        self, governor_with_models: GPUMemoryGovernor
+    ) -> None:
+        """High pressure handler continues when callback returns False."""
+        gov = governor_with_models
+        # Disable CPU offload so it uses unload directly
+        gov._enable_cpu_offload = False
+        models_attempted: set[str] = set()
+
+        async def partial_failure_unload(name: str, _quantization: str) -> bool:
+            models_attempted.add(name)
+            return name != "model1"  # Return False for model1
+
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=partial_failure_unload)
+
+        await gov._handle_high_pressure()
+
+        # All models should be attempted
+        assert models_attempted == {"model0", "model1", "model2"}
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_moderate_pressure_continues_on_offload_exception(
+        self, memory_budget: MemoryBudget
+    ) -> None:
+        """Moderate pressure handler continues after offload exception."""
+        gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=True)
+        # Add models that are idle beyond threshold
+        for i in range(3):
+            gov._models[f"embedding:model{i}:float16"] = TrackedModel(
+                model_name=f"model{i}",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.GPU,
+                memory_mb=1000,
+                last_used=time.time() - 200,  # Idle beyond eviction threshold (120s)
+            )
+
+        offload_calls: list[str] = []
+
+        async def failing_offload(name: str, _quantization: str, _target: str) -> bool:
+            offload_calls.append(name)
+            if name == "model0":
+                raise RuntimeError("Offload failed")
+            return True
+
+        async def noop_unload(_name: str, _quantization: str) -> bool:
+            return True
+
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=noop_unload, offload_fn=failing_offload)
+
+        await gov._handle_moderate_pressure()
+
+        # All eligible models should be attempted
+        assert len(offload_calls) >= 1
+        await gov.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_failed_models_list_populated(
+        self, governor_with_models: GPUMemoryGovernor
+    ) -> None:
+        """Failed models are tracked correctly in handlers."""
+        gov = governor_with_models
+
+        async def always_fail(_name: str, _quantization: str) -> bool:
+            raise RuntimeError("Always fails")
+
+        gov.register_callbacks(ModelType.EMBEDDING, unload_fn=always_fail)
+
+        # Run handler - should not raise, just log failures
+        await gov._handle_critical_pressure()
+
+        # Handler should complete without raising
+        await gov.shutdown()

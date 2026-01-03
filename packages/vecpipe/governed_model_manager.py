@@ -288,6 +288,11 @@ class GovernedModelManager(ModelManager):
             if parsed:
                 model_name, quantization = parsed
                 await self._governor.mark_unloaded(model_name, ModelType.EMBEDDING, quantization)
+            else:
+                logger.warning(
+                    "Cannot notify governor of unload - failed to parse model key: %s",
+                    self.current_model_key,
+                )
 
         await super().unload_model_async()
 
@@ -371,6 +376,11 @@ class GovernedModelManager(ModelManager):
                     critical=True,
                     description=f"mark_unloaded reranker {model_name}:{quantization}",
                 )
+            else:
+                logger.warning(
+                    "Cannot notify governor of unload - failed to parse reranker key: %s",
+                    self.current_reranker_key,
+                )
 
         super().unload_reranker()
 
@@ -391,6 +401,13 @@ class GovernedModelManager(ModelManager):
             self._offloader.discard(offloader_key)
             # Call parent directly - governor already removed from tracking
             await super().unload_model_async()
+        else:
+            logger.warning(
+                "Governor requested unload of embedding %s:%s but current is %s - skipping",
+                model_name,
+                quantization,
+                self.current_model_key,
+            )
 
     async def _governor_unload_reranker(
         self,
@@ -409,6 +426,13 @@ class GovernedModelManager(ModelManager):
             self._offloader.discard(offloader_key)
             # Call parent directly - governor already removed from tracking
             super().unload_reranker()
+        else:
+            logger.warning(
+                "Governor requested unload of reranker %s:%s but current is %s - skipping",
+                model_name,
+                quantization,
+                self.current_reranker_key,
+            )
 
     async def _governor_offload_embedding(
         self,
