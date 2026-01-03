@@ -83,8 +83,10 @@ class MemoryBudget:
                 if torch.cuda.is_available():
                     _, total_bytes = torch.cuda.mem_get_info()
                     self.total_gpu_mb = total_bytes // (1024 * 1024)
+                else:
+                    logger.info("CUDA not available, running in CPU-only mode (total_gpu_mb=0)")
             except ImportError:
-                pass  # No torch, leave at 0 (CPU-only mode)
+                logger.info("PyTorch not installed, running in CPU-only mode (total_gpu_mb=0)")
 
         # Auto-detect CPU memory
         if self.total_cpu_mb == 0:
@@ -445,57 +447,87 @@ class GPUMemoryGovernor:
         current_cpu_usage = self._get_cpu_usage()
         return (current_cpu_usage + memory_mb) <= self._budget.usable_cpu_mb
 
-    async def _offload_model(self, tracked: TrackedModel) -> bool:
-        """Offload a model to CPU via callback."""
+    async def _offload_model(self, tracked: TrackedModel, retries: int = 1) -> bool:
+        """Offload a model to CPU via callback.
+
+        Args:
+            tracked: Model to offload
+            retries: Number of retry attempts for transient failures
+        """
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
             logger.warning("No offload callback for %s", tracked.model_type)
             return False
 
-        try:
-            await callback(tracked.model_name, tracked.quantization, "cpu")
-            tracked.location = ModelLocation.CPU
+        last_error: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                await callback(tracked.model_name, tracked.quantization, "cpu")
+                tracked.location = ModelLocation.CPU
 
-            self._record_eviction(tracked, reason="memory_pressure", action="offloaded")
+                self._record_eviction(tracked, reason="memory_pressure", action="offloaded")
 
-            logger.info(
-                "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
-                tracked.model_key,
-                tracked.memory_mb,
-                tracked.idle_seconds,
-            )
-            return True
-        except Exception as e:
-            logger.error("Failed to offload %s: %s", tracked.model_key, e)
-            return False
+                logger.info(
+                    "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
+                    tracked.model_key,
+                    tracked.memory_mb,
+                    tracked.idle_seconds,
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    logger.warning(
+                        "Offload attempt %d/%d failed for %s: %s, retrying...",
+                        attempt + 1, retries + 1, tracked.model_key, e
+                    )
+                    await asyncio.sleep(0.1)  # Short delay before retry
 
-    async def _unload_model(self, tracked: TrackedModel) -> bool:
-        """Fully unload a model via callback."""
+        logger.error("Failed to offload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
+        return False
+
+    async def _unload_model(self, tracked: TrackedModel, retries: int = 1) -> bool:
+        """Fully unload a model via callback.
+
+        Args:
+            tracked: Model to unload
+            retries: Number of retry attempts for transient failures
+        """
         callback = self._callbacks.get(tracked.model_type, {}).get("unload")
         if not callback:
             logger.warning("No unload callback for %s", tracked.model_type)
             return False
 
-        try:
-            await callback(tracked.model_name, tracked.quantization)
+        last_error: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                await callback(tracked.model_name, tracked.quantization)
 
-            self._record_eviction(tracked, reason="memory_pressure", action="unloaded")
+                self._record_eviction(tracked, reason="memory_pressure", action="unloaded")
 
-            # Remove from tracking
-            model_key = tracked.model_key
-            if model_key in self._models:
-                del self._models[model_key]
+                # Remove from tracking
+                model_key = tracked.model_key
+                if model_key in self._models:
+                    del self._models[model_key]
 
-            logger.info(
-                "Unloaded %s (freed %dMB, idle %.1fs)",
-                model_key,
-                tracked.memory_mb,
-                tracked.idle_seconds,
-            )
-            return True
-        except Exception as e:
-            logger.error("Failed to unload %s: %s", tracked.model_key, e)
-            return False
+                logger.info(
+                    "Unloaded %s (freed %dMB, idle %.1fs)",
+                    model_key,
+                    tracked.memory_mb,
+                    tracked.idle_seconds,
+                )
+                return True
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    logger.warning(
+                        "Unload attempt %d/%d failed for %s: %s, retrying...",
+                        attempt + 1, retries + 1, tracked.model_key, e
+                    )
+                    await asyncio.sleep(0.1)  # Short delay before retry
+
+        logger.error("Failed to unload %s after %d attempts: %s", tracked.model_key, retries + 1, last_error)
+        return False
 
     async def _restore_from_cpu(self, model_key: str, required_mb: int) -> bool:
         """Restore an offloaded model from CPU to GPU."""
@@ -561,6 +593,10 @@ class GPUMemoryGovernor:
 
     async def _monitor_loop(self) -> None:
         """Background loop for memory pressure monitoring."""
+        consecutive_failures = 0
+        max_consecutive_failures = 5
+        backoff_seconds = 60  # Pause for 1 minute after repeated failures
+
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(self._pressure_check_interval)
@@ -588,10 +624,24 @@ class GPUMemoryGovernor:
                     )
                     await self._handle_moderate_pressure()
 
+                # Reset failure counter on success
+                consecutive_failures = 0
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.exception("Error in memory monitor: %s", e)
+                consecutive_failures += 1
+                logger.exception("Error in memory monitor (failure %d/%d): %s",
+                               consecutive_failures, max_consecutive_failures, e)
+
+                if consecutive_failures >= max_consecutive_failures:
+                    logger.error(
+                        "Memory monitor circuit breaker triggered after %d failures. "
+                        "Pausing for %ds before resuming.",
+                        consecutive_failures, backoff_seconds
+                    )
+                    await asyncio.sleep(backoff_seconds)
+                    consecutive_failures = 0  # Reset after backoff
 
     def _calculate_pressure_level(self) -> PressureLevel:
         """Calculate current memory pressure level."""
@@ -747,10 +797,14 @@ class GPUMemoryGovernor:
 
     def _touch_model(self, model_key: str) -> None:
         """Update model's last_used and move to end of LRU."""
-        if model_key in self._models:
-            self._models[model_key].last_used = time.time()
-            self._models[model_key].use_count += 1
+        try:
+            tracked = self._models[model_key]
+            tracked.last_used = time.time()
+            tracked.use_count += 1
             self._models.move_to_end(model_key)
+        except KeyError:
+            # Model was removed between check and access - this is fine
+            logger.debug("Model %s no longer tracked during touch", model_key)
 
     def _get_gpu_usage(self) -> int:
         """Get current GPU memory usage (tracked models only)."""
@@ -772,9 +826,14 @@ class GPUMemoryGovernor:
 
             return get_model_memory_requirement(model_name, quantization)
         except ImportError:
-            # Fallback estimate
-            logger.warning("Could not import memory_utils, using fallback estimate")
-            return 2000  # 2GB default
+            # Fallback estimate - this should never happen in normal operation
+            logger.warning(
+                "Could not import memory_utils for model %s:%s. "
+                "Using fallback estimate of 2000MB which may cause OOM or underutilization. "
+                "Check that vecpipe.memory_utils is properly installed.",
+                model_name, quantization
+            )
+            return 2000  # 2GB default - conservative estimate
 
     def _record_eviction(self, tracked: TrackedModel, reason: str, action: str) -> None:
         """Record an eviction event."""

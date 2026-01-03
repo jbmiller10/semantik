@@ -9,7 +9,7 @@ Semantik uses a sophisticated GPU memory management system to efficiently handle
 │                        GPUMemoryGovernor                                │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    Memory Budget Tracking                        │   │
-│  │  - GPU usable memory (total * max% - reserve%)                  │   │
+│  │  - GPU usable = total * min(max%, 1 - reserve%)                 │   │
 │  │  - CPU warm pool capacity                                        │   │
 │  │  - Current allocations per model                                 │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
@@ -250,6 +250,104 @@ Returns recent eviction history:
 ]
 ```
 
+### GET /memory/fragmentation
+
+Returns CUDA memory fragmentation analysis. High fragmentation can cause OOM even when
+total free memory seems sufficient.
+
+```json
+{
+  "cuda_available": true,
+  "allocated_mb": 6144,
+  "reserved_mb": 8192,
+  "fragmentation_mb": 2048,
+  "fragmentation_percent": 25.0,
+  "num_alloc_retries": 3,
+  "num_ooms": 0
+}
+```
+
+### GET /memory/offloaded
+
+Returns list of models currently offloaded to CPU RAM (warm pool):
+
+```json
+[
+  {
+    "model_key": "reranker:Qwen/Qwen3-Reranker-0.6B:float16",
+    "original_device": "cuda:0",
+    "offload_time": 1704067200.123,
+    "seconds_offloaded": 45.2
+  }
+]
+```
+
+### GET /memory/health
+
+Quick health check based on current memory pressure:
+
+```json
+{
+  "healthy": true,
+  "pressure": "LOW",
+  "used_percent": 25.0,
+  "message": "Memory usage normal"
+}
+```
+
+Returns `healthy: false` when pressure level is CRITICAL.
+
+### POST /memory/defragment
+
+Triggers CUDA memory cache cleanup. Useful when experiencing fragmentation issues:
+
+```json
+{
+  "status": "defragmentation_triggered"
+}
+```
+
+### POST /memory/evict/{model_type}
+
+Manually evict a model to free GPU memory. `model_type` must be "embedding" or "reranker":
+
+```bash
+curl -X POST http://localhost:8001/memory/evict/reranker
+```
+
+```json
+{
+  "status": "evicted",
+  "model_type": "reranker"
+}
+```
+
+### POST /memory/preload
+
+Preload models for expected requests. Useful for warming up before peak traffic:
+
+```json
+{
+  "models": [
+    {
+      "name": "Qwen/Qwen3-Embedding-0.6B",
+      "model_type": "embedding",
+      "quantization": "float16"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "results": {
+    "embedding:Qwen/Qwen3-Embedding-0.6B:float16": true
+  }
+}
+```
+
 ## Troubleshooting
 
 ### OOM Errors Still Occurring
@@ -290,13 +388,15 @@ WARNING - HIGH memory pressure: 85.2%. Offloading idle models.
 ERROR - CRITICAL memory pressure! Usage: 94.1%. Forcing aggressive eviction.
 ```
 
-### Prometheus Metrics
+### Memory Monitoring
 
-The following metrics are exposed:
+Memory statistics are available via REST API endpoints (see API Reference below).
+Use the `/memory/stats` endpoint to get comprehensive memory metrics including:
 
-- `vecpipe_gpu_memory_used_bytes` - Current GPU memory usage
-- `vecpipe_gpu_memory_total_bytes` - Total GPU memory
-- `vecpipe_models_loaded` - Number of models on GPU
-- `vecpipe_models_offloaded` - Number of models in CPU warm pool
-- `vecpipe_eviction_total` - Total evictions by type (offload/unload)
-- `vecpipe_memory_pressure_level` - Current pressure level (0-3)
+- GPU/CPU memory usage
+- Models loaded and offloaded counts
+- Pressure level
+- Eviction/offload/restoration statistics
+
+For production monitoring, you can poll the `/memory/health` endpoint which returns
+a quick health status based on current memory pressure.

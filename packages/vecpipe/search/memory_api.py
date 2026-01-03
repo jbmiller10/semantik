@@ -34,11 +34,16 @@ class MemoryStatsResponse(BaseModel):
     reserved_mb: int = 0
     budget_total_mb: int = 0
     budget_usable_mb: int = 0
-    budget_embedding_mb: int = 0
-    budget_reranker_mb: int = 0
+    cpu_budget_total_mb: int = 0
+    cpu_budget_usable_mb: int = 0
+    cpu_used_mb: int = 0
     models_loaded: int = 0
     models_offloaded: int = 0
     pressure_level: str = "UNKNOWN"
+    total_evictions: int = 0
+    total_offloads: int = 0
+    total_restorations: int = 0
+    total_unloads: int = 0
 
 
 class LoadedModelInfo(BaseModel):
@@ -72,9 +77,24 @@ class FragmentationInfo(BaseModel):
     num_ooms: int = 0
 
 
+class PreloadModelSpec(BaseModel):
+    """Specification for a model to preload."""
+    name: str
+    model_type: str  # "embedding" or "reranker"
+    quantization: str
+
+    def model_post_init(self, __context: Any) -> None:
+        """Validate model_type after initialization."""
+        valid_types = {"embedding", "reranker"}
+        if self.model_type not in valid_types:
+            raise ValueError(
+                f"model_type must be one of {valid_types}, got '{self.model_type}'"
+            )
+
+
 class PreloadRequest(BaseModel):
     """Request to preload models."""
-    models: list[tuple[str, str, str]]  # (name, type, quantization)
+    models: list[PreloadModelSpec]
 
 
 class PreloadResponse(BaseModel):
@@ -231,12 +251,11 @@ async def evict_model(model_type: str) -> dict[str, Any]:
             model_mgr.unload_model()
         return {"status": "evicted", "model_type": "embedding"}
 
-    elif model_type == "reranker":
+    if model_type == "reranker":
         model_mgr.unload_reranker()
         return {"status": "evicted", "model_type": "reranker"}
 
-    else:
-        raise HTTPException(status_code=400, detail="Invalid model_type")
+    raise HTTPException(status_code=400, detail="Invalid model_type")
 
 
 @router.post("/preload", response_model=PreloadResponse)
@@ -258,7 +277,12 @@ async def preload_models(request: PreloadRequest) -> dict[str, Any]:
             detail="Preloading not supported (requires GovernedModelManager)"
         )
 
-    results = await model_mgr.preload_models(request.models)
+    # Convert from PreloadModelSpec to tuples expected by preload_models
+    model_tuples = [
+        (spec.name, spec.model_type, spec.quantization)
+        for spec in request.models
+    ]
+    results = await model_mgr.preload_models(model_tuples)
     return {"results": results}
 
 
@@ -304,17 +328,16 @@ async def memory_health_check() -> dict[str, Any]:
             "used_percent": stats.get("used_percent", 0),
             "message": "Critical memory pressure - OOM risk",
         }
-    elif pressure == "HIGH":
+    if pressure == "HIGH":
         return {
             "healthy": True,
             "pressure": pressure,
             "used_percent": stats.get("used_percent", 0),
             "message": "High memory pressure - eviction active",
         }
-    else:
-        return {
-            "healthy": True,
-            "pressure": pressure,
-            "used_percent": stats.get("used_percent", 0),
-            "message": "Memory usage normal",
-        }
+    return {
+        "healthy": True,
+        "pressure": pressure,
+        "used_percent": stats.get("used_percent", 0),
+        "message": "Memory usage normal",
+    }

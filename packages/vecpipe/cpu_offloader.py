@@ -44,11 +44,16 @@ class ModelOffloader:
         Args:
             model_key: Unique identifier for the model
             model: PyTorch model to offload
-            keep_on_gpu: List of parameter names to keep on GPU (e.g., small layers)
+            keep_on_gpu: Reserved for future use - partial offloading not yet implemented
 
         Returns:
             Offload metadata for restoration
         """
+        if keep_on_gpu:
+            logger.warning(
+                "keep_on_gpu parameter is not yet implemented - "
+                "entire model will be offloaded to CPU"
+            )
         keep_on_gpu = keep_on_gpu or []
         start_time = time.time()
 
@@ -105,6 +110,9 @@ class ModelOffloader:
 
         Returns:
             Restored model or None if not found
+
+        Raises:
+            RuntimeError: If GPU transfer fails (model remains on CPU in offloaded state)
         """
         if model_key not in self._offloaded_models:
             logger.warning("Model %s not found in offloaded models", model_key)
@@ -114,10 +122,18 @@ class ModelOffloader:
         model = metadata["model_ref"]
         start_time = time.time()
 
-        # Move back to GPU
-        model.to(device)
+        try:
+            # Move back to GPU
+            model.to(device)
+        except Exception as e:
+            # Keep model in offloaded state on failure - don't remove from tracking
+            logger.error(
+                "Failed to restore model %s to %s: %s. Model remains offloaded on CPU.",
+                model_key, device, e
+            )
+            raise RuntimeError(f"GPU restore failed for {model_key}: {e}") from e
 
-        # Clean up metadata
+        # Only clean up metadata after successful transfer
         del self._offloaded_models[model_key]
 
         elapsed = time.time() - start_time

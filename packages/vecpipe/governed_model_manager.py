@@ -131,11 +131,21 @@ class GovernedModelManager(ModelManager):
         Used for non-critical operations like touch and unload tracking
         where we don't need to wait for the result.
         """
+        import concurrent.futures
+
+        def _handle_future_error(future: concurrent.futures.Future[Any]) -> None:
+            """Log errors from scheduled coroutines."""
+            try:
+                future.result()
+            except Exception as e:
+                logger.warning("Scheduled governor coroutine failed: %s", e)
+
         try:
             try:
                 loop = asyncio.get_running_loop()
-                # Schedule without waiting
-                asyncio.run_coroutine_threadsafe(coro, loop)
+                # Schedule without waiting, but add callback for error handling
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                future.add_done_callback(_handle_future_error)
             except RuntimeError:
                 # No running loop - run synchronously
                 asyncio.run(coro)
