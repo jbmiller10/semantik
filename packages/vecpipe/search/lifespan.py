@@ -148,7 +148,11 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     finally:
         await qdrant.aclose()
         await qdrant_sdk.close()
-        model_mgr.shutdown()
+        # Use async shutdown for GovernedModelManager to avoid deadlock
+        if hasattr(model_mgr, "shutdown_async"):
+            await model_mgr.shutdown_async()
+        else:
+            model_mgr.shutdown()
         pool.shutdown(wait=True)
         clear_resources()
         logger.info("Disconnected from Qdrant")

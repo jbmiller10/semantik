@@ -397,16 +397,39 @@ class GovernedModelManager(ModelManager):
 
         return results
 
+    async def shutdown_async(self) -> None:
+        """Async shutdown - use this from async contexts like FastAPI lifespan."""
+        try:
+            await self._governor.shutdown()
+        except Exception as e:
+            logger.error("Error shutting down governor: %s", e)
+
+        # Clear offloader
+        self._offloader.clear()
+
+        # Parent shutdown
+        super().shutdown()
+
     def shutdown(self) -> None:
-        """Shutdown with governor cleanup."""
-        # Run governor shutdown in event loop if possible
+        """Sync shutdown - use from non-async contexts only.
+
+        For async contexts (FastAPI lifespan, etc.), use shutdown_async() instead
+        to avoid deadlocks.
+        """
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
+                # Schedule shutdown without blocking to avoid deadlock
+                # The caller should use shutdown_async() in async contexts
                 asyncio.run_coroutine_threadsafe(
                     self._governor.shutdown(),
                     loop,
-                ).result(timeout=10)
+                )
+                logger.warning(
+                    "shutdown() called from running event loop - "
+                    "governor shutdown scheduled but not awaited. "
+                    "Use shutdown_async() in async contexts."
+                )
             else:
                 loop.run_until_complete(self._governor.shutdown())
         except Exception as e:
