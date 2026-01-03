@@ -289,9 +289,12 @@ class PluginService:
         )
 
         # Sync state file for VecPipe
-        await self._sync_state_file()
+        sync_success = await self._sync_state_file()
 
-        return self._build_plugin_payload(record, config_row)
+        payload = self._build_plugin_payload(record, config_row)
+        if not sync_success:
+            payload["sync_warning"] = "Plugin state file sync failed. Changes may not take effect until next restart."
+        return payload
 
     async def set_enabled(self, plugin_id: str, enabled: bool) -> dict[str, Any] | None:
         record = self._get_external_record(plugin_id)
@@ -311,10 +314,12 @@ class PluginService:
         )
 
         # Sync state file for VecPipe
-        await self._sync_state_file()
+        sync_success = await self._sync_state_file()
 
         payload = self._build_plugin_payload(record, config_row)
         payload["requires_restart"] = True
+        if not sync_success:
+            payload["sync_warning"] = "Plugin state file sync failed. Changes may not take effect until next restart."
         return payload
 
     async def get_manifest(self, plugin_id: str) -> dict[str, Any] | None:
@@ -378,7 +383,7 @@ class PluginService:
             "error_message": error_message,
         }
 
-    async def _sync_state_file(self) -> None:
+    async def _sync_state_file(self) -> bool:
         """Synchronize plugin state to shared file for VecPipe.
 
         Writes a JSON state file containing:
@@ -387,6 +392,9 @@ class PluginService:
 
         This file is read by VecPipe at startup to determine which plugins
         to load and how to configure them.
+
+        Returns:
+            True if sync succeeded, False if it failed (logged as warning).
         """
         try:
             # Get all plugin configs from database
@@ -412,10 +420,12 @@ class PluginService:
             )
             write_state(state)
             logger.debug("Plugin state file synced with %d configs", len(config_map))
+            return True
 
         except Exception as exc:
             # Log but don't fail the operation - state file is a best-effort feature
             logger.warning("Failed to sync plugin state file: %s", exc)
+            return False
 
     async def _refresh_health(
         self,

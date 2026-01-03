@@ -256,7 +256,12 @@ async def enable_plugin(
     payload = await service.set_enabled(plugin_id, True)
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
-    return PluginStatusResponse(plugin_id=plugin_id, enabled=True, requires_restart=True)
+    return PluginStatusResponse(
+        plugin_id=plugin_id,
+        enabled=True,
+        requires_restart=True,
+        sync_warning=payload.get("sync_warning"),
+    )
 
 
 @router.post(
@@ -276,7 +281,12 @@ async def disable_plugin(
     payload = await service.set_enabled(plugin_id, False)
     if payload is None:
         raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")
-    return PluginStatusResponse(plugin_id=plugin_id, enabled=False, requires_restart=True)
+    return PluginStatusResponse(
+        plugin_id=plugin_id,
+        enabled=False,
+        requires_restart=True,
+        sync_warning=payload.get("sync_warning"),
+    )
 
 
 @router.put(

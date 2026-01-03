@@ -42,6 +42,7 @@ class PluginInfo(BaseModel):
     last_health_check: datetime | None = None
     error_message: str | None = None
     requires_restart: bool | None = None
+    sync_warning: str | None = None
 
     model_config = ConfigDict(extra="allow")
 
@@ -62,6 +63,7 @@ class PluginStatusResponse(BaseModel):
     plugin_id: str
     enabled: bool
     requires_restart: bool = True
+    sync_warning: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
