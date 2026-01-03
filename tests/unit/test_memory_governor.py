@@ -1345,9 +1345,7 @@ class TestPressureHandlerContinuation:
         await gov.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_moderate_pressure_continues_on_offload_exception(
-        self, memory_budget: MemoryBudget
-    ) -> None:
+    async def test_moderate_pressure_continues_on_offload_exception(self, memory_budget: MemoryBudget) -> None:
         """Moderate pressure handler continues after offload exception."""
         gov = GPUMemoryGovernor(memory_budget, enable_cpu_offload=True)
         # Add models that are idle beyond threshold
@@ -1381,9 +1379,7 @@ class TestPressureHandlerContinuation:
         await gov.shutdown()
 
     @pytest.mark.asyncio()
-    async def test_failed_models_list_populated(
-        self, governor_with_models: GPUMemoryGovernor
-    ) -> None:
+    async def test_failed_models_list_populated(self, governor_with_models: GPUMemoryGovernor) -> None:
         """Failed models are tracked correctly in handlers."""
         gov = governor_with_models
 
