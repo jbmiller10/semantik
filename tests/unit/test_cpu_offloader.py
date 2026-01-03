@@ -176,6 +176,7 @@ class TestModelOffloader:
     def test_keep_on_gpu_warning(self, offloader, simple_model, caplog):
         """Test that keep_on_gpu parameter logs a warning."""
         import logging
+
         with caplog.at_level(logging.WARNING):
             offloader.offload_to_cpu(
                 "test_model",

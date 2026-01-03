@@ -26,6 +26,7 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 
 class MemoryStatsResponse(BaseModel):
     """Response model for memory statistics."""
+
     cuda_available: bool
     total_mb: int = 0
     free_mb: int = 0
@@ -49,6 +50,7 @@ class MemoryStatsResponse(BaseModel):
 
 class LoadedModelInfo(BaseModel):
     """Info about a loaded model."""
+
     model_name: str
     model_type: str
     quantization: str
@@ -60,6 +62,7 @@ class LoadedModelInfo(BaseModel):
 
 class EvictionInfo(BaseModel):
     """Info about a model eviction."""
+
     model_name: str
     model_type: str
     quantization: str
@@ -71,6 +74,7 @@ class EvictionInfo(BaseModel):
 
 class FragmentationInfo(BaseModel):
     """CUDA memory fragmentation info."""
+
     cuda_available: bool = False
     allocated_mb: int = 0
     reserved_mb: int = 0
@@ -82,6 +86,7 @@ class FragmentationInfo(BaseModel):
 
 class PreloadModelSpec(BaseModel):
     """Specification for a model to preload."""
+
     name: str
     model_type: str  # "embedding" or "reranker"
     quantization: str
@@ -92,16 +97,14 @@ class PreloadModelSpec(BaseModel):
         # Case-insensitive comparison
         normalized = self.model_type.lower().strip()
         if normalized not in valid_types:
-            raise ValueError(
-                f"model_type must be one of {valid_types} (case-insensitive), "
-                f"got '{self.model_type}'"
-            )
+            raise ValueError(f"model_type must be one of {valid_types} (case-insensitive), " f"got '{self.model_type}'")
         # Normalize to lowercase
         object.__setattr__(self, "model_type", normalized)
 
 
 class PreloadRequest(BaseModel):
     """Request to preload models."""
+
     models: list[PreloadModelSpec]
 
 
@@ -113,6 +116,7 @@ class PreloadResponse(BaseModel):
     - False: failed with no specific error
     - str: error message describing the failure
     """
+
     results: dict[str, bool | str]
 
 
@@ -139,6 +143,7 @@ async def get_memory_stats() -> dict[str, Any]:
 
     # Fallback for non-governed manager
     import torch
+
     if not torch.cuda.is_available():
         return {"cuda_available": False}
 
@@ -186,29 +191,33 @@ async def get_loaded_models() -> list[dict[str, Any]]:
         parts = model_mgr.current_model_key.rsplit("_", 1)
         if len(parts) == 2:
             last_used = getattr(model_mgr, "last_used", now)
-            models.append({
-                "model_name": parts[0],
-                "model_type": "embedding",
-                "quantization": parts[1],
-                "location": "gpu",
-                "memory_mb": 0,
-                "idle_seconds": now - last_used,
-                "use_count": 0,
-            })
+            models.append(
+                {
+                    "model_name": parts[0],
+                    "model_type": "embedding",
+                    "quantization": parts[1],
+                    "location": "gpu",
+                    "memory_mb": 0,
+                    "idle_seconds": now - last_used,
+                    "use_count": 0,
+                }
+            )
 
     if model_mgr.current_reranker_key:
         parts = model_mgr.current_reranker_key.rsplit("_", 1)
         if len(parts) == 2:
             last_reranker_used = getattr(model_mgr, "last_reranker_used", now)
-            models.append({
-                "model_name": parts[0],
-                "model_type": "reranker",
-                "quantization": parts[1],
-                "location": "gpu",
-                "memory_mb": 0,
-                "idle_seconds": now - last_reranker_used,
-                "use_count": 0,
-            })
+            models.append(
+                {
+                    "model_name": parts[0],
+                    "model_type": "reranker",
+                    "quantization": parts[1],
+                    "location": "gpu",
+                    "memory_mb": 0,
+                    "idle_seconds": now - last_reranker_used,
+                    "use_count": 0,
+                }
+            )
 
     return models
 
@@ -347,16 +356,10 @@ async def preload_models(request: PreloadRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Model manager not available")
 
     if not hasattr(model_mgr, "preload_models"):
-        raise HTTPException(
-            status_code=501,
-            detail="Preloading not supported (requires GovernedModelManager)"
-        )
+        raise HTTPException(status_code=501, detail="Preloading not supported (requires GovernedModelManager)")
 
     # Convert from PreloadModelSpec to tuples expected by preload_models
-    model_tuples = [
-        (spec.name, spec.model_type, spec.quantization)
-        for spec in request.models
-    ]
+    model_tuples = [(spec.name, spec.model_type, spec.quantization) for spec in request.models]
     results = await model_mgr.preload_models(model_tuples)
     return {"results": results}
 

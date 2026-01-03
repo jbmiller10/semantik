@@ -87,10 +87,7 @@ class ModelOffloader:
             Offload metadata for restoration
         """
         if keep_on_gpu:
-            logger.warning(
-                "keep_on_gpu parameter is not yet implemented - "
-                "entire model will be offloaded to CPU"
-            )
+            logger.warning("keep_on_gpu parameter is not yet implemented - " "entire model will be offloaded to CPU")
         keep_on_gpu = keep_on_gpu or []
         start_time = time.time()
 
@@ -98,10 +95,7 @@ class ModelOffloader:
         try:
             original_device = next(model.parameters()).device
         except StopIteration:
-            logger.warning(
-                "Model %s has no parameters, using 'cpu' as original device",
-                model_key
-            )
+            logger.warning("Model %s has no parameters, using 'cpu' as original device", model_key)
             original_device = torch.device("cpu")
 
         # Move to CPU
@@ -109,9 +103,11 @@ class ModelOffloader:
             model.to("cpu")
         except Exception as e:
             logger.error(
-                "Failed to move model %s to CPU: %s (type: %s). "
-                "Model remains on %s.",
-                model_key, e, type(e).__name__, original_device
+                "Failed to move model %s to CPU: %s (type: %s). " "Model remains on %s.",
+                model_key,
+                e,
+                type(e).__name__,
+                original_device,
             )
             raise RuntimeError(f"Failed to offload {model_key} to CPU: {e}") from e
 
@@ -142,10 +138,7 @@ class ModelOffloader:
         self._offloaded_models[model_key] = metadata
 
         elapsed = time.time() - start_time
-        logger.info(
-            "Offloaded model %s to CPU in %.2fs",
-            model_key, elapsed
-        )
+        logger.info("Offloaded model %s to CPU in %.2fs", model_key, elapsed)
 
         return metadata
 
@@ -170,8 +163,7 @@ class ModelOffloader:
         """
         if model_key not in self._offloaded_models:
             raise KeyError(
-                f"Model {model_key} not found in offloaded models. "
-                f"Available: {list(self._offloaded_models.keys())}"
+                f"Model {model_key} not found in offloaded models. " f"Available: {list(self._offloaded_models.keys())}"
             )
 
         metadata = self._offloaded_models[model_key]
@@ -183,20 +175,14 @@ class ModelOffloader:
             model.to(device)
         except Exception as e:
             # Keep model in offloaded state on failure - don't remove from tracking
-            logger.error(
-                "Failed to restore model %s to %s: %s. Model remains offloaded on CPU.",
-                model_key, device, e
-            )
+            logger.error("Failed to restore model %s to %s: %s. Model remains offloaded on CPU.", model_key, device, e)
             raise RuntimeError(f"GPU restore failed for {model_key}: {e}") from e
 
         # Only clean up metadata after successful transfer
         del self._offloaded_models[model_key]
 
         elapsed = time.time() - start_time
-        logger.info(
-            "Restored model %s to %s in %.2fs",
-            model_key, device, elapsed
-        )
+        logger.info("Restored model %s to %s in %.2fs", model_key, device, elapsed)
 
         return model
 
@@ -263,9 +249,7 @@ class GradientCheckpointWrapper:
             model.gradient_checkpointing_enable()
             logger.info("Gradient checkpointing enabled for model")
         else:
-            logger.warning(
-                "Model does not support gradient_checkpointing_enable"
-            )
+            logger.warning("Model does not support gradient_checkpointing_enable")
 
     @staticmethod
     def disable_checkpointing(model: nn.Module) -> None:
@@ -364,9 +348,7 @@ def get_cuda_memory_fragmentation() -> dict[str, Any]:
         "allocated_mb": allocated // (1024 * 1024),
         "reserved_mb": reserved // (1024 * 1024),
         "fragmentation_mb": fragmentation_mb,
-        "fragmentation_percent": (
-            (fragmentation_bytes / reserved * 100) if reserved > 0 else 0
-        ),
+        "fragmentation_percent": ((fragmentation_bytes / reserved * 100) if reserved > 0 else 0),
         "num_alloc_retries": stats.get("num_alloc_retries", 0),
         "num_ooms": stats.get("num_ooms", 0),
     }

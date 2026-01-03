@@ -600,7 +600,7 @@ class TestEvictionRecord:
 
             # Trim if over limit
             if len(governor._eviction_history) > governor._max_history_size:
-                governor._eviction_history = governor._eviction_history[-governor._max_history_size:]
+                governor._eviction_history = governor._eviction_history[-governor._max_history_size :]
 
         history = governor.get_eviction_history()
         assert len(history) == 5

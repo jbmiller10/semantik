@@ -94,13 +94,10 @@ class MemoryBudget:
 
     def _validate_percentages(self) -> None:
         """Validate percentage fields are in valid range [0.0, 1.0]."""
-        for field_name in ("gpu_reserve_percent", "gpu_max_percent",
-                          "cpu_reserve_percent", "cpu_max_percent"):
+        for field_name in ("gpu_reserve_percent", "gpu_max_percent", "cpu_reserve_percent", "cpu_max_percent"):
             value = getattr(self, field_name)
             if not 0.0 <= value <= 1.0:
-                raise ValueError(
-                    f"{field_name} must be between 0.0 and 1.0, got {value}"
-                )
+                raise ValueError(f"{field_name} must be between 0.0 and 1.0, got {value}")
 
     def _validate_memory_values(self) -> None:
         """Validate memory values are non-negative."""
@@ -544,9 +541,7 @@ class GPUMemoryGovernor:
                 await callback(tracked.model_name, tracked.quantization, "cpu")
                 tracked.location = ModelLocation.CPU
 
-                self._record_eviction(
-                    tracked, reason="memory_pressure", action=EvictionAction.OFFLOADED
-                )
+                self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.OFFLOADED)
 
                 logger.info(
                     "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
@@ -560,7 +555,10 @@ class GPUMemoryGovernor:
                 if attempt < retries:
                     logger.warning(
                         "Offload attempt %d/%d failed for %s: %s, retrying...",
-                        attempt + 1, retries + 1, tracked.model_key, e
+                        attempt + 1,
+                        retries + 1,
+                        tracked.model_key,
+                        e,
                     )
                     await asyncio.sleep(0.1)  # Short delay before retry
 
@@ -584,9 +582,7 @@ class GPUMemoryGovernor:
             try:
                 await callback(tracked.model_name, tracked.quantization)
 
-                self._record_eviction(
-                    tracked, reason="memory_pressure", action=EvictionAction.UNLOADED
-                )
+                self._record_eviction(tracked, reason="memory_pressure", action=EvictionAction.UNLOADED)
 
                 # Remove from tracking
                 model_key = tracked.model_key
@@ -605,7 +601,10 @@ class GPUMemoryGovernor:
                 if attempt < retries:
                     logger.warning(
                         "Unload attempt %d/%d failed for %s: %s, retrying...",
-                        attempt + 1, retries + 1, tracked.model_key, e
+                        attempt + 1,
+                        retries + 1,
+                        tracked.model_key,
+                        e,
                     )
                     await asyncio.sleep(0.1)  # Short delay before retry
 
@@ -624,15 +623,10 @@ class GPUMemoryGovernor:
         """
         tracked = self._models.get(model_key)
         if not tracked:
-            logger.warning(
-                "Cannot restore %s: model not found in tracking", model_key
-            )
+            logger.warning("Cannot restore %s: model not found in tracking", model_key)
             return False
         if tracked.location != ModelLocation.CPU:
-            logger.warning(
-                "Cannot restore %s: model is on %s, not CPU",
-                model_key, tracked.location.name
-            )
+            logger.warning("Cannot restore %s: model is on %s, not CPU", model_key, tracked.location.name)
             return False
 
         # Ensure we have room on GPU
@@ -646,7 +640,11 @@ class GPUMemoryGovernor:
                 logger.warning(
                     "Cannot restore %s: insufficient GPU memory after eviction "
                     "(needed=%dMB, freed=%dMB, current=%dMB, usable=%dMB)",
-                    model_key, needed, freed, current_gpu_usage, self._budget.usable_gpu_mb
+                    model_key,
+                    needed,
+                    freed,
+                    current_gpu_usage,
+                    self._budget.usable_gpu_mb,
                 )
                 return False
 
@@ -654,8 +652,7 @@ class GPUMemoryGovernor:
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
             logger.warning(
-                "Cannot restore %s: no offload callback registered for %s",
-                model_key, tracked.model_type.name
+                "Cannot restore %s: no offload callback registered for %s", model_key, tracked.model_type.name
             )
             return False
 
@@ -669,10 +666,7 @@ class GPUMemoryGovernor:
             logger.info("Restored %s from CPU to GPU", model_key)
             return True
         except Exception as e:
-            logger.error(
-                "Failed to restore %s from CPU to GPU: %s (type: %s)",
-                model_key, e, type(e).__name__
-            )
+            logger.error("Failed to restore %s from CPU to GPU: %s (type: %s)", model_key, e, type(e).__name__)
             return False
 
     # -------------------------------------------------------------------------
@@ -754,9 +748,10 @@ class GPUMemoryGovernor:
                 if successful_iterations >= successful_iterations_to_reset:
                     if current_backoff > base_backoff_seconds:
                         logger.info(
-                            "Memory monitor stable for %d iterations, "
-                            "resetting backoff from %ds to %ds",
-                            successful_iterations, current_backoff, base_backoff_seconds
+                            "Memory monitor stable for %d iterations, " "resetting backoff from %ds to %ds",
+                            successful_iterations,
+                            current_backoff,
+                            base_backoff_seconds,
                         )
                     current_backoff = base_backoff_seconds
                     successful_iterations = 0
@@ -766,14 +761,16 @@ class GPUMemoryGovernor:
             except Exception as e:
                 consecutive_failures += 1
                 successful_iterations = 0  # Reset success counter on failure
-                logger.exception("Error in memory monitor (failure %d/%d): %s",
-                               consecutive_failures, max_consecutive_failures, e)
+                logger.exception(
+                    "Error in memory monitor (failure %d/%d): %s", consecutive_failures, max_consecutive_failures, e
+                )
 
                 if consecutive_failures >= max_consecutive_failures:
                     logger.error(
                         "Memory monitor circuit breaker triggered after %d failures. "
                         "Pausing for %ds before resuming (exponential backoff).",
-                        consecutive_failures, current_backoff
+                        consecutive_failures,
+                        current_backoff,
                     )
                     await asyncio.sleep(current_backoff)
                     consecutive_failures = 0
@@ -806,15 +803,11 @@ class GPUMemoryGovernor:
                         await self._unload_model(tracked)
                     except Exception as e:
                         failed_models.append(tracked.model_key)
-                        logger.error(
-                            "Failed to unload %s during critical pressure: %s",
-                            tracked.model_key, e
-                        )
+                        logger.error("Failed to unload %s during critical pressure: %s", tracked.model_key, e)
             gc.collect()
             if failed_models:
                 logger.warning(
-                    "Critical pressure handler completed with %d failures: %s",
-                    len(failed_models), failed_models
+                    "Critical pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
 
     async def _handle_high_pressure(self) -> None:
@@ -833,14 +826,10 @@ class GPUMemoryGovernor:
                             await self._unload_model(tracked)
                     except Exception as e:
                         failed_models.append(tracked.model_key)
-                        logger.error(
-                            "Failed to evict %s during high pressure: %s",
-                            tracked.model_key, e
-                        )
+                        logger.error("Failed to evict %s during high pressure: %s", tracked.model_key, e)
             if failed_models:
                 logger.warning(
-                    "High pressure handler completed with %d failures: %s",
-                    len(failed_models), failed_models
+                    "High pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
 
     async def _handle_moderate_pressure(self) -> None:
@@ -852,8 +841,7 @@ class GPUMemoryGovernor:
             failed_models: list[str] = []
             for tracked in list(self._models.values()):
                 is_idle_on_gpu = (
-                    tracked.location == ModelLocation.GPU
-                    and tracked.idle_seconds >= self._eviction_idle_threshold
+                    tracked.location == ModelLocation.GPU and tracked.idle_seconds >= self._eviction_idle_threshold
                 )
                 can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
                 if is_idle_on_gpu and can_offload:
@@ -861,14 +849,10 @@ class GPUMemoryGovernor:
                         await self._offload_model(tracked)
                     except Exception as e:
                         failed_models.append(tracked.model_key)
-                        logger.error(
-                            "Failed to offload %s during moderate pressure: %s",
-                            tracked.model_key, e
-                        )
+                        logger.error("Failed to offload %s during moderate pressure: %s", tracked.model_key, e)
             if failed_models:
                 logger.warning(
-                    "Moderate pressure handler completed with %d failures: %s",
-                    len(failed_models), failed_models
+                    "Moderate pressure handler completed with %d failures: %s", len(failed_models), failed_models
                 )
 
     # -------------------------------------------------------------------------
@@ -1012,9 +996,7 @@ class GPUMemoryGovernor:
                 f"Check that vecpipe.memory_utils is properly installed."
             ) from e
 
-    def _record_eviction(
-        self, tracked: TrackedModel, reason: str, action: EvictionAction
-    ) -> None:
+    def _record_eviction(self, tracked: TrackedModel, reason: str, action: EvictionAction) -> None:
         """Record an eviction event."""
         record = EvictionRecord(
             model_name=tracked.model_name,
