@@ -7,6 +7,8 @@ capabilities for sophisticated, dynamic memory management.
 
 import asyncio
 import logging
+import threading
+import time
 from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -19,7 +21,7 @@ from .memory_governor import (
     ModelType,
     create_memory_budget,
 )
-from .memory_utils import get_model_memory_requirement
+from .memory_utils import ModelRestoreError, get_model_memory_requirement
 from .model_manager import ModelManager
 
 if TYPE_CHECKING:
@@ -78,6 +80,11 @@ class GovernedModelManager(ModelManager):
             offload_fn=self._governor_offload_reranker,
         )
 
+        # Critical failure tracking for async operations
+        self._critical_failures: list[tuple[float, str, Exception]] = []
+        self._critical_failures_lock = threading.Lock()
+        self._max_critical_failures = 10  # Bounded history
+
         logger.info(
             "GovernedModelManager initialized with governor (cpu_offload=%s, preemptive_eviction=%s)",
             enable_cpu_offload,
@@ -89,6 +96,48 @@ class GovernedModelManager(ModelManager):
         if self._enable_preemptive_eviction:
             await self._governor.start_monitor()
         self._governor_initialized = True
+
+    def _record_critical_failure(self, description: str, error: Exception) -> None:
+        """Record a critical failure for later inspection.
+
+        Args:
+            description: Human-readable description of the failed operation
+            error: The exception that occurred
+        """
+        with self._critical_failures_lock:
+            self._critical_failures.append((time.time(), description, error))
+            # Keep bounded to avoid memory growth
+            if len(self._critical_failures) > self._max_critical_failures:
+                self._critical_failures = self._critical_failures[-self._max_critical_failures :]
+
+    def get_critical_failures(self) -> list[dict[str, Any]]:
+        """Get list of recent critical failures.
+
+        Returns:
+            List of dicts with 'timestamp', 'description', 'error', 'error_type' keys
+        """
+        with self._critical_failures_lock:
+            return [
+                {
+                    "timestamp": ts,
+                    "description": desc,
+                    "error": str(err),
+                    "error_type": type(err).__name__,
+                }
+                for ts, desc, err in self._critical_failures
+            ]
+
+    def has_critical_failures(self) -> bool:
+        """Check if there are any recent critical failures."""
+        with self._critical_failures_lock:
+            return len(self._critical_failures) > 0
+
+    def clear_critical_failures(self) -> int:
+        """Clear critical failures and return count cleared."""
+        with self._critical_failures_lock:
+            count = len(self._critical_failures)
+            self._critical_failures.clear()
+            return count
 
     def _run_governor_coro(self, coro: Coroutine[Any, Any, T], timeout: float = 30.0) -> T:
         """
@@ -122,7 +171,9 @@ class GovernedModelManager(ModelManager):
             logger.error("Error running governor coroutine: %s", e)
             raise
 
-    def _schedule_governor_coro(self, coro: Coroutine[Any, Any, Any], *, critical: bool = False) -> None:
+    def _schedule_governor_coro(
+        self, coro: Coroutine[Any, Any, Any], *, critical: bool = False, description: str = ""
+    ) -> None:
         """
         Schedule a governor coroutine without blocking.
 
@@ -131,18 +182,20 @@ class GovernedModelManager(ModelManager):
 
         Args:
             coro: Coroutine to schedule
-            critical: If True, log failures as ERROR (state drift risk).
+            critical: If True, log failures as ERROR and record for inspection (state drift risk).
                       If False, log as WARNING (acceptable for touch operations).
+            description: Human-readable description of the operation (for error tracking).
         """
         import concurrent.futures
 
         def _handle_future_error(future: concurrent.futures.Future[Any]) -> None:
-            """Log errors from scheduled coroutines."""
+            """Log errors from scheduled coroutines and record critical failures."""
             try:
                 future.result()
             except Exception as e:
                 if critical:
-                    logger.error("Critical governor coroutine failed (may cause state drift): %s", e)
+                    logger.error("Critical governor coroutine failed: %s - %s", description, e)
+                    self._record_critical_failure(description, e)
                 else:
                     logger.warning("Scheduled governor coroutine failed: %s", e)
 
@@ -158,12 +211,14 @@ class GovernedModelManager(ModelManager):
                     asyncio.run(coro)
                 except Exception as e:
                     if critical:
-                        logger.error("Critical governor coroutine failed: %s", e)
+                        logger.error("Critical governor coroutine failed: %s - %s", description, e)
+                        self._record_critical_failure(description, e)
                         raise  # Propagate critical failures
                     logger.warning("Scheduled governor coroutine failed: %s", e)
         except Exception as e:
             if critical:
-                logger.error("Failed to schedule critical governor coroutine (state drift risk): %s", e)
+                logger.error("Failed to schedule critical governor coroutine: %s - %s", description, e)
+                self._record_critical_failure(description, e)
                 raise  # Propagate critical scheduling failures
             logger.warning("Failed to schedule governor coroutine: %s", e)
 
@@ -300,6 +355,7 @@ class GovernedModelManager(ModelManager):
                 self._schedule_governor_coro(
                     self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization),
                     critical=True,
+                    description=f"mark_unloaded reranker {model_name}:{quantization} (load failure cleanup)",
                 )
                 raise
 
@@ -313,6 +369,7 @@ class GovernedModelManager(ModelManager):
                 self._schedule_governor_coro(
                     self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization),
                     critical=True,
+                    description=f"mark_unloaded reranker {model_name}:{quantization}",
                 )
 
         super().unload_reranker()
@@ -378,7 +435,10 @@ class GovernedModelManager(ModelManager):
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)
             else:
-                logger.warning("Cannot restore %s: not found in offloaded models", model_key)
+                raise ModelRestoreError(
+                    model_key=model_key,
+                    reason="not found in offloaded models (state mismatch between governor and offloader)",
+                )
 
     async def _governor_offload_reranker(
         self,
@@ -411,7 +471,10 @@ class GovernedModelManager(ModelManager):
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)
             else:
-                logger.warning("Cannot restore %s: not found in offloaded models", model_key)
+                raise ModelRestoreError(
+                    model_key=model_key,
+                    reason="not found in offloaded models (state mismatch between governor and offloader)",
+                )
 
     def get_status(self) -> dict[str, Any]:
         """Get status including governor information."""
@@ -428,6 +491,12 @@ class GovernedModelManager(ModelManager):
         # Add offloader stats
         offloaded = self._offloader.get_offloaded_models()
         status["offloaded_models"] = [self._offloader.get_offload_info(key) for key in offloaded]
+
+        # Add critical failure tracking info
+        status["critical_failures"] = {
+            "has_failures": self.has_critical_failures(),
+            "failures": self.get_critical_failures(),
+        }
 
         return status
 

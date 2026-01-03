@@ -40,6 +40,19 @@ class InsufficientMemoryError(Exception):
     """Raised when there's not enough memory to load a model"""
 
 
+class ModelRestoreError(Exception):
+    """Raised when a model cannot be restored from CPU to GPU.
+
+    This indicates a state inconsistency between the governor's tracking
+    and the offloader's actual records.
+    """
+
+    def __init__(self, model_key: str, reason: str):
+        self.model_key = model_key
+        self.reason = reason
+        super().__init__(f"Failed to restore {model_key}: {reason}")
+
+
 def get_gpu_memory_info() -> tuple[int, int]:
     """
     Get GPU memory information
