@@ -124,6 +124,9 @@ class GovernedModelManager(ModelManager):
 
         # Fast path: already initialized with correct model and on GPU
         if self._provider is not None and self.current_model_key == model_key:
+            # Touch to update LRU (request_memory may have already touched,
+            # but explicit touch ensures LRU is always updated on inference)
+            await self._governor.touch(model_name, ModelType.EMBEDDING, quantization)
             self._update_last_used()
             return self._provider
 
@@ -131,7 +134,7 @@ class GovernedModelManager(ModelManager):
         try:
             provider = await super()._ensure_provider_initialized(model_name, quantization)
 
-            # Mark as loaded in governor
+            # Mark as loaded in governor (also sets initial last_used)
             await self._governor.mark_loaded(
                 model_name=model_name,
                 model_type=ModelType.EMBEDDING,
@@ -207,6 +210,13 @@ class GovernedModelManager(ModelManager):
 
             # Fast path: already loaded and on GPU (after governor check for restoration)
             if self.current_reranker_key == reranker_key and self.reranker is not None:
+                # Touch to update LRU (request_memory may have already touched,
+                # but explicit touch ensures LRU is always updated on inference)
+                touch_coro = self._governor.touch(model_name, ModelType.RERANKER, quantization)
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(touch_coro, loop)
+                else:
+                    loop.run_until_complete(touch_coro)
                 self._update_last_reranker_used()
                 return True
 
@@ -264,21 +274,30 @@ class GovernedModelManager(ModelManager):
         model_name: str,
         quantization: str,
     ) -> None:
-        """Callback for governor to unload embedding model."""
-        # Check if this is the currently loaded model
+        """Callback for governor to unload embedding model.
+
+        Note: Calls parent's unload directly to avoid deadlock.
+        The governor already handles removal from tracking in _unload_model.
+        """
         expected_key = self._get_model_key(model_name, quantization)
         if self.current_model_key == expected_key:
-            await self.unload_model_async()
+            # Call parent directly - governor already removed from tracking
+            await super().unload_model_async()
 
     async def _governor_unload_reranker(
         self,
         model_name: str,
         quantization: str,
     ) -> None:
-        """Callback for governor to unload reranker."""
+        """Callback for governor to unload reranker.
+
+        Note: Calls parent's unload directly to avoid deadlock.
+        The governor already handles removal from tracking in _unload_model.
+        """
         expected_key = self._get_model_key(model_name, quantization)
         if self.current_reranker_key == expected_key:
-            self.unload_reranker()
+            # Call parent directly - governor already removed from tracking
+            super().unload_reranker()
 
     async def _governor_offload_embedding(
         self,
