@@ -9,19 +9,18 @@ This module provides intelligent GPU memory management for ML models:
 """
 
 import asyncio
+import contextlib
 import gc
 import logging
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import Any
 
 import psutil
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +281,7 @@ class GPUMemoryGovernor:
                 if tracked.location == ModelLocation.GPU:
                     self._touch_model(model_key)
                     return True
-                elif tracked.location == ModelLocation.CPU:
+                if tracked.location == ModelLocation.CPU:
                     # Model is offloaded, need to restore
                     return await self._restore_from_cpu(model_key, required_mb)
 
@@ -554,10 +553,8 @@ class GPUMemoryGovernor:
 
         if self._monitor_task:
             self._monitor_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._monitor_task
-            except asyncio.CancelledError:
-                pass
             self._monitor_task = None
 
         logger.info("GPUMemoryGovernor shutdown complete")
@@ -602,12 +599,11 @@ class GPUMemoryGovernor:
 
         if usage_percent >= 90:
             return PressureLevel.CRITICAL
-        elif usage_percent >= 80:
+        if usage_percent >= 80:
             return PressureLevel.HIGH
-        elif usage_percent >= 60:
+        if usage_percent >= 60:
             return PressureLevel.MODERATE
-        else:
-            return PressureLevel.LOW
+        return PressureLevel.LOW
 
     async def _handle_critical_pressure(self) -> None:
         """Handle critical memory pressure - force unload all idle models."""
@@ -631,9 +627,13 @@ class GPUMemoryGovernor:
         """Handle moderate pressure - preemptive offloading of idle models."""
         async with self._lock:
             for tracked in list(self._models.values()):
-                if tracked.location == ModelLocation.GPU and tracked.idle_seconds >= self._eviction_idle_threshold:
-                    if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
-                        await self._offload_model(tracked)
+                is_idle_on_gpu = (
+                    tracked.location == ModelLocation.GPU
+                    and tracked.idle_seconds >= self._eviction_idle_threshold
+                )
+                can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
+                if is_idle_on_gpu and can_offload:
+                    await self._offload_model(tracked)
 
     # -------------------------------------------------------------------------
     # Callback Registration

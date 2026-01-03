@@ -65,8 +65,9 @@ class ModelOffloader:
                     continue
                 try:
                     param.data = param.data.pin_memory()
-                except Exception:
-                    pass  # Some tensors can't be pinned
+                except RuntimeError as e:
+                    # Some tensors can't be pinned (e.g., sparse tensors, certain dtypes)
+                    logger.debug("Could not pin tensor: %s", e)
 
         # Clear GPU cache
         if torch.cuda.is_available():
@@ -213,7 +214,7 @@ class MemoryEfficientInference:
 
         # Use automatic mixed precision for inference
         if self.use_amp and torch.cuda.is_available():
-            self._amp_context = torch.cuda.amp.autocast()
+            self._amp_context = torch.amp.autocast(device_type="cuda")
             self._amp_context.__enter__()
 
         return self

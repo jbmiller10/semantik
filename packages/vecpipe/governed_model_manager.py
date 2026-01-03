@@ -7,24 +7,24 @@ capabilities for sophisticated, dynamic memory management.
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Coroutine
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from shared.config import settings
 
-from .cpu_offloader import ModelOffloader, get_offloader
+from .cpu_offloader import get_offloader
 from .memory_governor import (
     GPUMemoryGovernor,
     MemoryBudget,
-    ModelLocation,
     ModelType,
-    get_memory_governor,
-    initialize_memory_governor,
 )
 from .memory_utils import get_model_memory_requirement
 from .model_manager import ModelManager
 
 if TYPE_CHECKING:
     from shared.embedding.plugin_base import BaseEmbeddingPlugin
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,58 @@ class GovernedModelManager(ModelManager):
             await self._governor.start_monitor()
         self._governor_initialized = True
 
+    def _run_governor_coro(
+        self, coro: Coroutine[Any, Any, T], timeout: float = 30.0
+    ) -> T:
+        """
+        Safely run a governor coroutine from sync context.
+
+        Handles both cases:
+        - No running loop: creates new loop and runs
+        - Running loop on different thread: schedules and waits
+        - Running loop on same thread: runs in new thread to avoid deadlock
+        """
+        import concurrent.futures
+
+        try:
+            # Check if there's a running loop
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop - create one and run
+                return asyncio.run(coro)
+
+            # There's a running loop - we need to be careful
+            # Run in a separate thread to avoid blocking the event loop
+            def run_in_thread() -> T:
+                return asyncio.run(coro)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_in_thread)
+                return future.result(timeout=timeout)
+
+        except Exception as e:
+            logger.error("Error running governor coroutine: %s", e)
+            raise
+
+    def _schedule_governor_coro(self, coro: Coroutine[Any, Any, Any]) -> None:
+        """
+        Schedule a governor coroutine without blocking.
+
+        Used for non-critical operations like touch and unload tracking
+        where we don't need to wait for the result.
+        """
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+                # Schedule without waiting
+                asyncio.run_coroutine_threadsafe(coro, loop)
+            except RuntimeError:
+                # No running loop - run synchronously
+                asyncio.run(coro)
+        except Exception as e:
+            logger.warning("Failed to schedule governor coroutine: %s", e)
+
     async def _ensure_provider_initialized(
         self,
         model_name: str,
@@ -144,7 +196,7 @@ class GovernedModelManager(ModelManager):
 
             return provider
 
-        except Exception as e:
+        except Exception:
             # Remove from governor tracking on failure
             await self._governor.mark_unloaded(model_name, ModelType.EMBEDDING, quantization)
             raise
@@ -179,28 +231,14 @@ class GovernedModelManager(ModelManager):
 
             # For sync context, we need to run governor request in event loop
             # This handles restoration from CPU if offloaded
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create a future for the async operation
-                future = asyncio.run_coroutine_threadsafe(
-                    self._governor.request_memory(
-                        model_name=model_name,
-                        model_type=ModelType.RERANKER,
-                        quantization=quantization,
-                        required_mb=required_mb,
-                    ),
-                    loop,
+            can_allocate = self._run_governor_coro(
+                self._governor.request_memory(
+                    model_name=model_name,
+                    model_type=ModelType.RERANKER,
+                    quantization=quantization,
+                    required_mb=required_mb,
                 )
-                can_allocate = future.result(timeout=30)
-            else:
-                can_allocate = loop.run_until_complete(
-                    self._governor.request_memory(
-                        model_name=model_name,
-                        model_type=ModelType.RERANKER,
-                        quantization=quantization,
-                        required_mb=required_mb,
-                    )
-                )
+            )
 
             if not can_allocate:
                 from .memory_utils import InsufficientMemoryError
@@ -212,11 +250,9 @@ class GovernedModelManager(ModelManager):
             if self.current_reranker_key == reranker_key and self.reranker is not None:
                 # Touch to update LRU (request_memory may have already touched,
                 # but explicit touch ensures LRU is always updated on inference)
-                touch_coro = self._governor.touch(model_name, ModelType.RERANKER, quantization)
-                if loop.is_running():
-                    asyncio.run_coroutine_threadsafe(touch_coro, loop)
-                else:
-                    loop.run_until_complete(touch_coro)
+                self._schedule_governor_coro(
+                    self._governor.touch(model_name, ModelType.RERANKER, quantization)
+                )
                 self._update_last_reranker_used()
                 return True
 
@@ -225,27 +261,22 @@ class GovernedModelManager(ModelManager):
                 result = super().ensure_reranker_loaded(model_name, quantization)
 
                 if result:
-                    # Mark as loaded in governor (handles both async and sync contexts)
-                    mark_loaded_coro = self._governor.mark_loaded(
-                        model_name, ModelType.RERANKER, quantization,
-                        model_ref=self.reranker.model if self.reranker else None,
+                    # Mark as loaded in governor
+                    self._run_governor_coro(
+                        self._governor.mark_loaded(
+                            model_name, ModelType.RERANKER, quantization,
+                            model_ref=self.reranker.model if self.reranker else None,
+                        )
                     )
-                    if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(mark_loaded_coro, loop)
-                    else:
-                        loop.run_until_complete(mark_loaded_coro)
 
                 return result
 
-            except Exception:
+            except Exception as e:
                 # Remove from governor tracking on failure
-                mark_unloaded_coro = self._governor.mark_unloaded(
-                    model_name, ModelType.RERANKER, quantization
+                logger.warning("Failed to load reranker %s: %s", model_name, e)
+                self._schedule_governor_coro(
+                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization)
                 )
-                if loop.is_running():
-                    asyncio.run_coroutine_threadsafe(mark_unloaded_coro, loop)
-                else:
-                    loop.run_until_complete(mark_unloaded_coro)
                 raise
 
     def unload_reranker(self) -> None:
@@ -254,18 +285,10 @@ class GovernedModelManager(ModelManager):
             parts = self.current_reranker_key.rsplit("_", 1)
             if len(parts) == 2:
                 model_name, quantization = parts
-                # Notify governor (handles both async and sync contexts)
-                try:
-                    loop = asyncio.get_event_loop()
-                    mark_unloaded_coro = self._governor.mark_unloaded(
-                        model_name, ModelType.RERANKER, quantization
-                    )
-                    if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(mark_unloaded_coro, loop)
-                    else:
-                        loop.run_until_complete(mark_unloaded_coro)
-                except Exception:
-                    pass
+                # Notify governor
+                self._schedule_governor_coro(
+                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization)
+                )
 
         super().unload_reranker()
 
@@ -417,10 +440,10 @@ class GovernedModelManager(ModelManager):
         to avoid deadlocks.
         """
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Schedule shutdown without blocking to avoid deadlock
-                # The caller should use shutdown_async() in async contexts
+            # Check if there's a running loop
+            try:
+                loop = asyncio.get_running_loop()
+                # We're inside a running loop - schedule without blocking
                 asyncio.run_coroutine_threadsafe(
                     self._governor.shutdown(),
                     loop,
@@ -430,8 +453,9 @@ class GovernedModelManager(ModelManager):
                     "governor shutdown scheduled but not awaited. "
                     "Use shutdown_async() in async contexts."
                 )
-            else:
-                loop.run_until_complete(self._governor.shutdown())
+            except RuntimeError:
+                # No running loop - safe to create one
+                asyncio.run(self._governor.shutdown())
         except Exception as e:
             logger.error("Error shutting down governor: %s", e)
 
