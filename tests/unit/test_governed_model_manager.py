@@ -3,8 +3,7 @@
 Tests the integration between ModelManager, GPUMemoryGovernor, and CPUOffloader.
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -12,7 +11,7 @@ from vecpipe.governed_model_manager import GovernedModelManager
 from vecpipe.memory_governor import MemoryBudget, ModelType
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_settings():
     """Mock settings to prevent actual model loading."""
     with patch("vecpipe.model_manager.settings") as mock:
@@ -21,7 +20,7 @@ def mock_settings():
         yield mock
 
 
-@pytest.fixture
+@pytest.fixture()
 def memory_budget():
     """Create a test memory budget."""
     return MemoryBudget(
@@ -34,16 +33,15 @@ def memory_budget():
     )
 
 
-@pytest.fixture
-def governed_manager(mock_settings, memory_budget):
+@pytest.fixture()
+def governed_manager(mock_settings, memory_budget):  # noqa: ARG001 - mock_settings needed to patch settings
     """Create a GovernedModelManager for testing."""
-    manager = GovernedModelManager(
+    return GovernedModelManager(
         unload_after_seconds=300,
         budget=memory_budget,
         enable_cpu_offload=True,
         enable_preemptive_eviction=False,  # Disable for unit tests
     )
-    return manager
 
 
 class TestGovernedModelManagerInit:
@@ -95,13 +93,13 @@ class TestGovernedModelManagerInit:
 class TestGovernedModelManagerStart:
     """Tests for GovernedModelManager start/shutdown."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_start_initializes_governor(self, governed_manager):
         """Test that start() marks governor as initialized."""
         await governed_manager.start()
         assert governed_manager._governor_initialized is True
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_start_with_preemptive_eviction(self, mock_settings, memory_budget):
         """Test that start() starts monitor when preemptive eviction enabled."""
         manager = GovernedModelManager(
@@ -113,7 +111,7 @@ class TestGovernedModelManagerStart:
         # Clean up
         await manager.shutdown_async()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_shutdown_async_stops_governor(self, governed_manager):
         """Test that shutdown_async() properly shuts down governor."""
         await governed_manager.start()

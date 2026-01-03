@@ -4,10 +4,8 @@ Tests the GPU↔CPU model transfer operations.
 """
 
 import time
-from unittest.mock import MagicMock, patch
 
 import pytest
-import torch
 from torch import nn
 
 from vecpipe.cpu_offloader import (
@@ -29,13 +27,13 @@ class SimpleModel(nn.Module):
         return self.linear(x)
 
 
-@pytest.fixture
+@pytest.fixture()
 def offloader():
     """Create a fresh ModelOffloader for testing."""
     return ModelOffloader(pin_memory=False)  # Disable pinning for tests
 
 
-@pytest.fixture
+@pytest.fixture()
 def simple_model():
     """Create a simple model on CPU."""
     return SimpleModel(size=10)

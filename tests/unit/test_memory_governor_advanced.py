@@ -7,20 +7,18 @@ Tests cover:
 """
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from vecpipe.memory_governor import (
     GPUMemoryGovernor,
     MemoryBudget,
-    ModelLocation,
     ModelType,
-    TrackedModel,
 )
 
 
-@pytest.fixture
+@pytest.fixture()
 def memory_budget():
     """Create a test memory budget with known values."""
     return MemoryBudget(
@@ -33,7 +31,7 @@ def memory_budget():
     )
 
 
-@pytest.fixture
+@pytest.fixture()
 def governor(memory_budget):
     """Create a GPUMemoryGovernor for testing."""
     return GPUMemoryGovernor(
@@ -46,7 +44,7 @@ def governor(memory_budget):
 class TestConcurrentMemoryRequests:
     """Tests for concurrent memory requests."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_requests_for_same_model(self, governor):
         """Test that concurrent requests for the same model don't cause issues."""
         model_name = "test/model"
@@ -71,9 +69,10 @@ class TestConcurrentMemoryRequests:
         # All should succeed (model fits in budget)
         assert all(results), "All concurrent requests should succeed"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_requests_different_models(self, governor):
         """Test concurrent requests for different models."""
+
         # Each model needs 1500MB, total 4500MB, budget is ~6400MB usable
         async def request_model(name: str):
             return await governor.request_memory(
@@ -92,7 +91,7 @@ class TestConcurrentMemoryRequests:
         # All should fit in budget
         assert all(results), "All models should fit in budget"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_load_and_unload(self, governor):
         """Test concurrent load and unload operations."""
         model_name = "test/model"
@@ -127,7 +126,7 @@ class TestConcurrentMemoryRequests:
             unload_model(),
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_concurrent_eviction_pressure(self, governor):
         """Test that concurrent eviction requests don't cause double eviction."""
         # Load multiple models to fill memory
@@ -147,7 +146,7 @@ class TestConcurrentMemoryRequests:
         # Register mock unload callback
         unload_count = 0
 
-        async def mock_unload(name, quant):
+        async def mock_unload(_name, _quant):
             nonlocal unload_count
             unload_count += 1
             await asyncio.sleep(0.01)  # Simulate work
@@ -180,7 +179,7 @@ class TestConcurrentMemoryRequests:
 class TestCallbackExceptionHandling:
     """Tests for callback exception handling."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_unload_callback_exception_handled(self, governor):
         """Test that exceptions in unload callbacks are handled."""
         # Load a model
@@ -197,7 +196,7 @@ class TestCallbackExceptionHandling:
         )
 
         # Register callback that raises
-        async def failing_unload(name, quant):
+        async def failing_unload(_name, _quant):
             raise RuntimeError("Simulated unload failure")
 
         governor.register_callbacks(
@@ -214,7 +213,7 @@ class TestCallbackExceptionHandling:
         result = await governor._unload_model(tracked)
         assert result is False  # Should fail gracefully
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_offload_callback_exception_handled(self, governor):
         """Test that exceptions in offload callbacks are handled."""
         # Load a model
@@ -231,7 +230,7 @@ class TestCallbackExceptionHandling:
         )
 
         # Register callback that raises
-        async def failing_offload(name, quant, device):
+        async def failing_offload(_name, _quant, _device):
             raise RuntimeError("Simulated offload failure")
 
         governor.register_callbacks(
@@ -249,7 +248,7 @@ class TestCallbackExceptionHandling:
         result = await governor._offload_model(tracked)
         assert result is False  # Should fail gracefully
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_callback_retry_on_transient_failure(self, governor):
         """Test that callbacks are retried on transient failures."""
         # Load a model
@@ -268,7 +267,7 @@ class TestCallbackExceptionHandling:
         # Register callback that fails first time, succeeds second
         call_count = 0
 
-        async def flaky_unload(name, quant):
+        async def flaky_unload(_name, _quant):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -294,7 +293,7 @@ class TestCallbackExceptionHandling:
 class TestRaceConditions:
     """Tests for race condition scenarios."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_touch_during_eviction(self, governor):
         """Test that touch during eviction doesn't crash."""
         # Load a model
@@ -325,7 +324,7 @@ class TestRaceConditions:
             simulate_touch(),
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_request_memory_during_shutdown(self, governor):
         """Test memory request during shutdown doesn't hang."""
         # Start shutdown

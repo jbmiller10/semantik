@@ -84,9 +84,7 @@ class ModelManager:
         if not quantization:
             raise ValueError("quantization cannot be empty")
         if "_" in quantization:
-            raise ValueError(
-                f"quantization cannot contain underscore (would break key parsing), got '{quantization}'"
-            )
+            raise ValueError(f"quantization cannot contain underscore (would break key parsing), got '{quantization}'")
         return f"{model_name}_{quantization}"
 
     def _parse_model_key(self, model_key: str) -> tuple[str, str] | None:

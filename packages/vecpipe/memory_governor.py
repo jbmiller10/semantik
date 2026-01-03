@@ -748,7 +748,7 @@ class GPUMemoryGovernor:
                 if successful_iterations >= successful_iterations_to_reset:
                     if current_backoff > base_backoff_seconds:
                         logger.info(
-                            "Memory monitor stable for %d iterations, " "resetting backoff from %ds to %ds",
+                            "Memory monitor stable for %d iterations, resetting backoff from %ds to %ds",
                             successful_iterations,
                             current_backoff,
                             base_backoff_seconds,

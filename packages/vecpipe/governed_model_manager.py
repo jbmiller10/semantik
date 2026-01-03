@@ -79,7 +79,7 @@ class GovernedModelManager(ModelManager):
         )
 
         logger.info(
-            "GovernedModelManager initialized with governor " "(cpu_offload=%s, preemptive_eviction=%s)",
+            "GovernedModelManager initialized with governor (cpu_offload=%s, preemptive_eviction=%s)",
             enable_cpu_offload,
             enable_preemptive_eviction,
         )
@@ -363,7 +363,7 @@ class GovernedModelManager(ModelManager):
         if target_device == "cpu":
             if self._provider is None:
                 raise RuntimeError(
-                    f"Cannot offload {model_key} to CPU: provider is None " "(model may have been unloaded)"
+                    f"Cannot offload {model_key} to CPU: provider is None (model may have been unloaded)"
                 )
             model = getattr(self._provider, "model", None)
             if model is None:
@@ -373,7 +373,7 @@ class GovernedModelManager(ModelManager):
         elif target_device == "cuda":
             if self._provider is None:
                 raise RuntimeError(
-                    f"Cannot restore {model_key} to GPU: provider is None " "(model may have been unloaded)"
+                    f"Cannot restore {model_key} to GPU: provider is None (model may have been unloaded)"
                 )
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)
@@ -396,7 +396,7 @@ class GovernedModelManager(ModelManager):
         if target_device == "cpu":
             if self.reranker is None:
                 raise RuntimeError(
-                    f"Cannot offload {model_key} to CPU: reranker is None " "(model may have been unloaded)"
+                    f"Cannot offload {model_key} to CPU: reranker is None (model may have been unloaded)"
                 )
             model = getattr(self.reranker, "model", None)
             if model is None:
@@ -406,7 +406,7 @@ class GovernedModelManager(ModelManager):
         elif target_device == "cuda":
             if self.reranker is None:
                 raise RuntimeError(
-                    f"Cannot restore {model_key} to GPU: reranker is None " "(model may have been unloaded)"
+                    f"Cannot restore {model_key} to GPU: reranker is None (model may have been unloaded)"
                 )
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)

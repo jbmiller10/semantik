@@ -97,7 +97,7 @@ class PreloadModelSpec(BaseModel):
         # Case-insensitive comparison
         normalized = self.model_type.lower().strip()
         if normalized not in valid_types:
-            raise ValueError(f"model_type must be one of {valid_types} (case-insensitive), " f"got '{self.model_type}'")
+            raise ValueError(f"model_type must be one of {valid_types} (case-insensitive), got '{self.model_type}'")
         # Normalize to lowercase
         object.__setattr__(self, "model_type", normalized)
 

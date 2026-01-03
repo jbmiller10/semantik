@@ -87,7 +87,7 @@ class ModelOffloader:
             Offload metadata for restoration
         """
         if keep_on_gpu:
-            logger.warning("keep_on_gpu parameter is not yet implemented - " "entire model will be offloaded to CPU")
+            logger.warning("keep_on_gpu parameter is not yet implemented - entire model will be offloaded to CPU")
         keep_on_gpu = keep_on_gpu or []
         start_time = time.time()
 
@@ -103,7 +103,7 @@ class ModelOffloader:
             model.to("cpu")
         except Exception as e:
             logger.error(
-                "Failed to move model %s to CPU: %s (type: %s). " "Model remains on %s.",
+                "Failed to move model %s to CPU: %s (type: %s). Model remains on %s.",
                 model_key,
                 e,
                 type(e).__name__,
@@ -163,7 +163,7 @@ class ModelOffloader:
         """
         if model_key not in self._offloaded_models:
             raise KeyError(
-                f"Model {model_key} not found in offloaded models. " f"Available: {list(self._offloaded_models.keys())}"
+                f"Model {model_key} not found in offloaded models. Available: {list(self._offloaded_models.keys())}"
             )
 
         metadata = self._offloaded_models[model_key]
