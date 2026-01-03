@@ -7,6 +7,7 @@ and restoring them when the model is needed again.
 
 import gc
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -19,7 +20,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class OffloadMetadata:
-    """Typed metadata for an offloaded model."""
+    """Typed metadata for an offloaded model.
+
+    Note: This holds a strong reference to the model to keep it alive
+    while offloaded. Use ModelOffloader.discard() to explicitly release
+    models that are no longer needed.
+    """
 
     original_device: str
     offload_time: float
@@ -190,10 +196,33 @@ class ModelOffloader:
 
         return self._offloaded_models[model_key].to_dict()
 
+    def discard(self, model_key: str) -> bool:
+        """
+        Discard an offloaded model without restoring it.
+
+        Use this to release memory for models that are no longer needed.
+        This prevents memory leaks when models are offloaded but never restored.
+
+        Args:
+            model_key: Model identifier
+
+        Returns:
+            True if model was discarded, False if not found
+        """
+        if model_key in self._offloaded_models:
+            del self._offloaded_models[model_key]
+            gc.collect()
+            logger.info("Discarded offloaded model %s", model_key)
+            return True
+        return False
+
     def clear(self) -> None:
         """Clear all offloaded models (for shutdown)."""
+        count = len(self._offloaded_models)
         self._offloaded_models.clear()
         gc.collect()
+        if count > 0:
+            logger.info("Cleared %d offloaded models", count)
 
 
 class GradientCheckpointWrapper:
@@ -342,13 +371,18 @@ def defragment_cuda_memory() -> None:
     logger.info("CUDA memory defragmentation attempted")
 
 
-# Singleton offloader instance
+# Singleton offloader instance with thread-safe initialization
 _offloader: ModelOffloader | None = None
+_offloader_lock = threading.Lock()
 
 
 def get_offloader() -> ModelOffloader:
-    """Get the singleton offloader instance."""
+    """Get the singleton offloader instance (thread-safe)."""
     global _offloader
-    if _offloader is None:
-        _offloader = ModelOffloader()
-    return _offloader
+    if _offloader is not None:
+        return _offloader
+    with _offloader_lock:
+        # Double-checked locking pattern
+        if _offloader is None:
+            _offloader = ModelOffloader()
+        return _offloader

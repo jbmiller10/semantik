@@ -124,12 +124,19 @@ class GovernedModelManager(ModelManager):
             logger.error("Error running governor coroutine: %s", e)
             raise
 
-    def _schedule_governor_coro(self, coro: Coroutine[Any, Any, Any]) -> None:
+    def _schedule_governor_coro(
+        self, coro: Coroutine[Any, Any, Any], *, critical: bool = False
+    ) -> None:
         """
         Schedule a governor coroutine without blocking.
 
         Used for non-critical operations like touch and unload tracking
         where we don't need to wait for the result.
+
+        Args:
+            coro: Coroutine to schedule
+            critical: If True, log failures as ERROR (state drift risk).
+                      If False, log as WARNING (acceptable for touch operations).
         """
         import concurrent.futures
 
@@ -138,7 +145,12 @@ class GovernedModelManager(ModelManager):
             try:
                 future.result()
             except Exception as e:
-                logger.warning("Scheduled governor coroutine failed: %s", e)
+                if critical:
+                    logger.error(
+                        "Critical governor coroutine failed (may cause state drift): %s", e
+                    )
+                else:
+                    logger.warning("Scheduled governor coroutine failed: %s", e)
 
         try:
             try:
@@ -150,7 +162,12 @@ class GovernedModelManager(ModelManager):
                 # No running loop - run synchronously
                 asyncio.run(coro)
         except Exception as e:
-            logger.warning("Failed to schedule governor coroutine: %s", e)
+            if critical:
+                logger.error(
+                    "Failed to schedule critical governor coroutine (state drift risk): %s", e
+                )
+            else:
+                logger.warning("Failed to schedule governor coroutine: %s", e)
 
     async def _ensure_provider_initialized(
         self,
@@ -281,10 +298,11 @@ class GovernedModelManager(ModelManager):
                 return result
 
             except Exception as e:
-                # Remove from governor tracking on failure
+                # Remove from governor tracking on failure (critical - state drift risk)
                 logger.warning("Failed to load reranker %s: %s", model_name, e)
                 self._schedule_governor_coro(
-                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization)
+                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization),
+                    critical=True,
                 )
                 raise
 
@@ -294,9 +312,10 @@ class GovernedModelManager(ModelManager):
             parsed = self._parse_model_key(self.current_reranker_key)
             if parsed:
                 model_name, quantization = parsed
-                # Notify governor
+                # Notify governor (critical - state drift risk if this fails)
                 self._schedule_governor_coro(
-                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization)
+                    self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization),
+                    critical=True,
                 )
 
         super().unload_reranker()
@@ -337,17 +356,38 @@ class GovernedModelManager(ModelManager):
         quantization: str,
         target_device: str,
     ) -> None:
-        """Callback for governor to offload/restore embedding model."""
-        if target_device == "cpu" and self._provider is not None:
-            model = getattr(self._provider, "model", None)
-            if model is not None:
-                model_key = f"embedding:{model_name}:{quantization}"
-                self._offloader.offload_to_cpu(model_key, model)
+        """Callback for governor to offload/restore embedding model.
 
-        elif target_device == "cuda" and self._provider is not None:
-            model_key = f"embedding:{model_name}:{quantization}"
+        Raises:
+            RuntimeError: If offload/restore operation cannot be completed
+        """
+        model_key = f"embedding:{model_name}:{quantization}"
+
+        if target_device == "cpu":
+            if self._provider is None:
+                raise RuntimeError(
+                    f"Cannot offload {model_key} to CPU: provider is None "
+                    "(model may have been unloaded)"
+                )
+            model = getattr(self._provider, "model", None)
+            if model is None:
+                raise RuntimeError(
+                    f"Cannot offload {model_key} to CPU: provider has no model attribute"
+                )
+            self._offloader.offload_to_cpu(model_key, model)
+
+        elif target_device == "cuda":
+            if self._provider is None:
+                raise RuntimeError(
+                    f"Cannot restore {model_key} to GPU: provider is None "
+                    "(model may have been unloaded)"
+                )
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)
+            else:
+                logger.warning(
+                    "Cannot restore %s: not found in offloaded models", model_key
+                )
 
     async def _governor_offload_reranker(
         self,
@@ -355,17 +395,38 @@ class GovernedModelManager(ModelManager):
         quantization: str,
         target_device: str,
     ) -> None:
-        """Callback for governor to offload/restore reranker."""
-        if target_device == "cpu" and self.reranker is not None:
-            model = getattr(self.reranker, "model", None)
-            if model is not None:
-                model_key = f"reranker:{model_name}:{quantization}"
-                self._offloader.offload_to_cpu(model_key, model)
+        """Callback for governor to offload/restore reranker.
 
-        elif target_device == "cuda" and self.reranker is not None:
-            model_key = f"reranker:{model_name}:{quantization}"
+        Raises:
+            RuntimeError: If offload/restore operation cannot be completed
+        """
+        model_key = f"reranker:{model_name}:{quantization}"
+
+        if target_device == "cpu":
+            if self.reranker is None:
+                raise RuntimeError(
+                    f"Cannot offload {model_key} to CPU: reranker is None "
+                    "(model may have been unloaded)"
+                )
+            model = getattr(self.reranker, "model", None)
+            if model is None:
+                raise RuntimeError(
+                    f"Cannot offload {model_key} to CPU: reranker has no model attribute"
+                )
+            self._offloader.offload_to_cpu(model_key, model)
+
+        elif target_device == "cuda":
+            if self.reranker is None:
+                raise RuntimeError(
+                    f"Cannot restore {model_key} to GPU: reranker is None "
+                    "(model may have been unloaded)"
+                )
             if self._offloader.is_offloaded(model_key):
                 self._offloader.restore_to_gpu(model_key)
+            else:
+                logger.warning(
+                    "Cannot restore %s: not found in offloaded models", model_key
+                )
 
     def get_status(self) -> dict[str, Any]:
         """Get status including governor information."""

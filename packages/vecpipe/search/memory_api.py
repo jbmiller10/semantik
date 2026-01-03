@@ -61,7 +61,9 @@ class EvictionInfo(BaseModel):
     """Info about a model eviction."""
     model_name: str
     model_type: str
+    quantization: str
     reason: str
+    action: str  # "offloaded" or "unloaded"
     memory_freed_mb: int
     timestamp: float
 
@@ -237,6 +239,9 @@ async def evict_model(model_type: str) -> dict[str, Any]:
 
     Args:
         model_type: "embedding" or "reranker"
+
+    Returns:
+        Status dict with 'evicted' (bool) and details about what was unloaded.
     """
     resources = get_resources()
     model_mgr = resources.get("model_mgr")
@@ -245,17 +250,61 @@ async def evict_model(model_type: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Model manager not available")
 
     if model_type == "embedding":
+        # Check if there's actually a model to evict
+        current_key = getattr(model_mgr, "current_model_key", None)
+        if not current_key:
+            return {
+                "status": "no_action",
+                "model_type": "embedding",
+                "message": "No embedding model currently loaded",
+            }
+
         if hasattr(model_mgr, "unload_model_async"):
             await model_mgr.unload_model_async()
         else:
             model_mgr.unload_model()
-        return {"status": "evicted", "model_type": "embedding"}
+
+        # Verify eviction succeeded
+        new_key = getattr(model_mgr, "current_model_key", None)
+        if new_key is None:
+            return {
+                "status": "evicted",
+                "model_type": "embedding",
+                "evicted_model": current_key,
+            }
+        logger.error("Eviction failed: embedding model still loaded as %s", new_key)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Eviction failed: model still loaded as {new_key}",
+        )
 
     if model_type == "reranker":
-        model_mgr.unload_reranker()
-        return {"status": "evicted", "model_type": "reranker"}
+        # Check if there's actually a reranker to evict
+        current_key = getattr(model_mgr, "current_reranker_key", None)
+        if not current_key:
+            return {
+                "status": "no_action",
+                "model_type": "reranker",
+                "message": "No reranker model currently loaded",
+            }
 
-    raise HTTPException(status_code=400, detail="Invalid model_type")
+        model_mgr.unload_reranker()
+
+        # Verify eviction succeeded
+        new_key = getattr(model_mgr, "current_reranker_key", None)
+        if new_key is None:
+            return {
+                "status": "evicted",
+                "model_type": "reranker",
+                "evicted_model": current_key,
+            }
+        logger.error("Eviction failed: reranker still loaded as %s", new_key)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Eviction failed: reranker still loaded as {new_key}",
+        )
+
+    raise HTTPException(status_code=400, detail="Invalid model_type. Use 'embedding' or 'reranker'")
 
 
 @router.post("/preload", response_model=PreloadResponse)
