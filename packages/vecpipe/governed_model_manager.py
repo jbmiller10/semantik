@@ -105,17 +105,10 @@ class GovernedModelManager(ModelManager):
         """
         model_key = self._get_model_key(model_name, quantization)
 
-        # Fast path: already initialized with correct model
-        if self._provider is not None and self.current_model_key == model_key:
-            # Update governor tracking
-            await self._governor.touch(model_name, ModelType.EMBEDDING, quantization)
-            self._update_last_used()
-            return self._provider
-
         # Calculate memory requirement
         required_mb = get_model_memory_requirement(model_name, quantization)
 
-        # Request memory from governor (will evict if needed)
+        # Request memory from governor (handles restoration from CPU if offloaded)
         can_allocate = await self._governor.request_memory(
             model_name=model_name,
             model_type=ModelType.EMBEDDING,
@@ -128,6 +121,11 @@ class GovernedModelManager(ModelManager):
                 f"Cannot allocate memory for model {model_name} ({required_mb}MB required). "
                 f"Memory stats: {self._governor.get_memory_stats()}"
             )
+
+        # Fast path: already initialized with correct model and on GPU
+        if self._provider is not None and self.current_model_key == model_key:
+            self._update_last_used()
+            return self._provider
 
         # Call parent implementation to actually load
         try:
@@ -173,17 +171,11 @@ class GovernedModelManager(ModelManager):
         reranker_key = self._get_model_key(model_name, quantization)
 
         with self.reranker_lock:
-            # Check if correct reranker is already loaded
-            if self.current_reranker_key == reranker_key and self.reranker is not None:
-                self._update_last_reranker_used()
-                # Sync touch (not ideal but matches parent interface)
-                return True
-
             # Calculate memory requirement
             required_mb = get_model_memory_requirement(model_name, quantization)
 
             # For sync context, we need to run governor request in event loop
-            # This is a limitation of the current sync interface
+            # This handles restoration from CPU if offloaded
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # Create a future for the async operation
@@ -212,6 +204,11 @@ class GovernedModelManager(ModelManager):
                 raise InsufficientMemoryError(
                     f"Cannot allocate memory for reranker {model_name} ({required_mb}MB required)"
                 )
+
+            # Fast path: already loaded and on GPU (after governor check for restoration)
+            if self.current_reranker_key == reranker_key and self.reranker is not None:
+                self._update_last_reranker_used()
+                return True
 
             # Call parent to actually load
             try:
