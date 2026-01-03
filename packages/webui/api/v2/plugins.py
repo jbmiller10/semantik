@@ -473,8 +473,7 @@ async def uninstall_plugin_endpoint(
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Multiple installed packages match plugin {plugin_id}: "
-                    f"{', '.join(sorted(suffix_matches))}"
+                    f"Multiple installed packages match plugin {plugin_id}: " f"{', '.join(sorted(suffix_matches))}"
                 ),
             )
         if is_plugin_installed(default_package):
@@ -502,11 +501,14 @@ async def uninstall_plugin_endpoint(
         package_name = registry_entry.pypi or default_package_name
         # If registry points to a package that's not installed, try local hints
         if installed_packages and package_name not in installed_packages:
-            package_name = _resolve_installed_package(
-                installed_packages,
-                plugin_id,
-                default_package_name,
-            ) or package_name
+            package_name = (
+                _resolve_installed_package(
+                    installed_packages,
+                    plugin_id,
+                    default_package_name,
+                )
+                or package_name
+            )
     else:
         package_name = _resolve_installed_package(
             installed_packages,
