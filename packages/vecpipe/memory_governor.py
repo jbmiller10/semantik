@@ -18,9 +18,12 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import psutil
+
+if TYPE_CHECKING:
+    from torch import nn
 
 logger = logging.getLogger(__name__)
 
@@ -54,48 +57,39 @@ class PressureLevel(Enum):
     CRITICAL = auto()  # >90% - force unload to prevent OOM
 
 
+class EvictionAction(Enum):
+    """Type of eviction action taken."""
+
+    OFFLOADED = auto()  # Model moved to CPU RAM (warm state)
+    UNLOADED = auto()  # Model fully unloaded from memory
+
+
 # =============================================================================
 # Data Classes
 # =============================================================================
 
 
-@dataclass
+@dataclass(frozen=True)
 class MemoryBudget:
-    """Memory budget configuration for GPU and CPU."""
+    """Memory budget configuration for GPU and CPU.
 
-    # GPU limits (auto-detected if 0)
-    total_gpu_mb: int = 0
+    This is a frozen (immutable) dataclass to prevent post-validation mutation.
+    Use create_memory_budget() factory for auto-detection, or pass explicit values.
+    """
+
+    # GPU limits
+    total_gpu_mb: int
     gpu_reserve_percent: float = 0.10  # Always keep 10% VRAM free
     gpu_max_percent: float = 0.90  # Never use more than 90% of VRAM
 
     # CPU limits (for offloaded/warm models)
-    total_cpu_mb: int = 0  # Auto-detected if 0
+    total_cpu_mb: int = 0
     cpu_reserve_percent: float = 0.20  # Always keep 20% RAM free
     cpu_max_percent: float = 0.50  # Never use more than 50% for warm models
 
     def __post_init__(self) -> None:
-        """Auto-detect GPU and CPU memory if not provided, and validate all fields."""
-        # Validate percentage fields first (before auto-detection uses them)
+        """Validate all fields."""
         self._validate_percentages()
-
-        # Auto-detect GPU memory
-        if self.total_gpu_mb == 0:
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    _, total_bytes = torch.cuda.mem_get_info()
-                    self.total_gpu_mb = total_bytes // (1024 * 1024)
-                else:
-                    logger.info("CUDA not available, running in CPU-only mode (total_gpu_mb=0)")
-            except ImportError:
-                logger.info("PyTorch not installed, running in CPU-only mode (total_gpu_mb=0)")
-
-        # Auto-detect CPU memory
-        if self.total_cpu_mb == 0:
-            self.total_cpu_mb = psutil.virtual_memory().total // (1024 * 1024)
-
-        # Validate memory values after auto-detection
         self._validate_memory_values()
 
     def _validate_percentages(self) -> None:
@@ -128,6 +122,56 @@ class MemoryBudget:
         return int(self.total_cpu_mb * effective_max)
 
 
+def create_memory_budget(
+    total_gpu_mb: int | None = None,
+    total_cpu_mb: int | None = None,
+    gpu_reserve_percent: float = 0.10,
+    gpu_max_percent: float = 0.90,
+    cpu_reserve_percent: float = 0.20,
+    cpu_max_percent: float = 0.50,
+) -> MemoryBudget:
+    """
+    Factory function to create MemoryBudget with auto-detection.
+
+    Args:
+        total_gpu_mb: GPU memory in MB (auto-detected if None)
+        total_cpu_mb: CPU memory in MB (auto-detected if None)
+        gpu_reserve_percent: GPU reserve percentage (default 0.10)
+        gpu_max_percent: GPU max percentage (default 0.90)
+        cpu_reserve_percent: CPU reserve percentage (default 0.20)
+        cpu_max_percent: CPU max percentage (default 0.50)
+
+    Returns:
+        Configured MemoryBudget instance
+    """
+    # Auto-detect GPU memory
+    if total_gpu_mb is None:
+        total_gpu_mb = 0
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                _, total_bytes = torch.cuda.mem_get_info()
+                total_gpu_mb = total_bytes // (1024 * 1024)
+            else:
+                logger.info("CUDA not available, running in CPU-only mode (total_gpu_mb=0)")
+        except ImportError:
+            logger.info("PyTorch not installed, running in CPU-only mode (total_gpu_mb=0)")
+
+    # Auto-detect CPU memory
+    if total_cpu_mb is None:
+        total_cpu_mb = psutil.virtual_memory().total // (1024 * 1024)
+
+    return MemoryBudget(
+        total_gpu_mb=total_gpu_mb,
+        total_cpu_mb=total_cpu_mb,
+        gpu_reserve_percent=gpu_reserve_percent,
+        gpu_max_percent=gpu_max_percent,
+        cpu_reserve_percent=cpu_reserve_percent,
+        cpu_max_percent=cpu_max_percent,
+    )
+
+
 @dataclass
 class TrackedModel:
     """Tracks state of a single loaded/offloaded model."""
@@ -140,7 +184,7 @@ class TrackedModel:
     loaded_at: float = field(default_factory=time.time)
     last_used: float = field(default_factory=time.time)
     use_count: int = 0
-    model_ref: Any = None  # Reference to actual model object for offloading
+    model_ref: "nn.Module | None" = None  # Reference to actual model for offloading
 
     def __post_init__(self) -> None:
         """Validate fields after initialization."""
@@ -169,12 +213,24 @@ class EvictionRecord:
     """Record of a model eviction for history tracking."""
 
     model_name: str
-    model_type: str
+    model_type: ModelType
     quantization: str
     reason: str
-    action: str  # "offloaded" or "unloaded"
+    action: EvictionAction
     memory_freed_mb: int
     timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict for API responses."""
+        return {
+            "model_name": self.model_name,
+            "model_type": self.model_type.name.lower(),
+            "quantization": self.quantization,
+            "reason": self.reason,
+            "action": self.action.name.lower(),
+            "memory_freed_mb": self.memory_freed_mb,
+            "timestamp": self.timestamp,
+        }
 
 
 # =============================================================================
@@ -258,18 +314,7 @@ class GPUMemoryGovernor:
 
     def _detect_budget(self) -> MemoryBudget:
         """Auto-detect GPU and CPU memory budget."""
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                _, total_bytes = torch.cuda.mem_get_info()
-                total_gpu_mb = total_bytes // (1024 * 1024)
-            else:
-                total_gpu_mb = 0
-        except ImportError:
-            total_gpu_mb = 0
-
-        return MemoryBudget(total_gpu_mb=total_gpu_mb)
+        return create_memory_budget()
 
     # -------------------------------------------------------------------------
     # Core Memory Management Methods
@@ -499,7 +544,9 @@ class GPUMemoryGovernor:
                 await callback(tracked.model_name, tracked.quantization, "cpu")
                 tracked.location = ModelLocation.CPU
 
-                self._record_eviction(tracked, reason="memory_pressure", action="offloaded")
+                self._record_eviction(
+                    tracked, reason="memory_pressure", action=EvictionAction.OFFLOADED
+                )
 
                 logger.info(
                     "Offloaded %s to CPU (freed %dMB GPU, idle %.1fs)",
@@ -537,7 +584,9 @@ class GPUMemoryGovernor:
             try:
                 await callback(tracked.model_name, tracked.quantization)
 
-                self._record_eviction(tracked, reason="memory_pressure", action="unloaded")
+                self._record_eviction(
+                    tracked, reason="memory_pressure", action=EvictionAction.UNLOADED
+                )
 
                 # Remove from tracking
                 model_key = tracked.model_key
@@ -564,9 +613,26 @@ class GPUMemoryGovernor:
         return False
 
     async def _restore_from_cpu(self, model_key: str, required_mb: int) -> bool:
-        """Restore an offloaded model from CPU to GPU."""
+        """Restore an offloaded model from CPU to GPU.
+
+        Args:
+            model_key: Key of the model to restore
+            required_mb: Memory required for the model
+
+        Returns:
+            True if restored successfully, False with logged error details otherwise
+        """
         tracked = self._models.get(model_key)
-        if not tracked or tracked.location != ModelLocation.CPU:
+        if not tracked:
+            logger.warning(
+                "Cannot restore %s: model not found in tracking", model_key
+            )
+            return False
+        if tracked.location != ModelLocation.CPU:
+            logger.warning(
+                "Cannot restore %s: model is on %s, not CPU",
+                model_key, tracked.location.name
+            )
             return False
 
         # Ensure we have room on GPU
@@ -577,25 +643,37 @@ class GPUMemoryGovernor:
             needed = (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb
             freed = await self._make_room(needed, exclude_key=model_key)
             if freed < needed:
-                logger.warning("Cannot restore %s - insufficient GPU memory after eviction", model_key)
+                logger.warning(
+                    "Cannot restore %s: insufficient GPU memory after eviction "
+                    "(needed=%dMB, freed=%dMB, current=%dMB, usable=%dMB)",
+                    model_key, needed, freed, current_gpu_usage, self._budget.usable_gpu_mb
+                )
                 return False
 
         # Restore via callback
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
-        if callback:
-            try:
-                await callback(tracked.model_name, tracked.quantization, "cuda")
-                tracked.location = ModelLocation.GPU
-                tracked.last_used = time.time()
-                self._models.move_to_end(model_key)
-                self._total_restorations += 1
+        if not callback:
+            logger.warning(
+                "Cannot restore %s: no offload callback registered for %s",
+                model_key, tracked.model_type.name
+            )
+            return False
 
-                logger.info("Restored %s from CPU to GPU", model_key)
-                return True
-            except Exception as e:
-                logger.error("Failed to restore %s: %s", model_key, e)
+        try:
+            await callback(tracked.model_name, tracked.quantization, "cuda")
+            tracked.location = ModelLocation.GPU
+            tracked.last_used = time.time()
+            self._models.move_to_end(model_key)
+            self._total_restorations += 1
 
-        return False
+            logger.info("Restored %s from CPU to GPU", model_key)
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to restore %s from CPU to GPU: %s (type: %s)",
+                model_key, e, type(e).__name__
+            )
+            return False
 
     # -------------------------------------------------------------------------
     # Memory Pressure Monitoring
@@ -690,26 +768,62 @@ class GPUMemoryGovernor:
         return PressureLevel.LOW
 
     async def _handle_critical_pressure(self) -> None:
-        """Handle critical memory pressure - force unload all idle models."""
+        """Handle critical memory pressure - force unload all idle models.
+
+        Continues processing remaining models even if individual unloads fail.
+        """
         async with self._lock:
+            failed_models: list[str] = []
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 5:
-                    await self._unload_model(tracked)
+                    try:
+                        await self._unload_model(tracked)
+                    except Exception as e:
+                        failed_models.append(tracked.model_key)
+                        logger.error(
+                            "Failed to unload %s during critical pressure: %s",
+                            tracked.model_key, e
+                        )
             gc.collect()
+            if failed_models:
+                logger.warning(
+                    "Critical pressure handler completed with %d failures: %s",
+                    len(failed_models), failed_models
+                )
 
     async def _handle_high_pressure(self) -> None:
-        """Handle high memory pressure - aggressive offloading."""
+        """Handle high memory pressure - aggressive offloading.
+
+        Continues processing remaining models even if individual operations fail.
+        """
         async with self._lock:
+            failed_models: list[str] = []
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 30:
-                    if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
-                        await self._offload_model(tracked)
-                    else:
-                        await self._unload_model(tracked)
+                    try:
+                        if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
+                            await self._offload_model(tracked)
+                        else:
+                            await self._unload_model(tracked)
+                    except Exception as e:
+                        failed_models.append(tracked.model_key)
+                        logger.error(
+                            "Failed to evict %s during high pressure: %s",
+                            tracked.model_key, e
+                        )
+            if failed_models:
+                logger.warning(
+                    "High pressure handler completed with %d failures: %s",
+                    len(failed_models), failed_models
+                )
 
     async def _handle_moderate_pressure(self) -> None:
-        """Handle moderate pressure - preemptive offloading of idle models."""
+        """Handle moderate pressure - preemptive offloading of idle models.
+
+        Continues processing remaining models even if individual offloads fail.
+        """
         async with self._lock:
+            failed_models: list[str] = []
             for tracked in list(self._models.values()):
                 is_idle_on_gpu = (
                     tracked.location == ModelLocation.GPU
@@ -717,7 +831,19 @@ class GPUMemoryGovernor:
                 )
                 can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
                 if is_idle_on_gpu and can_offload:
-                    await self._offload_model(tracked)
+                    try:
+                        await self._offload_model(tracked)
+                    except Exception as e:
+                        failed_models.append(tracked.model_key)
+                        logger.error(
+                            "Failed to offload %s during moderate pressure: %s",
+                            tracked.model_key, e
+                        )
+            if failed_models:
+                logger.warning(
+                    "Moderate pressure handler completed with %d failures: %s",
+                    len(failed_models), failed_models
+                )
 
     # -------------------------------------------------------------------------
     # Callback Registration
@@ -808,18 +934,7 @@ class GPUMemoryGovernor:
 
     def get_eviction_history(self) -> list[dict[str, Any]]:
         """Get recent eviction history."""
-        return [
-            {
-                "model_name": r.model_name,
-                "model_type": r.model_type,
-                "quantization": r.quantization,
-                "reason": r.reason,
-                "action": r.action,
-                "memory_freed_mb": r.memory_freed_mb,
-                "timestamp": r.timestamp,
-            }
-            for r in self._eviction_history
-        ]
+        return [r.to_dict() for r in self._eviction_history]
 
     # -------------------------------------------------------------------------
     # Helper Methods
@@ -869,11 +984,13 @@ class GPUMemoryGovernor:
             )
             return 2000  # 2GB default - conservative estimate
 
-    def _record_eviction(self, tracked: TrackedModel, reason: str, action: str) -> None:
+    def _record_eviction(
+        self, tracked: TrackedModel, reason: str, action: EvictionAction
+    ) -> None:
         """Record an eviction event."""
         record = EvictionRecord(
             model_name=tracked.model_name,
-            model_type=tracked.model_type.name.lower(),
+            model_type=tracked.model_type,
             quantization=tracked.quantization,
             reason=reason,
             action=action,

@@ -95,10 +95,25 @@ class ModelOffloader:
         start_time = time.time()
 
         # Track original device
-        original_device = next(model.parameters()).device
+        try:
+            original_device = next(model.parameters()).device
+        except StopIteration:
+            logger.warning(
+                "Model %s has no parameters, using 'cpu' as original device",
+                model_key
+            )
+            original_device = torch.device("cpu")
 
         # Move to CPU
-        model.to("cpu")
+        try:
+            model.to("cpu")
+        except Exception as e:
+            logger.error(
+                "Failed to move model %s to CPU: %s (type: %s). "
+                "Model remains on %s.",
+                model_key, e, type(e).__name__, original_device
+            )
+            raise RuntimeError(f"Failed to offload {model_key} to CPU: {e}") from e
 
         # Optional: pin memory for faster transfers back
         if self.pin_memory and torch.cuda.is_available():

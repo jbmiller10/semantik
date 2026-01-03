@@ -86,12 +86,17 @@ class PreloadModelSpec(BaseModel):
     quantization: str
 
     def model_post_init(self, __context: Any) -> None:
-        """Validate model_type after initialization."""
+        """Validate and normalize model_type after initialization."""
         valid_types = {"embedding", "reranker"}
-        if self.model_type not in valid_types:
+        # Case-insensitive comparison
+        normalized = self.model_type.lower().strip()
+        if normalized not in valid_types:
             raise ValueError(
-                f"model_type must be one of {valid_types}, got '{self.model_type}'"
+                f"model_type must be one of {valid_types} (case-insensitive), "
+                f"got '{self.model_type}'"
             )
+        # Normalize to lowercase
+        object.__setattr__(self, "model_type", normalized)
 
 
 class PreloadRequest(BaseModel):

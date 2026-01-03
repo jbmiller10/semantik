@@ -452,17 +452,21 @@ class GovernedModelManager(ModelManager):
     async def preload_models(
         self,
         models: list[tuple[str, str, str]],  # (name, type, quantization)
-    ) -> dict[str, bool]:
+    ) -> dict[str, bool | str]:
         """
         Preload models for expected requests.
+
+        Note: Currently only embedding models are actually loaded. Rerankers
+        have memory reserved but are not actually loaded until first use.
+        This is because reranker loading requires different initialization.
 
         Args:
             models: List of (model_name, "embedding"|"reranker", quantization)
 
         Returns:
-            Dict of model_key -> success status
+            Dict of model_key -> success (True), or error message (str) on failure
         """
-        results = {}
+        results: dict[str, bool | str] = {}
 
         for model_name, model_type_str, quantization in models:
             model_type = (
@@ -472,21 +476,37 @@ class GovernedModelManager(ModelManager):
             )
 
             required_mb = get_model_memory_requirement(model_name, quantization)
+            model_key = f"{model_type_str}:{model_name}:{quantization}"
 
             success = await self._governor.request_memory(
                 model_name, model_type, quantization, required_mb
             )
 
-            model_key = f"{model_type_str}:{model_name}:{quantization}"
-            results[model_key] = success
+            if not success:
+                error_msg = (
+                    f"Memory allocation failed: {required_mb}MB required, "
+                    f"stats: {self._governor.get_memory_stats()}"
+                )
+                logger.warning("Preload failed for %s: %s", model_key, error_msg)
+                results[model_key] = error_msg
+                continue
 
-            if success and model_type == ModelType.EMBEDDING:
-                # Actually load the model
+            if model_type == ModelType.EMBEDDING:
+                # Actually load embedding models
                 try:
                     await self._ensure_provider_initialized(model_name, quantization)
+                    results[model_key] = True
                 except Exception as e:
+                    error_msg = f"Load failed: {type(e).__name__}: {e}"
                     logger.error("Failed to preload %s: %s", model_key, e)
-                    results[model_key] = False
+                    results[model_key] = error_msg
+            else:
+                # Rerankers: memory reserved but not loaded until first use
+                logger.info(
+                    "Preload %s: memory reserved (%dMB), will load on first use",
+                    model_key, required_mb
+                )
+                results[model_key] = True
 
         return results
 

@@ -121,8 +121,10 @@ class TestMemoryBudget:
         assert budget.usable_gpu_mb == expected
 
     def test_auto_detect_cpu_memory(self) -> None:
-        """Test that CPU memory is auto-detected when not provided."""
-        budget = MemoryBudget(total_gpu_mb=16000, total_cpu_mb=0)
+        """Test that CPU memory is auto-detected via factory function."""
+        from vecpipe.memory_governor import create_memory_budget
+
+        budget = create_memory_budget(total_gpu_mb=16000)
         # Should auto-detect from system
         assert budget.total_cpu_mb > 0
 
@@ -579,16 +581,18 @@ class TestEvictionRecord:
     @pytest.mark.asyncio
     async def test_eviction_history_bounded(self, governor: GPUMemoryGovernor) -> None:
         """Test that eviction history is bounded to max size."""
+        from vecpipe.memory_governor import EvictionAction
+
         # Set small max for testing
         governor._max_history_size = 5
 
         for i in range(10):
             record = EvictionRecord(
                 model_name=f"model-{i}",
-                model_type="embedding",
+                model_type=ModelType.EMBEDDING,
                 quantization="float16",
                 reason="test",
-                action="unloaded",
+                action=EvictionAction.UNLOADED,
                 memory_freed_mb=100,
             )
             governor._eviction_history.append(record)
