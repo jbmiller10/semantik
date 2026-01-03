@@ -66,7 +66,7 @@ const mockResponse: AvailablePluginsListResponse = {
   registry_version: '1.0',
   last_updated: '2026-01-01T00:00:00Z',
   registry_source: 'bundled',
-  semantik_version: '0.7.5',
+  semantik_version: '0.7.7',
 };
 
 describe('AvailablePluginsTab', () => {
@@ -115,7 +115,7 @@ describe('AvailablePluginsTab', () => {
         expect(screen.getByText('Registry v1.0')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('Semantik v0.7.5')).toBeInTheDocument();
+      expect(screen.getByText('Semantik v0.7.7')).toBeInTheDocument();
       expect(screen.getByText('(bundled)')).toBeInTheDocument();
     });
 

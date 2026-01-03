@@ -59,11 +59,11 @@ class TestRegistryPluginModel:
             repository="https://github.com/test/test",
             pypi="test-plugin",
             verified=True,
-            min_semantik_version="0.7.5",
+            min_semantik_version="0.7.7",
             tags=["api", "cloud"],
         )
         assert plugin.verified is True
-        assert plugin.min_semantik_version == "0.7.5"
+        assert plugin.min_semantik_version == "0.7.7"
         assert plugin.tags == ["api", "cloud"]
 
 
