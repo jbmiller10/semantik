@@ -74,7 +74,10 @@ class MemoryBudget:
     cpu_max_percent: float = 0.50  # Never use more than 50% for warm models
 
     def __post_init__(self) -> None:
-        """Auto-detect GPU and CPU memory if not provided."""
+        """Auto-detect GPU and CPU memory if not provided, and validate all fields."""
+        # Validate percentage fields first (before auto-detection uses them)
+        self._validate_percentages()
+
         # Auto-detect GPU memory
         if self.total_gpu_mb == 0:
             try:
@@ -91,6 +94,26 @@ class MemoryBudget:
         # Auto-detect CPU memory
         if self.total_cpu_mb == 0:
             self.total_cpu_mb = psutil.virtual_memory().total // (1024 * 1024)
+
+        # Validate memory values after auto-detection
+        self._validate_memory_values()
+
+    def _validate_percentages(self) -> None:
+        """Validate percentage fields are in valid range [0.0, 1.0]."""
+        for field_name in ("gpu_reserve_percent", "gpu_max_percent",
+                          "cpu_reserve_percent", "cpu_max_percent"):
+            value = getattr(self, field_name)
+            if not 0.0 <= value <= 1.0:
+                raise ValueError(
+                    f"{field_name} must be between 0.0 and 1.0, got {value}"
+                )
+
+    def _validate_memory_values(self) -> None:
+        """Validate memory values are non-negative."""
+        if self.total_gpu_mb < 0:
+            raise ValueError(f"total_gpu_mb must be non-negative, got {self.total_gpu_mb}")
+        if self.total_cpu_mb < 0:
+            raise ValueError(f"total_cpu_mb must be non-negative, got {self.total_cpu_mb}")
 
     @property
     def usable_gpu_mb(self) -> int:
@@ -118,6 +141,17 @@ class TrackedModel:
     last_used: float = field(default_factory=time.time)
     use_count: int = 0
     model_ref: Any = None  # Reference to actual model object for offloading
+
+    def __post_init__(self) -> None:
+        """Validate fields after initialization."""
+        if self.memory_mb < 0:
+            raise ValueError(f"memory_mb must be non-negative, got {self.memory_mb}")
+        if self.use_count < 0:
+            raise ValueError(f"use_count must be non-negative, got {self.use_count}")
+        if not self.model_name:
+            raise ValueError("model_name cannot be empty")
+        if not self.quantization:
+            raise ValueError("quantization cannot be empty")
 
     @property
     def model_key(self) -> str:

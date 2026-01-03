@@ -214,10 +214,9 @@ class GovernedModelManager(ModelManager):
     async def unload_model_async(self) -> None:
         """Unload model with governor tracking."""
         if self.current_model_key:
-            # Parse model key
-            parts = self.current_model_key.rsplit("_", 1)
-            if len(parts) == 2:
-                model_name, quantization = parts
+            parsed = self._parse_model_key(self.current_model_key)
+            if parsed:
+                model_name, quantization = parsed
                 await self._governor.mark_unloaded(
                     model_name, ModelType.EMBEDDING, quantization
                 )
@@ -292,9 +291,9 @@ class GovernedModelManager(ModelManager):
     def unload_reranker(self) -> None:
         """Unload reranker with governor tracking."""
         if self.current_reranker_key:
-            parts = self.current_reranker_key.rsplit("_", 1)
-            if len(parts) == 2:
-                model_name, quantization = parts
+            parsed = self._parse_model_key(self.current_reranker_key)
+            if parsed:
+                model_name, quantization = parsed
                 # Notify governor
                 self._schedule_governor_coro(
                     self._governor.mark_unloaded(model_name, ModelType.RERANKER, quantization)

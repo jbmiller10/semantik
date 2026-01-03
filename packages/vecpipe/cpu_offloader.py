@@ -8,12 +8,43 @@ and restoring them when the model is needed again.
 import gc
 import logging
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 import torch
 from torch import nn
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class OffloadMetadata:
+    """Typed metadata for an offloaded model."""
+
+    original_device: str
+    offload_time: float
+    model_ref: nn.Module
+    keep_on_gpu: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Validate metadata fields."""
+        if not self.original_device:
+            raise ValueError("original_device cannot be empty")
+        if self.offload_time <= 0:
+            raise ValueError(f"offload_time must be positive, got {self.offload_time}")
+
+    @property
+    def seconds_offloaded(self) -> float:
+        """Time in seconds since model was offloaded."""
+        return time.time() - self.offload_time
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for API responses."""
+        return {
+            "original_device": self.original_device,
+            "offload_time": self.offload_time,
+            "seconds_offloaded": self.seconds_offloaded,
+        }
 
 
 class ModelOffloader:
@@ -30,14 +61,14 @@ class ModelOffloader:
             pin_memory: Whether to use pinned memory for faster transfers
         """
         self.pin_memory = pin_memory
-        self._offloaded_models: dict[str, dict[str, Any]] = {}
+        self._offloaded_models: dict[str, OffloadMetadata] = {}
 
     def offload_to_cpu(
         self,
         model_key: str,
         model: nn.Module,
         keep_on_gpu: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> OffloadMetadata:
         """
         Move model weights to CPU.
 
@@ -79,13 +110,13 @@ class ModelOffloader:
             torch.cuda.empty_cache()
         gc.collect()
 
-        # Store metadata
-        metadata = {
-            "original_device": str(original_device),
-            "offload_time": time.time(),
-            "model_ref": model,
-            "keep_on_gpu": keep_on_gpu,
-        }
+        # Store typed metadata
+        metadata = OffloadMetadata(
+            original_device=str(original_device),
+            offload_time=time.time(),
+            model_ref=model,
+            keep_on_gpu=keep_on_gpu,
+        )
         self._offloaded_models[model_key] = metadata
 
         elapsed = time.time() - start_time
@@ -119,7 +150,7 @@ class ModelOffloader:
             return None
 
         metadata = self._offloaded_models[model_key]
-        model = metadata["model_ref"]
+        model = metadata.model_ref
         start_time = time.time()
 
         try:
@@ -157,12 +188,7 @@ class ModelOffloader:
         if model_key not in self._offloaded_models:
             return None
 
-        metadata = self._offloaded_models[model_key]
-        return {
-            "original_device": metadata["original_device"],
-            "offload_time": metadata["offload_time"],
-            "seconds_offloaded": time.time() - metadata["offload_time"],
-        }
+        return self._offloaded_models[model_key].to_dict()
 
     def clear(self) -> None:
         """Clear all offloaded models (for shutdown)."""
