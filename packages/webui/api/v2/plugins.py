@@ -472,9 +472,7 @@ async def uninstall_plugin_endpoint(
         if len(suffix_matches) > 1:
             raise HTTPException(
                 status_code=409,
-                detail=(
-                    f"Multiple installed packages match plugin {plugin_id}: " f"{', '.join(sorted(suffix_matches))}"
-                ),
+                detail=(f"Multiple installed packages match plugin {plugin_id}: {', '.join(sorted(suffix_matches))}"),
             )
         if is_plugin_installed(default_package):
             return default_package
