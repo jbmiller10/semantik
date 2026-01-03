@@ -19,7 +19,7 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
 from shared.plugins.state import get_disabled_plugin_ids
 from vecpipe.governed_model_manager import GovernedModelManager
-from vecpipe.memory_governor import MemoryBudget
+from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources
@@ -100,9 +100,9 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
 
     # Initialize model manager - use GovernedModelManager if memory governor is enabled
     if settings.ENABLE_MEMORY_GOVERNOR:
-        # Build memory budget from settings
-        budget = MemoryBudget(
-            total_gpu_mb=0,  # Auto-detect
+        # Build memory budget from settings using factory for auto-detection
+        budget = create_memory_budget(
+            total_gpu_mb=None,  # Auto-detect GPU memory via factory
             gpu_reserve_percent=settings.GPU_MEMORY_RESERVE_PERCENT,
             gpu_max_percent=settings.GPU_MEMORY_MAX_PERCENT,
             cpu_reserve_percent=settings.CPU_MEMORY_RESERVE_PERCENT,

@@ -295,6 +295,11 @@ class GPUMemoryGovernor:
         self._total_restorations = 0
         self._total_unloads = 0
 
+        # Circuit breaker degraded state tracking
+        self._degraded_state: bool = False
+        self._circuit_breaker_triggers: int = 0
+        self._max_circuit_breaker_triggers: int = 3
+
         logger.info(
             "GPUMemoryGovernor initialized: gpu_budget=%dMB (usable=%dMB), "
             "cpu_budget=%dMB (usable=%dMB), cpu_offload=%s",
@@ -532,7 +537,11 @@ class GPUMemoryGovernor:
         """
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
-            logger.warning("No offload callback for %s", tracked.model_type)
+            logger.error(
+                "No offload callback registered for %s - model %s cannot be offloaded",
+                tracked.model_type.name,
+                tracked.model_key,
+            )
             return False
 
         last_error: Exception | None = None
@@ -574,7 +583,11 @@ class GPUMemoryGovernor:
         """
         callback = self._callbacks.get(tracked.model_type, {}).get("unload")
         if not callback:
-            logger.warning("No unload callback for %s", tracked.model_type)
+            logger.error(
+                "No unload callback registered for %s - model %s cannot be unloaded",
+                tracked.model_type.name,
+                tracked.model_key,
+            )
             return False
 
         last_error: Exception | None = None
@@ -651,7 +664,7 @@ class GPUMemoryGovernor:
         # Restore via callback
         callback = self._callbacks.get(tracked.model_type, {}).get("offload")
         if not callback:
-            logger.warning(
+            logger.error(
                 "Cannot restore %s: no offload callback registered for %s", model_key, tracked.model_type.name
             )
             return False
@@ -746,14 +759,17 @@ class GPUMemoryGovernor:
 
                 # Reset exponential backoff after sustained success
                 if successful_iterations >= successful_iterations_to_reset:
-                    if current_backoff > base_backoff_seconds:
+                    if current_backoff > base_backoff_seconds or self._degraded_state:
                         logger.info(
-                            "Memory monitor stable for %d iterations, resetting backoff from %ds to %ds",
+                            "Memory monitor stable for %d iterations, resetting backoff from %ds to %ds%s",
                             successful_iterations,
                             current_backoff,
                             base_backoff_seconds,
+                            " and clearing degraded state" if self._degraded_state else "",
                         )
                     current_backoff = base_backoff_seconds
+                    self._circuit_breaker_triggers = 0
+                    self._degraded_state = False
                     successful_iterations = 0
 
             except asyncio.CancelledError:
@@ -766,12 +782,25 @@ class GPUMemoryGovernor:
                 )
 
                 if consecutive_failures >= max_consecutive_failures:
+                    self._circuit_breaker_triggers += 1
                     logger.error(
-                        "Memory monitor circuit breaker triggered after %d failures. "
-                        "Pausing for %ds before resuming (exponential backoff).",
+                        "Memory monitor circuit breaker triggered after %d failures "
+                        "(trigger %d/%d). Pausing for %ds before resuming (exponential backoff).",
                         consecutive_failures,
+                        self._circuit_breaker_triggers,
+                        self._max_circuit_breaker_triggers,
                         current_backoff,
                     )
+
+                    # Check for degraded state after repeated triggers
+                    if self._circuit_breaker_triggers >= self._max_circuit_breaker_triggers:
+                        self._degraded_state = True
+                        logger.critical(
+                            "Memory monitor in DEGRADED STATE after %d circuit breaker triggers. "
+                            "Manual intervention may be required. Memory pressure handling is unreliable.",
+                            self._circuit_breaker_triggers,
+                        )
+
                     await asyncio.sleep(current_backoff)
                     consecutive_failures = 0
 
@@ -800,7 +829,13 @@ class GPUMemoryGovernor:
             for tracked in list(self._models.values()):
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 5:
                     try:
-                        await self._unload_model(tracked)
+                        result = await self._unload_model(tracked)
+                        if not result:
+                            failed_models.append(tracked.model_key)
+                            logger.warning(
+                                "Failed to unload %s during critical pressure (callback returned False)",
+                                tracked.model_key,
+                            )
                     except Exception as e:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to unload %s during critical pressure: %s", tracked.model_key, e)
@@ -821,9 +856,15 @@ class GPUMemoryGovernor:
                 if tracked.location == ModelLocation.GPU and tracked.idle_seconds > 30:
                     try:
                         if self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb):
-                            await self._offload_model(tracked)
+                            result = await self._offload_model(tracked)
                         else:
-                            await self._unload_model(tracked)
+                            result = await self._unload_model(tracked)
+                        if not result:
+                            failed_models.append(tracked.model_key)
+                            logger.warning(
+                                "Failed to evict %s during high pressure (callback returned False)",
+                                tracked.model_key,
+                            )
                     except Exception as e:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to evict %s during high pressure: %s", tracked.model_key, e)
@@ -846,7 +887,13 @@ class GPUMemoryGovernor:
                 can_offload = self._enable_cpu_offload and self._can_offload_to_cpu(tracked.memory_mb)
                 if is_idle_on_gpu and can_offload:
                     try:
-                        await self._offload_model(tracked)
+                        result = await self._offload_model(tracked)
+                        if not result:
+                            failed_models.append(tracked.model_key)
+                            logger.warning(
+                                "Failed to offload %s during moderate pressure (callback returned False)",
+                                tracked.model_key,
+                            )
                     except Exception as e:
                         failed_models.append(tracked.model_key)
                         logger.error("Failed to offload %s during moderate pressure: %s", tracked.model_key, e)

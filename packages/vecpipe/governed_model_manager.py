@@ -386,6 +386,9 @@ class GovernedModelManager(ModelManager):
         """
         expected_key = self._get_model_key(model_name, quantization)
         if self.current_model_key == expected_key:
+            # Clean up any CPU-offloaded reference to prevent memory leak
+            offloader_key = f"embedding:{model_name}:{quantization}"
+            self._offloader.discard(offloader_key)
             # Call parent directly - governor already removed from tracking
             await super().unload_model_async()
 
@@ -401,6 +404,9 @@ class GovernedModelManager(ModelManager):
         """
         expected_key = self._get_model_key(model_name, quantization)
         if self.current_reranker_key == expected_key:
+            # Clean up any CPU-offloaded reference to prevent memory leak
+            offloader_key = f"reranker:{model_name}:{quantization}"
+            self._offloader.discard(offloader_key)
             # Call parent directly - governor already removed from tracking
             super().unload_reranker()
 

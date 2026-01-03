@@ -763,3 +763,135 @@ class TestIntegration:
 
         finally:
             await governor.shutdown()
+
+
+# =============================================================================
+# _restore_from_cpu Failure Tests
+# =============================================================================
+
+
+class TestRestoreFromCPUFailures:
+    """Tests for _restore_from_cpu error paths."""
+
+    @pytest.mark.asyncio()
+    async def test_restore_model_not_tracked(self, governor: GPUMemoryGovernor) -> None:
+        """Restore returns False if model not tracked."""
+        result = await governor._restore_from_cpu("nonexistent:model:key", required_mb=2000)
+        assert result is False
+
+    @pytest.mark.asyncio()
+    async def test_restore_model_not_on_cpu(self, governor: GPUMemoryGovernor) -> None:
+        """Restore returns False if model is on GPU, not CPU."""
+        # Register model on GPU (not CPU)
+        tracked = TrackedModel(
+            model_name="gpu-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.GPU,  # On GPU, not CPU
+            memory_mb=2000,
+        )
+        model_key = tracked.model_key
+        governor._models[model_key] = tracked
+
+        result = await governor._restore_from_cpu(model_key, required_mb=2000)
+        assert result is False
+
+    @pytest.mark.asyncio()
+    async def test_restore_insufficient_memory(self, small_memory_budget: MemoryBudget) -> None:
+        """Restore returns False if GPU memory insufficient after eviction."""
+        governor = GPUMemoryGovernor(
+            budget=small_memory_budget,  # 8GB GPU, 7200MB usable
+            enable_cpu_offload=True,
+        )
+
+        try:
+            # Fill GPU with a model that can't be evicted (exclude_key protects it)
+            with patch.object(governor, "_get_model_memory", return_value=6000):
+                await governor.mark_loaded("blocker-model", ModelType.RERANKER, "float16")
+
+            # Create an offloaded model that needs to restore but won't fit
+            tracked = TrackedModel(
+                model_name="offloaded-model",
+                model_type=ModelType.EMBEDDING,
+                quantization="float16",
+                location=ModelLocation.CPU,
+                memory_mb=3000,
+            )
+            model_key = tracked.model_key
+            governor._models[model_key] = tracked
+
+            # Try to restore - should fail because 6000 + 3000 > 7200 usable
+            # and blocker-model can't free enough (or has grace period)
+            blocker_key = governor._make_key("blocker-model", ModelType.RERANKER, "float16")
+            # Give blocker model grace period protection
+            governor._models[blocker_key].last_used = time.time()
+
+            result = await governor._restore_from_cpu(model_key, required_mb=3000)
+            assert result is False
+
+        finally:
+            await governor.shutdown()
+
+    @pytest.mark.asyncio()
+    async def test_restore_missing_callback(self, governor: GPUMemoryGovernor) -> None:
+        """Restore returns False if offload callback not registered."""
+        # Clear any existing callbacks
+        governor._callbacks.clear()
+
+        # Create an offloaded model
+        tracked = TrackedModel(
+            model_name="offloaded-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.CPU,
+            memory_mb=2000,
+        )
+        model_key = tracked.model_key
+        governor._models[model_key] = tracked
+
+        result = await governor._restore_from_cpu(model_key, required_mb=2000)
+        assert result is False
+
+    @pytest.mark.asyncio()
+    async def test_restore_callback_exception(self, governor: GPUMemoryGovernor) -> None:
+        """Restore returns False and logs if callback raises exception."""
+        offload_fn = AsyncMock(side_effect=RuntimeError("CUDA out of memory"))
+        unload_fn = AsyncMock()
+        governor.register_callbacks(
+            ModelType.EMBEDDING,
+            unload_fn=unload_fn,
+            offload_fn=offload_fn,
+        )
+
+        # Create an offloaded model
+        tracked = TrackedModel(
+            model_name="offloaded-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.CPU,
+            memory_mb=2000,
+        )
+        model_key = tracked.model_key
+        governor._models[model_key] = tracked
+
+        result = await governor._restore_from_cpu(model_key, required_mb=2000)
+        assert result is False
+
+        # Model should still be on CPU (not corrupted)
+        assert governor._models[model_key].location == ModelLocation.CPU
+
+    @pytest.mark.asyncio()
+    async def test_restore_unloaded_model_fails(self, governor: GPUMemoryGovernor) -> None:
+        """Restore returns False if model is already unloaded."""
+        tracked = TrackedModel(
+            model_name="unloaded-model",
+            model_type=ModelType.EMBEDDING,
+            quantization="float16",
+            location=ModelLocation.UNLOADED,  # Already unloaded
+            memory_mb=2000,
+        )
+        model_key = tracked.model_key
+        governor._models[model_key] = tracked
+
+        result = await governor._restore_from_cpu(model_key, required_mb=2000)
+        assert result is False
