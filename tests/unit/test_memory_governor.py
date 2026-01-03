@@ -66,7 +66,6 @@ async def governor(memory_budget: MemoryBudget) -> AsyncGenerator[GPUMemoryGover
         enable_cpu_offload=True,
         eviction_idle_threshold_seconds=120,
         pressure_check_interval_seconds=15,
-        activation_overhead_factor=1.2,
     )
     yield gov
     await gov.shutdown()

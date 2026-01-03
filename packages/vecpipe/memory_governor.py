@@ -164,7 +164,6 @@ class GPUMemoryGovernor:
         enable_cpu_offload: bool = True,
         eviction_idle_threshold_seconds: int = 120,
         pressure_check_interval_seconds: int = 15,
-        activation_overhead_factor: float = 1.2,
     ):
         """
         Initialize the memory governor.
@@ -174,13 +173,11 @@ class GPUMemoryGovernor:
             enable_cpu_offload: Whether to offload to CPU before unloading
             eviction_idle_threshold_seconds: Idle time before model eligible for eviction
             pressure_check_interval_seconds: Interval for background pressure checks
-            activation_overhead_factor: Multiplier for activation memory (default 20%)
         """
         self._budget = budget or self._detect_budget()
         self._enable_cpu_offload = enable_cpu_offload
         self._eviction_idle_threshold = eviction_idle_threshold_seconds
         self._pressure_check_interval = pressure_check_interval_seconds
-        self._activation_overhead = activation_overhead_factor
 
         # Model tracking: OrderedDict maintains insertion order for LRU
         # Key: model_key (e.g., "embedding:Qwen/Qwen3-Embedding-0.6B:float16")
@@ -290,26 +287,26 @@ class GPUMemoryGovernor:
                     return await self._restore_from_cpu(model_key, required_mb)
 
             # Case 2: Need to allocate new memory
-            effective_required = int(required_mb * self._activation_overhead)
+            # Note: required_mb already includes overhead from get_model_memory_requirement
             current_gpu_usage = self._get_gpu_usage()
 
-            if current_gpu_usage + effective_required <= self._budget.usable_gpu_mb:
+            if current_gpu_usage + required_mb <= self._budget.usable_gpu_mb:
                 # Fits within budget
                 logger.debug(
                     "Memory request approved: %s needs %dMB, current=%dMB, budget=%dMB",
                     model_key,
-                    effective_required,
+                    required_mb,
                     current_gpu_usage,
                     self._budget.usable_gpu_mb,
                 )
                 return True
 
             # Case 3: Need to make room
-            needed_mb = (current_gpu_usage + effective_required) - self._budget.usable_gpu_mb
+            needed_mb = (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb
             logger.info(
                 "Memory request requires eviction: %s needs %dMB, must free %dMB",
                 model_key,
-                effective_required,
+                required_mb,
                 needed_mb,
             )
             freed_mb = await self._make_room(needed_mb, exclude_key=model_key)
@@ -508,11 +505,11 @@ class GPUMemoryGovernor:
             return False
 
         # Ensure we have room on GPU
-        effective_required = int(required_mb * self._activation_overhead)
+        # Note: required_mb already includes overhead from get_model_memory_requirement
         current_gpu_usage = self._get_gpu_usage()
 
-        if current_gpu_usage + effective_required > self._budget.usable_gpu_mb:
-            needed = (current_gpu_usage + effective_required) - self._budget.usable_gpu_mb
+        if current_gpu_usage + required_mb > self._budget.usable_gpu_mb:
+            needed = (current_gpu_usage + required_mb) - self._budget.usable_gpu_mb
             freed = await self._make_room(needed, exclude_key=model_key)
             if freed < needed:
                 logger.warning("Cannot restore %s - insufficient GPU memory after eviction", model_key)
