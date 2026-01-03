@@ -366,9 +366,7 @@ async def update_plugin_config(
     },
     dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_HEALTH_RATE))],
 )
-@create_rate_limit_decorator(RateLimitConfig.PLUGIN_HEALTH_RATE)
 async def check_plugin_health(
-    http_request: Request,  # noqa: ARG001 - Required for rate limiting
     plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),  # noqa: ARG001
     service: PluginService = Depends(_get_plugin_service),
@@ -395,10 +393,8 @@ async def check_plugin_health(
     },
     dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_INSTALL_RATE))],
 )
-@create_rate_limit_decorator(RateLimitConfig.PLUGIN_INSTALL_RATE)
 async def install_plugin_endpoint(
-    http_request: Request,  # noqa: ARG001 - Required for rate limiting
-    install_request: PluginInstallRequest,
+    body: PluginInstallRequest,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PluginInstallResponse:
     """Install a plugin from the registry (admin only).
@@ -416,21 +412,21 @@ async def install_plugin_endpoint(
             403,
             PluginErrorCode.PLUGIN_INSTALL_FAILED,
             "Admin access required to install plugins",
-            install_request.plugin_id,
+            body.plugin_id,
         )
 
     # Look up plugin in registry
     registry = await fetch_registry()
     registry_entry = next(
-        (p for p in registry.plugins if p.id == install_request.plugin_id),
+        (p for p in registry.plugins if p.id == body.plugin_id),
         None,
     )
     if not registry_entry:
         raise _plugin_error(
             404,
             PluginErrorCode.PLUGIN_NOT_IN_REGISTRY,
-            f"Plugin {install_request.plugin_id} not found in registry",
-            install_request.plugin_id,
+            f"Plugin {body.plugin_id} not found in registry",
+            body.plugin_id,
         )
 
     # Build install command
@@ -442,23 +438,23 @@ async def install_plugin_endpoint(
         # Strip "pip install " prefix if present (registry may contain full command)
         if install_cmd.startswith("pip install "):
             install_cmd = install_cmd[len("pip install ") :]
-        if install_request.version:
+        if body.version:
             # Append version using proper URL parsing
             if is_git_url(install_cmd):
-                install_cmd = append_version_to_git_url(install_cmd, install_request.version)
+                install_cmd = append_version_to_git_url(install_cmd, body.version)
             else:
-                install_cmd = f"{install_cmd}@{install_request.version}"
+                install_cmd = f"{install_cmd}@{body.version}"
     elif registry_entry.pypi:
         install_cmd = registry_entry.pypi
-        if install_request.version:
-            install_cmd = f"{install_cmd}=={install_request.version}"
+        if body.version:
+            install_cmd = f"{install_cmd}=={body.version}"
 
     if not install_cmd:
         raise _plugin_error(
             400,
             PluginErrorCode.PLUGIN_NO_INSTALL_COMMAND,
-            f"Plugin {install_request.plugin_id} has no install command",
-            install_request.plugin_id,
+            f"Plugin {body.plugin_id} has no install command",
+            body.plugin_id,
         )
 
     try:
@@ -468,21 +464,21 @@ async def install_plugin_endpoint(
             400,
             PluginErrorCode.PLUGIN_VERSION_INVALID,
             str(exc),
-            install_request.plugin_id,
+            body.plugin_id,
         ) from exc
 
     # Audit log
     audit_log(
-        install_request.plugin_id,
+        body.plugin_id,
         "plugin.install.started",
-        {"user_id": current_user["id"], "version": install_request.version},
+        {"user_id": current_user["id"], "version": body.version},
     )
 
     # Install (run in thread to avoid blocking event loop)
     success, message = await asyncio.to_thread(install_plugin, install_cmd)
 
     audit_log(
-        install_request.plugin_id,
+        body.plugin_id,
         "plugin.install.completed" if success else "plugin.install.failed",
         {"success": success, "message": message[:200]},  # Truncate long error messages
     )
@@ -506,9 +502,7 @@ async def install_plugin_endpoint(
     },
     dependencies=[Depends(rate_limit_dependency(RateLimitConfig.PLUGIN_UNINSTALL_RATE))],
 )
-@create_rate_limit_decorator(RateLimitConfig.PLUGIN_UNINSTALL_RATE)
 async def uninstall_plugin_endpoint(
-    http_request: Request,  # noqa: ARG001 - Required for rate limiting
     plugin_id: str = Path(..., pattern=PLUGIN_ID_REGEX, max_length=PLUGIN_ID_MAX_LENGTH),
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> PluginInstallResponse:
