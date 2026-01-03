@@ -211,8 +211,8 @@ class TestModelRestoreErrorStateMismatch:
         """Restore succeeds when model was actually offloaded first."""
         import torch
 
-        # Create a simple mock model
-        mock_model = torch.nn.Linear(10, 10) if torch.cuda.is_available() else type("MockModel", (), {})()
+        # Create a simple torch.nn.Module (required by offloader, CUDA not required)
+        mock_model = torch.nn.Linear(10, 10)
         governed_manager._provider = type("MockProvider", (), {"model": mock_model})()
 
         # First offload the model
