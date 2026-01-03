@@ -17,6 +17,7 @@ from .memory_governor import (
     GPUMemoryGovernor,
     MemoryBudget,
     ModelType,
+    create_memory_budget,
 )
 from .memory_utils import get_model_memory_requirement
 from .model_manager import ModelManager
@@ -562,16 +563,16 @@ def create_governed_model_manager(
     if unload_after_seconds is None:
         unload_after_seconds = settings.MODEL_UNLOAD_AFTER_SECONDS
 
-    # Build memory budget
+    # Build memory budget with auto-detected CPU memory for warm pool
     if total_gpu_memory_mb is not None:
-        budget = MemoryBudget(total_gpu_mb=total_gpu_memory_mb)
+        budget = create_memory_budget(total_gpu_mb=total_gpu_memory_mb)
     elif torch.cuda.is_available():
         _, total_bytes = torch.cuda.mem_get_info()
         total_mb = total_bytes // (1024 * 1024)
-        budget = MemoryBudget(total_gpu_mb=total_mb)
+        budget = create_memory_budget(total_gpu_mb=total_mb)
     else:
         # CPU-only mode
-        budget = MemoryBudget(total_gpu_mb=0)
+        budget = create_memory_budget(total_gpu_mb=0)
 
     return GovernedModelManager(
         unload_after_seconds=unload_after_seconds,
