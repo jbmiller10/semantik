@@ -130,12 +130,7 @@ class TestConcurrentRegistration:
 
 @pytest.mark.asyncio()
 @pytest.mark.usefixtures("_db_isolation")
-@pytest.mark.skip(
-    reason=(
-        "Concurrent DB tests require separate sessions; "
-        "single AsyncSession doesn't support concurrent operations"
-    )
-)
+@pytest.mark.skip(reason="Concurrent DB tests require separate sessions")
 class TestConcurrentConfigUpsert:
     """Test concurrent plugin config database operations.
 
