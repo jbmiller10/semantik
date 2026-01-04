@@ -171,37 +171,35 @@ class TestModelRestoreErrorStateMismatch:
     @pytest.mark.asyncio()
     async def test_restore_raises_error_on_state_mismatch_embedding(self, governed_manager):
         """ModelRestoreError raised when governor thinks model is offloaded but offloader doesn't have it."""
-        from packages.vecpipe.memory_utils import ModelRestoreError
-
         # Mock provider to exist (so we don't get the "provider is None" error)
         governed_manager._provider = type("MockProvider", (), {"model": object()})()
 
         # Call the offload callback with target_device="cuda" without actually offloading first
         # This simulates state mismatch where governor thinks model is offloaded but offloader doesn't have it
-        with pytest.raises(ModelRestoreError) as exc_info:
+        # Note: Use Exception match since ModelRestoreError class identity varies by import path
+        with pytest.raises(Exception, match="state mismatch between governor and offloader") as exc_info:
             await governed_manager._governor_offload_embedding(
                 model_name="Qwen/test-model",
                 quantization="float16",
                 target_device="cuda",
             )
 
-        assert "state mismatch between governor and offloader" in str(exc_info.value)
+        assert "ModelRestoreError" in type(exc_info.value).__name__
         assert "embedding:Qwen/test-model:float16" in str(exc_info.value)
 
     @pytest.mark.asyncio()
     async def test_restore_raises_error_on_state_mismatch_reranker(self, governed_manager):
         """ModelRestoreError raised for reranker when state diverges."""
-        from packages.vecpipe.memory_utils import ModelRestoreError
-
         # Mock reranker to exist
         governed_manager.reranker = type("MockReranker", (), {"model": object()})()
 
-        with pytest.raises(ModelRestoreError) as exc_info:
+        # Note: Use Exception match since ModelRestoreError class identity varies by import path
+        with pytest.raises(Exception, match="state mismatch between governor and offloader") as exc_info:
             await governed_manager._governor_offload_reranker(
                 model_name="Qwen/test-reranker",
                 quantization="float16",
                 target_device="cuda",
             )
 
-        assert "state mismatch between governor and offloader" in str(exc_info.value)
+        assert "ModelRestoreError" in type(exc_info.value).__name__
         assert "reranker:Qwen/test-reranker:float16" in str(exc_info.value)
