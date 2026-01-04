@@ -1083,11 +1083,19 @@ class GPUMemoryGovernor:
             Actual free GPU memory in MB, or usable_gpu_mb if CUDA unavailable
         """
         try:
+            import gc
+
             import torch
 
             if not torch.cuda.is_available():
                 # Fall back to budget-based estimate
                 return self._budget.usable_gpu_mb - self._get_gpu_usage()
+
+            # Force garbage collection and clear PyTorch's CUDA cache
+            # This is important because PyTorch's caching allocator may hold
+            # memory even after models are moved to CPU
+            gc.collect()
+            torch.cuda.empty_cache()
 
             free_bytes, _ = torch.cuda.mem_get_info()
             return free_bytes // (1024 * 1024)
