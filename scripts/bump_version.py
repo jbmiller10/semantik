@@ -50,14 +50,14 @@ def bump_version(current: str, bump_type: str) -> str:
 
     if bump_type == "patch":
         return format_version(major, minor, patch + 1)
-    elif bump_type == "minor":
+    if bump_type == "minor":
         return format_version(major, minor + 1, 0)
-    elif bump_type == "major":
+    if bump_type == "major":
         return format_version(major + 1, 0, 0)
-    else:
-        # Assume it's an explicit version
-        parse_version(bump_type)  # Validate format
-        return bump_type
+
+    # Assume it's an explicit version
+    parse_version(bump_type)  # Validate format
+    return bump_type
 
 
 def update_file(filepath: Path, pattern: str, replacement: str, new_version: str) -> bool:
