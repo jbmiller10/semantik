@@ -190,22 +190,23 @@ class TestExtractAndSerialize:
 
     def test_reads_file_and_delegates(self, tmp_path) -> None:
         """Test that extract_and_serialize reads file and delegates to parse_document_content."""
-        # Create a test file
-        test_file = tmp_path / "test.txt"
-        test_file.write_text("Test content")
+        # Create a test file - use .pdf to ensure parse_document_content is called
+        # (text files use fast path and skip parse_document_content)
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"fake pdf content")
 
         with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
-            mock_parse.return_value = [("Test content", {"file_type": "txt"})]
+            mock_parse.return_value = [("Test content", {"file_type": "pdf"})]
 
             result = extract_and_serialize(str(test_file))
 
-            assert result == [("Test content", {"file_type": "txt"})]
+            assert result == [("Test content", {"file_type": "pdf"})]
             mock_parse.assert_called_once()
             # Verify content was read as bytes
             call_args = mock_parse.call_args
-            assert call_args.kwargs["content"] == b"Test content"
-            assert call_args.kwargs["file_extension"] == ".txt"
-            assert call_args.kwargs["metadata"] == {"filename": "test.txt"}
+            assert call_args.kwargs["content"] == b"fake pdf content"
+            assert call_args.kwargs["file_extension"] == ".pdf"
+            assert call_args.kwargs["metadata"] == {"filename": "test.pdf"}
 
     def test_file_not_found_raises(self) -> None:
         """Test that FileNotFoundError is raised for missing files."""
