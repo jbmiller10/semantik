@@ -361,7 +361,7 @@ class LocalFileConnector(BaseConnector):
                         batch_strs,
                     )
                 except Exception as exc:
-                    if isinstance(exc, (MemoryError, SystemExit, KeyboardInterrupt)):
+                    if isinstance(exc, MemoryError | SystemExit | KeyboardInterrupt):
                         raise
                     logger.error(
                         "Parallel file processing batch failed (%d-%d of %d): %s; falling back to sequential",
