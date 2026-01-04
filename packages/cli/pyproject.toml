@@ -1,6 +1,6 @@
 [project]
 name = "semantik-cli"
-version = "0.7.5"
+version = "0.7.7"
 description = "Semantik plugin development CLI"
 requires-python = ">=3.11,<3.13"
 readme = "README.md"

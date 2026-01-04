@@ -4,7 +4,7 @@
  */
 
 const STORAGE_VERSION_KEY = 'semantik_storage_version';
-const CURRENT_VERSION = '0.7.5';
+const CURRENT_VERSION = __APP_VERSION__;
 
 // Keys that should be preserved across migrations
 const PRESERVED_KEYS: string[] = [

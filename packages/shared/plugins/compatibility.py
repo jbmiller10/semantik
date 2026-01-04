@@ -17,18 +17,12 @@ logger = logging.getLogger(__name__)
 def get_semantik_version() -> str:
     """Get the current Semantik version.
 
-    Reads from the package metadata or falls back to hardcoded value.
-
     Returns:
         The current Semantik version string.
     """
-    try:
-        from importlib.metadata import version
+    from shared.version import get_version
 
-        return version("semantik")
-    except Exception:
-        # Fallback if running in development without proper installation
-        return "0.7.5"
+    return get_version()
 
 
 def check_compatibility(

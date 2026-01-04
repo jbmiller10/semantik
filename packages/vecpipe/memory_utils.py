@@ -40,6 +40,19 @@ class InsufficientMemoryError(Exception):
     """Raised when there's not enough memory to load a model"""
 
 
+class ModelRestoreError(Exception):
+    """Raised when a model cannot be restored from CPU to GPU.
+
+    This indicates a state inconsistency between the governor's tracking
+    and the offloader's actual records.
+    """
+
+    def __init__(self, model_key: str, reason: str):
+        self.model_key = model_key
+        self.reason = reason
+        super().__init__(f"Failed to restore {model_key}: {reason}")
+
+
 def get_gpu_memory_info() -> tuple[int, int]:
     """
     Get GPU memory information
@@ -76,7 +89,13 @@ def get_model_memory_requirement(model_name: str, quantization: str = "float32")
         elif "8B" in model_name:
             base_requirement = {"float32": 32000, "float16": 16000, "int8": 8000}[quantization]
         else:
-            # Conservative default
+            # Conservative default - log warning for visibility
+            logger.warning(
+                "Unknown model '%s' with quantization '%s' - using conservative 16GB estimate. "
+                "Add to MODEL_MEMORY_REQUIREMENTS for accurate sizing.",
+                model_name,
+                quantization,
+            )
             base_requirement = 16000
 
     return int(base_requirement * MEMORY_OVERHEAD_FACTOR)

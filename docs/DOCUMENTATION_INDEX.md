@@ -12,7 +12,7 @@ All docs in `/docs/`. Not listed here? Check app/package READMEs or it doesn't e
 
 **Features:** [COLLECTIONS.md](./COLLECTIONS.md), [CONNECTORS.md](./CONNECTORS.md), [CONNECTOR_MIGRATION.md](./CONNECTOR_MIGRATION.md), [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md), [RERANKING.md](./RERANKING.md), [CHUNKING_STRATEGIES.md](./CHUNKING_STRATEGIES.md), [CHUNKING_FEATURE_OVERVIEW.md](./CHUNKING_FEATURE_OVERVIEW.md), [EMBEDDING_PLUGINS.md](./EMBEDDING_PLUGINS.md), [EMBEDDING_VISUALIZATION.md](./EMBEDDING_VISUALIZATION.md)
 
-**Operations:** [DOCKER.md](./DOCKER.md), [DEPLOYMENT.md](./DEPLOYMENT.md), [CONFIGURATION.md](./CONFIGURATION.md), [partition-monitoring.md](./partition-monitoring.md), [security.md](./security.md), [TESTING.md](./TESTING.md)
+**Operations:** [DOCKER.md](./DOCKER.md), [DEPLOYMENT.md](./DEPLOYMENT.md), [CONFIGURATION.md](./CONFIGURATION.md), [MEMORY_MANAGEMENT.md](./MEMORY_MANAGEMENT.md), [partition-monitoring.md](./partition-monitoring.md), [security.md](./security.md), [TESTING.md](./TESTING.md)
 
 ## Reading Paths
 
