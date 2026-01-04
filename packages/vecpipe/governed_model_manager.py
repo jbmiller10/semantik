@@ -262,6 +262,34 @@ class GovernedModelManager(ModelManager):
             self._update_last_used()
             return self._provider
 
+        # If switching to a different model, notify governor that old model will be unloaded
+        # This is critical: parent's _ensure_provider_initialized() will call cleanup() on
+        # the old provider, but it doesn't know about the governor. We must update governor
+        # tracking BEFORE the parent unloads, otherwise governor has stale tracking data.
+        if self._provider is not None and self.current_model_key is not None and self.current_model_key != model_key:
+            old_parsed = self._parse_model_key(self.current_model_key)
+            if old_parsed:
+                old_model_name, old_quantization = old_parsed
+                # Also discard from offloader in case it was offloaded
+                old_offloader_key = f"embedding:{old_model_name}:{old_quantization}"
+                self._offloader.discard(old_offloader_key)
+                # Notify governor that old model is being unloaded
+                await self._governor.mark_unloaded(old_model_name, ModelType.EMBEDDING, old_quantization)
+                logger.info(
+                    "Switching embedding model from %s to %s - notified governor of unload",
+                    self.current_model_key,
+                    model_key,
+                )
+                # Force garbage collection and CUDA cache clear to actually free GPU memory
+                # This is important because parent's cleanup() may not immediately release memory
+                import gc
+
+                import torch
+
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
         # Call parent implementation to actually load
         try:
             provider = await super()._ensure_provider_initialized(model_name, quantization)
