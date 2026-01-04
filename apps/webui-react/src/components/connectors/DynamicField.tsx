@@ -1,3 +1,4 @@
+import * as React from 'react';
 import type { FieldDefinition, SecretDefinition } from '../../types/connector';
 import { getInputClassName } from '../../utils/formStyles';
 
@@ -419,11 +420,33 @@ function GlobListField({
 }: FieldComponentProps<string[]>) {
   const inputClassName = getInputClassName(!!error, disabled);
 
-  // Convert array to comma-separated string for display
-  const displayValue = Array.isArray(value) ? value.join(', ') : '';
+  // Track the raw input string separately to allow typing commas
+  const [rawInput, setRawInput] = React.useState<string>(() =>
+    Array.isArray(value) ? value.join(', ') : ''
+  );
+
+  // Sync rawInput when value changes externally (e.g., form reset)
+  React.useEffect(() => {
+    const externalValue = Array.isArray(value) ? value.join(', ') : '';
+    const externalParsed = Array.isArray(value) ? value : [];
+    setRawInput((currentRaw) => {
+      // Only update if the parsed values are different (not just whitespace differences)
+      const currentParsed = currentRaw
+        .split(',')
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+      if (JSON.stringify(currentParsed) !== JSON.stringify(externalParsed)) {
+        return externalValue;
+      }
+      return currentRaw;
+    });
+  }, [value]);
 
   const handleChange = (inputValue: string) => {
-    // Convert comma-separated string to array
+    // Update raw input immediately to allow typing commas
+    setRawInput(inputValue);
+
+    // Convert comma-separated string to array for the parent
     const patterns = inputValue
       .split(',')
       .map((p) => p.trim())
@@ -443,7 +466,7 @@ function GlobListField({
       <input
         type="text"
         id={field.name}
-        value={displayValue}
+        value={rawInput}
         onChange={(e) => handleChange(e.target.value)}
         disabled={disabled}
         placeholder={field.placeholder || 'e.g., *.md, docs/**'}

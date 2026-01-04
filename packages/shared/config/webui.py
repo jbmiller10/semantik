@@ -55,6 +55,11 @@ class WebuiConfig(BaseConfig):
     # Feature toggles
     USE_CHUNKING_ORCHESTRATOR: bool = False
 
+    # Parallel ingestion settings
+    PARALLEL_INGESTION_ENABLED: bool = True  # Enable parallel extraction/chunking
+    PARALLEL_INGESTION_WORKERS: int = 0  # Number of extraction workers (0 = auto-detect based on CPU count)
+    PARALLEL_INGESTION_MAX_WORKERS: int = 0  # Maximum workers cap (0 = no limit, use all CPUs)
+
     # Document storage configuration
     DOCUMENT_ROOT: str | None = None
     DOCUMENT_ALLOWED_ROOTS: str | None = None
