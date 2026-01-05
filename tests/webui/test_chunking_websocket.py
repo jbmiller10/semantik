@@ -19,7 +19,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from webui.api.v2.chunking_schemas import ChunkingStatus
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 
 @pytest.fixture()

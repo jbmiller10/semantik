@@ -47,6 +47,7 @@ from .utils import (
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
     _audit_log_operation,
+    _build_internal_api_headers,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
@@ -575,8 +576,9 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 embed_req = {"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"}
                 upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
-                    await client.post("http://vecpipe:8000/embed", json=embed_req)
-                    await client.post("http://vecpipe:8000/upsert", json=upsert_req)
+                    headers = _build_internal_api_headers()
+                    await client.post("http://vecpipe:8000/embed", json=embed_req, headers=headers)
+                    await client.post("http://vecpipe:8000/upsert", json=upsert_req, headers=headers)
 
                 try:
                     doc.chunk_count = len(chunks)
@@ -1341,13 +1343,14 @@ async def _process_append_operation_impl(
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
+                        headers = _build_internal_api_headers()
                         logger.info(
                             "Calling vecpipe /embed for %s texts (semaphore cap=%s)",
                             len(texts),
                             _embedding_semaphore._value,
                         )
                         async with _embedding_semaphore:
-                            response = await client.post(vecpipe_url, json=embed_request)
+                            response = await client.post(vecpipe_url, json=embed_request, headers=headers)
 
                         if response.status_code != 200:
                             raise Exception(
@@ -1426,8 +1429,9 @@ async def _process_append_operation_impl(
                         }
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
+                            headers = _build_internal_api_headers()
                             vecpipe_upsert_url = "http://vecpipe:8000/upsert"
-                            response = await client.post(vecpipe_upsert_url, json=upsert_request)
+                            response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
 
                             if response.status_code != 200:
                                 raise Exception(

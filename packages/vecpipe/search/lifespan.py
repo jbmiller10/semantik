@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from shared.config import settings
+from shared.config.internal_api_key import ensure_internal_api_key
 from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
@@ -62,6 +64,14 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     Plugin state (enabled/disabled) is read from a shared state file written by WebUI.
     This allows VecPipe to respect plugin enable/disable without database access.
     """
+    try:
+        key = ensure_internal_api_key(settings)
+        fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+        logger.info("Internal API key configured (fingerprint=%s)", fingerprint)
+    except RuntimeError as exc:
+        logger.error("Internal API key configuration failed: %s", exc)
+        raise
+
     # Read disabled plugins from state file (written by WebUI)
     disabled_ids = get_disabled_plugin_ids()
     if disabled_ids:

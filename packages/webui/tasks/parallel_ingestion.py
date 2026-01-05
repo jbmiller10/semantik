@@ -22,6 +22,7 @@ import psutil
 from qdrant_client.models import PointStruct
 
 from shared.database.models import DocumentStatus
+from webui.tasks.utils import _build_internal_api_headers
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -534,7 +535,8 @@ async def embedding_worker(
             }
 
             async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.post(vecpipe_url, json=embed_request)
+                headers = _build_internal_api_headers()
+                response = await client.post(vecpipe_url, json=embed_request, headers=headers)
                 response.raise_for_status()
 
                 embed_response = response.json()
@@ -739,7 +741,8 @@ async def result_processor(
 
                 try:
                     async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(_vecpipe_url("/upsert"), json=upsert_request)
+                        headers = _build_internal_api_headers()
+                        response = await client.post(_vecpipe_url("/upsert"), json=upsert_request, headers=headers)
                         response.raise_for_status()
                 except httpx.RequestError as exc:
                     raise RuntimeError(f"Upsert request failed: {exc}") from exc

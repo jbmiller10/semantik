@@ -82,7 +82,7 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
         """
         try:
             # Hash the token for lookup
-            token_hash = self._hash_token(token)
+            token_hash = self.hash_refresh_token(token)
 
             # Find the token
             result = await self.session.execute(
@@ -121,7 +121,7 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
         """
         try:
             # Hash the token
-            token_hash = self._hash_token(token)
+            token_hash = self.hash_refresh_token(token)
 
             # Update token to revoked
             result = await self.session.execute(
@@ -294,7 +294,7 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
                 expires_dt = expires_at
 
             # Hash and save as refresh token
-            token_hash = self._hash_token(token)
+            token_hash = self.hash_refresh_token(token)
             await self.save_refresh_token(user_id, token_hash, expires_dt)
 
         except InvalidUserIdError:
@@ -334,3 +334,7 @@ class PostgreSQLAuthRepository(PostgreSQLBaseRepository, AuthRepository):
             Hexadecimal hash string
         """
         return hashlib.sha256(token.encode()).hexdigest()
+
+    def hash_refresh_token(self, token: str) -> str:
+        """Return the deterministic hash for refresh token storage."""
+        return self._hash_token(token)

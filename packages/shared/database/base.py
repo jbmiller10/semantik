@@ -108,6 +108,10 @@ class AuthRepository(ABC):
         """Save a refresh token for a user."""
 
     @abstractmethod
+    def hash_refresh_token(self, token: str) -> str:
+        """Return a deterministic hash for refresh token storage."""
+
+    @abstractmethod
     async def verify_refresh_token(self, token: str) -> str | None:
         """Verify a refresh token and return user_id if valid."""
 

@@ -4,6 +4,7 @@ This module focuses on testing edge cases, FAISS fallback, and complex error sce
 """
 
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -40,6 +41,9 @@ def mock_settings() -> Generator[Any, None, None]:
         mock.MODEL_UNLOAD_AFTER_SECONDS = 300
         mock.SEARCH_API_PORT = 8088
         mock.METRICS_PORT = 9090
+        mock.INTERNAL_API_KEY = "test-internal-key"
+        mock.ENVIRONMENT = "test"
+        mock.data_dir = Path("/tmp")
         yield mock
 
 
@@ -133,9 +137,13 @@ def test_client_for_search_api(
     app.dependency_overrides.clear()
 
     # Patch settings during test
-    with patch("vecpipe.search_api.settings", mock_settings):
+    with (
+        patch("vecpipe.search_api.settings", mock_settings),
+        patch("vecpipe.search.router.settings", mock_settings),
+    ):
         # Create test client
         client = TestClient(app)
+        client.headers.update({"X-Internal-Api-Key": mock_settings.INTERNAL_API_KEY})
         yield client
 
     # Restore original values

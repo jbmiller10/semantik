@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketBasic:

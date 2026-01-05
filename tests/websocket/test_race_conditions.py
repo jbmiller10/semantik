@@ -18,7 +18,7 @@ from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
 
 from webui.websocket.scalable_manager import ScalableWebSocketManager
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -89,7 +89,7 @@ class TestRedisStreamWebSocketManagerRaceConditions:
         detector = RaceConditionDetector()
 
         # Mock Redis to avoid external dependencies
-        with patch("webui.websocket_manager.redis") as mock_redis:
+        with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
             mock_redis_client = AsyncMock()
             mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
             mock_redis_client.ping = AsyncMock()
@@ -142,7 +142,7 @@ class TestRedisStreamWebSocketManagerRaceConditions:
         manager = RedisStreamWebSocketManager()
         detector = RaceConditionDetector()
 
-        with patch("webui.websocket_manager.redis") as mock_redis:
+        with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
             mock_redis_client = AsyncMock()
             mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
             mock_redis_client.ping = AsyncMock()
@@ -195,7 +195,7 @@ class TestRedisStreamWebSocketManagerRaceConditions:
         detector = RaceConditionDetector()
         messages_sent: set[str] = set()
 
-        with patch("webui.websocket_manager.redis") as mock_redis:
+        with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
             mock_redis_client = AsyncMock()
             mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
             mock_redis_client.ping = AsyncMock()
@@ -246,7 +246,7 @@ class TestRedisStreamWebSocketManagerRaceConditions:
         manager.max_connections_per_user = 5  # Reduce for testing
         manager.max_total_connections = 20  # Reduce for testing
 
-        with patch("webui.websocket_manager.redis") as mock_redis:
+        with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
             mock_redis_client = AsyncMock()
             mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
             mock_redis_client.ping = AsyncMock()
@@ -298,7 +298,7 @@ class TestRedisStreamWebSocketManagerRaceConditions:
         """Test that cleanup operations don't interfere with concurrent operations."""
         manager = RedisStreamWebSocketManager()
 
-        with patch("webui.websocket_manager.redis") as mock_redis:
+        with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
             mock_redis_client = AsyncMock()
             mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
             mock_redis_client.ping = AsyncMock()
@@ -470,7 +470,7 @@ async def test_performance_impact_of_locking():
     # Test with RedisStreamWebSocketManager (with locks)
     locked_manager = RedisStreamWebSocketManager()
 
-    with patch("webui.websocket_manager.redis") as mock_redis:
+    with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
         mock_redis_client = AsyncMock()
         mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
         mock_redis_client.ping = AsyncMock()

@@ -19,7 +19,6 @@ from webui.auth import (
     create_refresh_token,
     get_current_user,
     get_password_hash,
-    pwd_context,
     sanitize_user_dict,
 )
 from webui.dependencies import get_auth_repository, get_user_repository
@@ -99,7 +98,7 @@ async def login(
     # Save refresh token
     expires_at = datetime.now(UTC) + timedelta(days=30)
     # Hash the token for storage
-    token_hash = pwd_context.hash(refresh_token)
+    token_hash = auth_repo.hash_refresh_token(refresh_token)
     await auth_repo.save_refresh_token(str(user["id"]), token_hash, expires_at)
 
     return Token(access_token=access_token, refresh_token=refresh_token)
@@ -135,7 +134,7 @@ async def refresh_token(
     await auth_repo.revoke_refresh_token(resolved_refresh_token)
     expires_at = datetime.now(UTC) + timedelta(days=30)
     # Hash the new token for storage
-    token_hash = pwd_context.hash(new_refresh_token)
+    token_hash = auth_repo.hash_refresh_token(new_refresh_token)
     await auth_repo.save_refresh_token(user_id, token_hash, expires_at)
 
     return Token(access_token=access_token, refresh_token=new_refresh_token)

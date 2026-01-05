@@ -137,8 +137,6 @@ services:
     container_name: semantik-vecpipe
     user: "${UID:-1000}:${GID:-1000}"
     command: [ "vecpipe" ]
-    ports:
-      - "8000:8000"
     environment:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
