@@ -1,6 +1,7 @@
 # Semantik Architecture Review
 
 **Generated**: 2026-01-05
+**Last Verified**: 2026-01-05
 **Scope**: Comprehensive codebase analysis for AI reviewer context
 **Codebase Size**: ~650 files, ~2M tokens
 
@@ -122,7 +123,7 @@ semantik/
 **Key Patterns**:
 - V2 API at `/api/v2/` with versioned endpoints
 - Dependency injection via FastAPI's `Depends()`
-- Rate limiting middleware (30-60 req/min based on endpoint)
+- Rate limiting middleware (configurable: 10-60 req/min for chunking, 1000/hour default)
 - Pydantic v2 schemas for request/response validation
 
 **Critical Endpoints**:
@@ -205,7 +206,7 @@ engine = create_async_engine(
 **Available Strategies**:
 | Strategy | Description | Use Case |
 |----------|-------------|----------|
-| `character` | Fixed character splits | Simple documents |
+| `fixed_size` | Fixed character splits | Simple documents |
 | `recursive` | Hierarchical separators | Code, structured text |
 | `markdown` | Header-aware splits | Documentation |
 | `semantic` | ML-based boundaries | High-quality retrieval |
@@ -338,8 +339,8 @@ Worker → Redis PUBLISH → All WebUI instances → Connected clients
 | Refresh Token | 30 days | HttpOnly cookie |
 
 **Security Features**:
-- bcrypt password hashing (work factor 12)
-- Rate limiting with circuit breaker
+- bcrypt password hashing (default work factor)
+- Rate limiting with circuit breaker (configurable via environment variables)
 - CSP middleware with stricter policies for sensitive endpoints
 - API key support for programmatic access
 
@@ -439,19 +440,19 @@ During verification against actual code, the following discrepancies were identi
 
 ### Critical Issues
 
-| Document | Claim | Reality |
-|----------|-------|---------|
-| DATABASE_ARCH.md | Source type "github" | Actual: "git" |
-| API docs | Batch search limit 256 | Actual: **100** |
-| Search docs | Hybrid mode "rerank" | Actual: **"weighted"** |
+| Document | Claim | Reality | Status |
+|----------|-------|---------|--------|
+| DATABASE_ARCH.md | Source type "github" | Actual: "git" | Verified |
+| API docs | Batch search limit 256 | Actual: **100** | Verified |
+| Search docs | Hybrid mode "rerank" | Actual: **"weighted"** or **"filter"** | Verified |
 
 ### Missing Documentation
 
-- `OperationType.DELETE` - undocumented
-- `OperationType.PROJECTION_BUILD` - undocumented
-- `projection_runs` table - not in schema docs
-- `plugin_configs` table - not in schema docs
-- New chunking strategies (hierarchical, hybrid) - incomplete docs
+- `OperationType.DELETE` - now documented in models.py enum
+- `OperationType.PROJECTION_BUILD` - now documented in models.py enum
+- `projection_runs` table - exists in models.py (ProjectionRun)
+- `plugin_configs` table - exists in models.py (PluginConfig)
+- New chunking strategies (hierarchical, hybrid) - implemented in domain/services/chunking_strategies/
 
 ### Recommendations
 
@@ -608,12 +609,12 @@ erDiagram
     collections ||--o{ sources : "syncs"
 
     users {
-        uuid id PK
+        integer id PK
         string username UK
         string email UK
         string hashed_password
         boolean is_active
-        boolean is_admin
+        boolean is_superuser
     }
 
     collections {
