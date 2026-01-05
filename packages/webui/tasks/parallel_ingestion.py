@@ -22,6 +22,7 @@ import psutil
 from qdrant_client.models import PointStruct
 
 from shared.database.models import DocumentStatus
+from webui.tasks.utils import _build_internal_api_headers
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -128,8 +129,7 @@ def calculate_optimal_workers(
         optimal = max(min_workers, min(optimal, max_workers))
 
         logger.info(
-            "Dynamic worker calculation: cpu_cores=%d, available_mem=%.0fMB, "
-            "cpu_based=%d, mem_based=%d, optimal=%d",
+            "Dynamic worker calculation: cpu_cores=%d, available_mem=%.0fMB, cpu_based=%d, mem_based=%d, optimal=%d",
             cpu_count,
             available_memory_mb,
             cpu_based_workers,
@@ -228,7 +228,9 @@ class ExtractionResult:
             if self.error is not None:
                 raise ValueError("ExtractionResult invariant violated: success=True but error is set")
             if (self.batch is None) == (self.skip_reason is None):
-                raise ValueError("ExtractionResult invariant violated: success=True must have exactly one of batch/skip_reason")
+                raise ValueError(
+                    "ExtractionResult invariant violated: success=True must have exactly one of batch/skip_reason"
+                )
         else:
             if not self.error:
                 raise ValueError("ExtractionResult invariant violated: success=False but error is empty")
@@ -534,7 +536,8 @@ async def embedding_worker(
             }
 
             async with httpx.AsyncClient(timeout=300.0) as client:
-                response = await client.post(vecpipe_url, json=embed_request)
+                headers = _build_internal_api_headers()
+                response = await client.post(vecpipe_url, json=embed_request, headers=headers)
                 response.raise_for_status()
 
                 embed_response = response.json()
@@ -729,7 +732,9 @@ async def result_processor(
                 batch_end = min(batch_start + VECTOR_UPLOAD_BATCH_SIZE, len(points))
                 batch_points = points[batch_start:batch_end]
 
-                points_data = [{"id": point.id, "vector": point.vector, "payload": point.payload} for point in batch_points]
+                points_data = [
+                    {"id": point.id, "vector": point.vector, "payload": point.payload} for point in batch_points
+                ]
 
                 upsert_request = {
                     "collection_name": qdrant_collection_name,
@@ -739,7 +744,8 @@ async def result_processor(
 
                 try:
                     async with httpx.AsyncClient(timeout=60.0) as client:
-                        response = await client.post(_vecpipe_url("/upsert"), json=upsert_request)
+                        headers = _build_internal_api_headers()
+                        response = await client.post(_vecpipe_url("/upsert"), json=upsert_request, headers=headers)
                         response.raise_for_status()
                 except httpx.RequestError as exc:
                     raise RuntimeError(f"Upsert request failed: {exc}") from exc

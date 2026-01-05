@@ -2,6 +2,9 @@
 
 Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plane, port 8080).
 
+Note: In Docker, vecpipe is internal-only by default. Use `http://vecpipe:8000` from inside the Docker network, or
+publish port 8000 if you need host access.
+
 ## Services
 
 **Vecpipe** - Pure search engine
@@ -27,9 +30,9 @@ Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plan
 
 ## Vecpipe Search API
 
-Core search engine. No auth, no user management.
+Core search engine. Requires the internal API key for protected endpoints; no user management.
 
-**Base URL**: `http://localhost:8000`
+**Base URL**: `http://vecpipe:8000` (internal Docker network)
 
 ### Endpoints
 

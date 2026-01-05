@@ -38,6 +38,8 @@ services:
       options:
         max-size: "100m"
         max-file: "5"
+    # Do not expose vecpipe outside the Docker network
+    ports: []
     environment:
       # Production environment
       - ENVIRONMENT=production

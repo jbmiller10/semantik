@@ -218,7 +218,7 @@ def _get_internal_api_key() -> str:
 def _build_internal_api_headers() -> dict[str, str]:
     """Construct headers for internal API calls that require authentication."""
     return {
-        "X-Internal-API-Key": _get_internal_api_key(),
+        "X-Internal-Api-Key": _get_internal_api_key(),
         "Content-Type": "application/json",
     }
 

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import inspect
 import logging
+import secrets
 from typing import Any, cast
 
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 
+from shared.config import settings
 from shared.contracts.search import (
     BatchSearchRequest,
     BatchSearchResponse,
@@ -21,6 +23,15 @@ from vecpipe.search.schemas import EmbedRequest, EmbedResponse, UpsertRequest, U
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def require_internal_api_key(x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key")) -> None:
+    """Verify the internal API key for protected endpoints."""
+    expected_key = settings.INTERNAL_API_KEY
+    if not expected_key:
+        raise HTTPException(status_code=500, detail="Internal API key is not configured")
+    if not x_internal_api_key or not secrets.compare_digest(x_internal_api_key, expected_key):
+        raise HTTPException(status_code=401, detail="Invalid or missing internal API key")
 
 
 @router.get("/model/status")
@@ -73,7 +84,7 @@ async def health() -> dict[str, Any]:
     return cast(dict[str, Any], await service.health())
 
 
-@router.get("/search", response_model=SearchResponse)
+@router.get("/search", response_model=SearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def search_get(
     q: str = Query(..., description="Search query"),
     k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
@@ -104,12 +115,12 @@ async def search_get(
     return SearchResponse(**result.model_dump())
 
 
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def search_post(request: SearchRequest = Body(...)) -> SearchResponse:
     return await service.perform_search(request)
 
 
-@router.get("/hybrid_search", response_model=HybridSearchResponse)
+@router.get("/hybrid_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def hybrid_search(
     q: str = Query(..., description="Search query"),
     k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
@@ -132,12 +143,12 @@ async def hybrid_search(
     )
 
 
-@router.post("/search/batch", response_model=BatchSearchResponse)
+@router.post("/search/batch", response_model=BatchSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def batch_search(request: BatchSearchRequest = Body(...)) -> BatchSearchResponse:
     return await service.perform_batch_search(request)
 
 
-@router.get("/keyword_search", response_model=HybridSearchResponse)
+@router.get("/keyword_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def keyword_search(
     q: str = Query(..., description="Keywords to search for"),
     k: int = Query(service.DEFAULT_K, ge=1, le=100, description="Number of results to return"),
@@ -172,7 +183,7 @@ async def list_models() -> dict[str, Any]:
     return cast(dict[str, Any], await service.list_models())
 
 
-@router.post("/models/load")
+@router.post("/models/load", dependencies=[Depends(require_internal_api_key)])
 async def load_model(
     model_name: str = Body(..., description="Model name to load"),
     quantization: str = Body("float32", description="Quantization type"),
@@ -190,11 +201,11 @@ async def embedding_info() -> dict[str, Any]:
     return cast(dict[str, Any], await service.embedding_info())
 
 
-@router.post("/embed", response_model=EmbedResponse)
+@router.post("/embed", response_model=EmbedResponse, dependencies=[Depends(require_internal_api_key)])
 async def embed_texts(request: EmbedRequest = Body(...)) -> EmbedResponse:
     return await service.embed_texts(request)
 
 
-@router.post("/upsert", response_model=UpsertResponse)
+@router.post("/upsert", response_model=UpsertResponse, dependencies=[Depends(require_internal_api_key)])
 async def upsert_points(request: UpsertRequest = Body(...)) -> UpsertResponse:
     return await service.upsert_points(request)

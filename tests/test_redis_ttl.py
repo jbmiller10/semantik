@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from webui.background_tasks import STREAM_MAX_LENGTH, TTL_CONFIG, RedisCleanupTask
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 
 @pytest.mark.asyncio()

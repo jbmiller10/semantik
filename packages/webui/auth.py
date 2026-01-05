@@ -7,6 +7,7 @@ Provides JWT-based authentication with user management
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
+from uuid import uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -117,7 +118,8 @@ def create_refresh_token(data: dict[str, Any], expires_delta: timedelta | None =
         expire = datetime.now(UTC) + expires_delta
     else:
         expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    # Add a unique identifier to avoid duplicate tokens within the same second.
+    to_encode.update({"exp": expire, "type": "refresh", "jti": uuid4().hex, "iat": datetime.now(UTC)})
     return str(jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.ALGORITHM))
 
 

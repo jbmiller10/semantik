@@ -13,7 +13,7 @@ from tests.webui.test_websocket_helpers import (
     assert_message_order,
     count_message_types,
 )
-from webui.websocket_manager import RedisStreamWebSocketManager, ws_manager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager, ws_manager
 
 
 class TestWebSocketExamples:

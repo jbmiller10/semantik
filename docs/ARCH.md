@@ -85,7 +85,7 @@ Headless data processing and search API. Runs on port 8000, completely independe
 - `reranker.py` - Cross-encoder reranking
 
 **Design:**
-- Standalone, no auth or user awareness
+- Standalone, no user auth; internal API key for service-to-service endpoints
 - Talks directly to Qdrant
 - Efficient GPU memory management
 - Multi-model support

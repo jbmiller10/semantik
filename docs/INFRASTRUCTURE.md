@@ -149,10 +149,10 @@ services:
     ports: ["6379:6379"]
     volumes: ["redis_data:/data"]
     
-  # Search API
+  # Search API (internal-only by default)
   vecpipe:
     build: .
-    ports: ["8000:8000"]
+    # ports: ["8000:8000"]  # expose only if you need host access
     depends_on: [postgres, qdrant, redis]
     
   # Web Interface

@@ -79,7 +79,7 @@ make docker-up
 
 Endpoints after boot:
 - Web UI + API: `http://localhost:8080`
-- Vecpipe API: `http://localhost:8000`
+- Vecpipe API (internal-only by default): `http://vecpipe:8000` (expose port 8000 if you need host access)
 - Qdrant: `http://localhost:6333`
 
 First run note: open the UI and create an account. The very first user is made admin/superuser automatically.

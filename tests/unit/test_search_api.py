@@ -5,6 +5,7 @@ This module tests all the endpoints, error scenarios, edge cases, and FAISS fall
 
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -46,6 +47,9 @@ def mock_settings() -> None:
     mock.MODEL_UNLOAD_AFTER_SECONDS = 300
     mock.SEARCH_API_PORT = 8088
     mock.METRICS_PORT = 9090
+    mock.INTERNAL_API_KEY = "test-internal-key"
+    mock.ENVIRONMENT = "test"
+    mock.data_dir = Path("/tmp")
     mock.ENABLE_MEMORY_GOVERNOR = False  # Use regular ModelManager in tests
     return mock
 
@@ -234,6 +238,7 @@ def test_client_for_search_api(
     with (
         patch("vecpipe.search.service.settings", mock_settings),
         patch("vecpipe.search.lifespan.settings", mock_settings),
+        patch("vecpipe.search.router.settings", mock_settings),
         patch("vecpipe.search_api.settings", mock_settings),
         patch("vecpipe.search.lifespan.httpx.AsyncClient", return_value=mock_qdrant_client),
         patch("vecpipe.search.lifespan.start_metrics_server"),
@@ -241,6 +246,7 @@ def test_client_for_search_api(
         patch("vecpipe.search.lifespan.ModelManager", return_value=mock_model_manager),
     ):
         client = TestClient(app)
+        client.headers.update({"X-Internal-Api-Key": mock_settings.INTERNAL_API_KEY})
         yield client
 
     search_state.qdrant_client = original_qdrant

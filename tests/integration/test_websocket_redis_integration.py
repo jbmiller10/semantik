@@ -9,7 +9,7 @@ import pytest
 from fastapi import WebSocket
 
 from webui.tasks import CeleryTaskWithOperationUpdates
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketRedisIntegration:
@@ -203,7 +203,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create WebSocket client
@@ -286,7 +286,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create multiple clients
@@ -351,7 +351,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Send some updates before any client connects
@@ -416,7 +416,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager1.startup()
             await manager2.startup()
 
@@ -486,7 +486,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Send some updates
@@ -515,7 +515,7 @@ class TestWebSocketRedisIntegration:
 
         # Simulate Redis connection failure
         with (
-            patch("webui.websocket_manager.redis.from_url", side_effect=Exception("Connection failed")),
+            patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=Exception("Connection failed")),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager.startup()
@@ -597,7 +597,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create a client that will disconnect
@@ -648,7 +648,7 @@ class TestWebSocketRedisIntegration:
         async def async_from_url(*args, **kwargs) -> None:  # noqa: ARG001
             return real_redis_mock
 
-        with patch("webui.websocket_manager.redis.from_url", side_effect=async_from_url):
+        with patch("webui.websocket.legacy_stream_manager.redis.from_url", side_effect=async_from_url):
             await manager.startup()
 
             # Create clients for different operations

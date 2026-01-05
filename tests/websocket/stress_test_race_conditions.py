@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 from webui.websocket.scalable_manager import ScalableWebSocketManager
-from webui.websocket_manager import RedisStreamWebSocketManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ async def stress_test_redis_stream_manager():
     print("\nTesting RedisStreamWebSocketManager (WITH locking)")
     print("-" * 50)
 
-    with patch("webui.websocket_manager.redis") as mock_redis:
+    with patch("webui.websocket.legacy_stream_manager.redis") as mock_redis:
         mock_redis_client = AsyncMock()
         mock_redis.from_url = AsyncMock(return_value=mock_redis_client)
         mock_redis_client.ping = AsyncMock()
