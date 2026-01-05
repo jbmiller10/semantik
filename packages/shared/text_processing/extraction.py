@@ -12,6 +12,8 @@ from typing import Any
 # Unstructured for document parsing
 from unstructured.partition.auto import partition
 
+from .file_type_detector import FileTypeDetector
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,10 +30,22 @@ def _extension_to_content_type(ext: str) -> str | None:
         ".txt": "text/plain",
         ".text": "text/plain",
         ".md": "text/markdown",
+        ".markdown": "text/markdown",
+        ".mdown": "text/markdown",
+        ".mkd": "text/markdown",
+        ".mdx": "text/markdown",
         ".html": "text/html",
         ".htm": "text/html",
     }
     return mapping.get(ext)
+
+
+def _decode_text_content(content: bytes) -> str:
+    """Best-effort decode of text content bytes."""
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return content.decode("latin-1", errors="ignore")
 
 
 def parse_document_content(
@@ -140,6 +154,13 @@ def extract_and_serialize(filepath: str) -> list[tuple[str, dict[str, Any]]]:
         # Read file content
         with path.open("rb") as f:
             content = f.read()
+
+        # For code/markdown/plain text, bypass unstructured to avoid heavy parsing
+        if FileTypeDetector.is_code_file(ext) or FileTypeDetector.is_markdown_file(ext) or ext in {".txt", ".text"}:
+            text = _decode_text_content(content)
+            if not text.strip():
+                return []
+            return [(text, {"filename": path.name, "file_type": ext[1:] if ext else "unknown"})]
 
         # Parse using shared function
         return parse_document_content(

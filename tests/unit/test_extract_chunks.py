@@ -193,9 +193,9 @@ class TestExtractAndSerialize:
 
     def test_text_concatenation(self, tmp_path) -> None:
         """Test that text from all elements is correctly extracted."""
-        # Create a temporary file
-        test_file = tmp_path / "document.txt"
-        test_file.write_text("test content")
+        # Create a temporary file - use .pdf to ensure parse_document_content is called
+        test_file = tmp_path / "document.pdf"
+        test_file.write_bytes(b"fake pdf content")
 
         with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             # Create mock return values
@@ -213,16 +213,16 @@ class TestExtractAndSerialize:
 
     def test_element_without_metadata(self, tmp_path) -> None:
         """Test handling of elements without full metadata."""
-        # Create a temporary file
-        test_file = tmp_path / "document.txt"
-        test_file.write_text("test content")
+        # Create a temporary file - use .pdf to ensure parse_document_content is called
+        test_file = tmp_path / "document.pdf"
+        test_file.write_bytes(b"fake pdf content")
 
         with patch("shared.text_processing.extraction.parse_document_content") as mock_parse:
             # Return element with minimal metadata (no page_number)
             mock_parse.return_value = [
                 (
                     "Content without page metadata",
-                    {"filename": "document.txt", "file_type": "txt"},
+                    {"filename": "document.pdf", "file_type": "pdf"},
                 )
             ]
 
@@ -233,8 +233,8 @@ class TestExtractAndSerialize:
             assert len(results) == 1
             text, metadata = results[0]
             assert text == "Content without page metadata"
-            assert metadata["filename"] == "document.txt"
-            assert metadata["file_type"] == "txt"
+            assert metadata["filename"] == "document.pdf"
+            assert metadata["file_type"] == "pdf"
             # When element has no page_number, it's not in the metadata
             assert "page_number" not in metadata
 
