@@ -6,7 +6,7 @@ All docs in `/docs/`. Not listed here? Check app/package READMEs or it doesn't e
 
 ## Core Docs
 
-**Architecture:** [ARCH.md](./ARCH.md), [API_ARCHITECTURE.md](./API_ARCHITECTURE.md), [DATABASE_ARCH.md](./DATABASE_ARCH.md), [INFRASTRUCTURE.md](./INFRASTRUCTURE.md), [FRONTEND_ARCH.md](./FRONTEND_ARCH.md)
+**Architecture:** [ARCH.md](./ARCH.md), [API_ARCHITECTURE.md](./API_ARCHITECTURE.md), [DATABASE_ARCH.md](./DATABASE_ARCH.md), [INFRASTRUCTURE.md](./INFRASTRUCTURE.md), [FRONTEND_ARCH.md](./FRONTEND_ARCH.md), [ARCHITECTURE_REVIEW.md](./ARCHITECTURE_REVIEW.md)
 
 **APIs:** [API_REFERENCE.md](./API_REFERENCE.md), [WEBSOCKET_API.md](./WEBSOCKET_API.md), [SEARCH.md](./SEARCH.md), [api/CHUNKING_API.md](./api/CHUNKING_API.md)
 
