@@ -129,7 +129,7 @@ def calculate_optimal_workers(
         optimal = max(min_workers, min(optimal, max_workers))
 
         logger.info(
-            "Dynamic worker calculation: cpu_cores=%d, available_mem=%.0fMB, " "cpu_based=%d, mem_based=%d, optimal=%d",
+            "Dynamic worker calculation: cpu_cores=%d, available_mem=%.0fMB, cpu_based=%d, mem_based=%d, optimal=%d",
             cpu_count,
             available_memory_mb,
             cpu_based_workers,
