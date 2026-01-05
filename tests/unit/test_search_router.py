@@ -6,8 +6,8 @@ from unittest.mock import patch
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from shared.contracts.search import HybridSearchResponse, HybridSearchResult, SearchResponse, SearchResult
 import vecpipe.search.router as router_module
+from shared.contracts.search import HybridSearchResponse, HybridSearchResult, SearchResponse, SearchResult
 from vecpipe.search.router import router
 
 

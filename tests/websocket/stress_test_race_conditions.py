@@ -16,8 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add parent directories to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from webui.websocket.scalable_manager import ScalableWebSocketManager
 from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
+from webui.websocket.scalable_manager import ScalableWebSocketManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

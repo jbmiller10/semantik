@@ -293,6 +293,7 @@ class LocalFileConnector(BaseConnector):
         # Check if parallel processing is enabled
         try:
             from shared.config import settings
+
             use_parallel = getattr(settings, "PARALLEL_INGESTION_ENABLED", True)
             num_workers = getattr(settings, "PARALLEL_INGESTION_WORKERS", 0)
             max_workers = getattr(settings, "PARALLEL_INGESTION_MAX_WORKERS", 0)

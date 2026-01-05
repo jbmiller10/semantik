@@ -6,8 +6,8 @@ Provides JWT-based authentication with user management
 
 import logging
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 from typing import Any, cast
+from uuid import uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, status

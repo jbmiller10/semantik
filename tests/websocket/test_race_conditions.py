@@ -17,8 +17,8 @@ import pytest
 from fastapi import WebSocket
 from fastapi.websockets import WebSocketState
 
-from webui.websocket.scalable_manager import ScalableWebSocketManager
 from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
+from webui.websocket.scalable_manager import ScalableWebSocketManager
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.DEBUG)
