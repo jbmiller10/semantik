@@ -295,6 +295,7 @@ class TestSearchAPIIntegration:
         # Import and create test client
 
         client = TestClient(app)
+        client.headers.update({"X-Internal-Api-Key": settings.INTERNAL_API_KEY})
 
         # Make search request with custom parameters
         query_text = "another test query"

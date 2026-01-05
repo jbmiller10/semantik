@@ -110,7 +110,7 @@ class TestSearchServiceIntegration:
                 async def __aexit__(self, exc_type, exc, tb):
                     return False
 
-                async def post(self, url, json):
+                async def post(self, url, json, **_kwargs):
                     response = httpx.Response(
                         status_code=404,
                         content=b"{}",
