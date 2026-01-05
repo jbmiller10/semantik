@@ -1282,7 +1282,7 @@ WebUI owns PostgreSQL. Both services use shared package.
 
 ## Testing
 
-Test suite: `apps/webui-react/tests/api_test_suite.py`
+Test suite: `tests/frontend_api_test_suite.py`
 
 Categories: Health, auth, collections, operations, search, WebSocket, errors
 

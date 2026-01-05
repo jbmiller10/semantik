@@ -21,6 +21,13 @@ DOCS_DIR = ROOT / "docs"
 
 CODE_PATH_RE = re.compile(r"`((?:packages|apps|docs|scripts|tests|alembic|webui|shared|vecpipe)/[^`\s]+)`")
 
+# Patterns that indicate template/example paths (not meant to exist)
+# Matches: <name>, *, YYYYMMDD-style timestamps
+TEMPLATE_INDICATORS = re.compile(r"<[^>]+>|\*|YYYY|HHMI|MMDD")
+
+# Comment to ignore entire file from doc-lint
+FILE_IGNORE_COMMENT = "<!-- doc-lint-ignore-file -->"
+
 
 def iter_markdown_files() -> list[Path]:
     return [p for p in DOCS_DIR.rglob("*.md") if p.is_file()]
@@ -29,7 +36,14 @@ def iter_markdown_files() -> list[Path]:
 def normalize_path(raw: str) -> Path:
     # Strip trailing punctuation commonly adjacent to code ticks.
     cleaned = raw.rstrip(".,:;")
+    # Remove line number references like :123 or :123-456
+    cleaned = re.sub(r":\d+(-\d+)?$", "", cleaned)
     return (ROOT / cleaned).resolve()
+
+
+def is_template_path(raw: str) -> bool:
+    """Check if path contains template placeholders like <name> or glob patterns like *."""
+    return bool(TEMPLATE_INDICATORS.search(raw))
 
 
 def main() -> int:
@@ -41,8 +55,15 @@ def main() -> int:
             warnings.append(f"WARN {md_file}: failed to read ({exc})")
             continue
 
+        # Skip files with ignore comment
+        if FILE_IGNORE_COMMENT in content:
+            continue
+
         for match in CODE_PATH_RE.finditer(content):
             raw_path = match.group(1)
+            # Skip template/example paths with placeholders or globs
+            if is_template_path(raw_path):
+                continue
             path = normalize_path(raw_path)
             if not path.exists():
                 rel = os.path.relpath(md_file, ROOT)

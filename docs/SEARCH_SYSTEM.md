@@ -94,12 +94,12 @@ Semantik combines vector similarity search with keyword-based search. Fast, scal
 
 ## 2. Unified Search Implementation
 
-The core search logic is implemented in `vecpipe/search_utils.py`, providing shared utilities for both the search API and web UI.
+The core search logic is implemented in `packages/vecpipe/search_utils.py`, providing shared utilities for both the search API and web UI.
 
 ### Core Components
 
 ```python
-# vecpipe/search_utils.py
+# packages/vecpipe/search_utils.py
 
 async def search_qdrant(
     qdrant_host: str,
@@ -324,7 +324,7 @@ Single collection search (backward compatibility for older clients):
 
 ## 4. Hybrid Search
 
-The hybrid search implementation (`vecpipe/hybrid_search.py`) combines vector similarity with keyword matching.
+The hybrid search implementation (`packages/vecpipe/hybrid_search.py`) combines vector similarity with keyword matching.
 
 ### Hybrid Search Engine
 

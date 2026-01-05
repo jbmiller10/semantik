@@ -1,7 +1,24 @@
 # Extension Cookbook: UI Features
 
+<!-- doc-lint-ignore-file -->
+
 > **Audience:** Software architects implementing new UI functionality in Semantik
 > **Prerequisites:** Understanding of React 19, TypeScript, Zustand, TanStack Query
+
+---
+
+> [!NOTE]
+> **Example Paths:** The file paths in this cookbook (e.g., `apps/webui-react/src/pages/AnalyticsPage.tsx`) are **illustrative examples** demonstrating recommended patterns and naming conventions. They do not reference existing files in the codebase. When implementing features, adapt these patterns to the actual project structure:
+>
+> | Cookbook Example | Actual Project Pattern |
+> |------------------|------------------------|
+> | `packages/webui/api/routers/*.py` | `packages/webui/api/v2/*.py` |
+> | `packages/shared/database/models/*.py` | `packages/shared/database/models.py` |
+> | `packages/webui/repositories/*.py` | `packages/shared/database/repositories/*.py` |
+> | `apps/webui-react/src/components/modals/*.tsx` | `apps/webui-react/src/components/*.tsx` |
+> | `apps/webui-react/src/components/collections/*.tsx` | `apps/webui-react/src/components/*.tsx` |
+>
+> Always check existing files for current conventions before creating new ones.
 
 ---
 
@@ -25,7 +42,7 @@ Pages in Semantik are React components that represent distinct views in the appl
 
 ### Step 1: Create the Page Component
 
-**File:** `apps/webui-react/src/pages/AnalyticsPage.tsx`
+**Example file:** `apps/webui-react/src/pages/AnalyticsPage.tsx`
 
 ```typescript
 import { Suspense } from 'react';
@@ -85,7 +102,7 @@ function AnalyticsSkeleton() {
 
 ### Step 2: Add Route Configuration
 
-**File:** `apps/webui-react/src/App.tsx`
+**Existing file:** `apps/webui-react/src/App.tsx`
 
 ```typescript
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
@@ -103,7 +120,7 @@ const routes = [
 
 ### Step 3: Add Navigation Link
 
-**File:** `apps/webui-react/src/components/Layout/Sidebar.tsx`
+**Existing file:** `apps/webui-react/src/components/Layout.tsx` *(add navigation items)*
 
 ```typescript
 import { BarChart3 } from 'lucide-react';
@@ -119,7 +136,7 @@ const NAV_ITEMS = [
 
 ### Step 4: Create Supporting Components
 
-**File:** `apps/webui-react/src/components/analytics/AnalyticsDashboard.tsx`
+**Example file:** `apps/webui-react/src/components/AnalyticsDashboard.tsx`
 
 ```typescript
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -197,7 +214,7 @@ export function AnalyticsDashboard({ dateRange }: AnalyticsDashboardProps) {
 
 ### Step 5: Create Data Hook
 
-**File:** `apps/webui-react/src/hooks/useAnalytics.ts`
+**Example file:** `apps/webui-react/src/hooks/useAnalytics.ts`
 
 ```typescript
 import { useQuery } from '@tanstack/react-query';
@@ -249,7 +266,7 @@ This guide covers adding a new API endpoint from database to frontend, following
 
 ### Step 1: Database Model
 
-**File:** `packages/shared/database/models/user_preferences.py`
+**Existing file:** `packages/shared/database/models.py` *(add new model class)*
 
 ```python
 from sqlalchemy import String, JSON, ForeignKey
@@ -280,7 +297,7 @@ class UserPreferences(Base, TimestampMixin):
 
 ### Step 2: Alembic Migration
 
-**File:** `packages/webui/alembic/versions/xxx_add_user_preferences.py`
+**Example file:** `alembic/versions/<revision>_add_user_preferences.py`
 
 ```python
 """add user preferences table
@@ -316,7 +333,7 @@ def downgrade():
 
 ### Step 3: Repository
 
-**File:** `packages/webui/repositories/user_preferences_repository.py`
+**Example file:** `packages/shared/database/repositories/user_preferences_repository.py`
 
 ```python
 from sqlalchemy import select
@@ -361,7 +378,7 @@ class UserPreferencesRepository:
 
 ### Step 4: Service
 
-**File:** `packages/webui/services/preferences_service.py`
+**Example file:** `packages/webui/services/preferences_service.py`
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -414,7 +431,7 @@ class PreferencesService:
 
 ### Step 5: API Router
 
-**File:** `packages/webui/api/routers/preferences.py`
+**Example file:** `packages/webui/api/v2/preferences.py`
 
 ```python
 from fastapi import APIRouter, Depends
@@ -452,17 +469,17 @@ async def update_preferences(
 
 ### Step 6: Register Router
 
-**File:** `packages/webui/api/main.py`
+**Existing file:** `packages/webui/main.py` *(add router import and registration)*
 
 ```python
-from packages.webui.api.routers import preferences
+from packages.webui.api.v2 import preferences
 
-app.include_router(preferences.router, prefix="/api")
+app.include_router(preferences.router, prefix="/api/v2")
 ```
 
 ### Step 7: Frontend API Client
 
-**File:** `apps/webui-react/src/services/api/preferences.ts`
+**Example file:** `apps/webui-react/src/services/api/preferences.ts`
 
 ```typescript
 import { apiClient } from './client';
@@ -486,7 +503,7 @@ export const preferencesApi = {
 
 ### Step 8: React Query Hook
 
-**File:** `apps/webui-react/src/hooks/usePreferences.ts`
+**Example file:** `apps/webui-react/src/hooks/usePreferences.ts`
 
 ```typescript
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -532,7 +549,7 @@ export function useUpdatePreferences() {
 
 ### Step 9: Use in Component
 
-**File:** `apps/webui-react/src/components/settings/PreferencesForm.tsx`
+**Example file:** `apps/webui-react/src/components/PreferencesForm.tsx`
 
 ```typescript
 import { usePreferences, useUpdatePreferences } from '@/hooks/usePreferences';
@@ -603,7 +620,7 @@ Modal dialogs are used for focused user interactions. This guide shows the patte
 
 ### Step 1: Create Modal Component
 
-**File:** `apps/webui-react/src/components/modals/ConfirmDeleteModal.tsx`
+**Example file:** `apps/webui-react/src/components/ConfirmDeleteModal.tsx`
 
 ```typescript
 import {
@@ -688,7 +705,7 @@ export function ConfirmDeleteModal({
 
 ### Step 2: Create Modal State Hook (Optional Pattern)
 
-**File:** `apps/webui-react/src/hooks/useModal.ts`
+**Example file:** `apps/webui-react/src/hooks/useModal.ts`
 
 ```typescript
 import { useState, useCallback } from 'react';
@@ -722,7 +739,7 @@ export function useModal<T = undefined>(): UseModalReturn<T> {
 
 ### Step 3: Use Modal in Parent Component
 
-**File:** `apps/webui-react/src/components/collections/CollectionCard.tsx`
+**Existing file:** `apps/webui-react/src/components/CollectionCard.tsx` *(example usage)*
 
 ```typescript
 import { useModal } from '@/hooks/useModal';
@@ -772,7 +789,7 @@ export function CollectionCard({ collection }: { collection: Collection }) {
 
 ### Step 4: Complex Modal with Form
 
-**File:** `apps/webui-react/src/components/modals/EditCollectionModal.tsx`
+**Example file:** `apps/webui-react/src/components/EditCollectionModal.tsx`
 
 ```typescript
 import { useForm } from 'react-hook-form';
@@ -883,7 +900,7 @@ Real-time updates use WebSocket connections to push progress and status changes 
 
 ### Step 1: Create WebSocket Hook
 
-**File:** `apps/webui-react/src/hooks/useOperationProgress.ts`
+**Example file:** `apps/webui-react/src/hooks/useOperationProgress.ts`
 
 ```typescript
 import { useEffect, useCallback, useRef } from 'react';
@@ -948,7 +965,7 @@ export function useOperationProgress(operationId: string | null) {
 
 ### Step 2: Create Progress Component
 
-**File:** `apps/webui-react/src/components/operations/OperationProgress.tsx`
+**Example file:** `apps/webui-react/src/components/OperationProgress.tsx`
 
 ```typescript
 import { useOperationProgress } from '@/hooks/useOperationProgress';
@@ -1020,7 +1037,7 @@ export function OperationProgress({
 
 ### Step 3: Use in Modal
 
-**File:** `apps/webui-react/src/components/modals/IndexingProgressModal.tsx`
+**Example file:** `apps/webui-react/src/components/IndexingProgressModal.tsx`
 
 ```typescript
 export function IndexingProgressModal({
@@ -1080,7 +1097,7 @@ This guide shows how to add a new feature to collections (example: collection ta
 
 ### Step 1: Update Database Model
 
-**File:** `packages/shared/database/models/collection.py`
+**Existing file:** `packages/shared/database/models.py` *(update Collection class)*
 
 ```python
 class Collection(Base, TimestampMixin):
@@ -1096,7 +1113,7 @@ class Collection(Base, TimestampMixin):
 
 ### Step 2: Update Contracts
 
-**File:** `packages/shared/contracts/collections.py`
+**Example file:** `packages/webui/api/v2/schemas.py` *(add/update schema classes)*
 
 ```python
 class CollectionResponse(BaseModel):
@@ -1121,7 +1138,7 @@ class UpdateCollectionRequest(BaseModel):
 
 ### Step 3: Update Service
 
-**File:** `packages/webui/services/collection_service.py`
+**Existing file:** `packages/webui/services/collection_service.py` *(update service methods)*
 
 ```python
 class CollectionService:
@@ -1154,7 +1171,7 @@ class CollectionService:
 
 ### Step 4: Frontend Component
 
-**File:** `apps/webui-react/src/components/collections/CollectionTags.tsx`
+**Example file:** `apps/webui-react/src/components/CollectionTags.tsx`
 
 ```typescript
 import { useState } from 'react';
@@ -1264,7 +1281,7 @@ Forms in Semantik use react-hook-form with Zod validation.
 
 ### Complete Form Example
 
-**File:** `apps/webui-react/src/components/forms/CreateSourceForm.tsx`
+**Example file:** `apps/webui-react/src/components/CreateSourceForm.tsx`
 
 ```typescript
 import { useForm, Controller } from 'react-hook-form';
@@ -1474,7 +1491,7 @@ export function CreateSourceForm({
 
 Data tables in Semantik use TanStack Table with server-side pagination.
 
-**File:** `apps/webui-react/src/components/tables/DocumentsTable.tsx`
+**Example file:** `apps/webui-react/src/components/DocumentsTable.tsx`
 
 ```typescript
 import { useState, useMemo } from 'react';

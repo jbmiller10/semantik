@@ -122,33 +122,32 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Core Modules:**
 
-**Database Module (`shared/database/`):**
+**Database Module (`packages/shared/database/`):**
 - **Repository Pattern**: Clean data access layer with type-safe interfaces
 - **PostgreSQL Implementation**: Concrete implementations of repository interfaces
 - **Models**: SQLAlchemy models for collections, operations, documents, users
 - **Schema Management**: Centralized database schema definitions
 - **Exceptions**: Custom database exceptions for error handling
 
-**Contracts Module (`shared/contracts/`):**
+**Contracts Module (`packages/shared/contracts/`):**
 - **API Models**: Pydantic models for request/response validation
 - **Search Models**: Unified search request and response structures
 - **Collection Models**: Shared collection and operation status definitions
 - **Document Models**: Document metadata and status tracking
 
-**Config Module (`shared/config/`):**
+**Config Module (`packages/shared/config/`):**
 - **Settings Management**: Environment-based configuration
 - **Model Configuration**: Embedding and reranker model settings
 - **Service URLs**: Centralized service endpoint configuration
 
-**Embedding Module (`shared/embedding/`):**
+**Embedding Module (`packages/shared/embedding/`):**
 - **Embedding Service**: Core embedding generation logic
 - **Model Management**: Shared model loading and caching
 - **Batch Processing**: Efficient batch embedding generation
 
 **Other Utilities:**
-- **Metrics** (`shared/metrics/`): Prometheus metrics collection
-- **Text Processing** (`shared/text_processing/`): Document parsing and chunking
-- **Logging** (`shared/logging_config.py`): Structured logging configuration
+- **Metrics** (`packages/shared/metrics/`): Prometheus metrics collection
+- **Text Processing** (`packages/shared/text_processing/`): Document parsing and chunking
 
 ### 4. Database Architecture
 

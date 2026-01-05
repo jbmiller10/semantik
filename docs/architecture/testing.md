@@ -1,6 +1,6 @@
 # Testing Architecture
 
-> **Location:** `tests/`, `apps/webui-react/src/**/__tests__/`
+> **Location:** `tests/` (backend), `apps/webui-react/src/` (frontend, with `__tests__/` subdirectories)
 
 ## Overview
 
@@ -360,19 +360,19 @@ test: {
 ## Extension Patterns
 
 ### Adding Tests for New Repository
-1. Create `tests/unit/repositories/test_my_repo.py`
+1. Create `tests/unit/repositories/test_<name>_repository.py` (see `test_collection_sync_run_repository.py` for example)
 2. Use `db_session` fixture for database access
 3. Create factory fixture if needed
 4. Test CRUD operations and edge cases
 
 ### Adding Tests for New API Endpoint
-1. Create `tests/webui/api/v2/test_my_endpoint.py`
+1. Create `tests/webui/api/v2/test_<name>.py` (see `test_collections.py` for example)
 2. Use `api_client` and `api_auth_headers` fixtures
 3. Test success, validation, and error cases
 4. Verify Celery task dispatch if applicable
 
 ### Adding Tests for New React Component
-1. Create `components/__tests__/MyComponent.test.tsx`
+1. Create `src/components/__tests__/<ComponentName>.test.tsx` (see `CollectionCard.test.tsx` for example)
 2. Add MSW handlers for API calls
 3. Use `renderWithProviders` for proper context
 4. Test user interactions with `userEvent`

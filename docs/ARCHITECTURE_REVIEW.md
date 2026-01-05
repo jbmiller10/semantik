@@ -183,7 +183,7 @@ await dispatch_celery_task(operation.id)  # Safe: operation exists in DB
 **Partitioning Strategy**:
 - Chunks table partitioned by `collection_id % 100`
 - Enables efficient collection deletion and queries
-- Migration: `alembic/versions/chunk_partitioning.py`
+- Migration: `alembic/versions/add_complete_chunking_infrastructure.py`
 
 **Connection Pooling**:
 ```python
@@ -327,7 +327,7 @@ Worker → Redis PUBLISH → All WebUI instances → Connected clients
 
 ---
 
-### 9. Authentication & Security (`packages/webui/auth/`)
+### 9. Authentication & Security (`packages/webui/auth.py`)
 
 **Architecture**: JWT-based with refresh token rotation
 

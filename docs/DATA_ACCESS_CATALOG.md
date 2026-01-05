@@ -67,7 +67,7 @@ while True:
         break
 ```
 
-**Location:** `packages/shared/managers/qdrant_manager.py:442-477`
+**Location:** `packages/shared/managers/qdrant_manager.py:475-510`
 
 **Usage Pattern in Codebase:**
 - **Imports:** `from webui.tasks.utils import resolve_qdrant_manager`
@@ -259,7 +259,7 @@ async def get_by_uuid_with_permission_check(
 ) -> Collection
     """Fetch collection and verify user ownership
     Raises: EntityNotFoundError if not found or unauthorized
-    Location: collection_repository.py:157
+    Location: collection_repository.py:172-196
 
     CRITICAL: Use this for all user-facing projection API calls
     """
@@ -432,7 +432,7 @@ collection = await collection_repo.get_by_uuid_with_permission_check(
 collection = await collection_repo.get_by_uuid(collection_uuid)
 ```
 
-Location: `packages/shared/database/repositories/collection_repository.py:157`
+Location: `packages/shared/database/repositories/collection_repository.py:172-196`
 
 Raises `EntityNotFoundError` if not found or unauthorized.
 ```python
@@ -471,7 +471,7 @@ celery_app.send_task(
 
 Why: Worker queries operation by UUID immediately. If not committed, worker sees nothing.
 
-Example: `packages/webui/services/projection_service.py:112-119`
+Example: `packages/webui/services/projection_service.py:472-498`
 
 ---
 
@@ -800,8 +800,8 @@ collection = await self.collection_repo.get_by_uuid_with_permission_check(
 
 1. `packages/webui/tasks/projection.py` → Implement `_process_projection_operation()`
 2. `packages/webui/services/projection_service.py` → Implement placeholder methods
-3. Create new: `packages/shared/dimensionality_reduction/` → UMAP/t-SNE/PCA logic
-4. Create new: `packages/shared/storage/projection_storage.py` → Save/load utilities
+3. TODO: Create new module packages/shared/dimensionality_reduction/ → UMAP/t-SNE/PCA logic (not yet implemented)
+4. TODO: Create new module packages/shared/storage/projection_storage.py → Save/load utilities (not yet implemented)
 
 ---
 

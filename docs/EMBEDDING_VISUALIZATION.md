@@ -27,7 +27,7 @@ See `DATA_ACCESS_CATALOG.md` for data access details.
 
 3. **Compute projection (Celery worker)**
    - `compute_projection` calls
-     `packages/webui/tasks/projection._compute_projection_async(...)`.
+     `webui.tasks.projection._compute_projection_async(...)`.
    - The task:
      - Resolves the source Qdrant collection.
      - Applies sampling to scroll up to `sample_limit` vectors.
