@@ -203,3 +203,51 @@ class TestModelRestoreErrorStateMismatch:
 
         assert "ModelRestoreError" in type(exc_info.value).__name__
         assert "reranker:Qwen/test-reranker:float16" in str(exc_info.value)
+
+
+class TestGovernedModelManagerCriticalFailures:
+    """Tests for critical failure tracking and scheduling helpers."""
+
+    def test_schedule_governor_coro_records_critical_failure(self, governed_manager):
+        """Critical scheduling errors should be recorded and raised."""
+
+        async def _boom():
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            governed_manager._schedule_governor_coro(
+                _boom(),
+                critical=True,
+                description="critical-op",
+            )
+
+        failures = governed_manager.get_critical_failures()
+        assert failures
+        assert failures[0]["description"] == "critical-op"
+
+    def test_schedule_governor_coro_noncritical_does_not_raise(self, governed_manager):
+        """Non-critical scheduling errors should be logged but not raised."""
+
+        async def _boom():
+            raise RuntimeError("boom")
+
+        governed_manager._schedule_governor_coro(_boom(), critical=False, description="noncritical-op")
+
+        assert governed_manager.has_critical_failures() is False
+
+    def test_clear_critical_failures(self, governed_manager):
+        """Clearing critical failures returns the count and empties the list."""
+        governed_manager._record_critical_failure("test", ValueError("boom"))
+
+        cleared = governed_manager.clear_critical_failures()
+
+        assert cleared == 1
+        assert governed_manager.has_critical_failures() is False
+
+    def test_run_governor_coro_returns_value(self, governed_manager):
+        """_run_governor_coro should return the coroutine result when no loop is running."""
+
+        async def _return_value():
+            return "ok"
+
+        assert governed_manager._run_governor_coro(_return_value()) == "ok"
