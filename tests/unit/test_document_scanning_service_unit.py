@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from webui.services.document_scanning_service import DocumentScanningService, MAX_FILE_SIZE
+from webui.services.document_scanning_service import MAX_FILE_SIZE, DocumentScanningService
 
 
 @pytest.fixture()
@@ -34,7 +34,7 @@ async def test_scan_document_rejects_unsupported_type(tmp_path: Path, service: D
 
 
 @pytest.mark.asyncio()
-async def test_scan_document_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, service: DocumentScanningService) -> None:
+async def test_scan_document_success(tmp_path: Path, service: DocumentScanningService) -> None:
     file_path = tmp_path / "doc.txt"
     file_path.write_text("hello")
 

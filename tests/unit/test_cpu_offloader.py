@@ -10,10 +10,10 @@ import torch
 from torch import nn
 
 from vecpipe.cpu_offloader import (
-    ModelOffloader,
-    OffloadMetadata,
     GradientCheckpointWrapper,
     MemoryEfficientInference,
+    ModelOffloader,
+    OffloadMetadata,
     defragment_cuda_memory,
     estimate_model_memory,
     get_cuda_memory_fragmentation,

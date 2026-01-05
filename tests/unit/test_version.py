@@ -5,8 +5,6 @@ from __future__ import annotations
 import importlib.metadata
 from pathlib import Path
 
-import pytest
-
 import shared.version as version_module
 
 
@@ -14,14 +12,14 @@ def _clear_cache() -> None:
     version_module.get_version.cache_clear()
 
 
-def test_get_version_prefers_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_version_prefers_metadata(monkeypatch) -> None:
     _clear_cache()
     monkeypatch.setattr(importlib.metadata, "version", lambda _name: "9.9.9")
 
     assert version_module.get_version() == "9.9.9"
 
 
-def test_get_version_falls_back_to_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_get_version_falls_back_to_file(monkeypatch, tmp_path: Path) -> None:
     _clear_cache()
 
     def _raise(_name: str) -> str:
@@ -36,7 +34,7 @@ def test_get_version_falls_back_to_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert version_module.get_version() == "1.2.3"
 
 
-def test_get_version_fallback_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_version_fallback_default(monkeypatch) -> None:
     _clear_cache()
 
     def _raise(_name: str) -> str:

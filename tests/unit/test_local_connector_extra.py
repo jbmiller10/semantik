@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from shared.connectors import local as local_module
-from shared.connectors.local import LocalFileConnector, MAX_FILE_SIZE, _process_file_worker
+from shared.connectors.local import MAX_FILE_SIZE, LocalFileConnector, _process_file_worker
 
 
 def test_is_safe_path_allows_within_base(tmp_path: Path) -> None:
@@ -44,7 +42,7 @@ def test_should_include_file_patterns(tmp_path: Path) -> None:
     assert connector._should_include_file(other) is False
 
 
-def test_process_file_worker_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_process_file_worker_success(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "doc.txt"
     file_path.write_text("hello")
 
@@ -60,7 +58,7 @@ def test_process_file_worker_success(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert data["content_hash"] == "hash"
 
 
-def test_process_file_worker_empty_content(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_process_file_worker_empty_content(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "empty.txt"
     file_path.write_text("ignored")
 
@@ -72,7 +70,7 @@ def test_process_file_worker_empty_content(monkeypatch: pytest.MonkeyPatch, tmp_
     assert result["reason"] == "empty_content"
 
 
-def test_process_file_worker_parse_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_process_file_worker_parse_error(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "bad.txt"
     file_path.write_text("ignored")
 
@@ -87,7 +85,7 @@ def test_process_file_worker_parse_error(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert "Failed to parse" in result["reason"]
 
 
-def test_process_file_worker_skips_large_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_process_file_worker_skips_large_files(monkeypatch, tmp_path: Path) -> None:
     file_path = tmp_path / "big.txt"
     file_path.write_text("ignored")
 

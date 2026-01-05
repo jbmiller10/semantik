@@ -227,7 +227,7 @@ async def test_embedding_worker_success(monkeypatch: pytest.MonkeyPatch) -> None
     result_queue: asyncio.Queue = asyncio.Queue()
     stopped = asyncio.Event()
 
-    monkeypatch.setattr(pi, "_build_internal_api_headers", lambda: {})
+    monkeypatch.setattr(pi, "_build_internal_api_headers", dict)
     monkeypatch.setattr(pi.httpx, "AsyncClient", lambda *args, **kwargs: _FakeAsyncClient([[0.1, 0.2]]))
 
     task = asyncio.create_task(
@@ -270,7 +270,7 @@ async def test_embedding_worker_error_on_mismatched_embeddings(monkeypatch: pyte
     result_queue: asyncio.Queue = asyncio.Queue()
     stopped = asyncio.Event()
 
-    monkeypatch.setattr(pi, "_build_internal_api_headers", lambda: {})
+    monkeypatch.setattr(pi, "_build_internal_api_headers", dict)
     # Return zero embeddings to trigger mismatch error.
     monkeypatch.setattr(pi.httpx, "AsyncClient", lambda *args, **kwargs: _FakeAsyncClient([]))
 
@@ -313,7 +313,7 @@ async def test_result_processor_success(monkeypatch: pytest.MonkeyPatch) -> None
     stats = {"processed": 0, "failed": 0, "skipped": 0, "vectors": 0}
     doc_repo = _DummyDocumentRepo()
 
-    monkeypatch.setattr(pi, "_build_internal_api_headers", lambda: {})
+    monkeypatch.setattr(pi, "_build_internal_api_headers", dict)
     monkeypatch.setattr(pi.httpx, "AsyncClient", lambda *args, **kwargs: _FakeAsyncClient({"ok": True}))
 
     task = asyncio.create_task(
