@@ -169,7 +169,8 @@ export function useToggleMCPProfileEnabled() {
   return useMutation<
     MCPProfile,
     Error,
-    { profileId: string; enabled: boolean; profileName: string }
+    { profileId: string; enabled: boolean; profileName: string },
+    { previousProfiles: MCPProfile[] | undefined }
   >({
     mutationFn: async ({ profileId, enabled }) => {
       const response = await mcpProfilesApi.update(profileId, { enabled });
@@ -207,7 +208,7 @@ export function useToggleMCPProfileEnabled() {
       const errorMessage = handleApiError(error);
       addToast({ type: 'error', message: errorMessage });
     },
-    onSuccess: (data, { profileName, enabled }) => {
+    onSuccess: (_data, { profileName, enabled }) => {
       addToast({
         type: 'success',
         message: `Profile "${profileName}" ${enabled ? 'enabled' : 'disabled'}`,
