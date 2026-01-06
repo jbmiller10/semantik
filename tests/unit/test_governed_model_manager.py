@@ -3,10 +3,13 @@
 Tests the integration between ModelManager, GPUMemoryGovernor, and CPUOffloader.
 """
 
-from unittest.mock import patch
+import sys
+import types
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import vecpipe.governed_model_manager as gmm
 from vecpipe.governed_model_manager import GovernedModelManager
 from vecpipe.memory_governor import MemoryBudget, ModelType
 
@@ -251,3 +254,126 @@ class TestGovernedModelManagerCriticalFailures:
             return "ok"
 
         assert governed_manager._run_governor_coro(_return_value()) == "ok"
+
+
+class TestGovernedModelManagerEnsureProviderInitialized:
+    """Tests for the core embedding provider init path with governor tracking."""
+
+    @pytest.mark.asyncio()
+    async def test_denied_memory_request_raises(self, governed_manager, monkeypatch):
+        monkeypatch.setattr(gmm, "get_model_memory_requirement", lambda *_args, **_kwargs: 123)
+        monkeypatch.setattr(governed_manager._governor, "request_memory", AsyncMock(return_value=False))
+
+        with pytest.raises(RuntimeError, match="Cannot allocate memory for model"):
+            await governed_manager._ensure_provider_initialized("Qwen/test-model", "float16")
+
+    @pytest.mark.asyncio()
+    async def test_fast_path_touches_governor_and_skips_parent_load(self, governed_manager, monkeypatch):
+        model_name = "Qwen/test-model"
+        quantization = "float16"
+        model_key = governed_manager._get_model_key(model_name, quantization)
+        provider = object()
+
+        governed_manager._provider = provider
+        governed_manager.current_model_key = model_key
+
+        monkeypatch.setattr(gmm, "get_model_memory_requirement", lambda *_args, **_kwargs: 1)
+        monkeypatch.setattr(governed_manager._governor, "request_memory", AsyncMock(return_value=True))
+        touch = AsyncMock()
+        monkeypatch.setattr(governed_manager._governor, "touch", touch)
+
+        parent_ensure = AsyncMock()
+        monkeypatch.setattr(gmm.ModelManager, "_ensure_provider_initialized", parent_ensure)
+
+        result = await governed_manager._ensure_provider_initialized(model_name, quantization)
+
+        assert result is provider
+        touch.assert_awaited_once()
+        call = touch.await_args
+        assert call.args[0] == model_name
+        assert call.args[1].value == ModelType.EMBEDDING.value
+        assert call.args[2] == quantization
+        parent_ensure.assert_not_awaited()
+
+    @pytest.mark.asyncio()
+    async def test_load_success_marks_loaded(self, governed_manager, monkeypatch):
+        model_name = "Qwen/test-model"
+        quantization = "float16"
+        provider = types.SimpleNamespace(model=object())
+
+        monkeypatch.setattr(gmm, "get_model_memory_requirement", lambda *_args, **_kwargs: 1)
+        monkeypatch.setattr(governed_manager._governor, "request_memory", AsyncMock(return_value=True))
+        mark_loaded = AsyncMock()
+        monkeypatch.setattr(governed_manager._governor, "mark_loaded", mark_loaded)
+        monkeypatch.setattr(governed_manager._governor, "mark_unloaded", AsyncMock())
+
+        monkeypatch.setattr(gmm.ModelManager, "_ensure_provider_initialized", AsyncMock(return_value=provider))
+
+        result = await governed_manager._ensure_provider_initialized(model_name, quantization)
+
+        assert result is provider
+        mark_loaded.assert_awaited_once()
+        _, kwargs = mark_loaded.await_args
+        assert kwargs["model_name"] == model_name
+        assert kwargs["model_type"].value == ModelType.EMBEDDING.value
+        assert kwargs["quantization"] == quantization
+        assert kwargs["model_ref"] is provider.model
+
+    @pytest.mark.asyncio()
+    async def test_load_failure_marks_unloaded_and_reraises(self, governed_manager, monkeypatch):
+        model_name = "Qwen/test-model"
+        quantization = "float16"
+
+        monkeypatch.setattr(gmm, "get_model_memory_requirement", lambda *_args, **_kwargs: 1)
+        monkeypatch.setattr(governed_manager._governor, "request_memory", AsyncMock(return_value=True))
+        mark_unloaded = AsyncMock()
+        monkeypatch.setattr(governed_manager._governor, "mark_unloaded", mark_unloaded)
+
+        async def _boom(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(gmm.ModelManager, "_ensure_provider_initialized", _boom)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await governed_manager._ensure_provider_initialized(model_name, quantization)
+
+        mark_unloaded.assert_awaited_once()
+        call = mark_unloaded.await_args
+        assert call.args[0] == model_name
+        assert call.args[1].value == ModelType.EMBEDDING.value
+        assert call.args[2] == quantization
+
+    @pytest.mark.asyncio()
+    async def test_switching_models_discards_offloader_and_clears_cuda_cache(self, governed_manager, monkeypatch):
+        old_model = "Qwen/old-model"
+        old_quantization = "float16"
+        new_model = "Qwen/new-model"
+        new_quantization = "float16"
+
+        governed_manager._provider = object()
+        governed_manager.current_model_key = governed_manager._get_model_key(old_model, old_quantization)
+
+        # Avoid importing real torch in unit tests.
+        torch_mod = types.ModuleType("torch")
+        empty_cache = MagicMock()
+        torch_mod.cuda = types.SimpleNamespace(is_available=lambda: True, empty_cache=empty_cache)
+        monkeypatch.setitem(sys.modules, "torch", torch_mod)
+
+        monkeypatch.setattr(gmm, "get_model_memory_requirement", lambda *_args, **_kwargs: 1)
+        monkeypatch.setattr(governed_manager._governor, "request_memory", AsyncMock(return_value=True))
+        mark_unloaded = AsyncMock()
+        monkeypatch.setattr(governed_manager._governor, "mark_unloaded", mark_unloaded)
+        monkeypatch.setattr(governed_manager._governor, "mark_loaded", AsyncMock())
+
+        governed_manager._offloader.discard = MagicMock()
+        monkeypatch.setattr(gmm.ModelManager, "_ensure_provider_initialized", AsyncMock(return_value=types.SimpleNamespace()))
+
+        await governed_manager._ensure_provider_initialized(new_model, new_quantization)
+
+        governed_manager._offloader.discard.assert_called_once_with(f"embedding:{old_model}:{old_quantization}")
+        mark_unloaded.assert_awaited_once()
+        call = mark_unloaded.await_args
+        assert call.args[0] == old_model
+        assert call.args[1].value == ModelType.EMBEDDING.value
+        assert call.args[2] == old_quantization
+        empty_cache.assert_called_once()

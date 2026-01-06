@@ -340,3 +340,202 @@ async def test_result_processor_success(monkeypatch: pytest.MonkeyPatch) -> None
 
     call = doc_repo.update_status.await_args
     assert call.args[1] == DocumentStatus.COMPLETED
+
+
+@pytest.mark.asyncio()
+async def test_extraction_worker_marks_failed_on_extraction_result_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    doc = SimpleNamespace(id="doc-fail", file_path="/tmp/doc.txt", uri=None)
+    doc_queue: asyncio.Queue = asyncio.Queue()
+    chunk_queue: asyncio.Queue = asyncio.Queue()
+    doc_repo = _DummyDocumentRepo()
+    stats = {"processed": 0, "failed": 0, "skipped": 0, "vectors": 0}
+
+    async def _fake_extract_and_chunk_document(**_kwargs):
+        return pi.ExtractionResult(success=False, error="boom")
+
+    await doc_queue.put(doc)
+    await doc_queue.put(None)
+
+    monkeypatch.setattr(pi, "extract_and_chunk_document", _fake_extract_and_chunk_document)
+    await pi.extraction_worker(
+        worker_id=0,
+        doc_queue=doc_queue,
+        chunk_queue=chunk_queue,
+        extract_fn=lambda _: [],
+        chunking_service=AsyncMock(),
+        collection={},
+        executor_pool=None,
+        new_doc_contents={},
+        document_repo=doc_repo,
+        stats=stats,
+        stats_lock=asyncio.Lock(),
+        db_lock=asyncio.Lock(),
+        embedding_stopped=asyncio.Event(),
+    )
+
+    doc_repo.update_status.assert_awaited()
+    assert stats["failed"] == 1
+
+    update_call = doc_repo.update_status.await_args
+    assert update_call.args[0] == "doc-fail"
+    assert update_call.args[1] == DocumentStatus.FAILED
+
+    # Worker signals downstream completion with a poison pill.
+    assert await chunk_queue.get() is None
+
+
+@pytest.mark.asyncio()
+async def test_extraction_worker_marks_completed_on_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    doc = SimpleNamespace(id="doc-skip", file_path="/tmp/doc.txt", uri=None)
+    doc_queue: asyncio.Queue = asyncio.Queue()
+    chunk_queue: asyncio.Queue = asyncio.Queue()
+    doc_repo = _DummyDocumentRepo()
+    stats = {"processed": 0, "failed": 0, "skipped": 0, "vectors": 0}
+
+    async def _fake_extract_and_chunk_document(**_kwargs):
+        return pi.ExtractionResult(success=True, skip_reason="no_text_extracted")
+
+    await doc_queue.put(doc)
+    await doc_queue.put(None)
+
+    monkeypatch.setattr(pi, "extract_and_chunk_document", _fake_extract_and_chunk_document)
+    await pi.extraction_worker(
+        worker_id=0,
+        doc_queue=doc_queue,
+        chunk_queue=chunk_queue,
+        extract_fn=lambda _: [],
+        chunking_service=AsyncMock(),
+        collection={},
+        executor_pool=None,
+        new_doc_contents={},
+        document_repo=doc_repo,
+        stats=stats,
+        stats_lock=asyncio.Lock(),
+        db_lock=asyncio.Lock(),
+        embedding_stopped=asyncio.Event(),
+    )
+
+    doc_repo.update_status.assert_awaited()
+    assert stats["skipped"] == 1
+
+    update_call = doc_repo.update_status.await_args
+    assert update_call.args[0] == "doc-skip"
+    assert update_call.args[1] == DocumentStatus.COMPLETED
+    assert update_call.kwargs["chunk_count"] == 0
+
+    assert await chunk_queue.get() is None
+
+
+@pytest.mark.asyncio()
+async def test_extraction_worker_marks_failed_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    doc = SimpleNamespace(id="doc-exc", file_path="/tmp/doc.txt", uri=None)
+    doc_queue: asyncio.Queue = asyncio.Queue()
+    chunk_queue: asyncio.Queue = asyncio.Queue()
+    doc_repo = _DummyDocumentRepo()
+    stats = {"processed": 0, "failed": 0, "skipped": 0, "vectors": 0}
+
+    async def _boom(**_kwargs):
+        raise ValueError("boom")
+
+    await doc_queue.put(doc)
+    await doc_queue.put(None)
+
+    monkeypatch.setattr(pi, "extract_and_chunk_document", _boom)
+    await pi.extraction_worker(
+        worker_id=0,
+        doc_queue=doc_queue,
+        chunk_queue=chunk_queue,
+        extract_fn=lambda _: [],
+        chunking_service=AsyncMock(),
+        collection={},
+        executor_pool=None,
+        new_doc_contents={},
+        document_repo=doc_repo,
+        stats=stats,
+        stats_lock=asyncio.Lock(),
+        db_lock=asyncio.Lock(),
+        embedding_stopped=asyncio.Event(),
+    )
+
+    doc_repo.update_status.assert_awaited()
+    assert stats["failed"] == 1
+
+    update_call = doc_repo.update_status.await_args
+    assert update_call.args[0] == "doc-exc"
+    assert update_call.args[1] == DocumentStatus.FAILED
+    assert "Extraction worker error:" in (update_call.kwargs.get("error_message") or "")
+
+    assert await chunk_queue.get() is None
+
+
+@pytest.mark.asyncio()
+async def test_process_documents_parallel_orchestrates_workers_and_caps_worker_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    processed: list[str] = []
+    worker_started: set[int] = set()
+
+    async def _fake_extraction_worker(
+        worker_id: int,
+        doc_queue: asyncio.Queue,
+        chunk_queue: asyncio.Queue,
+        **_kwargs,
+    ) -> None:
+        worker_started.add(worker_id)
+        while True:
+            doc = await doc_queue.get()
+            doc_queue.task_done()
+            if doc is None:
+                break
+            processed.append(doc.id)
+        await chunk_queue.put(None)
+
+    async def _fake_embedding_worker(
+        chunk_queue: asyncio.Queue,
+        result_queue: asyncio.Queue,
+        num_producers: int,
+        **_kwargs,
+    ) -> None:
+        producers_done = 0
+        while producers_done < num_producers:
+            item = await chunk_queue.get()
+            chunk_queue.task_done()
+            if item is None:
+                producers_done += 1
+        await result_queue.put(None)
+
+    async def _fake_result_processor(result_queue: asyncio.Queue, **_kwargs) -> None:
+        item = await result_queue.get()
+        result_queue.task_done()
+        assert item is None
+
+    monkeypatch.setattr(pi, "extraction_worker", _fake_extraction_worker)
+    monkeypatch.setattr(pi, "embedding_worker", _fake_embedding_worker)
+    monkeypatch.setattr(pi, "result_processor", _fake_result_processor)
+
+    docs = [
+        SimpleNamespace(id="d1", file_path="/tmp/d1.txt", uri=None),
+        SimpleNamespace(id="d2", file_path="/tmp/d2.txt", uri=None),
+        SimpleNamespace(id="d3", file_path="/tmp/d3.txt", uri=None),
+    ]
+
+    stats = await pi.process_documents_parallel(
+        documents=docs,
+        extract_fn=lambda _: [],
+        chunking_service=AsyncMock(),
+        collection={"id": "collection-id"},
+        executor_pool=None,
+        new_doc_contents={},
+        document_repo=_DummyDocumentRepo(),
+        qdrant_collection_name="collection",
+        embedding_model="model",
+        quantization="float16",
+        instruction=None,
+        batch_size=2,
+        num_extraction_workers=5,
+        max_extraction_workers=2,
+    )
+
+    assert stats == {"processed": 0, "failed": 0, "skipped": 0, "vectors": 0}
+    assert set(processed) == {"d1", "d2", "d3"}
+    assert worker_started == {0, 1}

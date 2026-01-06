@@ -77,8 +77,15 @@ def _get_patched_callable(name: str, default: Any) -> Any:
             candidate = getattr(search_api, name, None)
             if candidate is not None and candidate is not default:
                 return candidate
-        except Exception:
-            # Best effort only; fall back to default when anything goes wrong
+        except Exception as exc:
+            # Best effort only; fall back to default when anything goes wrong.
+            logger.debug(
+                "Failed resolving patched callable '%s' from %s: %s",
+                name,
+                module_name,
+                exc,
+                exc_info=True,
+            )
             continue
 
     return default
@@ -98,8 +105,8 @@ def _get_model_manager() -> Any | None:
         if not isinstance(patched, types.ModuleType):
             search_state.model_manager = patched
             return patched
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed resolving model_manager from vecpipe.search_api: %s", exc, exc_info=True)
 
     return search_state.model_manager
 
@@ -118,9 +125,9 @@ def _get_qdrant_client() -> httpx.AsyncClient | None:
         elif patched is not None:
             search_state.qdrant_client = patched
             globals()["_qdrant_from_entrypoint"] = True
-    except Exception:
+    except Exception as exc:
         # Fall back to whatever is already cached
-        pass
+        logger.debug("Failed resolving qdrant_client from vecpipe.search_api: %s", exc, exc_info=True)
 
     return cast(httpx.AsyncClient | None, search_state.qdrant_client)
 
@@ -144,8 +151,8 @@ def _get_search_qdrant() -> Any:
                 return patched(*args, **kwargs)
 
             return _wrapped
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed resolving search_qdrant from vecpipe.search_api: %s", exc, exc_info=True)
 
     if local is not None:
         return local
@@ -165,8 +172,8 @@ def _get_settings() -> Any:
         patched = getattr(search_api, "settings", None)
         if patched is not None and patched is not _BASE_SETTINGS:
             return patched
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed resolving settings from vecpipe.search_api: %s", exc, exc_info=True)
 
     return local_settings or _BASE_SETTINGS
 
@@ -199,9 +206,9 @@ def _extract_qdrant_error(e: httpx.HTTPStatusError) -> str:
 
             if payload.get("error"):
                 return str(payload.get("error"))
-    except Exception:
-        # Fall back to the default when parsing fails
-        pass
+    except Exception as exc:
+        # Fall back to the default when parsing fails.
+        logger.debug("Failed parsing Qdrant error payload: %s", exc, exc_info=True)
 
     return default_detail
 
@@ -592,7 +599,12 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                 except RuntimeError:
                     # Propagate runtime errors in tests to keep parity with production behavior
                     raise
-                except Exception:
+                except Exception as exc:
+                    logger.warning(
+                        "Embedding generation failed in test_mode; using mock embedding: %s",
+                        exc,
+                        exc_info=True,
+                    )
                     query_vector = generate_mock_embedding(request.query, vector_dim)
             else:
                 query_vector = await generate_fn(request.query, model_name, quantization, instruction)
