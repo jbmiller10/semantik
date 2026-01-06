@@ -150,6 +150,33 @@ class ChunkRepository(PartitionAwareMixin):
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_chunk_by_metadata_chunk_id(self, chunk_id: str, collection_id: str) -> Chunk | None:
+        """Get a chunk by its metadata chunk_id with partition pruning.
+
+        This supports resolving chunks using the stable chunk identifier stored in
+        the chunk's metadata (payload field `chunk_id`), which is commonly returned
+        by vector-store search results.
+
+        IMPORTANT: collection_id is required for partition pruning.
+
+        Args:
+            chunk_id: Metadata chunk identifier (e.g., "<document_uuid>_0001")
+            collection_id: Collection ID (partition key)
+
+        Returns:
+            Chunk instance or None if not found
+        """
+        if not isinstance(chunk_id, str) or not chunk_id.strip():
+            raise ValueError("chunk_id must be a non-empty string")
+
+        collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
+
+        query = select(Chunk).where(
+            and_(Chunk.collection_id == collection_id, Chunk.meta["chunk_id"].astext == chunk_id)
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_chunks_by_document(
         self, document_id: str, collection_id: str, limit: int | None = None, offset: int = 0
     ) -> list[Chunk]:

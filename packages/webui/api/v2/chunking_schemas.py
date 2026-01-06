@@ -257,6 +257,24 @@ class ChunkListResponse(BaseModel):
     has_next: bool = Field(..., description="Whether there are more pages")
 
 
+class ChunkResponse(BaseModel):
+    """Response containing a single chunk."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(..., description="Chunk primary key (database)")
+    collection_id: str = Field(..., description="Collection UUID")
+    document_id: str | None = Field(default=None, description="Document UUID (may be null)")
+    chunk_index: int = Field(..., description="Chunk ordering index within document")
+    content: str = Field(..., description="Full chunk content")
+    token_count: int | None = Field(default=None, description="Token count if available")
+    start_offset: int | None = Field(default=None, description="Start character offset in source document")
+    end_offset: int | None = Field(default=None, description="End character offset in source document")
+    metadata: dict[str, Any] | None = Field(default=None, description="Chunk metadata")
+    created_at: datetime = Field(..., description="Chunk creation timestamp")
+    updated_at: datetime = Field(..., description="Chunk update timestamp")
+
+
 class ChunkingStats(BaseModel):
     """Statistics for collection chunking."""
 
