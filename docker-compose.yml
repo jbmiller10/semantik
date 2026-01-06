@@ -137,8 +137,6 @@ services:
     container_name: semantik-vecpipe
     user: "${UID:-1000}:${GID:-1000}"
     command: [ "vecpipe" ]
-    ports:
-      - "8000:8000"
     environment:
       # General configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -371,13 +369,6 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 4G
-        reservations:
-          memory: 2G
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "celery", "-A", "webui.celery_app", "inspect", "ping", "-d", "celery@$$HOSTNAME" ]

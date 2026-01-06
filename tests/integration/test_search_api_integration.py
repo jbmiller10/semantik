@@ -42,6 +42,7 @@ class TestSearchAPIIntegration:
 
         # Save original values
         original_values = {}
+        original_internal_key = settings.INTERNAL_API_KEY
         env_vars = {
             "QDRANT_HOST": "localhost",
             "QDRANT_PORT": "6333",
@@ -56,6 +57,8 @@ class TestSearchAPIIntegration:
             original_values[key] = os.environ.get(key)
             os.environ[key] = value
 
+        settings.INTERNAL_API_KEY = "test-internal-key"
+
         yield
 
         # Restore original values
@@ -64,6 +67,8 @@ class TestSearchAPIIntegration:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = original
+
+        settings.INTERNAL_API_KEY = original_internal_key
 
         # Clear cache again after test
         clear_cache()
@@ -181,6 +186,8 @@ class TestSearchAPIIntegration:
         # Import and create test client
 
         client = TestClient(app)
+        client.headers.update({"X-Internal-Api-Key": settings.INTERNAL_API_KEY})
+        client.headers.update({"X-Internal-Api-Key": settings.INTERNAL_API_KEY})
 
         # Make search request
         query_text = "test query"
@@ -288,6 +295,7 @@ class TestSearchAPIIntegration:
         # Import and create test client
 
         client = TestClient(app)
+        client.headers.update({"X-Internal-Api-Key": settings.INTERNAL_API_KEY})
 
         # Make search request with custom parameters
         query_text = "another test query"

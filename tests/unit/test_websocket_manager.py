@@ -15,7 +15,7 @@ import redis.asyncio as redis
 from fastapi import WebSocket
 
 from webui.services.progress_manager import ProgressSendResult, ProgressUpdateManager
-from webui.websocket_manager import RedisStreamWebSocketManager
+from webui.websocket.legacy_stream_manager import RedisStreamWebSocketManager
 
 
 class TestWebSocketManager:
@@ -67,7 +67,7 @@ class TestWebSocketManager:
         return operation
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
+    @patch("webui.websocket.legacy_stream_manager.redis.from_url")
     async def test_startup_success(self, mock_redis_from_url, ws_manager, mock_redis) -> None:
         """Test successful startup and Redis connection"""
 
@@ -85,8 +85,8 @@ class TestWebSocketManager:
         mock_redis_from_url.assert_called_once()
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
-    @patch("webui.websocket_manager.asyncio.sleep")
+    @patch("webui.websocket.legacy_stream_manager.redis.from_url")
+    @patch("webui.websocket.legacy_stream_manager.asyncio.sleep")
     async def test_startup_retry_on_failure(self, mock_sleep, mock_redis_from_url, ws_manager) -> None:
         """Test startup retry logic on connection failure"""
         # First two attempts fail, third succeeds
@@ -108,8 +108,8 @@ class TestWebSocketManager:
         assert mock_sleep.call_count == 2  # Two retries
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.redis.from_url")
-    @patch("webui.websocket_manager.logger")
+    @patch("webui.websocket.legacy_stream_manager.redis.from_url")
+    @patch("webui.websocket.legacy_stream_manager.logger")
     async def test_startup_failure_after_max_retries(self, mock_logger, mock_redis_from_url, ws_manager) -> None:
         """Test graceful degradation when Redis connection fails"""
         mock_redis_from_url.side_effect = Exception("Connection failed")
@@ -171,7 +171,7 @@ class TestWebSocketManager:
         assert "op-123" in ws_manager.consumer_tasks
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.RedisStreamWebSocketManager.startup")
+    @patch("webui.websocket.legacy_stream_manager.RedisStreamWebSocketManager.startup")
     async def test_connect_without_redis(self, mock_startup, ws_manager, mock_websocket, mock_operation) -> None:
         """Test connection when Redis is not available"""
         ws_manager.redis = None
@@ -292,7 +292,7 @@ class TestWebSocketManager:
         assert sent_data["data"]["percentage"] == 50
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.logger")
+    @patch("webui.websocket.legacy_stream_manager.logger")
     async def test_send_update_redis_failure(self, mock_logger, ws_manager, mock_redis, mock_websocket) -> None:
         """Test fallback to direct broadcast when the progress manager reports failure."""
 
@@ -599,7 +599,7 @@ class TestWebSocketManagerErrorHandling:
         return manager
 
     @pytest.mark.asyncio()
-    @patch("webui.websocket_manager.logger")
+    @patch("webui.websocket.legacy_stream_manager.logger")
     async def test_consumer_error_recovery(self, mock_logger, ws_manager) -> None:
         """Test consumer error recovery"""
         mock_redis = AsyncMock()

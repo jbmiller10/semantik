@@ -39,22 +39,80 @@
   </module>
   
   <module name="model_manager.py">
-    <purpose>Model lifecycle management</purpose>
+    <purpose>Basic model lifecycle management</purpose>
     <features>
       - Lazy loading on first use
       - Auto-unload after 300s idle
       - GPU memory checking before load
     </features>
   </module>
+
+  <module name="governed_model_manager.py">
+    <purpose>Advanced model lifecycle with memory governance</purpose>
+    <features>
+      - Extends ModelManager with GPUMemoryGovernor
+      - LRU-based eviction when memory needed
+      - CPU offloading for "warm" model pool
+      - Background memory pressure monitoring
+    </features>
+  </module>
+
+  <module name="memory_governor.py">
+    <purpose>GPU memory budget enforcement and eviction</purpose>
+    <components>
+      - GPUMemoryGovernor: Central memory coordinator
+      - MemoryBudget: Configurable GPU/CPU limits
+      - PressureLevel: LOW/MODERATE/HIGH/CRITICAL thresholds
+      - TrackedModel: Model state tracking with LRU ordering
+    </components>
+  </module>
+
+  <module name="cpu_offloader.py">
+    <purpose>GPU⇔CPU model transfer for warm pool</purpose>
+    <features>
+      - Offload models to pinned CPU memory
+      - Fast restore to GPU (2-5s vs 10-30s disk reload)
+      - Automatic cleanup on shutdown
+    </features>
+  </module>
 </key-modules>
 
 <memory-management>
-  <strategy>Dynamic with auto-unloading</strategy>
-  <limits>
-    - Check available GPU memory before loading
-    - Unload models after 5 minutes idle
-    - Fall back to CPU if GPU unavailable
-  </limits>
+  <strategy>GPUMemoryGovernor with LRU eviction and CPU offloading</strategy>
+
+  <pressure-levels>
+    | Level    | Threshold | Action                                |
+    |----------|-----------|---------------------------------------|
+    | LOW      | &lt;60%      | No action                             |
+    | MODERATE | 60-80%    | Offload models idle &gt;120s            |
+    | HIGH     | 80-90%    | Aggressively offload models idle &gt;30s |
+    | CRITICAL | &gt;90%      | Force unload all idle models          |
+  </pressure-levels>
+
+  <eviction-strategy>
+    1. Offload LRU idle models to CPU first (preserves warm state)
+    2. If CPU full or disabled, fully unload LRU models
+    3. Never evict model in active use (5s grace period)
+    4. Fail only if model won't fit even with empty GPU
+  </eviction-strategy>
+
+  <configuration>
+    GPU limits:
+      - GPU_MEMORY_RESERVE_PERCENT=0.10 (keep 10% free)
+      - GPU_MEMORY_MAX_PERCENT=0.90 (never use &gt;90%)
+    CPU limits (warm pool):
+      - CPU_MEMORY_RESERVE_PERCENT=0.20 (keep 20% free)
+      - CPU_MEMORY_MAX_PERCENT=0.50 (max 50% for warm models)
+    Behavior:
+      - ENABLE_CPU_OFFLOAD=true
+      - EVICTION_IDLE_THRESHOLD_SECONDS=120
+  </configuration>
+
+  <vram-recommendations>
+    - 24GB+ VRAM: Both embedding + reranker can coexist
+    - 16GB VRAM: Default settings, occasional eviction under load
+    - 8GB VRAM: More aggressive eviction, shorter idle thresholds
+  </vram-recommendations>
 </memory-management>
 
 <search-flow>
@@ -117,4 +175,12 @@
 <testing>
   <location>tests/unit/test_embedding_*.py</location>
   <coverage>Dimension validation, OOM handling, retry logic</coverage>
+  <location>tests/unit/test_memory_governor.py</location>
+  <coverage>Budget calculations, LRU eviction, pressure levels, callbacks</coverage>
 </testing>
+
+<memory-api-endpoints>
+  <endpoint path="/memory/stats">Memory statistics and pressure level</endpoint>
+  <endpoint path="/memory/models">List tracked models with locations</endpoint>
+  <endpoint path="/memory/evictions">Eviction history for debugging</endpoint>
+</memory-api-endpoints>

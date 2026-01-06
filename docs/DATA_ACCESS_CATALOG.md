@@ -43,10 +43,11 @@ def _copy_collection_points(source: str, destination: str, batch_size: int = 256
 
 **Direct Qdrant Client Access:**
 ```python
-from shared.managers.qdrant_manager import QdrantManager
+from webui.tasks.utils import resolve_qdrant_manager
 
-manager = resolve_qdrant_manager()  # From webui.tasks.utils
+manager = resolve_qdrant_manager()  # Returns UnifiedQdrantManager (lazy proxy)
 qdrant_client = manager.get_client()  # Returns QdrantClient instance
+# Or access directly: manager.client (the underlying QdrantClient)
 
 # Scroll all vectors for dimensionality reduction
 offset = None
@@ -67,7 +68,7 @@ while True:
         break
 ```
 
-**Location:** `packages/shared/managers/qdrant_manager.py:442-477`
+**Location:** `packages/shared/managers/qdrant_manager.py:475-510`
 
 **Usage Pattern in Codebase:**
 - **Imports:** `from webui.tasks.utils import resolve_qdrant_manager`
@@ -103,10 +104,10 @@ async def get_chunk_statistics_optimized(collection_id: str) -> dict[str, Any]
         "min_chunk_size": int,
         "max_chunk_size": int,
         "unique_documents": int,
-        "first_chunk_created": str,
-        "last_chunk_created": str
+        "first_chunk_created": str | None,
+        "last_chunk_created": str | None
     }
-    Location: chunk_repository.py:474-509
+    Location: chunk_repository.py:503-538
     """
 
 async def get_chunks_paginated(
@@ -116,7 +117,7 @@ async def get_chunks_paginated(
 ) -> tuple[list[Chunk], int]
     """Returns (chunks, total_count)
     Uses window function for efficient pagination
-    Location: chunk_repository.py:432-472
+    Location: chunk_repository.py:461-501
     """
 
 async def get_chunks_batch(
@@ -125,7 +126,7 @@ async def get_chunks_batch(
     limit: int = 1000
 ) -> list[Chunk]
     """Batch fetch chunks for multiple documents
-    Location: chunk_repository.py:399-430
+    Location: chunk_repository.py:428-459
     """
 ```
 
@@ -163,16 +164,17 @@ async def create(
     reducer: str,  # "umap", "tsne", "pca"
     dimensionality: int,  # Typically 2 or 3
     config: dict[str, Any] | None = None,
-    meta: dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None,
+    metadata_hash: str | None = None
 ) -> ProjectionRun
     """Create new projection run record
     Validates: dimensionality > 0, collection exists
-    Location: projection_run_repository.py:26-63
+    Location: projection_run_repository.py:30-69
     """
 
 async def get_by_uuid(projection_uuid: str) -> ProjectionRun | None
     """Fetch by external UUID with eager loading of collection/operation
-    Location: projection_run_repository.py:65-73
+    Location: projection_run_repository.py:71-79
     """
 
 async def update_status(
@@ -185,7 +187,7 @@ async def update_status(
 ) -> ProjectionRun
     """Update lifecycle status (PENDING -> RUNNING -> COMPLETED/FAILED)
     Auto-sets started_at and completed_at based on status
-    Location: projection_run_repository.py:102-131
+    Location: projection_run_repository.py:109-138
     """
 
 async def update_metadata(
@@ -196,10 +198,10 @@ async def update_metadata(
     meta: dict[str, Any] | None = None
 ) -> ProjectionRun
     """Update storage attributes after computation
-    storage_path: Path to serialized array (e.g., Parquet/NPY file)
+    storage_path: Path to serialized projection directory (binary artifacts)
     point_count: Number of projected points
-    meta: Additional metadata (timing, parameters, etc.)
-    Location: projection_run_repository.py:143-170
+    meta: Additional metadata (timing, parameters, etc.) - merged with existing
+    Location: projection_run_repository.py:150-177
     """
 
 async def list_for_collection(
@@ -211,7 +213,7 @@ async def list_for_collection(
 ) -> tuple[list[ProjectionRun], int]
     """List runs with optional status filter
     Returns: (runs, total_count)
-    Location: projection_run_repository.py:75-100
+    Location: projection_run_repository.py:81-107
     """
 ```
 
@@ -259,7 +261,7 @@ async def get_by_uuid_with_permission_check(
 ) -> Collection
     """Fetch collection and verify user ownership
     Raises: EntityNotFoundError if not found or unauthorized
-    Location: collection_repository.py:157
+    Location: collection_repository.py:172-196
 
     CRITICAL: Use this for all user-facing projection API calls
     """
@@ -271,15 +273,14 @@ async def get_by_uuid(collection_uuid: str) -> Collection | None
 **Collection Model Fields (Relevant):**
 ```python
 class Collection:
-    id: str  # Internal ID
-    uuid: str  # External ID (use this in APIs)
+    id: str  # UUID string - primary key and external identifier
     name: str
-    user_id: int  # Owner
+    owner_id: int  # Owner user ID
     vector_store_name: str  # Qdrant collection name
     embedding_model: str  # Model used for embeddings
     vector_count: int
     status: CollectionStatus
-    config: dict
+    meta: dict  # JSON metadata field
 ```
 
 ---
@@ -318,7 +319,8 @@ class OperationType(str, enum.Enum):
     APPEND = "append"
     REINDEX = "reindex"
     REMOVE_SOURCE = "remove_source"
-    PROJECTION_BUILD = "projection_build"  # Added for projections
+    DELETE = "delete"
+    PROJECTION_BUILD = "projection_build"
 ```
 
 ---
@@ -327,7 +329,7 @@ class OperationType(str, enum.Enum):
 
 ### ProjectionService (`packages/webui/services/projection_service.py`)
 
-Currently scaffolding. Methods return placeholders.
+Fully implemented service for projection orchestration.
 
 ```python
 async def start_projection_build(
@@ -339,10 +341,12 @@ async def start_projection_build(
 
     Lifecycle semantics:
     1. Validate collection with get_by_uuid_with_permission_check()
-    2. Create a new ProjectionRun (status=PENDING) with reducer/config/color_by and sampling config
-    3. Create a new Operation (type=PROJECTION_BUILD, status=PENDING) linked via operation_uuid
-    4. Commit transaction (commit-before-enqueue)
-    5. Dispatch Celery task `webui.tasks.process_collection_operation`
+    2. Compute metadata_hash for idempotency checks
+    3. Check for existing completed run with same hash (returns early if found)
+    4. Create a new ProjectionRun (status=PENDING) with reducer/config/color_by and sampling config
+    5. Create a new Operation (type=PROJECTION_BUILD, status=PENDING) linked via operation_uuid
+    6. Commit transaction (commit-before-enqueue)
+    7. Dispatch Celery task `webui.tasks.process_collection_operation`
 
     Recompute behaviour:
     - Every request creates a fresh ProjectionRun + Operation; previous runs are
@@ -351,19 +355,23 @@ async def start_projection_build(
     - API responses surface both `status` (ProjectionRunStatus) and
       `operation_status` (OperationStatus) alongside `operation_id` so callers
       can treat projections as long-running jobs.
+    - Idempotent: if identical parameters and collection state, returns existing run.
 
-    Location: packages/webui/services/projection_service.py::start_projection_build
+    Location: packages/webui/services/projection_service.py:320-499
     """
 
-async def get_projection_array(
+async def resolve_artifact_path(
     collection_id: str,
     projection_id: str,
+    artifact_name: str,  # "x", "y", "ids", or "cat"
     user_id: int
-) -> bytes
-    """Stream binary projection coordinates
+) -> Path
+    """Resolve and validate the on-disk path for a projection artifact.
 
-    Location: projection_service.py:183-195
-    TODO: Load from storage_path and stream as binary
+    Allowed artifacts: x.f32.bin, y.f32.bin, ids.i32.bin, cat.u8.bin
+    Marks run as degraded if artifacts are missing.
+
+    Location: projection_service.py:595-654
     """
 
 async def select_projection_region(
@@ -372,17 +380,19 @@ async def select_projection_region(
     selection: dict[str, Any],
     user_id: int
 ) -> dict[str, Any]
-    """Map screen coordinates to document/chunk IDs
+    """Map selected point IDs to document/chunk metadata.
 
     Semantics:
+    - Accepts { "ids": [int, ...] } with up to 5000 IDs
     - Resolves on-disk artifacts under data_dir/semantik/projections/<collection>/<projection>.
     - Returns chunk/document metadata and a degraded flag derived from ProjectionRun.meta
       and projection_artifacts.degraded.
     - When required artifacts are missing or meta.json is invalid, the run is marked
       degraded via ProjectionRunRepository.update_metadata and a 4xx error is raised so
       the UI can prompt for recompute.
+    - Falls back to Qdrant metadata lookup when chunk table lookup fails.
 
-    Location: packages/webui/services/projection_service.py::select_projection_region
+    Location: packages/webui/services/projection_service.py:656-948
     """
 
 async def delete_projection(
@@ -399,7 +409,7 @@ async def delete_projection(
     - For completed/failed/cancelled runs, removes only the run's artifacts directory and
       ProjectionRun row. Other runs and operations for the collection are unaffected.
 
-    Location: packages/webui/services/projection_service.py::delete_projection
+    Location: packages/webui/services/projection_service.py:950-998
     """
 ```
 
@@ -432,7 +442,7 @@ collection = await collection_repo.get_by_uuid_with_permission_check(
 collection = await collection_repo.get_by_uuid(collection_uuid)
 ```
 
-Location: `packages/shared/database/repositories/collection_repository.py:157`
+Location: `packages/shared/database/repositories/collection_repository.py:172-196`
 
 Raises `EntityNotFoundError` if not found or unauthorized.
 ```python
@@ -471,7 +481,7 @@ celery_app.send_task(
 
 Why: Worker queries operation by UUID immediately. If not committed, worker sees nothing.
 
-Example: `packages/webui/services/projection_service.py:112-119`
+Example: `packages/webui/services/projection_service.py:472-498` (start_projection_build commits at line 475)
 
 ---
 
@@ -490,27 +500,45 @@ async def _process_collection_operation_async(
     - OperationType.REMOVE_SOURCE -> _process_remove_source_operation()
     - OperationType.PROJECTION_BUILD -> _process_projection_operation()
 
-    Location: ingestion.py:105-369
+    Location: ingestion.py:126-449
     """
 ```
 
-**Projection Handler (Stub):**
+**Projection Handler (`packages/webui/tasks/projection.py`):**
 ```python
-# packages/webui/tasks/projection.py:19-42
 async def _process_projection_operation(
     operation: dict[str, Any],
     collection: dict[str, Any],
-    projection_repo: Any,
+    projection_repo: ProjectionRunRepository,
     updater: CeleryTaskWithOperationUpdates,
 ) -> dict[str, Any]:
-    """TODO: Implement actual projection computation
+    """Prepares and enqueues async projection computation.
 
-    Expected steps:
-    1. Fetch embeddings from Qdrant via scroll
-    2. Apply dimensionality reduction (UMAP/t-SNE/PCA)
-    3. Save coordinates to storage
-    4. Update ProjectionRun metadata
-    5. Send progress updates via updater
+    Steps:
+    1. Extract projection_run_id from operation config
+    2. Update projection run status to RUNNING
+    3. Update operation status to PROCESSING
+    4. Enqueue compute_projection Celery task
+    5. Returns { "success": True, "defer_completion": True } to signal
+       that the actual completion will be handled by the compute task
+
+    Location: projection.py:1032-1148
+    """
+
+# The actual computation is handled by:
+@celery_app.task(bind=True, name="webui.tasks.compute_projection")
+def compute_projection(self, projection_id: str) -> dict[str, Any]:
+    """Compute a 2D projection for the requested projection run.
+
+    Steps:
+    1. Fetch embeddings from Qdrant via scroll (with sampling)
+    2. Apply dimensionality reduction (UMAP/t-SNE/PCA with fallback)
+    3. Save binary artifacts (x.f32.bin, y.f32.bin, ids.i32.bin, cat.u8.bin)
+    4. Write meta.json with projection metadata and legend
+    5. Update ProjectionRun with storage_path, point_count, and meta
+    6. Send progress updates via WebSocket
+
+    Location: projection.py:442-1030
     """
 ```
 
@@ -796,17 +824,17 @@ collection = await self.collection_repo.get_by_uuid_with_permission_check(
 - ✅ **Use** `resolve_qdrant_manager()` for consistent Qdrant access
 - ✅ **Send** progress updates via WebSocket for long operations
 
-### Files to Extend:
+### Key Implementation Files:
 
-1. `packages/webui/tasks/projection.py` → Implement `_process_projection_operation()`
-2. `packages/webui/services/projection_service.py` → Implement placeholder methods
-3. Create new: `packages/shared/dimensionality_reduction/` → UMAP/t-SNE/PCA logic
-4. Create new: `packages/shared/storage/projection_storage.py` → Save/load utilities
+1. `packages/webui/tasks/projection.py` - Projection computation task with UMAP/t-SNE/PCA reducers
+2. `packages/webui/services/projection_service.py` - Service layer for projection orchestration
+3. Dimensionality reduction is inline in `projection.py` via `_compute_pca_projection()`, `_compute_umap_projection()`, `_compute_tsne_projection()`
+4. Artifact storage is inline in `projection.py` via `_write_binary()` and `_write_meta()` helpers
 
 ---
 
-Version: 1.0
-Last Updated: 2025-10-21
+Version: 1.1
+Last Updated: 2026-01-05
 
 See also:
 - `CLAUDE.md`

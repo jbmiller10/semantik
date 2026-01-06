@@ -36,6 +36,7 @@ from webui.services.connector_factory import ConnectorFactory
 from webui.services.document_registry_service import DocumentRegistryService
 
 from . import reindex as reindex_tasks
+from .parallel_ingestion import process_documents_parallel
 from .utils import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
@@ -46,6 +47,7 @@ from .utils import (
     VECTOR_UPLOAD_BATCH_SIZE,
     CeleryTaskWithOperationUpdates,
     _audit_log_operation,
+    _build_internal_api_headers,
     _record_operation_metrics,
     _sanitize_error_message,
     _update_collection_metrics,
@@ -574,8 +576,9 @@ async def _process_append_operation(db: Any, updater: Any, _operation_id: str) -
                 embed_req = {"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"}
                 upsert_req: dict[str, Any] = {"collection_name": collection.get("vector_store_name"), "points": []}
                 async with httpx.AsyncClient(timeout=60.0) as client:
-                    await client.post("http://vecpipe:8000/embed", json=embed_req)
-                    await client.post("http://vecpipe:8000/upsert", json=upsert_req)
+                    headers = _build_internal_api_headers()
+                    await client.post("http://vecpipe:8000/embed", json=embed_req, headers=headers)
+                    await client.post("http://vecpipe:8000/upsert", json=upsert_req, headers=headers)
 
                 try:
                     doc.chunk_count = len(chunks)
@@ -947,7 +950,7 @@ async def _process_append_operation_impl(
         }
 
         # Store content for new/updated documents (avoid re-parsing)
-        new_doc_contents: dict[int, str] = {}
+        new_doc_contents: dict[str, str] = {}
 
         # Iterate through connector's documents using savepoints for isolation.
         #
@@ -1144,6 +1147,44 @@ async def _process_append_operation_impl(
             loop = tasks_ns.asyncio.get_event_loop()
             executor_pool = tasks_ns.executor
 
+            # Check if parallel ingestion is enabled
+            use_parallel = getattr(settings, "PARALLEL_INGESTION_ENABLED", True)
+            num_workers = getattr(settings, "PARALLEL_INGESTION_WORKERS", 0)  # 0 = auto-detect
+            max_workers = getattr(settings, "PARALLEL_INGESTION_MAX_WORKERS", 8)
+
+            if use_parallel and len(documents) > 1:
+                # Use parallel extraction/chunking with sequential embedding
+                logger.info(
+                    "Using parallel ingestion: %d documents, workers=%s (max=%d)",
+                    len(documents),
+                    num_workers if num_workers else "auto",
+                    max_workers,
+                )
+
+                parallel_stats = await process_documents_parallel(
+                    documents=documents,
+                    extract_fn=extract_fn,
+                    chunking_service=chunking_service,
+                    collection=collection,
+                    executor_pool=executor_pool,
+                    new_doc_contents=new_doc_contents,
+                    document_repo=document_repo,
+                    qdrant_collection_name=qdrant_collection_name,
+                    embedding_model=embedding_model,
+                    quantization=quantization,
+                    instruction=instruction,
+                    batch_size=batch_size,
+                    updater=updater,
+                    num_extraction_workers=num_workers if num_workers else None,
+                    max_extraction_workers=max_workers,
+                )
+
+                processed_count = parallel_stats["processed"]
+                failed_count = parallel_stats["failed"]
+                total_vectors_created = parallel_stats["vectors"]
+                # Clear documents so sequential loop is skipped
+                documents = []
+
             for doc in documents:
                 try:
                     doc_identifier = doc.file_path or doc.uri or f"doc:{doc.id}"
@@ -1302,13 +1343,14 @@ async def _process_append_operation_impl(
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
+                        headers = _build_internal_api_headers()
                         logger.info(
                             "Calling vecpipe /embed for %s texts (semaphore cap=%s)",
                             len(texts),
                             _embedding_semaphore._value,
                         )
                         async with _embedding_semaphore:
-                            response = await client.post(vecpipe_url, json=embed_request)
+                            response = await client.post(vecpipe_url, json=embed_request, headers=headers)
 
                         if response.status_code != 200:
                             raise Exception(
@@ -1387,8 +1429,9 @@ async def _process_append_operation_impl(
                         }
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
+                            headers = _build_internal_api_headers()
                             vecpipe_upsert_url = "http://vecpipe:8000/upsert"
-                            response = await client.post(vecpipe_upsert_url, json=upsert_request)
+                            response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
 
                             if response.status_code != 200:
                                 raise Exception(

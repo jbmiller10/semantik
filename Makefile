@@ -19,6 +19,7 @@ help:
 	@echo "  test-e2e       Run only E2E tests (requires running services)"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  clean          Clean up generated files"
+	@echo "  doc-lint       Scan docs for missing path references"
 	@echo ""
 	@echo "Docker commands:"
 	@echo "  wizard            Interactive Docker setup wizard (TUI)"
@@ -79,6 +80,9 @@ test-e2e:
 
 test-coverage:
 	uv run pytest tests -v --cov=vecpipe --cov=webui --cov=shared --cov-report=html --cov-report=term
+
+doc-lint:
+	@python3 scripts/doc_lint.py
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

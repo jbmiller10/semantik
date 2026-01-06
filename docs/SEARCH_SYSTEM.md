@@ -87,19 +87,19 @@ Semantik combines vector similarity search with keyword-based search. Fast, scal
 - Vector search latency: ~50-200ms (depending on collection size)
 - Hybrid search latency: ~100-300ms (with keyword filtering)
 - Reranked search latency: ~200-1200ms (model dependent)
-- Batch search: Up to 256 queries in parallel
+- Batch search: Up to 100 queries in parallel
 - Model loading: 2-30 seconds (cached after first load)
 - Automatic model unloading after 5 minutes of inactivity
 - Memory-aware loading prevents OOM errors
 
 ## 2. Unified Search Implementation
 
-The core search logic is implemented in `vecpipe/search_utils.py`, providing shared utilities for both the search API and web UI.
+The core search logic is implemented in `packages/vecpipe/search_utils.py`, providing shared utilities for both the search API and web UI.
 
 ### Core Components
 
 ```python
-# vecpipe/search_utils.py
+# packages/vecpipe/search_utils.py
 
 async def search_qdrant(
     qdrant_host: str,
@@ -144,7 +144,7 @@ The search API is implemented using FastAPI's router-based architecture in `pack
 Primary search endpoint supporting multiple search types.
 
 ```python
-@router.post("/search", response_model=SearchResponse)
+@router.post("/search", response_model=SearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def search_post(request: SearchRequest):
     """
     Parameters:
@@ -172,7 +172,7 @@ async def search_post(request: SearchRequest):
 Specialized endpoint for hybrid search combining vector and keyword matching.
 
 ```python
-@router.get("/hybrid_search", response_model=HybridSearchResponse)
+@router.get("/hybrid_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def hybrid_search(
     q: str,
     k: int = 10,
@@ -193,7 +193,7 @@ async def hybrid_search(
 Keyword-only search without vector similarity.
 
 ```python
-@router.get("/keyword_search", response_model=HybridSearchResponse)
+@router.get("/keyword_search", response_model=HybridSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def keyword_search(
     q: str,
     k: int = 10,
@@ -210,14 +210,14 @@ async def keyword_search(
 Batch processing for multiple queries.
 
 ```python
-@router.post("/search/batch", response_model=BatchSearchResponse)
+@router.post("/search/batch", response_model=BatchSearchResponse, dependencies=[Depends(require_internal_api_key)])
 async def batch_search(request: BatchSearchRequest):
     """
     Process multiple search queries in parallel
     - Efficient batch embedding generation
     - Parallel Qdrant queries
     - Consolidated response
-    - Up to 100 queries per batch
+    - Up to 100 queries per batch (validated by BatchSearchRequest)
     """
 ```
 
@@ -270,11 +270,12 @@ Search across multiple collections (up to 10) with optional reranking and hybrid
 {
     "collection_uuids": ["uuid-1", "uuid-2"],  # Required, 1-10 UUIDs
     "query": "search query",                    # Required, 1-1000 chars
-    "k": 20,                                    # 1-100, default 10
+    "k": 10,                                    # 1-100, default 10
     "search_type": "semantic",                  # semantic, question, code, hybrid
-    "use_reranker": True,                       # default True
+    "use_reranker": True,                       # default True for multi-collection
     "rerank_model": None,                       # Optional reranker override
-    "score_threshold": 0.5,                     # 0.0-1.0, default 0.0
+    "reranker_id": None,                        # Optional reranker plugin ID (takes precedence)
+    "score_threshold": 0.0,                     # 0.0-1.0, default 0.0
     "metadata_filter": {"mime_type": "text/markdown"},
     "include_content": True,                    # default True
     "hybrid_alpha": 0.7,                        # Vector vs keyword weight (0-1)
@@ -293,10 +294,15 @@ Single collection search (backward compatibility for older clients):
     "query": "search query",       # Required, 1-1000 chars
     "k": 10,                       # 1-100, default 10
     "search_type": "semantic",     # semantic, question, code, hybrid
-    "use_reranker": False,         # default False
+    "use_reranker": False,         # default False for single collection
+    "rerank_model": None,          # Optional reranker override
+    "reranker_id": None,           # Optional reranker plugin ID (takes precedence)
     "score_threshold": 0.0,        # 0.0-1.0
     "metadata_filter": None,       # Optional metadata filters
-    "include_content": True        # default True
+    "include_content": True,       # default True
+    "hybrid_alpha": 0.7,           # Vector vs keyword weight (0-1)
+    "hybrid_mode": "weighted",     # 'filter' or 'weighted'
+    "keyword_mode": "any"          # 'any' or 'all'
 }
 ```
 
@@ -324,7 +330,7 @@ Single collection search (backward compatibility for older clients):
 
 ## 4. Hybrid Search
 
-The hybrid search implementation (`vecpipe/hybrid_search.py`) combines vector similarity with keyword matching.
+The hybrid search implementation (`packages/vecpipe/hybrid_search.py`) combines vector similarity with keyword matching.
 
 ### Hybrid Search Engine
 
@@ -353,13 +359,13 @@ class HybridSearchEngine:
         query_text: str,
         limit: int = 10,
         keyword_mode: str = "any",
-        score_threshold: float = None,
-        hybrid_mode: str = "filter",
-    ):
+        score_threshold: float | None = None,
+        hybrid_mode: str = "filter",  # "filter" or "rerank"
+    ) -> list[dict[str, Any]]:
         """
-        Perform hybrid search
+        Perform hybrid search combining vector similarity and text matching
         - filter: Use Qdrant filters (faster)
-        - rerank: Post-process and rerank (more flexible)
+        - rerank: Post-process and rerank (more flexible, 70/30 weight)
         """
 ```
 
@@ -371,7 +377,7 @@ class HybridSearchEngine:
 - More efficient for large collections
 - Results already filtered by keywords
 
-#### Rerank Mode
+#### Weighted Mode
 - Retrieves more candidates (3x limit)
 - Scores based on keyword matches
 - Combines vector and keyword scores
@@ -457,7 +463,7 @@ Semantik uses a plugin-based architecture for embedding providers, allowing both
 | `EmbeddingProviderFactory` | `packages/shared/embedding/factory.py` | Central dispatch for creating providers |
 | `BaseEmbeddingPlugin` | `packages/shared/embedding/plugin_base.py` | Abstract base class for all providers |
 | `EmbeddingProviderDefinition` | `packages/shared/embedding/plugin_base.py` | Provider metadata definition |
-| `plugins/loader.py` | `packages/shared/plugins/loader.py` | Unified entry point discovery |
+| `load_plugins()` | `packages/shared/plugins/loader.py` | Unified entry point discovery and registration |
 
 #### Factory Pattern
 
@@ -554,19 +560,19 @@ QWEN3_MODEL_RECOMMENDATIONS = {
         "model": "Qwen/Qwen3-Embedding-8B",
         "quantization": "int8",
         "description": "Best quality, MTEB #1, 4096d embeddings",
-        "use_cases": ["research", "legal", "medical"],
+        "use_cases": ["research", "legal", "medical", "high-precision"],
     },
     "balanced": {
         "model": "Qwen/Qwen3-Embedding-4B",
         "quantization": "float16",
-        "description": "Great balance of quality and speed, 2560d",
-        "use_cases": ["general", "documentation"],
+        "description": "Great balance of quality and speed, 2560d embeddings",
+        "use_cases": ["general", "documentation", "knowledge-base"],
     },
     "fast": {
         "model": "Qwen/Qwen3-Embedding-0.6B",
         "quantization": "float16",
-        "description": "Fast inference, good quality, 1024d",
-        "use_cases": ["real-time", "chat", "high-volume"],
+        "description": "Fast inference, good quality, 1024d embeddings",
+        "use_cases": ["real-time", "chat", "autocomplete", "high-volume"],
     },
 }
 ```

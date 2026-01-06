@@ -94,9 +94,13 @@ class CrossEncoderReranker:
                     torch_dtype = torch.bfloat16
 
                 # Load model with appropriate settings
+                # Use explicit device_map={"": 0} instead of "auto" to ensure
+                # proper cleanup when offloading to CPU. device_map="auto" creates
+                # internal Accelerate hooks that don't release GPU memory properly
+                # with .to("cpu") calls.
                 load_kwargs: dict[str, Any] = {
                     "torch_dtype": torch_dtype,
-                    "device_map": "auto" if self.device == "cuda" else None,
+                    "device_map": {"": 0} if self.device == "cuda" else None,
                     "trust_remote_code": True,
                 }
 
@@ -149,8 +153,11 @@ class CrossEncoderReranker:
                 del self.tokenizer
                 self.tokenizer = None
 
-                # Clear GPU cache only if using CUDA
+                # Synchronize and clear GPU cache
+                # CRITICAL: CUDA operations are asynchronous. We must synchronize
+                # before empty_cache() to ensure model deletion is complete.
                 if self.device == "cuda" and torch.cuda.is_available():
+                    torch.cuda.synchronize()
                     torch.cuda.empty_cache()
 
     def format_input(self, query: str, document: str, instruction: str | None = None) -> str:
@@ -223,12 +230,32 @@ class CrossEncoderReranker:
             inputs = [self.format_input(query, doc, instruction) for doc in batch_docs]
 
             # Tokenize
+            assert self.tokenizer is not None
             encoded = self.tokenizer(
                 inputs, padding=True, truncation=True, max_length=self.max_length, return_tensors="pt"
             ).to(self.device)
 
             # Get model outputs
-            outputs = self.model(**encoded, output_hidden_states=False)
+            # Qwen3-Reranker is a causal LM; by default it produces logits for every
+            # token in the sequence, which can be extremely memory hungry
+            # (batch, seq_len, vocab). We only need the last token's logits to
+            # score Yes/No, so ask the model to keep just the final step when
+            # supported.
+            try:
+                outputs = self.model(
+                    **encoded,
+                    output_hidden_states=False,
+                    use_cache=False,
+                    logits_to_keep=1,
+                )
+            except TypeError:
+                # Older transformers / other model implementations may not support
+                # logits_to_keep; fall back to the full logits.
+                outputs = self.model(
+                    **encoded,
+                    output_hidden_states=False,
+                    use_cache=False,
+                )
             logits = outputs.logits
 
             # Get the logits for "yes" and "no" tokens

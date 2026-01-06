@@ -229,6 +229,33 @@ class TestMultiCollectionSearch:
         assert len(response.results) == 1  # Only results from successful collection
 
     @pytest.mark.asyncio()
+    async def test_multi_collection_search_not_found(
+        self,
+        mock_user: dict[str, Any],
+    ) -> None:
+        """Missing collections return 404 (not 403)."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v2/search",
+            "headers": [],
+        }
+        mock_request = Request(scope)
+        mock_search_service = AsyncMock()
+        missing_uuid = "ff504dde-28a9-4df0-bc58-7761627bd24f"
+        mock_search_service.multi_collection_search.side_effect = EntityNotFoundError("collection", missing_uuid)
+
+        search_request = CollectionSearchRequest(
+            collection_uuids=[missing_uuid],
+            query="missing",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await multi_collection_search(mock_request, search_request, mock_user, mock_search_service)
+
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.asyncio()
     async def test_multi_collection_search_normalizes_legacy_modes(
         self,
         mock_user: dict[str, Any],

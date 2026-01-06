@@ -1,15 +1,18 @@
 """Document scanning service for discovering and registering documents in collections."""
 
+import asyncio
 import logging
 import mimetypes
 import os
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.config import settings
 from shared.database.repositories.document_repository import DocumentRepository
 from shared.dtos.ingestion import IngestedDocument
 from shared.utils.hashing import compute_file_hash
@@ -22,6 +25,11 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".text", ".pptx", ".eml
 
 # Maximum file size (500 MB)
 MAX_FILE_SIZE = 500 * 1024 * 1024
+
+# Parallel registration settings
+DEFAULT_HASH_WORKERS = 4
+MAX_HASH_WORKERS = 8
+PARALLEL_REGISTRATION_BATCH_SIZE = 50
 
 
 class DocumentScanningService:
@@ -94,6 +102,21 @@ class DocumentScanningService:
 
         # Track scan start time for duplicate detection
         scan_start_time = datetime.now(UTC)
+
+        # Check if parallel registration is enabled
+        use_parallel = getattr(settings, "PARALLEL_INGESTION_ENABLED", True)
+
+        if use_parallel:
+            return await self._scan_directory_parallel(
+                collection_id=collection_id,
+                source_path=path,
+                source_id=source_id,
+                recursive=recursive,
+                batch_size=batch_size,
+                progress_callback=progress_callback,
+                stats=stats,
+                scan_start_time=scan_start_time,
+            )
 
         # Track batch processing
         batch_count = 0
@@ -375,3 +398,171 @@ class DocumentScanningService:
             "file_name": path.name,
             "mime_type": self._get_mime_type(path),
         }
+
+    async def _scan_directory_parallel(
+        self,
+        collection_id: str,
+        source_path: Path,
+        source_id: int | None,
+        recursive: bool,
+        batch_size: int,
+        progress_callback: Callable[[int, int], Awaitable[None]] | None,
+        stats: dict[str, Any],
+        scan_start_time: datetime,
+    ) -> dict[str, Any]:
+        """Parallel version of directory scanning with concurrent hash computation.
+
+        This method:
+        1. Collects all file paths first (fast os.walk)
+        2. Computes file hashes in parallel using ThreadPoolExecutor
+        3. Registers documents in batches
+
+        Args:
+            collection_id: UUID of the collection
+            source_path: Path to directory
+            source_id: Optional source ID
+            recursive: Whether to scan subdirectories
+            batch_size: Batch size for commits
+            progress_callback: Optional progress callback
+            stats: Statistics dict to update
+            scan_start_time: Scan start time
+
+        Returns:
+            Updated statistics dict
+        """
+        # Retain parameter for future duplicate detection logic
+        _ = scan_start_time
+
+        # Step 1: Collect all file paths (fast)
+        logger.info("Collecting files from %s (recursive=%s)", source_path, recursive)
+        file_paths: list[Path] = []
+
+        if recursive:
+            for root, _, files in os.walk(source_path):
+                for filename in files:
+                    file_path = Path(root) / filename
+                    if file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                        file_paths.append(file_path)
+        else:
+            for filename in os.listdir(source_path):
+                file_path = source_path / filename
+                if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                    file_paths.append(file_path)
+
+        stats["total_documents_found"] = len(file_paths)
+        logger.info("Found %d documents to process", len(file_paths))
+
+        if not file_paths:
+            return stats
+
+        # Step 2: Compute file metadata (size, hash) in parallel
+        num_workers = min(
+            getattr(settings, "PARALLEL_INGESTION_WORKERS", DEFAULT_HASH_WORKERS) or DEFAULT_HASH_WORKERS,
+            MAX_HASH_WORKERS,
+            len(file_paths),
+        )
+
+        logger.info("Computing file hashes with %d parallel workers", num_workers)
+
+        # Use ThreadPoolExecutor for I/O-bound hash computation
+        loop = asyncio.get_running_loop()
+
+        def compute_file_metadata(file_path: Path) -> dict[str, Any] | None:
+            """Compute file size and hash. Returns None on error."""
+            try:
+                stat = file_path.stat()
+                file_size = stat.st_size
+
+                if file_size > MAX_FILE_SIZE:
+                    return {"error": f"File too large: {file_size} bytes", "path": str(file_path)}
+
+                content_hash = compute_file_hash(file_path)
+                mime_type = mimetypes.guess_type(str(file_path))[0]
+
+                return {
+                    "path": file_path,
+                    "size": file_size,
+                    "hash": content_hash,
+                    "mime_type": mime_type,
+                }
+            except Exception as e:
+                return {"error": str(e), "path": str(file_path)}
+
+        # Process files in parallel
+        file_metadata: list[dict[str, Any] | None] = []
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [loop.run_in_executor(executor, compute_file_metadata, fp) for fp in file_paths]
+            file_metadata = await asyncio.gather(*futures)
+
+        logger.info("Hash computation complete, registering documents")
+
+        # Step 3: Register documents (database operations, sequential but batched)
+        documents_processed = 0
+        batch_count = 0
+
+        for meta in file_metadata:
+            if meta is None:
+                continue
+
+            if "error" in meta:
+                stats["errors"].append({"document": meta["path"], "error": meta["error"]})
+                continue
+
+            try:
+                file_path = meta["path"]
+
+                # Build IngestedDocument DTO
+                ingested = IngestedDocument(
+                    content="",  # Content not needed for registration phase
+                    unique_id=f"file://{file_path}",
+                    source_type="directory",
+                    metadata={
+                        "file_size": meta["size"],
+                        "mime_type": meta["mime_type"],
+                    },
+                    content_hash=meta["hash"],
+                    file_path=str(file_path),
+                )
+
+                # Register with deduplication
+                result = await self._registry.register(
+                    collection_id=collection_id,
+                    ingested=ingested,
+                    source_id=source_id,
+                )
+
+                if result["is_new"]:
+                    stats["new_documents_registered"] += 1
+                else:
+                    stats["duplicate_documents_skipped"] += 1
+
+                stats["total_size_bytes"] += meta["size"]
+                batch_count += 1
+                documents_processed += 1
+
+                # Commit batch if needed
+                if batch_count >= batch_size:
+                    await self.db_session.commit()
+                    batch_count = 0
+                    logger.debug("Committed batch of %d documents", batch_size)
+
+                # Progress callback
+                if progress_callback:
+                    await progress_callback(documents_processed, stats["total_documents_found"])
+
+            except Exception as e:
+                logger.error("Failed to register document %s: %s", meta.get("path"), e, exc_info=True)
+                stats["errors"].append({"document": str(meta.get("path")), "error": str(e)})
+
+        # Final commit
+        if batch_count > 0:
+            await self.db_session.commit()
+
+        logger.info(
+            "Parallel registration complete: %d new, %d duplicates, %d errors",
+            stats["new_documents_registered"],
+            stats["duplicate_documents_skipped"],
+            len(stats["errors"]),
+        )
+
+        return stats

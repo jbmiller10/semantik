@@ -250,13 +250,16 @@ async def _process_reindex_operation(db: Any, updater: Any, _operation_id: str) 
         if chunks:
             texts = [c.get("text", "") for c in chunks]
             async with httpx.AsyncClient(timeout=60.0) as client:
+                headers = _build_internal_api_headers()
                 await client.post(
                     "http://vecpipe:8000/embed",
                     json={"texts": texts, "model_name": collection.get("embedding_model"), "mode": "document"},
+                    headers=headers,
                 )
                 await client.post(
                     "http://vecpipe:8000/upsert",
                     json={"collection_name": collection.get("vector_store_name"), "points": []},
+                    headers=headers,
                 )
 
         try:
@@ -533,8 +536,9 @@ async def _process_reindex_operation_impl(
                     }
 
                     async with httpx.AsyncClient(timeout=300.0) as client:
+                        headers = _build_internal_api_headers()
                         logger.info("Calling vecpipe /embed for %s texts (reindex)", len(texts))
-                        response = await client.post(vecpipe_url, json=embed_request)
+                        response = await client.post(vecpipe_url, json=embed_request, headers=headers)
 
                         if response.status_code != 200:
                             raise Exception(
@@ -618,8 +622,9 @@ async def _process_reindex_operation_impl(
                         }
 
                         async with httpx.AsyncClient(timeout=60.0) as client:
+                            headers = _build_internal_api_headers()
                             vecpipe_upsert_url = "http://vecpipe:8000/upsert"
-                            response = await client.post(vecpipe_upsert_url, json=upsert_request)
+                            response = await client.post(vecpipe_upsert_url, json=upsert_request, headers=headers)
 
                             if response.status_code != 200:
                                 raise Exception(

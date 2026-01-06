@@ -1,6 +1,6 @@
 # Semantik Architecture
 
-Self-hosted semantic search with three packages: vecpipe (search engine), webui (control plane), and shared (common utilities). Collection-centric design for multi-model support.
+Self-hosted semantic search with four packages: vecpipe (search engine), webui (control plane), shared (common utilities), and cli (command-line tools). Collection-centric design for multi-model support.
 
 ## Key Features
 - Vector search powered by Qdrant
@@ -19,7 +19,7 @@ Self-hosted semantic search with three packages: vecpipe (search engine), webui 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              User Interface                              │
-│                        React Frontend (Port 8080)                        │
+│                   React Frontend (apps/webui-react/)                     │
 └────────────────────────────────┬───────────────────────────────────────┘
                                  │ HTTP/WebSocket
 ┌────────────────────────────────┴───────────────────────────────────────┐
@@ -77,15 +77,17 @@ Self-hosted semantic search with three packages: vecpipe (search engine), webui 
 Headless data processing and search API. Runs on port 8000, completely independent of webui.
 
 **Key Services:**
-- `search_api.py` - FastAPI endpoints for search, embed, and upsert
+- `search/` - FastAPI search application with router, service, and caching
+- `search_api.py` - Legacy search API entry point
 - `embed_chunks_unified.py` + `ingest_qdrant.py` - Embedding pipeline
 - `maintenance.py` - Collection cleanup
-- `model_manager.py` - GPU memory management with lazy loading
+- `model_manager.py` + `governed_model_manager.py` - GPU memory management with lazy loading
+- `memory_governor.py` - Centralized GPU memory management
 - `hybrid_search.py` - Vector + keyword search
 - `reranker.py` - Cross-encoder reranking
 
 **Design:**
-- Standalone, no auth or user awareness
+- Standalone, no user auth; internal API key for service-to-service endpoints
 - Talks directly to Qdrant
 - Efficient GPU memory management
 - Multi-model support
@@ -101,12 +103,13 @@ User-facing application providing authentication, collection management, and sea
 - **services/**: Service layer with business logic (collection_service, operation_service, search_service, etc.).
 - **celery_app.py**, **tasks/**, **chunking_tasks.py**: Celery worker entrypoint and task implementations.
 
-**Frontend (React):**
-- Modern React 19 with TypeScript
+**Frontend (React in `apps/webui-react/`):**
+- Modern React 19 with TypeScript and Vite
 - Zustand for state management
 - Real-time WebSocket updates for operation progress
 - Tailwind CSS for styling
-- React Query for data fetching
+- TanStack React Query for data fetching
+- Vitest for unit testing, Playwright for E2E
 
 **Key Responsibilities:**
 - User authentication and authorization
@@ -122,35 +125,51 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Core Modules:**
 
-**Database Module (`shared/database/`):**
+**Database Module (`packages/shared/database/`):**
 - **Repository Pattern**: Clean data access layer with type-safe interfaces
 - **PostgreSQL Implementation**: Concrete implementations of repository interfaces
 - **Models**: SQLAlchemy models for collections, operations, documents, users
 - **Schema Management**: Centralized database schema definitions
 - **Exceptions**: Custom database exceptions for error handling
 
-**Contracts Module (`shared/contracts/`):**
+**Contracts Module (`packages/shared/contracts/`):**
 - **API Models**: Pydantic models for request/response validation
 - **Search Models**: Unified search request and response structures
 - **Collection Models**: Shared collection and operation status definitions
 - **Document Models**: Document metadata and status tracking
 
-**Config Module (`shared/config/`):**
+**Config Module (`packages/shared/config/`):**
 - **Settings Management**: Environment-based configuration
 - **Model Configuration**: Embedding and reranker model settings
 - **Service URLs**: Centralized service endpoint configuration
 
-**Embedding Module (`shared/embedding/`):**
+**Embedding Module (`packages/shared/embedding/`):**
 - **Embedding Service**: Core embedding generation logic
 - **Model Management**: Shared model loading and caching
 - **Batch Processing**: Efficient batch embedding generation
 
 **Other Utilities:**
-- **Metrics** (`shared/metrics/`): Prometheus metrics collection
-- **Text Processing** (`shared/text_processing/`): Document parsing and chunking
-- **Logging** (`shared/logging_config.py`): Structured logging configuration
+- **Metrics** (`packages/shared/metrics/`): Prometheus metrics collection
+- **Text Processing** (`packages/shared/text_processing/`): Document parsing and chunking
+- **Plugins** (`packages/shared/plugins/`): Plugin system infrastructure for extensibility
+- **Connectors** (`packages/shared/connectors/`): Data source connectors (local files, git, IMAP)
+- **DTOs** (`packages/shared/dtos/`): Data transfer objects for cross-module communication
+- **Managers** (`packages/shared/managers/`): Qdrant vector database management
 
-### 4. Database Architecture
+### 4. CLI Package (`packages/cli/`)
+
+Command-line tools for plugin development and validation.
+
+**Commands:**
+- `semantik-plugin new <name>` - Generate new plugin scaffolding
+- `semantik-plugin validate <path>` - Validate plugin structure
+
+**Installation:**
+```bash
+pip install semantik[cli]
+```
+
+### 5. Database Architecture
 
 **Hybrid Database Design:**
 - **PostgreSQL**: Relational data (collections, operations, documents, users, auth tokens)
@@ -158,7 +177,7 @@ Common components and utilities used by both webui and vecpipe packages. This pa
 
 **Collection-Centric Schema:**
 - **Collections**: Primary organizational unit with UUID identifiers
-- **Operations**: Async tasks (index, reindex, append, remove_source)
+- **Operations**: Async tasks (index, reindex, append, remove_source, delete, projection_build)
 - **Documents**: Individual files within collections
 - **Sources**: Data sources that provide documents to collections
 
@@ -187,6 +206,8 @@ Collections replaced the old job-based system. Each collection is a logical grou
 - **APPEND** - Add new documents, with deduplication
 - **REINDEX** - Regenerate all embeddings (for model upgrades)
 - **REMOVE_SOURCE** - Delete all documents from a specific source path
+- **DELETE** - Delete a collection entirely
+- **PROJECTION_BUILD** - Build embedding projections for visualization
 
 ### Sources
 
@@ -365,7 +386,7 @@ For detailed documentation, see [SEARCH_SYSTEM.md](./SEARCH_SYSTEM.md)
 ## Infrastructure & DevOps
 
 ### Development Environment
-- Python 3.11+ with Poetry
+- Python 3.11+ with uv for dependency management
 - Make commands for common tasks
 - Comprehensive test suite with pytest
 - Mock mode for GPU-less testing
@@ -441,8 +462,11 @@ uv sync
 # Configure environment
 cp .env.example .env
 
-# Start all services
-./start_all_services.sh
+# Start all services with Docker
+make docker-up
+
+# Or use the interactive wizard
+make wizard
 ```
 
 ### Production Deployment

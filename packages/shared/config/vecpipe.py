@@ -27,6 +27,16 @@ class VecpipeConfig(BaseConfig):
     # Model Management
     MODEL_UNLOAD_AFTER_SECONDS: int = 300  # 5 minutes default
 
+    # GPU Memory Governor Settings
+    ENABLE_MEMORY_GOVERNOR: bool = True  # Use GovernedModelManager with dynamic memory management
+    GPU_MEMORY_RESERVE_PERCENT: float = 0.10  # Always keep 10% VRAM free (safety buffer)
+    GPU_MEMORY_MAX_PERCENT: float = 0.90  # Never use more than 90% of VRAM
+    CPU_MEMORY_RESERVE_PERCENT: float = 0.20  # Always keep 20% RAM free for system
+    CPU_MEMORY_MAX_PERCENT: float = 0.50  # Never use more than 50% of RAM for warm models
+    ENABLE_CPU_OFFLOAD: bool = True  # Offload models to CPU instead of unloading
+    EVICTION_IDLE_THRESHOLD_SECONDS: int = 120  # Idle time before model eligible for eviction
+    PRESSURE_CHECK_INTERVAL_SECONDS: int = 15  # Background pressure check interval
+
     # Adaptive Batch Size Configuration
     ENABLE_ADAPTIVE_BATCH_SIZE: bool = True  # Enables dynamic batch sizing based on GPU memory availability
     MIN_BATCH_SIZE: int = 1  # Minimum batch size for OOM recovery

@@ -2,6 +2,9 @@
 
 Two services: **WebUI** (8080) for auth/collections/search, **Search API** (8000) for vector search.
 
+Note: In Docker, the Search API (vecpipe) is internal-only by default. Use `http://vecpipe:8000` from inside the
+Docker network, or explicitly publish port 8000 if you need host access.
+
 RESTful with JSON.
 
 ## WebUI API

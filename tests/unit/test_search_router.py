@@ -6,6 +6,7 @@ from unittest.mock import patch
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+import vecpipe.search.router as router_module
 from shared.contracts.search import HybridSearchResponse, HybridSearchResult, SearchResponse, SearchResult
 from vecpipe.search.router import router
 
@@ -13,7 +14,10 @@ from vecpipe.search.router import router
 def make_client() -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    return TestClient(app)
+    router_module.settings.INTERNAL_API_KEY = "test-internal-key"
+    client = TestClient(app)
+    client.headers.update({"X-Internal-Api-Key": "test-internal-key"})
+    return client
 
 
 def test_search_semantic_rerank_off() -> None:

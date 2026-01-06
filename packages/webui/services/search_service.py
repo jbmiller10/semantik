@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import settings
+from shared.config.internal_api_key import ensure_internal_api_key
 from shared.contracts.search import normalize_hybrid_mode, normalize_keyword_mode
 from shared.database.exceptions import AccessDeniedError, EntityNotFoundError
 from shared.database.models import Collection, CollectionStatus
@@ -17,6 +18,16 @@ from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
 logger = logging.getLogger(__name__)
+
+
+def _vecpipe_headers() -> dict[str, str]:
+    """Return auth headers for internal vecpipe requests."""
+    try:
+        key = ensure_internal_api_key(settings)
+    except RuntimeError as exc:
+        logger.error("Internal API key not configured for vecpipe requests: %s", exc)
+        raise
+    return {"X-Internal-Api-Key": key}
 
 
 def _resolve_reranker_id_to_model(reranker_id: str | None) -> str | None:
@@ -111,9 +122,12 @@ class SearchService:
                     collection_uuid=uuid, user_id=user_id
                 )
                 collections.append(collection)
-            except (EntityNotFoundError, AccessDeniedError) as e:
-                logger.error("Error accessing collection %s: %s", uuid, e, exc_info=True)
-                raise AccessDeniedError(str(user_id), "collection", uuid) from e
+            except EntityNotFoundError as e:
+                logger.error("Collection not found during access validation (user=%s, id=%s): %s", user_id, uuid, e)
+                raise
+            except AccessDeniedError as e:
+                logger.error("Access denied during collection access validation (user=%s, id=%s): %s", user_id, uuid, e)
+                raise
 
         return collections
 
@@ -169,8 +183,13 @@ class SearchService:
         collection_search_params.pop("hybrid_search_mode", None)
 
         try:
+            headers = _vecpipe_headers()
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=collection_search_params)
+                response = await client.post(
+                    f"{settings.SEARCH_API_URL}/search",
+                    json=collection_search_params,
+                    headers=headers,
+                )
                 response.raise_for_status()
 
             result = response.json()
@@ -196,7 +215,11 @@ class SearchService:
 
             try:
                 async with httpx.AsyncClient(timeout=extended_timeout) as client:
-                    response = await client.post(f"{settings.SEARCH_API_URL}/search", json=collection_search_params)
+                    response = await client.post(
+                        f"{settings.SEARCH_API_URL}/search",
+                        json=collection_search_params,
+                        headers=headers,
+                    )
                     response.raise_for_status()
 
                 result = response.json()
@@ -479,8 +502,9 @@ class SearchService:
                 read=self.default_timeout.read * 2 if self.default_timeout.read else 60.0,
                 write=self.default_timeout.write if self.default_timeout.write else 5.0,
             )
+            headers = _vecpipe_headers()
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params)
+                response = await client.post(f"{settings.SEARCH_API_URL}/search", json=search_params, headers=headers)
                 response.raise_for_status()
 
             result: dict[str, Any] = response.json()

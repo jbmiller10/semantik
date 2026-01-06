@@ -14,6 +14,9 @@ COPY apps/webui-react/package*.json ./apps/webui-react/
 WORKDIR /build/apps/webui-react
 RUN npm install
 
+# Vite config reads ../../VERSION (expects it at /build/VERSION in this stage)
+COPY VERSION /build/VERSION
+
 # Copy frontend source
 COPY apps/webui-react/ ./
 
@@ -127,6 +130,7 @@ COPY --from=python-builder /app/.venv /app/.venv
 # Copy application code
 COPY packages/ ./packages/
 COPY scripts/ ./scripts/
+COPY VERSION ./VERSION
 
 # Copy alembic configuration and migrations
 COPY alembic.ini ./

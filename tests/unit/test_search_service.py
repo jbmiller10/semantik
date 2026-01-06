@@ -82,7 +82,7 @@ class TestSearchService:
         # Mock not found error
         mock_collection_repo.get_by_uuid_with_permission_check.side_effect = EntityNotFoundError("collection", "uuid-1")
 
-        with pytest.raises(AccessDeniedError):
+        with pytest.raises(EntityNotFoundError):
             await search_service.validate_collection_access(["uuid-1"], user_id=123)
 
     @pytest.mark.asyncio()

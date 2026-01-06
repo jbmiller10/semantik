@@ -27,7 +27,7 @@ See `DATA_ACCESS_CATALOG.md` for data access details.
 
 3. **Compute projection (Celery worker)**
    - `compute_projection` calls
-     `packages/webui/tasks/projection._compute_projection_async(...)`.
+     `webui.tasks.projection._compute_projection_async(...)`.
    - The task:
      - Resolves the source Qdrant collection.
      - Applies sampling to scroll up to `sample_limit` vectors.
@@ -47,10 +47,10 @@ See `DATA_ACCESS_CATALOG.md` for data access details.
      the `meta` object returned to the client.
 
 5. **View projection (UI)**
-   - When a run is `completed`, the user clicks “View”; the UI:
-     - Calls `GET /projections/{projection_id}` for metadata.
+   - When a run is `completed`, the user clicks "View"; the UI:
+     - Calls `GET /api/v2/collections/{collection_id}/projections/{projection_id}` for metadata.
      - Streams `x`, `y`, `cat`, and `ids` artifacts via
-       `GET /projections/{projection_id}/arrays/{artifact}`.
+       `GET /api/v2/collections/{collection_id}/projections/{projection_id}/arrays/{artifact}`.
      - Validates array lengths and populates
        `EmbeddingVisualizationTab.activeProjection` and
        `activeProjectionMeta`.
@@ -59,7 +59,7 @@ See `DATA_ACCESS_CATALOG.md` for data access details.
 
 6. **Selection & tooltips**
    - Hover tooltips and selection are resolved via the selection API
-     (`POST /projections/{projection_id}/select`) and surfaced in:
+     (`POST /api/v2/collections/{collection_id}/projections/{projection_id}/select`) and surfaced in:
      - `useProjectionTooltip` (hover metadata).
      - The selection panel and degraded messaging.
 

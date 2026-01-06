@@ -2,6 +2,9 @@
 
 Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plane, port 8080).
 
+Note: In Docker, vecpipe is internal-only by default. Use `http://vecpipe:8000` from inside the Docker network, or
+publish port 8000 if you need host access.
+
 ## Services
 
 **Vecpipe** - Pure search engine
@@ -27,9 +30,9 @@ Two services: **Vecpipe** (search engine, port 8000) and **WebUI** (control plan
 
 ## Vecpipe Search API
 
-Core search engine. No auth, no user management.
+Core search engine. Requires the internal API key for protected endpoints; no user management.
 
-**Base URL**: `http://localhost:8000`
+**Base URL**: `http://vecpipe:8000` (internal Docker network)
 
 ### Endpoints
 
@@ -840,6 +843,100 @@ Authorization: Bearer {access_token}
 ]
 ```
 
+### Collection Sync Endpoints
+
+#### 1. Run Collection Sync
+```http
+POST /api/v2/collections/{collection_uuid}/sync/run
+Authorization: Bearer {access_token}
+```
+
+Triggers a sync run for all sources in the collection. Fans out APPEND operations for each source.
+
+**Response:**
+```json
+{
+  "id": 1,
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "triggered_by": "manual",
+  "started_at": "2024-01-15T10:00:00Z",
+  "completed_at": null,
+  "status": "running",
+  "expected_sources": 3,
+  "completed_sources": 0,
+  "failed_sources": 0,
+  "partial_sources": 0,
+  "error_summary": null
+}
+```
+
+#### 2. Pause Collection Sync
+```http
+POST /api/v2/collections/{collection_uuid}/sync/pause
+Authorization: Bearer {access_token}
+```
+
+Pauses continuous sync for a collection. Collection must be in continuous sync mode.
+
+#### 3. Resume Collection Sync
+```http
+POST /api/v2/collections/{collection_uuid}/sync/resume
+Authorization: Bearer {access_token}
+```
+
+Resumes continuous sync for a paused collection.
+
+#### 4. List Collection Sync Runs
+```http
+GET /api/v2/collections/{collection_uuid}/sync/runs?offset=0&limit=50
+Authorization: Bearer {access_token}
+```
+
+Returns a paginated list of sync runs ordered by start time (newest first).
+
+### Source Management Endpoints
+
+In addition to adding sources via `POST /api/v2/collections/{collection_uuid}/sources`, the following endpoints are available for managing individual sources:
+
+#### 1. List Sources
+```http
+GET /api/v2/collections/{collection_id}/sources?offset=0&limit=50
+Authorization: Bearer {access_token}
+```
+
+#### 2. Get Source
+```http
+GET /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {access_token}
+```
+
+#### 3. Update Source
+```http
+PATCH /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "source_config": {
+    "ref": "develop"
+  },
+  "secrets": {
+    "password": "new-app-password"
+  }
+}
+```
+
+#### 4. Delete Source
+```http
+DELETE /api/v2/collections/{collection_id}/sources/{source_id}
+Authorization: Bearer {access_token}
+```
+
+Deletes a source and triggers a REMOVE_SOURCE operation to delete all associated documents and vectors.
+
 ### Operation Management Endpoints
 
 Operations represent asynchronous tasks performed on collections (indexing, reindexing, etc.).
@@ -1071,9 +1168,9 @@ Content-Type: application/json
 
 ### Directory Scanning Endpoints
 
-#### 1. Scan Directory
+#### 1. Scan Directory Preview
 ```http
-POST /api/v2/directory-scan
+POST /api/v2/directory-scan/preview
 Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
@@ -1122,67 +1219,56 @@ Content-Type: application/json
 
 ### Internal API Endpoints
 
-The WebUI service exposes internal API endpoints for the vecpipe maintenance service. These endpoints do not require authentication and are designed for service-to-service communication.
+The WebUI service exposes internal API endpoints for the vecpipe maintenance service. These endpoints require the internal API key (`X-Internal-Api-Key` header) and are designed for service-to-service communication.
 
-#### 1. List All Collections (Internal)
+**Note:** Internal endpoints use the prefix `/api/internal/`.
+
+#### 1. Get All Vector Store Names (Internal)
 ```http
-GET /internal/api/collections
+GET /api/internal/collections/vector-store-names
+X-Internal-Api-Key: {internal_api_key}
 ```
 
-**Note:** Internal endpoints are for service-to-service communication only.
+Returns all Qdrant collection names (vector_store_names) from the database for maintenance/cleanup purposes.
 
 **Response:**
 ```json
-{
-  "collections": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "Technical Documentation",
-      "vector_store_name": "coll_550e8400_qwen06b_f16",
-      "status": "ready",
-      "owner_id": 1,
-      "document_count": 150,
-      "total_chunks": 3420
-    }
-  ]
-}
+["coll_550e8400_qwen06b_f16", "coll_660f9511_qwen06b_f32"]
 ```
 
-#### 2. Get Collection Documents (Internal)
+#### 2. Complete Reindex (Internal)
 ```http
-GET /internal/api/collections/{collection_id}/documents
+POST /api/internal/complete-reindex
+X-Internal-Api-Key: {internal_api_key}
+Content-Type: application/json
 ```
 
-**Response:**
+Atomically completes a reindex operation by switching from staging to active collection.
+
+**Request:**
 ```json
 {
-  "documents": [
-    {
-      "id": "doc_123e4567-e89b-12d3-a456-426614174000",
-      "file_path": "/docs/guide.pdf",
-      "content_hash": "sha256:abc123...",
-      "status": "completed",
-      "chunk_count": 15
-    }
-  ]
+  "collection_id": "550e8400-e29b-41d4-a716-446655440000",
+  "operation_id": "op_123e4567-e89b-12d3-a456-426614174000",
+  "staging_collection_name": "coll_550e8400_staging_qwen06b_f16",
+  "new_config": {
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "chunk_size": 1000
+  },
+  "vector_count": 5432
 }
-```
-
-#### 3. Delete Vector Store (Internal)
-```http
-DELETE /internal/api/collections/{collection_id}/vector-store
 ```
 
 **Response:**
 ```json
 {
-  "status": "success",
-  "message": "Vector store deleted",
-  "points_deleted": 3420
+  "success": true,
+  "old_collection_names": ["coll_550e8400_qwen06b_f16"],
+  "message": "Reindex completed successfully"
 }
 ```
 
-**Note:** These internal endpoints are intended for use by the vecpipe maintenance service only. They bypass authentication to allow the maintenance service to perform cleanup operations without requiring user credentials.
+**Note:** These internal endpoints require the internal API key and are intended for service-to-service communication only.
 
 ## Request/Response Patterns
 
@@ -1255,11 +1341,11 @@ Search endpoints support Qdrant filter syntax:
 
 ## Authentication
 
-JWT tokens: access (30min, HS256) + refresh (30 days, hashed in DB).
+JWT tokens: access (24h, HS256) + refresh (30 days, hashed in DB).
 
 Flow: Register → Login → Access (with token) → Refresh → Logout
 
-**Protected**: Everything except `/`, `/login`, `/api/auth/register`, `/api/auth/login`, `/internal/api/*`
+**Protected**: Everything except `/`, `/health`, `/api/auth/register`, `/api/auth/login`. Internal endpoints (`/api/internal/*`) require the `X-Internal-Api-Key` header.
 
 **Header**: `Authorization: Bearer <token>`
 
@@ -1279,19 +1365,30 @@ WebUI owns PostgreSQL. Both services use shared package.
 
 ## Testing
 
-Test suite: `apps/webui-react/tests/api_test_suite.py`
+Test suite: `tests/frontend_api_test_suite.py`
 
 Categories: Health, auth, collections, operations, search, WebSocket, errors
 
-Run: `python api_test_suite.py --base-url http://localhost:8080 --auth-token <token>`
+Run: `python tests/frontend_api_test_suite.py --base-url http://localhost:8080 --auth-token <token>`
 
 ## WebSocket Endpoints
 
-WebSockets are mounted at the app level and authenticate via `?token=<jwt_token>` (see `packages/webui/main.py`).
+WebSockets are mounted at the app level. Authentication is handled via the `Sec-WebSocket-Protocol` header (preferred) or query parameter (deprecated):
 
-- **Global operations stream**: `ws://localhost:8080/ws/operations?token={jwt_token}`
-- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}?token={jwt_token}`
-- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}?token={jwt_token}`
+**Preferred method** - Use subprotocol header:
+```javascript
+new WebSocket(url, [`access_token.${jwtToken}`])
+```
+
+**Deprecated method** - Query parameter (will be removed in future):
+```
+ws://localhost:8080/ws/operations?token={jwt_token}
+```
+
+Available WebSocket endpoints:
+- **Global operations stream**: `ws://localhost:8080/ws/operations`
+- **Operation progress**: `ws://localhost:8080/ws/operations/{operation_id}`
+- **Directory scan progress**: `ws://localhost:8080/ws/directory-scan/{scan_id}`
 
 Operations are started via REST and emit task‑specific update events. Directory scans are started with `POST /api/v2/directory-scan/preview`.
 
@@ -1299,7 +1396,7 @@ Full message schemas and event types are documented in `docs/WEBSOCKET_API.md`.
 
 ## Error Handling
 
-**Rate limits** (slowapi): Login 5/min, Search 30/min, Docs 10/min, General 100/min
+**Rate limits** (slowapi): Multi-collection search 30/min, Single-collection search 60/min, Directory scan 30/min, Add source 10/hr, Delete collection 5/hr, Reindex 1/5min
 
 **Validation**: Pydantic errors with field locations and messages (422)
 

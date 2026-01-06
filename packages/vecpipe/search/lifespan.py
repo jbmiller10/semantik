@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -14,10 +15,13 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 from shared.config import settings
+from shared.config.internal_api_key import ensure_internal_api_key
 from shared.metrics.prometheus import start_metrics_server as _base_start_metrics_server
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import PluginSource
 from shared.plugins.state import get_disabled_plugin_ids
+from vecpipe.governed_model_manager import GovernedModelManager
+from vecpipe.memory_governor import create_memory_budget
 from vecpipe.model_manager import ModelManager
 from vecpipe.search.metrics import search_requests
 from vecpipe.search.state import clear_resources, set_resources
@@ -60,6 +64,14 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     Plugin state (enabled/disabled) is read from a shared state file written by WebUI.
     This allows VecPipe to respect plugin enable/disable without database access.
     """
+    try:
+        key = ensure_internal_api_key(settings)
+        fingerprint = hashlib.sha256(key.encode("utf-8")).hexdigest()[:12]
+        logger.info("Internal API key configured (fingerprint=%s)", fingerprint)
+    except RuntimeError as exc:
+        logger.error("Internal API key configuration failed: %s", exc)
+        raise
+
     # Read disabled plugins from state file (written by WebUI)
     disabled_ids = get_disabled_plugin_ids()
     if disabled_ids:
@@ -95,12 +107,43 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     logger.info("Connected to Qdrant at %s:%s", settings.QDRANT_HOST, settings.QDRANT_PORT)
 
     unload_after = settings.MODEL_UNLOAD_AFTER_SECONDS
-    model_mgr = ModelManager(unload_after_seconds=unload_after)
-    logger.info(
-        "Initialized model manager with %ss inactivity timeout (mock_mode=%s)",
-        unload_after,
-        settings.USE_MOCK_EMBEDDINGS,
-    )
+
+    # Initialize model manager - use GovernedModelManager if memory governor is enabled
+    if settings.ENABLE_MEMORY_GOVERNOR:
+        # Build memory budget from settings using factory for auto-detection
+        budget = create_memory_budget(
+            total_gpu_mb=None,  # Auto-detect GPU memory via factory
+            gpu_reserve_percent=settings.GPU_MEMORY_RESERVE_PERCENT,
+            gpu_max_percent=settings.GPU_MEMORY_MAX_PERCENT,
+            cpu_reserve_percent=settings.CPU_MEMORY_RESERVE_PERCENT,
+            cpu_max_percent=settings.CPU_MEMORY_MAX_PERCENT,
+        )
+
+        model_mgr = GovernedModelManager(
+            unload_after_seconds=unload_after,
+            budget=budget,
+            enable_cpu_offload=settings.ENABLE_CPU_OFFLOAD,
+            enable_preemptive_eviction=True,
+            eviction_idle_threshold_seconds=settings.EVICTION_IDLE_THRESHOLD_SECONDS,
+        )
+
+        # Start the governor's background monitor
+        await model_mgr.start()
+
+        logger.info(
+            "Initialized GovernedModelManager with memory governor "
+            "(gpu_budget=%dMB, cpu_offload=%s, eviction_threshold=%ds)",
+            budget.usable_gpu_mb,
+            settings.ENABLE_CPU_OFFLOAD,
+            settings.EVICTION_IDLE_THRESHOLD_SECONDS,
+        )
+    else:
+        model_mgr = ModelManager(unload_after_seconds=unload_after)
+        logger.info(
+            "Initialized model manager with %ss inactivity timeout (mock_mode=%s)",
+            unload_after,
+            settings.USE_MOCK_EMBEDDINGS,
+        )
 
     pool = ThreadPoolExecutor(max_workers=4)
 
@@ -115,7 +158,11 @@ async def lifespan(app: FastAPI) -> Any:  # noqa: ARG001
     finally:
         await qdrant.aclose()
         await qdrant_sdk.close()
-        model_mgr.shutdown()
+        # Use async shutdown for GovernedModelManager to avoid deadlock
+        if hasattr(model_mgr, "shutdown_async"):
+            await model_mgr.shutdown_async()
+        else:
+            model_mgr.shutdown()
         pool.shutdown(wait=True)
         clear_resources()
         logger.info("Disconnected from Qdrant")
