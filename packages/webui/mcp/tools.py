@@ -131,3 +131,19 @@ def build_list_documents_tool() -> Tool:
             "required": ["collection_id"],
         },
     )
+
+
+def build_diagnostics_tool() -> Tool:
+    """Build the diagnostics tool for debugging MCP server status."""
+    return Tool(
+        name="diagnostics",
+        description=(
+            "Show MCP server diagnostics including available profiles, "
+            "connection status, and configuration. Useful for debugging."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    )
