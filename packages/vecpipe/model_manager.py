@@ -22,7 +22,7 @@ from shared.embedding.factory import EmbeddingProviderFactory
 from shared.embedding.types import EmbeddingMode
 from shared.plugins.loader import load_plugins
 
-from .memory_utils import InsufficientMemoryError, check_memory_availability, get_gpu_memory_info
+from .memory_utils import InsufficientMemoryError, get_gpu_memory_info
 from .reranker import CrossEncoderReranker
 
 if TYPE_CHECKING:
@@ -351,6 +351,10 @@ class ModelManager:
         """
         Ensure the specified reranker model is loaded
 
+        Args:
+            model_name: Name of the reranker model
+            quantization: Quantization type (float16, int8, etc.)
+
         Returns:
             True if reranker is loaded successfully, False otherwise
         """
@@ -367,28 +371,6 @@ class ModelManager:
 
             # Need to load the reranker
             logger.info(f"Loading reranker: {model_name} with {quantization}")
-
-            # Check memory availability before loading
-            current_models = {}
-            if self.current_model_key:
-                model_name_parts = self.current_model_key.split("_")
-                if len(model_name_parts) >= 2:
-                    current_models["embedding"] = ("_".join(model_name_parts[:-1]), model_name_parts[-1])
-
-            can_load, memory_msg = check_memory_availability(model_name, quantization, current_models)
-            logger.info(f"Memory check: {memory_msg}")
-
-            if not can_load and "Can free" in memory_msg:
-                # Memory pressure - inform user instead of silent fallback
-                raise InsufficientMemoryError(
-                    f"Cannot load reranker due to insufficient GPU memory. {memory_msg}. "
-                    f"Consider using a smaller model or different quantization."
-                )
-            if not can_load:
-                # Even with unloading, not enough memory
-                raise InsufficientMemoryError(
-                    f"Cannot load reranker: {memory_msg}. This GPU cannot run both models simultaneously."
-                )
 
             # Unload current reranker if different
             if self.reranker is not None:

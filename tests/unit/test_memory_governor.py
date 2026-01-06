@@ -260,6 +260,53 @@ class TestGPUMemoryGovernorCore:
         )
         assert result is True
 
+    @pytest.mark.asyncio()
+    async def test_request_memory_enforces_reserve_for_already_loaded_model(self, governor: GPUMemoryGovernor) -> None:
+        """Already-loaded models should still trigger eviction to restore reserve headroom."""
+        # Arrange: two large models resident, leaving less than reserve free
+        with patch.object(governor, "_get_model_memory", return_value=7000):
+            await governor.mark_loaded("embed", ModelType.EMBEDDING, "float16")
+            await governor.mark_loaded("rerank", ModelType.RERANKER, "float16")
+
+        # Register callbacks so eviction can proceed
+        embed_offload = AsyncMock()
+        embed_unload = AsyncMock()
+        governor.register_callbacks(ModelType.EMBEDDING, unload_fn=embed_unload, offload_fn=embed_offload)
+        governor.register_callbacks(ModelType.RERANKER, unload_fn=AsyncMock(), offload_fn=AsyncMock())
+
+        # Make free-memory calculation deterministic (independent of CUDA availability)
+        def _free_mb() -> int:
+            return governor._budget.usable_gpu_mb - governor._get_gpu_usage()
+
+        with patch.object(governor, "_get_actual_free_gpu_mb", side_effect=_free_mb):
+            result = await governor.request_memory("rerank", ModelType.RERANKER, "float16", required_mb=7000)
+
+        assert result is True
+        embed_offload.assert_awaited_once_with("embed", "float16", "cpu")
+        embed_unload.assert_not_awaited()
+
+        embed_key = governor._make_key("embed", ModelType.EMBEDDING, "float16")
+        rerank_key = governor._make_key("rerank", ModelType.RERANKER, "float16")
+        assert governor._models[embed_key].location == ModelLocation.CPU
+        assert governor._models[rerank_key].location == ModelLocation.GPU
+
+    @pytest.mark.asyncio()
+    async def test_request_memory_reserve_enforcement_without_callbacks_returns_false(
+        self, governor: GPUMemoryGovernor
+    ) -> None:
+        """Reserve enforcement should fail gracefully when eviction callbacks are missing."""
+        with patch.object(governor, "_get_model_memory", return_value=7000):
+            await governor.mark_loaded("embed", ModelType.EMBEDDING, "float16")
+            await governor.mark_loaded("rerank", ModelType.RERANKER, "float16")
+
+        def _free_mb() -> int:
+            return governor._budget.usable_gpu_mb - governor._get_gpu_usage()
+
+        with patch.object(governor, "_get_actual_free_gpu_mb", side_effect=_free_mb):
+            result = await governor.request_memory("rerank", ModelType.RERANKER, "float16", required_mb=7000)
+
+        assert result is False
+
 
 # =============================================================================
 # LRU Eviction Tests

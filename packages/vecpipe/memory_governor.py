@@ -357,11 +357,44 @@ class GPUMemoryGovernor:
                 return True
 
             model_key = self._make_key(model_name, model_type, quantization)
+            reserve_free_mb = max(0, self._budget.total_gpu_mb - self._budget.usable_gpu_mb)
 
             # Case 1: Model already on GPU
             if model_key in self._models:
                 tracked = self._models[model_key]
                 if tracked.location == ModelLocation.GPU:
+                    # Even if a model is already on GPU, we may need to evict other
+                    # models to restore our configured free-memory reserve. This
+                    # avoids sequential pipelines (embed -> rerank) ending up with
+                    # both models resident and too little headroom for activations.
+                    actual_free_mb = self._get_actual_free_gpu_mb()
+                    if reserve_free_mb > 0 and actual_free_mb < reserve_free_mb:
+                        needed_mb = reserve_free_mb - actual_free_mb
+                        logger.info(
+                            "Already-loaded model %s below reserve (free=%dMB, reserve=%dMB). Evicting %dMB.",
+                            model_key,
+                            actual_free_mb,
+                            reserve_free_mb,
+                            needed_mb,
+                        )
+                        try:
+                            await self._make_room(needed_mb, exclude_key=model_key, force=True)
+                        except RuntimeError as e:
+                            # If callbacks are not registered we cannot evict anything; treat
+                            # this as a failed allocation request rather than crashing.
+                            logger.warning("Eviction unavailable while enforcing reserve for %s: %s", model_key, e)
+                            return False
+
+                        actual_free_mb = self._get_actual_free_gpu_mb()
+                        if actual_free_mb < reserve_free_mb:
+                            logger.warning(
+                                "Reserve enforcement failed for %s (free=%dMB, reserve=%dMB).",
+                                model_key,
+                                actual_free_mb,
+                                reserve_free_mb,
+                            )
+                            return False
+
                     self._touch_model(model_key)
                     return True
                 if tracked.location == ModelLocation.CPU:
@@ -1091,10 +1124,12 @@ class GPUMemoryGovernor:
                 # Fall back to budget-based estimate
                 return self._budget.usable_gpu_mb - self._get_gpu_usage()
 
-            # Force garbage collection and clear PyTorch's CUDA cache
-            # This is important because PyTorch's caching allocator may hold
-            # memory even after models are moved to CPU
+            # Synchronize CUDA, garbage collect, and clear PyTorch's cache
+            # CRITICAL: CUDA operations are asynchronous. Without synchronize(),
+            # we might check memory before previous operations (like .to("cpu"))
+            # have actually completed, leading to inaccurate free memory readings.
             gc.collect()
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
 
             free_bytes, _ = torch.cuda.mem_get_info()

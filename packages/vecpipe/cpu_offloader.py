@@ -123,8 +123,13 @@ class ModelOffloader:
                     # Log at INFO so it's visible in production - may affect restore speed
                     logger.info("Could not pin tensor for faster restore: %s", e)
 
-        # Clear GPU cache
+        # Synchronize CUDA and clear GPU cache
+        # CRITICAL: CUDA operations are asynchronous. We must synchronize before
+        # empty_cache() to ensure all tensors are actually moved to CPU before
+        # we try to release GPU memory. Without this, empty_cache() may not
+        # release all memory because transfers are still in progress.
         if torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
         gc.collect()
 
@@ -284,6 +289,7 @@ class MemoryEfficientInference:
             gc.collect()
 
         if self.clear_cache_before and torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
 
         # Use automatic mixed precision for inference
@@ -301,6 +307,7 @@ class MemoryEfficientInference:
             gc.collect()
 
         if self.clear_cache_after and torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
 
         return False
@@ -364,6 +371,8 @@ def defragment_cuda_memory() -> None:
         return
 
     gc.collect()
+    # Synchronize before empty_cache to ensure all async operations complete
+    torch.cuda.synchronize()
     torch.cuda.empty_cache()
 
     # Reset peak memory stats for better tracking

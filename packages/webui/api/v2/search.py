@@ -36,6 +36,7 @@ router = APIRouter(prefix="/api/v2/search", tags=["search-v2"])
     response_model=CollectionSearchResponse,
     responses={
         403: {"model": ErrorResponse, "description": "Access denied to one or more collections"},
+        404: {"model": ErrorResponse, "description": "One or more collections not found"},
         400: {"model": ErrorResponse, "description": "Invalid request"},
         429: {"model": ErrorResponse, "description": "Rate limit exceeded"},
     },
@@ -129,6 +130,8 @@ async def multi_collection_search(
 
     except AccessDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e)) from e
+    except EntityNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except Exception as e:
         logger.error("Search failed: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Search failed") from e

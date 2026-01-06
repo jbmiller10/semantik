@@ -41,6 +41,9 @@ def mock_transformers() -> Generator[tuple[MagicMock, MagicMock, MagicMock, Magi
     ):
         # Mock model instance
         mock_model = MagicMock()
+        # Keep the same mock instance when code calls `.to("cuda")`
+        # so tests can assert against the actual callable model object.
+        mock_model.to.return_value = mock_model
         mock_model_class.from_pretrained.return_value = mock_model
 
         # Mock tokenizer instance
@@ -322,6 +325,44 @@ class TestRelevanceScoring:
         assert len(scores) == len(sample_documents)
         assert all(isinstance(s, float) for s in scores)
         assert all(0 <= s <= 1 for s in scores)
+        assert mock_model.call_count == 1
+        assert mock_model.call_args.kwargs["logits_to_keep"] == 1
+        assert mock_model.call_args.kwargs["use_cache"] is False
+
+    @patch("torch.nn.functional.softmax")
+    def test_compute_relevance_scores_falls_back_when_logits_to_keep_unsupported(
+        self,
+        mock_softmax: MagicMock,
+        reranker_loaded: CrossEncoderReranker,
+        mock_transformers: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+        mock_model_output: Callable[[int], MagicMock],
+    ) -> None:
+        """If the model doesn't accept logits_to_keep, fall back to full logits call."""
+        _, _, mock_model, mock_tokenizer = mock_transformers
+        query = "test query"
+        documents = ["doc1", "doc2"]
+
+        calls: list[dict[str, Any]] = []
+
+        def model_side_effect(**kwargs: Any) -> MagicMock:
+            calls.append(kwargs)
+            if "logits_to_keep" in kwargs:
+                raise TypeError("unexpected keyword argument 'logits_to_keep'")
+            return mock_model_output(len(documents))
+
+        mock_model.side_effect = model_side_effect
+        mock_tokenizer.return_value = MagicMock(input_ids=torch.randint(0, 1000, (len(documents), 10)))
+
+        # Keep the tensor logic simple for this test
+        mock_probs = torch.rand(len(documents), 2)
+        mock_softmax.return_value = mock_probs
+
+        scores = reranker_loaded.compute_relevance_scores(query, documents)
+
+        assert scores and len(scores) == len(documents)
+        assert len(calls) == 2
+        assert "logits_to_keep" in calls[0]
+        assert "logits_to_keep" not in calls[1]
 
     def test_compute_relevance_scores_empty_query(self, reranker_loaded: CrossEncoderReranker) -> None:
         """Test handling of empty query"""
@@ -805,14 +846,16 @@ class TestAdditionalCoverage:
         """Test device_map parameter based on device type"""
         model_class, _, _, _ = mock_transformers
 
-        # Test CUDA device with device_map='auto'
+        # Test CUDA device with device_map={"": 0} (explicit GPU 0 mapping)
+        # We use explicit device mapping instead of "auto" to ensure proper
+        # cleanup when offloading models to CPU for memory management.
         with patch("torch.cuda.is_available", return_value=True):
             reranker = CrossEncoderReranker(device="cuda")
             reranker.load_model()
 
-            # Verify device_map='auto' was used
+            # Verify device_map={"": 0} was used (explicit GPU 0)
             call_kwargs = model_class.from_pretrained.call_args[1]
-            assert call_kwargs["device_map"] == "auto"
+            assert call_kwargs["device_map"] == {"": 0}
 
         model_class.from_pretrained.reset_mock()
 
@@ -958,7 +1001,17 @@ class TestAdditionalCoverage:
 
         def tokenizer_side_effect(inputs: Any, **kwargs: Any) -> MagicMock:  # noqa: ARG001
             batch_sizes_seen.append(len(inputs))
-            return MagicMock(input_ids=torch.randint(0, 1000, (len(inputs), 10)))
+            # Create a mock that properly supports **unpacking for model(**encoded)
+            # The model expects input_ids and attention_mask as keyword arguments
+            input_ids = torch.randint(0, 1000, (len(inputs), 10))
+            attention_mask = torch.ones_like(input_ids)
+
+            # Create mock with keys() and __getitem__ for proper **unpacking
+            result = MagicMock()
+            result.keys.return_value = ["input_ids", "attention_mask"]
+            result.__getitem__ = lambda self, key: input_ids if key == "input_ids" else attention_mask
+            result.to.return_value = result
+            return result
 
         mock_tokenizer.side_effect = tokenizer_side_effect
 

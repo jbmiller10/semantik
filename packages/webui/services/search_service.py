@@ -122,9 +122,12 @@ class SearchService:
                     collection_uuid=uuid, user_id=user_id
                 )
                 collections.append(collection)
-            except (EntityNotFoundError, AccessDeniedError) as e:
-                logger.error("Error accessing collection %s: %s", uuid, e, exc_info=True)
-                raise AccessDeniedError(str(user_id), "collection", uuid) from e
+            except EntityNotFoundError as e:
+                logger.error("Collection not found during access validation (user=%s, id=%s): %s", user_id, uuid, e)
+                raise
+            except AccessDeniedError as e:
+                logger.error("Access denied during collection access validation (user=%s, id=%s): %s", user_id, uuid, e)
+                raise
 
         return collections
 

@@ -7,23 +7,9 @@ from vecpipe import model_manager as model_manager_module
 InsufficientMemoryError = model_manager_module.InsufficientMemoryError
 
 
-def test_ensure_reranker_loaded_raises_when_memory_can_be_freed(monkeypatch):
-    mgr = model_manager_module.ModelManager()
-    mgr.is_mock_mode = False
-
-    monkeypatch.setattr(
-        model_manager_module,
-        "check_memory_availability",
-        lambda *_args, **_kwargs: (False, "Insufficient memory. Can free 1024MB by unloading: embedding"),
-    )
-
-    with pytest.raises(InsufficientMemoryError) as exc_info:
-        mgr.ensure_reranker_loaded("test-model", "float16")
-
-    assert "Can free" in str(exc_info.value)
-
-
 def test_ensure_reranker_loaded_raises_on_oom(monkeypatch):
+    """Test that OOM during reranker load is properly caught and re-raised."""
+
     class DummyReranker:
         def __init__(self, model_name: str, quantization: str) -> None:
             self.model_name = model_name
@@ -41,7 +27,6 @@ def test_ensure_reranker_loaded_raises_on_oom(monkeypatch):
     mgr = model_manager_module.ModelManager()
     mgr.is_mock_mode = False
 
-    monkeypatch.setattr(model_manager_module, "check_memory_availability", lambda *_a, **_k: (True, "ok"))
     monkeypatch.setattr(model_manager_module, "CrossEncoderReranker", DummyReranker)
     monkeypatch.setattr(model_manager_module, "get_gpu_memory_info", lambda: (123, 456))
 
