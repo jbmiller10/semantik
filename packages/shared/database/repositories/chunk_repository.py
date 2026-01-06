@@ -172,7 +172,7 @@ class ChunkRepository(PartitionAwareMixin):
         collection_id = PartitionValidation.validate_partition_key(collection_id, "collection_id")
 
         query = select(Chunk).where(
-            and_(Chunk.collection_id == collection_id, Chunk.meta["chunk_id"].astext == chunk_id)
+            and_(Chunk.collection_id == collection_id, Chunk.meta["chunk_id"].as_string() == chunk_id)
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
