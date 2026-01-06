@@ -366,7 +366,9 @@ class TestGovernedModelManagerEnsureProviderInitialized:
         monkeypatch.setattr(governed_manager._governor, "mark_loaded", AsyncMock())
 
         governed_manager._offloader.discard = MagicMock()
-        monkeypatch.setattr(gmm.ModelManager, "_ensure_provider_initialized", AsyncMock(return_value=types.SimpleNamespace()))
+        monkeypatch.setattr(
+            gmm.ModelManager, "_ensure_provider_initialized", AsyncMock(return_value=types.SimpleNamespace())
+        )
 
         await governed_manager._ensure_provider_initialized(new_model, new_quantization)
 
