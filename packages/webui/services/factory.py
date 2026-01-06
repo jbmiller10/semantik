@@ -1,7 +1,12 @@
 """Factory functions for creating service instances with dependencies."""
 
+from __future__ import annotations
+
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from .mcp_profile_service import MCPProfileService
 
 import httpx
 from fastapi import Depends
@@ -24,7 +29,6 @@ from .chunking.orchestrator import ChunkingOrchestrator
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
-from .mcp_profile_service import MCPProfileService
 from .operation_service import OperationService
 from .projection_service import ProjectionService
 from .redis_manager import RedisManager
@@ -359,7 +363,7 @@ async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceServic
     return create_source_service(db)
 
 
-def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
+def create_mcp_profile_service(db: AsyncSession) -> "MCPProfileService":
     """Create an MCPProfileService instance with required dependencies.
 
     Args:
@@ -368,10 +372,13 @@ def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
     Returns:
         Configured MCPProfileService instance
     """
+    # Lazy import to avoid circular dependency
+    from .mcp_profile_service import MCPProfileService
+
     return MCPProfileService(db_session=db)
 
 
-async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> "MCPProfileService":
     """FastAPI dependency for MCPProfileService injection."""
     return create_mcp_profile_service(db)
 
