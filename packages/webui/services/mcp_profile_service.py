@@ -163,9 +163,7 @@ class MCPProfileService:
 
             # Delete existing associations
             await self.db_session.execute(
-                MCPProfileCollection.__table__.delete().where(
-                    MCPProfileCollection.profile_id == profile_id
-                )
+                MCPProfileCollection.__table__.delete().where(MCPProfileCollection.profile_id == profile_id)
             )
 
             # Create new associations with ordering
@@ -241,11 +239,7 @@ class MCPProfileService:
     async def _get_with_collections(self, profile_id: str) -> MCPProfile | None:
         """Get a profile with collections eagerly loaded and ordered."""
         # Load profile with collections via selectinload
-        stmt = (
-            select(MCPProfile)
-            .where(MCPProfile.id == profile_id)
-            .options(selectinload(MCPProfile.collections))
-        )
+        stmt = select(MCPProfile).where(MCPProfile.id == profile_id).options(selectinload(MCPProfile.collections))
         result = await self.db_session.execute(stmt)
         profile = result.scalar_one_or_none()
 
@@ -253,9 +247,8 @@ class MCPProfileService:
             return None
 
         # Get ordering from junction table
-        order_stmt = (
-            select(MCPProfileCollection.collection_id, MCPProfileCollection.order)
-            .where(MCPProfileCollection.profile_id == profile_id)
+        order_stmt = select(MCPProfileCollection.collection_id, MCPProfileCollection.order).where(
+            MCPProfileCollection.profile_id == profile_id
         )
         order_result = await self.db_session.execute(order_stmt)
         order_map = {row.collection_id: row.order for row in order_result}

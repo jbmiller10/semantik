@@ -1,5 +1,7 @@
 """Integration tests for the v2 MCP profiles API."""
 
+import os
+
 import pytest
 from httpx import AsyncClient
 
@@ -383,6 +385,10 @@ async def test_get_profile_config(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.skipif(
+    os.environ.get("DISABLE_AUTH", "").lower() in ("true", "1", "yes"),
+    reason="Auth is disabled in test environment",
+)
 async def test_auth_required(
     api_client_unauthenticated: AsyncClient,
 ) -> None:

@@ -43,10 +43,7 @@ def _profile_to_response(profile: Any) -> MCPProfileResponse:
         use_reranker=profile.use_reranker,
         score_threshold=profile.score_threshold,
         hybrid_alpha=profile.hybrid_alpha,
-        collections=[
-            CollectionSummary(id=c.id, name=c.name)
-            for c in profile.collections
-        ],
+        collections=[CollectionSummary(id=c.id, name=c.name) for c in profile.collections],
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )

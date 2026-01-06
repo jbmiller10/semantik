@@ -33,9 +33,7 @@ class MCPProfileCreate(BaseModel):
         min_length=1,
         max_length=1000,
         description="Description shown to LLM to explain what this profile searches",
-        json_schema_extra={
-            "example": "Search coding documentation, API references, and technical guides"
-        },
+        json_schema_extra={"example": "Search coding documentation, API references, and technical guides"},
     )
     collection_ids: list[str] = Field(
         ...,
