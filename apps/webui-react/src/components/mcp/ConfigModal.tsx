@@ -53,14 +53,19 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  /**
+   * Copy text to clipboard with fallback for older browsers.
+   * @param text - The string to copy to clipboard
+   * @param label - Unique identifier for tracking copied state (e.g., 'toolName', 'config')
+   */
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(label);
       setTimeout(() => setCopied(null), 2000);
-    } catch {
-      // Fallback for older browsers without Clipboard API support.
-      // Note: execCommand is deprecated but still widely supported as a fallback.
+    } catch (clipboardError) {
+      // Clipboard API failed - use execCommand fallback (deprecated but widely supported)
+      console.warn('Clipboard API failed, falling back to execCommand:', clipboardError);
       const textArea = document.createElement('textarea');
       textArea.value = text;
       document.body.appendChild(textArea);
@@ -71,6 +76,7 @@ export default function ConfigModal({ profile, onClose }: ConfigModalProps) {
         setCopied(label);
         setTimeout(() => setCopied(null), 2000);
       } else {
+        console.error('Both clipboard methods failed');
         setCopied(`${label}-error`);
         setTimeout(() => setCopied(null), 2000);
       }

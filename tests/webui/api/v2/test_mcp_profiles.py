@@ -111,10 +111,29 @@ async def test_create_profile_nonexistent_collection_fails(
         json={
             "name": "coding",
             "description": "Test profile",
-            "collection_ids": ["nonexistent-uuid"],
+            "collection_ids": ["00000000-0000-0000-0000-000000000000"],  # Valid UUID format, but doesn't exist
         },
     )
     assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_invalid_uuid_format_fails(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Creating a profile with invalid UUID format should return 422."""
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Test profile",
+            "collection_ids": ["not-a-valid-uuid"],
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert "Invalid UUID" in response.text
 
 
 @pytest.mark.asyncio()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid as uuid_module
 from datetime import datetime  # noqa: TCH003 - Required at runtime for Pydantic
 from typing import Literal
 
@@ -91,6 +92,17 @@ class MCPProfileCreate(BaseModel):
             raise ValueError("Profile name must be lowercase")
         return v
 
+    @field_validator("collection_ids")
+    @classmethod
+    def validate_collection_ids(cls, v: list[str]) -> list[str]:
+        """Ensure all collection IDs are valid UUIDs."""
+        for cid in v:
+            try:
+                uuid_module.UUID(cid)
+            except ValueError as e:
+                raise ValueError(f"Invalid UUID: {cid}") from e
+        return v
+
 
 class MCPProfileUpdate(BaseModel):
     """Request schema for updating an MCP profile. All fields optional."""
@@ -148,6 +160,18 @@ class MCPProfileUpdate(BaseModel):
             raise ValueError("Profile name must be lowercase")
         return v
 
+    @field_validator("collection_ids")
+    @classmethod
+    def validate_collection_ids(cls, v: list[str] | None) -> list[str] | None:
+        """Ensure all collection IDs are valid UUIDs."""
+        if v is not None:
+            for cid in v:
+                try:
+                    uuid_module.UUID(cid)
+                except ValueError as e:
+                    raise ValueError(f"Invalid UUID: {cid}") from e
+        return v
+
 
 class MCPProfileResponse(BaseModel):
     """Response schema for MCP profile."""
@@ -156,7 +180,7 @@ class MCPProfileResponse(BaseModel):
     name: str
     description: str
     enabled: bool
-    search_type: str
+    search_type: Literal["semantic", "hybrid", "keyword", "question", "code"]
     result_count: int
     use_reranker: bool
     score_threshold: float | None

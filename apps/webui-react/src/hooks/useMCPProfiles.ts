@@ -30,8 +30,13 @@ export function useMCPProfiles(enabled?: boolean) {
   return useQuery({
     queryKey: mcpProfileKeys.list(enabled),
     queryFn: async (): Promise<MCPProfile[]> => {
-      const response = await mcpProfilesApi.list(enabled);
-      return response.data.profiles;
+      try {
+        const response = await mcpProfilesApi.list(enabled);
+        return response.data.profiles;
+      } catch (error) {
+        console.error('Failed to fetch MCP profiles:', error);
+        throw error;
+      }
     },
     staleTime: 30 * 1000, // Cache for 30 seconds
     gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
@@ -46,8 +51,13 @@ export function useMCPProfile(profileId: string) {
   return useQuery({
     queryKey: mcpProfileKeys.detail(profileId),
     queryFn: async (): Promise<MCPProfile> => {
-      const response = await mcpProfilesApi.get(profileId);
-      return response.data;
+      try {
+        const response = await mcpProfilesApi.get(profileId);
+        return response.data;
+      } catch (error) {
+        console.error(`Failed to fetch MCP profile ${profileId}:`, error);
+        throw error;
+      }
     },
     enabled: !!profileId,
     staleTime: 30 * 1000,
@@ -62,8 +72,13 @@ export function useMCPProfileConfig(profileId: string) {
   return useQuery({
     queryKey: mcpProfileKeys.config(profileId),
     queryFn: async (): Promise<MCPClientConfig> => {
-      const response = await mcpProfilesApi.getConfig(profileId);
-      return response.data;
+      try {
+        const response = await mcpProfilesApi.getConfig(profileId);
+        return response.data;
+      } catch (error) {
+        console.error(`Failed to fetch MCP profile config ${profileId}:`, error);
+        throw error;
+      }
     },
     enabled: !!profileId,
     staleTime: 5 * 60 * 1000, // Config doesn't change often

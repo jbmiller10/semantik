@@ -923,7 +923,22 @@ class MCPProfile(Base):
     owner = relationship("User", back_populates="mcp_profiles")
     collections = relationship("Collection", secondary="mcp_profile_collections", back_populates="mcp_profiles")
 
-    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),)
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),
+        CheckConstraint(
+            "search_type IN ('semantic', 'hybrid', 'keyword', 'question', 'code')",
+            name="ck_mcp_profiles_search_type",
+        ),
+        CheckConstraint("result_count >= 1 AND result_count <= 100", name="ck_mcp_profiles_result_count"),
+        CheckConstraint(
+            "score_threshold IS NULL OR (score_threshold >= 0 AND score_threshold <= 1)",
+            name="ck_mcp_profiles_score_threshold",
+        ),
+        CheckConstraint(
+            "hybrid_alpha IS NULL OR (hybrid_alpha >= 0 AND hybrid_alpha <= 1)",
+            name="ck_mcp_profiles_hybrid_alpha",
+        ),
+    )
 
 
 class MCPProfileCollection(Base):

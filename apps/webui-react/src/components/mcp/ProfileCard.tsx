@@ -18,21 +18,23 @@ export default function ProfileCard({
 }: ProfileCardProps) {
   const toggleEnabled = useToggleMCPProfileEnabled();
   const [isToggling, setIsToggling] = useState(false);
-  const [toggleError, setToggleError] = useState(false);
+  const [toggleErrorMessage, setToggleErrorMessage] = useState<string | null>(null);
 
   const handleToggleEnabled = async () => {
     setIsToggling(true);
-    setToggleError(false);
+    setToggleErrorMessage(null);
     try {
       await toggleEnabled.mutateAsync({
         profileId: profile.id,
         enabled: !profile.enabled,
         profileName: profile.name,
       });
-    } catch {
-      setToggleError(true);
-      // Clear error after 3 seconds
-      setTimeout(() => setToggleError(false), 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Toggle failed';
+      console.error('Profile toggle failed:', error);
+      setToggleErrorMessage(message);
+      // Clear error after 5 seconds
+      setTimeout(() => setToggleErrorMessage(null), 5000);
     } finally {
       setIsToggling(false);
     }
@@ -65,15 +67,17 @@ export default function ProfileCard({
 
           {/* Enable/Disable Toggle */}
           <div className="flex items-center ml-4">
-            {toggleError && (
-              <span className="text-xs text-red-500 mr-2">Failed</span>
+            {toggleErrorMessage && (
+              <span className="text-xs text-red-500 mr-2 max-w-32 truncate" title={toggleErrorMessage}>
+                {toggleErrorMessage}
+              </span>
             )}
             <button
               onClick={handleToggleEnabled}
               disabled={isToggling}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 profile.enabled ? 'bg-blue-600' : 'bg-gray-200'
-              } ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${toggleError ? 'ring-2 ring-red-300' : ''}`}
+              } ${isToggling ? 'opacity-50 cursor-not-allowed' : ''} ${toggleErrorMessage ? 'ring-2 ring-red-300' : ''}`}
               role="switch"
               aria-checked={profile.enabled}
               aria-label={`${profile.enabled ? 'Disable' : 'Enable'} profile`}

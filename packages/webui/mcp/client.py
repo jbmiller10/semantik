@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -97,7 +100,8 @@ class SemantikAPIClient:
             detail: Any
             try:
                 detail = response.json()
-            except Exception:
+            except Exception as json_err:
+                logger.debug("Failed to parse error response as JSON: %s", json_err)
                 detail = response.text
             raise SemantikAPIError(f"{method} {path} failed ({response.status_code}): {detail}") from exc
         except httpx.RequestError as exc:

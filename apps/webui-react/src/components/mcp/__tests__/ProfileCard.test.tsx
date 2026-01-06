@@ -224,7 +224,7 @@ describe('ProfileCard', () => {
       await user.click(toggle);
 
       await waitFor(() => {
-        expect(screen.getByText('Failed')).toBeInTheDocument();
+        expect(screen.getByText('Toggle failed')).toBeInTheDocument();
       });
     });
 
@@ -237,17 +237,17 @@ describe('ProfileCard', () => {
       const toggle = screen.getByRole('switch');
       await user.click(toggle);
 
-      // Error should appear
+      // Error should appear with actual error message
       await waitFor(() => {
-        expect(screen.getByText('Failed')).toBeInTheDocument();
+        expect(screen.getByText('Toggle failed')).toBeInTheDocument();
       });
 
-      // Error should clear after 3 seconds - use waitFor with timeout
+      // Error should clear after 5 seconds - use waitFor with timeout
       await waitFor(
         () => {
-          expect(screen.queryByText('Failed')).not.toBeInTheDocument();
+          expect(screen.queryByText('Toggle failed')).not.toBeInTheDocument();
         },
-        { timeout: 4000 }
+        { timeout: 6000 }
       );
     });
   });

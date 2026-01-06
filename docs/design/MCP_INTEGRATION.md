@@ -361,37 +361,47 @@ async def get_client_config(
 ```python
 # packages/webui/mcp/cli.py
 
+import argparse
 import asyncio
-import click
-from .server import SemantikMCPServer
+import logging
+import os
+import sys
+
+from webui.mcp.server import SemantikMCPServer
 
 
-@click.group()
-def mcp():
-    """MCP server commands."""
-    pass
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="semantik-mcp", description="Semantik MCP server (stdio transport)")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    serve = subparsers.add_parser("serve", help="Start the MCP server (stdio transport)")
+    serve.add_argument(
+        "--profile", "-p",
+        action="append",
+        dest="profiles",
+        default=None,
+        help="Profile(s) to expose. Can be provided multiple times. If omitted, all enabled profiles are exposed.",
+    )
+    serve.add_argument(
+        "--webui-url",
+        default=os.getenv("SEMANTIK_WEBUI_URL", "http://localhost:8080"),
+        help="Semantik WebUI base URL (or SEMANTIK_WEBUI_URL).",
+    )
+    serve.add_argument(
+        "--auth-token",
+        default=os.getenv("SEMANTIK_AUTH_TOKEN"),
+        help="Semantik auth token (JWT access token or API key) (or SEMANTIK_AUTH_TOKEN).",
+    )
+    serve.add_argument(
+        "--log-level",
+        default=os.getenv("SEMANTIK_MCP_LOG_LEVEL", "INFO"),
+        help="Logging level (or SEMANTIK_MCP_LOG_LEVEL).",
+    )
+
+    return parser
 
 
-@mcp.command()
-@click.option(
-    "--profile", "-p",
-    multiple=True,
-    help="Profile(s) to expose. Can be specified multiple times. "
-         "If not specified, all enabled profiles are exposed."
-)
-@click.option(
-    "--webui-url",
-    envvar="SEMANTIK_WEBUI_URL",
-    default="http://localhost:8080",
-    help="Semantik WebUI base URL"
-)
-@click.option(
-    "--auth-token",
-    envvar="SEMANTIK_AUTH_TOKEN",
-    required=True,
-    help="Semantik auth token (JWT access token or API key)"
-)
-def serve(profile: tuple[str, ...], webui_url: str, auth_token: str):
+def main(argv: list[str] | None = None) -> None:
     """
     Start the MCP server (stdio transport).
 
@@ -403,12 +413,27 @@ def serve(profile: tuple[str, ...], webui_url: str, auth_token: str):
         # Expose all enabled profiles
         semantik-mcp serve
     """
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if args.command != "serve":
+        raise SystemExit(f"Unknown command: {args.command}")
+
+    if not args.auth_token:
+        parser.error("Missing --auth-token (or SEMANTIK_AUTH_TOKEN)")
+
+    logging.basicConfig(level=str(args.log_level).upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
     server = SemantikMCPServer(
-        webui_url=webui_url,
-        auth_token=auth_token,
-        profile_filter=list(profile) if profile else None,
+        webui_url=args.webui_url,
+        auth_token=args.auth_token,
+        profile_filter=args.profiles,
     )
-    asyncio.run(server.run())
+
+    try:
+        asyncio.run(server.run())
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None
 ```
 
 ### Server Implementation
@@ -836,11 +861,14 @@ class SemantikAPIClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_document_content(self, collection_id: str, document_id: str) -> dict:
-        """Get full document content."""
+    async def get_document_content(self, collection_id: str, document_id: str) -> tuple[bytes, str | None]:
+        """Get raw document content and content-type header.
+
+        Returns bytes and content-type to allow server to handle binary detection and truncation.
+        """
         response = await self._client.get(f"/api/v2/collections/{collection_id}/documents/{document_id}/content")
         response.raise_for_status()
-        return response.json()
+        return response.content, response.headers.get("content-type")
 
     async def get_chunk(self, collection_id: str, chunk_id: str) -> dict:
         """Get chunk content."""
@@ -1397,7 +1425,7 @@ async def test_single_profile_exposes_search_tool():
 
     tool_names = [t.name for t in tools]
     assert "search_coding" in tool_names
-    assert "search" in tool_names
+    # Note: No generic "search" tool is exposed - only profile-specific tools
 
 
 async def test_multiple_profiles_expose_prefixed_tools():
@@ -1572,13 +1600,13 @@ async def test_mcp_search_flow():
   - `run()` - stdio_server context manager
 
 #### 2.5 CLI Entry Point
-- [ ] Create `packages/webui/mcp/cli.py`
-- [ ] `@click.group() mcp` - command group
-- [ ] `@mcp.command() serve` with options:
+- [x] Create `packages/webui/mcp/cli.py`
+- [x] `argparse` subcommand parser
+- [x] `serve` subcommand with options:
   - `--profile / -p` (multiple)
   - `--webui-url` (envvar SEMANTIK_WEBUI_URL)
   - `--auth-token` (envvar SEMANTIK_AUTH_TOKEN, required)
-- [ ] Add entry point to `pyproject.toml`: `semantik-mcp = "webui.mcp.cli:mcp"`
+- [x] Add entry point to `pyproject.toml`: `semantik-mcp = "webui.mcp.cli:main"`
 - [ ] Test CLI locally: `poetry run semantik-mcp serve --help`
 
 #### 2.6 Tests
