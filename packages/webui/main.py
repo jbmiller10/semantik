@@ -55,6 +55,7 @@ from .api.v2 import (
     documents as v2_documents,
     embedding as v2_embedding,
     extractors as v2_extractors,
+    mcp_profiles as v2_mcp_profiles,
     operations as v2_operations,
     partition_monitoring as v2_partition_monitoring,
     plugins as v2_plugins,
@@ -342,6 +343,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(v2_documents.router)
     app.include_router(v2_embedding.router)
     app.include_router(v2_extractors.router)
+    app.include_router(v2_mcp_profiles.router)
     app.include_router(v2_operations.router)
     app.include_router(v2_plugins.router)
     app.include_router(v2_projections.router)

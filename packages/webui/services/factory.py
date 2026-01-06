@@ -1,7 +1,12 @@
 """Factory functions for creating service instances with dependencies."""
 
+from __future__ import annotations
+
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from .mcp_profile_service import MCPProfileService
 
 import httpx
 from fastapi import Depends
@@ -356,6 +361,26 @@ def create_source_service(db: AsyncSession) -> SourceService:
 async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
     """FastAPI dependency for SourceService injection."""
     return create_source_service(db)
+
+
+def create_mcp_profile_service(db: AsyncSession) -> "MCPProfileService":
+    """Create an MCPProfileService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured MCPProfileService instance
+    """
+    # Lazy import to avoid circular dependency
+    from .mcp_profile_service import MCPProfileService
+
+    return MCPProfileService(db_session=db)
+
+
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> "MCPProfileService":
+    """FastAPI dependency for MCPProfileService injection."""
+    return create_mcp_profile_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that
