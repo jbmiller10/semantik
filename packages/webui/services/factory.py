@@ -24,6 +24,7 @@ from .chunking.orchestrator import ChunkingOrchestrator
 from .collection_service import CollectionService
 from .directory_scan_service import DirectoryScanService
 from .document_scanning_service import DocumentScanningService
+from .mcp_profile_service import MCPProfileService
 from .operation_service import OperationService
 from .projection_service import ProjectionService
 from .redis_manager import RedisManager
@@ -356,6 +357,23 @@ def create_source_service(db: AsyncSession) -> SourceService:
 async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceService:
     """FastAPI dependency for SourceService injection."""
     return create_source_service(db)
+
+
+def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
+    """Create an MCPProfileService instance with required dependencies.
+
+    Args:
+        db: AsyncSession instance from FastAPI's dependency injection
+
+    Returns:
+        Configured MCPProfileService instance
+    """
+    return MCPProfileService(db_session=db)
+
+
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
+    """FastAPI dependency for MCPProfileService injection."""
+    return create_mcp_profile_service(db)
 
 
 # Expose commonly used dependency providers to builtins for tests that

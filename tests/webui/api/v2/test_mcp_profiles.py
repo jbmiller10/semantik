@@ -1,0 +1,464 @@
+"""Integration tests for the v2 MCP profiles API."""
+
+import pytest
+from httpx import AsyncClient
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_success(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Creating an MCP profile should persist and return the profile."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Search coding documentation",
+            "collection_ids": [collection.id],
+            "enabled": True,
+            "search_type": "semantic",
+            "result_count": 10,
+            "use_reranker": True,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    assert payload["name"] == "coding"
+    assert payload["description"] == "Search coding documentation"
+    assert payload["enabled"] is True
+    assert payload["search_type"] == "semantic"
+    assert payload["result_count"] == 10
+    assert len(payload["collections"]) == 1
+    assert payload["collections"][0]["id"] == collection.id
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_duplicate_name_fails(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Creating a profile with duplicate name should return 409."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Create first profile
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "First profile",
+            "collection_ids": [collection.id],
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    # Try to create duplicate
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Duplicate profile",
+            "collection_ids": [collection.id],
+        },
+    )
+    assert response.status_code == 409, response.text
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_invalid_name_fails(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Creating a profile with invalid name should return 422."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Name with uppercase
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "Coding",  # Invalid: uppercase
+            "description": "Test profile",
+            "collection_ids": [collection.id],
+        },
+    )
+    assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_nonexistent_collection_fails(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Creating a profile with nonexistent collection should return 404."""
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Test profile",
+            "collection_ids": ["nonexistent-uuid"],
+        },
+    )
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio()
+async def test_list_profiles_returns_owned_profiles(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Listing profiles should return all profiles owned by the user."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Create two profiles
+    for name in ["coding", "personal"]:
+        response = await api_client.post(
+            "/api/v2/mcp/profiles",
+            headers=api_auth_headers,
+            json={
+                "name": name,
+                "description": f"{name} profile",
+                "collection_ids": [collection.id],
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    response = await api_client.get("/api/v2/mcp/profiles", headers=api_auth_headers)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] >= 2
+    names = {p["name"] for p in payload["profiles"]}
+    assert "coding" in names
+    assert "personal" in names
+
+
+@pytest.mark.asyncio()
+async def test_list_profiles_filter_by_enabled(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Listing profiles with enabled filter should return matching profiles."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Create enabled profile
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "enabled-profile",
+            "description": "Enabled",
+            "collection_ids": [collection.id],
+            "enabled": True,
+        },
+    )
+
+    # Create disabled profile
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "disabled-profile",
+            "description": "Disabled",
+            "collection_ids": [collection.id],
+            "enabled": False,
+        },
+    )
+
+    # Filter by enabled=true
+    response = await api_client.get("/api/v2/mcp/profiles?enabled=true", headers=api_auth_headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert all(p["enabled"] for p in payload["profiles"])
+
+
+@pytest.mark.asyncio()
+async def test_get_profile_success(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Getting a profile should return its full details."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Search coding documentation",
+            "collection_ids": [collection.id],
+        },
+    )
+    profile_id = create_response.json()["id"]
+
+    response = await api_client.get(f"/api/v2/mcp/profiles/{profile_id}", headers=api_auth_headers)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["id"] == profile_id
+    assert payload["name"] == "coding"
+
+
+@pytest.mark.asyncio()
+async def test_get_profile_not_found(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Getting a nonexistent profile should return 404."""
+    response = await api_client.get("/api/v2/mcp/profiles/nonexistent-id", headers=api_auth_headers)
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio()
+async def test_update_profile_success(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Updating a profile should persist changes."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Original description",
+            "collection_ids": [collection.id],
+            "result_count": 10,
+        },
+    )
+    profile_id = create_response.json()["id"]
+
+    # Update the profile
+    response = await api_client.put(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+        json={
+            "description": "Updated description",
+            "result_count": 20,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["description"] == "Updated description"
+    assert payload["result_count"] == 20
+    # Name should remain unchanged
+    assert payload["name"] == "coding"
+
+
+@pytest.mark.asyncio()
+async def test_update_profile_name_conflict(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Updating profile name to existing name should return 409."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    # Create two profiles
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "first",
+            "description": "First",
+            "collection_ids": [collection.id],
+        },
+    )
+
+    second_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "second",
+            "description": "Second",
+            "collection_ids": [collection.id],
+        },
+    )
+    second_id = second_response.json()["id"]
+
+    # Try to rename second to first
+    response = await api_client.put(
+        f"/api/v2/mcp/profiles/{second_id}",
+        headers=api_auth_headers,
+        json={"name": "first"},
+    )
+    assert response.status_code == 409, response.text
+
+
+@pytest.mark.asyncio()
+async def test_delete_profile_success(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Deleting a profile should remove it."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Test",
+            "collection_ids": [collection.id],
+        },
+    )
+    profile_id = create_response.json()["id"]
+
+    # Delete the profile
+    response = await api_client.delete(f"/api/v2/mcp/profiles/{profile_id}", headers=api_auth_headers)
+    assert response.status_code == 204, response.text
+
+    # Verify it's gone
+    response = await api_client.get(f"/api/v2/mcp/profiles/{profile_id}", headers=api_auth_headers)
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio()
+async def test_delete_profile_not_found(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+) -> None:
+    """Deleting a nonexistent profile should return 404."""
+    response = await api_client.delete("/api/v2/mcp/profiles/nonexistent-id", headers=api_auth_headers)
+    assert response.status_code == 404, response.text
+
+
+@pytest.mark.asyncio()
+async def test_get_profile_config(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Getting profile config should return MCP client configuration."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "coding",
+            "description": "Test",
+            "collection_ids": [collection.id],
+        },
+    )
+    profile_id = create_response.json()["id"]
+
+    response = await api_client.get(f"/api/v2/mcp/profiles/{profile_id}/config", headers=api_auth_headers)
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["server_name"] == "semantik-coding"
+    assert payload["command"] == "semantik-mcp"
+    assert "--profile" in payload["args"]
+    assert "coding" in payload["args"]
+    assert "SEMANTIK_WEBUI_URL" in payload["env"]
+    assert "SEMANTIK_AUTH_TOKEN" in payload["env"]
+
+
+@pytest.mark.asyncio()
+async def test_auth_required(
+    api_client_unauthenticated: AsyncClient,
+) -> None:
+    """All MCP profile endpoints should require authentication."""
+    endpoints = [
+        ("GET", "/api/v2/mcp/profiles"),
+        ("POST", "/api/v2/mcp/profiles"),
+        ("GET", "/api/v2/mcp/profiles/some-id"),
+        ("PUT", "/api/v2/mcp/profiles/some-id"),
+        ("DELETE", "/api/v2/mcp/profiles/some-id"),
+        ("GET", "/api/v2/mcp/profiles/some-id/config"),
+    ]
+
+    for method, path in endpoints:
+        if method == "GET":
+            response = await api_client_unauthenticated.get(path)
+        elif method == "POST":
+            response = await api_client_unauthenticated.post(path, json={})
+        elif method == "PUT":
+            response = await api_client_unauthenticated.put(path, json={})
+        elif method == "DELETE":
+            response = await api_client_unauthenticated.delete(path)
+
+        assert response.status_code == 401, f"{method} {path} should require auth: {response.text}"
+
+
+@pytest.mark.asyncio()
+async def test_profile_multiple_collections_ordering(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Profile should preserve collection ordering."""
+    collection1 = await collection_factory(owner_id=test_user_db.id)
+    collection2 = await collection_factory(owner_id=test_user_db.id)
+    collection3 = await collection_factory(owner_id=test_user_db.id)
+
+    # Create profile with specific order
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "multi",
+            "description": "Multiple collections",
+            "collection_ids": [collection3.id, collection1.id, collection2.id],
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    collection_ids = [c["id"] for c in payload["collections"]]
+    # Order should be preserved
+    assert collection_ids == [collection3.id, collection1.id, collection2.id]
+
+
+@pytest.mark.asyncio()
+async def test_profile_search_type_options(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    collection_factory,
+) -> None:
+    """Profile should accept all valid search types."""
+    collection = await collection_factory(owner_id=test_user_db.id)
+
+    for search_type in ["semantic", "hybrid", "keyword", "question", "code"]:
+        response = await api_client.post(
+            "/api/v2/mcp/profiles",
+            headers=api_auth_headers,
+            json={
+                "name": f"profile-{search_type}",
+                "description": f"Test {search_type}",
+                "collection_ids": [collection.id],
+                "search_type": search_type,
+            },
+        )
+        assert response.status_code == 201, f"Failed for {search_type}: {response.text}"
+        assert response.json()["search_type"] == search_type

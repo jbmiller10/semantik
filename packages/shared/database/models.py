@@ -177,6 +177,7 @@ class User(Base):
     permissions = relationship("CollectionPermission", back_populates="user", cascade="all, delete-orphan")
     operations = relationship("Operation", back_populates="user")
     audit_logs = relationship("CollectionAuditLog", back_populates="user")
+    mcp_profiles = relationship("MCPProfile", back_populates="owner", cascade="all, delete-orphan")
 
 
 class Collection(Base):
@@ -253,6 +254,7 @@ class Collection(Base):
     )
     chunks = relationship("Chunk", back_populates="collection", cascade="all, delete-orphan")
     sync_runs = relationship("CollectionSyncRun", back_populates="collection", cascade="all, delete-orphan")
+    mcp_profiles = relationship("MCPProfile", secondary="mcp_profile_collections", back_populates="collections")
 
 
 class Document(Base):
@@ -885,3 +887,63 @@ class Chunk(Base):
             },
         },
     )
+
+
+class MCPProfile(Base):
+    """MCP search profile configuration.
+
+    Defines a named search profile that exposes collections to MCP clients
+    like Claude Desktop. Each profile has scoped collection access and
+    configurable search defaults.
+
+    Profile names must be unique per user and follow the pattern [a-z][a-z0-9_-]*
+    to ensure valid tool naming in MCP clients.
+    """
+
+    __tablename__ = "mcp_profiles"
+
+    id = Column(String, primary_key=True)  # UUID as string
+    name = Column(String(64), nullable=False)  # Tool name: lowercase, no spaces
+    description = Column(Text, nullable=False)  # Shown to LLM as tool description
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    # Search defaults
+    search_type = Column(String(32), nullable=False, default="semantic")  # semantic, hybrid, keyword, question, code
+    result_count = Column(Integer, nullable=False, default=10)
+    use_reranker = Column(Boolean, nullable=False, default=True)
+    score_threshold = Column(Float, nullable=True)
+    hybrid_alpha = Column(Float, nullable=True)  # Only used when search_type=hybrid
+
+    # Metadata
+    created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    owner = relationship("User", back_populates="mcp_profiles")
+    collections = relationship("Collection", secondary="mcp_profile_collections", back_populates="mcp_profiles")
+
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_mcp_profiles_owner_name"),)
+
+
+class MCPProfileCollection(Base):
+    """Junction table for MCP profile to collection mapping.
+
+    Maps collections to MCP profiles with an ordering field that determines
+    search priority. Lower order values are searched first and may affect
+    result ranking when searching across multiple collections.
+    """
+
+    __tablename__ = "mcp_profile_collections"
+
+    profile_id = Column(
+        String,
+        ForeignKey("mcp_profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    collection_id = Column(
+        String,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    order = Column(Integer, nullable=False, default=0)  # Lower values = higher priority
