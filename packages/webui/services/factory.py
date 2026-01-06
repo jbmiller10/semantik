@@ -6,11 +6,12 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
+    import httpx
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from .mcp_profile_service import MCPProfileService
 
-import httpx
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.database import get_db
 from shared.database.repositories.collection_repository import CollectionRepository
@@ -363,7 +364,7 @@ async def get_source_service(db: AsyncSession = Depends(get_db)) -> SourceServic
     return create_source_service(db)
 
 
-def create_mcp_profile_service(db: AsyncSession) -> "MCPProfileService":
+def create_mcp_profile_service(db: AsyncSession) -> MCPProfileService:
     """Create an MCPProfileService instance with required dependencies.
 
     Args:
@@ -378,7 +379,7 @@ def create_mcp_profile_service(db: AsyncSession) -> "MCPProfileService":
     return MCPProfileService(db_session=db)
 
 
-async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> "MCPProfileService":
+async def get_mcp_profile_service(db: AsyncSession = Depends(get_db)) -> MCPProfileService:
     """FastAPI dependency for MCPProfileService injection."""
     return create_mcp_profile_service(db)
 

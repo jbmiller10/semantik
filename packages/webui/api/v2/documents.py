@@ -25,6 +25,7 @@ from shared.database import get_db
 from shared.database.exceptions import EntityNotFoundError
 from shared.database.models import Collection
 from shared.database.repositories.document_artifact_repository import DocumentArtifactRepository
+from webui.api.schemas import DocumentResponse, ErrorResponse
 from webui.auth import get_current_user
 from webui.dependencies import create_document_repository, get_collection_for_user
 
@@ -52,14 +53,74 @@ router = APIRouter(prefix="/api/v2", tags=["documents-v2"])
 
 
 @router.get(
+    "/collections/{collection_uuid}/documents/{document_uuid}",
+    response_model=DocumentResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Document not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def get_document(
+    collection_uuid: str,
+    document_uuid: str,
+    collection: Collection = Depends(get_collection_for_user),  # noqa: ARG001
+    current_user: dict[str, Any] = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DocumentResponse:
+    """Get document metadata by ID.
+
+    This endpoint returns document metadata (not content). Access control is enforced
+    via the get_collection_for_user dependency and a cross-collection check.
+    """
+    try:
+        document_repo = create_document_repository(db)
+        document = await document_repo.get_by_id(document_uuid)
+        if not document:
+            raise HTTPException(status_code=404, detail=f"Document {document_uuid} not found")
+
+        if document.collection_id != collection_uuid:
+            logger.warning(
+                "Attempted cross-collection metadata access: user %s tried to access document %s from collection %s via %s",
+                current_user.get("id"),
+                document_uuid,
+                document.collection_id,
+                collection_uuid,
+            )
+            raise HTTPException(status_code=403, detail="Document does not belong to the specified collection")
+
+        return DocumentResponse(
+            id=document.id,
+            collection_id=document.collection_id,
+            file_name=document.file_name,
+            file_path=document.file_path,
+            file_size=document.file_size,
+            mime_type=document.mime_type,
+            content_hash=document.content_hash,
+            status=document.status.value,
+            error_message=document.error_message,
+            chunk_count=document.chunk_count,
+            metadata=document.meta,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get document metadata: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get document metadata") from e
+
+
+@router.get(
     "/collections/{collection_uuid}/documents/{document_uuid}/content",
     response_model=None,
     responses={
         200: {"description": "Document content", "content": {"application/octet-stream": {}}},
-        401: {"description": "Unauthorized"},
-        403: {"description": "Access denied"},
-        404: {"description": "Document not found"},
-        500: {"description": "Internal server error"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Access denied"},
+        404: {"model": ErrorResponse, "description": "Document not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def get_document_content(
