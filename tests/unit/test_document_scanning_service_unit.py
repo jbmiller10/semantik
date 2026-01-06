@@ -49,7 +49,9 @@ async def test_scan_document_success(tmp_path: Path, service: DocumentScanningSe
 
 
 @pytest.mark.asyncio()
-async def test_register_file_rejects_large_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, service: DocumentScanningService) -> None:
+async def test_register_file_rejects_large_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, service: DocumentScanningService
+) -> None:
     file_path = tmp_path / "big.pdf"
     file_path.write_text("data")
 
@@ -57,6 +59,7 @@ async def test_register_file_rejects_large_file(monkeypatch: pytest.MonkeyPatch,
 
     def _fake_stat(self: Path):
         if self == file_path:
+
             class _Stat:
                 st_size = MAX_FILE_SIZE + 1
 

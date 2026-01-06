@@ -359,7 +359,8 @@ class TestRelevanceScoring:
 
         scores = reranker_loaded.compute_relevance_scores(query, documents)
 
-        assert scores and len(scores) == len(documents)
+        assert scores
+        assert len(scores) == len(documents)
         assert len(calls) == 2
         assert "logits_to_keep" in calls[0]
         assert "logits_to_keep" not in calls[1]

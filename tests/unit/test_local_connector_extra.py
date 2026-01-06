@@ -93,6 +93,7 @@ def test_process_file_worker_skips_large_files(monkeypatch, tmp_path: Path) -> N
 
     def _fake_stat(self: Path):
         if self == file_path:
+
             class _Stat:
                 st_size = MAX_FILE_SIZE + 1
 
