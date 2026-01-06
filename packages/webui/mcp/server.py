@@ -56,11 +56,21 @@ class SemantikMCPServer:
             if self._profiles_cache is not None and now < self._profiles_cache_expires_at:
                 return self._profiles_cache
 
-            profiles: list[dict[str, Any]] = await self.api_client.get_profiles(enabled_only=True)
+            try:
+                profiles: list[dict[str, Any]] = await self.api_client.get_profiles(enabled_only=True)
+            except SemantikAPIError as e:
+                logger.error("Failed to fetch profiles from Semantik API: %s", e)
+                if self._profiles_cache is not None:
+                    logger.warning("Using stale profile cache due to API error")
+                    return self._profiles_cache
+                raise
+
             if self.profile_filter is not None:
                 profiles = [p for p in profiles if p.get("name") in self.profile_filter]
 
             self._profiles_cache = profiles
+            # 10-second TTL balances responsiveness (new profiles appear quickly)
+            # against reducing API calls during rapid tool invocations
             self._profiles_cache_expires_at = now + 10.0
             return profiles
 
@@ -158,9 +168,16 @@ class SemantikMCPServer:
 
         except SemantikAPIError as exc:
             return self._as_text_result({"error": str(exc)}, is_error=True)
-        except Exception as exc:
-            logger.error("Tool call failed: %s", exc, exc_info=True)
+        except ValueError as exc:
+            # Expected user errors (invalid arguments, unknown tool, etc.)
             return self._as_text_result({"error": str(exc)}, is_error=True)
+        except (KeyError, TypeError, AttributeError) as exc:
+            # Programming errors - log with full context
+            logger.exception("Unexpected error in tool call (likely a bug): %s", exc)
+            return self._as_text_result({"error": "Internal error processing request"}, is_error=True)
+        except Exception as exc:
+            logger.exception("Unexpected exception in tool call: %s", exc)
+            return self._as_text_result({"error": "Unexpected error"}, is_error=True)
 
     async def _execute_search(self, profile: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
         query = str(arguments.get("query") or "").strip()
@@ -289,8 +306,14 @@ class SemantikMCPServer:
         }
 
     async def run(self) -> None:
+        logger.info("Starting Semantik MCP server")
         try:
             async with stdio_server() as (read_stream, write_stream):
+                logger.info("MCP server ready, handling requests...")
                 await self.server.run(read_stream, write_stream, self.server.create_initialization_options())
+        except Exception as e:
+            logger.error("MCP server failed: %s", e, exc_info=True)
+            raise
         finally:
+            logger.info("Shutting down MCP server")
             await self.api_client.close()

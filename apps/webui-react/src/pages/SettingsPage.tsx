@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DatabaseSettings from '../components/settings/DatabaseSettings';
 import PluginsSettings from '../components/settings/PluginsSettings';
+import MCPProfilesSettings from '../components/settings/MCPProfilesSettings';
 
-type SettingsTab = 'database' | 'plugins';
+type SettingsTab = 'database' | 'plugins' | 'mcp';
 
 function SettingsPage() {
   const navigate = useNavigate();
@@ -89,6 +90,34 @@ function SettingsPage() {
             </svg>
             Plugins
           </button>
+          <button
+            onClick={() => setActiveTab('mcp')}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${
+                activeTab === 'mcp'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }
+            `}
+          >
+            <svg
+              className={`inline-block w-5 h-5 mr-2 -mt-0.5 ${
+                activeTab === 'mcp' ? 'text-blue-500' : 'text-gray-400'
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+            MCP Profiles
+          </button>
         </nav>
       </div>
 
@@ -96,6 +125,7 @@ function SettingsPage() {
       <div className="mt-6">
         {activeTab === 'database' && <DatabaseSettings />}
         {activeTab === 'plugins' && <PluginsSettings />}
+        {activeTab === 'mcp' && <MCPProfilesSettings />}
       </div>
     </div>
   );
