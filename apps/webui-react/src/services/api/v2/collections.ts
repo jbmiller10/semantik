@@ -18,6 +18,7 @@ import type {
   DocumentListResponse,
   SearchRequest,
   SearchResponse,
+  SourceListResponse,
 } from './types';
 import { projectionsV2Api } from './projections';
 
@@ -46,9 +47,12 @@ export const collectionsV2Api = {
   addSource: (uuid: string, data: AddSourceRequest) => 
     apiClient.post<Operation>(`/api/v2/collections/${uuid}/sources`, data),
     
-  removeSource: (uuid: string, data: RemoveSourceRequest) => 
+  removeSource: (uuid: string, data: RemoveSourceRequest) =>
     apiClient.delete<Operation>(`/api/v2/collections/${uuid}/sources`, { data }),
-    
+
+  listSources: (uuid: string, params?: { offset?: number; limit?: number }) =>
+    apiClient.get<SourceListResponse>(`/api/v2/collections/${uuid}/sources`, { params }),
+
   reindex: (uuid: string, data?: ReindexRequest) => 
     apiClient.post<Operation>(`/api/v2/collections/${uuid}/reindex`, data || {}),
   

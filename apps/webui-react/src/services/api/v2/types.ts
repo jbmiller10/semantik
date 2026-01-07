@@ -151,3 +151,35 @@ export interface DirectoryScanProgress {
     total_size?: number;
   };
 }
+
+// Source types for collection sources API
+export interface SourceResponse {
+  id: number;
+  collection_id: string;
+  source_type: string;
+  source_path: string;
+  source_config: Record<string, unknown>;
+  document_count: number;
+  size_bytes: number;
+  // Per-source sync telemetry
+  last_run_started_at: string | null;
+  last_run_completed_at: string | null;
+  last_run_status: string | null;
+  last_error: string | null;
+  last_indexed_at: string | null;
+  // Timestamps
+  created_at: string;
+  updated_at: string;
+  // Secret indicators
+  has_password: boolean;
+  has_token: boolean;
+  has_ssh_key: boolean;
+  has_ssh_passphrase: boolean;
+}
+
+export interface SourceListResponse {
+  items: SourceResponse[];
+  total: number;
+  offset: number;
+  limit: number;
+}

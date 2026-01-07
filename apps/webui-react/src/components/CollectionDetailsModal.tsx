@@ -10,16 +10,10 @@ import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
 import ReindexCollectionModal from './ReindexCollectionModal';
 import EmbeddingVisualizationTab from './EmbeddingVisualizationTab';
-import type { DocumentResponse } from '../services/api/v2/types';
+import type { DocumentResponse, SourceResponse } from '../services/api/v2/types';
 import { CHUNKING_STRATEGIES } from '../types/chunking';
 import type { ChunkingStrategyType } from '../types/chunking';
 import { Type, GitBranch, FileText, Brain, Network, Sparkles } from 'lucide-react';
-
-// Type for aggregated source directories from documents
-interface SourceInfo {
-  path: string;
-  document_count: number;
-}
 
 function CollectionDetailsModal() {
   const navigate = useNavigate();
@@ -72,17 +66,16 @@ function CollectionDetailsModal() {
     enabled: !!showCollectionDetailsModal && activeTab === 'files',
   });
 
-  // Aggregate source directories from documents
-  const sourceDirs: SourceInfo[] = documentsData ? (() => {
-    const sourceMap = documentsData.documents.reduce((acc: Map<string, SourceInfo>, doc: DocumentResponse) => {
-      if (!acc.has(doc.source_path)) {
-        acc.set(doc.source_path, { path: doc.source_path, document_count: 0 });
-      }
-      acc.get(doc.source_path)!.document_count++;
-      return acc;
-    }, new Map<string, SourceInfo>());
-    return Array.from(sourceMap.values());
-  })() : [];
+  // Fetch sources for the collection (always fetch when modal is open)
+  const { data: sourcesData } = useQuery({
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'sources'],
+    queryFn: async () => {
+      if (!showCollectionDetailsModal) return null;
+      const response = await collectionsV2Api.listSources(showCollectionDetailsModal);
+      return response.data;
+    },
+    enabled: !!showCollectionDetailsModal,
+  });
 
   const handleClose = () => {
     setShowCollectionDetailsModal(null);
@@ -445,15 +438,15 @@ function CollectionDetailsModal() {
               {/* Source Directories */}
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Source Directories</h3>
-                {sourceDirs.length > 0 ? (
+                {sourcesData && sourcesData.items.length > 0 ? (
                   <ul className="space-y-2">
-                    {sourceDirs.map((source: SourceInfo) => (
-                      <li key={source.path} className="flex items-center justify-between text-sm text-gray-900">
+                    {sourcesData.items.map((source: SourceResponse) => (
+                      <li key={source.id} className="flex items-center justify-between text-sm text-gray-900">
                         <div className="flex items-center">
                           <svg className="h-4 w-4 text-gray-400 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                           </svg>
-                          {source.path}
+                          {source.source_path}
                         </div>
                         <span className="text-gray-500">{source.document_count} documents</span>
                       </li>
