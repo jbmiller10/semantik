@@ -103,9 +103,7 @@ class TestAgentWebSocketEndpoint:
             mock_get_db.return_value = mock_db_gen()
 
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-            ) as ws:
+            with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]) as ws:
                 # Send ping to verify connection works
                 ws.send_json({"type": "ping"})
                 response = ws.receive_json()
@@ -118,8 +116,40 @@ class TestAgentWebSocketEndpoint:
         """Connection to non-existent session should be rejected."""
         from webui.main import app
 
-        mock_agent_service.verify_websocket_access.side_effect = SessionNotFoundError(
-            "Session not found: invalid"
+        mock_agent_service.verify_websocket_access.side_effect = SessionNotFoundError("Session not found: invalid")
+
+        with (
+            patch("webui.main.pg_connection_manager") as mock_pg,
+            patch("webui.main.ws_manager") as mock_ws,
+            patch("webui.ws.agents.get_current_user_websocket", return_value=mock_user),
+            patch("webui.ws.agents.create_agent_service", return_value=mock_agent_service),
+            patch("webui.ws.agents.get_db") as mock_get_db,
+        ):
+            mock_pg.initialize = AsyncMock()
+            mock_ws.startup = AsyncMock()
+            mock_ws.shutdown = AsyncMock()
+
+            async def mock_db_gen():
+                mock_db = AsyncMock()
+                yield mock_db
+
+            mock_get_db.return_value = mock_db_gen()
+
+            client = TestClient(app)
+            # WebSocket close raises generic exception from starlette
+            with pytest.raises(Exception):  # noqa: B017, PT011
+                with client.websocket_connect("/ws/agents/invalid", subprotocols=[f"access_token.{auth_token}"]):
+                    pass
+
+    @pytest.mark.asyncio()
+    async def test_connection_access_denied(
+        self, mock_agent_service: AsyncMock, mock_user: dict, auth_token: str
+    ) -> None:
+        """Connection to another user's session should be rejected."""
+        from webui.main import app
+
+        mock_agent_service.verify_websocket_access.side_effect = AccessDeniedError(
+            user_id="1", resource_type="agent_session", resource_id="abc12345"
         )
 
         with (
@@ -142,43 +172,7 @@ class TestAgentWebSocketEndpoint:
             client = TestClient(app)
             # WebSocket close raises generic exception from starlette
             with pytest.raises(Exception):  # noqa: B017, PT011
-                with client.websocket_connect(
-                    "/ws/agents/invalid", subprotocols=[f"access_token.{auth_token}"]
-                ):
-                    pass
-
-    @pytest.mark.asyncio()
-    async def test_connection_access_denied(
-        self, mock_agent_service: AsyncMock, mock_user: dict, auth_token: str
-    ) -> None:
-        """Connection to another user's session should be rejected."""
-        from webui.main import app
-
-        mock_agent_service.verify_websocket_access.side_effect = AccessDeniedError("Access denied")
-
-        with (
-            patch("webui.main.pg_connection_manager") as mock_pg,
-            patch("webui.main.ws_manager") as mock_ws,
-            patch("webui.ws.agents.get_current_user_websocket", return_value=mock_user),
-            patch("webui.ws.agents.create_agent_service", return_value=mock_agent_service),
-            patch("webui.ws.agents.get_db") as mock_get_db,
-        ):
-            mock_pg.initialize = AsyncMock()
-            mock_ws.startup = AsyncMock()
-            mock_ws.shutdown = AsyncMock()
-
-            async def mock_db_gen():
-                mock_db = AsyncMock()
-                yield mock_db
-
-            mock_get_db.return_value = mock_db_gen()
-
-            client = TestClient(app)
-            # WebSocket close raises generic exception from starlette
-            with pytest.raises(Exception):  # noqa: B017, PT011
-                with client.websocket_connect(
-                    "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-                ):
+                with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]):
                     pass
 
     @pytest.mark.asyncio()
@@ -229,9 +223,7 @@ class TestAgentWebSocketEndpoint:
             mock_get_db.return_value = mock_db_gen()
 
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-            ) as ws:
+            with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]) as ws:
                 # Send execute message
                 ws.send_json({"type": "execute", "prompt": "Hello"})
 
@@ -291,9 +283,7 @@ class TestAgentWebSocketEndpoint:
             mock_get_db.return_value = mock_db_gen()
 
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-            ) as ws:
+            with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]) as ws:
                 # Send execute message
                 ws.send_json({"type": "execute", "prompt": "Hello"})
 
@@ -339,9 +329,7 @@ class TestAgentWebSocketEndpoint:
             mock_get_db.return_value = mock_db_gen()
 
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-            ) as ws:
+            with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]) as ws:
                 # Send execute message
                 ws.send_json({"type": "execute", "prompt": "Hello"})
 
@@ -377,9 +365,7 @@ class TestAgentWebSocketEndpoint:
             mock_get_db.return_value = mock_db_gen()
 
             client = TestClient(app)
-            with client.websocket_connect(
-                "/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]
-            ) as ws:
+            with client.websocket_connect("/ws/agents/abc12345", subprotocols=[f"access_token.{auth_token}"]) as ws:
                 # Send unknown message type
                 ws.send_json({"type": "unknown_type"})
 

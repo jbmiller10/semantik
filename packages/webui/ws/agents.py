@@ -184,10 +184,12 @@ async def agent_websocket_endpoint(websocket: WebSocket, session_id: str) -> Non
             elif msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
             else:
-                await websocket.send_json({
-                    "type": "error",
-                    "error": {"message": f"Unknown message type: {msg_type}"},
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "error": {"message": f"Unknown message type: {msg_type}"},
+                    }
+                )
 
     except WebSocketDisconnect:
         pass
@@ -253,10 +255,12 @@ async def _handle_execute(
     except Exception as e:
         logger.error("Execute error: %s", e, exc_info=True)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.send_json({
-                "type": "error",
-                "error": {"message": str(e), "code": type(e).__name__},
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error": {"message": str(e), "code": type(e).__name__},
+                }
+            )
 
 
 async def _handle_interrupt(
@@ -277,7 +281,9 @@ async def _handle_interrupt(
     except Exception as e:
         logger.error("Interrupt error: %s", e, exc_info=True)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.send_json({
-                "type": "error",
-                "error": {"message": str(e), "code": type(e).__name__},
-            })
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "error": {"message": str(e), "code": type(e).__name__},
+                }
+            )

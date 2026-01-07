@@ -258,7 +258,11 @@ class AgentService:
         if not session:
             raise SessionNotFoundError(f"Session not found: {session_id}")
         if session.user_id is not None and session.user_id != user_id:
-            raise AccessDeniedError("Access denied to session")
+            raise AccessDeniedError(
+                user_id=str(user_id),
+                resource_type="agent_session",
+                resource_id=session_id,
+            )
         return session
 
     # =========================================================================

@@ -68,7 +68,6 @@ from .api.v2 import (
 )
 from .api.v2.directory_scan import directory_scan_websocket
 from .api.v2.operations import operation_websocket, operation_websocket_global
-from .ws.agents import agent_websocket_endpoint
 from .background_tasks import start_background_tasks, stop_background_tasks
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation
 from .middleware.csp import CSPMiddleware
@@ -76,6 +75,7 @@ from .middleware.exception_handlers import register_global_exception_handlers
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .websocket.scalable_manager import scalable_ws_manager as ws_manager
+from .ws.agents import agent_websocket_endpoint
 
 logger = logging.getLogger(__name__)
 
