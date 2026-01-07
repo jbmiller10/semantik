@@ -110,9 +110,7 @@ class TestClaudeAgentAdapterLifecycle:
 
     @pytest.mark.asyncio()
     @pytest.mark.skip(reason="SDK unavailability is hard to test with module mocking")
-    async def test_initialize_sdk_not_installed(
-        self, mock_claude_sdk: ModuleType  # noqa: ARG002
-    ) -> None:
+    async def test_initialize_sdk_not_installed(self, mock_claude_sdk: ModuleType) -> None:  # noqa: ARG002
         """Test initialization fails when SDK not installed.
 
         Note: This test is skipped because Python's module caching makes it
@@ -471,12 +469,14 @@ class TestClaudeAgentAdapterOptions:
         """Test building options from adapter config."""
         from shared.agents.adapters.claude import ClaudeAgentAdapter
 
-        adapter = ClaudeAgentAdapter({
-            "model": "claude-haiku-3-5-20241022",
-            "system_prompt": "Be concise",
-            "max_turns": 5,
-            "permission_mode": "bypassPermissions",
-        })
+        adapter = ClaudeAgentAdapter(
+            {
+                "model": "claude-haiku-3-5-20241022",
+                "system_prompt": "Be concise",
+                "max_turns": 5,
+                "permission_mode": "bypassPermissions",
+            }
+        )
         adapter._build_options()
 
         call_kwargs = mock_claude_sdk.ClaudeAgentOptions.call_args.kwargs
