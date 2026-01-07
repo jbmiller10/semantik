@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from .adapters import (
     get_config_schema,
+    manifest_from_agent_plugin,
     manifest_from_chunking_plugin,
     manifest_from_connector_plugin,
     manifest_from_embedding_plugin,
@@ -39,9 +40,10 @@ _ENV_FLAG_BY_TYPE = {
     "connector": "SEMANTIK_ENABLE_CONNECTOR_PLUGINS",
     "reranker": "SEMANTIK_ENABLE_RERANKER_PLUGINS",
     "extractor": "SEMANTIK_ENABLE_EXTRACTOR_PLUGINS",
+    "agent": "SEMANTIK_ENABLE_AGENT_PLUGINS",
 }
 
-_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor"}
+_DEFAULT_PLUGIN_TYPES = {"embedding", "chunking", "connector", "reranker", "extractor", "agent"}
 
 _PLUGIN_LOAD_LOCK = Lock()
 
@@ -122,6 +124,8 @@ def _load_builtin_plugins(plugin_types: set[str]) -> None:
         _register_builtin_reranker_plugins()
     if "extractor" in plugin_types:
         _register_builtin_extractor_plugins()
+    if "agent" in plugin_types:
+        _register_builtin_agent_plugins()
 
 
 def _register_builtin_embedding_plugins() -> None:
@@ -233,6 +237,13 @@ def _register_builtin_extractor_plugins() -> None:
         )
     except ImportError:
         logger.debug("Keyword extractor plugin not available")
+
+
+def _register_builtin_agent_plugins() -> None:
+    """Register built-in agent plugins.
+
+    Placeholder - will be populated in Phase 3 when ClaudeAgentPlugin is implemented.
+    """
 
 
 def _load_external_plugins(
@@ -355,6 +366,8 @@ def _register_plugin_class(
         _register_reranker_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     elif plugin_type == "extractor":
         _register_extractor_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
+    elif plugin_type == "agent":
+        _register_agent_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     else:
         if issubclass(plugin_cls, SemanticPlugin):
             manifest = plugin_cls.get_manifest()
@@ -597,6 +610,38 @@ def _register_extractor_plugin(
         return
 
     # Extractor activation uses plugin registry; no extra registration required.
+
+
+def _register_agent_plugin(
+    plugin_cls: type,
+    source: PluginSource,
+    entry_point: str | None,
+    disabled_plugin_ids: set[str] | None,
+) -> None:
+    """Register an agent plugin."""
+    plugin_id = getattr(plugin_cls, "PLUGIN_ID", None) or ""
+    if not plugin_id:
+        logger.warning("Skipping agent without PLUGIN_ID: %s", plugin_cls)
+        return
+
+    manifest = manifest_from_agent_plugin(plugin_cls, plugin_id)
+    record_registered = _register_plugin_record(
+        plugin_type="agent",
+        plugin_id=plugin_id,
+        plugin_cls=plugin_cls,
+        manifest=manifest,
+        source=source,
+        entry_point=entry_point,
+    )
+
+    if not record_registered:
+        return
+
+    if source == PluginSource.EXTERNAL and disabled_plugin_ids and plugin_id in disabled_plugin_ids:
+        logger.info("Agent plugin '%s' disabled; skipping activation", plugin_id)
+        return
+
+    # Agent activation uses plugin registry; no extra registration required.
 
 
 def _parse_dependency(dep: str | dict[str, Any] | PluginDependency) -> PluginDependency:

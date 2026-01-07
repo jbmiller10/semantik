@@ -79,6 +79,8 @@ chunking-hybrid = "shared.chunking.domain.services.chunking_strategies.hybrid:Hy
 connector-directory = "shared.connectors.local:LocalFileConnector"
 connector-git = "shared.connectors.git:GitConnector"
 connector-imap = "shared.connectors.imap:ImapConnector"
+# Agent plugins (Phase 3)
+# agent-claude = "shared.plugins.builtins.claude_agent:ClaudeAgentPlugin"
 
 [dependency-groups]
 dev = [
