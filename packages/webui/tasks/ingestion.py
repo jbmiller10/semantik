@@ -220,6 +220,7 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                     # Set user_id on updater for user-channel notifications
                     if operation.get("user_id"):
                         updater.set_user_id(operation["user_id"])
+                    updater.set_collection_id(operation["collection_id"])
 
                     await operation_repo.update_status(operation_id, OperationStatus.PROCESSING)
                     await updater.send_update(
@@ -245,7 +246,9 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         "qdrant_collections": getattr(collection_obj, "qdrant_collections", []),
                         "qdrant_staging": getattr(collection_obj, "qdrant_staging", []),
                         "status": getattr(collection_obj, "status", CollectionStatus.PENDING),
+                        "document_count": getattr(collection_obj, "document_count", 0),
                         "vector_count": getattr(collection_obj, "vector_count", 0),
+                        "total_size_bytes": getattr(collection_obj, "total_size_bytes", 0) or 0,
                         "extraction_config": getattr(collection_obj, "extraction_config", None),
                         "default_reranker_id": getattr(collection_obj, "default_reranker_id", None),
                     }
@@ -1084,6 +1087,52 @@ async def _process_append_operation_impl(
             },
         )
 
+        # Update collection stats immediately after document registration so the UI reflects
+        # newly discovered files even while embedding/indexing is still running.
+        collection_stats: dict[str, int] | None = None
+        try:
+            doc_stats = await document_repo.get_stats_by_collection(collection["id"])
+            document_count = int(doc_stats.get("total_documents") or 0)
+            total_size_bytes = int(doc_stats.get("total_size_bytes") or 0)
+
+            # Vector counts come from Qdrant; during scanning-only phases this may remain unchanged.
+            vector_count = int(collection.get("vector_count") or 0)
+            vector_store_name = collection.get("vector_store_name")
+            if vector_store_name:
+                try:
+                    manager = resolve_qdrant_manager()
+                    qdrant_client = manager.get_client()
+                    qdrant_info = qdrant_client.get_collection(vector_store_name)
+                    vector_count = int(getattr(qdrant_info, "points_count", 0) or 0)
+                except Exception as exc:  # pragma: no cover - best effort only
+                    logger.debug("Failed to refresh Qdrant vector count after scan: %s", exc, exc_info=True)
+
+            await collection_repo.update_stats(
+                collection["id"],
+                document_count=document_count,
+                vector_count=vector_count,
+                total_size_bytes=total_size_bytes,
+            )
+            await session.commit()
+
+            collection["document_count"] = document_count
+            collection["vector_count"] = vector_count
+            collection["total_size_bytes"] = total_size_bytes
+            collection_stats = {
+                "document_count": document_count,
+                "vector_count": vector_count,
+                "total_size_bytes": total_size_bytes,
+            }
+        except Exception as exc:  # pragma: no cover - best effort only
+            logger.debug("Failed to refresh collection stats after scan: %s", exc, exc_info=True)
+            try:
+                await session.rollback()
+            except Exception:  # pragma: no cover
+                pass
+
+        if collection_stats:
+            await updater.send_update("collection_stats", {"stats": collection_stats})
+
         for _ in range(scan_stats["new_documents_registered"]):
             record_document_processed("append", "registered")
         for _ in range(scan_stats["documents_updated"]):
@@ -1148,6 +1197,11 @@ async def _process_append_operation_impl(
             manager = resolve_qdrant_manager()
             qdrant_client = manager.get_client()
 
+            base_vector_count = int(collection.get("vector_count") or 0)
+            stable_document_count = int(collection.get("document_count") or 0)
+            stable_total_size_bytes = int(collection.get("total_size_bytes") or 0)
+            last_stats_update_ts = 0.0
+
             processed_count = 0
             total_vectors_created = 0
 
@@ -1182,6 +1236,7 @@ async def _process_append_operation_impl(
                     executor_pool=executor_pool,
                     new_doc_contents=new_doc_contents,
                     document_repo=document_repo,
+                    collection_repo=collection_repo,
                     qdrant_collection_name=qdrant_collection_name,
                     embedding_model=embedding_model,
                     quantization=quantization,
@@ -1458,6 +1513,20 @@ async def _process_append_operation_impl(
                     processed_count += 1
                     total_vectors_created += len(chunks)
 
+                    vector_count_estimate = base_vector_count + total_vectors_created
+
+                    # Best-effort periodic persistence for polling-based UIs.
+                    # WebSocket clients also receive the estimate in the payload below.
+                    if processed_count % 10 == 0 or (time.time() - last_stats_update_ts) >= 5.0:
+                        try:
+                            await collection_repo.update_stats(
+                                collection["id"],
+                                vector_count=vector_count_estimate,
+                            )
+                            last_stats_update_ts = time.time()
+                        except Exception as stats_exc:  # pragma: no cover - best effort only
+                            logger.debug("Failed to update collection stats during indexing: %s", stats_exc, exc_info=True)
+
                     await updater.send_update(
                         "document_processed",
                         {
@@ -1465,6 +1534,11 @@ async def _process_append_operation_impl(
                             "failed": failed_count,
                             "total": len(documents),
                             "current_document": doc_identifier,
+                            "stats": {
+                                "document_count": stable_document_count,
+                                "vector_count": vector_count_estimate,
+                                "total_size_bytes": stable_total_size_bytes,
+                            },
                         },
                     )
 

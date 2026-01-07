@@ -109,10 +109,15 @@ class CeleryTaskWithOperationUpdates:
             or f"celery-worker:{socket.gethostname()}"
         )
         self.user_id: int | None = None
+        self.collection_id: str | None = None
 
     def set_user_id(self, user_id: int | None) -> None:
         """Set the user ID for publishing updates to the user channel."""
         self.user_id = user_id
+
+    def set_collection_id(self, collection_id: str | None) -> None:
+        """Set the collection ID for enriching progress messages."""
+        self.collection_id = collection_id
 
     async def _get_redis(self) -> redis.Redis:
         """Get or create Redis client."""
@@ -128,6 +133,10 @@ class CeleryTaskWithOperationUpdates:
 
             # Avoid mutating the caller's payload; keep data exactly as supplied
             payload = dict(data) if isinstance(data, dict) else data
+            if isinstance(payload, dict):
+                payload.setdefault("operation_id", self.operation_id)
+                if self.collection_id:
+                    payload.setdefault("collection_id", self.collection_id)
 
             message = {"timestamp": datetime.now(UTC).isoformat(), "type": update_type, "data": payload}
             message_json = json.dumps(message)

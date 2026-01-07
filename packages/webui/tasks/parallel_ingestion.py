@@ -681,7 +681,9 @@ async def result_processor(
     result_queue: asyncio.Queue,
     qdrant_collection_name: str,
     collection_id: str,
+    collection: dict[str, Any],
     document_repo: DocumentRepository,
+    collection_repo: Any | None,
     stats: dict[str, int],
     stats_lock: asyncio.Lock,
     db_lock: asyncio.Lock,
@@ -772,6 +774,27 @@ async def result_processor(
             # Send progress update
             if updater and stats["processed"] % 10 == 0:
                 total = stats["processed"] + stats["failed"] + stats["skipped"]
+                base_vector_count = int(collection.get("vector_count") or 0)
+                document_count = int(collection.get("document_count") or 0)
+                total_size_bytes = int(collection.get("total_size_bytes") or 0)
+                vector_count = base_vector_count + int(stats["vectors"] or 0)
+
+                if collection_repo is not None:
+                    async with db_lock:
+                        try:
+                            await collection_repo.update_stats(
+                                collection_id,
+                                document_count=document_count,
+                                vector_count=vector_count,
+                                total_size_bytes=total_size_bytes,
+                            )
+                            await document_repo.session.commit()
+                        except Exception:
+                            await _best_effort(
+                                f"collection stats rollback for {collection_id}",
+                                document_repo.session.rollback(),
+                            )
+
                 await updater.send_update(
                     "processing_progress",
                     {
@@ -780,6 +803,11 @@ async def result_processor(
                         "skipped": stats["skipped"],
                         "vectors_created": stats["vectors"],
                         "total_processed": total,
+                        "stats": {
+                            "document_count": document_count,
+                            "vector_count": vector_count,
+                            "total_size_bytes": total_size_bytes,
+                        },
                     },
                 )
 
@@ -810,6 +838,7 @@ async def process_documents_parallel(
     executor_pool: Any,
     new_doc_contents: dict[str, str],
     document_repo: DocumentRepository,
+    collection_repo: Any | None,
     qdrant_collection_name: str,
     embedding_model: str,
     quantization: str,
@@ -907,7 +936,9 @@ async def process_documents_parallel(
             result_queue=result_queue,
             qdrant_collection_name=qdrant_collection_name,
             collection_id=collection["id"],
+            collection=collection,
             document_repo=document_repo,
+            collection_repo=collection_repo,
             stats=stats,
             stats_lock=stats_lock,
             db_lock=db_lock,
