@@ -237,6 +237,30 @@ class AgentService:
 
         return record.plugin_class.get_capabilities()
 
+    async def verify_websocket_access(self, session_id: str, user_id: int) -> AgentSession:
+        """Verify user has access to session for WebSocket connection.
+
+        Args:
+            session_id: External session ID.
+            user_id: User ID to verify ownership.
+
+        Returns:
+            AgentSession if access is allowed.
+
+        Raises:
+            SessionNotFoundError: If session doesn't exist.
+            AccessDeniedError: If user doesn't own the session.
+        """
+        from shared.agents.exceptions import SessionNotFoundError
+        from shared.database.exceptions import AccessDeniedError
+
+        session = await self._session_repo.get_by_external_id(session_id)
+        if not session:
+            raise SessionNotFoundError(f"Session not found: {session_id}")
+        if session.user_id is not None and session.user_id != user_id:
+            raise AccessDeniedError("Access denied to session")
+        return session
+
     # =========================================================================
     # Execution
     # =========================================================================

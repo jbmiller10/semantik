@@ -68,6 +68,7 @@ from .api.v2 import (
 )
 from .api.v2.directory_scan import directory_scan_websocket
 from .api.v2.operations import operation_websocket, operation_websocket_global
+from .ws.agents import agent_websocket_endpoint
 from .background_tasks import start_background_tasks, stop_background_tasks
 from .middleware.correlation import CorrelationMiddleware, configure_logging_with_correlation
 from .middleware.csp import CSPMiddleware
@@ -386,6 +387,10 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     @app.websocket("/ws/directory-scan/{scan_id}")
     async def directory_scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await directory_scan_websocket(websocket, scan_id)
+
+    @app.websocket("/ws/agents/{session_id}")
+    async def agent_ws(websocket: WebSocket, session_id: str) -> None:
+        await agent_websocket_endpoint(websocket, session_id)
 
     # Add health check endpoint
     @app.get("/health")
