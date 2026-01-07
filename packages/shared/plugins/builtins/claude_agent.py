@@ -263,27 +263,29 @@ class ClaudeAgentPlugin(AgentPlugin):
 
         # Extend with Claude-specific fields
         properties = base_schema.get("properties", {})
-        properties.update({
-            "model": {
-                "type": "string",
-                "enum": list(ClaudeAgentAdapter.SUPPORTED_MODELS.keys()),
-                "default": ClaudeAgentAdapter.DEFAULT_MODEL,
-                "description": "Claude model to use for inference",
-            },
-            "max_turns": {
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100,
-                "default": 10,
-                "description": "Maximum number of agentic turns",
-            },
-            "permission_mode": {
-                "type": "string",
-                "enum": ["default", "bypassPermissions"],
-                "default": "default",
-                "description": "SDK permission mode for tool use",
-            },
-        })
+        properties.update(
+            {
+                "model": {
+                    "type": "string",
+                    "enum": list(ClaudeAgentAdapter.SUPPORTED_MODELS.keys()),
+                    "default": ClaudeAgentAdapter.DEFAULT_MODEL,
+                    "description": "Claude model to use for inference",
+                },
+                "max_turns": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10,
+                    "description": "Maximum number of agentic turns",
+                },
+                "permission_mode": {
+                    "type": "string",
+                    "enum": ["default", "bypassPermissions"],
+                    "default": "default",
+                    "description": "SDK permission mode for tool use",
+                },
+            }
+        )
 
         return {
             **base_schema,

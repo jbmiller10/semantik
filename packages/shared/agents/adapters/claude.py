@@ -561,17 +561,21 @@ class ClaudeAgentAdapter(AgentAdapter):
         for tool in tools:
             if hasattr(tool, "definition"):
                 definition = tool.definition
-                mcp_tools.append({
-                    "name": definition.name,
-                    "description": definition.description,
-                    "input_schema": definition.to_json_schema() if hasattr(definition, "to_json_schema") else {},
-                })
+                mcp_tools.append(
+                    {
+                        "name": definition.name,
+                        "description": definition.description,
+                        "input_schema": definition.to_json_schema() if hasattr(definition, "to_json_schema") else {},
+                    }
+                )
             elif hasattr(tool, "name") and hasattr(tool, "description"):
-                mcp_tools.append({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": getattr(tool, "input_schema", {}),
-                })
+                mcp_tools.append(
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": getattr(tool, "input_schema", {}),
+                    }
+                )
 
         # Return as MCP server config
         return {"semantik": {"tools": mcp_tools}}
