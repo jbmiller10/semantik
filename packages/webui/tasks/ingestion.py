@@ -1525,7 +1525,9 @@ async def _process_append_operation_impl(
                             )
                             last_stats_update_ts = time.time()
                         except Exception as stats_exc:  # pragma: no cover - best effort only
-                            logger.debug("Failed to update collection stats during indexing: %s", stats_exc, exc_info=True)
+                            logger.debug(
+                                "Failed to update collection stats during indexing: %s", stats_exc, exc_info=True
+                            )
 
                     await updater.send_update(
                         "document_processed",
