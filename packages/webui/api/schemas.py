@@ -492,6 +492,8 @@ class SearchResult(BaseModel):
     metadata: dict[str, Any]
     file_name: str
     file_path: str
+    chunk_index: int | None = None
+    total_chunks: int | None = None
 
 
 class SearchResponse(BaseModel):

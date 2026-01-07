@@ -23,6 +23,7 @@ import httpx
 from qdrant_client.models import PointStruct
 
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
+from webui.tasks.qdrant_utils import build_chunk_point
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -595,18 +596,16 @@ async def _process_reindex_operation_impl(
                                     raise ValueError(error_msg) from exc
 
                     points = []
+                    total_chunks = len(all_chunks)
                     for i, chunk in enumerate(all_chunks):
-                        point = PointStruct(
-                            id=str(uuid.uuid4()),
-                            vector=embeddings[i],
-                            payload={
-                                "collection_id": collection["id"],
-                                "doc_id": doc_id,
-                                "chunk_id": chunk["chunk_id"],
-                                "path": file_path,
-                                "content": chunk["text"],
-                                "metadata": chunk.get("metadata", {}),
-                            },
+                        point = build_chunk_point(
+                            collection_id=collection["id"],
+                            doc_id=doc_id,
+                            chunk=chunk,
+                            chunk_index=chunk.get("chunk_index", i),
+                            total_chunks=total_chunks,
+                            path=file_path,
+                            embedding=embeddings[i],
                         )
                         points.append(point)
 

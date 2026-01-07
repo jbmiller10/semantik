@@ -74,6 +74,10 @@ async def multi_collection_search(
         # Convert service result to API response format
         final_results = []
         for res in result["results"]:
+            # Get chunk_index from payload or metadata
+            chunk_index = res.get("chunk_index") or res.get("metadata", {}).get("chunk_index")
+            total_chunks = res.get("total_chunks") or res.get("metadata", {}).get("total_chunks")
+
             final_results.append(
                 CollectionSearchResult(
                     document_id=res.get("doc_id", ""),
@@ -88,6 +92,8 @@ async def multi_collection_search(
                     collection_id=res.get("collection_id"),
                     collection_name=res.get("collection_name"),
                     embedding_model=res.get("embedding_model", ""),
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
                 )
             )
 

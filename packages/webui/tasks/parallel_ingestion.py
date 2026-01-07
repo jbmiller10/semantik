@@ -22,6 +22,7 @@ import psutil
 from qdrant_client.models import PointStruct
 
 from shared.database.models import DocumentStatus
+from webui.tasks.qdrant_utils import build_chunk_point
 from webui.tasks.utils import _build_internal_api_headers
 
 if TYPE_CHECKING:
@@ -712,18 +713,16 @@ async def result_processor(
 
             # Build points
             points = []
+            total_chunks = len(result.chunks)
             for i, chunk in enumerate(result.chunks):
-                point = PointStruct(
-                    id=str(uuid.uuid4()),
-                    vector=result.embeddings[i],
-                    payload={
-                        "collection_id": collection_id,
-                        "doc_id": result.doc_id,
-                        "chunk_id": chunk["chunk_id"],
-                        "path": result.doc_identifier,
-                        "content": chunk.get("text") or chunk.get("content") or "",
-                        "metadata": chunk.get("metadata", {}),
-                    },
+                point = build_chunk_point(
+                    collection_id=collection_id,
+                    doc_id=result.doc_id,
+                    chunk=chunk,
+                    chunk_index=chunk.get("chunk_index", i),
+                    total_chunks=total_chunks,
+                    path=result.doc_identifier,
+                    embedding=result.embeddings[i],
                 )
                 points.append(point)
 

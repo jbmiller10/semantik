@@ -22,6 +22,7 @@ import psutil
 from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
 
 from shared.config import settings
+from webui.tasks.qdrant_utils import build_chunk_point
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -1399,18 +1400,16 @@ async def _process_append_operation_impl(
                         await session.commit()
 
                     points = []
+                    total_chunks = len(chunks)
                     for i, chunk in enumerate(chunks):
-                        point = PointStruct(
-                            id=str(uuid.uuid4()),
-                            vector=embeddings[i],
-                            payload={
-                                "collection_id": collection["id"],
-                                "doc_id": doc.id,
-                                "chunk_id": chunk["chunk_id"],
-                                "path": doc_identifier,
-                                "content": chunk["text"],
-                                "metadata": chunk.get("metadata", {}),
-                            },
+                        point = build_chunk_point(
+                            collection_id=collection["id"],
+                            doc_id=doc.id,
+                            chunk=chunk,
+                            chunk_index=chunk.get("chunk_index", i),
+                            total_chunks=total_chunks,
+                            path=doc_identifier,
+                            embedding=embeddings[i],
                         )
                         points.append(point)
 

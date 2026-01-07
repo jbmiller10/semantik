@@ -63,7 +63,8 @@ export interface SearchResult {
   collection_name: string;
   document_id: string;
   chunk_id: string;
-  chunk_index: number;
+  chunk_index?: number;
+  total_chunks?: number;
   score: number;
   original_score: number;
   reranked_score?: number;

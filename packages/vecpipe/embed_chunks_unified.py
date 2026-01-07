@@ -145,9 +145,11 @@ async def process_document_async(
                     "path": path,
                     "content": text,  # Add full text content for hybrid search
                     "metadata": metadata,  # Include metadata from extraction
+                    "chunk_index": metadata.get("chunk_index", idx) if metadata else idx,
+                    "total_chunks": metadata.get("total_chunks") if metadata else None,
                 }
-                for doc_id, chunk_id, path, text, metadata in zip(
-                    data["doc_ids"], data["chunk_ids"], data["paths"], texts, data["metadata"], strict=False
+                for idx, (doc_id, chunk_id, path, text, metadata) in enumerate(
+                    zip(data["doc_ids"], data["chunk_ids"], data["paths"], texts, data["metadata"], strict=False)
                 )
             ],
         }
