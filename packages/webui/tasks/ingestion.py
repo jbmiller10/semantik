@@ -1491,6 +1491,7 @@ async def _process_append_operation_impl(
                 collection["id"],
                 document_count=current_doc_count,
                 vector_count=current_vector_count,
+                total_size_bytes=doc_stats.get("total_size_bytes", 0),
             )
 
             logger.info(
