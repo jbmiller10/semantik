@@ -106,9 +106,13 @@ def process_collection_operation(self: Any, operation_id: str) -> dict[str, Any]
     try:
         loop = tasks_ns.asyncio.get_event_loop()
         if loop.is_closed():
+            # Reset connection manager to avoid connections bound to closed loop
+            pg_connection_manager.reset()
             loop = tasks_ns.asyncio.new_event_loop()
             tasks_ns.asyncio.set_event_loop(loop)
     except RuntimeError:
+        # Reset connection manager to avoid connections bound to closed loop
+        pg_connection_manager.reset()
         loop = tasks_ns.asyncio.new_event_loop()
         tasks_ns.asyncio.set_event_loop(loop)
 

@@ -181,6 +181,8 @@ def dispatch_due_syncs(self: Any) -> dict[str, Any]:  # noqa: ARG001
 
     try:
         # Run the async implementation
+        # Reset connection manager to ensure fresh connections for new event loop
+        pg_connection_manager.reset()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
