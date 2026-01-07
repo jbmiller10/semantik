@@ -163,9 +163,6 @@ class TestAgentSessionRepository:
         mock_list_result = MagicMock()
         mock_list_result.scalars.return_value.all.return_value = [mock_agent_session]
 
-        # Mock the count query result
-        mock_count_result = MagicMock()
-
         mock_session.execute = AsyncMock(return_value=mock_list_result)
         mock_session.scalar = AsyncMock(return_value=1)
 
@@ -427,9 +424,9 @@ class TestAgentSessionModel:
             message_count=5,
             total_cost_usd=1000,  # $0.10 stored as cents * 100
         )
-        session.created_at = datetime(2026, 1, 7, 10, 0, 0)
-        session.updated_at = datetime(2026, 1, 7, 10, 0, 0)
-        session.last_activity_at = datetime(2026, 1, 7, 10, 0, 0)
+        session.created_at = datetime(2026, 1, 7, 10, 0, 0, tzinfo=UTC)
+        session.updated_at = datetime(2026, 1, 7, 10, 0, 0, tzinfo=UTC)
+        session.last_activity_at = datetime(2026, 1, 7, 10, 0, 0, tzinfo=UTC)
 
         result = session.to_dict()
 
@@ -455,7 +452,7 @@ class TestAgentSessionMessageModel:
             content="Hello, world!",
             cost_usd=100,  # $0.01 stored as cents * 100
         )
-        message.created_at = datetime(2026, 1, 7, 10, 0, 0)
+        message.created_at = datetime(2026, 1, 7, 10, 0, 0, tzinfo=UTC)
 
         result = message.to_dict()
 
