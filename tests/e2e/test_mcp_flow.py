@@ -457,9 +457,7 @@ class TestMCPScopeEnforcement:
                 )
             ]
         )
-        server.api_client.get_document = AsyncMock(
-            return_value={"id": "doc-1", "file_name": "test.md"}
-        )
+        server.api_client.get_document = AsyncMock(return_value={"id": "doc-1", "file_name": "test.md"})
 
         try:
             # Access allowed collection
@@ -520,9 +518,7 @@ class TestMCPErrorHandling:
     async def test_search_with_missing_query(self) -> None:
         """Test that search fails gracefully without query."""
         server = SemantikMCPServer(webui_url="http://localhost:8080", auth_token="test-token")
-        server.api_client.get_profiles = AsyncMock(
-            return_value=[_make_profile("docs")]
-        )
+        server.api_client.get_profiles = AsyncMock(return_value=[_make_profile("docs")])
 
         try:
             result = await server.call_tool("search_docs", {})
@@ -554,9 +550,7 @@ class TestMCPErrorHandling:
     async def test_search_nonexistent_profile(self) -> None:
         """Test searching with a profile that doesn't exist."""
         server = SemantikMCPServer(webui_url="http://localhost:8080", auth_token="test-token")
-        server.api_client.get_profiles = AsyncMock(
-            return_value=[_make_profile("coding")]
-        )
+        server.api_client.get_profiles = AsyncMock(return_value=[_make_profile("coding")])
 
         try:
             result = await server.call_tool("search_nonexistent", {"query": "test"})
@@ -572,9 +566,7 @@ class TestMCPErrorHandling:
     async def test_profile_with_no_collections(self) -> None:
         """Test searching a profile with no collections configured."""
         server = SemantikMCPServer(webui_url="http://localhost:8080", auth_token="test-token")
-        server.api_client.get_profiles = AsyncMock(
-            return_value=[_make_profile("empty", collections=[])]
-        )
+        server.api_client.get_profiles = AsyncMock(return_value=[_make_profile("empty", collections=[])])
 
         try:
             result = await server.call_tool("search_empty", {"query": "test"})
@@ -741,9 +733,7 @@ class TestMCPCaching:
         monkeypatch.setattr("webui.mcp.server.time.monotonic", fake_monotonic)
 
         server = SemantikMCPServer(webui_url="http://localhost:8080", auth_token="test-token")
-        server.api_client.get_profiles = AsyncMock(
-            return_value=[_make_profile("docs")]
-        )
+        server.api_client.get_profiles = AsyncMock(return_value=[_make_profile("docs")])
 
         try:
             # Multiple list_tools calls should reuse cache
@@ -768,9 +758,7 @@ class TestMCPCaching:
         monkeypatch.setattr("webui.mcp.server.time.monotonic", fake_monotonic)
 
         server = SemantikMCPServer(webui_url="http://localhost:8080", auth_token="test-token")
-        server.api_client.get_profiles = AsyncMock(
-            return_value=[_make_profile("docs")]
-        )
+        server.api_client.get_profiles = AsyncMock(return_value=[_make_profile("docs")])
 
         try:
             await server.list_tools()  # First call - cache miss

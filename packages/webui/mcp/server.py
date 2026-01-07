@@ -314,13 +314,15 @@ class SemantikMCPServer:
         profile_summaries: list[dict[str, Any]] = []
         for profile in profiles:
             collections = profile.get("collections") or []
-            profile_summaries.append({
-                "name": profile.get("name"),
-                "enabled": profile.get("enabled", False),
-                "collection_count": len(collections),
-                "search_type": profile.get("search_type", "semantic"),
-                "use_reranker": profile.get("use_reranker", True),
-            })
+            profile_summaries.append(
+                {
+                    "name": profile.get("name"),
+                    "enabled": profile.get("enabled", False),
+                    "collection_count": len(collections),
+                    "search_type": profile.get("search_type", "semantic"),
+                    "use_reranker": profile.get("use_reranker", True),
+                }
+            )
         diagnostics["profiles"] = profile_summaries
         diagnostics["available_tools"] = (
             len(profile_summaries)  # search_* tools

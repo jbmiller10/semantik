@@ -495,10 +495,10 @@ async def test_profile_search_type_options(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_get_profile_owned_by_other_user_returns_403(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     collection_factory,
     db_session,
@@ -542,10 +542,10 @@ async def test_get_profile_owned_by_other_user_returns_403(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_update_profile_owned_by_other_user_returns_403(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     collection_factory,
     db_session,
@@ -590,10 +590,10 @@ async def test_update_profile_owned_by_other_user_returns_403(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_delete_profile_owned_by_other_user_returns_403(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     collection_factory,
     db_session,
@@ -637,10 +637,10 @@ async def test_delete_profile_owned_by_other_user_returns_403(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_get_profile_config_owned_by_other_user_returns_403(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     collection_factory,
     db_session,
@@ -752,10 +752,10 @@ async def test_list_profiles_only_returns_owned_profiles(
 
 
 @pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
 async def test_create_profile_with_unowned_collection_returns_403(
     api_client: AsyncClient,
     api_auth_headers: dict[str, str],
-    test_user_db,
     other_user_db,
     collection_factory,
 ) -> None:
