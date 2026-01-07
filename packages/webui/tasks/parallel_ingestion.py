@@ -12,14 +12,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import psutil
-from qdrant_client.models import PointStruct
 
 from shared.database.models import DocumentStatus
 from webui.tasks.qdrant_utils import build_chunk_point

@@ -14,13 +14,11 @@ import gc
 import hashlib
 import json
 import time
-import uuid
 from datetime import UTC, datetime
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 import httpx
-from qdrant_client.models import PointStruct
 
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 from webui.tasks.qdrant_utils import build_chunk_point

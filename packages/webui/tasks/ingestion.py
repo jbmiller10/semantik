@@ -19,10 +19,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import psutil
-from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue, PointStruct
+from qdrant_client.models import FieldCondition, Filter, FilterSelector, MatchValue
 
 from shared.config import settings
-from webui.tasks.qdrant_utils import build_chunk_point
 from shared.database import pg_connection_manager
 from shared.database.database import ensure_async_sessionmaker
 from shared.metrics.collection_metrics import (
@@ -35,6 +34,7 @@ from shared.metrics.collection_metrics import (
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 from webui.services.connector_factory import ConnectorFactory
 from webui.services.document_registry_service import DocumentRegistryService
+from webui.tasks.qdrant_utils import build_chunk_point
 
 from . import reindex as reindex_tasks
 from .parallel_ingestion import process_documents_parallel
