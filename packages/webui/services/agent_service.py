@@ -386,9 +386,11 @@ class AgentService:
             return db_session
 
         # Create new session
+        # Convert user_id from string to int for database FK constraint
+        user_id_int = int(context.user_id) if context and context.user_id else None
         db_session = await self._session_repo.create(
             agent_plugin_id=plugin_id,
-            user_id=context.user_id if context else None,
+            user_id=user_id_int,
             collection_id=context.collection_id if context else None,
             agent_config=config,
         )
