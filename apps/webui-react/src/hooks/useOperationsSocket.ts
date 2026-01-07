@@ -41,6 +41,7 @@ export function useOperationsSocket() {
                 const data = payload.data || {};
 
                 const operationId = data.operation_id;
+                const collectionId = data.collection_id;
 
                 if (!operationId) {
                     return;
@@ -68,10 +69,11 @@ export function useOperationsSocket() {
 
                 // Validate status before using it to prevent type confusion
                 if (status && isValidOperationStatus(status)) {
-                    updateOperationInCache(operationId, {
-                        status: status,
-                        progress: progress,
-                    });
+                    updateOperationInCache(
+                        operationId,
+                        { status: status, progress: progress },
+                        collectionId // Pass collection_id from message for direct cache invalidation
+                    );
 
                     if (status === 'failed') {
                         addToast({ type: 'error', message: error || `Operation ${operationId} failed` });

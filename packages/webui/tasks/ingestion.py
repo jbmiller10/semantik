@@ -364,7 +364,15 @@ async def _process_collection_operation_async(operation_id: str, celery_task: An
                         collections_total.labels(status=old_status.value).dec()
                         collections_total.labels(status=new_status.value).inc()
 
-                    await updater.send_update("operation_completed", {"status": "completed", "result": result})
+                    await updater.send_update(
+                        "operation_completed",
+                        {
+                            "status": "completed",
+                            "operation_id": operation_id,
+                            "collection_id": collection["id"],
+                            "result": result,
+                        },
+                    )
 
                     logger.info(
                         "Collection operation completed",
