@@ -10,6 +10,7 @@ tests. The implementation leans on utilities consolidated in
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import time
 import uuid
@@ -1125,10 +1126,8 @@ async def _process_append_operation_impl(
             }
         except Exception as exc:  # pragma: no cover - best effort only
             logger.debug("Failed to refresh collection stats after scan: %s", exc, exc_info=True)
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover
                 await session.rollback()
-            except Exception:  # pragma: no cover
-                pass
 
         if collection_stats:
             await updater.send_update("collection_stats", {"stats": collection_stats})
