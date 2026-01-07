@@ -1296,6 +1296,12 @@ async def upsert_points(request: UpsertRequest) -> UpsertResponse:
                 payload_dict["content"] = point.payload.content
             if point.payload.metadata is not None:
                 payload_dict["metadata"] = point.payload.metadata
+            if point.payload.collection_id is not None:
+                payload_dict["collection_id"] = point.payload.collection_id
+            if point.payload.chunk_index is not None:
+                payload_dict["chunk_index"] = point.payload.chunk_index
+            if point.payload.total_chunks is not None:
+                payload_dict["total_chunks"] = point.payload.total_chunks
 
             qdrant_points.append(PointStruct(id=point.id, vector=point.vector, payload=payload_dict))
 
