@@ -474,8 +474,16 @@ async def test_get_tool_not_found(test_client) -> None:
 @pytest.mark.asyncio()
 async def test_list_agents_requires_auth() -> None:
     """GET /api/v2/agents should require authentication."""
+    from fastapi import HTTPException
+
     app = create_test_app()
-    # Don't override auth - requires actual auth
+
+    # Override auth to raise 401 (simulating missing/invalid token)
+    async def raise_unauthorized() -> None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    app.dependency_overrides[get_current_user] = raise_unauthorized
+
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/v2/agents")
@@ -486,8 +494,16 @@ async def test_list_agents_requires_auth() -> None:
 @pytest.mark.asyncio()
 async def test_list_sessions_requires_auth() -> None:
     """GET /api/v2/agents/sessions should require authentication."""
+    from fastapi import HTTPException
+
     app = create_test_app()
-    # Don't override auth - requires actual auth
+
+    # Override auth to raise 401 (simulating missing/invalid token)
+    async def raise_unauthorized() -> None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    app.dependency_overrides[get_current_user] = raise_unauthorized
+
     transport = ASGITransport(app=app, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/api/v2/agents/sessions")
