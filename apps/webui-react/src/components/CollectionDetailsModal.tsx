@@ -31,6 +31,7 @@ function CollectionDetailsModal() {
   const [showReindexModal, setShowReindexModal] = useState(false);
 
   // Fetch collection details using v2 API
+  // Includes refetchInterval as fallback for real-time updates when WebSocket fails
   const { data: collection, isLoading, error } = useQuery({
     queryKey: collectionKeys.detail(showCollectionDetailsModal!),
     queryFn: async () => {
@@ -39,6 +40,14 @@ function CollectionDetailsModal() {
       return response.data;
     },
     enabled: !!showCollectionDetailsModal,
+    refetchInterval: (query) => {
+      // Poll every 5s while collection is processing, otherwise every 30s
+      const data = query.state.data;
+      if (data?.status === 'processing' || data?.activeOperation) {
+        return 5000;
+      }
+      return 30000;
+    },
   });
 
   // Fetch operations (jobs) for the collection
