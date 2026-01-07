@@ -39,6 +39,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.getenv("SEMANTIK_MCP_LOG_LEVEL", "INFO"),
         help="Logging level (or SEMANTIK_MCP_LOG_LEVEL).",
     )
+    serve.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose output (sets log level to DEBUG, overrides --log-level).",
+    )
 
     return parser
 
@@ -53,7 +59,9 @@ def main(argv: list[str] | None = None) -> None:
     if not args.auth_token:
         parser.error("Missing --auth-token (or SEMANTIK_AUTH_TOKEN)")
 
-    logging.basicConfig(level=str(args.log_level).upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # --verbose overrides --log-level
+    log_level = "DEBUG" if args.verbose else str(args.log_level).upper()
+    logging.basicConfig(level=log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     server = SemantikMCPServer(
         webui_url=args.webui_url,

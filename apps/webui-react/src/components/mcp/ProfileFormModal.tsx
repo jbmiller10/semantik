@@ -320,7 +320,7 @@ export default function ProfileFormModal({
                 Collections <span className="text-red-500">*</span>
               </label>
               <p className="mt-1 text-xs text-gray-500 mb-2">
-                Select which collections this profile can search
+                Select which collections this profile can search. Selected collections are searched together.
               </p>
               {collectionsLoading ? (
                 <div className="flex items-center justify-center py-4">
@@ -422,13 +422,16 @@ export default function ProfileFormModal({
                   }
                   disabled={isSubmitting}
                   aria-invalid={!!errors.result_count}
-                  aria-describedby={errors.result_count ? 'result-count-error' : undefined}
+                  aria-describedby={errors.result_count ? 'result-count-error' : 'result-count-help'}
                   className={`mt-1 block w-full rounded-md shadow-sm sm:text-sm px-3 py-2 border ${
                     errors.result_count
                       ? 'border-red-300 focus:ring-red-500 focus:border-red-500'
                       : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
                   }`}
                 />
+                <p id="result-count-help" className="mt-1 text-xs text-gray-500">
+                  Number of chunks to return (1-100)
+                </p>
                 {errors.result_count && (
                   <p id="result-count-error" className="mt-1 text-sm text-red-600">{errors.result_count}</p>
                 )}
@@ -442,7 +445,7 @@ export default function ProfileFormModal({
                   Use Reranker
                 </span>
                 <p className="text-xs text-gray-500">
-                  Apply reranking to improve result quality
+                  Cross-encoder reranking improves result quality but may be slower
                 </p>
               </div>
               <button
@@ -552,7 +555,7 @@ export default function ProfileFormModal({
                       }`}
                     />
                     <p className="mt-1 text-xs text-gray-500">
-                      Minimum score threshold for results (leave empty for default)
+                      Filter out results below this relevance score (0-1). Higher values return fewer, more relevant results.
                     </p>
                     {errors.score_threshold && (
                       <p id="score-threshold-error" className="mt-1 text-sm text-red-600">{errors.score_threshold}</p>

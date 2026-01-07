@@ -98,3 +98,55 @@ async def api_client_unauthenticated(
         yield client
 
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def other_user_auth_headers(other_user_db) -> dict[str, str]:
+    """Issue a valid bearer token for the other test user."""
+
+    token = create_access_token(data={"sub": other_user_db.username})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture()
+async def api_client_other_user(
+    db_session,
+    other_user_db,
+    use_fakeredis,
+    reset_redis_manager,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an AsyncClient authenticated as the other test user."""
+
+    _ = use_fakeredis
+    _ = reset_redis_manager
+
+    async def override_get_db() -> AsyncGenerator[Any, None]:
+        yield db_session
+
+    async def override_get_current_user() -> dict[str, Any]:
+        return {
+            "id": other_user_db.id,
+            "username": other_user_db.username,
+            "email": other_user_db.email,
+            "full_name": other_user_db.full_name,
+        }
+
+    async def override_get_collection_for_user(
+        collection_uuid: str,
+        current_user: dict[str, Any] = Depends(get_current_user),
+    ) -> Any:
+        return await original_get_collection_for_user(
+            collection_uuid=collection_uuid,
+            current_user=current_user,
+            db=db_session,
+        )
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[original_get_collection_for_user] = override_get_collection_for_user
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()

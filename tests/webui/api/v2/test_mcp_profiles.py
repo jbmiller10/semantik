@@ -487,3 +487,353 @@ async def test_profile_search_type_options(
         )
         assert response.status_code == 201, f"Failed for {search_type}: {response.text}"
         assert response.json()["search_type"] == search_type
+
+
+# =============================================================================
+# 403 Forbidden - Cross-user isolation tests
+# =============================================================================
+
+
+@pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
+async def test_get_profile_owned_by_other_user_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """User A cannot view User B's profile - returns 403 Forbidden."""
+    from uuid import uuid4
+
+    from shared.database.models import MCPProfile, MCPProfileCollection
+
+    # Create a collection owned by other_user
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # Directly create a profile owned by other_user in the database
+    profile_id = str(uuid4())
+    profile = MCPProfile(
+        id=profile_id,
+        name="other-user-profile",
+        description="Profile owned by other user",
+        owner_id=other_user_db.id,
+        enabled=True,
+        search_type="semantic",
+        result_count=10,
+        use_reranker=True,
+    )
+    db_session.add(profile)
+
+    assoc = MCPProfileCollection(
+        profile_id=profile_id,
+        collection_id=other_collection.id,
+        order=0,
+    )
+    db_session.add(assoc)
+    await db_session.flush()
+
+    # test_user tries to access other_user's profile - should get 403
+    response = await api_client.get(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
+async def test_update_profile_owned_by_other_user_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """User A cannot update User B's profile - returns 403 Forbidden."""
+    from uuid import uuid4
+
+    from shared.database.models import MCPProfile, MCPProfileCollection
+
+    # Create a collection owned by other_user
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # Directly create a profile owned by other_user in the database
+    profile_id = str(uuid4())
+    profile = MCPProfile(
+        id=profile_id,
+        name="other-user-profile",
+        description="Profile owned by other user",
+        owner_id=other_user_db.id,
+        enabled=True,
+        search_type="semantic",
+        result_count=10,
+        use_reranker=True,
+    )
+    db_session.add(profile)
+
+    assoc = MCPProfileCollection(
+        profile_id=profile_id,
+        collection_id=other_collection.id,
+        order=0,
+    )
+    db_session.add(assoc)
+    await db_session.flush()
+
+    # test_user tries to update other_user's profile - should get 403
+    response = await api_client.put(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+        json={"description": "Trying to update someone else's profile"},
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
+async def test_delete_profile_owned_by_other_user_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """User A cannot delete User B's profile - returns 403 Forbidden."""
+    from uuid import uuid4
+
+    from shared.database.models import MCPProfile, MCPProfileCollection
+
+    # Create a collection owned by other_user
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # Directly create a profile owned by other_user in the database
+    profile_id = str(uuid4())
+    profile = MCPProfile(
+        id=profile_id,
+        name="other-user-profile",
+        description="Profile owned by other user",
+        owner_id=other_user_db.id,
+        enabled=True,
+        search_type="semantic",
+        result_count=10,
+        use_reranker=True,
+    )
+    db_session.add(profile)
+
+    assoc = MCPProfileCollection(
+        profile_id=profile_id,
+        collection_id=other_collection.id,
+        order=0,
+    )
+    db_session.add(assoc)
+    await db_session.flush()
+
+    # test_user tries to delete other_user's profile - should get 403
+    response = await api_client.delete(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
+async def test_get_profile_config_owned_by_other_user_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """User A cannot get config for User B's profile - returns 403 Forbidden."""
+    from uuid import uuid4
+
+    from shared.database.models import MCPProfile, MCPProfileCollection
+
+    # Create a collection owned by other_user
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # Directly create a profile owned by other_user in the database
+    profile_id = str(uuid4())
+    profile = MCPProfile(
+        id=profile_id,
+        name="other-user-profile",
+        description="Profile owned by other user",
+        owner_id=other_user_db.id,
+        enabled=True,
+        search_type="semantic",
+        result_count=10,
+        use_reranker=True,
+    )
+    db_session.add(profile)
+
+    assoc = MCPProfileCollection(
+        profile_id=profile_id,
+        collection_id=other_collection.id,
+        order=0,
+    )
+    db_session.add(assoc)
+    await db_session.flush()
+
+    # test_user tries to get config for other_user's profile - should get 403
+    response = await api_client.get(
+        f"/api/v2/mcp/profiles/{profile_id}/config",
+        headers=api_auth_headers,
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+async def test_list_profiles_only_returns_owned_profiles(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    other_user_db,
+    collection_factory,
+    db_session,
+) -> None:
+    """List profiles should not return other users' profiles."""
+    from uuid import uuid4
+
+    from shared.database.models import MCPProfile, MCPProfileCollection
+
+    # Create collections for each user
+    user_collection = await collection_factory(owner_id=test_user_db.id)
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # test_user creates a profile via API
+    await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "my-profile",
+            "description": "My profile",
+            "collection_ids": [user_collection.id],
+        },
+    )
+
+    # Directly create a profile owned by other_user in the database
+    other_profile_id = str(uuid4())
+    other_profile = MCPProfile(
+        id=other_profile_id,
+        name="other-profile",
+        description="Other user's profile",
+        owner_id=other_user_db.id,
+        enabled=True,
+        search_type="semantic",
+        result_count=10,
+        use_reranker=True,
+    )
+    db_session.add(other_profile)
+
+    assoc = MCPProfileCollection(
+        profile_id=other_profile_id,
+        collection_id=other_collection.id,
+        order=0,
+    )
+    db_session.add(assoc)
+    await db_session.flush()
+
+    # test_user lists profiles - should only see their own
+    response = await api_client.get(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    profile_names = {p["name"] for p in payload["profiles"]}
+    assert "my-profile" in profile_names
+    assert "other-profile" not in profile_names, "Should not see other user's profiles"
+
+
+# =============================================================================
+# 403 Forbidden - Collection access validation tests
+# =============================================================================
+
+
+@pytest.mark.asyncio()
+@pytest.mark.usefixtures("test_user_db")
+async def test_create_profile_with_unowned_collection_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    other_user_db,
+    collection_factory,
+) -> None:
+    """Cannot create profile with collection owned by another user - returns 403."""
+    # Create a collection owned by other_user
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # test_user tries to create a profile with other_user's collection
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "sneaky-profile",
+            "description": "Trying to use someone else's collection",
+            "collection_ids": [other_collection.id],
+        },
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+async def test_update_profile_to_add_unowned_collection_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    other_user_db,
+    collection_factory,
+) -> None:
+    """Cannot update profile to add collection owned by another user - returns 403."""
+    # Create collections for each user
+    user_collection = await collection_factory(owner_id=test_user_db.id)
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # test_user creates a valid profile
+    create_response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "my-profile",
+            "description": "My profile",
+            "collection_ids": [user_collection.id],
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    profile_id = create_response.json()["id"]
+
+    # test_user tries to update profile to add other_user's collection
+    response = await api_client.put(
+        f"/api/v2/mcp/profiles/{profile_id}",
+        headers=api_auth_headers,
+        json={
+            "collection_ids": [user_collection.id, other_collection.id],
+        },
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"
+
+
+@pytest.mark.asyncio()
+async def test_create_profile_with_mix_of_owned_and_unowned_collections_returns_403(
+    api_client: AsyncClient,
+    api_auth_headers: dict[str, str],
+    test_user_db,
+    other_user_db,
+    collection_factory,
+) -> None:
+    """Cannot create profile with any unowned collection, even if some are owned."""
+    # Create collections for each user
+    user_collection = await collection_factory(owner_id=test_user_db.id)
+    other_collection = await collection_factory(owner_id=other_user_db.id)
+
+    # test_user tries to create a profile with both their own and other's collection
+    response = await api_client.post(
+        "/api/v2/mcp/profiles",
+        headers=api_auth_headers,
+        json={
+            "name": "mixed-profile",
+            "description": "Trying to use mix of collections",
+            "collection_ids": [user_collection.id, other_collection.id],
+        },
+    )
+    assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"

@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import httpx
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 logger = logging.getLogger(__name__)
+
+# Status codes that should trigger a retry
+RETRYABLE_STATUS_CODES = {502, 503, 504}
+
+# Default retry configuration
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_BASE_DELAY = 1.0  # seconds
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -24,18 +37,104 @@ class SemantikAPIError(Exception):
 class SemantikAPIClient:
     """Async HTTP client for Semantik WebUI API."""
 
-    def __init__(self, webui_url: str, auth_token: str) -> None:
+    def __init__(
+        self,
+        webui_url: str,
+        auth_token: str,
+        *,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        base_delay: float = DEFAULT_BASE_DELAY,
+    ) -> None:
         self.base_url = webui_url.rstrip("/")
+        self._max_retries = max_retries
+        self._base_delay = base_delay
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {auth_token}"},
             timeout=30.0,
         )
 
+    async def _with_retry(
+        self,
+        operation: Callable[[], Any],
+        method: str,
+        path: str,
+    ) -> httpx.Response:
+        """Execute an HTTP operation with retry logic for transient failures.
+
+        Retries on:
+        - 502, 503, 504 status codes (server errors)
+        - Connection timeouts and network errors
+
+        Uses exponential backoff: 1s, 2s, 4s between retries.
+        """
+        last_error: Exception | None = None
+
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await operation()
+
+                # Check if we should retry based on status code
+                if response.status_code in RETRYABLE_STATUS_CODES and attempt < self._max_retries:
+                    delay = self._base_delay * (2**attempt)
+                    logger.debug(
+                        "Retrying %s %s after %d status (attempt %d/%d, delay %.1fs)",
+                        method,
+                        path,
+                        response.status_code,
+                        attempt + 1,
+                        self._max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                return response
+
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                if attempt < self._max_retries:
+                    delay = self._base_delay * (2**attempt)
+                    logger.debug(
+                        "Retrying %s %s after timeout (attempt %d/%d, delay %.1fs)",
+                        method,
+                        path,
+                        attempt + 1,
+                        self._max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise SemantikAPIError(f"{method} {path} failed (timeout): {exc}") from exc
+
+            except httpx.ConnectError as exc:
+                last_error = exc
+                if attempt < self._max_retries:
+                    delay = self._base_delay * (2**attempt)
+                    logger.debug(
+                        "Retrying %s %s after connection error (attempt %d/%d, delay %.1fs)",
+                        method,
+                        path,
+                        attempt + 1,
+                        self._max_retries,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise SemantikAPIError(f"{method} {path} failed (connection error): {exc}") from exc
+
+        # Should not reach here, but handle edge case
+        raise SemantikAPIError(f"{method} {path} failed after {self._max_retries} retries: {last_error}")
+
     async def get_profiles(self, *, enabled_only: bool = True) -> list[dict[str, Any]]:
         params = {"enabled": "true"} if enabled_only else None
-        response = await self._client.get("/api/v2/mcp/profiles", params=params)
-        self._raise_for_status(response, "GET", "/api/v2/mcp/profiles")
+        path = "/api/v2/mcp/profiles"
+        response = await self._with_retry(
+            lambda: self._client.get(path, params=params),
+            "GET",
+            path,
+        )
+        self._raise_for_status(response, "GET", path)
         payload = response.json()
         profiles = payload.get("profiles")
         if not isinstance(profiles, list):
@@ -43,8 +142,13 @@ class SemantikAPIClient:
         return profiles
 
     async def search(self, **params: Any) -> dict[str, Any]:
-        response = await self._client.post("/api/v2/search", json=params)
-        self._raise_for_status(response, "POST", "/api/v2/search")
+        path = "/api/v2/search"
+        response = await self._with_retry(
+            lambda: self._client.post(path, json=params),
+            "POST",
+            path,
+        )
+        self._raise_for_status(response, "POST", path)
         data = response.json()
         if not isinstance(data, dict):
             raise SemantikAPIError("Unexpected response from /api/v2/search (expected object)")
@@ -58,32 +162,52 @@ class SemantikAPIClient:
         per_page: int = 50,
         status: str | None = None,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"page": page, "per_page": per_page}
+        query_params: dict[str, Any] = {"page": page, "per_page": per_page}
         if status is not None:
-            params["status"] = status
-        response = await self._client.get(f"/api/v2/collections/{collection_id}/documents", params=params)
-        self._raise_for_status(response, "GET", f"/api/v2/collections/{collection_id}/documents")
+            query_params["status"] = status
+        path = f"/api/v2/collections/{collection_id}/documents"
+        response = await self._with_retry(
+            lambda: self._client.get(path, params=query_params),
+            "GET",
+            path,
+        )
+        self._raise_for_status(response, "GET", path)
         data = response.json()
         if not isinstance(data, dict):
             raise SemantikAPIError("Unexpected response from list documents endpoint (expected object)")
         return data
 
     async def get_document(self, collection_id: str, document_id: str) -> dict[str, Any]:
-        response = await self._client.get(f"/api/v2/collections/{collection_id}/documents/{document_id}")
-        self._raise_for_status(response, "GET", f"/api/v2/collections/{collection_id}/documents/{document_id}")
+        path = f"/api/v2/collections/{collection_id}/documents/{document_id}"
+        response = await self._with_retry(
+            lambda: self._client.get(path),
+            "GET",
+            path,
+        )
+        self._raise_for_status(response, "GET", path)
         data = response.json()
         if not isinstance(data, dict):
             raise SemantikAPIError("Unexpected response from get document endpoint (expected object)")
         return data
 
     async def get_document_content(self, collection_id: str, document_id: str) -> tuple[bytes, str | None]:
-        response = await self._client.get(f"/api/v2/collections/{collection_id}/documents/{document_id}/content")
-        self._raise_for_status(response, "GET", f"/api/v2/collections/{collection_id}/documents/{document_id}/content")
+        path = f"/api/v2/collections/{collection_id}/documents/{document_id}/content"
+        response = await self._with_retry(
+            lambda: self._client.get(path),
+            "GET",
+            path,
+        )
+        self._raise_for_status(response, "GET", path)
         return response.content, response.headers.get("content-type")
 
     async def get_chunk(self, collection_id: str, chunk_id: str) -> dict[str, Any]:
-        response = await self._client.get(f"/api/v2/chunking/collections/{collection_id}/chunks/{chunk_id}")
-        self._raise_for_status(response, "GET", f"/api/v2/chunking/collections/{collection_id}/chunks/{chunk_id}")
+        path = f"/api/v2/chunking/collections/{collection_id}/chunks/{chunk_id}"
+        response = await self._with_retry(
+            lambda: self._client.get(path),
+            "GET",
+            path,
+        )
+        self._raise_for_status(response, "GET", path)
         data = response.json()
         if not isinstance(data, dict):
             raise SemantikAPIError("Unexpected response from get chunk endpoint (expected object)")

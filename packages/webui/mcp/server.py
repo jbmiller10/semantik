@@ -13,6 +13,7 @@ from mcp.server.stdio import stdio_server
 
 from webui.mcp.client import SemantikAPIClient, SemantikAPIError
 from webui.mcp.tools import (
+    build_diagnostics_tool,
     build_get_chunk_tool,
     build_get_document_content_tool,
     build_get_document_tool,
@@ -49,13 +50,16 @@ class SemantikMCPServer:
     async def _get_profiles_cached(self) -> list[dict[str, Any]]:
         now = time.monotonic()
         if self._profiles_cache is not None and now < self._profiles_cache_expires_at:
+            logger.debug("Profile cache hit (TTL: %.1fs remaining)", self._profiles_cache_expires_at - now)
             return self._profiles_cache
 
         async with self._profiles_cache_lock:
             now = time.monotonic()
             if self._profiles_cache is not None and now < self._profiles_cache_expires_at:
+                logger.debug("Profile cache hit (TTL: %.1fs remaining)", self._profiles_cache_expires_at - now)
                 return self._profiles_cache
 
+            logger.debug("Profile cache miss, fetching from API")
             try:
                 profiles: list[dict[str, Any]] = await self.api_client.get_profiles(enabled_only=True)
             except SemantikAPIError as e:
@@ -67,11 +71,13 @@ class SemantikMCPServer:
 
             if self.profile_filter is not None:
                 profiles = [p for p in profiles if p.get("name") in self.profile_filter]
+                logger.debug("Profile filter applied: %s -> %d profiles", list(self.profile_filter), len(profiles))
 
             self._profiles_cache = profiles
             # 10-second TTL balances responsiveness (new profiles appear quickly)
             # against reducing API calls during rapid tool invocations
             self._profiles_cache_expires_at = now + 10.0
+            logger.debug("Profile cache updated with %d profiles (TTL: 10s)", len(profiles))
             return profiles
 
     @staticmethod
@@ -113,10 +119,21 @@ class SemantikMCPServer:
         tools.append(build_get_document_content_tool())
         tools.append(build_get_chunk_tool())
         tools.append(build_list_documents_tool())
+        tools.append(build_diagnostics_tool())
         return tools
 
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        start_time = time.monotonic()
+        logger.info("Tool call: %s", name)
+        logger.debug("Tool arguments: %s", arguments)
+
         try:
+            # Handle diagnostics first - it has its own error handling
+            if name == "diagnostics":
+                logger.debug("Executing diagnostics tool")
+                payload = await self._execute_diagnostics()
+                return self._as_text_result(payload)
+
             profiles = await self._get_profiles_cached()
             profiles_by_name = {p.get("name"): p for p in profiles if p.get("name")}
 
@@ -125,7 +142,10 @@ class SemantikMCPServer:
                 profile = profiles_by_name.get(profile_name)
                 if profile is None:
                     raise ValueError(f"Profile not found or not enabled: {profile_name}")
+                logger.info("Executing search (profile=%s, query=%s)", profile_name, arguments.get("query", "")[:50])
                 payload = await self._execute_search(profile, arguments)
+                duration = time.monotonic() - start_time
+                logger.info("Search completed in %.2fs (results=%d)", duration, len(payload.get("results", [])))
                 return self._as_text_result(payload)
 
             if name in {"get_document", "get_document_content", "get_chunk", "list_documents"}:
@@ -257,6 +277,70 @@ class SemantikMCPServer:
             "truncated": truncated,
             "text": text,
         }
+
+    async def _execute_diagnostics(self) -> dict[str, Any]:
+        """Execute the diagnostics tool to gather server status."""
+        now = time.monotonic()
+        diagnostics: dict[str, Any] = {
+            "server_name": "semantik",
+            "webui_url": self.api_client.base_url,
+        }
+
+        # Check WebUI connection and token validity
+        connection_status: dict[str, Any] = {"connected": False}
+        try:
+            # Try to fetch profiles to verify connection and auth
+            profiles = await self.api_client.get_profiles(enabled_only=True)
+            connection_status["connected"] = True
+            connection_status["authenticated"] = True
+            connection_status["profile_count"] = len(profiles)
+        except SemantikAPIError as e:
+            error_str = str(e)
+            connection_status["error"] = error_str
+            if "401" in error_str or "unauthorized" in error_str.lower():
+                connection_status["authenticated"] = False
+            elif "connection" in error_str.lower() or "refused" in error_str.lower():
+                connection_status["connected"] = False
+            profiles = []
+        diagnostics["connection"] = connection_status
+
+        # Profile filter info (if active)
+        if self.profile_filter:
+            diagnostics["profile_filter"] = list(self.profile_filter)
+            # Filter profiles as the server would
+            profiles = [p for p in profiles if p.get("name") in self.profile_filter]
+
+        # Profile summary
+        profile_summaries: list[dict[str, Any]] = []
+        for profile in profiles:
+            collections = profile.get("collections") or []
+            profile_summaries.append(
+                {
+                    "name": profile.get("name"),
+                    "enabled": profile.get("enabled", False),
+                    "collection_count": len(collections),
+                    "search_type": profile.get("search_type", "semantic"),
+                    "use_reranker": profile.get("use_reranker", True),
+                }
+            )
+        diagnostics["profiles"] = profile_summaries
+        diagnostics["available_tools"] = (
+            len(profile_summaries)  # search_* tools
+            + 5  # get_document, get_document_content, get_chunk, list_documents, diagnostics
+        )
+
+        # Cache status
+        cache_status: dict[str, Any] = {}
+        if self._profiles_cache is not None:
+            cache_status["cached"] = True
+            cache_status["cached_profile_count"] = len(self._profiles_cache)
+            ttl_remaining = max(0.0, self._profiles_cache_expires_at - now)
+            cache_status["ttl_remaining_seconds"] = round(ttl_remaining, 2)
+        else:
+            cache_status["cached"] = False
+        diagnostics["cache"] = cache_status
+
+        return diagnostics
 
     @staticmethod
     def _format_search_results(raw: dict[str, Any], *, max_snippet_chars: int) -> dict[str, Any]:
