@@ -173,9 +173,7 @@ class TestAgentServiceInit:
         mock_db_session: AsyncMock,
     ) -> None:
         """Test service creates default repo if not provided."""
-        with patch(
-            "webui.services.agent_service.AgentSessionRepository"
-        ) as mock_repo_class:
+        with patch("webui.services.agent_service.AgentSessionRepository") as mock_repo_class:
             mock_repo_instance = AsyncMock()
             mock_repo_class.return_value = mock_repo_instance
 
@@ -462,9 +460,7 @@ class TestListSessions:
 
         assert len(sessions) == 1
         assert total == 1
-        mock_session_repo.list_by_user.assert_called_once_with(
-            1, status=None, collection_id=None, limit=50, offset=0
-        )
+        mock_session_repo.list_by_user.assert_called_once_with(1, status=None, collection_id=None, limit=50, offset=0)
 
 
 class TestUpdateSessionTitle:
@@ -626,9 +622,7 @@ class TestCleanupOldSessions:
         result = await agent_service.cleanup_old_sessions(older_than_days=90)
 
         assert result == 5
-        mock_session_repo.cleanup_old_sessions.assert_called_once_with(
-            older_than_days=90, status="deleted"
-        )
+        mock_session_repo.cleanup_old_sessions.assert_called_once_with(older_than_days=90, status="deleted")
         mock_db_session.commit.assert_called()
 
 
