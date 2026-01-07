@@ -29,14 +29,14 @@ export function useCollections() {
       }
       return response.data.collections;
     },
-    // Automatically refetch every 30 seconds if there are active operations
+    // Automatically refetch every 5 seconds if there are active operations, otherwise 30s
     refetchInterval: isTestEnv
       ? false
       : (query) => {
           const hasActiveOperations = query.state.data?.some(
             (c: Collection) => c.status === 'processing' || c.activeOperation
           );
-          return hasActiveOperations ? 30000 : false;
+          return hasActiveOperations ? 5000 : 30000;
         },
     staleTime: 5000, // Consider data stale after 5 seconds
   });
