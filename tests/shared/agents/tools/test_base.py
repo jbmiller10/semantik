@@ -14,7 +14,6 @@ from shared.agents.tools.base import (
 )
 from shared.agents.types import AgentContext
 
-
 # --- Fixtures ---
 
 
@@ -59,7 +58,7 @@ class MockTool(AgentTool):
         return {"result": f"Executed with query: {args.get('query')}"}
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_tool() -> MockTool:
     """Create a mock tool instance."""
     return MockTool()
@@ -228,9 +227,7 @@ class TestToolDefinition:
             description="Search documents",
             parameters=[
                 ToolParameter("query", "string", "Search query", required=True),
-                ToolParameter(
-                    "limit", "integer", "Max results", required=False, default=10
-                ),
+                ToolParameter("limit", "integer", "Max results", required=False, default=10),
             ],
         )
         schema = definition.to_json_schema()
@@ -302,14 +299,14 @@ class TestAgentTool:
         assert "query" in schema["required"]
         assert "limit" not in schema["required"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute(self, mock_tool: MockTool) -> None:
         """Test execute method."""
         result = await mock_tool.execute({"query": "test query"})
         assert result == {"result": "Executed with query: test query"}
         assert mock_tool.last_args == {"query": "test query"}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute_with_context(self, mock_tool: MockTool) -> None:
         """Test execute method with context."""
         context = AgentContext(

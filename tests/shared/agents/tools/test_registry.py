@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import threading
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -22,7 +21,6 @@ from shared.agents.tools.registry import (
     reset_tool_registry,
 )
 from shared.agents.types import AgentContext
-
 
 # --- Fixtures ---
 
@@ -75,26 +73,26 @@ class MockTool(AgentTool):
         return self._execute_result
 
 
-@pytest.fixture
+@pytest.fixture()
 def registry() -> ToolRegistry:
     """Create a fresh registry for each test."""
     reset_tool_registry()
     return get_tool_registry()
 
 
-@pytest.fixture
+@pytest.fixture()
 def mock_tool() -> MockTool:
     """Create a mock tool."""
     return MockTool()
 
 
-@pytest.fixture
+@pytest.fixture()
 def search_tool() -> MockTool:
     """Create a search category tool."""
     return MockTool(name="search_tool", category="search")
 
 
-@pytest.fixture
+@pytest.fixture()
 def admin_tool() -> MockTool:
     """Create an admin category tool."""
     return MockTool(name="admin_tool", category="admin")
@@ -112,17 +110,13 @@ class TestToolRegistration:
         assert result is True
         assert registry.has_tool("mock_tool")
 
-    def test_register_duplicate_returns_false(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_register_duplicate_returns_false(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that duplicate registration returns False."""
         registry.register(mock_tool)
         result = registry.register(mock_tool)
         assert result is False
 
-    def test_register_with_metadata(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_register_with_metadata(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test registration with metadata."""
         metadata = {"version": "1.0", "author": "test"}
         registry.register(mock_tool, metadata=metadata)
@@ -131,9 +125,7 @@ class TestToolRegistration:
         assert record is not None
         assert record.metadata == metadata
 
-    def test_register_disabled(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_register_disabled(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test registration as disabled."""
         registry.register(mock_tool, enabled=False)
 
@@ -142,9 +134,7 @@ class TestToolRegistration:
         assert record is not None
         assert record.enabled is False
 
-    def test_unregister_tool(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_unregister_tool(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test tool unregistration."""
         registry.register(mock_tool)
         result = registry.unregister("mock_tool")
@@ -152,16 +142,12 @@ class TestToolRegistration:
         assert result is True
         assert registry.has_tool("mock_tool") is False
 
-    def test_unregister_nonexistent_returns_false(
-        self, registry: ToolRegistry
-    ) -> None:
+    def test_unregister_nonexistent_returns_false(self, registry: ToolRegistry) -> None:
         """Test unregistering nonexistent tool returns False."""
         result = registry.unregister("nonexistent")
         assert result is False
 
-    def test_unregister_removes_from_category_index(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_unregister_removes_from_category_index(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that unregister removes tool from category index."""
         registry.register(mock_tool)
         registry.unregister("mock_tool")
@@ -189,17 +175,13 @@ class TestToolLookup:
         tool = registry.get("nonexistent")
         assert tool is None
 
-    def test_get_disabled_tool_returns_none(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_get_disabled_tool_returns_none(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that getting disabled tool returns None."""
         registry.register(mock_tool, enabled=False)
         tool = registry.get("mock_tool")
         assert tool is None
 
-    def test_get_record_returns_disabled(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_get_record_returns_disabled(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that get_record returns disabled tools."""
         registry.register(mock_tool, enabled=False)
         record = registry.get_record("mock_tool")
@@ -233,9 +215,7 @@ class TestToolLookup:
         assert len(search_tools) == 1
         assert search_tools[0].name == "search_tool"
 
-    def test_get_by_category_excludes_disabled(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_get_by_category_excludes_disabled(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that get_by_category excludes disabled tools."""
         registry.register(mock_tool, enabled=False)
         tools = registry.get_by_category("test")
@@ -254,9 +234,7 @@ class TestToolLookup:
         tools = registry.get_by_names(["mock_tool", "search_tool"])
         assert len(tools) == 2
 
-    def test_get_by_names_filters_missing(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_get_by_names_filters_missing(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that get_by_names filters out missing tools."""
         registry.register(mock_tool)
 
@@ -297,9 +275,7 @@ class TestToolListing:
         records = registry.list_all()
         assert len(records) == 2
 
-    def test_list_all_includes_disabled(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_list_all_includes_disabled(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that list_all includes disabled tools."""
         registry.register(mock_tool, enabled=False)
         records = registry.list_all()
@@ -347,9 +323,7 @@ class TestToolListing:
 class TestToolManagement:
     """Tests for tool management."""
 
-    def test_set_enabled(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    def test_set_enabled(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test enabling and disabling tools."""
         registry.register(mock_tool)
 
@@ -359,9 +333,7 @@ class TestToolManagement:
         registry.set_enabled("mock_tool", True)
         assert registry.has_tool("mock_tool") is True
 
-    def test_set_enabled_nonexistent_returns_false(
-        self, registry: ToolRegistry
-    ) -> None:
+    def test_set_enabled_nonexistent_returns_false(self, registry: ToolRegistry) -> None:
         """Test set_enabled on nonexistent tool returns False."""
         result = registry.set_enabled("nonexistent", True)
         assert result is False
@@ -389,19 +361,15 @@ class TestToolManagement:
 class TestToolExecution:
     """Tests for tool execution."""
 
-    @pytest.mark.asyncio
-    async def test_execute_tool(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_tool(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test executing a tool."""
         registry.register(mock_tool)
         result = await registry.execute("mock_tool", {"query": "test"})
         assert result == {"status": "ok"}
 
-    @pytest.mark.asyncio
-    async def test_execute_with_context(
-        self, registry: ToolRegistry
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_with_context(self, registry: ToolRegistry) -> None:
         """Test executing a tool with context."""
         tool = MockTool()
         registry.register(tool)
@@ -409,10 +377,8 @@ class TestToolExecution:
         context = AgentContext(request_id="test-123")
         await registry.execute("mock_tool", {"query": "test"}, context=context)
 
-    @pytest.mark.asyncio
-    async def test_execute_nonexistent_raises(
-        self, registry: ToolRegistry
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_nonexistent_raises(self, registry: ToolRegistry) -> None:
         """Test that executing nonexistent tool raises ToolNotFoundError."""
         with pytest.raises(ToolNotFoundError) as exc_info:
             await registry.execute("nonexistent", {})
@@ -420,10 +386,8 @@ class TestToolExecution:
         assert exc_info.value.tool_name == "nonexistent"
         assert "Tool not found" in str(exc_info.value)
 
-    @pytest.mark.asyncio
-    async def test_execute_disabled_tool_raises(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_disabled_tool_raises(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that executing disabled tool raises ToolDisabledError."""
         registry.register(mock_tool, enabled=False)
 
@@ -432,10 +396,8 @@ class TestToolExecution:
 
         assert exc_info.value.tool_name == "mock_tool"
 
-    @pytest.mark.asyncio
-    async def test_execute_invalid_args_raises(
-        self, registry: ToolRegistry, mock_tool: MockTool
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_invalid_args_raises(self, registry: ToolRegistry, mock_tool: MockTool) -> None:
         """Test that executing with invalid args raises ToolExecutionError."""
         registry.register(mock_tool)
 
@@ -445,7 +407,7 @@ class TestToolExecution:
         assert exc_info.value.tool_name == "mock_tool"
         assert "validation_failed" in str(exc_info.value.details.get("cause", ""))
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute_timeout_raises(self, registry: ToolRegistry) -> None:
         """Test that execution timeout raises ToolExecutionError."""
         slow_tool = MockTool(
@@ -461,7 +423,7 @@ class TestToolExecution:
         assert exc_info.value.tool_name == "slow_tool"
         assert exc_info.value.details.get("cause") == "timeout"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute_error_wrapped(self, registry: ToolRegistry) -> None:
         """Test that execution errors are wrapped in ToolExecutionError."""
         error_tool = MockTool(
@@ -476,10 +438,8 @@ class TestToolExecution:
         assert exc_info.value.tool_name == "error_tool"
         assert "Something went wrong" in str(exc_info.value.details.get("cause", ""))
 
-    @pytest.mark.asyncio
-    async def test_execute_tool_execution_error_not_wrapped(
-        self, registry: ToolRegistry
-    ) -> None:
+    @pytest.mark.asyncio()
+    async def test_execute_tool_execution_error_not_wrapped(self, registry: ToolRegistry) -> None:
         """Test that ToolExecutionError from tool is not double-wrapped."""
         original_error = ToolExecutionError(
             "Custom error",
@@ -547,10 +507,7 @@ class TestThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=register_tool, args=(i,))
-            for i in range(10)
-        ]
+        threads = [threading.Thread(target=register_tool, args=(i,)) for i in range(10)]
 
         for t in threads:
             t.start()
@@ -579,10 +536,7 @@ class TestThreadSafety:
             except Exception as e:
                 errors.append(e)
 
-        threads = [
-            threading.Thread(target=lookup_tool, args=(f"tool_{i % 5}",))
-            for i in range(10)
-        ]
+        threads = [threading.Thread(target=lookup_tool, args=(f"tool_{i % 5}",)) for i in range(10)]
 
         for t in threads:
             t.start()
