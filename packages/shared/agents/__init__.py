@@ -1,4 +1,4 @@
-"""Agent plugin system core types and exceptions.
+"""Agent plugin system core types, exceptions, and adapters.
 
 This package provides the foundational types for the agent plugin system:
 
@@ -11,6 +11,9 @@ Types:
     - AgentCapabilities: Agent capability declarations
     - UseCaseRequirements: Requirements for specific use cases
     - AgentContext: Runtime execution context
+
+Base Classes:
+    - AgentAdapter: SDK-agnostic abstract base for agent adapters
 
 Exceptions:
     - AgentError: Base exception for all agent errors
@@ -37,6 +40,7 @@ Example:
     {'id': '...', 'role': 'assistant', 'type': 'text', ...}
 """
 
+from shared.agents.base import AgentAdapter
 from shared.agents.exceptions import (
     AgentError,
     AgentExecutionError,
@@ -73,6 +77,8 @@ __all__ = [
     "AgentCapabilities",
     "UseCaseRequirements",
     "AgentContext",
+    # Base Classes
+    "AgentAdapter",
     # Exceptions - Base
     "AgentError",
     # Exceptions - Execution
