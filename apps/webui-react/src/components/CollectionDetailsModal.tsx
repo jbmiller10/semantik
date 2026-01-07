@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../stores/uiStore';
 import { collectionsV2Api } from '../services/api/v2/collections';
 import { collectionKeys } from '../hooks/useCollections';
+import { operationKeys } from '../hooks/useCollectionOperations';
 import AddDataToCollectionModal from './AddDataToCollectionModal';
 import RenameCollectionModal from './RenameCollectionModal';
 import DeleteCollectionModal from './DeleteCollectionModal';
@@ -37,7 +38,7 @@ function CollectionDetailsModal() {
 
   // Fetch collection details using v2 API
   const { data: collection, isLoading, error } = useQuery({
-    queryKey: ['collection-v2', showCollectionDetailsModal],
+    queryKey: collectionKeys.detail(showCollectionDetailsModal!),
     queryFn: async () => {
       if (!showCollectionDetailsModal) return null;
       const response = await collectionsV2Api.get(showCollectionDetailsModal);
@@ -48,7 +49,7 @@ function CollectionDetailsModal() {
 
   // Fetch operations (jobs) for the collection
   const { data: operationsData } = useQuery({
-    queryKey: ['collection-operations', showCollectionDetailsModal],
+    queryKey: operationKeys.list(showCollectionDetailsModal!),
     queryFn: async () => {
       if (!showCollectionDetailsModal) return null;
       const response = await collectionsV2Api.listOperations(showCollectionDetailsModal, { limit: 50 });
@@ -59,12 +60,12 @@ function CollectionDetailsModal() {
 
   // Fetch documents (files) for the collection
   const { data: documentsData } = useQuery({
-    queryKey: ['collection-documents', showCollectionDetailsModal, filesPage],
+    queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'documents', filesPage],
     queryFn: async () => {
       if (!showCollectionDetailsModal || activeTab !== 'files') return null;
-      const response = await collectionsV2Api.listDocuments(showCollectionDetailsModal, { 
+      const response = await collectionsV2Api.listDocuments(showCollectionDetailsModal, {
         page: filesPage,
-        limit: 50 
+        limit: 50
       });
       return response.data;
     },
@@ -158,9 +159,9 @@ function CollectionDetailsModal() {
 
   const handleAddDataSuccess = () => {
     setShowAddDataModal(false);
-    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-documents', showCollectionDetailsModal] });
+    queryClient.invalidateQueries({ queryKey: collectionKeys.detail(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: operationKeys.list(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: [...collectionKeys.detail(showCollectionDetailsModal!), 'documents'] });
     addToast({
       type: 'success',
       message: 'Source added successfully. Check the Operations tab to monitor progress.',
@@ -170,7 +171,7 @@ function CollectionDetailsModal() {
   const handleRenameSuccess = () => {
     setShowRenameModal(false);
     // Note: with v2 API, we use UUIDs not names, so we keep the same ID
-    queryClient.invalidateQueries({ queryKey: ['collection-v2'] });
+    queryClient.invalidateQueries({ queryKey: collectionKeys.all });
     addToast({ type: 'success', message: 'Collection renamed successfully' });
   };
 
@@ -185,11 +186,11 @@ function CollectionDetailsModal() {
   const handleReindexSuccess = () => {
     setShowReindexModal(false);
     setConfigChanges({});
-    queryClient.invalidateQueries({ queryKey: ['collection-v2', showCollectionDetailsModal] });
-    queryClient.invalidateQueries({ queryKey: ['collection-operations', showCollectionDetailsModal] });
-    addToast({ 
-      type: 'success', 
-      message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.' 
+    queryClient.invalidateQueries({ queryKey: collectionKeys.detail(showCollectionDetailsModal!) });
+    queryClient.invalidateQueries({ queryKey: operationKeys.list(showCollectionDetailsModal!) });
+    addToast({
+      type: 'success',
+      message: 'Re-indexing started successfully. Check the Operations tab to monitor progress.'
     });
   };
 
