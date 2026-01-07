@@ -196,6 +196,8 @@ class HybridSearchResult(BaseModel):
     combined_score: float | None = None
     metadata: dict[str, Any] | None = None
     content: str | None = Field(None, max_length=10000)
+    chunk_index: int | None = None
+    total_chunks: int | None = None
 
 
 class HybridSearchResponse(BaseModel):

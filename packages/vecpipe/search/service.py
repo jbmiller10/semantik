@@ -288,6 +288,8 @@ def _map_hybrid_to_search_response(hybrid_response: HybridSearchResponse) -> Sea
                 file_path=None,
                 file_name=None,
                 operation_uuid=None,
+                chunk_index=hr.chunk_index,
+                total_chunks=hr.total_chunks,
             )
         )
 
@@ -692,6 +694,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                         file_path=None,
                         file_name=None,
                         operation_uuid=None,
+                        chunk_index=payload.get("chunk_index"),
+                        total_chunks=payload.get("total_chunks"),
                     )
                 )
             else:
@@ -708,6 +712,8 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
                             file_path=None,
                             file_name=None,
                             operation_uuid=None,
+                            chunk_index=parsed_item.get("chunk_index"),
+                            total_chunks=parsed_item.get("total_chunks"),
                         )
                     )
                 break
@@ -972,6 +978,8 @@ async def perform_hybrid_search(
                     combined_score=r.get("combined_score"),
                     metadata=r["payload"].get("metadata"),
                     content=None,
+                    chunk_index=r["payload"].get("chunk_index"),
+                    total_chunks=r["payload"].get("total_chunks"),
                 )
             )
 
@@ -1035,6 +1043,8 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
                             file_path=None,
                             file_name=None,
                             operation_uuid=None,
+                            chunk_index=payload.get("chunk_index"),
+                            total_chunks=payload.get("total_chunks"),
                         )
                     )
                 else:
@@ -1050,6 +1060,8 @@ async def perform_batch_search(request: BatchSearchRequest) -> BatchSearchRespon
                                 file_path=None,
                                 file_name=None,
                                 operation_uuid=None,
+                                chunk_index=r.get("chunk_index"),
+                                total_chunks=r.get("total_chunks"),
                             )
                         )
                     break
@@ -1133,6 +1145,8 @@ async def perform_keyword_search(
                     doc_id=r["payload"]["doc_id"],
                     matched_keywords=r.get("matched_keywords", []),
                     content=None,
+                    chunk_index=r["payload"].get("chunk_index"),
+                    total_chunks=r["payload"].get("total_chunks"),
                 )
             )
 
