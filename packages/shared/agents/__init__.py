@@ -15,6 +15,13 @@ Types:
 Base Classes:
     - AgentAdapter: SDK-agnostic abstract base for agent adapters
 
+Tools:
+    - AgentTool: Abstract base for agent-accessible tools
+    - ToolDefinition: Tool metadata and parameter schema
+    - ToolParameter: Individual parameter definition
+    - ToolRegistry: Central registry for tool management
+    - ToolRecord: Registry entry for a registered tool
+
 Exceptions:
     - AgentError: Base exception for all agent errors
     - AgentInitializationError: Initialization failures
@@ -55,6 +62,15 @@ from shared.agents.exceptions import (
     ToolExecutionError,
     ToolNotFoundError,
 )
+from shared.agents.tools import (
+    AgentTool,
+    ToolDefinition,
+    ToolParameter,
+    ToolRecord,
+    ToolRegistry,
+    get_tool_registry,
+    reset_tool_registry,
+)
 from shared.agents.types import (
     AgentCapabilities,
     AgentContext,
@@ -79,6 +95,14 @@ __all__ = [
     "AgentContext",
     # Base Classes
     "AgentAdapter",
+    # Tools
+    "AgentTool",
+    "ToolDefinition",
+    "ToolParameter",
+    "ToolRecord",
+    "ToolRegistry",
+    "get_tool_registry",
+    "reset_tool_registry",
     # Exceptions - Base
     "AgentError",
     # Exceptions - Execution
