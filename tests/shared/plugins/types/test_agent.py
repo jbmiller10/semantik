@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 from shared.agents.types import (
     AgentCapabilities,
@@ -105,7 +108,7 @@ class ConcreteTestAgent(AgentPlugin):
 class TestConcreteAgentPlugin:
     """Tests for a concrete AgentPlugin implementation."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def agent(self) -> ConcreteTestAgent:
         """Create a test agent instance."""
         return ConcreteTestAgent()
@@ -159,7 +162,7 @@ class TestConcreteAgentPlugin:
         assert AgentUseCase.QUERY_EXPANSION in use_cases
         assert len(use_cases) == 3
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute_yields_message(self, agent: ConcreteTestAgent) -> None:
         """Test execute yields AgentMessage."""
         messages = []
@@ -171,7 +174,7 @@ class TestConcreteAgentPlugin:
         assert messages[0].type == MessageType.TEXT
         assert "Hello" in messages[0].content
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_execute_batch_default(self, agent: ConcreteTestAgent) -> None:
         """Test execute_batch default implementation."""
         prompts = ["Hello", "World"]
@@ -183,7 +186,7 @@ class TestConcreteAgentPlugin:
         assert "Hello" in results[0][0].content
         assert "World" in results[1][0].content
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_interrupt_no_adapter(self, agent: ConcreteTestAgent) -> None:
         """Test interrupt works when no adapter is set."""
         # Should not raise
@@ -211,7 +214,7 @@ class TestConcreteAgentPlugin:
         assert "allowed_tools" in schema["properties"]
         assert "timeout_seconds" in schema["properties"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_health_check_default(self, agent: ConcreteTestAgent) -> None:
         """Test health_check default returns True."""
         result = await agent.health_check()
@@ -239,7 +242,7 @@ class TestAgentPluginWithConfig:
         agent = ConcreteTestAgent()
         assert agent.config == {}
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_initialize_merges_config(self) -> None:
         """Test initialize merges with constructor config."""
         agent = ConcreteTestAgent(config={"model": "initial-model"})
@@ -249,7 +252,7 @@ class TestAgentPluginWithConfig:
         assert agent._config["model"] == "initial-model"
         assert agent._config["temperature"] == 0.8
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_is_initialized_flag(self) -> None:
         """Test is_initialized flag is set after initialize."""
         agent = ConcreteTestAgent()
