@@ -8,8 +8,7 @@ import { RefreshCw, Activity, Clock, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useUIStore } from '../stores/uiStore';
 import { useCollections } from '../hooks/useCollections';
-import { useOperationsSocket } from '../hooks/useOperationsSocket';
-// Note: useOperationProgress removed - global useOperationsSocket handles all updates
+// Note: useOperationsSocket moved to Layout.tsx for global coverage
 
 /**
  * Extract display source from operation config.
@@ -57,9 +56,6 @@ function ActiveOperationsTab() {
       : undefined;
 
   const shouldPollActiveOperations = pollingPreference ?? true;
-
-  // Use shared WebSocket for all operation updates
-  useOperationsSocket();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['active-operations'],
