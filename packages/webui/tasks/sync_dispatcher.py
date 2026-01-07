@@ -47,7 +47,7 @@ async def _dispatch_due_syncs_async() -> dict[str, Any]:
     if pg_connection_manager._engine is None:
         await pg_connection_manager.initialize()
 
-    async with pg_connection_manager.session() as session:
+    async with pg_connection_manager.get_session() as session:
         collection_repo = CollectionRepository(session)
         source_repo = CollectionSourceRepository(session)
         sync_run_repo = CollectionSyncRunRepository(session)
