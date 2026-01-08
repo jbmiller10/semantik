@@ -19,13 +19,15 @@ from shared.plugins.state import get_plugin_config
 
 if TYPE_CHECKING:
     from shared.config.vecpipe import VecpipeConfig
+    from shared.plugins.protocols import EmbeddingProtocol
 
     from .plugin_base import BaseEmbeddingPlugin
 
 logger = logging.getLogger(__name__)
 
 # Registry of provider classes - maps internal_name to provider class
-_PROVIDER_CLASSES: dict[str, type[BaseEmbeddingPlugin]] = {}
+# Accepts both ABC-based plugins (BaseEmbeddingPlugin) and Protocol-based plugins
+_PROVIDER_CLASSES: dict[str, type[BaseEmbeddingPlugin] | type[EmbeddingProtocol]] = {}
 _PROVIDER_CLASSES_LOCK = Lock()
 
 
@@ -54,13 +56,16 @@ class EmbeddingProviderFactory:
     def register_provider(
         cls,
         internal_name: str,
-        provider_class: type[BaseEmbeddingPlugin],
+        provider_class: type[BaseEmbeddingPlugin] | type[EmbeddingProtocol],
     ) -> None:
         """Register a provider class.
 
+        Accepts both ABC-based (inheriting from BaseEmbeddingPlugin) and
+        Protocol-based (implementing EmbeddingProtocol) provider classes.
+
         Args:
             internal_name: Internal identifier for the provider
-            provider_class: The provider class to register
+            provider_class: The provider class to register (ABC or Protocol)
         """
         with _PROVIDER_CLASSES_LOCK:
             if internal_name in _PROVIDER_CLASSES:
@@ -89,11 +94,14 @@ class EmbeddingProviderFactory:
         model_name: str,
         config: VecpipeConfig | None = None,
         **kwargs: Any,
-    ) -> BaseEmbeddingPlugin:
+    ) -> BaseEmbeddingPlugin | EmbeddingProtocol:
         """Create a provider instance for the given model.
 
         Auto-detects the appropriate provider based on model name using
         each provider's supports_model() class method.
+
+        Returns an instance that satisfies the EmbeddingProtocol interface,
+        which may be either an ABC-based or Protocol-based implementation.
 
         Plugin Configuration:
             If no plugin_config is provided in kwargs, the factory will
@@ -107,7 +115,7 @@ class EmbeddingProviderFactory:
                       May include 'plugin_config' for plugin-specific settings.
 
         Returns:
-            An uninitialized provider instance
+            An uninitialized provider instance satisfying EmbeddingProtocol
 
         Raises:
             ValueError: If no provider supports the model
@@ -142,11 +150,14 @@ class EmbeddingProviderFactory:
         provider_name: str,
         config: VecpipeConfig | None = None,
         **kwargs: Any,
-    ) -> BaseEmbeddingPlugin:
+    ) -> BaseEmbeddingPlugin | EmbeddingProtocol:
         """Create a provider by its internal name.
 
         Use this when you want to explicitly specify the provider rather
         than relying on auto-detection.
+
+        Returns an instance that satisfies the EmbeddingProtocol interface,
+        which may be either an ABC-based or Protocol-based implementation.
 
         Args:
             provider_name: Internal name of the provider
@@ -155,7 +166,7 @@ class EmbeddingProviderFactory:
                       May include 'plugin_config' for plugin-specific settings.
 
         Returns:
-            An uninitialized provider instance
+            An uninitialized provider instance satisfying EmbeddingProtocol
 
         Raises:
             ValueError: If provider name is not registered
@@ -218,8 +229,12 @@ class EmbeddingProviderFactory:
             return list(_PROVIDER_CLASSES.keys())
 
     @classmethod
-    def get_provider_class(cls, internal_name: str) -> type[BaseEmbeddingPlugin] | None:
+    def get_provider_class(
+        cls, internal_name: str
+    ) -> type[BaseEmbeddingPlugin] | type[EmbeddingProtocol] | None:
         """Get the provider class for an internal name.
+
+        Returns the registered class, which may be ABC-based or Protocol-based.
 
         Args:
             internal_name: Internal provider name
@@ -245,6 +260,7 @@ def get_all_supported_models() -> list[dict[str, Any]]:
     """Get model configurations from all registered providers.
 
     Aggregates models from all providers for API/UI exposure.
+    Handles both ABC-based and Protocol-based providers gracefully.
 
     Returns:
         List of model config dicts with provider information
@@ -255,7 +271,11 @@ def get_all_supported_models() -> list[dict[str, Any]]:
         providers = list(_PROVIDER_CLASSES.items())
     for internal_name, provider_cls in providers:
         try:
-            provider_models = provider_cls.list_supported_models()
+            # list_supported_models is optional for Protocol-based plugins
+            list_models_fn = getattr(provider_cls, "list_supported_models", None)
+            if list_models_fn is None or not callable(list_models_fn):
+                continue
+            provider_models = list_models_fn()
             for model_config in provider_models:
                 model_dict = model_config.to_dict() if hasattr(model_config, "to_dict") else {}
                 model_dict["provider"] = internal_name
@@ -270,6 +290,8 @@ def get_all_supported_models() -> list[dict[str, Any]]:
 def get_model_config_from_providers(model_name: str) -> Any:
     """Get model configuration from the appropriate provider.
 
+    Handles both ABC-based and Protocol-based providers gracefully.
+
     Args:
         model_name: HuggingFace model name or other model identifier
 
@@ -280,9 +302,12 @@ def get_model_config_from_providers(model_name: str) -> Any:
         providers = list(_PROVIDER_CLASSES.values())
     for provider_cls in providers:
         if provider_cls.supports_model(model_name):
-            config = provider_cls.get_model_config(model_name)
-            if config is not None:
-                return config
+            # get_model_config is optional for Protocol-based plugins
+            get_config_fn = getattr(provider_cls, "get_model_config", None)
+            if get_config_fn is not None and callable(get_config_fn):
+                config = get_config_fn(model_name)
+                if config is not None:
+                    return config
     return None
 
 

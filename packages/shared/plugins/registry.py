@@ -25,20 +25,35 @@ class PluginSource(str, Enum):
 
 @dataclass(frozen=True)
 class PluginRecord:
-    """Captured metadata for a registered plugin."""
+    """Captured metadata for a registered plugin.
+
+    The plugin_class field stores the plugin class which may be either:
+    - An ABC-based plugin (inherits from SemanticPlugin or type-specific base)
+    - A Protocol-based plugin (structurally satisfies type-specific Protocol)
+
+    Protocol validation is performed by the loader before registration.
+    """
 
     plugin_type: str
     plugin_id: str
     plugin_version: str
     manifest: PluginManifest
-    plugin_class: type
+    plugin_class: type  # Validated against protocol by loader
     source: PluginSource
     entry_point: str | None = None
 
 
 @dataclass
 class PluginRegistry:
-    """Thread-safe registry for all loaded plugins."""
+    """Thread-safe registry for all loaded plugins.
+
+    Stores PluginRecord instances indexed by type and ID. Plugin classes
+    are validated against their type-specific Protocol (ConnectorProtocol,
+    EmbeddingProtocol, etc.) by the loader before registration.
+
+    Both ABC-based (built-in) and Protocol-based (external) plugins are
+    supported - the registry is agnostic to implementation style.
+    """
 
     _plugins: dict[str, dict[str, PluginRecord]] = field(default_factory=dict)
     _loaded_types: set[str] = field(default_factory=set)
