@@ -16,7 +16,14 @@ from shared.agents.exceptions import (
     AgentError,
     AgentExecutionError,
     AgentInterruptedError,
+    AgentTimeoutError,
     SessionNotFoundError,
+)
+from shared.agents.metrics import (
+    record_error,
+    record_session_created,
+    record_tokens,
+    timed_execution,
 )
 from shared.agents.tools.registry import get_tool_registry
 from shared.agents.types import (
@@ -344,43 +351,53 @@ class AgentService:
         # Phase 5: Register for interruption
         self._active_executions[str(db_session.id)] = instance
 
-        try:
-            # Phase 6: Execute and stream
-            async for message in self._execute_with_persistence(
-                instance=instance,
-                prompt=prompt,
-                db_session=db_session,
-                context=exec_context,
-                tools=tool_instances,
-                system_prompt=system_prompt,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=stream,
-            ):
-                yield message
+        # Phase 6: Execute with metrics timing
+        with timed_execution(plugin_id):
+            try:
+                # Execute and stream
+                async for message in self._execute_with_persistence(
+                    instance=instance,
+                    prompt=prompt,
+                    db_session=db_session,
+                    context=exec_context,
+                    tools=tool_instances,
+                    system_prompt=system_prompt,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream=stream,
+                ):
+                    yield message
 
-        except AgentInterruptedError:
-            # User-initiated interruption - record and re-raise
-            await self._persist_interruption(db_session)
-            raise
+            except AgentInterruptedError:
+                # User-initiated interruption - record and re-raise
+                await self._persist_interruption(db_session)
+                record_error(plugin_id, "interrupted")
+                raise
 
-        except AgentError:
-            # Agent-specific errors - already structured, re-raise
-            raise
+            except AgentTimeoutError:
+                # Timeout error - record and re-raise
+                record_error(plugin_id, "timeout")
+                raise
 
-        except Exception as e:
-            # Unexpected errors - wrap and persist
-            await self._persist_error(db_session, e)
-            raise AgentExecutionError(
-                f"Execution failed: {e}",
-                adapter=plugin_id,
-                cause=str(e),
-            ) from e
+            except AgentError:
+                # Agent-specific errors - already structured, re-raise
+                record_error(plugin_id, "execution")
+                raise
 
-        finally:
-            # Phase 7: Cleanup
-            self._active_executions.pop(str(db_session.id), None)
+            except Exception as e:
+                # Unexpected errors - wrap and persist
+                await self._persist_error(db_session, e)
+                record_error(plugin_id, "execution")
+                raise AgentExecutionError(
+                    f"Execution failed: {e}",
+                    adapter=plugin_id,
+                    cause=str(e),
+                ) from e
+
+            finally:
+                # Phase 7: Cleanup
+                self._active_executions.pop(str(db_session.id), None)
 
     async def _resolve_session(
         self,
@@ -425,6 +442,9 @@ class AgentService:
 
         # CRITICAL: Commit BEFORE execution to avoid race conditions
         await self._db.commit()
+
+        # Record session creation metric
+        record_session_created(plugin_id)
 
         logger.info(
             "Created agent session: %s (external: %s)",
@@ -564,6 +584,14 @@ class AgentService:
                 await self._session_repo.add_message(str(db_session.id), message)
                 await self._db.commit()
                 sequence += 1
+
+                # Record token usage metrics
+                if message.usage:
+                    record_tokens(
+                        db_session.agent_plugin_id,
+                        message.usage.input_tokens,
+                        message.usage.output_tokens,
+                    )
 
                 # Capture SDK session ID if present (for resume functionality)
                 if (

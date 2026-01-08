@@ -31,6 +31,7 @@ from shared.agents.exceptions import (
     ToolExecutionError,
     ToolNotFoundError,
 )
+from shared.agents.metrics import timed_tool_call
 
 if TYPE_CHECKING:
     from shared.agents.tools.base import AgentTool
@@ -310,30 +311,31 @@ class ToolRegistry:
                 validation_errors=errors,
             )
 
-        # Execute with timeout
+        # Execute with timeout and metrics
         timeout = tool.definition.timeout_seconds
-        try:
-            return await asyncio.wait_for(
-                tool.execute(args, context),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            raise ToolExecutionError(
-                f"Tool execution timed out after {timeout}s: {name}",
-                tool_name=name,
-                cause="timeout",
-                timeout_seconds=timeout,
-            ) from None
-        except ToolExecutionError:
-            # Re-raise tool errors as-is
-            raise
-        except Exception as e:
-            # Wrap other exceptions
-            raise ToolExecutionError(
-                f"Tool execution failed: {name}: {e!s}",
-                tool_name=name,
-                cause=str(e),
-            ) from e
+        with timed_tool_call(name):
+            try:
+                return await asyncio.wait_for(
+                    tool.execute(args, context),
+                    timeout=timeout,
+                )
+            except TimeoutError:
+                raise ToolExecutionError(
+                    f"Tool execution timed out after {timeout}s: {name}",
+                    tool_name=name,
+                    cause="timeout",
+                    timeout_seconds=timeout,
+                ) from None
+            except ToolExecutionError:
+                # Re-raise tool errors as-is
+                raise
+            except Exception as e:
+                # Wrap other exceptions
+                raise ToolExecutionError(
+                    f"Tool execution failed: {name}: {e!s}",
+                    tool_name=name,
+                    cause=str(e),
+                ) from e
 
 
 # Singleton instance

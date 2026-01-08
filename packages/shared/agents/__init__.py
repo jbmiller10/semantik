@@ -62,6 +62,24 @@ from shared.agents.exceptions import (
     ToolExecutionError,
     ToolNotFoundError,
 )
+from shared.agents.metrics import (
+    AGENT_ACTIVE_SESSIONS,
+    AGENT_ERRORS_TOTAL,
+    AGENT_EXECUTION_DURATION,
+    AGENT_EXECUTIONS_TOTAL,
+    AGENT_SESSIONS_CREATED_TOTAL,
+    AGENT_TOKENS_TOTAL,
+    AGENT_TOOL_CALLS_TOTAL,
+    AGENT_TOOL_DURATION,
+    record_error,
+    record_execution,
+    record_session_created,
+    record_tokens,
+    record_tool_call,
+    timed_execution,
+    timed_tool_call,
+    update_active_sessions,
+)
 from shared.agents.tools import (
     AgentTool,
     ToolDefinition,
@@ -103,6 +121,23 @@ __all__ = [
     "ToolRegistry",
     "get_tool_registry",
     "reset_tool_registry",
+    # Metrics
+    "AGENT_EXECUTIONS_TOTAL",
+    "AGENT_EXECUTION_DURATION",
+    "AGENT_TOKENS_TOTAL",
+    "AGENT_TOOL_CALLS_TOTAL",
+    "AGENT_TOOL_DURATION",
+    "AGENT_ACTIVE_SESSIONS",
+    "AGENT_SESSIONS_CREATED_TOTAL",
+    "AGENT_ERRORS_TOTAL",
+    "record_execution",
+    "record_tokens",
+    "record_tool_call",
+    "record_session_created",
+    "record_error",
+    "update_active_sessions",
+    "timed_execution",
+    "timed_tool_call",
     # Exceptions - Base
     "AgentError",
     # Exceptions - Execution
