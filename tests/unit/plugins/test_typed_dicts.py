@@ -1,6 +1,5 @@
 """Tests for plugin protocol TypedDict definitions and constants."""
 
-import pytest
 
 
 class TestProtocolConstants:
@@ -17,7 +16,7 @@ class TestProtocolConstants:
         from shared.plugins.typed_dicts import MESSAGE_ROLES
 
         expected = {"user", "assistant", "system", "tool_call", "tool_result", "error"}
-        assert MESSAGE_ROLES == expected
+        assert expected == MESSAGE_ROLES
 
     def test_message_types_is_frozenset(self):
         """Verify MESSAGE_TYPES is an immutable frozenset."""
@@ -39,14 +38,14 @@ class TestProtocolConstants:
             "error",
             "metadata",
         }
-        assert MESSAGE_TYPES == expected
+        assert expected == MESSAGE_TYPES
 
     def test_embedding_modes_is_frozenset(self):
         """Verify EMBEDDING_MODES is an immutable frozenset."""
         from shared.plugins.typed_dicts import EMBEDDING_MODES
 
         assert isinstance(EMBEDDING_MODES, frozenset)
-        assert EMBEDDING_MODES == {"query", "document"}
+        assert {"query", "document"} == EMBEDDING_MODES
 
     def test_extraction_types_is_frozenset(self):
         """Verify EXTRACTION_TYPES is an immutable frozenset."""
@@ -62,7 +61,7 @@ class TestProtocolConstants:
             "summary",
             "custom",
         }
-        assert EXTRACTION_TYPES == expected
+        assert expected == EXTRACTION_TYPES
 
     def test_agent_use_cases_is_frozenset(self):
         """Verify AGENT_USE_CASES is an immutable frozenset."""
@@ -83,7 +82,7 @@ class TestProtocolConstants:
             "code_generation",
             "data_analysis",
         }
-        assert AGENT_USE_CASES == expected
+        assert expected == AGENT_USE_CASES
 
     def test_protocol_version_exists(self):
         """Verify PROTOCOL_VERSION is defined."""
