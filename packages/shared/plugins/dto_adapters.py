@@ -59,7 +59,6 @@ class ValidationError(ValueError):
     """
 
 
-
 # ============================================================================
 # Validation Helpers
 # ============================================================================
@@ -128,7 +127,9 @@ def validate_ingested_document_dict(d: dict[str, Any]) -> IngestedDocumentDict:
     Raises:
         ValidationError: If validation fails.
     """
-    _validate_required_keys(d, {"content", "unique_id", "source_type", "metadata", "content_hash"}, "IngestedDocumentDict")
+    _validate_required_keys(
+        d, {"content", "unique_id", "source_type", "metadata", "content_hash"}, "IngestedDocumentDict"
+    )
     _validate_content_hash(d["content_hash"])
     return cast(IngestedDocumentDict, d)
 

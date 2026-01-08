@@ -1,7 +1,6 @@
 """Tests for plugin protocol TypedDict definitions and constants."""
 
 
-
 class TestProtocolConstants:
     """Tests for protocol constants (frozensets)."""
 
