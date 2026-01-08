@@ -18,7 +18,22 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from shared.dtos.ingestion import IngestedDocument
 from webui.tasks import ingestion as ingestion_module
+
+# Valid 64-character hex hash for test documents
+_VALID_HASH = "a" * 64
+
+
+def _make_test_doc(unique_id: str, content: str = "test content") -> IngestedDocument:
+    """Create a test IngestedDocument with valid hash."""
+    return IngestedDocument(
+        content=content,
+        unique_id=unique_id,
+        source_type="directory",
+        metadata={},
+        content_hash=_VALID_HASH,
+    )
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -2480,12 +2495,10 @@ class TestAppendTransactionHandling:
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
 
-        mock_doc = Mock()
-        mock_doc.unique_id = "test-doc-1"
-        mock_doc.content = "test content"
+        test_doc = _make_test_doc("test-doc-1")
 
         async def load_documents_gen():
-            yield mock_doc
+            yield test_doc
 
         mock_connector.load_documents = load_documents_gen
 
@@ -2644,12 +2657,10 @@ class TestAppendTransactionHandling:
         mock_connector = AsyncMock()
         mock_connector.authenticate = AsyncMock(return_value=True)
 
-        mock_doc = Mock()
-        mock_doc.unique_id = "test-doc-1"
-        mock_doc.content = "test content"
+        test_doc = _make_test_doc("test-doc-1")
 
         async def load_documents_gen():
-            yield mock_doc
+            yield test_doc
 
         mock_connector.load_documents = load_documents_gen
 
