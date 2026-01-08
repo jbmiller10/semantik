@@ -229,9 +229,7 @@ class EmbeddingProviderFactory:
             return list(_PROVIDER_CLASSES.keys())
 
     @classmethod
-    def get_provider_class(
-        cls, internal_name: str
-    ) -> type[BaseEmbeddingPlugin] | type[EmbeddingProtocol] | None:
+    def get_provider_class(cls, internal_name: str) -> type[BaseEmbeddingPlugin] | type[EmbeddingProtocol] | None:
         """Get the provider class for an internal name.
 
         Returns the registered class, which may be ABC-based or Protocol-based.
