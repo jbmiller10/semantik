@@ -195,3 +195,52 @@ def get_config_schema(plugin_cls: type) -> dict[str, Any] | None:
     if isinstance(schema, dict):
         return schema
     return None
+
+
+def manifest_from_agent_plugin(plugin_cls: type, plugin_id: str) -> PluginManifest:
+    """Build a plugin manifest for an agent plugin.
+
+    Args:
+        plugin_cls: The agent plugin class.
+        plugin_id: The plugin ID.
+
+    Returns:
+        PluginManifest for the agent plugin.
+    """
+    metadata = getattr(plugin_cls, "METADATA", {}) or {}
+    display_name = _metadata_value(metadata, "display_name", plugin_id.replace("-", " ").title())
+    description = _metadata_value(metadata, "description", "")
+
+    # Get capabilities from the class method if available
+    capabilities_data: dict[str, Any] = {}
+    if hasattr(plugin_cls, "get_capabilities") and callable(plugin_cls.get_capabilities):
+        try:
+            caps = plugin_cls.get_capabilities()
+            capabilities_data = caps.to_dict() if hasattr(caps, "to_dict") else {}
+        except Exception as exc:
+            logger.warning("Failed to get capabilities for agent plugin '%s': %s", plugin_id, exc)
+
+    # Get supported use cases
+    use_cases: list[str] = []
+    if hasattr(plugin_cls, "supported_use_cases") and callable(plugin_cls.supported_use_cases):
+        try:
+            cases = plugin_cls.supported_use_cases()
+            use_cases = [uc.value if hasattr(uc, "value") else str(uc) for uc in cases]
+        except Exception as exc:
+            logger.warning("Failed to get use cases for agent plugin '%s': %s", plugin_id, exc)
+
+    capabilities_data["use_cases"] = use_cases
+
+    return PluginManifest(
+        id=plugin_id,
+        type="agent",
+        version=getattr(plugin_cls, "PLUGIN_VERSION", "0.0.0"),
+        display_name=str(display_name),
+        description=str(description),
+        author=_metadata_value(metadata, "author"),
+        license=_metadata_value(metadata, "license"),
+        homepage=_metadata_value(metadata, "homepage"),
+        requires=list(_metadata_value(metadata, "requires", [])),
+        semantik_version=_metadata_value(metadata, "semantik_version"),
+        capabilities=capabilities_data,
+    )

@@ -48,6 +48,7 @@ from shared.embedding import configure_global_embedding_service
 from .api import auth, health, internal, metrics, models, root, settings
 from .api.chunking_exception_handlers import register_chunking_exception_handlers
 from .api.v2 import (
+    agents as v2_agents,
     chunking as v2_chunking,
     collections as v2_collections,
     connectors as v2_connectors,
@@ -74,6 +75,7 @@ from .middleware.exception_handlers import register_global_exception_handlers
 from .middleware.rate_limit import RateLimitMiddleware
 from .rate_limiter import limiter, rate_limit_exceeded_handler
 from .websocket.scalable_manager import scalable_ws_manager as ws_manager
+from .ws.agents import agent_websocket_endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +216,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
         logger.error(f"Error running startup tasks: {e}")
         # Don't fail startup if default data can't be created
 
+    # Register built-in agent tools
+    try:
+        from .startup import register_builtin_agent_tools
+
+        await register_builtin_agent_tools()
+    except Exception as e:
+        logger.error(f"Error registering agent tools: {e}")
+        # Don't fail startup if agent tools can't be registered
+
     # Configure global embedding service
     _configure_embedding_service()
 
@@ -336,6 +347,7 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     app.include_router(internal.router)
 
     # Include v2 API routers
+    app.include_router(v2_agents.router)
     app.include_router(v2_chunking.router)
     app.include_router(v2_collections.router)
     app.include_router(v2_connectors.router)
@@ -384,6 +396,10 @@ def create_app(skip_lifespan: bool = False) -> FastAPI:
     @app.websocket("/ws/directory-scan/{scan_id}")
     async def directory_scan_ws(websocket: WebSocket, scan_id: str) -> None:
         await directory_scan_websocket(websocket, scan_id)
+
+    @app.websocket("/ws/agents/{session_id}")
+    async def agent_ws(websocket: WebSocket, session_id: str) -> None:
+        await agent_websocket_endpoint(websocket, session_id)
 
     # Add health check endpoint
     @app.get("/health")
