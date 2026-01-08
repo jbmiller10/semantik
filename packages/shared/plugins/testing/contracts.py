@@ -341,3 +341,267 @@ class ExtractorPluginContractTest(PluginContractTest):
             assert isinstance(result, ExtractionResult)
         finally:
             await plugin_instance.cleanup()
+
+
+# =============================================================================
+# Protocol-Based Test Mixins (for external plugins with no semantik imports)
+# =============================================================================
+#
+# These mixins validate Protocol compliance structurally, without requiring
+# inheritance from ABC base classes. External plugins can use these to verify
+# their implementations satisfy the Protocol interfaces.
+
+
+class ConnectorProtocolTestMixin:
+    """Tests that work with ANY ConnectorProtocol implementation.
+
+    Unlike ConnectorPluginContractTest which requires issubclass(BaseConnector),
+    this mixin validates Protocol compliance structurally.
+
+    Usage:
+        class TestMyExternalConnector(ConnectorProtocolTestMixin):
+            plugin_class = MyExternalConnector
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_connector_protocol(self) -> None:
+        """Verify class satisfies ConnectorProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "connector"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings and non-empty."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+        assert self.plugin_class.PLUGIN_ID, "PLUGIN_ID cannot be empty"
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "authenticate", None))
+        assert callable(getattr(self.plugin_class, "load_documents", None))
+        assert callable(getattr(self.plugin_class, "get_config_fields", None))
+        assert callable(getattr(self.plugin_class, "get_secret_fields", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "connector"
+
+
+class EmbeddingProtocolTestMixin:
+    """Tests that work with ANY EmbeddingProtocol implementation.
+
+    Validates Protocol compliance structurally without requiring
+    inheritance from BaseEmbeddingPlugin.
+
+    Usage:
+        class TestMyExternalEmbedding(EmbeddingProtocolTestMixin):
+            plugin_class = MyExternalEmbedding
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_embedding_protocol(self) -> None:
+        """Verify class satisfies EmbeddingProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "embedding"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings and non-empty."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "embed_texts", None))
+        assert callable(getattr(self.plugin_class, "get_definition", None))
+        assert callable(getattr(self.plugin_class, "supports_model", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "embedding"
+
+
+class ChunkingProtocolTestMixin:
+    """Tests that work with ANY ChunkingProtocol implementation.
+
+    Validates Protocol compliance structurally without requiring
+    inheritance from ChunkingStrategy.
+
+    Usage:
+        class TestMyExternalChunker(ChunkingProtocolTestMixin):
+            plugin_class = MyExternalChunker
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_chunking_protocol(self) -> None:
+        """Verify class satisfies ChunkingProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "chunking"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "chunk", None))
+        assert callable(getattr(self.plugin_class, "validate_content", None))
+        assert callable(getattr(self.plugin_class, "estimate_chunks", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "chunking"
+
+
+class RerankerProtocolTestMixin:
+    """Tests that work with ANY RerankerProtocol implementation.
+
+    Validates Protocol compliance structurally without requiring
+    inheritance from RerankerPlugin.
+
+    Usage:
+        class TestMyExternalReranker(RerankerProtocolTestMixin):
+            plugin_class = MyExternalReranker
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_reranker_protocol(self) -> None:
+        """Verify class satisfies RerankerProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "reranker"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings and non-empty."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+        assert self.plugin_class.PLUGIN_ID, "PLUGIN_ID cannot be empty"
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "rerank", None))
+        assert callable(getattr(self.plugin_class, "get_capabilities", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "reranker"
+
+
+class ExtractorProtocolTestMixin:
+    """Tests that work with ANY ExtractorProtocol implementation.
+
+    Validates Protocol compliance structurally without requiring
+    inheritance from ExtractorPlugin.
+
+    Usage:
+        class TestMyExternalExtractor(ExtractorProtocolTestMixin):
+            plugin_class = MyExternalExtractor
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_extractor_protocol(self) -> None:
+        """Verify class satisfies ExtractorProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "extractor"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings and non-empty."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+        assert self.plugin_class.PLUGIN_ID, "PLUGIN_ID cannot be empty"
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "extract", None))
+        assert callable(getattr(self.plugin_class, "supported_extractions", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "extractor"
+
+
+class AgentProtocolTestMixin:
+    """Tests that work with ANY AgentProtocol implementation.
+
+    Validates Protocol compliance structurally without requiring
+    inheritance from AgentPlugin.
+
+    Usage:
+        class TestMyExternalAgent(AgentProtocolTestMixin):
+            plugin_class = MyExternalAgent
+    """
+
+    plugin_class: ClassVar[type]
+
+    def test_satisfies_agent_protocol(self) -> None:
+        """Verify class satisfies AgentProtocol structurally."""
+        assert hasattr(self.plugin_class, "PLUGIN_ID")
+        assert hasattr(self.plugin_class, "PLUGIN_TYPE")
+        assert hasattr(self.plugin_class, "PLUGIN_VERSION")
+        assert self.plugin_class.PLUGIN_TYPE == "agent"
+
+    def test_has_required_class_vars(self) -> None:
+        """Verify required class variables are strings and non-empty."""
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_ID", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_TYPE", None), str)
+        assert isinstance(getattr(self.plugin_class, "PLUGIN_VERSION", None), str)
+        assert self.plugin_class.PLUGIN_ID, "PLUGIN_ID cannot be empty"
+
+    def test_has_required_methods(self) -> None:
+        """Verify all protocol-required methods are present and callable."""
+        assert callable(getattr(self.plugin_class, "execute", None))
+        assert callable(getattr(self.plugin_class, "get_capabilities", None))
+        assert callable(getattr(self.plugin_class, "supported_use_cases", None))
+        assert callable(getattr(self.plugin_class, "get_manifest", None))
+
+    def test_get_manifest_returns_dict(self) -> None:
+        """Verify get_manifest returns a valid manifest dict."""
+        manifest = self.plugin_class.get_manifest()
+        assert isinstance(manifest, dict)
+        assert "id" in manifest
+        assert "type" in manifest
+        assert manifest["type"] == "agent"

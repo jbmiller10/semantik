@@ -90,12 +90,20 @@ Mock Classes
 """
 
 from .contracts import (
+    # Protocol-based test mixins (for external plugins with no semantik imports)
+    AgentProtocolTestMixin,
+    # ABC-based contract tests (require inheritance)
     ChunkingPluginContractTest,
+    ChunkingProtocolTestMixin,
     ConnectorPluginContractTest,
+    ConnectorProtocolTestMixin,
     EmbeddingPluginContractTest,
+    EmbeddingProtocolTestMixin,
     ExtractorPluginContractTest,
+    ExtractorProtocolTestMixin,
     PluginContractTest,
     RerankerPluginContractTest,
+    RerankerProtocolTestMixin,
 )
 from .fixtures import (
     _env_with_api_key,
@@ -128,13 +136,20 @@ from .mocks import (
 )
 
 __all__ = [
-    # Contract test classes
+    # ABC-based contract test classes (require inheritance)
     "PluginContractTest",
     "EmbeddingPluginContractTest",
     "ChunkingPluginContractTest",
     "ConnectorPluginContractTest",
     "RerankerPluginContractTest",
     "ExtractorPluginContractTest",
+    # Protocol-based test mixins (for external plugins with no semantik imports)
+    "ConnectorProtocolTestMixin",
+    "EmbeddingProtocolTestMixin",
+    "ChunkingProtocolTestMixin",
+    "RerankerProtocolTestMixin",
+    "ExtractorProtocolTestMixin",
+    "AgentProtocolTestMixin",
     # Mock classes
     "MockDocument",
     "MockEmbeddingService",
