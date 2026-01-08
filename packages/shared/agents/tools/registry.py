@@ -265,6 +265,7 @@ class ToolRegistry:
         name: str,
         args: dict[str, Any],
         context: AgentContext | None = None,
+        timeout_override: float | None = None,
     ) -> Any:
         """Execute a tool by name.
 
@@ -274,6 +275,7 @@ class ToolRegistry:
             name: The name of the tool to execute.
             args: Arguments to pass to the tool.
             context: Optional runtime context.
+            timeout_override: Override the tool's default timeout (seconds).
 
         Returns:
             The tool's result.
@@ -312,7 +314,7 @@ class ToolRegistry:
             )
 
         # Execute with timeout and metrics
-        timeout = tool.definition.timeout_seconds
+        timeout = timeout_override if timeout_override is not None else tool.definition.timeout_seconds
         with timed_tool_call(name):
             try:
                 return await asyncio.wait_for(

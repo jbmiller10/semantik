@@ -7,9 +7,11 @@ resolution following the three-layer architecture (Router -> Service -> Reposito
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import logging
+from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 from shared.agents.exceptions import (
@@ -34,6 +36,7 @@ from shared.agents.types import (
     MessageRole,
     MessageType,
 )
+from shared.database.exceptions import AccessDeniedError
 from shared.database.repositories.agent_session_repository import AgentSessionRepository
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
@@ -48,6 +51,9 @@ if TYPE_CHECKING:
     from shared.plugins.types.agent import AgentPlugin
 
 logger = logging.getLogger(__name__)
+
+# Maximum number of cached plugin instances (LRU eviction)
+MAX_CACHED_INSTANCES = 32
 
 
 class AgentService:
@@ -81,8 +87,8 @@ class AgentService:
         self._db = db
         self._session_repo = session_repo or AgentSessionRepository(db)
 
-        # Plugin instance cache: keyed by "{plugin_id}:{config_hash}"
-        self._instances: dict[str, AgentPlugin] = {}
+        # Plugin instance cache with LRU eviction: keyed by "{plugin_id}:{config_hash}"
+        self._instances: OrderedDict[str, AgentPlugin] = OrderedDict()
 
         # Active executions for interruption support: keyed by session_id
         self._active_executions: dict[str, AgentPlugin] = {}
@@ -124,6 +130,8 @@ class AgentService:
 
         async with self._instance_lock:
             if cache_key in self._instances:
+                # Move to end to mark as recently used
+                self._instances.move_to_end(cache_key)
                 return self._instances[cache_key]
 
             # Look up in registry
@@ -141,6 +149,15 @@ class AgentService:
                 plugin_id,
                 config_hash,
             )
+
+            # Evict oldest instances if over limit
+            while len(self._instances) > MAX_CACHED_INSTANCES:
+                oldest_key, oldest_instance = self._instances.popitem(last=False)
+                try:
+                    await oldest_instance.cleanup()
+                    logger.debug("Evicted cached agent instance: %s", oldest_key)
+                except Exception as e:
+                    logger.warning("Error cleaning up evicted instance %s: %s", oldest_key, e)
 
             return instance
 
@@ -329,6 +346,7 @@ class AgentService:
             AgentInterruptedError: If interrupted.
         """
         # Phase 1: Resolve session
+        is_new_session = session_id is None
         db_session = await self._resolve_session(
             plugin_id=plugin_id,
             session_id=session_id,
@@ -366,6 +384,7 @@ class AgentService:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     stream=stream,
+                    is_new_session=is_new_session,
                 ):
                     yield message
 
@@ -419,6 +438,8 @@ class AgentService:
 
         Raises:
             SessionNotFoundError: If session_id provided but not found.
+            AccessDeniedError: If session is owned by a different user.
+            ValueError: If session is associated with a different agent.
         """
         if session_id:
             # Resume existing session
@@ -428,6 +449,29 @@ class AgentService:
                     f"Session not found: {session_id}",
                     session_id=session_id,
                 )
+
+            # Verify ownership (if session has an owner).
+            request_user_id: int | None = None
+            if context and context.user_id:
+                try:
+                    request_user_id = int(context.user_id)
+                except ValueError:
+                    request_user_id = None
+
+            if db_session.user_id is not None and request_user_id != db_session.user_id:
+                raise AccessDeniedError(
+                    user_id=str(request_user_id) if request_user_id is not None else "unknown",
+                    resource_type="agent_session",
+                    resource_id=session_id,
+                )
+
+            # Ensure agent consistency for resumed sessions.
+            if db_session.agent_plugin_id != plugin_id:
+                raise ValueError(
+                    f"Session '{session_id}' belongs to agent '{db_session.agent_plugin_id}', "
+                    f"cannot resume with '{plugin_id}'",
+                )
+
             return db_session
 
         # Create new session
@@ -510,6 +554,7 @@ class AgentService:
         temperature: float | None,
         max_tokens: int | None,
         stream: bool,
+        is_new_session: bool = False,
     ) -> AsyncIterator[AgentMessage]:
         """Execute agent with message persistence.
 
@@ -527,10 +572,22 @@ class AgentService:
             temperature: Optional temperature.
             max_tokens: Optional max tokens.
             stream: Whether to stream.
+            is_new_session: Whether this is a newly created session.
 
         Yields:
             AgentMessage objects.
         """
+        # Yield session metadata for new sessions (before user message)
+        if is_new_session:
+            session_metadata = AgentMessage(
+                role=MessageRole.SYSTEM,
+                type=MessageType.METADATA,
+                content="",
+                sequence_number=-1,  # Special sequence for metadata
+                error_details={"session_id": db_session.external_id, "created": True},
+            )
+            yield session_metadata
+
         # Add user message to session
         user_message = AgentMessage(
             role=MessageRole.USER,
@@ -594,12 +651,9 @@ class AgentService:
                     )
 
                 # Capture SDK session ID if present (for resume functionality)
-                if (
-                    hasattr(instance, "_adapter")
-                    and instance._adapter is not None
-                    and hasattr(instance._adapter, "_current_session_id")
-                ):
-                    sdk_session_id = instance._adapter._current_session_id
+                # Use public current_session_id property instead of private attrs
+                if hasattr(instance, "_adapter") and instance._adapter is not None:
+                    sdk_session_id = getattr(instance._adapter, "current_session_id", None)
                     if sdk_session_id and sdk_session_id != db_session.sdk_session_id:
                         await self._session_repo.update_sdk_session_id(
                             str(db_session.id),
@@ -844,8 +898,8 @@ class AgentService:
             parent_session_id=str(db_session.id),
         )
 
-        # Copy messages (via JSONB assignment)
-        new_session.messages = list(db_session.messages) if db_session.messages else []
+        # Deep copy messages to prevent cross-session mutation
+        new_session.messages = copy.deepcopy(db_session.messages) if db_session.messages else []
         new_session.message_count = db_session.message_count
 
         # Copy SDK session ID for potential resume

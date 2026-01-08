@@ -111,7 +111,8 @@ async def agent_websocket_endpoint(websocket: WebSocket, session_id: str) -> Non
         protocol = protocol.strip()
         if protocol.startswith("access_token."):
             token = protocol[len("access_token.") :]
-            accepted_subprotocol = protocol
+            # Use safe identifier instead of echoing token in response header
+            accepted_subprotocol = "v1.authenticated"
             break
 
     # Fallback to query param (deprecated)
