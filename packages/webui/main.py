@@ -216,6 +216,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:  # noqa: ARG001
         logger.error(f"Error running startup tasks: {e}")
         # Don't fail startup if default data can't be created
 
+    # Register built-in agent tools
+    try:
+        from .startup import register_builtin_agent_tools
+
+        await register_builtin_agent_tools()
+    except Exception as e:
+        logger.error(f"Error registering agent tools: {e}")
+        # Don't fail startup if agent tools can't be registered
+
     # Configure global embedding service
     _configure_embedding_service()
 
