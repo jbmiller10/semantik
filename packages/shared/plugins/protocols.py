@@ -109,9 +109,7 @@ class ConnectorProtocol(Protocol):
         """
         ...
 
-    def load_documents(
-        self, source_id: int | None = None
-    ) -> AsyncIterator[dict[str, Any]]:
+    def load_documents(self, source_id: int | None = None) -> AsyncIterator[dict[str, Any]]:
         """Yield documents from the source.
 
         Args:

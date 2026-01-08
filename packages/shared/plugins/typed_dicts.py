@@ -25,56 +25,64 @@ PROTOCOL_VERSION = "1.0.0"
 # Valid string values for fields that map to internal enums.
 # External plugins use these strings; adapters convert to enums.
 
-MESSAGE_ROLES = frozenset({
-    "user",
-    "assistant",
-    "system",
-    "tool_call",
-    "tool_result",
-    "error",
-})
+MESSAGE_ROLES = frozenset(
+    {
+        "user",
+        "assistant",
+        "system",
+        "tool_call",
+        "tool_result",
+        "error",
+    }
+)
 """Valid values for AgentMessageDict.role field."""
 
-MESSAGE_TYPES = frozenset({
-    "text",
-    "thinking",
-    "tool_use",
-    "tool_output",
-    "partial",
-    "final",
-    "error",
-    "metadata",
-})
+MESSAGE_TYPES = frozenset(
+    {
+        "text",
+        "thinking",
+        "tool_use",
+        "tool_output",
+        "partial",
+        "final",
+        "error",
+        "metadata",
+    }
+)
 """Valid values for AgentMessageDict.type field."""
 
 EMBEDDING_MODES = frozenset({"query", "document"})
 """Valid values for embedding mode parameter."""
 
-EXTRACTION_TYPES = frozenset({
-    "entities",
-    "keywords",
-    "language",
-    "topics",
-    "sentiment",
-    "summary",
-    "custom",
-})
+EXTRACTION_TYPES = frozenset(
+    {
+        "entities",
+        "keywords",
+        "language",
+        "topics",
+        "sentiment",
+        "summary",
+        "custom",
+    }
+)
 """Valid values for extraction_types parameter."""
 
-AGENT_USE_CASES = frozenset({
-    "hyde",
-    "query_expansion",
-    "query_understanding",
-    "summarization",
-    "reranking",
-    "answer_synthesis",
-    "tool_use",
-    "agentic_search",
-    "reasoning",
-    "assistant",
-    "code_generation",
-    "data_analysis",
-})
+AGENT_USE_CASES = frozenset(
+    {
+        "hyde",
+        "query_expansion",
+        "query_understanding",
+        "summarization",
+        "reranking",
+        "answer_synthesis",
+        "tool_use",
+        "agentic_search",
+        "reasoning",
+        "assistant",
+        "code_generation",
+        "data_analysis",
+    }
+)
 """Valid values for AgentProtocol.supported_use_cases()."""
 
 
