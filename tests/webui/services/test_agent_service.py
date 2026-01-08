@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.agents.exceptions import SessionNotFoundError
-from shared.agents.types import AgentCapabilities, AgentUseCase
+from shared.agents.types import AgentCapabilities, AgentContext, AgentUseCase
 from webui.services.agent_service import AgentService
 
 
@@ -213,6 +213,33 @@ class TestComputeConfigHash:
         hash1 = AgentService._compute_config_hash(config1)
         hash2 = AgentService._compute_config_hash(config2)
         assert hash1 == hash2
+
+
+class TestBuildExecutionContext:
+    """Test _build_execution_context method."""
+
+    def test_sets_external_session_id_on_existing_context(
+        self,
+        agent_service: AgentService,
+        mock_agent_session: MagicMock,
+    ) -> None:
+        """Uses external_id for context.session_id."""
+        context = AgentContext(request_id="req-1")
+
+        result = agent_service._build_execution_context(context=context, db_session=mock_agent_session)
+
+        assert result.session_id == mock_agent_session.external_id
+
+    def test_creates_context_and_sets_external_session_id(
+        self,
+        agent_service: AgentService,
+        mock_agent_session: MagicMock,
+    ) -> None:
+        """Creates a context when none is provided."""
+        result = agent_service._build_execution_context(context=None, db_session=mock_agent_session)
+
+        assert result.request_id == str(mock_agent_session.id)
+        assert result.session_id == mock_agent_session.external_id
 
 
 class TestListAgents:

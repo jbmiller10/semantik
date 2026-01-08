@@ -494,7 +494,7 @@ class AgentService:
             context = AgentContext(request_id=str(db_session.id))
 
         # Set session ID in context
-        context.session_id = str(db_session.id)
+        context.session_id = db_session.external_id
 
         return context
 
