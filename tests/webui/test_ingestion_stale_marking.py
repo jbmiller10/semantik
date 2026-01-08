@@ -90,7 +90,9 @@ class _FakeRegistry:
     def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401, ANN401
         return None
 
-    async def register_or_update(self, collection_id: str, ingested: IngestedDocument, source_id: int) -> dict[str, Any]:
+    async def register_or_update(
+        self, collection_id: str, ingested: IngestedDocument, source_id: int
+    ) -> dict[str, Any]:
         if ingested.unique_id == "bad-doc":
             raise RuntimeError("registration failed")
         return {
