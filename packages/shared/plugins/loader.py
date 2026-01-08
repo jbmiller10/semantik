@@ -17,9 +17,17 @@ from .adapters import (
     manifest_from_extractor_plugin,
     manifest_from_reranker_plugin,
 )
-from .base import SemanticPlugin
 from .manifest import PluginDependency
 from .metrics import record_dependency_warning, record_plugin_load, timed_operation
+from .protocols import (
+    PROTOCOL_BY_TYPE,
+    AgentProtocol,
+    ChunkingProtocol,
+    ConnectorProtocol,
+    EmbeddingProtocol,
+    ExtractorProtocol,
+    RerankerProtocol,
+)
 from .registry import PluginRecord, PluginSource, plugin_registry
 from .security import audit_log
 
@@ -75,6 +83,50 @@ def _coerce_class(obj: Any) -> type | None:
 
 def _is_internal_module(module_name: str) -> bool:
     return module_name.startswith(("shared.", "webui.", "vecpipe."))
+
+
+def _satisfies_protocol(plugin_cls: type, protocol: type) -> bool:
+    """Check if a class structurally satisfies a protocol.
+
+    Uses attribute/method presence checking since @runtime_checkable
+    protocols with ClassVar members have limited issubclass() support.
+
+    Args:
+        plugin_cls: The plugin class to check.
+        protocol: The protocol type to check against.
+
+    Returns:
+        True if the class satisfies the protocol's structural requirements.
+    """
+    # Check required class variables (all protocols need these)
+    required_class_vars = {"PLUGIN_ID", "PLUGIN_TYPE", "PLUGIN_VERSION"}
+    for var in required_class_vars:
+        if not hasattr(plugin_cls, var):
+            return False
+
+    # Check required methods based on protocol type
+    if protocol is ConnectorProtocol:
+        required_methods = {
+            "authenticate",
+            "load_documents",
+            "get_config_fields",
+            "get_secret_fields",
+            "get_manifest",
+        }
+    elif protocol is EmbeddingProtocol:
+        required_methods = {"embed_texts", "get_definition", "supports_model", "get_manifest"}
+    elif protocol is ChunkingProtocol:
+        required_methods = {"chunk", "validate_content", "estimate_chunks", "get_manifest"}
+    elif protocol is RerankerProtocol:
+        required_methods = {"rerank", "get_capabilities", "get_manifest"}
+    elif protocol is ExtractorProtocol:
+        required_methods = {"extract", "supported_extractions", "get_manifest"}
+    elif protocol is AgentProtocol:
+        required_methods = {"execute", "get_capabilities", "supported_use_cases", "get_manifest"}
+    else:
+        required_methods = {"get_manifest"}
+
+    return all(callable(getattr(plugin_cls, m, None)) for m in required_methods)
 
 
 def load_plugins(
@@ -310,40 +362,42 @@ def _load_external_plugins(
 def _resolve_plugin_type(plugin_cls: type) -> str | None:
     """Resolve the plugin type for a given class.
 
-    This function checks class hierarchies to determine plugin type.
-    The unified approach checks SemanticPlugin.PLUGIN_TYPE first, then
-    falls back to legacy base class detection for compatibility.
+    Uses Protocol-based structural typing for validation.
+    Checks explicit PLUGIN_TYPE first, then falls back to protocol matching.
+
+    This function supports both:
+    - ABC-based plugins (inherit from SemanticPlugin, etc.)
+    - Protocol-only plugins (external plugins with no semantik imports)
+
+    Returns:
+        Plugin type string ('embedding', 'connector', etc.) or None if not valid.
     """
-    # Unified check: All plugins should inherit from SemanticPlugin and define PLUGIN_TYPE
-    if issubclass(plugin_cls, SemanticPlugin):
-        plugin_type = getattr(plugin_cls, "PLUGIN_TYPE", None)
-        if plugin_type:
+    # Check explicit PLUGIN_TYPE attribute first (fast path)
+    plugin_type: str | None = getattr(plugin_cls, "PLUGIN_TYPE", None)
+    if plugin_type and plugin_type in PROTOCOL_BY_TYPE:
+        # Verify class actually satisfies the protocol
+        protocol = PROTOCOL_BY_TYPE[plugin_type]
+        if _satisfies_protocol(plugin_cls, protocol):
             return plugin_type
 
-    # Legacy fallback checks for classes that may not have PLUGIN_TYPE set
-    try:
-        import shared.embedding.plugin_base as embedding_plugin_base
+    # Fall back to protocol detection by checking each protocol
+    for ptype, protocol in PROTOCOL_BY_TYPE.items():
+        if _satisfies_protocol(plugin_cls, protocol):
+            return ptype
 
-        if issubclass(plugin_cls, embedding_plugin_base.BaseEmbeddingPlugin):
-            return "embedding"
-    except Exception:
-        pass
-
-    try:
-        import shared.chunking.domain.services.chunking_strategies.base as chunking_strategy_base
-
-        if issubclass(plugin_cls, chunking_strategy_base.ChunkingStrategy):
-            return "chunking"
-    except Exception:
-        pass
-
-    try:
-        import shared.connectors.base as connector_base
-
-        if issubclass(plugin_cls, connector_base.BaseConnector):
-            return "connector"
-    except Exception:
-        pass
+    # Legacy compatibility: check for PLUGIN_TYPE without full protocol compliance
+    # This allows older plugins to still load with a warning
+    if hasattr(plugin_cls, "PLUGIN_TYPE"):
+        legacy_type: str = plugin_cls.PLUGIN_TYPE  # type: ignore[attr-defined]
+        if legacy_type in PROTOCOL_BY_TYPE:
+            logger.warning(
+                "Plugin %s has PLUGIN_TYPE='%s' but doesn't fully satisfy %sProtocol. "
+                "Consider updating to full protocol compliance.",
+                plugin_cls.__name__,
+                legacy_type,
+                legacy_type.title(),
+            )
+            return legacy_type
 
     return None
 
@@ -369,7 +423,8 @@ def _register_plugin_class(
     elif plugin_type == "agent":
         _register_agent_plugin(plugin_cls, source, entry_point, disabled_plugin_ids)
     else:
-        if issubclass(plugin_cls, SemanticPlugin):
+        # Handle plugins with get_manifest but unknown type
+        if hasattr(plugin_cls, "get_manifest") and callable(plugin_cls.get_manifest):
             manifest = plugin_cls.get_manifest()
             _register_plugin_record(
                 plugin_type=manifest.type,
@@ -381,6 +436,26 @@ def _register_plugin_class(
             )
 
 
+def _validate_embedding_protocol(plugin_cls: type) -> tuple[bool, str | None]:
+    """Validate an embedding plugin that implements only the protocol (no ABC).
+
+    Args:
+        plugin_cls: The embedding plugin class to validate.
+
+    Returns:
+        Tuple of (is_valid, error_message). error_message is None if valid.
+    """
+    if not hasattr(plugin_cls, "INTERNAL_NAME") or not plugin_cls.INTERNAL_NAME:
+        return False, "Missing required INTERNAL_NAME class variable"
+    if not hasattr(plugin_cls, "API_ID") or not plugin_cls.API_ID:
+        return False, "Missing required API_ID class variable"
+    if not callable(getattr(plugin_cls, "get_definition", None)):
+        return False, "Missing required get_definition() classmethod"
+    if not callable(getattr(plugin_cls, "embed_texts", None)):
+        return False, "Missing required embed_texts() method"
+    return True, None
+
+
 def _register_embedding_plugin(
     plugin_cls: type,
     source: PluginSource,
@@ -388,18 +463,22 @@ def _register_embedding_plugin(
     disabled_plugin_ids: set[str] | None,
 ) -> None:
     from shared.embedding.factory import EmbeddingProviderFactory
-    from shared.embedding.plugin_base import BaseEmbeddingPlugin, EmbeddingProviderDefinition
+    from shared.embedding.plugin_base import EmbeddingProviderDefinition
     from shared.embedding.provider_registry import register_provider_definition
 
     if not hasattr(plugin_cls, "get_definition") or not callable(plugin_cls.get_definition):
         logger.warning("Embedding plugin missing get_definition(): %s", plugin_cls)
         return
 
-    if issubclass(plugin_cls, BaseEmbeddingPlugin):
+    # Validate plugin - use ABC method if available, otherwise protocol validation
+    if hasattr(plugin_cls, "validate_plugin_contract"):
         is_valid, error = plugin_cls.validate_plugin_contract()
-        if not is_valid:
-            logger.warning("Skipping invalid embedding plugin '%s': %s", plugin_cls, error)
-            return
+    else:
+        is_valid, error = _validate_embedding_protocol(plugin_cls)
+
+    if not is_valid:
+        logger.warning("Skipping invalid embedding plugin '%s': %s", plugin_cls, error)
+        return
 
     try:
         definition = plugin_cls.get_definition()
