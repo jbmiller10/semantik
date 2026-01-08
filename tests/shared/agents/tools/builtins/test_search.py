@@ -67,12 +67,12 @@ class TestSemanticSearchToolDefinition:
 class TestSemanticSearchToolExecution:
     """Tests for SemanticSearchTool execution."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def tool(self) -> SemanticSearchTool:
         """Create a tool instance."""
         return SemanticSearchTool()
 
-    @pytest.fixture
+    @pytest.fixture()
     def context(self) -> AgentContext:
         """Create a test context."""
         return AgentContext(
@@ -81,14 +81,14 @@ class TestSemanticSearchToolExecution:
             collection_id="550e8400-e29b-41d4-a716-446655440000",
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_empty_query_returns_error(self, tool: SemanticSearchTool, context: AgentContext) -> None:
         """Test empty query returns error."""
         result = await tool.execute({"query": ""}, context)
         assert "error" in result
         assert "empty" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_no_collection_returns_error(self, tool: SemanticSearchTool) -> None:
         """Test no collection returns error."""
         context = AgentContext(request_id="test", user_id="123")
@@ -96,14 +96,14 @@ class TestSemanticSearchToolExecution:
         assert "error" in result
         assert "collection" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_no_context_returns_error(self, tool: SemanticSearchTool) -> None:
         """Test no context returns error."""
         result = await tool.execute({"query": "test"}, None)
         assert "error" in result
         assert "context" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_collection_uuid_returns_error(self, tool: SemanticSearchTool, context: AgentContext) -> None:
         """Test invalid collection UUID returns error."""
         result = await tool.execute(
@@ -113,7 +113,7 @@ class TestSemanticSearchToolExecution:
         assert "error" in result
         assert "uuid" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_search(self, tool: SemanticSearchTool, context: AgentContext) -> None:
         """Test successful search execution."""
         mock_results = {
@@ -156,7 +156,7 @@ class TestSemanticSearchToolExecution:
         assert result["results"][0]["content"] == "Test content"
         assert result["results"][0]["score"] == 0.95
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_top_k_clamped(self, tool: SemanticSearchTool, context: AgentContext) -> None:
         """Test top_k is clamped to valid range."""
         mock_results = {"results": []}
@@ -188,7 +188,7 @@ class TestSemanticSearchToolExecution:
                     call_args = mock_service.multi_collection_search.call_args
                     assert call_args.kwargs["k"] == 1
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_reranker_config_passed(self, context: AgentContext) -> None:
         """Test reranker configuration is passed to service."""
         tool = SemanticSearchTool(use_reranker=True, reranker_id="test-reranker")
@@ -216,7 +216,7 @@ class TestSemanticSearchToolExecution:
                     assert call_args.kwargs["use_reranker"] is True
                     assert call_args.kwargs["reranker_id"] == "test-reranker"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_collection_ids_from_args(self, tool: SemanticSearchTool, context: AgentContext) -> None:
         """Test collection_ids from args takes precedence."""
         mock_results = {"results": []}

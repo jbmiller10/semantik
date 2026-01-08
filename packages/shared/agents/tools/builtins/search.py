@@ -138,9 +138,7 @@ class SemanticSearchTool(AgentTool):
             collection_ids = [context.collection_id]
 
         if not collection_ids:
-            return {
-                "error": "No collection specified. Provide collection_ids or set collection in context."
-            }
+            return {"error": "No collection specified. Provide collection_ids or set collection in context."}
 
         # Validate collection IDs are valid UUIDs
         try:
@@ -183,15 +181,17 @@ class SemanticSearchTool(AgentTool):
             formatted_results = []
 
             for item in results:
-                formatted_results.append({
-                    "content": item.get("content", ""),
-                    "score": item.get("reranked_score") or item.get("score", 0.0),
-                    "doc_id": item.get("doc_id"),
-                    "chunk_id": item.get("chunk_id"),
-                    "collection_id": item.get("collection_id"),
-                    "collection_name": item.get("collection_name"),
-                    "metadata": item.get("metadata", {}),
-                })
+                formatted_results.append(
+                    {
+                        "content": item.get("content", ""),
+                        "score": item.get("reranked_score") or item.get("score", 0.0),
+                        "doc_id": item.get("doc_id"),
+                        "chunk_id": item.get("chunk_id"),
+                        "collection_id": item.get("collection_id"),
+                        "collection_name": item.get("collection_name"),
+                        "metadata": item.get("metadata", {}),
+                    }
+                )
 
             return {
                 "query": query,

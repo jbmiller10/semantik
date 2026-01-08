@@ -112,17 +112,19 @@ class ListCollectionsTool(AgentTool):
                     if status_filter and coll_status.lower() != status_filter.lower():
                         continue
 
-                    formatted_collections.append({
-                        "id": str(coll.id),
-                        "name": coll.name,
-                        "description": coll.description,
-                        "status": coll_status,
-                        "document_count": getattr(coll, "document_count", None),
-                        "embedding_model": coll.embedding_model,
-                        "is_public": coll.is_public,
-                        "is_owned": coll.owner_id == user_id,
-                        "created_at": coll.created_at.isoformat() if coll.created_at else None,
-                    })
+                    formatted_collections.append(
+                        {
+                            "id": str(coll.id),
+                            "name": coll.name,
+                            "description": coll.description,
+                            "status": coll_status,
+                            "document_count": getattr(coll, "document_count", None),
+                            "embedding_model": coll.embedding_model,
+                            "is_public": coll.is_public,
+                            "is_owned": coll.owner_id == user_id,
+                            "created_at": coll.created_at.isoformat() if coll.created_at else None,
+                        }
+                    )
 
                 return {
                     "total": len(formatted_collections),

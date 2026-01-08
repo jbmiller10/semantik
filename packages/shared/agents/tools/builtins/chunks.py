@@ -101,9 +101,7 @@ class GetChunkTool(AgentTool):
             async with pg_connection_manager.get_session() as session:
                 # First verify access to collection
                 collection_repo = CollectionRepository(session)
-                collection = await collection_repo.get_by_uuid_with_permission_check(
-                    validated_collection_id, user_id
-                )
+                collection = await collection_repo.get_by_uuid_with_permission_check(validated_collection_id, user_id)
 
                 if not collection:
                     return {

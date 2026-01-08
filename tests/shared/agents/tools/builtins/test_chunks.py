@@ -65,12 +65,12 @@ class TestGetChunkToolDefinition:
 class TestGetChunkToolExecution:
     """Tests for GetChunkTool execution."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def tool(self) -> GetChunkTool:
         """Create a tool instance."""
         return GetChunkTool()
 
-    @pytest.fixture
+    @pytest.fixture()
     def context(self) -> AgentContext:
         """Create a test context."""
         return AgentContext(
@@ -78,17 +78,17 @@ class TestGetChunkToolExecution:
             user_id="123",
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_chunk_id(self) -> str:
         """Return a valid chunk ID format."""
         return "550e8400-e29b-41d4-a716-446655440001_0001"
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_collection_id(self) -> str:
         """Return a valid collection UUID."""
         return "550e8400-e29b-41d4-a716-446655440000"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_missing_chunk_id_returns_error(self, tool: GetChunkTool, context: AgentContext) -> None:
         """Test missing chunk_id returns error."""
         result = await tool.execute(
@@ -98,7 +98,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "chunk_id" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_missing_collection_id_returns_error(self, tool: GetChunkTool, context: AgentContext) -> None:
         """Test missing collection_id returns error."""
         result = await tool.execute(
@@ -108,7 +108,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "collection_id" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_collection_uuid_returns_error(self, tool: GetChunkTool, context: AgentContext) -> None:
         """Test invalid collection UUID returns error."""
         result = await tool.execute(
@@ -118,7 +118,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "uuid" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_no_context_returns_error(self, tool: GetChunkTool) -> None:
         """Test no context returns error."""
         result = await tool.execute(
@@ -131,7 +131,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "context" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_collection_not_found_returns_error(
         self,
         tool: GetChunkTool,
@@ -162,7 +162,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "not found" in result["error"].lower() or "access denied" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_chunk_not_found_returns_error(
         self,
         tool: GetChunkTool,
@@ -200,7 +200,7 @@ class TestGetChunkToolExecution:
         assert "error" in result
         assert "not found" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_retrieval(
         self,
         tool: GetChunkTool,

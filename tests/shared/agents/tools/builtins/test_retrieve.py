@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -67,12 +67,12 @@ class TestDocumentRetrieveToolDefinition:
 class TestDocumentRetrieveToolExecution:
     """Tests for DocumentRetrieveTool execution."""
 
-    @pytest.fixture
+    @pytest.fixture()
     def tool(self) -> DocumentRetrieveTool:
         """Create a tool instance."""
         return DocumentRetrieveTool()
 
-    @pytest.fixture
+    @pytest.fixture()
     def context(self) -> AgentContext:
         """Create a test context."""
         return AgentContext(
@@ -80,17 +80,17 @@ class TestDocumentRetrieveToolExecution:
             user_id="123",
         )
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_doc_id(self) -> str:
         """Return a valid document UUID."""
         return "550e8400-e29b-41d4-a716-446655440001"
 
-    @pytest.fixture
+    @pytest.fixture()
     def valid_collection_id(self) -> str:
         """Return a valid collection UUID."""
         return "550e8400-e29b-41d4-a716-446655440000"
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_missing_document_id_returns_error(self, tool: DocumentRetrieveTool, context: AgentContext) -> None:
         """Test missing document_id returns error."""
         result = await tool.execute(
@@ -100,7 +100,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "document_id" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_missing_collection_id_returns_error(self, tool: DocumentRetrieveTool, context: AgentContext) -> None:
         """Test missing collection_id returns error."""
         result = await tool.execute(
@@ -110,7 +110,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "collection_id" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_invalid_document_uuid_returns_error(self, tool: DocumentRetrieveTool, context: AgentContext) -> None:
         """Test invalid document UUID returns error."""
         result = await tool.execute(
@@ -123,7 +123,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "uuid" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_no_context_returns_error(self, tool: DocumentRetrieveTool) -> None:
         """Test no context returns error."""
         result = await tool.execute(
@@ -136,7 +136,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "context" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_collection_not_found_returns_error(
         self,
         tool: DocumentRetrieveTool,
@@ -167,7 +167,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "not found" in result["error"].lower() or "access denied" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_document_not_found_returns_error(
         self,
         tool: DocumentRetrieveTool,
@@ -205,7 +205,7 @@ class TestDocumentRetrieveToolExecution:
         assert "error" in result
         assert "not found" in result["error"].lower()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_successful_retrieval(
         self,
         tool: DocumentRetrieveTool,
@@ -229,8 +229,8 @@ class TestDocumentRetrieveToolExecution:
         mock_document.status = MagicMock(value="completed")
         mock_document.chunk_count = 5
         mock_document.file_size = 1024
-        mock_document.created_at = datetime.now()
-        mock_document.updated_at = datetime.now()
+        mock_document.created_at = datetime.now(tz=UTC)
+        mock_document.updated_at = datetime.now(tz=UTC)
         mock_document.meta = {"source": "test"}
 
         mock_doc_repo = AsyncMock()
@@ -259,7 +259,7 @@ class TestDocumentRetrieveToolExecution:
         assert result["mime_type"] == "text/plain"
         assert result["chunk_count"] == 5
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio()
     async def test_include_chunks(
         self,
         tool: DocumentRetrieveTool,
@@ -283,8 +283,8 @@ class TestDocumentRetrieveToolExecution:
         mock_document.status = MagicMock(value="completed")
         mock_document.chunk_count = 2
         mock_document.file_size = 1024
-        mock_document.created_at = datetime.now()
-        mock_document.updated_at = datetime.now()
+        mock_document.created_at = datetime.now(tz=UTC)
+        mock_document.updated_at = datetime.now(tz=UTC)
         mock_document.meta = {}
 
         mock_doc_repo = AsyncMock()
