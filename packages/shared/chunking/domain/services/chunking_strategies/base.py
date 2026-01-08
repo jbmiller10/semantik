@@ -8,7 +8,7 @@ ensuring consistency across different chunking approaches.
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import Any, ClassVar
 
 from shared.chunking.domain.entities.chunk import Chunk
 from shared.chunking.domain.value_objects.chunk_config import ChunkConfig
@@ -26,6 +26,16 @@ class ChunkingStrategy(ABC):
         `configure()` method. This is called by the factory with settings
         from the plugin state file (e.g., API keys, model settings).
     """
+
+    # Protocol-required class variables for plugin identification
+    PLUGIN_ID: ClassVar[str] = ""
+    """Unique plugin identifier - must be set by subclass."""
+
+    PLUGIN_TYPE: ClassVar[str] = "chunking"
+    """Plugin type identifier."""
+
+    PLUGIN_VERSION: ClassVar[str] = "0.0.0"
+    """Semantic version string."""
 
     def __init__(self, name: str) -> None:
         """
@@ -243,6 +253,25 @@ class ChunkingStrategy(ABC):
 
         # Ensure text doesn't start or end with whitespace
         return result.strip()
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        """Return plugin manifest for discovery and UI.
+
+        Returns a dictionary to maintain compatibility with the protocol
+        interface (external plugins return dicts, not PluginManifest dataclasses).
+
+        Returns:
+            Dictionary with plugin metadata.
+        """
+        metadata = getattr(cls, "METADATA", {})
+        return {
+            "id": cls.PLUGIN_ID,
+            "type": cls.PLUGIN_TYPE,
+            "version": cls.PLUGIN_VERSION,
+            "display_name": metadata.get("display_name", cls.PLUGIN_ID or cls.__name__),
+            "description": metadata.get("description", ""),
+        }
 
     def __repr__(self) -> str:
         """String representation of the strategy."""
