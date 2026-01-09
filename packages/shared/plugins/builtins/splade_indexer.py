@@ -14,7 +14,9 @@ Unlike BM25, SPLADE:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import torch
@@ -90,6 +92,7 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
         self._max_length: int = self._config.get("max_length", DEFAULT_MAX_LENGTH)
         self._batch_size: int = self._config.get("batch_size", DEFAULT_BATCH_SIZE)
         self._top_k_tokens: int | None = self._config.get("top_k_tokens")
+        self._inference_timeout: float = self._config.get("inference_timeout", 300.0)
 
         # Model state (loaded lazily via initialize())
         self._model: PreTrainedModel | None = None
@@ -111,6 +114,7 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
             self._max_length = self._config.get("max_length", DEFAULT_MAX_LENGTH)
             self._batch_size = self._config.get("batch_size", DEFAULT_BATCH_SIZE)
             self._top_k_tokens = self._config.get("top_k_tokens")
+            self._inference_timeout = self._config.get("inference_timeout", 300.0)
 
         await self._load_model()
 
@@ -205,18 +209,186 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
         self._actual_device = None
         logger.info("SPLADE model unloaded")
 
+    # === Batch inference helper methods ===
+
+    def _tokenize_batch(self, texts: list[str]) -> dict[str, torch.Tensor]:
+        """Tokenize a batch of texts for SPLADE inference.
+
+        Args:
+            texts: List of document texts to tokenize.
+
+        Returns:
+            Tokenizer output dict with input_ids, attention_mask tensors on device.
+
+        Note:
+            Must be called after initialize() - assumes tokenizer is loaded.
+        """
+        assert self._tokenizer is not None, "Tokenizer not loaded"
+        assert self._actual_device is not None, "Device not set"
+        encoded = self._tokenizer(
+            texts,
+            max_length=self._max_length,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )
+        return dict(encoded.to(self._actual_device))
+
+    def _extract_sparse_vectors(
+        self,
+        logits: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> list[tuple[tuple[int, ...], tuple[float, ...]]]:
+        """Extract sparse vectors from SPLADE model logits.
+
+        Args:
+            logits: Model output logits (batch_size, seq_len, vocab_size).
+            attention_mask: Attention mask (batch_size, seq_len).
+
+        Returns:
+            List of (indices, values) tuples, one per document in batch.
+        """
+        # SPLADE activation: log(1 + ReLU(x))
+        activated = torch.log1p(torch.relu(logits))
+
+        # Mask padding tokens (expand attention_mask to vocab dimension)
+        # Shape: (batch_size, seq_len, 1) -> broadcast to (batch_size, seq_len, vocab_size)
+        mask = attention_mask.unsqueeze(-1).float()
+        activated = activated * mask
+
+        # Max pool over sequence dimension
+        # Shape: (batch_size, vocab_size)
+        sparse_reps, _ = activated.max(dim=1)
+
+        results = []
+        for i in range(sparse_reps.size(0)):
+            doc_sparse = sparse_reps[i]
+
+            # Find non-zero indices
+            nonzero_mask = doc_sparse > 0
+            indices = nonzero_mask.nonzero(as_tuple=True)[0]
+            values = doc_sparse[indices]
+
+            # Apply top_k if configured
+            if self._top_k_tokens is not None and len(indices) > self._top_k_tokens:
+                topk_values, topk_idx = values.topk(self._top_k_tokens)
+                indices = indices[topk_idx]
+                values = topk_values
+
+            # Sort by index (required by protocol)
+            sorted_order = indices.argsort()
+            indices = indices[sorted_order]
+            values = values[sorted_order]
+
+            # Convert to tuples
+            indices_tuple = tuple(indices.cpu().tolist())
+            values_tuple = tuple(values.cpu().tolist())
+
+            results.append((indices_tuple, values_tuple))
+
+        return results
+
+    def _encode_single_batch(
+        self,
+        texts: list[str],
+    ) -> list[tuple[tuple[int, ...], tuple[float, ...]]]:
+        """Encode a single batch of texts to sparse vectors (sync, on device).
+
+        Args:
+            texts: List of document texts.
+
+        Returns:
+            List of (indices, values) tuples.
+
+        Note:
+            Must be called after initialize() - assumes model is loaded.
+        """
+        assert self._model is not None, "Model not loaded"
+
+        # Tokenize
+        encoded = self._tokenize_batch(texts)
+
+        # Model inference
+        with torch.no_grad():
+            output = self._model(**encoded)
+
+        # Extract sparse vectors
+        return self._extract_sparse_vectors(
+            output.logits,
+            encoded["attention_mask"],
+        )
+
+    async def _encode_batch_with_recovery(
+        self,
+        texts: list[str],
+        chunk_ids: list[str],
+        metadatas: list[dict[str, Any]],
+    ) -> list[SparseVector]:
+        """Encode batch with OOM recovery via batch splitting.
+
+        Args:
+            texts: Document texts.
+            chunk_ids: Chunk identifiers.
+            metadatas: Document metadata dicts.
+
+        Returns:
+            List of SparseVector instances.
+        """
+        try:
+            # Run inference in thread pool to not block event loop
+            loop = asyncio.get_event_loop()
+            sparse_results = await loop.run_in_executor(
+                None,
+                partial(self._encode_single_batch, texts),
+            )
+
+            # Build SparseVector objects
+            results = []
+            for i, (indices, values) in enumerate(sparse_results):
+                results.append(
+                    SparseVector(
+                        indices=indices,
+                        values=values,
+                        chunk_id=chunk_ids[i],
+                        metadata=metadatas[i],
+                    )
+                )
+            return results
+
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower() and len(texts) > 1:
+                # Clear cache and retry with smaller batch
+                torch.cuda.empty_cache()
+
+                mid = len(texts) // 2
+                logger.warning(
+                    "CUDA OOM with batch_size=%d, splitting to %d + %d",
+                    len(texts),
+                    mid,
+                    len(texts) - mid,
+                )
+
+                # Recursively process both halves
+                left = await self._encode_batch_with_recovery(
+                    texts[:mid],
+                    chunk_ids[:mid],
+                    metadatas[:mid],
+                )
+                right = await self._encode_batch_with_recovery(
+                    texts[mid:],
+                    chunk_ids[mid:],
+                    metadatas[mid:],
+                )
+                return left + right
+            raise
+
     # === Abstract method implementations ===
-    # NOTE: encode_documents() and encode_query() are stubs that return empty vectors.
-    # Full inference pipeline will be implemented in Phase 5b and 5c.
 
     async def encode_documents(
         self,
         documents: list[dict[str, Any]],
     ) -> list[SparseVector]:
-        """Generate sparse vectors for documents.
-
-        NOTE: This is a stub implementation for Phase 5a. Returns empty vectors.
-        Full inference pipeline will be implemented in Phase 5b.
+        """Generate sparse vectors for documents using SPLADE.
 
         Args:
             documents: List of documents with keys:
@@ -226,21 +398,57 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
 
         Returns:
             List of SparseVector instances, one per input document.
+
+        Raises:
+            RuntimeError: If model not loaded (call initialize() first).
+            TimeoutError: If encoding exceeds inference_timeout.
         """
-        if self._model is None:
+        if self._model is None or self._tokenizer is None:
             msg = "Model not loaded. Call initialize() first."
             raise RuntimeError(msg)
 
-        # Placeholder - returns empty vectors
-        # Phase 5b will implement actual SPLADE inference
-        return [
-            SparseVector(
-                indices=(),
-                values=(),
-                chunk_id=doc["chunk_id"],
+        if not documents:
+            return []
+
+        # Extract data from documents
+        texts = [doc.get("content", "") for doc in documents]
+        chunk_ids = [doc["chunk_id"] for doc in documents]
+        metadatas = [doc.get("metadata", {}) for doc in documents]
+
+        # Process in batches with timeout
+        results: list[SparseVector] = []
+        batch_size = self._batch_size
+
+        try:
+            async with asyncio.timeout(self._inference_timeout):
+                for i in range(0, len(texts), batch_size):
+                    batch_texts = texts[i : i + batch_size]
+                    batch_chunk_ids = chunk_ids[i : i + batch_size]
+                    batch_metadatas = metadatas[i : i + batch_size]
+
+                    batch_results = await self._encode_batch_with_recovery(
+                        batch_texts,
+                        batch_chunk_ids,
+                        batch_metadatas,
+                    )
+                    results.extend(batch_results)
+
+                    logger.debug(
+                        "SPLADE encode progress: %d/%d documents",
+                        len(results),
+                        len(documents),
+                    )
+
+        except TimeoutError:
+            logger.error(
+                "SPLADE encoding timed out after %.1f seconds with %d/%d documents processed",
+                self._inference_timeout,
+                len(results),
+                len(documents),
             )
-            for doc in documents
-        ]
+            raise
+
+        return results
 
     async def encode_query(self, query: str) -> SparseQueryVector:
         """Generate sparse vector for a search query.
@@ -345,6 +553,13 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
                     "default": None,
                     "minimum": 1,
                     "description": "Keep only top-k tokens per vector (optional)",
+                },
+                "inference_timeout": {
+                    "type": "number",
+                    "default": 300.0,
+                    "minimum": 10.0,
+                    "maximum": 3600.0,
+                    "description": "Timeout in seconds for encoding operations",
                 },
             },
             "additionalProperties": False,
