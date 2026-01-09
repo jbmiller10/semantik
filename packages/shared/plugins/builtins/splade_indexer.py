@@ -318,6 +318,34 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
             encoded["attention_mask"],
         )
 
+    def _encode_single_query(
+        self,
+        query: str,
+    ) -> tuple[tuple[int, ...], tuple[float, ...]]:
+        """Encode a single query to sparse vector (sync, on device).
+
+        Args:
+            query: Query text to encode.
+
+        Returns:
+            Tuple of (indices, values) for the sparse query vector.
+
+        Note:
+            Must be called after initialize() - assumes model is loaded.
+        """
+        assert self._model is not None, "Model not loaded"
+
+        # Tokenize as batch of 1
+        encoded = self._tokenize_batch([query])
+
+        # Model inference
+        with torch.no_grad():
+            output = self._model(**encoded)
+
+        # Extract sparse vector (returns list of 1 item)
+        results = self._extract_sparse_vectors(output.logits, encoded["attention_mask"])
+        return results[0]
+
     async def _encode_batch_with_recovery(
         self,
         texts: list[str],
@@ -451,27 +479,45 @@ class SPLADESparseIndexerPlugin(SparseIndexerPlugin):
         return results
 
     async def encode_query(self, query: str) -> SparseQueryVector:
-        """Generate sparse vector for a search query.
+        """Generate sparse vector for a search query using SPLADE.
 
-        NOTE: This is a stub implementation for Phase 5a. Returns empty vector.
-        Full inference pipeline will be implemented in Phase 5c.
+        Uses the same SPLADE model and sparse vector extraction as document
+        encoding, but optimized for single query inference.
 
         Args:
             query: Search query text.
 
         Returns:
             SparseQueryVector with indices and values.
-        """
-        # Suppress unused parameter warning - query will be used in Phase 5c
-        _ = query
 
-        if self._model is None:
+        Raises:
+            RuntimeError: If model not loaded (call initialize() first).
+            TimeoutError: If encoding exceeds inference_timeout.
+        """
+        if self._model is None or self._tokenizer is None:
             msg = "Model not loaded. Call initialize() first."
             raise RuntimeError(msg)
 
-        # Placeholder - returns empty vector
-        # Phase 5c will implement actual query encoding
-        return SparseQueryVector(indices=(), values=())
+        # Handle empty query
+        if not query or not query.strip():
+            return SparseQueryVector(indices=(), values=())
+
+        # Run inference in thread pool to not block event loop
+        loop = asyncio.get_event_loop()
+        try:
+            async with asyncio.timeout(self._inference_timeout):
+                indices, values = await loop.run_in_executor(
+                    None,
+                    partial(self._encode_single_query, query),
+                )
+        except TimeoutError:
+            logger.error(
+                "SPLADE query encoding timed out after %.1f seconds",
+                self._inference_timeout,
+            )
+            raise
+
+        return SparseQueryVector(indices=indices, values=values)
 
     async def remove_documents(self, chunk_ids: list[str]) -> None:
         """No-op for SPLADE - stateless plugin.
