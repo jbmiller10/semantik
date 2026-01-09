@@ -38,6 +38,7 @@ from shared.agents.types import (
 )
 from shared.database.exceptions import AccessDeniedError
 from shared.database.repositories.agent_session_repository import AgentSessionRepository
+from shared.plugins.dto_adapters import coerce_to_agent_message
 from shared.plugins.loader import load_plugins
 from shared.plugins.registry import plugin_registry
 
@@ -615,6 +616,9 @@ class AgentService:
             session_id=db_session.sdk_session_id,
             stream=stream,
         ):
+            # Convert dict to AgentMessage for external plugins
+            message = coerce_to_agent_message(message)
+
             # Update sequence number for non-partial messages
             if not message.is_partial:
                 # Create new message with updated sequence number

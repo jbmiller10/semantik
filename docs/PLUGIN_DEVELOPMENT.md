@@ -4,7 +4,18 @@ This guide explains how to develop plugins for Semantik's self-hosted semantic s
 
 ## Overview
 
-Semantik plugins extend core functionality through a unified plugin system. All plugins inherit from `SemanticPlugin` and can be distributed via pip packages.
+Semantik plugins extend core functionality through a unified plugin system. Plugins can be distributed via pip packages and support two development approaches:
+
+### Development Approaches
+
+| Approach | Best For | Documentation |
+|----------|----------|---------------|
+| **Protocol-based** (Recommended) | External plugins without semantik dependencies | [External Plugins Guide](external-plugins.md) |
+| **ABC-based** (This guide) | Internal plugins or when you need semantik utilities | This document |
+
+**New in v0.8**: External plugins can now be developed with **zero semantik imports** using Python's structural typing (Protocols). See [External Plugins Guide](external-plugins.md) for the protocol-based approach.
+
+This guide covers the ABC-based approach where plugins inherit from `SemanticPlugin` base classes.
 
 ### Plugin Types
 
@@ -15,6 +26,7 @@ Semantik plugins extend core functionality through a unified plugin system. All 
 | **connector** | Data source integrations | `ConnectorPlugin` |
 | **reranker** | Search result reranking | `RerankerPlugin` |
 | **extractor** | Metadata extraction | `ExtractorPlugin` |
+| **agent** | LLM-powered capabilities | `AgentPlugin` |
 
 ## Quick Start
 
@@ -595,3 +607,12 @@ except ImportError:
 5. **Test thoroughly** - Include unit tests for all public methods
 6. **Log appropriately** - Use Python logging, not print statements
 7. **Clean up resources** - Implement cleanup() to release connections/memory
+
+---
+
+## See Also
+
+- [External Plugins Guide](external-plugins.md) - Protocol-based development (no semantik imports)
+- [Plugin Protocols Reference](plugin-protocols.md) - Complete protocol specifications
+- [Plugin Testing](PLUGIN_TESTING.md) - Testing infrastructure and contract tests
+- [Plugin Security](PLUGIN_SECURITY.md) - Security considerations for plugins

@@ -74,6 +74,45 @@ class ValidPlugin(BaseEmbeddingPlugin):
         self._initialized = False
 
 
+class ValidProtocolPlugin:
+    """A valid protocol-only embedding plugin returning a dict definition."""
+
+    PLUGIN_ID = "protocol_plugin"
+    PLUGIN_TYPE = "embedding"
+    PLUGIN_VERSION = "1.0.0"
+    INTERNAL_NAME = "protocol_plugin"
+    API_ID = "protocol_plugin"
+    PROVIDER_TYPE = "remote"
+    METADATA: dict[str, Any] = {
+        "display_name": "Protocol Plugin",
+        "description": "A protocol-only plugin",
+    }
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:  # noqa: ARG002
+        pass
+
+    @classmethod
+    def get_definition(cls) -> dict[str, Any]:
+        return {
+            "api_id": cls.API_ID,
+            "internal_id": cls.INTERNAL_NAME,
+            "display_name": "Protocol Plugin",
+            "description": "A protocol-only plugin for testing",
+            "provider_type": cls.PROVIDER_TYPE,
+        }
+
+    @classmethod
+    def supports_model(cls, model_name: str) -> bool:
+        return model_name.startswith("proto/")
+
+    async def embed_texts(self, texts: list[str], mode: str = "document") -> list[list[float]]:  # noqa: ARG002
+        return [[0.0] for _ in texts]
+
+    @classmethod
+    def get_manifest(cls) -> dict[str, Any]:
+        return {"id": cls.API_ID, "type": cls.PLUGIN_TYPE, "version": cls.PLUGIN_VERSION}
+
+
 class TestPluginLoader:
     def test_plugin_loader_registers_provider(self, monkeypatch: pytest.MonkeyPatch, clean_registry) -> None:
         class DummyEntryPoint:
@@ -115,6 +154,35 @@ class TestPluginLoader:
             _PROVIDERS.update(original_providers)
             _clear_caches()
             plugin_registry.reset()
+
+    def test_plugin_loader_registers_protocol_provider(self, monkeypatch: pytest.MonkeyPatch, clean_registry) -> None:
+        class DummyEntryPoint:
+            name = "protocol_plugin"
+
+            def load(self) -> type:
+                return ValidProtocolPlugin
+
+        class DummyEntryPoints:
+            def select(self, group: str) -> list:
+                assert group == "semantik.plugins"
+                return [DummyEntryPoint()]
+
+        monkeypatch.setenv("SEMANTIK_ENABLE_PLUGINS", "true")
+        monkeypatch.setenv("SEMANTIK_ENABLE_EMBEDDING_PLUGINS", "true")
+        monkeypatch.setattr(metadata, "entry_points", lambda: DummyEntryPoints())
+
+        load_plugins(plugin_types={"embedding"}, include_builtins=False)
+
+        assert "protocol_plugin" in _PROVIDER_CLASSES
+        definition = get_provider_definition("protocol_plugin")
+        assert definition is not None
+        assert definition.api_id == "protocol_plugin"
+        assert definition.internal_id == "protocol_plugin"
+        assert definition.is_plugin is True
+
+        record = plugin_registry.get("embedding", "protocol_plugin")
+        assert record is not None
+        assert record.source == PluginSource.EXTERNAL
 
     def test_plugin_loader_disabled_via_env(self, monkeypatch: pytest.MonkeyPatch, clean_registry) -> None:
         class DummyEntryPoint:

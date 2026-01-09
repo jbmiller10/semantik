@@ -618,9 +618,17 @@ class TestEmbeddingPluginValidation:
         from shared.plugins.loader import _register_embedding_plugin
 
         class ExceptionPlugin:
+            # Required attributes for protocol validation
+            INTERNAL_NAME = "exception-plugin"
+            API_ID = "exception-plugin"
+
             @classmethod
             def get_definition(cls):
                 raise ValueError("Definition error")
+
+            @classmethod
+            def embed_texts(cls, texts, mode="document"):
+                pass
 
         with caplog.at_level(logging.WARNING):
             _register_embedding_plugin(

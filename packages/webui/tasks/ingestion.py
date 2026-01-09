@@ -32,6 +32,7 @@ from shared.metrics.collection_metrics import (
     collection_memory_usage_bytes,
     collections_total,
 )
+from shared.plugins.dto_adapters import coerce_to_ingested_document
 from webui.services.chunking.container import resolve_celery_chunking_orchestrator
 from webui.services.connector_factory import ConnectorFactory
 from webui.services.document_registry_service import DocumentRegistryService
@@ -990,6 +991,9 @@ async def _process_append_operation_impl(
         documents_iter = load_documents(source_id=source_id) if accepts_source_id else load_documents()
 
         async for ingested_doc in documents_iter:
+            # Convert dict to IngestedDocument for external connectors
+            ingested_doc = coerce_to_ingested_document(ingested_doc)
+
             scan_stats["total_documents_found"] += 1
 
             try:
