@@ -107,9 +107,7 @@ async def _reindex_collection_async(
 
         # Get total chunks count using paginated query
         chunk_repo = ChunkRepository(session)
-        _, total_chunks = await chunk_repo.get_chunks_paginated(
-            collection_id=collection_uuid, page=1, page_size=1
-        )
+        _, total_chunks = await chunk_repo.get_chunks_paginated(collection_id=collection_uuid, page=1, page_size=1)
 
     if total_chunks == 0:
         logger.info(f"Collection {collection_uuid} has no chunks to reindex")
@@ -120,9 +118,7 @@ async def _reindex_collection_async(
         }
 
     # Create Qdrant client
-    async_qdrant = AsyncQdrantClient(
-        url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-    )
+    async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
     try:
         # Generate sparse collection name

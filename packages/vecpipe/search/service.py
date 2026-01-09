@@ -691,8 +691,7 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
             else:
                 # Fallback to dense with warning
                 warnings.append(
-                    f"Sparse index not available for collection '{collection_name}'. "
-                    "Falling back to dense search."
+                    f"Sparse index not available for collection '{collection_name}'. " "Falling back to dense search."
                 )
                 search_mode_used = "dense"
                 sparse_search_fallbacks.labels(reason="sparse_not_enabled").inc()
@@ -867,18 +866,22 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
         for point in qdrant_results:
             if isinstance(point, dict) and "payload" in point:
                 payload = point["payload"]
-                dense_results_for_fusion.append({
-                    "chunk_id": payload.get("chunk_id", ""),
-                    "score": point["score"],
-                    "payload": payload,
-                })
+                dense_results_for_fusion.append(
+                    {
+                        "chunk_id": payload.get("chunk_id", ""),
+                        "score": point["score"],
+                        "payload": payload,
+                    }
+                )
             else:
                 # Handle SDK-style results
-                dense_results_for_fusion.append({
-                    "chunk_id": point.get("payload", {}).get("chunk_id", str(point.get("id", ""))),
-                    "score": point.get("score", 0.0),
-                    "payload": point.get("payload", {}),
-                })
+                dense_results_for_fusion.append(
+                    {
+                        "chunk_id": point.get("payload", {}).get("chunk_id", str(point.get("id", ""))),
+                        "score": point.get("score", 0.0),
+                        "payload": point.get("payload", {}),
+                    }
+                )
 
         # Perform sparse search if needed
         if search_mode_used in ("sparse", "hybrid") and sparse_config:
@@ -910,15 +913,13 @@ async def perform_search(request: SearchRequest) -> SearchResponse:
 
                 # Replace qdrant_results with fused results
                 qdrant_results = [
-                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})}
-                    for r in fused_results
+                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})} for r in fused_results
                 ]
             elif search_mode_used == "sparse":
                 # Sparse-only mode: use sparse results
                 # Need to fetch payloads from dense collection for full metadata
                 qdrant_results = [
-                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})}
-                    for r in sparse_results
+                    {"id": r["chunk_id"], "score": r["score"], "payload": r.get("payload", {})} for r in sparse_results
                 ]
                 # Note: For sparse-only, we may need to fetch full payload from dense collection
                 # This is handled below when building SearchResult objects

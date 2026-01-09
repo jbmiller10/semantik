@@ -32,9 +32,7 @@ class SearchRequest(BaseModel):
     operation_uuid: str | None = Field(None, description="Operation UUID for collection inference")
     use_reranker: bool = Field(False, description="Enable cross-encoder reranking")
     rerank_model: str | None = Field(None, description="Override reranker model")
-    rerank_quantization: str | None = Field(
-        None, description="Override reranker quantization: float32, float16, int8"
-    )
+    rerank_quantization: str | None = Field(None, description="Override reranker quantization: float32, float16, int8")
     score_threshold: float = Field(0.0, ge=0.0, le=1.0, description="Minimum score threshold")
 
     # Sparse indexing search mode (new in v2)

@@ -120,9 +120,7 @@ class CollectionSearchResponse(BaseModel):
         default="dense",
         description="Actual search mode used (may differ from requested if sparse not available)",
     )
-    warnings: list[str] = Field(
-        default_factory=list, description="Warnings about search mode fallback or other issues"
-    )
+    warnings: list[str] = Field(default_factory=list, description="Warnings about search mode fallback or other issues")
     reranking_used: bool
     reranker_model: str | None = None
     # Timing metrics

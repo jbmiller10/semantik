@@ -92,9 +92,7 @@ class CollectionService:
         )
         from vecpipe.sparse import delete_sparse_collection
 
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-        )
+        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
         try:
             # Check if sparse index config exists
@@ -1504,9 +1502,7 @@ class CollectionService:
         )
 
         # Get sparse config from collection metadata
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-        )
+        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
         try:
             return await get_sparse_index_config(async_qdrant, collection.vector_store_name)
         finally:
@@ -1553,17 +1549,13 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-        )
+        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
         try:
             # Check if sparse indexing is already enabled
             existing_config = await get_sparse_index_config(async_qdrant, collection.vector_store_name)
             if existing_config and existing_config.get("enabled"):
-                raise InvalidStateError(
-                    f"Sparse indexing already enabled for collection '{collection_id}'"
-                )
+                raise InvalidStateError(f"Sparse indexing already enabled for collection '{collection_id}'")
 
             # Validate plugin exists
             plugin_record = plugin_registry.find_by_id(plugin_id)
@@ -1575,9 +1567,7 @@ class CollectionService:
             sparse_type = getattr(plugin_cls, "SPARSE_TYPE", "bm25")
 
             # Generate sparse collection name
-            sparse_collection_name = generate_sparse_collection_name(
-                collection.vector_store_name, sparse_type
-            )
+            sparse_collection_name = generate_sparse_collection_name(collection.vector_store_name, sparse_type)
 
             # Create sparse Qdrant collection
             await ensure_sparse_collection(sparse_collection_name, async_qdrant)
@@ -1638,9 +1628,7 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-        )
+        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
         try:
             # Get current sparse config
@@ -1688,9 +1676,7 @@ class CollectionService:
             collection_uuid=collection_id, user_id=user_id
         )
 
-        async_qdrant = AsyncQdrantClient(
-            url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}"
-        )
+        async_qdrant = AsyncQdrantClient(url=f"http://{settings.QDRANT_HOST}:{settings.QDRANT_PORT}")
 
         try:
             # Get sparse config
@@ -1744,9 +1730,7 @@ class CollectionService:
         from celery.result import AsyncResult
 
         # Get collection with permission check (just for access control)
-        await self.collection_repo.get_by_uuid_with_permission_check(
-            collection_uuid=collection_id, user_id=user_id
-        )
+        await self.collection_repo.get_by_uuid_with_permission_check(collection_uuid=collection_id, user_id=user_id)
 
         # Get Celery task result
         result = AsyncResult(job_id, app=celery_app)
@@ -1757,19 +1741,23 @@ class CollectionService:
 
         if result.state == "PROGRESS":
             info = result.info or {}
-            progress_info.update({
-                "progress": info.get("progress", 0),
-                "documents_processed": info.get("documents_processed"),
-                "total_documents": info.get("total_documents"),
-            })
+            progress_info.update(
+                {
+                    "progress": info.get("progress", 0),
+                    "documents_processed": info.get("documents_processed"),
+                    "total_documents": info.get("total_documents"),
+                }
+            )
         elif result.state == "FAILURE":
             progress_info["error"] = str(result.result) if result.result else "Unknown error"
         elif result.state == "SUCCESS":
             info = result.result or {}
-            progress_info.update({
-                "progress": 100.0,
-                "documents_processed": info.get("documents_processed"),
-                "total_documents": info.get("total_documents"),
-            })
+            progress_info.update(
+                {
+                    "progress": 100.0,
+                    "documents_processed": info.get("documents_processed"),
+                    "total_documents": info.get("total_documents"),
+                }
+            )
 
         return progress_info
