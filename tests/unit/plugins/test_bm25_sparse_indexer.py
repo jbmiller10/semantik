@@ -30,7 +30,7 @@ class TestBM25PluginAttributes:
 
     def test_plugin_id(self) -> None:
         """Plugin should have correct PLUGIN_ID."""
-        assert BM25SparseIndexerPlugin.PLUGIN_ID == "bm25"
+        assert BM25SparseIndexerPlugin.PLUGIN_ID == "bm25-local"
 
     def test_plugin_type(self) -> None:
         """Plugin should have correct PLUGIN_TYPE."""
@@ -93,7 +93,7 @@ class TestBM25PluginManifest:
     def test_manifest_has_correct_id(self) -> None:
         """Manifest should have correct id."""
         manifest = BM25SparseIndexerPlugin.get_manifest()
-        assert manifest.id == "bm25"
+        assert manifest.id == "bm25-local"
 
     def test_manifest_has_correct_type(self) -> None:
         """Manifest should have correct type."""
