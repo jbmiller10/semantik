@@ -27,6 +27,7 @@ This guide covers the ABC-based approach where plugins inherit from `SemanticPlu
 | **reranker** | Search result reranking | `RerankerPlugin` |
 | **extractor** | Metadata extraction | `ExtractorPlugin` |
 | **agent** | LLM-powered capabilities | `AgentPlugin` |
+| **sparse_indexer** | Sparse vectors (BM25/SPLADE) | `SparseIndexerPlugin` |
 
 ## Quick Start
 
@@ -357,6 +358,163 @@ class MyExtractor(ExtractorPlugin):
             keywords=["example", "keyword"],
         )
 ```
+
+---
+
+## Sparse Indexer Plugins
+
+Sparse indexer plugins generate sparse vector representations for hybrid search. Two main types are supported:
+
+- **BM25**: Classic term-frequency based retrieval (stateful, requires IDF statistics)
+- **SPLADE**: Learned sparse representations using neural models (stateless)
+
+```python
+from shared.plugins.types.sparse_indexer import (
+    SparseIndexerPlugin,
+    SparseIndexerCapabilities,
+    SparseVector,
+    SparseQueryVector,
+)
+
+class MyBM25Indexer(SparseIndexerPlugin):
+    PLUGIN_TYPE = "sparse_indexer"
+    PLUGIN_ID = "my-bm25"
+    PLUGIN_VERSION = "1.0.0"
+    SPARSE_TYPE = "bm25"  # Must be "bm25" or "splade"
+    METADATA = {
+        "display_name": "My BM25 Indexer",
+        "description": "Custom BM25 implementation for sparse retrieval",
+    }
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self._k1 = (config or {}).get("k1", 1.5)
+        self._b = (config or {}).get("b", 0.75)
+        self._vocabulary: dict[str, int] = {}
+        self._idf_stats: dict[str, float] = {}
+
+    async def encode_documents(
+        self,
+        documents: list[dict[str, Any]],
+    ) -> list[SparseVector]:
+        """Generate sparse vectors for documents.
+
+        Args:
+            documents: List of dicts with 'content' and 'chunk_id' keys.
+
+        Returns:
+            List of SparseVector instances (one per document).
+        """
+        results = []
+        for doc in documents:
+            # Tokenize and compute BM25 scores
+            tokens = self._tokenize(doc["content"])
+            indices, values = self._compute_bm25_vector(tokens)
+            results.append(SparseVector(
+                indices=tuple(indices),
+                values=tuple(values),
+                chunk_id=doc["chunk_id"],
+            ))
+        return results
+
+    async def encode_query(self, query: str) -> SparseQueryVector:
+        """Generate sparse vector for a search query."""
+        tokens = self._tokenize(query)
+        indices, values = self._compute_query_vector(tokens)
+        return SparseQueryVector(
+            indices=tuple(indices),
+            values=tuple(values),
+        )
+
+    async def remove_documents(self, chunk_ids: list[str]) -> None:
+        """Update IDF statistics when chunks are removed.
+
+        For BM25, this updates corpus statistics. For SPLADE, this is a no-op.
+        """
+        await self._update_idf_for_removal(chunk_ids)
+
+    @classmethod
+    def get_capabilities(cls) -> SparseIndexerCapabilities:
+        """Declare indexer capabilities and limits."""
+        return SparseIndexerCapabilities(
+            sparse_type="bm25",
+            max_tokens=8192,
+            vocabulary_handling="direct",  # or "hashed" for large vocabularies
+            supports_batching=True,
+            max_batch_size=64,
+            requires_corpus_stats=True,  # BM25 needs IDF
+            idf_storage="file",  # or "qdrant_point"
+        )
+
+    def _tokenize(self, text: str) -> list[str]:
+        """Tokenize text into terms."""
+        # Implement tokenization (lowercase, remove stopwords, etc.)
+        pass
+
+    def _compute_bm25_vector(self, tokens: list[str]) -> tuple[list[int], list[float]]:
+        """Compute BM25 sparse vector from tokens."""
+        # Implement BM25 scoring
+        pass
+
+    def _compute_query_vector(self, tokens: list[str]) -> tuple[list[int], list[float]]:
+        """Compute query vector (typically just IDF weights)."""
+        pass
+
+    async def _update_idf_for_removal(self, chunk_ids: list[str]) -> None:
+        """Update IDF statistics when chunks are removed."""
+        pass
+```
+
+### Key Concepts
+
+**SPARSE_TYPE**: Must be either `"bm25"` or `"splade"`. This determines the naming convention for sparse Qdrant collections (e.g., `collection_sparse_bm25`).
+
+**Constraint**: Only one sparse indexer per collection. Users who need both BM25 and SPLADE should create separate collections.
+
+**Stateful vs Stateless**:
+- **BM25**: Stateful - requires corpus IDF statistics stored in files or Qdrant
+- **SPLADE**: Stateless - model parameters encode all knowledge, no corpus stats needed
+
+### Configuration Schema
+
+```python
+@classmethod
+def get_config_schema(cls) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "k1": {
+                "type": "number",
+                "description": "Term saturation parameter (higher = more TF weight)",
+                "default": 1.5,
+                "minimum": 0,
+                "maximum": 3,
+            },
+            "b": {
+                "type": "number",
+                "description": "Length normalization (0 = none, 1 = full)",
+                "default": 0.75,
+                "minimum": 0,
+                "maximum": 1,
+            },
+            "collection_name": {
+                "type": "string",
+                "description": "Collection name for IDF persistence",
+            },
+        },
+    }
+```
+
+### Built-in Implementations
+
+Semantik includes two built-in sparse indexers:
+
+| Plugin ID | Type | Description |
+|-----------|------|-------------|
+| `bm25-local` | BM25 | Classic BM25 with configurable k1/b, stopword removal |
+| `splade-local` | SPLADE | Neural sparse encoder using `naver/splade-cocondenser-ensembledistil` |
+
+See [Sparse Indexing Guide](SPARSE_INDEXING.md) for usage details and performance considerations.
 
 ---
 

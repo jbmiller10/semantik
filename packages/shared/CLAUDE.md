@@ -69,8 +69,8 @@
       - loader.py: Entry point discovery (semantik.plugins group)
       - state.py: Plugin state file I/O for cross-service config
       - security.py: Audit logging, environment sanitization
-      - types/: Type-specific plugin bases (embedding, chunking, connector, reranker, extractor)
-      - builtins/: Built-in plugins (keyword_extractor, qwen3_reranker)
+      - types/: Type-specific plugin bases (embedding, chunking, connector, reranker, extractor, sparse_indexer)
+      - builtins/: Built-in plugins (keyword_extractor, qwen3_reranker, bm25_sparse_indexer, splade_indexer)
     </structure>
     <plugin-types>
       - EmbeddingPlugin: Model providers (local, remote, hybrid)
@@ -78,6 +78,7 @@
       - ConnectorPlugin: Document source connectors
       - RerankerPlugin: Search result reranking
       - ExtractorPlugin: Entity/metadata extraction
+      - SparseIndexerPlugin: Sparse vectors (BM25, SPLADE) for hybrid search
     </plugin-types>
     <state-file>
       Plugin state persisted to /data/plugin_state.json (shared volume).
@@ -110,6 +111,57 @@
       provider = EmbeddingProviderFactory.create_provider("model-name")
       embeddings = await provider.embed_texts(texts, mode=EmbeddingMode.QUERY)
     </usage>
+  </module>
+
+  <module path="plugins/types/sparse_indexer.py">
+    <purpose>Sparse indexer plugin base class for BM25/SPLADE hybrid search</purpose>
+    <classes>
+      - SparseVector: Immutable dataclass (indices, values, chunk_id, metadata)
+      - SparseQueryVector: Query-only sparse vector (indices, values)
+      - SparseIndexerCapabilities: Plugin capabilities (sparse_type, max_tokens, batching, IDF storage)
+      - SparseIndexerPlugin: ABC base requiring encode_documents/encode_query/remove_documents
+    </classes>
+    <sparse-types>bm25, splade (SPARSE_TYPES constant)</sparse-types>
+    <key-concepts>
+      - Plugins generate sparse vectors only; vecpipe handles Qdrant persistence
+      - Uses chunk_id (not document_id) for 1:1 alignment with dense vectors for RRF fusion
+      - One sparse indexer per collection (BM25 OR SPLADE, not both)
+    </key-concepts>
+  </module>
+
+  <module path="plugins/builtins/bm25_sparse_indexer.py">
+    <purpose>BM25 sparse indexer with IDF persistence</purpose>
+    <class>BM25SparseIndexerPlugin</class>
+    <config>
+      - k1 (default: 1.5): Term saturation parameter
+      - b (default: 0.75): Length normalization (0=none, 1=full)
+      - lowercase (default: true): Text normalization
+      - remove_stopwords (default: true): Filter common English words
+      - min_token_length (default: 2): Minimum token length
+    </config>
+    <idf-storage>data/sparse_indexes/{collection_name}/idf_stats.json</idf-storage>
+    <performance>~1000 docs/sec (CPU), no GPU required</performance>
+    <stateful>Yes - maintains corpus IDF statistics</stateful>
+  </module>
+
+  <module path="plugins/builtins/splade_indexer.py">
+    <purpose>SPLADE learned sparse representations via neural models</purpose>
+    <class>SPLADESparseIndexerPlugin</class>
+    <default-model>naver/splade-cocondenser-ensembledistil</default-model>
+    <config>
+      - model_name: HuggingFace model ID
+      - device: auto/cuda/cpu
+      - quantization: float32/float16/int8
+      - batch_size: 8-128 depending on GPU VRAM
+      - max_length: 512 tokens
+    </config>
+    <gpu-batch-recommendations>
+      4GB VRAM: batch_size=8
+      8GB VRAM: batch_size=32
+      24GB VRAM: batch_size=128
+    </gpu-batch-recommendations>
+    <performance>10-50 docs/sec (GPU), 0.3-1 docs/sec (CPU)</performance>
+    <stateless>Yes - model parameters encode all knowledge</stateless>
   </module>
 
   <module path="chunking/">
